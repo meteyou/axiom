@@ -3,6 +3,7 @@ import { createApp } from './app.js'
 import { initDatabase } from '@openagent/core'
 import { ensureConfigTemplates } from '@openagent/core'
 import { ensureMemoryStructure } from '@openagent/core'
+import { AgentCore, getActiveProvider, buildModel, getApiKeyForProvider } from '@openagent/core'
 import { setupWebSocketChat } from './ws-chat.js'
 import { setupWebSocketLogs } from './ws-logs.js'
 import { HeartbeatService } from './heartbeat.js'
@@ -25,12 +26,34 @@ const runtimeMetrics = new RuntimeMetrics()
 const heartbeatService = new HeartbeatService({ db })
 heartbeatService.start()
 
+// Initialize Agent Core with the active provider
+let agentCore: AgentCore | null = null
+const provider = getActiveProvider()
+if (provider) {
+  try {
+    const model = buildModel(provider)
+    const apiKey = await getApiKeyForProvider(provider)
+    agentCore = new AgentCore({
+      model,
+      apiKey,
+      db,
+      yoloMode: true,
+      providerConfig: provider,
+    })
+    console.log(`[openagent] Agent core initialized with provider: ${provider.name} (${provider.defaultModel})`)
+  } catch (err) {
+    console.error('[openagent] Failed to initialize agent core:', err)
+  }
+} else {
+  console.warn('[openagent] No provider configured — chat will be unavailable. Configure a provider in Settings.')
+}
+
 // Start server
-const app = createApp({ db, heartbeatService, runtimeMetrics })
+const app = createApp({ db, agentCore, heartbeatService, runtimeMetrics })
 const server = http.createServer(app)
 
-// Set up WebSocket chat (no agent core connected yet — will be wired in future tasks)
-setupWebSocketChat(server, db, null, runtimeMetrics)
+// Set up WebSocket chat
+setupWebSocketChat(server, db, agentCore, runtimeMetrics)
 
 // Set up WebSocket logs for real-time streaming
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
