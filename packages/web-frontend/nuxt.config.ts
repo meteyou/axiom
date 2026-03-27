@@ -26,23 +26,23 @@ export default defineNuxtConfig({
     },
   },
 
+  vite: {
+    server: {
+      fs: {
+        // Allow serving files from the workspace root (monorepo hoisted node_modules)
+        allow: ['../..'],
+      },
+    },
+  },
+
   runtimeConfig: {
     public: {
-      apiBase: process.env.NUXT_PUBLIC_API_BASE || 'http://localhost:3000',
+      apiBase: process.env.NUXT_PUBLIC_API_BASE || '',
     },
   },
 
   devServer: {
     port: 3001,
-  },
-
-  routeRules: {
-    '/api/**': {
-      proxy: { to: 'http://localhost:3000/api/**' },
-    },
-    '/ws/**': {
-      proxy: { to: 'http://localhost:3000/ws/**' },
-    },
   },
 
   app: {
