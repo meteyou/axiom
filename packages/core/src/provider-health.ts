@@ -1,5 +1,7 @@
 import type { Database } from './database.js'
 import type { ProviderConfig } from './provider-config.js'
+import { buildModel, getApiKeyForProvider, PROVIDER_TYPE_PRESETS } from './provider-config.js'
+import { completeSimple } from '@mariozechner/pi-ai'
 
 export type ProviderHealthStatus = 'healthy' | 'degraded' | 'down' | 'unconfigured'
 
@@ -70,7 +72,7 @@ function buildOpenAiCompatibleRequest(provider: ProviderConfig): {
     headers,
     body: {
       model: provider.defaultModel,
-      max_tokens: 5,
+      max_completion_tokens: 5,
       temperature: 0,
       messages: [{ role: 'user', content: 'Respond with OK only.' }],
     },
@@ -130,6 +132,67 @@ async function parseJsonSafely(response: Response): Promise<unknown> {
   }
 }
 
+/**
+ * Health check for OAuth providers using pi-ai's completeSimple
+ * This handles all API types correctly (codex-responses, gemini-cli, etc.)
+ */
+async function performOAuthHealthCheck(
+  provider: ProviderConfig,
+  startedAt: number,
+  checkedAt: string,
+  timeoutMs: number,
+  degradedThresholdMs: number,
+): Promise<ProviderHealthCheckResult> {
+  try {
+    const model = buildModel(provider)
+    const apiKey = await getApiKeyForProvider(provider)
+
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
+
+    try {
+      await completeSimple(model, {
+        messages: [{ role: 'user', content: [{ type: 'text', text: 'Respond with OK only.' }], timestamp: Date.now() }],
+      }, {
+        apiKey,
+        maxTokens: 5,
+        temperature: 0,
+        signal: controller.signal,
+      })
+
+      const latencyMs = Date.now() - startedAt
+      return {
+        checkedAt,
+        providerId: provider.id,
+        providerName: provider.name,
+        providerType: provider.providerType,
+        model: provider.defaultModel,
+        status: latencyMs > degradedThresholdMs ? 'degraded' : 'healthy',
+        latencyMs,
+        errorMessage: null,
+      }
+    } finally {
+      clearTimeout(timer)
+    }
+  } catch (err) {
+    const message = (err as Error).message || 'Unknown error'
+    const errorMessage = message.includes('abort') || (err as Error).name === 'AbortError'
+      ? 'Connection timed out'
+      : message
+
+    return {
+      checkedAt,
+      providerId: provider.id,
+      providerName: provider.name,
+      providerType: provider.providerType,
+      model: provider.defaultModel,
+      status: 'down',
+      latencyMs: Date.now() - startedAt,
+      errorMessage,
+    }
+  }
+}
+
 export async function performProviderHealthCheck(
   provider: ProviderConfig | null,
   options: ProviderHealthCheckOptions = {},
@@ -157,6 +220,12 @@ export async function performProviderHealthCheck(
   const startedAt = Date.now()
 
   try {
+    // For OAuth providers, use pi-ai's completeSimple for proper API-type-aware health check
+    const preset = PROVIDER_TYPE_PRESETS[provider.providerType as keyof typeof PROVIDER_TYPE_PRESETS]
+    if (preset?.authMethod === 'oauth') {
+      return await performOAuthHealthCheck(provider, startedAt, checkedAt, timeoutMs, degradedThresholdMs)
+    }
+
     const request = provider.type === 'anthropic-messages'
       ? buildAnthropicRequest(provider)
       : buildOpenAiCompatibleRequest(provider)
