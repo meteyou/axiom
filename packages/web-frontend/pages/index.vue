@@ -1,68 +1,126 @@
 <template>
-  <div class="chat-page">
+  <div class="flex h-full flex-col overflow-hidden">
     <!-- Chat toolbar -->
-    <div class="chat-toolbar">
-      <button class="toolbar-btn" @click="handleNewSession" :title="$t('chat.newSession')">
-        <AppIcon name="sparkles" class="btn-icon" />
-        <span class="btn-text">{{ $t('chat.newSession') }}</span>
-      </button>
-      <button
-        class="toolbar-btn danger"
-        @click="handleStop"
+    <div class="flex shrink-0 items-center gap-2 border-b border-border bg-background px-4 py-2">
+      <Button variant="outline" size="sm" class="gap-2" @click="handleNewSession">
+        <AppIcon name="sparkles" class="h-4 w-4" />
+        <span class="hidden sm:inline">{{ $t('chat.newSession') }}</span>
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        class="gap-2 hover:border-destructive hover:text-destructive"
         :disabled="!isStreaming"
-        :title="$t('chat.stop')"
+        @click="handleStop"
       >
-        <AppIcon name="square" class="btn-icon" />
-        <span class="btn-text">{{ $t('chat.stop') }}</span>
-      </button>
+        <AppIcon name="square" class="h-4 w-4" />
+        <span class="hidden sm:inline">{{ $t('chat.stop') }}</span>
+      </Button>
     </div>
 
     <!-- Messages area -->
-    <div class="messages-area" ref="messagesContainer">
-      <div v-if="loadingHistory" class="loading-indicator">
-        {{ $t('chat.loadingHistory') }}
-      </div>
-
-      <div v-else-if="messages.length === 0" class="empty-state">
-        <AppIcon name="chat" class="empty-icon" size="xl" />
-        <p>{{ $t('chat.noMessages') }}</p>
-      </div>
-
-      <div
-        v-for="(msg, i) in messages"
-        :key="i"
-        class="message"
-        :class="[`message-${msg.role}`, { streaming: msg.streaming }]"
-      >
-        <div class="message-avatar">
-          <AppIcon v-if="msg.role === 'user'" name="user" />
-          <AppIcon v-else-if="msg.role === 'assistant'" name="bot" />
-          <AppIcon v-else name="info" />
-        </div>
-        <div class="message-bubble">
-          <div class="message-content" v-text="msg.content" />
-          <div v-if="msg.streaming" class="typing-indicator">
-            <span /><span /><span />
+    <div ref="messagesContainer" class="flex flex-1 flex-col gap-4 overflow-y-auto p-4">
+      <!-- Loading history -->
+      <template v-if="loadingHistory">
+        <div class="flex flex-col gap-3">
+          <!-- assistant skeleton -->
+          <div class="flex items-start gap-3 self-start">
+            <Skeleton class="h-8 w-8 shrink-0 rounded-full" />
+            <div class="space-y-2">
+              <Skeleton class="h-4 w-48 rounded-xl" />
+              <Skeleton class="h-4 w-64 rounded-xl" />
+            </div>
+          </div>
+          <!-- user skeleton -->
+          <div class="flex flex-row-reverse items-start gap-3 self-end">
+            <Skeleton class="h-8 w-8 shrink-0 rounded-full" />
+            <Skeleton class="h-4 w-36 rounded-xl" />
+          </div>
+          <!-- assistant skeleton -->
+          <div class="flex items-start gap-3 self-start">
+            <Skeleton class="h-8 w-8 shrink-0 rounded-full" />
+            <div class="space-y-2">
+              <Skeleton class="h-4 w-56 rounded-xl" />
+              <Skeleton class="h-4 w-40 rounded-xl" />
+              <Skeleton class="h-4 w-52 rounded-xl" />
+            </div>
           </div>
         </div>
+      </template>
+
+      <!-- Empty state -->
+      <div
+        v-else-if="messages.length === 0"
+        class="flex flex-1 flex-col items-center justify-center gap-3 text-muted-foreground"
+      >
+        <AppIcon name="chat" class="h-10 w-10 opacity-40" />
+        <p class="text-sm">{{ $t('chat.noMessages') }}</p>
       </div>
+
+      <!-- Messages -->
+      <template v-else>
+        <div
+          v-for="(msg, i) in messages"
+          :key="i"
+          class="flex max-w-[80%] gap-3 animate-in fade-in slide-in-from-bottom-2 duration-200 sm:max-w-[75%]"
+          :class="{
+            'self-end flex-row-reverse': msg.role === 'user',
+            'self-start': msg.role === 'assistant',
+            'self-center max-w-[90%] sm:max-w-[85%]': msg.role === 'system',
+          }"
+        >
+          <!-- Avatar -->
+          <div
+            class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border bg-muted text-muted-foreground"
+          >
+            <AppIcon v-if="msg.role === 'user'" name="user" class="h-4 w-4" />
+            <AppIcon v-else-if="msg.role === 'assistant'" name="bot" class="h-4 w-4" />
+            <AppIcon v-else name="info" class="h-4 w-4" />
+          </div>
+
+          <!-- Bubble -->
+          <div
+            class="rounded-2xl px-4 py-2.5 text-sm leading-relaxed"
+            :class="{
+              'rounded-br-sm bg-primary text-primary-foreground': msg.role === 'user',
+              'rounded-bl-sm border border-border bg-muted text-foreground': msg.role === 'assistant',
+              'rounded-lg border border-border bg-muted/50 text-muted-foreground text-xs': msg.role === 'system',
+            }"
+          >
+            <p class="whitespace-pre-wrap break-words">{{ msg.content }}</p>
+
+            <!-- Typing indicator (animated dots when streaming) -->
+            <div v-if="msg.streaming" class="mt-1.5 flex items-center gap-1" :aria-label="$t('chat.typing')">
+              <span class="h-1.5 w-1.5 animate-[typingDot_1.4s_ease-in-out_infinite] rounded-full bg-current opacity-60" />
+              <span class="h-1.5 w-1.5 animate-[typingDot_1.4s_ease-in-out_0.2s_infinite] rounded-full bg-current opacity-60" />
+              <span class="h-1.5 w-1.5 animate-[typingDot_1.4s_ease-in-out_0.4s_infinite] rounded-full bg-current opacity-60" />
+            </div>
+          </div>
+        </div>
+      </template>
     </div>
 
     <!-- Input area -->
-    <div class="input-area">
-      <form class="input-form" @submit.prevent="handleSend">
+    <div class="shrink-0 border-t border-border bg-background p-3">
+      <form class="flex items-end gap-2" @submit.prevent="handleSend">
         <textarea
           ref="inputRef"
           v-model="inputText"
-          class="message-input"
+          class="min-h-[42px] max-h-[150px] flex-1 resize-none rounded-xl border border-input bg-background px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground outline-none ring-offset-background transition-colors focus:border-ring focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
           :placeholder="$t('chat.placeholder')"
           rows="1"
+          :aria-label="$t('chat.placeholder')"
           @keydown.enter.exact.prevent="handleSend"
           @input="autoResize"
         />
-        <button type="submit" class="send-button" :disabled="!inputText.trim() || connectionStatus !== 'connected'">
+        <Button
+          type="submit"
+          size="sm"
+          :disabled="!inputText.trim() || connectionStatus !== 'connected'"
+          class="h-[42px] shrink-0 px-4"
+        >
           {{ $t('chat.send') }}
-        </button>
+        </Button>
       </form>
     </div>
   </div>
@@ -80,7 +138,6 @@ const {
   sendMessage,
   newSession,
   stopTask,
-  clearMessages,
 } = useChat()
 
 const inputText = ref('')
@@ -186,267 +243,3 @@ function autoResize() {
   el.style.height = Math.min(el.scrollHeight, 150) + 'px'
 }
 </script>
-
-<style scoped>
-.chat-page {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  overflow: hidden;
-}
-
-/* Toolbar */
-.chat-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-bg);
-  flex-shrink: 0;
-}
-
-.toolbar-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  background: var(--color-bg-tertiary);
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  color: var(--color-text-secondary);
-  font-size: 13px;
-  transition: all 0.15s ease;
-}
-
-.toolbar-btn:hover:not(:disabled) {
-  background: var(--color-bg-secondary);
-  color: var(--color-text);
-}
-
-.toolbar-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.toolbar-btn.danger:hover:not(:disabled) {
-  border-color: var(--color-danger);
-  color: var(--color-danger);
-}
-
-.btn-icon {
-  width: 16px;
-  height: 16px;
-}
-
-/* Messages area */
-.messages-area {
-  flex: 1;
-  overflow-y: auto;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.loading-indicator {
-  text-align: center;
-  color: var(--color-text-muted);
-  padding: 40px;
-  font-size: 14px;
-}
-
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  flex: 1;
-  color: var(--color-text-muted);
-  gap: 12px;
-}
-
-.empty-icon {
-  width: 40px;
-  height: 40px;
-  opacity: 0.5;
-}
-
-.empty-state p {
-  font-size: 15px;
-}
-
-/* Messages */
-.message {
-  display: flex;
-  gap: 12px;
-  max-width: 80%;
-  animation: fadeIn 0.2s ease;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.message-user {
-  align-self: flex-end;
-  flex-direction: row-reverse;
-}
-
-.message-assistant {
-  align-self: flex-start;
-}
-
-.message-system {
-  align-self: center;
-  max-width: 90%;
-}
-
-.message-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--color-text-secondary);
-  flex-shrink: 0;
-  background: var(--color-bg-tertiary);
-  border: 1px solid var(--color-border);
-}
-
-.message-bubble {
-  padding: 10px 14px;
-  border-radius: 16px;
-  font-size: 14px;
-  line-height: 1.6;
-  word-break: break-word;
-}
-
-.message-user .message-bubble {
-  background: var(--color-user-bubble);
-  color: white;
-  border-bottom-right-radius: 4px;
-}
-
-.message-assistant .message-bubble {
-  background: var(--color-assistant-bubble);
-  border: 1px solid var(--color-border);
-  border-bottom-left-radius: 4px;
-}
-
-.message-system .message-bubble {
-  background: var(--color-system-bubble);
-  border: 1px solid var(--color-border);
-  color: var(--color-text-secondary);
-  font-size: 13px;
-  text-align: center;
-  border-radius: 8px;
-}
-
-.message-content {
-  white-space: pre-wrap;
-}
-
-/* Typing indicator */
-.typing-indicator {
-  display: flex;
-  gap: 4px;
-  margin-top: 4px;
-}
-
-.typing-indicator span {
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: var(--color-text-muted);
-  animation: typingDot 1.4s infinite;
-}
-
-.typing-indicator span:nth-child(2) {
-  animation-delay: 0.2s;
-}
-
-.typing-indicator span:nth-child(3) {
-  animation-delay: 0.4s;
-}
-
-@keyframes typingDot {
-  0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
-  30% { opacity: 1; transform: translateY(-4px); }
-}
-
-/* Input area */
-.input-area {
-  padding: 12px 16px;
-  border-top: 1px solid var(--color-border);
-  background: var(--color-bg);
-  flex-shrink: 0;
-}
-
-.input-form {
-  display: flex;
-  gap: 8px;
-  align-items: flex-end;
-}
-
-.message-input {
-  flex: 1;
-  padding: 10px 14px;
-  background: var(--color-bg-tertiary);
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  color: var(--color-text);
-  font-size: 14px;
-  resize: none;
-  outline: none;
-  max-height: 150px;
-  line-height: 1.5;
-  transition: border-color 0.15s ease;
-}
-
-.message-input:focus {
-  border-color: var(--color-primary);
-}
-
-.message-input::placeholder {
-  color: var(--color-text-muted);
-}
-
-.send-button {
-  padding: 10px 20px;
-  background: var(--color-primary);
-  color: white;
-  border: none;
-  border-radius: 12px;
-  font-size: 14px;
-  font-weight: 600;
-  transition: background 0.15s ease;
-  flex-shrink: 0;
-}
-
-.send-button:hover:not(:disabled) {
-  background: var(--color-primary-hover);
-}
-
-.send-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* Mobile */
-@media (max-width: 768px) {
-  .message {
-    max-width: 90%;
-  }
-
-  .btn-text {
-    display: none;
-  }
-
-  .toolbar-btn {
-    padding: 8px;
-  }
-}
-</style>

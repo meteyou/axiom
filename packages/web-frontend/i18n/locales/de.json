@@ -49,7 +49,8 @@
     "connected": "Verbunden",
     "disconnected": "Getrennt",
     "noMessages": "Noch keine Nachrichten. Starten Sie eine Unterhaltung!",
-    "loadingHistory": "Chat-Verlauf wird geladen..."
+    "loadingHistory": "Chat-Verlauf wird geladen...",
+    "typing": "Schreibt..."
   },
   "status": {
     "online": "Online",

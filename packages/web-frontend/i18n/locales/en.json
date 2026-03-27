@@ -49,7 +49,8 @@
     "connected": "Connected",
     "disconnected": "Disconnected",
     "noMessages": "No messages yet. Start a conversation!",
-    "loadingHistory": "Loading chat history..."
+    "loadingHistory": "Loading chat history...",
+    "typing": "Typing..."
   },
   "status": {
     "online": "Online",

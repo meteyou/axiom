@@ -110,6 +110,10 @@ export default {
         shimmer: {
           '100%': { transform: 'translateX(100%)' },
         },
+        typingDot: {
+          '0%, 60%, 100%': { opacity: '0.3', transform: 'translateY(0)' },
+          '30%': { opacity: '1', transform: 'translateY(-4px)' },
+        },
       },
       animation: {
         'accordion-down': 'accordion-down 0.2s ease-out',
