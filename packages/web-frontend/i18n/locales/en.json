@@ -223,20 +223,41 @@
     "quickActionsDescription": "Jump straight into the parts of the system you manage most often.",
     "systemSnapshot": "System snapshot",
     "systemSnapshotDescription": "Current runtime configuration at a glance.",
+    "providerHealth": "Provider heartbeat",
+    "recentHealthChecks": "Recent health checks",
+    "recentHealthChecksDescription": "A short trail of the latest provider heartbeat results.",
+    "agentStatus": "Agent status",
     "activeProvider": "Active provider",
+    "model": "Model",
     "language": "Language mode",
     "sessionTimeout": "Session timeout",
     "heartbeat": "Heartbeat interval",
     "batchDelay": "Batching delay",
+    "lastHealthCheck": "Last health check",
+    "latency": "Latency",
+    "queueDepth": "Queue depth",
     "notConfigured": "Not configured",
+    "noChecksYet": "No checks yet",
+    "noHealthHistory": "No heartbeat history recorded yet.",
+    "agentStates": {
+      "running": "Running",
+      "stopped": "Stopped"
+    },
+    "providerStates": {
+      "healthy": "Healthy",
+      "degraded": "Degraded",
+      "down": "Down",
+      "unconfigured": "Unconfigured"
+    },
     "cards": {
-      "users": "Users",
-      "usersMeta": "Accounts with dashboard access",
-      "providers": "Providers",
-      "providersMeta": "Configured model providers",
-      "logs": "Tool calls",
-      "logsMeta": "Recorded operational events",
-      "requests": "Model requests"
+      "messages": "Messages today",
+      "messagesMeta": "All chat messages recorded since midnight",
+      "sessions": "Sessions today",
+      "sessionsMeta": "Conversation sessions opened today",
+      "queue": "Queue depth",
+      "queueMeta": "Current in-flight work handled by the agent",
+      "requests": "Model requests",
+      "providersMeta": "configured providers"
     },
     "actions": {
       "memory": "Edit SOUL.md, AGENTS.md, and daily memory files.",

@@ -223,20 +223,41 @@
     "quickActionsDescription": "Springen Sie direkt in die Bereiche, die Sie am häufigsten verwalten.",
     "systemSnapshot": "Systemübersicht",
     "systemSnapshotDescription": "Aktuelle Laufzeit-Konfiguration auf einen Blick.",
+    "providerHealth": "Provider-Heartbeat",
+    "recentHealthChecks": "Letzte Health-Checks",
+    "recentHealthChecksDescription": "Ein kurzer Verlauf der letzten Heartbeat-Ergebnisse des Providers.",
+    "agentStatus": "Agent-Status",
     "activeProvider": "Aktiver Anbieter",
+    "model": "Modell",
     "language": "Sprachmodus",
     "sessionTimeout": "Sitzungs-Timeout",
     "heartbeat": "Heartbeat-Intervall",
     "batchDelay": "Batching-Verzögerung",
+    "lastHealthCheck": "Letzter Health-Check",
+    "latency": "Latenz",
+    "queueDepth": "Warteschlangentiefe",
     "notConfigured": "Nicht konfiguriert",
+    "noChecksYet": "Noch keine Checks",
+    "noHealthHistory": "Noch keine Heartbeat-Historie vorhanden.",
+    "agentStates": {
+      "running": "Läuft",
+      "stopped": "Gestoppt"
+    },
+    "providerStates": {
+      "healthy": "Gesund",
+      "degraded": "Beeinträchtigt",
+      "down": "Ausgefallen",
+      "unconfigured": "Nicht konfiguriert"
+    },
     "cards": {
-      "users": "Benutzer",
-      "usersMeta": "Konten mit Dashboard-Zugriff",
-      "providers": "Anbieter",
-      "providersMeta": "Konfigurierte Modellanbieter",
-      "logs": "Tool-Aufrufe",
-      "logsMeta": "Erfasste Betriebsereignisse",
-      "requests": "Modellanfragen"
+      "messages": "Nachrichten heute",
+      "messagesMeta": "Alle seit Mitternacht erfassten Chat-Nachrichten",
+      "sessions": "Sitzungen heute",
+      "sessionsMeta": "Heute gestartete Gesprächssitzungen",
+      "queue": "Warteschlange",
+      "queueMeta": "Aktuell laufende Arbeit des Agenten",
+      "requests": "Modellanfragen",
+      "providersMeta": "konfigurierte Anbieter"
     },
     "actions": {
       "memory": "Bearbeiten Sie SOUL.md, AGENTS.md und tägliche Gedächtnisdateien.",
