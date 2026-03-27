@@ -9,6 +9,21 @@ export interface Provider {
   apiKeyMasked: string
   defaultModel: string
   status?: 'connected' | 'error' | 'untested'
+  authMethod?: 'api-key' | 'oauth'
+  oauthCredentials?: { expires: number }
+}
+
+export interface OAuthLoginResponse {
+  loginId: string
+  authUrl: string
+  instructions?: string
+  usesCallbackServer: boolean
+}
+
+export interface OAuthStatusResponse {
+  status: 'pending' | 'completed' | 'error'
+  provider?: Provider
+  error?: string
 }
 
 export interface ProviderTypePreset {
@@ -18,6 +33,15 @@ export interface ProviderTypePreset {
   providerName: string
   baseUrl: string
   requiresApiKey: boolean
+  urlEditable: boolean
+  piAiProvider: string | null
+  authMethod: 'api-key' | 'oauth'
+  oauthProviderId?: string
+}
+
+export interface AvailableModel {
+  id: string
+  name: string
 }
 
 interface ProvidersResponse {
@@ -142,6 +166,37 @@ export function useProviders() {
     }
   }
 
+  async function fetchModels(providerType: string): Promise<AvailableModel[]> {
+    try {
+      const data = await apiFetch<{ models: AvailableModel[] }>(`/api/providers/models/${providerType}`)
+      return data.models
+    } catch {
+      return []
+    }
+  }
+
+  async function startOAuthLogin(input: {
+    providerType: string
+    name: string
+    defaultModel: string
+  }): Promise<OAuthLoginResponse> {
+    return apiFetch<OAuthLoginResponse>('/api/providers/oauth/login', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })
+  }
+
+  async function pollOAuthStatus(loginId: string): Promise<OAuthStatusResponse> {
+    return apiFetch<OAuthStatusResponse>(`/api/providers/oauth/status/${loginId}`)
+  }
+
+  async function submitOAuthCode(loginId: string, code: string): Promise<void> {
+    await apiFetch(`/api/providers/oauth/code/${loginId}`, {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    })
+  }
+
   return {
     providers,
     activeProviderId,
@@ -150,10 +205,14 @@ export function useProviders() {
     error,
     testingId,
     fetchProviders,
+    fetchModels,
     addProvider,
     updateProvider,
     deleteProvider,
     testProvider,
     activateProvider,
+    startOAuthLogin,
+    pollOAuthStatus,
+    submitOAuthCode,
   }
 }
