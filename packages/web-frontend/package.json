@@ -1,0 +1,10 @@
+{
+  "name": "@openagent/web-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "echo 'web-frontend build placeholder'",
+    "dev": "echo 'web-frontend dev placeholder'"
+  }
+}
