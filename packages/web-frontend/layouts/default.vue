@@ -120,11 +120,40 @@
           </template>
         </nav>
 
-        <!-- Sidebar footer — role badge -->
-        <div class="border-t border-sidebar-border/60 px-5 py-4">
-          <Badge :variant="isAdmin ? 'warning' : 'success'" class="text-xs font-bold uppercase tracking-wider">
-            {{ isAdmin ? $t('roles.admin') : $t('roles.user') }}
-          </Badge>
+        <!-- Sidebar footer — user menu -->
+        <div class="border-t border-sidebar-border/60">
+          <DropdownMenu class="block w-full">
+            <DropdownMenuTrigger>
+              <div
+                class="flex w-full cursor-pointer items-center gap-2.5 px-4 py-3 hover:bg-sidebar-accent transition-colors"
+                :aria-label="$t('aria.userMenu')"
+              >
+                <!-- Avatar -->
+                <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-semibold text-primary ring-1 ring-primary/25">
+                  {{ userInitial }}
+                </span>
+                <!-- Name + role -->
+                <div class="flex min-w-0 flex-1 flex-col">
+                  <span class="truncate text-sm font-medium text-sidebar-foreground leading-none">{{ user?.username }}</span>
+                  <span class="mt-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+                    {{ isAdmin ? $t('roles.admin') : $t('roles.user') }}
+                  </span>
+                </div>
+                <!-- Open indicator -->
+                <AppIcon name="chevronsUpDown" size="sm" class="shrink-0 text-muted-foreground" />
+              </div>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="center" side="top" class="w-[calc(260px-1.5rem)]">
+              <DropdownMenuLabel>
+                {{ user?.username }}
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem destructive @click="handleLogout">
+                <AppIcon name="close" size="sm" />
+                {{ $t('auth.logout') }}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </aside>
     </Transition>
@@ -172,39 +201,6 @@
             {{ isDark ? $t('theme.switchToLight') : $t('theme.switchToDark') }}
           </TooltipContent>
         </Tooltip>
-
-        <!-- User dropdown -->
-        <DropdownMenu>
-          <DropdownMenuTrigger>
-            <div
-              class="flex cursor-pointer items-center gap-2.5 rounded-xl px-2.5 py-1.5 hover:bg-accent transition-colors"
-              :aria-label="$t('aria.userMenu')"
-            >
-              <!-- Avatar -->
-              <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-semibold text-primary ring-1 ring-primary/25">
-                {{ userInitial }}
-              </span>
-              <!-- Name + role (hidden on very small screens) -->
-              <div class="hidden flex-col sm:flex">
-                <span class="text-sm font-medium text-foreground leading-none">{{ user?.username }}</span>
-                <span class="mt-0.5 text-[11px] uppercase tracking-wide text-muted-foreground">
-                  {{ isAdmin ? $t('roles.admin') : $t('roles.user') }}
-                </span>
-              </div>
-              <AppIcon name="chevronDown" size="sm" class="text-muted-foreground" />
-            </div>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuLabel>
-              {{ user?.username }}
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem destructive @click="handleLogout">
-              <AppIcon name="close" size="sm" />
-              {{ $t('auth.logout') }}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
       </header>
 
       <!-- Page content -->
