@@ -27,7 +27,7 @@
           <span class="nav-icon">🧠</span>
           <span>{{ $t('nav.memory') }}</span>
         </NuxtLink>
-        <NuxtLink to="/providers" class="nav-item placeholder" @click="sidebarOpen = false">
+        <NuxtLink to="/providers" class="nav-item" :class="{ active: route.path === '/providers' }" @click="sidebarOpen = false">
           <span class="nav-icon">🔌</span>
           <span>{{ $t('nav.providers') }}</span>
         </NuxtLink>
