@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { useEventListener } from '@vueuse/core'
+import { cn } from '~/lib/utils'
+
+const props = defineProps<{ class?: string }>()
 
 const open = ref(false)
 const menuEl = ref<HTMLElement | null>(null)
@@ -16,7 +19,7 @@ useEventListener('click', (e: MouseEvent) => {
 </script>
 
 <template>
-  <div ref="menuEl" class="relative inline-block">
+  <div ref="menuEl" :class="cn('relative inline-block', props.class)">
     <slot />
   </div>
 </template>
