@@ -19,3 +19,7 @@ dist/
 
 # Test artifacts
 coverage/
+
+# Nuxt
+.nuxt/
+.output/

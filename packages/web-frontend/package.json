@@ -4,7 +4,21 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "echo 'web-frontend build placeholder'",
-    "dev": "echo 'web-frontend dev placeholder'"
+    "build": "nuxt build",
+    "dev": "nuxt dev --port 3001",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare",
+    "typecheck": "nuxt typecheck"
+  },
+  "dependencies": {
+    "@nuxtjs/i18n": "^9.0.0",
+    "nuxt": "^3.17.0",
+    "vue": "^3.5.0",
+    "vue-router": "^4.5.0"
+  },
+  "devDependencies": {
+    "@nuxt/types": "^2.18.0",
+    "typescript": "^5.7.0"
   }
 }
