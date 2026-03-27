@@ -10,6 +10,7 @@
     "dev": "tsc --watch"
   },
   "dependencies": {
-    "@openagent/core": "*"
+    "@openagent/core": "*",
+    "grammy": "^1.41.1"
   }
 }
