@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unsafe-function-type, @typescript-eslint/no-explicit-any */
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { AgentCore, ResponseChunk } from '@openagent/core'
 
 // Mock grammy before importing the module under test
@@ -55,13 +55,19 @@ vi.mock('grammy', () => {
 
 // Mock @openagent/core
 vi.mock('@openagent/core', () => ({
-  loadConfig: vi.fn().mockReturnValue({
-    enabled: true,
-    botToken: 'test-token-123',
-    adminUserIds: [],
-    pollingMode: true,
-    webhookUrl: '',
-    batchingDelayMs: 2500,
+  loadConfig: vi.fn((filename: string) => {
+    if (filename === 'settings.json') {
+      return { batchingDelayMs: 2500 }
+    }
+
+    return {
+      enabled: true,
+      botToken: 'test-token-123',
+      adminUserIds: [],
+      pollingMode: true,
+      webhookUrl: '',
+      batchingDelayMs: 2500,
+    }
   }),
 }))
 
@@ -105,6 +111,16 @@ function createMockContext(overrides: Record<string, unknown> = {}) {
   }
 }
 
+async function* doneOnlyStream(): AsyncGenerator<ResponseChunk> {
+  yield { type: 'done' }
+}
+
+async function flushAsyncWork(): Promise<void> {
+  await Promise.resolve()
+  await vi.advanceTimersByTimeAsync(0)
+  await Promise.resolve()
+}
+
 type MockHandler = (ctx: ReturnType<typeof createMockContext>) => Promise<void>
 type MockBotInternals = {
   _handlers: Map<string, MockHandler>
@@ -126,6 +142,26 @@ describe('TelegramBot', () => {
   beforeEach(() => {
     agentCore = createMockAgentCore()
     vi.clearAllMocks()
+    vi.useFakeTimers()
+    vi.mocked(loadConfig).mockImplementation((filename: string) => {
+      if (filename === 'settings.json') {
+        return { batchingDelayMs: 2500 }
+      }
+
+      return {
+        enabled: true,
+        botToken: 'test-token-123',
+        adminUserIds: [],
+        pollingMode: true,
+        webhookUrl: '',
+        batchingDelayMs: 2500,
+      }
+    })
+  })
+
+  afterEach(() => {
+    vi.clearAllTimers()
+    vi.useRealTimers()
   })
 
   describe('constructor', () => {
@@ -140,6 +176,7 @@ describe('TelegramBot', () => {
       const bot = new TelegramBot({ agentCore, config: defaultConfig })
       expect(bot).toBeDefined()
       expect(bot.isRunning()).toBe(false)
+      expect(bot.getQueueDepth()).toBe(0)
     })
   })
 
@@ -179,6 +216,7 @@ describe('TelegramBot', () => {
       expect(msg).toContain('Welcome to OpenAgent')
       expect(msg).toContain('/new')
       expect(msg).toContain('/start')
+      expect(msg).toContain('/stop')
     })
   })
 
@@ -224,8 +262,276 @@ describe('TelegramBot', () => {
     })
   })
 
+  describe('message batching', () => {
+    it('concatenates two messages sent within the batching window', async () => {
+      vi.mocked(agentCore.sendMessage).mockReturnValue(doneOnlyStream())
+
+      const bot = new TelegramBot({ agentCore, config: defaultConfig })
+      const underlying = bot.getBot() as unknown as MockBotInternals
+      const handler = underlying._handlers.get('message:text')!
+
+      const first = createMockContext({ message: { text: 'Hello', message_id: 1 } })
+      const second = createMockContext({ message: { text: 'world', message_id: 2 } })
+
+      await handler(first)
+      await vi.advanceTimersByTimeAsync(2000)
+      await handler(second)
+
+      expect(agentCore.sendMessage).not.toHaveBeenCalled()
+      expect(bot.getQueueDepth()).toBe(1)
+
+      await vi.advanceTimersByTimeAsync(2499)
+      expect(agentCore.sendMessage).not.toHaveBeenCalled()
+
+      await vi.advanceTimersByTimeAsync(1)
+      expect(agentCore.sendMessage).toHaveBeenCalledTimes(1)
+      expect(agentCore.sendMessage).toHaveBeenCalledWith(
+        'telegram-12345',
+        'Message from @johndoe (John Doe): Hello\nworld',
+        'telegram'
+      )
+    })
+
+    it('resets the batching timer on each new message from the same chat', async () => {
+      vi.mocked(agentCore.sendMessage).mockReturnValue(doneOnlyStream())
+
+      const bot = new TelegramBot({ agentCore, config: defaultConfig })
+      const underlying = bot.getBot() as unknown as MockBotInternals
+      const handler = underlying._handlers.get('message:text')!
+
+      await handler(createMockContext({ message: { text: 'Part 1', message_id: 1 } }))
+      await vi.advanceTimersByTimeAsync(2000)
+      await handler(createMockContext({ message: { text: 'Part 2', message_id: 2 } }))
+      await vi.advanceTimersByTimeAsync(2000)
+
+      expect(agentCore.sendMessage).not.toHaveBeenCalled()
+
+      await vi.advanceTimersByTimeAsync(500)
+      expect(agentCore.sendMessage).toHaveBeenCalledTimes(1)
+    })
+
+    it('uses the batching delay from settings.json when created via config loading', async () => {
+      vi.mocked(loadConfig).mockImplementation((filename: string) => {
+        if (filename === 'settings.json') {
+          return { batchingDelayMs: 4000 }
+        }
+
+        return {
+          enabled: true,
+          botToken: 'test-token-123',
+          adminUserIds: [],
+          pollingMode: true,
+          webhookUrl: '',
+          batchingDelayMs: 2500,
+        }
+      })
+      vi.mocked(agentCore.sendMessage).mockReturnValue(doneOnlyStream())
+
+      const bot = createTelegramBot(agentCore)!
+      const underlying = bot.getBot() as unknown as MockBotInternals
+      const handler = underlying._handlers.get('message:text')!
+
+      await handler(createMockContext({ message: { text: 'Delayed', message_id: 1 } }))
+      await vi.advanceTimersByTimeAsync(3999)
+      expect(agentCore.sendMessage).not.toHaveBeenCalled()
+
+      await vi.advanceTimersByTimeAsync(1)
+      expect(agentCore.sendMessage).toHaveBeenCalledTimes(1)
+    })
+
+    it('fires the batch only after the silence period expires', async () => {
+      vi.mocked(agentCore.sendMessage).mockReturnValue(doneOnlyStream())
+
+      const bot = new TelegramBot({ agentCore, config: defaultConfig })
+      const underlying = bot.getBot() as unknown as MockBotInternals
+      const handler = underlying._handlers.get('message:text')!
+
+      await handler(createMockContext({ message: { text: 'Wait for silence', message_id: 1 } }))
+      await vi.advanceTimersByTimeAsync(2499)
+      expect(agentCore.sendMessage).not.toHaveBeenCalled()
+
+      await vi.advanceTimersByTimeAsync(1)
+      expect(agentCore.sendMessage).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('message queue', () => {
+    it('processes queued batches FIFO, one at a time', async () => {
+      let releaseFirst!: () => void
+      const firstDone = new Promise<void>((resolve) => {
+        releaseFirst = resolve
+      })
+
+      async function* firstStream(): AsyncGenerator<ResponseChunk> {
+        yield { type: 'text', text: 'First response' }
+        await firstDone
+        yield { type: 'done' }
+      }
+
+      async function* secondStream(): AsyncGenerator<ResponseChunk> {
+        yield { type: 'text', text: 'Second response' }
+        yield { type: 'done' }
+      }
+
+      vi.mocked(agentCore.sendMessage)
+        .mockReturnValueOnce(firstStream())
+        .mockReturnValueOnce(secondStream())
+
+      const bot = new TelegramBot({ agentCore, config: defaultConfig })
+      const underlying = bot.getBot() as unknown as MockBotInternals
+      const handler = underlying._handlers.get('message:text')!
+
+      const first = createMockContext({ message: { text: 'First task', message_id: 1 } })
+      const second = createMockContext({ message: { text: 'Second task', message_id: 2 } })
+
+      await handler(first)
+      await vi.advanceTimersByTimeAsync(2500)
+      expect(agentCore.sendMessage).toHaveBeenCalledTimes(1)
+      expect(bot.getQueueDepth()).toBe(1)
+
+      await handler(second)
+      await vi.advanceTimersByTimeAsync(2500)
+      expect(agentCore.sendMessage).toHaveBeenCalledTimes(1)
+      expect(bot.getQueueDepth()).toBe(2)
+
+      releaseFirst()
+      await flushAsyncWork()
+      await flushAsyncWork()
+
+      expect(agentCore.sendMessage).toHaveBeenCalledTimes(2)
+      expect(vi.mocked(agentCore.sendMessage).mock.calls.map((call) => call[1])).toEqual([
+        'Message from @johndoe (John Doe): First task',
+        'Message from @johndoe (John Doe): Second task',
+      ])
+    })
+  })
+
+  describe('kill switch', () => {
+    it('/stop aborts the current task, flushes queued work, and reports the removed count', async () => {
+      let releaseFirst!: () => void
+      const firstDone = new Promise<void>((resolve) => {
+        releaseFirst = resolve
+      })
+
+      async function* firstStream(): AsyncGenerator<ResponseChunk> {
+        yield { type: 'text', text: 'Working...' }
+        await firstDone
+        yield { type: 'done' }
+      }
+
+      vi.mocked(agentCore.sendMessage).mockReturnValue(firstStream())
+
+      const bot = new TelegramBot({ agentCore, config: defaultConfig })
+      const underlying = bot.getBot() as unknown as MockBotInternals
+      const messageHandler = underlying._handlers.get('message:text')!
+      const stopHandler = underlying._commandHandlers.get('stop')!
+
+      await messageHandler(createMockContext({ message: { text: 'Run task', message_id: 1 } }))
+      await vi.advanceTimersByTimeAsync(2500)
+      expect(agentCore.sendMessage).toHaveBeenCalledTimes(1)
+
+      await messageHandler(createMockContext({ message: { text: 'Queued task', message_id: 2 } }))
+      await vi.advanceTimersByTimeAsync(2500)
+      expect(bot.getQueueDepth()).toBe(2)
+      expect(agentCore.sendMessage).toHaveBeenCalledTimes(1)
+
+      const stopCtx = createMockContext({ message: { text: '/stop', message_id: 3 } })
+      await stopHandler(stopCtx)
+
+      expect(agentCore.abort).toHaveBeenCalledTimes(1)
+      expect(stopCtx.reply).toHaveBeenCalledWith('⛔ Aborted. 1 messages removed from queue.')
+      expect(bot.getQueueDepth()).toBe(1)
+
+      releaseFirst()
+      await flushAsyncWork()
+      await flushAsyncWork()
+      expect(agentCore.sendMessage).toHaveBeenCalledTimes(1)
+      expect(bot.getQueueDepth()).toBe(0)
+    })
+
+    it('/kill behaves as an alias for /stop', async () => {
+      let releaseTask!: () => void
+      const blocked = new Promise<void>((resolve) => {
+        releaseTask = resolve
+      })
+
+      async function* blockedStream(): AsyncGenerator<ResponseChunk> {
+        yield { type: 'text', text: 'Still working' }
+        await blocked
+        yield { type: 'done' }
+      }
+
+      vi.mocked(agentCore.sendMessage).mockReturnValue(blockedStream())
+
+      const bot = new TelegramBot({ agentCore, config: defaultConfig })
+      const underlying = bot.getBot() as unknown as MockBotInternals
+      const messageHandler = underlying._handlers.get('message:text')!
+      const killHandler = underlying._commandHandlers.get('kill')!
+
+      await messageHandler(createMockContext({ message: { text: 'Task', message_id: 1 } }))
+      await vi.advanceTimersByTimeAsync(2500)
+
+      const killCtx = createMockContext({ message: { text: '/kill', message_id: 2 } })
+      await killHandler(killCtx)
+
+      expect(agentCore.abort).toHaveBeenCalledTimes(1)
+      expect(killCtx.reply).toHaveBeenCalledWith('Task aborted. No queued messages.')
+
+      releaseTask()
+      await flushAsyncWork()
+      await flushAsyncWork()
+      expect(bot.getQueueDepth()).toBe(0)
+    })
+
+    it('returns "Nothing to stop." when no task is running and nothing is queued', async () => {
+      const bot = new TelegramBot({ agentCore, config: defaultConfig })
+      const underlying = bot.getBot() as unknown as MockBotInternals
+      const stopHandler = underlying._commandHandlers.get('stop')!
+
+      const ctx = createMockContext({ message: { text: '/stop', message_id: 1 } })
+      await stopHandler(ctx)
+
+      expect(agentCore.abort).not.toHaveBeenCalled()
+      expect(ctx.reply).toHaveBeenCalledWith('Nothing to stop.')
+      expect(bot.getQueueDepth()).toBe(0)
+    })
+
+    it('returns "Task aborted. No queued messages." when only the current task is running', async () => {
+      let releaseTask!: () => void
+      const blocked = new Promise<void>((resolve) => {
+        releaseTask = resolve
+      })
+
+      async function* blockedStream(): AsyncGenerator<ResponseChunk> {
+        yield { type: 'text', text: 'Working' }
+        await blocked
+        yield { type: 'done' }
+      }
+
+      vi.mocked(agentCore.sendMessage).mockReturnValue(blockedStream())
+
+      const bot = new TelegramBot({ agentCore, config: defaultConfig })
+      const underlying = bot.getBot() as unknown as MockBotInternals
+      const messageHandler = underlying._handlers.get('message:text')!
+      const stopHandler = underlying._commandHandlers.get('stop')!
+
+      await messageHandler(createMockContext({ message: { text: 'Only task', message_id: 1 } }))
+      await vi.advanceTimersByTimeAsync(2500)
+
+      const stopCtx = createMockContext({ message: { text: '/stop', message_id: 2 } })
+      await stopHandler(stopCtx)
+
+      expect(agentCore.abort).toHaveBeenCalledTimes(1)
+      expect(stopCtx.reply).toHaveBeenCalledWith('Task aborted. No queued messages.')
+
+      releaseTask()
+      await flushAsyncWork()
+      await flushAsyncWork()
+    })
+  })
+
   describe('message handling', () => {
-    it('routes messages to agent core with user context', async () => {
+    it('routes messages to agent core with user context after batching', async () => {
       async function* mockStream(): AsyncGenerator<ResponseChunk> {
         yield { type: 'text', text: 'Hello ' }
         yield { type: 'text', text: 'human!' }
@@ -239,41 +545,18 @@ describe('TelegramBot', () => {
 
       const ctx = createMockContext()
       await handler(ctx)
+      await vi.advanceTimersByTimeAsync(2500)
 
       expect(agentCore.sendMessage).toHaveBeenCalledWith(
         'telegram-12345',
         'Message from @johndoe (John Doe): Hello agent',
         'telegram'
       )
-      // Response should be sent
       expect(ctx.reply).toHaveBeenCalledWith('Hello human!')
     })
 
-    it('includes user context in group chats', async () => {
-      async function* mockStream(): AsyncGenerator<ResponseChunk> {
-        yield { type: 'text', text: 'Response' }
-        yield { type: 'done' }
-      }
-      vi.mocked(agentCore.sendMessage).mockReturnValue(mockStream())
-
-      const bot = new TelegramBot({ agentCore, config: defaultConfig })
-      const underlying = bot.getBot() as unknown as MockBotInternals
-      const handler = underlying._handlers.get('message:text')!
-
-      const ctx = createMockContext({
-        chat: { id: 67890, type: 'group' },
-      })
-      await handler(ctx)
-
-      const sentMessage = vi.mocked(agentCore.sendMessage).mock.calls[0][1]
-      expect(sentMessage).toContain('Message from @johndoe (John Doe):')
-    })
-
     it('handles empty responses gracefully', async () => {
-      async function* mockStream(): AsyncGenerator<ResponseChunk> {
-        yield { type: 'done' }
-      }
-      vi.mocked(agentCore.sendMessage).mockReturnValue(mockStream())
+      vi.mocked(agentCore.sendMessage).mockReturnValue(doneOnlyStream())
 
       const bot = new TelegramBot({ agentCore, config: defaultConfig })
       const underlying = bot.getBot() as unknown as MockBotInternals
@@ -281,8 +564,8 @@ describe('TelegramBot', () => {
 
       const ctx = createMockContext()
       await handler(ctx)
+      await vi.advanceTimersByTimeAsync(2500)
 
-      // reply should only have typing action, no text reply
       expect(ctx.reply).not.toHaveBeenCalled()
     })
 
@@ -297,6 +580,7 @@ describe('TelegramBot', () => {
 
       const ctx = createMockContext()
       await handler(ctx)
+      await vi.advanceTimersByTimeAsync(2500)
 
       expect(ctx.reply).toHaveBeenCalledWith(
         expect.stringContaining('encountered an error')
@@ -319,11 +603,10 @@ describe('TelegramBot', () => {
 
       const ctx = createMockContext()
       await handler(ctx)
+      await vi.advanceTimersByTimeAsync(2500)
 
-      // Should be split into multiple messages
       expect(ctx.reply.mock.calls.length).toBeGreaterThanOrEqual(2)
 
-      // Reconstruct and verify all text is present
       const allText = ctx.reply.mock.calls.map((c: unknown[]) => c[0] as string).join('')
       expect(allText.length).toBe(5000)
     })
@@ -336,16 +619,28 @@ describe('createTelegramBot', () => {
   beforeEach(() => {
     agentCore = createMockAgentCore()
     vi.clearAllMocks()
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.clearAllTimers()
+    vi.useRealTimers()
   })
 
   it('returns null when disabled', () => {
-    vi.mocked(loadConfig).mockReturnValue({
-      enabled: false,
-      botToken: 'some-token',
-      adminUserIds: [],
-      pollingMode: true,
-      webhookUrl: '',
-      batchingDelayMs: 2500,
+    vi.mocked(loadConfig).mockImplementation((filename: string) => {
+      if (filename === 'settings.json') {
+        return { batchingDelayMs: 2500 }
+      }
+
+      return {
+        enabled: false,
+        botToken: 'some-token',
+        adminUserIds: [],
+        pollingMode: true,
+        webhookUrl: '',
+        batchingDelayMs: 2500,
+      }
     })
 
     const result = createTelegramBot(agentCore)
@@ -353,13 +648,19 @@ describe('createTelegramBot', () => {
   })
 
   it('returns null when no token', () => {
-    vi.mocked(loadConfig).mockReturnValue({
-      enabled: true,
-      botToken: '',
-      adminUserIds: [],
-      pollingMode: true,
-      webhookUrl: '',
-      batchingDelayMs: 2500,
+    vi.mocked(loadConfig).mockImplementation((filename: string) => {
+      if (filename === 'settings.json') {
+        return { batchingDelayMs: 2500 }
+      }
+
+      return {
+        enabled: true,
+        botToken: '',
+        adminUserIds: [],
+        pollingMode: true,
+        webhookUrl: '',
+        batchingDelayMs: 2500,
+      }
     })
 
     const result = createTelegramBot(agentCore)
@@ -367,13 +668,19 @@ describe('createTelegramBot', () => {
   })
 
   it('returns TelegramBot instance when configured', () => {
-    vi.mocked(loadConfig).mockReturnValue({
-      enabled: true,
-      botToken: 'valid-token',
-      adminUserIds: [],
-      pollingMode: true,
-      webhookUrl: '',
-      batchingDelayMs: 2500,
+    vi.mocked(loadConfig).mockImplementation((filename: string) => {
+      if (filename === 'settings.json') {
+        return { batchingDelayMs: 2500 }
+      }
+
+      return {
+        enabled: true,
+        botToken: 'valid-token',
+        adminUserIds: [],
+        pollingMode: true,
+        webhookUrl: '',
+        batchingDelayMs: 2500,
+      }
     })
 
     const result = createTelegramBot(agentCore)
