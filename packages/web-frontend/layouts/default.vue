@@ -35,7 +35,7 @@
           <span class="nav-icon">📈</span>
           <span>{{ $t('nav.usage') }}</span>
         </NuxtLink>
-        <NuxtLink to="/logs" class="nav-item placeholder" @click="sidebarOpen = false">
+        <NuxtLink to="/logs" class="nav-item" :class="{ active: route.path === '/logs' }" @click="sidebarOpen = false">
           <span class="nav-icon">📋</span>
           <span>{{ $t('nav.logs') }}</span>
         </NuxtLink>

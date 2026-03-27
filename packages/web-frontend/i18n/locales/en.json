@@ -42,5 +42,26 @@
   "user": {
     "menu": "User menu",
     "profile": "Profile"
+  },
+  "logs": {
+    "title": "Activity Logs",
+    "live": "Live",
+    "historical": "Historical",
+    "pause": "Pause",
+    "resume": "Resume",
+    "searchPlaceholder": "Search tool calls...",
+    "allTools": "All tools",
+    "dateFrom": "From date",
+    "dateTo": "To date",
+    "loading": "Loading...",
+    "noEntries": "No log entries found.",
+    "input": "Input",
+    "output": "Output",
+    "sessionId": "Session",
+    "duration": "Duration",
+    "status": "Status",
+    "prev": "Previous",
+    "next": "Next",
+    "pageInfo": "Page {page} of {total}"
   }
 }

@@ -42,5 +42,26 @@
   "user": {
     "menu": "Benutzermenü",
     "profile": "Profil"
+  },
+  "logs": {
+    "title": "Aktivitätsprotokolle",
+    "live": "Live",
+    "historical": "Historisch",
+    "pause": "Pausieren",
+    "resume": "Fortsetzen",
+    "searchPlaceholder": "Tool-Aufrufe durchsuchen...",
+    "allTools": "Alle Tools",
+    "dateFrom": "Von Datum",
+    "dateTo": "Bis Datum",
+    "loading": "Laden...",
+    "noEntries": "Keine Protokolleinträge gefunden.",
+    "input": "Eingabe",
+    "output": "Ausgabe",
+    "sessionId": "Sitzung",
+    "duration": "Dauer",
+    "status": "Status",
+    "prev": "Zurück",
+    "next": "Weiter",
+    "pageInfo": "Seite {page} von {total}"
   }
 }
