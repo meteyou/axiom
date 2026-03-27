@@ -21,6 +21,9 @@ export default defineNuxtConfig({
     lazy: true,
     langDir: 'locales/',
     strategy: 'no_prefix',
+    bundle: {
+      optimizeTranslationDirective: false,
+    },
   },
 
   runtimeConfig: {
