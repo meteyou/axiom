@@ -1,4 +1,21 @@
-# ignore intellij project files
-/.idea
-# ignore pi agent files
-.pi
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# IDE
+.idea/
+
+# Pi agent
+.pi/
+
+# OS files
+.DS_Store
+
+# Environment
+.env
+.env.local
+
+# Test artifacts
+coverage/
