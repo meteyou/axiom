@@ -12,6 +12,7 @@ import {
   setActiveProvider,
   updateProviderStatus,
   PROVIDER_TYPE_PRESETS,
+  getConfiguredPriceTable,
 } from './provider-config.js'
 import { encrypt, decrypt, maskApiKey } from './encryption.js'
 import fs from 'node:fs'
@@ -125,6 +126,32 @@ describe('provider-config', () => {
     expect(model.baseUrl).toBe('https://api.openai.com/v1')
     expect(model.cost.input).toBe(2.50)
     expect(model.cost.output).toBe(10.00)
+  })
+
+  it('buildModel uses configured settings price table as fallback', () => {
+    setupTmpConfig()
+    fs.writeFileSync(
+      path.join(tmpDir, 'config', 'settings.json'),
+      JSON.stringify({ tokenPriceTable: { 'custom-priced-model': { input: 4.25, output: 12.5 } } }, null, 2),
+      'utf-8',
+    )
+
+    const provider = {
+      id: 'test-id',
+      name: 'test',
+      type: 'openai-completions',
+      providerType: 'openai' as const,
+      provider: 'openai',
+      baseUrl: 'https://api.openai.com/v1',
+      apiKey: 'sk-test',
+      defaultModel: 'custom-priced-model',
+    }
+
+    const priceTable = getConfiguredPriceTable()
+    const model = buildModel(provider)
+    expect(priceTable['custom-priced-model'].input).toBe(4.25)
+    expect(model.cost.input).toBe(4.25)
+    expect(model.cost.output).toBe(12.5)
   })
 
   it('buildModel uses model config overrides', () => {

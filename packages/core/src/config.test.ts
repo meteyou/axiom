@@ -35,6 +35,8 @@ describe('config', () => {
     expect(settings.sessionTimeoutMinutes).toBe(15)
     expect(settings.language).toBe('en')
     expect(settings.yoloMode).toBe(true)
+    expect(settings.tokenPriceTable['gpt-4o'].input).toBe(2.5)
+    expect(settings.tokenPriceTable['gpt-4o'].output).toBe(10)
   })
 
   it('does not overwrite existing config files', () => {
