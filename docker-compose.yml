@@ -1,0 +1,37 @@
+services:
+  openagent:
+    build: .
+    container_name: openagent
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - openagent-data:/data
+      - openagent-workspace:/workspace
+    environment:
+      - NODE_ENV=production
+      - DATA_DIR=/data
+      - PORT=3000
+
+  # Uncomment to enable local Ollama for running local LLM models
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   container_name: openagent-ollama
+  #   restart: unless-stopped
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama-data:/root/.ollama
+  #   # Uncomment for GPU support (NVIDIA)
+  #   # deploy:
+  #   #   resources:
+  #   #     reservations:
+  #   #       devices:
+  #   #         - driver: nvidia
+  #   #           count: all
+  #   #           capabilities: [gpu]
+
+volumes:
+  openagent-data:
+  openagent-workspace:
+  # ollama-data:
