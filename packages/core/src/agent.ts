@@ -7,7 +7,8 @@ import type { Api, AssistantMessage, Message, Model } from '@mariozechner/pi-ai'
 import { Type } from '@mariozechner/pi-ai'
 import type { Database } from './database.js'
 import { logTokenUsage, logToolCall } from './token-logger.js'
-import { estimateCost } from './provider-config.js'
+import { estimateCost, getApiKeyForProvider } from './provider-config.js'
+import type { ProviderConfig } from './provider-config.js'
 import { assembleSystemPrompt, ensureMemoryStructure } from './memory.js'
 import { loadConfig, ensureConfigTemplates } from './config.js'
 import { createMemoryTools } from './memory-tools.js'
@@ -38,6 +39,7 @@ export interface AgentCoreOptions {
   memoryDir?: string
   sessionTimeoutMinutes?: number
   baseInstructions?: string
+  providerConfig?: ProviderConfig // For OAuth token refresh
 }
 
 /**
@@ -175,6 +177,7 @@ export class AgentCore {
   private toolCallArgs: Map<string, unknown> = new Map() // toolCallId -> args
   private memoryDir?: string
   private baseInstructions?: string
+  private providerConfig?: ProviderConfig
 
   constructor(options: AgentCoreOptions) {
     this.model = options.model
@@ -182,6 +185,7 @@ export class AgentCore {
     this.db = options.db
     this.memoryDir = options.memoryDir
     this.baseInstructions = options.baseInstructions
+    this.providerConfig = options.providerConfig
 
     // Ensure memory structure exists
     ensureMemoryStructure(options.memoryDir)
@@ -215,7 +219,22 @@ export class AgentCore {
         model: this.model,
         tools,
       },
-      getApiKey: () => this.apiKey,
+      getApiKey: this.providerConfig?.authMethod === 'oauth'
+        ? async () => {
+            try {
+              // Reload provider config to get latest OAuth credentials
+              const { loadProvidersDecrypted } = await import('./provider-config.js')
+              const file = loadProvidersDecrypted()
+              const freshProvider = file.providers.find(p => p.id === this.providerConfig!.id)
+              if (freshProvider) {
+                return await getApiKeyForProvider(freshProvider)
+              }
+            } catch (err) {
+              console.error('OAuth token refresh failed:', err)
+            }
+            return this.apiKey
+          }
+        : () => this.apiKey,
     })
 
     // Initialize session manager
