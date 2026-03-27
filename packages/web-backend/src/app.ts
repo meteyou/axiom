@@ -8,7 +8,7 @@ import { createProvidersRouter } from './routes/providers.js'
 import { createMemoryRouter } from './routes/memory.js'
 import { createSettingsRouter } from './routes/settings.js'
 import { createUsersRouter } from './routes/users.js'
-import { createUsageRouter } from './routes/usage.js'
+import { createStatsRouter } from './routes/stats.js'
 import { ensureAdminUser } from './auth.js'
 
 const startTime = Date.now()
@@ -44,7 +44,7 @@ export function createApp(options?: AppOptions): express.Express {
     app.use('/api/memory', createMemoryRouter(options.agentCore ?? null))
     app.use('/api/settings', createSettingsRouter(options.agentCore ?? null))
     app.use('/api/users', createUsersRouter(options.db))
-    app.use('/api/usage', createUsageRouter(options.db))
+    app.use('/api/stats', createStatsRouter(options.db))
   }
 
   return app

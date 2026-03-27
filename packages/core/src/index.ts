@@ -46,5 +46,7 @@ export {
   getDistinctToolNames,
 } from './token-logger.js'
 export type { TokenUsageRecord, ToolCallRecord, ToolCallQueryOptions, ToolCallQueryResult } from './token-logger.js'
+export { queryUsageStats, getUsageSummary } from './usage-stats.js'
+export type { UsageGroupBy, UsageStatsQueryOptions, UsageTotals, UsageStatsRow, UsageStatsResult, UsageSummary } from './usage-stats.js'
 export { AgentCore } from './agent.js'
 export type { ResponseChunk, AgentCoreOptions } from './agent.js'
