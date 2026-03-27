@@ -176,7 +176,7 @@
     <!-- Main area -->
     <div class="flex min-w-0 flex-1 flex-col overflow-hidden">
       <!-- Header -->
-      <header class="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background/90 px-4 backdrop-blur-md">
+      <header class="flex h-12 shrink-0 items-center gap-3 border-b border-border bg-background/90 px-6 backdrop-blur-md">
         <!-- Mobile hamburger -->
         <button
           type="button"
@@ -205,14 +205,14 @@
           <TooltipTrigger>
             <button
               type="button"
-              class="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors"
+              class="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               :aria-label="$t('aria.themeToggle')"
               @click="toggleTheme"
             >
               <AppIcon :name="isDark ? 'sun' : 'moon'" />
             </button>
           </TooltipTrigger>
-          <TooltipContent>
+          <TooltipContent side="left">
             {{ isDark ? $t('theme.switchToLight') : $t('theme.switchToDark') }}
           </TooltipContent>
         </Tooltip>
