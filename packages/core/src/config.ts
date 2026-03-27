@@ -17,6 +17,12 @@ const TEMPLATES: Record<string, object> = {
       'gpt-4o-mini': { input: 0.15, output: 0.6 },
       'claude-3-5-sonnet-20241022': { input: 3, output: 15 },
       'claude-sonnet-4-20250514': { input: 3, output: 15 }
+    },
+    memoryConsolidation: {
+      enabled: false,
+      runAtHour: 3,
+      lookbackDays: 3,
+      providerId: '',
     }
   },
   'telegram.json': {
