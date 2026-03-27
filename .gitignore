@@ -17,6 +17,9 @@ dist/
 .env
 .env.local
 
+# Local app data
+.data/
+
 # Test artifacts
 coverage/
 
