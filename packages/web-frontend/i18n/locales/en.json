@@ -21,6 +21,7 @@
   "common": {
     "save": "Save",
     "cancel": "Cancel",
+    "confirm": "Confirm",
     "saveFailed": "Could not save changes.",
     "deleteFailed": "Could not delete item.",
     "language": "Language"

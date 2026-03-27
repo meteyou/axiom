@@ -21,6 +21,7 @@
   "common": {
     "save": "Speichern",
     "cancel": "Abbrechen",
+    "confirm": "Bestätigen",
     "saveFailed": "Änderungen konnten nicht gespeichert werden.",
     "deleteFailed": "Element konnte nicht gelöscht werden.",
     "language": "Sprache"
