@@ -18,7 +18,16 @@ export function useAuth() {
   const user = useState<User | null>('auth_user', () => {
     if (import.meta.client) {
       const stored = localStorage.getItem(USER_KEY)
-      return stored ? JSON.parse(stored) : null
+      if (stored) {
+        try {
+          return JSON.parse(stored)
+        } catch {
+          localStorage.removeItem(USER_KEY)
+          localStorage.removeItem(TOKEN_KEY)
+          localStorage.removeItem(REFRESH_TOKEN_KEY)
+          return null
+        }
+      }
     }
     return null
   })
