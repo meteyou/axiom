@@ -7,13 +7,10 @@
   </div>
 
   <!-- Page body -->
-  <div v-else class="mx-auto flex h-full max-w-3xl flex-col overflow-y-auto p-6">
-    <!-- Page header -->
-    <div class="mb-6">
-      <p class="mb-1.5 text-xs font-semibold uppercase tracking-widest text-primary">{{ $t('settings.kicker') }}</p>
-      <h1 class="text-2xl font-bold text-foreground">{{ $t('settings.title') }}</h1>
-      <p class="mt-1.5 max-w-xl text-sm text-muted-foreground">{{ $t('settings.subtitle') }}</p>
-    </div>
+  <div v-else class="flex h-full flex-col overflow-hidden">
+    <PageHeader :title="$t('settings.title')" :subtitle="$t('settings.subtitle')" />
+
+    <div class="mx-auto flex w-full max-w-3xl flex-1 flex-col overflow-y-auto p-6">
 
     <!-- Error banner -->
     <Alert v-if="error" variant="destructive" class="mb-4">
@@ -181,6 +178,7 @@
           {{ $t('settings.save') }}
         </Button>
       </div>
+    </div>
     </div>
   </div>
 </template>

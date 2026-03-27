@@ -7,19 +7,17 @@
   </div>
 
   <!-- Page body -->
-  <div v-else class="mx-auto flex h-full max-w-5xl flex-col overflow-y-auto p-6">
-    <!-- Page header -->
-    <div class="mb-6 flex items-end justify-between gap-4">
-      <div>
-        <p class="mb-1.5 text-xs font-semibold uppercase tracking-widest text-primary">{{ $t('users.kicker') }}</p>
-        <h1 class="text-2xl font-bold text-foreground">{{ $t('users.title') }}</h1>
-        <p class="mt-1.5 text-sm text-muted-foreground">{{ $t('users.subtitle') }}</p>
-      </div>
-      <Button @click="openCreateModal">
-        <AppIcon name="add" class="mr-1 h-4 w-4" />
-        {{ $t('users.addUser') }}
-      </Button>
-    </div>
+  <div v-else class="flex h-full flex-col overflow-hidden">
+    <PageHeader :title="$t('users.title')" :subtitle="$t('users.subtitle')">
+      <template #actions>
+        <Button @click="openCreateModal">
+          <AppIcon name="add" class="mr-1 h-4 w-4" />
+          {{ $t('users.addUser') }}
+        </Button>
+      </template>
+    </PageHeader>
+
+    <div class="mx-auto flex w-full max-w-5xl flex-1 flex-col overflow-y-auto p-6">
 
     <!-- Error / success banners -->
     <Alert v-if="errorMessage" variant="destructive" class="mb-4">
@@ -124,6 +122,7 @@
           </TableBody>
         </Table>
       </div>
+    </div>
     </div>
   </div>
 

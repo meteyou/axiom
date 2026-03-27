@@ -1,40 +1,37 @@
 <template>
   <div class="flex h-full flex-col overflow-hidden">
+    <PageHeader :title="$t('logs.title')" :subtitle="$t('logs.subtitle')">
+      <template #actions>
+        <!-- Live / Historical toggle -->
+        <Button
+          :variant="liveMode ? 'default' : 'outline'"
+          size="sm"
+          class="gap-1.5"
+          @click="toggleLiveMode"
+        >
+          <span
+            class="h-2 w-2 rounded-full"
+            :class="liveMode ? 'bg-primary-foreground' : 'bg-muted-foreground'"
+            :style="liveMode && !paused ? 'animation: pulse-dot 1.5s ease-in-out infinite' : ''"
+          />
+          {{ liveMode ? $t('logs.live') : $t('logs.historical') }}
+        </Button>
+
+        <!-- Pause / Resume (live mode only) -->
+        <Button
+          v-if="liveMode"
+          :variant="paused ? 'outline' : 'ghost'"
+          size="sm"
+          :class="paused ? 'border-warning text-warning' : ''"
+          @click="togglePause()"
+        >
+          {{ paused ? $t('logs.resume') : $t('logs.pause') }}
+        </Button>
+      </template>
+    </PageHeader>
+
     <!-- Filter toolbar -->
     <div class="flex-shrink-0 border-b border-border px-5 py-4">
-      <!-- Top row: title + live controls -->
-      <div class="mb-3 flex flex-wrap items-center gap-3">
-        <h2 class="text-lg font-semibold text-foreground">{{ $t('logs.title') }}</h2>
-
-        <div class="flex items-center gap-2">
-          <!-- Live / Historical toggle -->
-          <Button
-            :variant="liveMode ? 'default' : 'outline'"
-            size="sm"
-            class="gap-1.5"
-            @click="toggleLiveMode"
-          >
-            <span
-              class="h-2 w-2 rounded-full"
-              :class="liveMode ? 'bg-primary-foreground' : 'bg-muted-foreground'"
-              :style="liveMode && !paused ? 'animation: pulse-dot 1.5s ease-in-out infinite' : ''"
-            />
-            {{ liveMode ? $t('logs.live') : $t('logs.historical') }}
-          </Button>
-
-          <!-- Pause / Resume (live mode only) -->
-          <Button
-            v-if="liveMode"
-            :variant="paused ? 'outline' : 'ghost'"
-            size="sm"
-            :class="paused ? 'border-warning text-warning' : ''"
-            @click="togglePause()"
-          >
-            {{ paused ? $t('logs.resume') : $t('logs.pause') }}
-          </Button>
-        </div>
-      </div>
-
       <!-- Filters row -->
       <div class="flex flex-wrap gap-2">
         <Input

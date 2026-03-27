@@ -1,16 +1,15 @@
 <template>
-  <div class="mx-auto flex h-full max-w-4xl flex-col overflow-y-auto p-6">
-    <!-- Page header -->
-    <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
-      <div>
-        <p class="mb-1.5 text-xs font-semibold uppercase tracking-widest text-primary">{{ $t('providers.title') }}</p>
-        <h1 class="text-2xl font-bold text-foreground">{{ $t('providers.title') }}</h1>
-      </div>
-      <Button @click="openAddForm">
-        <AppIcon name="add" class="mr-1 h-4 w-4" />
-        {{ $t('providers.addProvider') }}
-      </Button>
-    </div>
+  <div class="flex h-full flex-col overflow-hidden">
+    <PageHeader :title="$t('providers.title')" :subtitle="$t('providers.subtitle')">
+      <template #actions>
+        <Button @click="openAddForm">
+          <AppIcon name="add" class="mr-1 h-4 w-4" />
+          {{ $t('providers.addProvider') }}
+        </Button>
+      </template>
+    </PageHeader>
+
+    <div class="mx-auto flex w-full max-w-4xl flex-1 flex-col overflow-y-auto p-6">
 
     <!-- Error banner -->
     <Alert v-if="error" variant="destructive" class="mb-4">
@@ -135,6 +134,7 @@
           </Alert>
         </CardContent>
       </Card>
+    </div>
     </div>
   </div>
 

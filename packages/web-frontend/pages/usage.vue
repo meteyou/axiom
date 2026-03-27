@@ -9,23 +9,17 @@
     <p class="max-w-xs text-sm">{{ $t('admin.description') }}</p>
   </div>
 
-  <div v-else class="mx-auto flex h-full max-w-6xl flex-col overflow-y-auto p-6">
-    <!-- Page header card -->
-    <Card class="mb-4">
-      <CardContent class="flex flex-wrap items-start justify-between gap-4 p-6">
-        <div>
-          <p class="mb-1.5 text-xs font-semibold uppercase tracking-widest text-primary">
-            {{ $t('usage.kicker') }}
-          </p>
-          <h1 class="text-2xl font-bold text-foreground">{{ $t('usage.title') }}</h1>
-          <p class="mt-1.5 max-w-xl text-sm text-muted-foreground">{{ $t('usage.subtitle') }}</p>
-        </div>
+  <div v-else class="flex h-full flex-col overflow-hidden">
+    <PageHeader :title="$t('usage.title')" :subtitle="$t('usage.subtitle')">
+      <template #actions>
         <Button variant="outline" :disabled="loading" class="gap-2" @click="loadStats">
           <AppIcon name="refresh" class="h-4 w-4" />
           {{ $t('usage.refresh') }}
         </Button>
-      </CardContent>
-    </Card>
+      </template>
+    </PageHeader>
+
+    <div class="mx-auto flex w-full max-w-6xl flex-1 flex-col overflow-y-auto p-6">
 
     <!-- Error banner -->
     <Alert v-if="error" variant="destructive" class="mb-4">
@@ -283,6 +277,7 @@
         </Card>
       </template>
     </template>
+    </div>
   </div>
 </template>
 

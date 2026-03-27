@@ -7,14 +7,10 @@
   </div>
 
   <!-- Page body -->
-  <div v-else class="mx-auto flex h-full max-w-5xl flex-col overflow-hidden p-6">
-    <!-- Page header -->
-    <div class="mb-4 shrink-0">
-      <p class="mb-1.5 text-xs font-semibold uppercase tracking-widest text-primary">{{ $t('memory.kicker') }}</p>
-      <h1 class="text-2xl font-bold text-foreground">{{ $t('memory.title') }}</h1>
-      <p class="mt-1.5 text-sm text-muted-foreground">{{ $t('memory.subtitle') }}</p>
-    </div>
+  <div v-else class="flex h-full flex-col overflow-hidden">
+    <PageHeader :title="$t('memory.title')" :subtitle="$t('memory.subtitle')" />
 
+    <div class="mx-auto flex w-full max-w-5xl flex-1 flex-col overflow-hidden p-6">
     <!-- Error / success banners -->
     <Alert v-if="error" variant="destructive" class="mb-3 shrink-0">
       <AlertDescription class="flex items-center justify-between">
@@ -136,6 +132,7 @@
         </div>
       </TabsContent>
     </Tabs>
+    </div>
   </div>
 </template>
 
