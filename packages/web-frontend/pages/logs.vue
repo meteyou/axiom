@@ -1,111 +1,170 @@
 <template>
-  <div class="logs-page">
-    <!-- Filter bar -->
-    <div class="logs-toolbar">
-      <div class="toolbar-left">
-        <h2 class="page-title">{{ $t('logs.title') }}</h2>
-        <div class="live-controls">
-          <button
-            class="btn-live"
-            :class="{ active: liveMode }"
+  <div class="flex h-full flex-col overflow-hidden">
+    <!-- Filter toolbar -->
+    <div class="flex-shrink-0 border-b border-border px-5 py-4">
+      <!-- Top row: title + live controls -->
+      <div class="mb-3 flex flex-wrap items-center gap-3">
+        <h2 class="text-lg font-semibold text-foreground">{{ $t('logs.title') }}</h2>
+
+        <div class="flex items-center gap-2">
+          <!-- Live / Historical toggle -->
+          <Button
+            :variant="liveMode ? 'default' : 'outline'"
+            size="sm"
+            class="gap-1.5"
             @click="toggleLiveMode"
           >
-            <span class="live-dot" :class="{ pulsing: liveMode && !paused }" />
+            <span
+              class="h-2 w-2 rounded-full"
+              :class="liveMode ? 'bg-primary-foreground' : 'bg-muted-foreground'"
+              :style="liveMode && !paused ? 'animation: pulse-dot 1.5s ease-in-out infinite' : ''"
+            />
             {{ liveMode ? $t('logs.live') : $t('logs.historical') }}
-          </button>
-          <button
+          </Button>
+
+          <!-- Pause / Resume (live mode only) -->
+          <Button
             v-if="liveMode"
-            class="btn-pause"
-            :class="{ paused }"
+            :variant="paused ? 'outline' : 'ghost'"
+            size="sm"
+            :class="paused ? 'border-warning text-warning' : ''"
             @click="togglePause()"
           >
             {{ paused ? $t('logs.resume') : $t('logs.pause') }}
-          </button>
+          </Button>
         </div>
       </div>
 
-      <div class="filters">
-        <input
+      <!-- Filters row -->
+      <div class="flex flex-wrap gap-2">
+        <Input
           v-model="searchQuery"
           type="text"
-          class="filter-input search-input"
           :placeholder="$t('logs.searchPlaceholder')"
+          class="min-w-[180px] flex-1"
           @input="debouncedSearch"
         />
 
-        <select v-model="selectedToolName" class="filter-input" @change="applyFilters">
+        <Select v-model="selectedToolName" class="w-[150px]" @change="applyFilters">
           <option value="">{{ $t('logs.allTools') }}</option>
-          <option v-for="name in toolNames" :key="name" :value="name">
-            {{ name }}
-          </option>
-        </select>
+          <option v-for="name in toolNames" :key="name" :value="name">{{ name }}</option>
+        </Select>
 
-        <input
+        <Input
           v-model="dateFrom"
           type="date"
-          class="filter-input date-input"
-          :placeholder="$t('logs.dateFrom')"
+          class="w-[145px]"
           @change="applyFilters"
         />
-        <input
+        <Input
           v-model="dateTo"
           type="date"
-          class="filter-input date-input"
-          :placeholder="$t('logs.dateTo')"
+          class="w-[145px]"
           @change="applyFilters"
         />
       </div>
     </div>
 
     <!-- Loading state -->
-    <div v-if="loading && logs.length === 0" class="logs-empty">
-      <p>{{ $t('logs.loading') }}</p>
+    <div
+      v-if="loading && logs.length === 0"
+      class="flex flex-1 items-center justify-center py-20 text-sm text-muted-foreground"
+    >
+      {{ $t('logs.loading') }}
     </div>
 
     <!-- Empty state -->
-    <div v-else-if="!loading && logs.length === 0" class="logs-empty">
-      <AppIcon name="logs" class="empty-icon" size="xl" />
-      <p>{{ $t('logs.noEntries') }}</p>
+    <div
+      v-else-if="!loading && logs.length === 0"
+      class="flex flex-1 flex-col items-center justify-center gap-3 py-20 text-muted-foreground"
+    >
+      <AppIcon name="logs" size="xl" class="opacity-40" />
+      <p class="text-sm">{{ $t('logs.noEntries') }}</p>
     </div>
 
     <!-- Log entries -->
-    <div v-else class="logs-list" ref="logsListRef">
+    <div v-else ref="logsListRef" class="flex-1 overflow-y-auto">
       <div
         v-for="entry in logs"
         :key="entry.id"
-        class="log-entry"
-        :class="{ error: entry.status === 'error', expanded: expandedId === entry.id }"
+        class="cursor-pointer border-b border-border transition-colors hover:bg-muted/40"
+        :class="{
+          'border-l-2 border-l-destructive': entry.status === 'error',
+          'bg-muted/20': expandedId === entry.id,
+        }"
         @click="toggleExpand(entry.id)"
       >
-        <div class="log-row">
-          <span class="log-timestamp">{{ formatTimestamp(entry.timestamp) }}</span>
-          <span class="log-tool" :class="toolClass(entry.toolName)">
-            <AppIcon :name="toolIcon(entry.toolName)" class="tool-icon" />
+        <!-- Main row -->
+        <div class="flex items-center gap-3 px-5 py-2.5 text-sm">
+          <!-- Timestamp -->
+          <span class="w-[130px] shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
+            {{ formatTimestamp(entry.timestamp) }}
+          </span>
+
+          <!-- Tool badge -->
+          <Badge :class="toolBadgeClass(entry.toolName)" class="shrink-0 gap-1 font-mono text-xs">
+            <AppIcon :name="toolIcon(entry.toolName)" class="h-3 w-3" />
             {{ entry.toolName }}
+          </Badge>
+
+          <!-- Input preview (hidden on small screens) -->
+          <span class="hidden min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground sm:block">
+            {{ entry.input || '—' }}
           </span>
-          <span class="log-input-preview">{{ entry.input || '—' }}</span>
-          <span class="log-duration">{{ formatDuration(entry.durationMs) }}</span>
-          <span class="log-status" :class="entry.status">
-            <AppIcon :name="entry.status === 'success' ? 'success' : 'warning'" />
+
+          <!-- Duration -->
+          <span class="w-14 shrink-0 text-right font-mono text-xs tabular-nums text-muted-foreground">
+            {{ formatDuration(entry.durationMs) }}
           </span>
-          <span class="log-expand-icon">
-            <AppIcon :name="expandedId === entry.id ? 'chevronDown' : 'chevronRight'" />
+
+          <!-- Status icon -->
+          <span class="flex w-5 shrink-0 items-center justify-center">
+            <AppIcon
+              :name="entry.status === 'success' ? 'success' : 'warning'"
+              class="h-4 w-4"
+              :class="entry.status === 'success' ? 'text-success' : 'text-destructive'"
+            />
+          </span>
+
+          <!-- Expand chevron -->
+          <span class="flex w-4 shrink-0 items-center justify-center text-muted-foreground">
+            <AppIcon :name="expandedId === entry.id ? 'chevronDown' : 'chevronRight'" class="h-4 w-4" />
           </span>
         </div>
 
-        <!-- Expanded detail -->
-        <div v-if="expandedId === entry.id" class="log-detail">
-          <div v-if="detailLoading" class="detail-loading">{{ $t('logs.loading') }}</div>
+        <!-- Expanded detail panel -->
+        <div
+          v-if="expandedId === entry.id"
+          class="border-t border-border bg-background px-5 pb-4 pt-3"
+          @click.stop
+        >
+          <div v-if="detailLoading" class="py-3 text-sm text-muted-foreground">
+            {{ $t('logs.loading') }}
+          </div>
+
           <template v-else-if="expandedDetail">
-            <div class="detail-section">
-              <h4>{{ $t('logs.input') }}</h4>
-              <pre class="detail-code">{{ expandedDetail.input || '—' }}</pre>
+            <!-- Input -->
+            <div class="mb-3">
+              <h4 class="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                {{ $t('logs.input') }}
+              </h4>
+              <pre
+                class="max-h-[200px] overflow-y-auto rounded-md border border-border bg-muted/50 p-3 font-mono text-xs leading-relaxed text-foreground whitespace-pre-wrap break-all"
+              >{{ expandedDetail.input || '—' }}</pre>
             </div>
-            <div class="detail-section">
-              <h4>{{ $t('logs.output') }}</h4>
-              <pre class="detail-code">{{ expandedDetail.output || '—' }}</pre>
+
+            <!-- Output -->
+            <div class="mb-3">
+              <h4 class="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                {{ $t('logs.output') }}
+              </h4>
+              <pre
+                class="max-h-[300px] overflow-y-auto rounded-md border border-border bg-muted/50 p-3 font-mono text-xs leading-relaxed text-foreground whitespace-pre-wrap break-all"
+              >{{ expandedDetail.output || '—' }}</pre>
             </div>
-            <div class="detail-meta">
+
+            <!-- Meta row -->
+            <div class="flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted-foreground">
               <span>{{ $t('logs.sessionId') }}: {{ expandedDetail.sessionId }}</span>
               <span>{{ $t('logs.duration') }}: {{ formatDuration(expandedDetail.durationMs) }}</span>
               <span>{{ $t('logs.status') }}: {{ expandedDetail.status }}</span>
@@ -115,27 +174,36 @@
       </div>
     </div>
 
-    <!-- Pagination (historical mode) -->
-    <div v-if="!liveMode && pagination.totalPages > 1" class="pagination">
-      <button
-        class="pagination-btn"
+    <!-- Pagination (historical mode only) -->
+    <div
+      v-if="!liveMode && pagination.totalPages > 1"
+      class="flex flex-shrink-0 items-center justify-center gap-4 border-t border-border px-5 py-3"
+    >
+      <Button
+        variant="outline"
+        size="sm"
         :disabled="pagination.page <= 1"
+        class="gap-1"
         @click="goToPage(pagination.page - 1)"
       >
-        <AppIcon name="arrowLeft" />
+        <AppIcon name="arrowLeft" class="h-4 w-4" />
         {{ $t('logs.prev') }}
-      </button>
-      <span class="pagination-info">
+      </Button>
+
+      <span class="text-sm text-muted-foreground">
         {{ $t('logs.pageInfo', { page: pagination.page, total: pagination.totalPages }) }}
       </span>
-      <button
-        class="pagination-btn"
+
+      <Button
+        variant="outline"
+        size="sm"
         :disabled="pagination.page >= pagination.totalPages"
+        class="gap-1"
         @click="goToPage(pagination.page + 1)"
       >
         {{ $t('logs.next') }}
-        <AppIcon name="arrowRight" />
-      </button>
+        <AppIcon name="arrowRight" class="h-4 w-4" />
+      </Button>
     </div>
   </div>
 </template>
@@ -177,7 +245,6 @@ function debouncedSearch() {
 
 async function applyFilters() {
   if (liveMode.value) {
-    // In live mode, switch to historical for filtering
     setLiveMode(false)
   }
   await fetchLogs({
@@ -195,7 +262,7 @@ function toggleLiveMode() {
     fetchLogs()
   } else {
     setLiveMode(true)
-    fetchLogs() // Load initial entries
+    fetchLogs()
   }
 }
 
@@ -243,13 +310,16 @@ function formatDuration(ms: number | null | undefined): string {
   return `${(ms / 1000).toFixed(1)}s`
 }
 
-function toolClass(name: string): string {
-  if (!name) return 'tool-default'
+function toolBadgeClass(name: string): string {
+  if (!name) return 'border-transparent bg-primary/15 text-primary'
   const lower = name.toLowerCase()
-  if (lower.includes('bash') || lower.includes('exec') || lower.includes('command')) return 'tool-bash'
-  if (lower.includes('file') || lower.includes('read') || lower.includes('write') || lower.includes('edit')) return 'tool-file'
-  if (lower.includes('llm') || lower.includes('chat') || lower.includes('generate')) return 'tool-llm'
-  return 'tool-default'
+  if (lower.includes('bash') || lower.includes('exec') || lower.includes('command'))
+    return 'border-transparent bg-warning/15 text-warning'
+  if (lower.includes('file') || lower.includes('read') || lower.includes('write') || lower.includes('edit'))
+    return 'border-transparent bg-blue-500/15 text-blue-500'
+  if (lower.includes('llm') || lower.includes('chat') || lower.includes('generate'))
+    return 'border-transparent bg-purple-500/15 text-purple-500'
+  return 'border-transparent bg-primary/15 text-primary'
 }
 
 function toolIcon(name: string): 'activity' | 'file' | 'brain' | 'wrench' {
@@ -261,7 +331,6 @@ function toolIcon(name: string): 'activity' | 'file' | 'brain' | 'wrench' {
   return 'wrench'
 }
 
-// Initialize
 onMounted(async () => {
   await fetchToolNames()
   await fetchLogs()
@@ -274,399 +343,3 @@ onUnmounted(() => {
   disconnectLive()
 })
 </script>
-
-<style scoped>
-.logs-page {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  overflow: hidden;
-}
-
-/* Toolbar */
-.logs-toolbar {
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--color-border);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  flex-shrink: 0;
-}
-
-.toolbar-left {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.page-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--color-text);
-  margin: 0;
-}
-
-.live-controls {
-  display: flex;
-  gap: 8px;
-}
-
-.btn-live {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: 6px;
-  border: 1px solid var(--color-border);
-  background: var(--color-bg-tertiary);
-  color: var(--color-text-secondary);
-  font-size: 13px;
-  font-weight: 500;
-  transition: all 0.15s ease;
-}
-
-.btn-live.active {
-  border-color: var(--color-success);
-  color: var(--color-success);
-  background: rgba(34, 197, 94, 0.1);
-}
-
-.live-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--color-text-muted);
-}
-
-.btn-live.active .live-dot {
-  background: var(--color-success);
-}
-
-.live-dot.pulsing {
-  animation: pulse 1.5s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
-}
-
-.btn-pause {
-  padding: 6px 12px;
-  border-radius: 6px;
-  border: 1px solid var(--color-border);
-  background: var(--color-bg-tertiary);
-  color: var(--color-text-secondary);
-  font-size: 13px;
-  font-weight: 500;
-  transition: all 0.15s ease;
-}
-
-.btn-pause.paused {
-  border-color: var(--color-warning);
-  color: var(--color-warning);
-  background: rgba(245, 158, 11, 0.1);
-}
-
-/* Filters */
-.filters {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.filter-input {
-  padding: 7px 12px;
-  border-radius: 6px;
-  border: 1px solid var(--color-border);
-  background: var(--color-bg-tertiary);
-  color: var(--color-text);
-  font-size: 13px;
-  font-family: inherit;
-  outline: none;
-  transition: border-color 0.15s ease;
-}
-
-.filter-input:focus {
-  border-color: var(--color-primary);
-}
-
-.search-input {
-  flex: 1;
-  min-width: 200px;
-}
-
-.date-input {
-  width: 140px;
-}
-
-select.filter-input {
-  min-width: 140px;
-  cursor: pointer;
-}
-
-/* Empty state */
-.logs-empty {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: var(--color-text-muted);
-  gap: 12px;
-}
-
-.empty-icon {
-  width: 40px;
-  height: 40px;
-  opacity: 0.5;
-}
-
-/* Log list */
-.logs-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 0;
-}
-
-/* Log entry */
-.log-entry {
-  border-bottom: 1px solid var(--color-border);
-  cursor: pointer;
-  transition: background 0.1s ease;
-}
-
-.log-entry:hover {
-  background: var(--color-bg-tertiary);
-}
-
-.log-entry.error {
-  border-left: 3px solid var(--color-danger);
-}
-
-.log-entry.expanded {
-  background: var(--color-bg-secondary);
-}
-
-.log-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 20px;
-  font-size: 13px;
-}
-
-.log-timestamp {
-  color: var(--color-text-muted);
-  font-size: 12px;
-  white-space: nowrap;
-  min-width: 130px;
-  font-variant-numeric: tabular-nums;
-}
-
-.log-tool {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 500;
-  white-space: nowrap;
-  min-width: 100px;
-}
-
-.tool-icon {
-  width: 14px;
-  height: 14px;
-}
-
-.tool-bash {
-  background: rgba(245, 158, 11, 0.15);
-  color: #f59e0b;
-}
-
-.tool-file {
-  background: rgba(59, 130, 246, 0.15);
-  color: #3b82f6;
-}
-
-.tool-llm {
-  background: rgba(168, 85, 247, 0.15);
-  color: #a855f7;
-}
-
-.tool-default {
-  background: rgba(99, 102, 241, 0.15);
-  color: #6366f1;
-}
-
-.log-input-preview {
-  flex: 1;
-  color: var(--color-text-secondary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 12px;
-  min-width: 0;
-}
-
-.log-duration {
-  color: var(--color-text-muted);
-  font-size: 12px;
-  white-space: nowrap;
-  min-width: 60px;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-.log-status {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  text-align: center;
-}
-
-.log-status.success {
-  color: var(--color-success);
-}
-
-.log-status.error {
-  color: var(--color-danger);
-}
-
-.log-expand-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--color-text-muted);
-  width: 16px;
-  text-align: center;
-}
-
-/* Detail panel */
-.log-detail {
-  padding: 12px 20px 16px 20px;
-  border-top: 1px solid var(--color-border);
-  background: var(--color-bg);
-}
-
-.detail-loading {
-  color: var(--color-text-muted);
-  font-size: 13px;
-  padding: 8px 0;
-}
-
-.detail-section {
-  margin-bottom: 12px;
-}
-
-.detail-section h4 {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--color-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 6px;
-}
-
-.detail-code {
-  background: var(--color-bg-tertiary);
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  padding: 10px 12px;
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--color-text);
-  white-space: pre-wrap;
-  word-break: break-all;
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-.detail-meta {
-  display: flex;
-  gap: 20px;
-  font-size: 12px;
-  color: var(--color-text-muted);
-  flex-wrap: wrap;
-}
-
-/* Pagination */
-.pagination {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  padding: 12px 20px;
-  border-top: 1px solid var(--color-border);
-  flex-shrink: 0;
-}
-
-.pagination-btn {
-  padding: 6px 14px;
-  border-radius: 6px;
-  border: 1px solid var(--color-border);
-  background: var(--color-bg-tertiary);
-  color: var(--color-text-secondary);
-  font-size: 13px;
-  transition: all 0.15s ease;
-}
-
-.pagination-btn:hover:not(:disabled) {
-  background: var(--color-bg-secondary);
-  color: var(--color-text);
-}
-
-.pagination-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.pagination-info {
-  font-size: 13px;
-  color: var(--color-text-muted);
-}
-
-/* Mobile responsive */
-@media (max-width: 768px) {
-  .toolbar-left {
-    flex-wrap: wrap;
-  }
-
-  .filters {
-    flex-direction: column;
-  }
-
-  .filter-input {
-    width: 100% !important;
-    min-width: unset !important;
-  }
-
-  .log-row {
-    padding: 8px 12px;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-
-  .log-timestamp {
-    min-width: unset;
-  }
-
-  .log-input-preview {
-    display: none;
-  }
-
-  .log-duration {
-    min-width: unset;
-  }
-
-  .detail-meta {
-    flex-direction: column;
-    gap: 4px;
-  }
-}
-</style>

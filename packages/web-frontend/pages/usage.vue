@@ -1,186 +1,285 @@
 <template>
-  <div v-if="!isAdmin" class="admin-gate">
-    <AppIcon name="lock" class="gate-icon" size="xl" />
-    <h1>{{ $t('admin.title') }}</h1>
-    <p>{{ $t('admin.description') }}</p>
+  <!-- Admin gate -->
+  <div
+    v-if="!isAdmin"
+    class="flex h-full flex-col items-center justify-center gap-3 p-10 text-center text-muted-foreground"
+  >
+    <AppIcon name="lock" size="xl" class="opacity-50" />
+    <h1 class="text-lg font-semibold text-foreground">{{ $t('admin.title') }}</h1>
+    <p class="max-w-xs text-sm">{{ $t('admin.description') }}</p>
   </div>
 
-  <div v-else class="usage-page">
-    <header class="page-hero glass-panel">
-      <div>
-        <p class="eyebrow">{{ $t('usage.kicker') }}</p>
-        <h1>{{ $t('usage.title') }}</h1>
-        <p class="page-subtitle">{{ $t('usage.subtitle') }}</p>
+  <div v-else class="mx-auto flex h-full max-w-6xl flex-col overflow-y-auto p-6">
+    <!-- Page header card -->
+    <Card class="mb-4">
+      <CardContent class="flex flex-wrap items-start justify-between gap-4 p-6">
+        <div>
+          <p class="mb-1.5 text-xs font-semibold uppercase tracking-widest text-primary">
+            {{ $t('usage.kicker') }}
+          </p>
+          <h1 class="text-2xl font-bold text-foreground">{{ $t('usage.title') }}</h1>
+          <p class="mt-1.5 max-w-xl text-sm text-muted-foreground">{{ $t('usage.subtitle') }}</p>
+        </div>
+        <Button variant="outline" :disabled="loading" class="gap-2" @click="loadStats">
+          <AppIcon name="refresh" class="h-4 w-4" />
+          {{ $t('usage.refresh') }}
+        </Button>
+      </CardContent>
+    </Card>
+
+    <!-- Error banner -->
+    <Alert v-if="error" variant="destructive" class="mb-4">
+      <AlertDescription class="flex items-center justify-between">
+        <span>{{ error }}</span>
+        <button
+          type="button"
+          class="ml-2 opacity-70 transition-opacity hover:opacity-100"
+          @click="error = null"
+        >
+          <AppIcon name="close" class="h-4 w-4" />
+        </button>
+      </AlertDescription>
+    </Alert>
+
+    <!-- Loading skeleton -->
+    <div v-if="loading" class="space-y-4">
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Skeleton v-for="i in 4" :key="i" class="h-28 rounded-xl" />
       </div>
-
-      <button class="btn btn-outline" :disabled="loading" @click="loadStats">
-        <AppIcon name="refresh" />
-        {{ $t('usage.refresh') }}
-      </button>
-    </header>
-
-    <div v-if="error" class="error-banner">
-      <span>{{ error }}</span>
-      <button class="error-dismiss" @click="error = null">
-        <AppIcon name="close" />
-      </button>
+      <Skeleton class="h-40 rounded-xl" />
+      <Skeleton class="h-72 rounded-xl" />
+      <Skeleton class="h-52 rounded-xl" />
     </div>
 
-    <div v-if="loading" class="loading-state">{{ $t('usage.loading') }}</div>
-
     <template v-else>
-      <section class="summary-grid">
-        <article v-for="card in summaryCards" :key="card.label" class="summary-card glass-panel">
-          <span class="summary-label">{{ card.label }}</span>
-          <strong class="summary-value">{{ card.value }}</strong>
-          <span class="summary-meta">{{ card.meta }}</span>
-        </article>
+      <!-- Summary cards (4-col → 2-col → 1-col) -->
+      <section class="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Card v-for="card in summaryCards" :key="card.label">
+          <CardContent class="p-5">
+            <span class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+              {{ card.label }}
+            </span>
+            <strong class="mt-3 block text-3xl font-bold text-foreground">{{ card.value }}</strong>
+            <span class="mt-2 block text-sm text-muted-foreground">{{ card.meta }}</span>
+          </CardContent>
+        </Card>
       </section>
 
-      <section class="filters-panel glass-panel">
-        <div class="section-heading">
-          <div>
-            <h2>{{ $t('usage.filters.title') }}</h2>
-            <p>{{ $t('usage.filters.description') }}</p>
+      <!-- Filter form card -->
+      <Card class="mb-4">
+        <CardContent class="p-5">
+          <div class="mb-4">
+            <h2 class="text-base font-semibold text-foreground">{{ $t('usage.filters.title') }}</h2>
+            <p class="mt-1 text-sm text-muted-foreground">{{ $t('usage.filters.description') }}</p>
           </div>
-        </div>
 
-        <form class="filters-grid" @submit.prevent="loadStats">
-          <label class="field">
-            <span>{{ $t('usage.filters.dateFrom') }}</span>
-            <input v-model="filters.dateFrom" type="date" class="input" />
-          </label>
+          <form class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4" @submit.prevent="loadStats">
+            <!-- Date from -->
+            <div class="flex flex-col gap-1.5">
+              <label class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                {{ $t('usage.filters.dateFrom') }}
+              </label>
+              <Input v-model="filters.dateFrom" type="date" />
+            </div>
 
-          <label class="field">
-            <span>{{ $t('usage.filters.dateTo') }}</span>
-            <input v-model="filters.dateTo" type="date" class="input" />
-          </label>
+            <!-- Date to -->
+            <div class="flex flex-col gap-1.5">
+              <label class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                {{ $t('usage.filters.dateTo') }}
+              </label>
+              <Input v-model="filters.dateTo" type="date" />
+            </div>
 
-          <label class="field">
-            <span>{{ $t('usage.filters.provider') }}</span>
-            <select v-model="filters.provider" class="input" @change="filters.model = ''">
-              <option value="">{{ $t('usage.filters.allProviders') }}</option>
-              <option v-for="provider in availableProviders" :key="provider" :value="provider">
-                {{ provider }}
-              </option>
-            </select>
-          </label>
+            <!-- Provider -->
+            <div class="flex flex-col gap-1.5">
+              <label class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                {{ $t('usage.filters.provider') }}
+              </label>
+              <Select v-model="filters.provider" @change="filters.model = ''">
+                <option value="">{{ $t('usage.filters.allProviders') }}</option>
+                <option v-for="provider in availableProviders" :key="provider" :value="provider">
+                  {{ provider }}
+                </option>
+              </Select>
+            </div>
 
-          <label class="field">
-            <span>{{ $t('usage.filters.model') }}</span>
-            <select v-model="filters.model" class="input">
-              <option value="">{{ $t('usage.filters.allModels') }}</option>
-              <option v-for="model in availableModels" :key="model" :value="model">
-                {{ model }}
-              </option>
-            </select>
-          </label>
+            <!-- Model -->
+            <div class="flex flex-col gap-1.5">
+              <label class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                {{ $t('usage.filters.model') }}
+              </label>
+              <Select v-model="filters.model">
+                <option value="">{{ $t('usage.filters.allModels') }}</option>
+                <option v-for="model in availableModels" :key="model" :value="model">
+                  {{ model }}
+                </option>
+              </Select>
+            </div>
 
-          <div class="filter-actions">
-            <button class="btn btn-primary" type="submit">{{ $t('usage.filters.apply') }}</button>
-            <button class="btn btn-ghost" type="button" @click="resetFilters">{{ $t('usage.filters.reset') }}</button>
-          </div>
-        </form>
-      </section>
+            <!-- Actions (spans full row) -->
+            <div class="flex items-end gap-2 sm:col-span-2 lg:col-span-4 lg:justify-end">
+              <Button type="submit">{{ $t('usage.filters.apply') }}</Button>
+              <Button type="button" variant="outline" @click="resetFilters">
+                {{ $t('usage.filters.reset') }}
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
 
-      <section v-if="!hasAnyUsage" class="empty-state glass-panel">
-        <AppIcon name="trendDown" class="empty-icon" size="xl" />
-        <h2>{{ $t('usage.emptyTitle') }}</h2>
-        <p>{{ $t('usage.emptyDescription') }}</p>
-      </section>
+      <!-- No usage at all -->
+      <Card v-if="!hasAnyUsage" class="mb-4">
+        <CardContent class="flex flex-col items-center gap-3 py-14 text-center">
+          <AppIcon name="trendDown" size="xl" class="opacity-40" />
+          <h2 class="text-base font-semibold text-foreground">{{ $t('usage.emptyTitle') }}</h2>
+          <p class="max-w-md text-sm text-muted-foreground">{{ $t('usage.emptyDescription') }}</p>
+        </CardContent>
+      </Card>
 
       <template v-else>
-        <section v-if="!hasFilteredResults" class="empty-state compact glass-panel">
-          <AppIcon name="compass" class="empty-icon" size="xl" />
-          <h2>{{ $t('usage.emptyFilteredTitle') }}</h2>
-          <p>{{ $t('usage.emptyFilteredDescription') }}</p>
-        </section>
+        <!-- No results for filters -->
+        <Card v-if="!hasFilteredResults" class="mb-4">
+          <CardContent class="flex flex-col items-center gap-3 py-10 text-center">
+            <AppIcon name="compass" size="xl" class="opacity-40" />
+            <h2 class="text-base font-semibold text-foreground">{{ $t('usage.emptyFilteredTitle') }}</h2>
+            <p class="max-w-md text-sm text-muted-foreground">{{ $t('usage.emptyFilteredDescription') }}</p>
+          </CardContent>
+        </Card>
 
-        <section class="chart-panel glass-panel">
-          <div class="section-heading chart-heading">
-            <div>
-              <h2>{{ $t('usage.chart.title') }}</h2>
-              <p>{{ $t('usage.chart.description') }}</p>
-            </div>
-            <div class="section-metric">
-              <span>{{ $t('usage.chart.rangeLabel') }}</span>
-              <strong>{{ chartRangeLabel }}</strong>
-            </div>
-          </div>
-
-          <div v-if="chartSeries.length === 0 || chartMax === 0" class="chart-empty">
-            {{ $t('usage.chart.empty') }}
-          </div>
-
-          <div v-else class="chart-shell">
-            <div class="chart-axis">
-              <span>{{ formatNumber(chartMax) }}</span>
-              <span>{{ formatNumber(Math.round(chartMax / 2)) }}</span>
-              <span>{{ formatNumber(0) }}</span>
+        <!-- Bar chart -->
+        <Card class="mb-4">
+          <CardContent class="p-5">
+            <!-- Chart header -->
+            <div class="mb-5 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 class="text-base font-semibold text-foreground">{{ $t('usage.chart.title') }}</h2>
+                <p class="mt-1 text-sm text-muted-foreground">{{ $t('usage.chart.description') }}</p>
+              </div>
+              <div class="text-right">
+                <span class="block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  {{ $t('usage.chart.rangeLabel') }}
+                </span>
+                <strong class="mt-1 block text-sm font-semibold text-foreground">{{ chartRangeLabel }}</strong>
+              </div>
             </div>
 
-            <div class="chart-grid">
-              <div class="chart-lines">
-                <span />
-                <span />
-                <span />
+            <!-- Empty chart -->
+            <div
+              v-if="chartSeries.length === 0 || chartMax === 0"
+              class="flex min-h-[180px] items-center justify-center text-sm text-muted-foreground"
+            >
+              {{ $t('usage.chart.empty') }}
+            </div>
+
+            <!-- Chart body -->
+            <div v-else class="flex gap-3">
+              <!-- Y-axis labels -->
+              <div class="flex w-14 shrink-0 flex-col justify-between pb-7 text-right">
+                <span class="text-xs text-muted-foreground">{{ formatNumber(chartMax) }}</span>
+                <span class="text-xs text-muted-foreground">{{ formatNumber(Math.round(chartMax / 2)) }}</span>
+                <span class="text-xs text-muted-foreground">0</span>
               </div>
 
-              <div class="chart-bars" :style="{ gridTemplateColumns: `repeat(${chartSeries.length}, minmax(0, 1fr))` }">
+              <!-- Grid + bars -->
+              <div class="relative min-h-[220px] flex-1 sm:min-h-[280px]">
+                <!-- Horizontal grid lines -->
+                <div class="pointer-events-none absolute inset-0 flex flex-col justify-between pb-7">
+                  <div class="border-t border-dashed border-border/60" />
+                  <div class="border-t border-dashed border-border/60" />
+                  <div class="border-t border-dashed border-border/60" />
+                </div>
+
+                <!-- Bars -->
                 <div
-                  v-for="point in chartSeries"
-                  :key="point.day"
-                  class="chart-bar-group"
-                  :title="`${formatFullDate(point.day)} · ${formatNumber(point.totalTokens)} ${$t('usage.table.columns.totalTokens')} · ${formatCurrency(point.estimatedCost)}`"
+                  class="absolute inset-0 flex items-end gap-px pb-7 sm:gap-0.5"
+                  :style="{ display: 'grid', gridTemplateColumns: `repeat(${chartSeries.length}, minmax(0, 1fr))`, alignItems: 'end', paddingBottom: '28px' }"
                 >
-                  <span class="chart-bar" :style="{ height: `${point.height}%` }" />
-                  <span class="chart-label">{{ point.label }}</span>
+                  <div
+                    v-for="point in chartSeries"
+                    :key="point.day"
+                    class="group flex min-w-0 flex-col items-center justify-end"
+                    style="height: 100%"
+                    :title="`${formatFullDate(point.day)} · ${formatNumber(point.totalTokens)} ${$t('usage.table.columns.totalTokens')} · ${formatCurrency(point.estimatedCost)}`"
+                  >
+                    <div
+                      class="w-full max-w-[26px] rounded-t-sm bg-primary transition-opacity group-hover:opacity-80"
+                      :style="{ height: `${point.height}%` }"
+                    />
+                  </div>
+                </div>
+
+                <!-- X-axis labels -->
+                <div
+                  class="absolute bottom-0 left-0 right-0 flex h-7 items-end"
+                  :style="{ display: 'grid', gridTemplateColumns: `repeat(${xAxisLabels.length}, minmax(0, 1fr))` }"
+                >
+                  <span
+                    v-for="point in xAxisLabels"
+                    :key="point.day"
+                    class="overflow-hidden text-center text-[10px] text-muted-foreground"
+                  >
+                    {{ point.label }}
+                  </span>
                 </div>
               </div>
             </div>
-          </div>
-        </section>
+          </CardContent>
+        </Card>
 
-        <section class="table-panel glass-panel">
-          <div class="section-heading">
-            <div>
-              <h2>{{ $t('usage.table.title') }}</h2>
-              <p>{{ $t('usage.table.description') }}</p>
+        <!-- Breakdown table -->
+        <Card class="mb-4">
+          <CardContent class="p-5">
+            <!-- Table header -->
+            <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 class="text-base font-semibold text-foreground">{{ $t('usage.table.title') }}</h2>
+                <p class="mt-1 text-sm text-muted-foreground">{{ $t('usage.table.description') }}</p>
+              </div>
+              <div class="text-right">
+                <span class="block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  {{ $t('usage.table.selectedTotal') }}
+                </span>
+                <strong class="mt-1 block text-sm font-semibold text-foreground">
+                  {{ formatNumber(breakdown.totals.totalTokens) }}
+                </strong>
+              </div>
             </div>
-            <div class="section-metric">
-              <span>{{ $t('usage.table.selectedTotal') }}</span>
-              <strong>{{ formatNumber(breakdown.totals.totalTokens) }}</strong>
-            </div>
-          </div>
 
-          <div class="table-wrap">
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>{{ $t('usage.table.columns.provider') }}</th>
-                  <th>{{ $t('usage.table.columns.model') }}</th>
-                  <th>{{ $t('usage.table.columns.promptTokens') }}</th>
-                  <th>{{ $t('usage.table.columns.completionTokens') }}</th>
-                  <th>{{ $t('usage.table.columns.totalTokens') }}</th>
-                  <th>{{ $t('usage.table.columns.cost') }}</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-if="breakdown.rows.length === 0">
-                  <td colspan="6" class="empty-row">{{ $t('usage.table.empty') }}</td>
-                </tr>
-                <tr v-for="row in breakdown.rows" :key="`${row.provider}-${row.model}`">
-                  <td>{{ row.provider || '—' }}</td>
-                  <td class="mono">{{ row.model || '—' }}</td>
-                  <td>{{ formatNumber(row.promptTokens) }}</td>
-                  <td>{{ formatNumber(row.completionTokens) }}</td>
-                  <td>{{ formatNumber(row.totalTokens) }}</td>
-                  <td>{{ formatCurrency(row.estimatedCost) }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
+            <!-- Scrollable table -->
+            <div class="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{{ $t('usage.table.columns.provider') }}</TableHead>
+                    <TableHead>{{ $t('usage.table.columns.model') }}</TableHead>
+                    <TableHead class="text-right">{{ $t('usage.table.columns.promptTokens') }}</TableHead>
+                    <TableHead class="text-right">{{ $t('usage.table.columns.completionTokens') }}</TableHead>
+                    <TableHead class="text-right">{{ $t('usage.table.columns.totalTokens') }}</TableHead>
+                    <TableHead class="text-right">{{ $t('usage.table.columns.cost') }}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  <TableRow v-if="breakdown.rows.length === 0">
+                    <TableCell colspan="6" class="py-8 text-center text-muted-foreground">
+                      {{ $t('usage.table.empty') }}
+                    </TableCell>
+                  </TableRow>
+                  <TableRow
+                    v-for="row in breakdown.rows"
+                    :key="`${row.provider}-${row.model}`"
+                  >
+                    <TableCell class="font-medium">{{ row.provider || '—' }}</TableCell>
+                    <TableCell class="font-mono text-xs">{{ row.model || '—' }}</TableCell>
+                    <TableCell class="text-right tabular-nums">{{ formatNumber(row.promptTokens) }}</TableCell>
+                    <TableCell class="text-right tabular-nums">{{ formatNumber(row.completionTokens) }}</TableCell>
+                    <TableCell class="text-right font-semibold tabular-nums">{{ formatNumber(row.totalTokens) }}</TableCell>
+                    <TableCell class="text-right tabular-nums">{{ formatCurrency(row.estimatedCost) }}</TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
       </template>
     </template>
   </div>
@@ -233,7 +332,6 @@ function getInitialFilters() {
   const end = new Date()
   const start = new Date(end)
   start.setDate(start.getDate() - 29)
-
   return {
     dateFrom: formatDateInput(start),
     dateTo: formatDateInput(end),
@@ -270,7 +368,9 @@ const availableProviders = ref<string[]>([])
 const availableModels = ref<string[]>([])
 
 const hasAnyUsage = computed(() => summary.value.allTime.totalTokens > 0)
-const hasFilteredResults = computed(() => breakdown.value.rows.length > 0 || daily.value.rows.some((row) => row.totalTokens > 0))
+const hasFilteredResults = computed(
+  () => breakdown.value.rows.length > 0 || daily.value.rows.some((row) => row.totalTokens > 0),
+)
 
 const summaryCards = computed(() => [
   {
@@ -296,20 +396,18 @@ const summaryCards = computed(() => [
 ])
 
 const chartSeries = computed(() => {
-  if (!filters.dateFrom || !filters.dateTo) {
-    return [] as Array<{ day: string; label: string; totalTokens: number; estimatedCost: number; height: number }>
-  }
+  if (!filters.dateFrom || !filters.dateTo) return [] as Array<{
+    day: string; label: string; totalTokens: number; estimatedCost: number; height: number
+  }>
 
   const start = new Date(`${filters.dateFrom}T00:00:00`)
   const end = new Date(`${filters.dateTo}T00:00:00`)
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) {
-    return []
-  }
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) return []
 
   const dailyMap = new Map(
     daily.value.rows
       .filter((row) => row.day)
-      .map((row) => [row.day as string, row])
+      .map((row) => [row.day as string, row]),
   )
 
   const points: Array<{ day: string; label: string; totalTokens: number; estimatedCost: number }> = []
@@ -327,7 +425,7 @@ const chartSeries = computed(() => {
     cursor.setDate(cursor.getDate() + 1)
   }
 
-  const max = Math.max(...points.map((point) => point.totalTokens), 0)
+  const max = Math.max(...points.map((p) => p.totalTokens), 0)
 
   return points.map((point) => ({
     ...point,
@@ -335,13 +433,21 @@ const chartSeries = computed(() => {
   }))
 })
 
-const chartMax = computed(() => Math.max(...chartSeries.value.map((point) => point.totalTokens), 0))
+const chartMax = computed(() => Math.max(...chartSeries.value.map((p) => p.totalTokens), 0))
 const chartRangeLabel = computed(() => {
-  if (!filters.dateFrom || !filters.dateTo) {
-    return '—'
-  }
-
+  if (!filters.dateFrom || !filters.dateTo) return '—'
   return `${formatFullDate(filters.dateFrom)} → ${formatFullDate(filters.dateTo)}`
+})
+
+// For x-axis: show a label every N bars so it doesn't crowd
+const xAxisLabels = computed(() => {
+  const series = chartSeries.value
+  if (series.length === 0) return []
+  const step = series.length <= 14 ? 1 : series.length <= 31 ? 3 : 7
+  return series.map((point, i) => ({
+    day: point.day,
+    label: i % step === 0 ? point.label : '',
+  }))
 })
 
 onMounted(async () => {
@@ -375,23 +481,10 @@ async function loadStats() {
 function buildQuery(groupBy: string[]): string {
   const params = new URLSearchParams()
   params.set('group_by', groupBy.join(','))
-
-  if (filters.dateFrom) {
-    params.set('date_from', filters.dateFrom)
-  }
-
-  if (filters.dateTo) {
-    params.set('date_to', filters.dateTo)
-  }
-
-  if (filters.provider) {
-    params.set('provider', filters.provider)
-  }
-
-  if (filters.model) {
-    params.set('model', filters.model)
-  }
-
+  if (filters.dateFrom) params.set('date_from', filters.dateFrom)
+  if (filters.dateTo) params.set('date_to', filters.dateTo)
+  if (filters.provider) params.set('provider', filters.provider)
+  if (filters.model) params.set('model', filters.model)
   return params.toString()
 }
 
@@ -426,437 +519,3 @@ function formatFullDate(value: string): string {
   }).format(new Date(`${value}T00:00:00`))
 }
 </script>
-
-<style scoped>
-.usage-page {
-  padding: 24px;
-  max-width: 1240px;
-  margin: 0 auto;
-  height: 100%;
-  overflow-y: auto;
-}
-
-.admin-gate {
-  display: grid;
-  place-items: center;
-  gap: 10px;
-  padding: 40px;
-  height: 100%;
-  color: var(--color-text-muted);
-  text-align: center;
-}
-
-.gate-icon {
-  width: 40px;
-  height: 40px;
-}
-
-.glass-panel {
-  background: var(--color-bg-secondary);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.22);
-}
-
-.page-hero {
-  border-radius: 24px;
-  padding: 28px;
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 18px;
-  margin-bottom: 18px;
-}
-
-.eyebrow {
-  font-size: 12px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: #7dd3fc;
-  margin-bottom: 8px;
-}
-
-.page-hero h1 {
-  margin: 0;
-  font-size: 30px;
-}
-
-.page-subtitle {
-  margin-top: 10px;
-  color: var(--color-text-secondary);
-  max-width: 680px;
-}
-
-.error-banner {
-  padding: 12px 16px;
-  border-radius: 14px;
-  margin-bottom: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  font-size: 14px;
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid var(--color-error, #ef4444);
-  color: var(--color-error, #ef4444);
-}
-
-.error-dismiss {
-  background: none;
-  border: none;
-  color: inherit;
-}
-
-.loading-state {
-  display: grid;
-  place-items: center;
-  padding: 120px 20px;
-  color: var(--color-text-muted);
-}
-
-.summary-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
-  margin-bottom: 16px;
-}
-
-.summary-card {
-  border-radius: 20px;
-  padding: 18px;
-  position: relative;
-  overflow: hidden;
-}
-
-.summary-card::after {
-  content: '';
-  position: absolute;
-  inset: 0 auto auto 0;
-  width: 100%;
-  height: 1px;
-  background: rgba(255, 255, 255, 0.04);
-  pointer-events: none;
-}
-
-.summary-label {
-  display: block;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--color-text-muted);
-}
-
-.summary-value {
-  display: block;
-  margin-top: 12px;
-  font-size: 30px;
-  color: var(--color-text);
-}
-
-.summary-meta {
-  display: block;
-  margin-top: 10px;
-  color: var(--color-text-secondary);
-  font-size: 13px;
-}
-
-.filters-panel,
-.chart-panel,
-.table-panel,
-.empty-state {
-  border-radius: 24px;
-  padding: 22px;
-  margin-bottom: 16px;
-}
-
-.section-heading {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: flex-start;
-}
-
-.section-heading h2 {
-  font-size: 18px;
-}
-
-.section-heading p {
-  margin-top: 6px;
-  font-size: 13px;
-  color: var(--color-text-muted);
-}
-
-.section-metric {
-  min-width: 180px;
-  text-align: right;
-}
-
-.section-metric span {
-  display: block;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--color-text-muted);
-}
-
-.section-metric strong {
-  display: block;
-  margin-top: 8px;
-  font-size: 18px;
-}
-
-.filters-grid {
-  margin-top: 18px;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
-  align-items: end;
-}
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.field span {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--color-text-muted);
-}
-
-.input {
-  width: 100%;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(8, 12, 20, 0.6);
-  color: var(--color-text);
-  min-height: 46px;
-  padding: 0 14px;
-}
-
-.filter-actions {
-  display: flex;
-  gap: 10px;
-  justify-content: flex-end;
-}
-
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-height: 44px;
-  padding: 0 16px;
-  border-radius: 12px;
-  font-size: 14px;
-  font-weight: 600;
-  border: 1px solid transparent;
-  transition: transform 0.15s ease, background 0.15s ease, color 0.15s ease;
-}
-
-.btn:hover:not(:disabled) {
-  transform: translateY(-1px);
-}
-
-.btn-primary {
-  background: var(--color-primary);
-  color: white;
-}
-
-.btn-outline,
-.btn-ghost {
-  background: rgba(255, 255, 255, 0.03);
-  border-color: var(--color-border);
-  color: var(--color-text-secondary);
-}
-
-.btn-outline:hover:not(:disabled),
-.btn-ghost:hover:not(:disabled) {
-  background: var(--color-bg-tertiary);
-  color: var(--color-text);
-}
-
-.empty-state {
-  display: grid;
-  place-items: center;
-  text-align: center;
-  gap: 10px;
-  padding: 40px 24px;
-}
-
-.empty-state.compact {
-  place-items: start center;
-}
-
-.empty-icon {
-  width: 32px;
-  height: 32px;
-}
-
-.empty-state p {
-  max-width: 520px;
-  color: var(--color-text-secondary);
-}
-
-.chart-shell {
-  margin-top: 20px;
-  display: grid;
-  grid-template-columns: 72px minmax(0, 1fr);
-  gap: 14px;
-  min-height: 320px;
-}
-
-.chart-axis {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  align-items: flex-end;
-  color: var(--color-text-muted);
-  font-size: 12px;
-  padding: 8px 0 28px;
-}
-
-.chart-grid {
-  position: relative;
-  min-height: 320px;
-}
-
-.chart-lines {
-  position: absolute;
-  inset: 0 0 26px 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-}
-
-.chart-lines span {
-  border-top: 1px dashed rgba(255, 255, 255, 0.1);
-}
-
-.chart-bars {
-  position: absolute;
-  inset: 0 0 0 0;
-  display: grid;
-  align-items: end;
-  gap: 10px;
-  padding: 6px 0 0;
-}
-
-.chart-bar-group {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: end;
-  align-items: center;
-  gap: 10px;
-  height: 100%;
-}
-
-.chart-bar {
-  width: 100%;
-  max-width: 26px;
-  border-radius: 999px 999px 10px 10px;
-  background: rgba(90, 102, 255, 0.82);
-  box-shadow: 0 10px 24px rgba(7, 12, 24, 0.2);
-}
-
-.chart-label {
-  font-size: 11px;
-  color: var(--color-text-muted);
-  white-space: nowrap;
-}
-
-.chart-empty {
-  display: grid;
-  place-items: center;
-  min-height: 220px;
-  color: var(--color-text-muted);
-}
-
-.table-wrap {
-  margin-top: 18px;
-  overflow-x: auto;
-}
-
-.data-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.data-table th,
-.data-table td {
-  padding: 12px 10px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  text-align: left;
-  font-size: 13px;
-}
-
-.data-table th {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--color-text-muted);
-}
-
-.empty-row {
-  text-align: center !important;
-  color: var(--color-text-muted);
-  padding: 24px !important;
-}
-
-.mono {
-  font-family: 'SF Mono', 'Fira Code', monospace;
-}
-
-@media (max-width: 1080px) {
-  .usage-page {
-    padding: 16px;
-  }
-
-  .summary-grid,
-  .filters-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .filter-actions {
-    justify-content: flex-start;
-  }
-}
-
-@media (max-width: 820px) {
-  .page-hero,
-  .section-heading,
-  .chart-shell {
-    grid-template-columns: minmax(0, 1fr);
-    display: grid;
-  }
-
-  .page-hero {
-    padding: 22px;
-  }
-
-  .summary-grid,
-  .filters-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .section-metric {
-    text-align: left;
-    min-width: 0;
-  }
-
-  .chart-shell {
-    gap: 10px;
-  }
-
-  .chart-axis {
-    flex-direction: row;
-    padding: 0;
-  }
-
-  .chart-grid {
-    min-height: 260px;
-  }
-}
-</style>
