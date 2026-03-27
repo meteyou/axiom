@@ -1,1 +1,5 @@
 export { createApp } from './app.js'
+export type { AppOptions } from './app.js'
+export { ensureAdminUser, validateCredentials, generateAccessToken, generateRefreshToken, verifyToken, jwtMiddleware } from './auth.js'
+export type { JwtPayload, AuthenticatedRequest } from './auth.js'
+export { setupWebSocketChat } from './ws-chat.js'

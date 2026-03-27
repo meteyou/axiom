@@ -1,8 +1,18 @@
 import express from 'express'
+import type { Database } from '@openagent/core'
+import type { AgentCore } from '@openagent/core'
+import { createAuthRouter } from './routes/auth.js'
+import { createChatRouter } from './routes/chat.js'
+import { ensureAdminUser } from './auth.js'
 
 const startTime = Date.now()
 
-export function createApp(): express.Express {
+export interface AppOptions {
+  db: Database
+  agentCore?: AgentCore | null
+}
+
+export function createApp(options?: AppOptions): express.Express {
   const app = express()
 
   app.use(express.json())
@@ -18,6 +28,13 @@ export function createApp(): express.Express {
       timestamp: new Date().toISOString(),
     })
   })
+
+  // Mount auth and chat routes when database is available
+  if (options?.db) {
+    ensureAdminUser(options.db)
+    app.use('/api/auth', createAuthRouter(options.db))
+    app.use('/api/chat', createChatRouter(options.db))
+  }
 
   return app
 }
