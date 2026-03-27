@@ -9,6 +9,7 @@ import type { Database } from './database.js'
 import { logTokenUsage, logToolCall } from './token-logger.js'
 import { estimateCost } from './provider-config.js'
 import { assembleSystemPrompt, ensureMemoryStructure } from './memory.js'
+import { loadConfig, ensureConfigTemplates } from './config.js'
 import { createMemoryTools } from './memory-tools.js'
 import { SessionManager } from './session-manager.js'
 import type { SessionInfo } from './session-manager.js'
@@ -185,10 +186,21 @@ export class AgentCore {
     // Ensure memory structure exists
     ensureMemoryStructure(options.memoryDir)
 
+    // Load language setting from config
+    let language: string | undefined
+    try {
+      ensureConfigTemplates()
+      const settings = loadConfig<{ language?: string }>('settings.json')
+      language = settings.language
+    } catch {
+      // Config not available yet, use default
+    }
+
     // Build system prompt from memory
     const systemPrompt = options.systemPrompt ?? assembleSystemPrompt({
       memoryDir: options.memoryDir,
       baseInstructions: options.baseInstructions,
+      language,
     })
 
     const tools: AgentTool[] = [
@@ -217,11 +229,7 @@ export class AgentCore {
         this.agent.clearMessages()
 
         // Rebuild system prompt with fresh memory context
-        const freshPrompt = assembleSystemPrompt({
-          memoryDir: this.memoryDir,
-          baseInstructions: this.baseInstructions,
-        })
-        this.agent.setSystemPrompt(freshPrompt)
+        this.refreshSystemPrompt()
       },
     })
   }
@@ -419,9 +427,19 @@ export class AgentCore {
    * Refresh the system prompt from current memory state
    */
   refreshSystemPrompt(): void {
+    let language: string | undefined
+    try {
+      ensureConfigTemplates()
+      const settings = loadConfig<{ language?: string }>('settings.json')
+      language = settings.language
+    } catch {
+      // Config not available
+    }
+
     const prompt = assembleSystemPrompt({
       memoryDir: this.memoryDir,
       baseInstructions: this.baseInstructions,
+      language,
     })
     this.agent.setSystemPrompt(prompt)
   }

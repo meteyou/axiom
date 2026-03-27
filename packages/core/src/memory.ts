@@ -175,6 +175,7 @@ export function assembleSystemPrompt(options?: {
   memoryDir?: string
   baseInstructions?: string
   recentDays?: number
+  language?: string
 }): string {
   const memoryDir = options?.memoryDir
   const recentDays = options?.recentDays ?? 3
@@ -201,6 +202,16 @@ export function assembleSystemPrompt(options?: {
   const dailyContext = readRecentDailyFiles(recentDays, memoryDir)
   if (dailyContext) {
     sections.push(`<recent_memory>\n${dailyContext}\n</recent_memory>`)
+  }
+
+  // 5. Language setting
+  if (options?.language) {
+    const lang = options.language.trim()
+    if (lang.toLowerCase() === 'match' || lang.toLowerCase() === "match user's language") {
+      sections.push(`<language>\nRespond in the same language that the user writes in. Match the user's language automatically.\n</language>`)
+    } else {
+      sections.push(`<language>\nAlways respond in ${lang}.\n</language>`)
+    }
   }
 
   return sections.join('\n\n')
