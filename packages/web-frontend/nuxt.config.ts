@@ -40,6 +40,9 @@ export default defineNuxtConfig({
         allow: ['../..'],
       },
     },
+    optimizeDeps: {
+      exclude: ['nuxt/dist/app/composables/manifest'],
+    },
   },
 
   runtimeConfig: {
