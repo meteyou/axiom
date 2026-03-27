@@ -43,6 +43,28 @@ export interface AgentCoreOptions {
 }
 
 /**
+ * Get the workspace directory for agent file operations.
+ * Falls back to DATA_DIR/workspace, then /workspace (Docker default).
+ */
+function getWorkspaceDir(): string {
+  if (process.env.WORKSPACE_DIR) return process.env.WORKSPACE_DIR
+  if (process.env.DATA_DIR) {
+    const wsDir = nodePath.join(process.env.DATA_DIR, 'workspace')
+    if (!fs.existsSync(wsDir)) fs.mkdirSync(wsDir, { recursive: true })
+    return wsDir
+  }
+  return '/workspace'
+}
+
+/**
+ * Resolve a path relative to WORKSPACE_DIR (consistent across all tools)
+ */
+function resolveWorkspacePath(filePath: string): string {
+  if (nodePath.isAbsolute(filePath)) return filePath
+  return nodePath.resolve(getWorkspaceDir(), filePath)
+}
+
+/**
  * Build YOLO-mode tools that give the agent unrestricted access
  */
 function createYoloTools(): AgentTool[] {
@@ -61,7 +83,7 @@ function createYoloTools(): AgentTool[] {
           timeout,
           encoding: 'utf-8',
           maxBuffer: 10 * 1024 * 1024,
-          cwd: process.env.WORKSPACE_DIR ?? '/workspace',
+          cwd: getWorkspaceDir(),
         })
         return {
           content: [{ type: 'text' as const, text: result || '(no output)' }],
@@ -88,7 +110,7 @@ function createYoloTools(): AgentTool[] {
     execute: async (_toolCallId, params) => {
       const { path: filePath } = params as { path: string }
       try {
-        const resolved = nodePath.resolve(filePath)
+        const resolved = resolveWorkspacePath(filePath)
         const content = fs.readFileSync(resolved, 'utf-8')
         return {
           content: [{ type: 'text' as const, text: content }],
@@ -114,7 +136,7 @@ function createYoloTools(): AgentTool[] {
     execute: async (_toolCallId, params) => {
       const { path: filePath, content } = params as { path: string; content: string }
       try {
-        const resolved = nodePath.resolve(filePath)
+        const resolved = resolveWorkspacePath(filePath)
         const dir = nodePath.dirname(resolved)
         if (!fs.existsSync(dir)) {
           fs.mkdirSync(dir, { recursive: true })
@@ -143,7 +165,7 @@ function createYoloTools(): AgentTool[] {
     execute: async (_toolCallId, params) => {
       const { path: dirPath } = params as { path: string }
       try {
-        const resolved = nodePath.resolve(dirPath)
+        const resolved = resolveWorkspacePath(dirPath)
         const entries = fs.readdirSync(resolved, { withFileTypes: true })
         const listing = entries.map(e =>
           `${e.isDirectory() ? '[dir]' : '[file]'} ${e.name}`
