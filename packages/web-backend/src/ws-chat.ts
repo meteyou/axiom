@@ -139,18 +139,21 @@ export function setupWebSocketChat(
           return
         }
 
-        if (command === 'stop') {
+        if (command === 'stop' || command === 'kill') {
           const controller = activeStreams.get(ws)
-          if (controller) {
-            controller.abort()
-            activeStreams.delete(ws)
+          if (!controller) {
+            sendMessage(ws, { type: 'system', text: 'Nothing to stop.' })
+            return
           }
+
+          controller.abort()
+          activeStreams.delete(ws)
 
           if (agentCore) {
             agentCore.abort()
           }
 
-          sendMessage(ws, { type: 'system', text: 'Task aborted.' })
+          sendMessage(ws, { type: 'system', text: 'Task aborted. No queued messages.' })
           return
         }
       }

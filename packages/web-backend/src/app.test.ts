@@ -381,7 +381,7 @@ describe('WebSocket chat', () => {
     ws.close()
   })
 
-  it('/stop command sends abort confirmation', async () => {
+  it('/stop command reports when there is nothing to abort', async () => {
     const token = generateAccessToken({ userId: 1, username: 'admin', role: 'admin' })
     const { ws, waitForMessage } = await connectWs(token)
     await waitForMessage() // auth
@@ -389,7 +389,7 @@ describe('WebSocket chat', () => {
     ws.send(JSON.stringify({ type: 'command', content: '/stop' }))
     const msg = await waitForMessage()
     expect(msg.type).toBe('system')
-    expect(msg.text).toContain('aborted')
+    expect(msg.text).toBe('Nothing to stop.')
     ws.close()
   })
 })
