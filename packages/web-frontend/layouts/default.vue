@@ -1,94 +1,214 @@
 <template>
-  <div class="app-shell">
+  <!-- Mobile sidebar overlay -->
+  <Transition
+    enter-active-class="transition-opacity duration-200 ease-out"
+    enter-from-class="opacity-0"
+    enter-to-class="opacity-100"
+    leave-active-class="transition-opacity duration-150 ease-in"
+    leave-from-class="opacity-100"
+    leave-to-class="opacity-0"
+  >
     <div
       v-if="sidebarOpen"
-      class="sidebar-overlay"
+      class="fixed inset-0 z-40 bg-black/55 md:hidden"
+      aria-hidden="true"
       @click="sidebarOpen = false"
     />
+  </Transition>
 
-    <aside class="sidebar" :class="{ open: sidebarOpen }">
-      <div class="sidebar-header">
-        <AppLogo />
-        <div>
-          <span class="sidebar-title">{{ $t('app.title') }}</span>
-          <p class="sidebar-subtitle">{{ isAdmin ? $t('app.adminConsole') : $t('app.workspace') }}</p>
+  <div class="flex h-full overflow-hidden">
+    <!-- Sidebar -->
+    <Transition
+      enter-active-class="transition-transform duration-250 ease-out"
+      enter-from-class="-translate-x-full"
+      enter-to-class="translate-x-0"
+      leave-active-class="transition-transform duration-200 ease-in"
+      leave-from-class="translate-x-0"
+      leave-to-class="-translate-x-full"
+    >
+      <aside
+        v-show="sidebarOpen || !isMobile"
+        class="fixed inset-y-0 left-0 z-50 flex w-[260px] flex-col border-r border-sidebar-border bg-sidebar md:static md:z-auto"
+      >
+        <!-- Sidebar header -->
+        <div class="flex items-center gap-3 border-b border-sidebar-border/60 px-5 py-[18px]">
+          <AppLogo />
+          <div class="min-w-0">
+            <span class="block truncate text-[18px] font-bold text-sidebar-foreground">
+              {{ $t('app.title') }}
+            </span>
+            <p class="mt-0.5 text-xs text-muted-foreground">
+              {{ isAdmin ? $t('app.adminConsole') : $t('app.workspace') }}
+            </p>
+          </div>
         </div>
-      </div>
 
-      <nav class="sidebar-nav">
-        <NuxtLink to="/" class="nav-item" :class="navClass('/')" @click="sidebarOpen = false">
-          <AppIcon name="chat" class="nav-icon" />
-          <span>{{ $t('nav.chat') }}</span>
-        </NuxtLink>
+        <!-- Navigation -->
+        <nav class="flex flex-1 flex-col gap-1 overflow-y-auto p-2.5 py-3.5">
+          <NuxtLink
+            to="/"
+            :class="navItemClass('/')"
+            @click="closeSidebarOnMobile"
+          >
+            <AppIcon name="chat" class="shrink-0" />
+            <span>{{ $t('nav.chat') }}</span>
+          </NuxtLink>
 
-        <template v-if="isAdmin">
-          <NuxtLink to="/dashboard" class="nav-item" :class="navClass('/dashboard')" @click="sidebarOpen = false">
-            <AppIcon name="dashboard" class="nav-icon" />
-            <span>{{ $t('nav.dashboard') }}</span>
-          </NuxtLink>
-          <NuxtLink to="/memory" class="nav-item" :class="navClass('/memory')" @click="sidebarOpen = false">
-            <AppIcon name="brain" class="nav-icon" />
-            <span>{{ $t('nav.memory') }}</span>
-          </NuxtLink>
-          <NuxtLink to="/providers" class="nav-item" :class="navClass('/providers')" @click="sidebarOpen = false">
-            <AppIcon name="plug" class="nav-icon" />
-            <span>{{ $t('nav.providers') }}</span>
-          </NuxtLink>
-          <NuxtLink to="/usage" class="nav-item" :class="navClass('/usage')" @click="sidebarOpen = false">
-            <AppIcon name="trendDown" class="nav-icon" />
-            <span>{{ $t('nav.usage') }}</span>
-          </NuxtLink>
-          <NuxtLink to="/logs" class="nav-item" :class="navClass('/logs')" @click="sidebarOpen = false">
-            <AppIcon name="logs" class="nav-icon" />
-            <span>{{ $t('nav.logs') }}</span>
-          </NuxtLink>
-          <NuxtLink to="/settings" class="nav-item" :class="navClass('/settings')" @click="sidebarOpen = false">
-            <AppIcon name="settings" class="nav-icon" />
-            <span>{{ $t('nav.settings') }}</span>
-          </NuxtLink>
-          <NuxtLink to="/users" class="nav-item" :class="navClass('/users')" @click="sidebarOpen = false">
-            <AppIcon name="users" class="nav-icon" />
-            <span>{{ $t('nav.users') }}</span>
-          </NuxtLink>
-        </template>
-      </nav>
+          <template v-if="isAdmin">
+            <NuxtLink
+              to="/dashboard"
+              :class="navItemClass('/dashboard')"
+              @click="closeSidebarOnMobile"
+            >
+              <AppIcon name="dashboard" class="shrink-0" />
+              <span>{{ $t('nav.dashboard') }}</span>
+            </NuxtLink>
 
-      <div class="sidebar-footer">
-        <span class="role-badge" :class="isAdmin ? 'admin' : 'user'">
-          {{ isAdmin ? $t('roles.admin') : $t('roles.user') }}
-        </span>
-      </div>
-    </aside>
+            <NuxtLink
+              to="/memory"
+              :class="navItemClass('/memory')"
+              @click="closeSidebarOnMobile"
+            >
+              <AppIcon name="brain" class="shrink-0" />
+              <span>{{ $t('nav.memory') }}</span>
+            </NuxtLink>
 
-    <div class="main-area">
-      <header class="app-header">
-        <button class="menu-toggle" @click="sidebarOpen = !sidebarOpen" :aria-label="$t('app.toggleMenu')">
+            <NuxtLink
+              to="/providers"
+              :class="navItemClass('/providers')"
+              @click="closeSidebarOnMobile"
+            >
+              <AppIcon name="plug" class="shrink-0" />
+              <span>{{ $t('nav.providers') }}</span>
+            </NuxtLink>
+
+            <NuxtLink
+              to="/usage"
+              :class="navItemClass('/usage')"
+              @click="closeSidebarOnMobile"
+            >
+              <AppIcon name="trendDown" class="shrink-0" />
+              <span>{{ $t('nav.usage') }}</span>
+            </NuxtLink>
+
+            <NuxtLink
+              to="/logs"
+              :class="navItemClass('/logs')"
+              @click="closeSidebarOnMobile"
+            >
+              <AppIcon name="logs" class="shrink-0" />
+              <span>{{ $t('nav.logs') }}</span>
+            </NuxtLink>
+
+            <NuxtLink
+              to="/settings"
+              :class="navItemClass('/settings')"
+              @click="closeSidebarOnMobile"
+            >
+              <AppIcon name="settings" class="shrink-0" />
+              <span>{{ $t('nav.settings') }}</span>
+            </NuxtLink>
+
+            <NuxtLink
+              to="/users"
+              :class="navItemClass('/users')"
+              @click="closeSidebarOnMobile"
+            >
+              <AppIcon name="users" class="shrink-0" />
+              <span>{{ $t('nav.users') }}</span>
+            </NuxtLink>
+          </template>
+        </nav>
+
+        <!-- Sidebar footer — role badge -->
+        <div class="border-t border-sidebar-border/60 px-5 py-4">
+          <Badge :variant="isAdmin ? 'warning' : 'success'" class="text-xs font-bold uppercase tracking-wider">
+            {{ isAdmin ? $t('roles.admin') : $t('roles.user') }}
+          </Badge>
+        </div>
+      </aside>
+    </Transition>
+
+    <!-- Main area -->
+    <div class="flex min-w-0 flex-1 flex-col overflow-hidden">
+      <!-- Header -->
+      <header class="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background/90 px-4 backdrop-blur-md">
+        <!-- Mobile hamburger -->
+        <button
+          type="button"
+          class="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden"
+          :aria-label="$t('aria.toggleSidebar')"
+          @click="sidebarOpen = !sidebarOpen"
+        >
           <AppIcon name="menu" size="xl" />
         </button>
 
-        <div class="header-status">
-          <span class="status-dot" :class="statusClass" />
-          <span class="status-text">{{ statusText }}</span>
+        <!-- Connection status -->
+        <div class="flex items-center gap-2">
+          <span
+            class="h-2 w-2 shrink-0 rounded-full"
+            :class="statusDotClass"
+            :aria-label="statusText"
+          />
+          <span class="hidden text-sm text-muted-foreground sm:block">{{ statusText }}</span>
         </div>
 
-        <div class="header-actions">
-          <div class="user-menu" @click="userMenuOpen = !userMenuOpen">
-            <span class="user-avatar">{{ userInitial }}</span>
-            <div class="user-meta">
-              <span class="user-name">{{ user?.username }}</span>
-              <span class="user-role">{{ isAdmin ? $t('roles.admin') : $t('roles.user') }}</span>
-            </div>
+        <!-- Spacer -->
+        <div class="flex-1" />
 
-            <div v-if="userMenuOpen" class="user-dropdown">
-              <button class="dropdown-item" @click="handleLogout">
-                {{ $t('auth.logout') }}
-              </button>
+        <!-- Theme toggle -->
+        <Tooltip>
+          <TooltipTrigger>
+            <button
+              type="button"
+              class="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors"
+              :aria-label="$t('aria.themeToggle')"
+              @click="toggleTheme"
+            >
+              <AppIcon :name="isDark ? 'sun' : 'moon'" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>
+            {{ isDark ? $t('theme.switchToLight') : $t('theme.switchToDark') }}
+          </TooltipContent>
+        </Tooltip>
+
+        <!-- User dropdown -->
+        <DropdownMenu>
+          <DropdownMenuTrigger>
+            <div
+              class="flex cursor-pointer items-center gap-2.5 rounded-xl px-2.5 py-1.5 hover:bg-accent transition-colors"
+              :aria-label="$t('aria.userMenu')"
+            >
+              <!-- Avatar -->
+              <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-semibold text-primary ring-1 ring-primary/25">
+                {{ userInitial }}
+              </span>
+              <!-- Name + role (hidden on very small screens) -->
+              <div class="hidden flex-col sm:flex">
+                <span class="text-sm font-medium text-foreground leading-none">{{ user?.username }}</span>
+                <span class="mt-0.5 text-[11px] uppercase tracking-wide text-muted-foreground">
+                  {{ isAdmin ? $t('roles.admin') : $t('roles.user') }}
+                </span>
+              </div>
+              <AppIcon name="chevronDown" size="sm" class="text-muted-foreground" />
             </div>
-          </div>
-        </div>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuLabel>
+              {{ user?.username }}
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem destructive @click="handleLogout">
+              <AppIcon name="close" size="sm" />
+              {{ $t('auth.logout') }}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </header>
 
-      <main class="page-content">
+      <!-- Page content -->
+      <main class="flex flex-1 flex-col overflow-hidden">
         <slot />
       </main>
     </div>
@@ -96,25 +216,28 @@
 </template>
 
 <script setup lang="ts">
+import { useMediaQuery } from '@vueuse/core'
+
 const route = useRoute()
-const { t } = useI18n()
 const { user, logout } = useAuth()
 const { connectionStatus } = useChat()
+const { isDark, toggle: toggleTheme } = useTheme()
 
 const sidebarOpen = ref(false)
-const userMenuOpen = ref(false)
+const isMobile = useMediaQuery('(max-width: 767px)')
+
 const isAdmin = computed(() => user.value?.role === 'admin')
+const userInitial = computed(() => user.value?.username?.charAt(0).toUpperCase() ?? '?')
 
-const userInitial = computed(() => user.value?.username?.charAt(0).toUpperCase() || '?')
-
-const statusClass = computed(() => {
+const statusDotClass = computed(() => {
   switch (connectionStatus.value) {
-    case 'connected': return 'online'
-    case 'connecting': return 'connecting'
-    default: return 'offline'
+    case 'connected': return 'bg-success shadow-[0_0_6px_hsl(var(--success))]'
+    case 'connecting': return 'bg-warning animate-pulse'
+    default: return 'bg-muted-foreground'
   }
 })
 
+const { t } = useI18n()
 const statusText = computed(() => {
   switch (connectionStatus.value) {
     case 'connected': return t('status.online')
@@ -123,318 +246,30 @@ const statusText = computed(() => {
   }
 })
 
-function navClass(path: string) {
-  return {
-    active: route.path === path,
+function navItemClass(path: string) {
+  const isActive = route.path === path
+  return [
+    'flex items-center gap-3 rounded-lg px-3 py-[11px] text-sm font-medium transition-all duration-150 no-underline',
+    isActive
+      ? 'bg-primary/10 text-primary ring-1 ring-primary/20'
+      : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+  ]
+}
+
+function closeSidebarOnMobile() {
+  if (isMobile.value) {
+    sidebarOpen.value = false
   }
 }
 
 function handleLogout() {
-  userMenuOpen.value = false
   logout()
 }
 
-if (import.meta.client) {
-  document.addEventListener('click', (e) => {
-    const target = e.target as HTMLElement
-    if (!target.closest('.user-menu')) {
-      userMenuOpen.value = false
-    }
-  })
-}
+// Close sidebar when route changes on mobile
+watch(route, () => {
+  if (isMobile.value) {
+    sidebarOpen.value = false
+  }
+})
 </script>
-
-<style scoped>
-.app-shell {
-  display: flex;
-  height: 100%;
-  overflow: hidden;
-}
-
-.sidebar-overlay {
-  display: none;
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.55);
-  z-index: 90;
-}
-
-.sidebar {
-  width: var(--sidebar-width);
-  background: var(--color-bg-secondary);
-  border-right: 1px solid var(--color-border);
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-  z-index: 100;
-}
-
-.sidebar-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 18px 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.sidebar-title {
-  display: block;
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--color-text);
-}
-
-.sidebar-subtitle {
-  margin-top: 2px;
-  font-size: 12px;
-  color: var(--color-text-muted);
-}
-
-.sidebar-nav {
-  flex: 1;
-  padding: 14px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 11px 12px;
-  border-radius: 10px;
-  color: var(--color-text-secondary);
-  font-size: 14px;
-  font-weight: 500;
-  transition: all 0.15s ease;
-  text-decoration: none;
-}
-
-.nav-item:hover {
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--color-text);
-  transform: translateX(2px);
-}
-
-.nav-item.active,
-.nav-item.router-link-exact-active {
-  background: rgba(90, 102, 255, 0.12);
-  color: #d5ddff;
-  box-shadow: inset 0 0 0 1px rgba(90, 102, 255, 0.22);
-}
-
-.nav-icon {
-  width: 18px;
-  height: 18px;
-  color: currentColor;
-}
-
-.sidebar-footer {
-  padding: 16px 20px 20px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.role-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.role-badge.admin {
-  background: rgba(245, 158, 11, 0.14);
-  color: #fbbf24;
-}
-
-.role-badge.user {
-  background: rgba(34, 197, 94, 0.14);
-  color: #4ade80;
-}
-
-.main-area {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.app-header {
-  height: var(--header-height);
-  display: flex;
-  align-items: center;
-  padding: 0 16px;
-  border-bottom: 1px solid var(--color-border);
-  background: rgba(15, 17, 23, 0.88);
-  backdrop-filter: blur(12px);
-  flex-shrink: 0;
-  gap: 12px;
-}
-
-.menu-toggle {
-  display: none;
-  background: none;
-  border: none;
-  color: var(--color-text);
-  font-size: 24px;
-  padding: 4px;
-}
-
-.header-status {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.status-dot.online {
-  background: var(--color-success);
-  box-shadow: 0 0 6px var(--color-success);
-}
-
-.status-dot.connecting {
-  background: var(--color-warning);
-  animation: pulse 1.5s ease-in-out infinite;
-}
-
-.status-dot.offline {
-  background: var(--color-text-muted);
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
-}
-
-.status-text {
-  font-size: 13px;
-  color: var(--color-text-secondary);
-}
-
-.header-actions {
-  margin-left: auto;
-}
-
-.user-menu {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  cursor: pointer;
-  padding: 6px 10px;
-  border-radius: 12px;
-  transition: background 0.15s ease;
-}
-
-.user-menu:hover {
-  background: var(--color-bg-tertiary);
-}
-
-.user-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: rgba(90, 102, 255, 0.16);
-  border: 1px solid rgba(90, 102, 255, 0.24);
-  color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.user-meta {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.user-name {
-  font-size: 14px;
-  color: var(--color-text);
-}
-
-.user-role {
-  font-size: 11px;
-  color: var(--color-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.user-dropdown {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  min-width: 160px;
-  background: var(--color-bg-secondary);
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  padding: 6px;
-  z-index: 200;
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
-}
-
-.dropdown-item {
-  display: block;
-  width: 100%;
-  padding: 10px 12px;
-  background: none;
-  border: none;
-  color: var(--color-text);
-  font-size: 14px;
-  text-align: left;
-  border-radius: 8px;
-  transition: background 0.15s ease;
-}
-
-.dropdown-item:hover {
-  background: var(--color-bg-tertiary);
-}
-
-.page-content {
-  flex: 1;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-@media (max-width: 768px) {
-  .sidebar {
-    position: fixed;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    transform: translateX(-100%);
-    transition: transform 0.25s ease;
-  }
-
-  .sidebar.open {
-    transform: translateX(0);
-  }
-
-  .sidebar-overlay {
-    display: block;
-  }
-
-  .menu-toggle {
-    display: block;
-  }
-
-  .user-meta {
-    display: none;
-  }
-}
-</style>

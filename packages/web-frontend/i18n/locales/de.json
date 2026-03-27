@@ -60,6 +60,21 @@
     "menu": "Benutzermenü",
     "profile": "Profil"
   },
+  "theme": {
+    "toggle": "Design umschalten",
+    "dark": "Dunkelmodus",
+    "light": "Hellmodus",
+    "system": "System",
+    "switchToDark": "Zu Dunkelmodus wechseln",
+    "switchToLight": "Zu Hellmodus wechseln"
+  },
+  "aria": {
+    "openMenu": "Menü öffnen",
+    "closeMenu": "Menü schließen",
+    "toggleSidebar": "Seitenleiste umschalten",
+    "userMenu": "Benutzermenü",
+    "themeToggle": "Farbdesign umschalten"
+  },
   "providers": {
     "title": "Anbieter",
     "addProvider": "Anbieter hinzufügen",

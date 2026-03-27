@@ -60,6 +60,21 @@
     "menu": "User menu",
     "profile": "Profile"
   },
+  "theme": {
+    "toggle": "Toggle theme",
+    "dark": "Dark mode",
+    "light": "Light mode",
+    "system": "System",
+    "switchToDark": "Switch to dark mode",
+    "switchToLight": "Switch to light mode"
+  },
+  "aria": {
+    "openMenu": "Open menu",
+    "closeMenu": "Close menu",
+    "toggleSidebar": "Toggle sidebar",
+    "userMenu": "User menu",
+    "themeToggle": "Toggle color theme"
+  },
   "providers": {
     "title": "Providers",
     "addProvider": "Add Provider",

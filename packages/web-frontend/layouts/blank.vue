@@ -1,14 +1,5 @@
 <template>
-  <div class="blank-layout">
+  <div class="flex h-full items-center justify-center">
     <slot />
   </div>
 </template>
-
-<style scoped>
-.blank-layout {
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-</style>
