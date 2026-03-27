@@ -22,8 +22,14 @@ export interface TelegramData {
   batchingDelayMs: number
 }
 
-export function createSettingsRouter(agentCore?: AgentCore | null): Router {
+export interface SettingsRouterOptions {
+  agentCore?: AgentCore | null
+  onHeartbeatSettingsChanged?: () => void
+}
+
+export function createSettingsRouter(options: SettingsRouterOptions = {}): Router {
   const router = Router()
+  const agentCore = options.agentCore ?? null
 
   router.use(jwtMiddleware)
   router.use((req: AuthenticatedRequest, res, next) => {
@@ -71,6 +77,7 @@ export function createSettingsRouter(agentCore?: AgentCore | null): Router {
 
       const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as SettingsData
       const telegram = JSON.parse(fs.readFileSync(telegramPath, 'utf-8')) as TelegramData
+      const previousHeartbeatInterval = settings.heartbeatIntervalMinutes ?? 5
 
       if (body.sessionTimeoutMinutes !== undefined) {
         if (typeof body.sessionTimeoutMinutes !== 'number' || !Number.isFinite(body.sessionTimeoutMinutes) || body.sessionTimeoutMinutes < 1) {
@@ -130,6 +137,10 @@ export function createSettingsRouter(agentCore?: AgentCore | null): Router {
         } catch (err) {
           console.error('[openagent] Failed to apply live settings update:', err)
         }
+      }
+
+      if ((settings.heartbeatIntervalMinutes ?? 5) !== previousHeartbeatInterval) {
+        options.onHeartbeatSettingsChanged?.()
       }
 
       res.json({

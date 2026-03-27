@@ -5,6 +5,8 @@ import { ensureConfigTemplates } from '@openagent/core'
 import { ensureMemoryStructure } from '@openagent/core'
 import { setupWebSocketChat } from './ws-chat.js'
 import { setupWebSocketLogs } from './ws-logs.js'
+import { HeartbeatService } from './heartbeat.js'
+import { RuntimeMetrics } from './runtime-metrics.js'
 
 const PORT = parseInt(process.env.PORT ?? '3000', 10)
 const HOST = process.env.HOST ?? '0.0.0.0'
@@ -19,12 +21,16 @@ ensureConfigTemplates()
 console.log('[openagent] Ensuring memory structure...')
 ensureMemoryStructure()
 
+const runtimeMetrics = new RuntimeMetrics()
+const heartbeatService = new HeartbeatService({ db })
+heartbeatService.start()
+
 // Start server
-const app = createApp({ db })
+const app = createApp({ db, heartbeatService, runtimeMetrics })
 const server = http.createServer(app)
 
 // Set up WebSocket chat (no agent core connected yet — will be wired in future tasks)
-setupWebSocketChat(server, db, null)
+setupWebSocketChat(server, db, null, runtimeMetrics)
 
 // Set up WebSocket logs for real-time streaming
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -38,3 +44,9 @@ server.listen(PORT, HOST, () => {
   console.log(`[openagent] WebSocket chat: ws://${HOST}:${PORT}/ws/chat`)
   console.log(`[openagent] WebSocket logs: ws://${HOST}:${PORT}/ws/logs`)
 })
+
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.on(signal, () => {
+    heartbeatService.stop()
+  })
+}

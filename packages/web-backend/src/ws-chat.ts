@@ -6,6 +6,7 @@ import { verifyToken } from './auth.js'
 import type { JwtPayload } from './auth.js'
 import { URL } from 'node:url'
 import crypto from 'node:crypto'
+import type { RuntimeMetrics } from './runtime-metrics.js'
 
 interface ChatMessage {
   type: 'message' | 'command'
@@ -42,7 +43,8 @@ function saveChatMessage(
 export function setupWebSocketChat(
   server: Server,
   db: Database,
-  agentCore: AgentCore | null
+  agentCore: AgentCore | null,
+  runtimeMetrics?: RuntimeMetrics,
 ): WebSocketServer {
   const wss = new WebSocketServer({ noServer: true })
 
@@ -163,6 +165,7 @@ export function setupWebSocketChat(
 
       const abortController = new AbortController()
       activeStreams.set(ws, abortController)
+      runtimeMetrics?.startRequest()
 
       let fullResponse = ''
 
@@ -187,6 +190,7 @@ export function setupWebSocketChat(
         }
       } finally {
         activeStreams.delete(ws)
+        runtimeMetrics?.endRequest()
       }
     })
 
