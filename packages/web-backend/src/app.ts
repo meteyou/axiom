@@ -1,3 +1,6 @@
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import fs from 'node:fs'
 import express from 'express'
 import type { Database } from '@openagent/core'
 import type { AgentCore } from '@openagent/core'
@@ -27,6 +30,22 @@ export function createApp(options?: AppOptions): express.Express {
   const app = express()
 
   app.use(express.json())
+
+  // CORS: allow frontend dev server (different port) to access API
+  app.use((_req, res, next) => {
+    const origin = _req.headers.origin
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin)
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS')
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+      res.setHeader('Access-Control-Allow-Credentials', 'true')
+    }
+    if (_req.method === 'OPTIONS') {
+      res.status(204).end()
+      return
+    }
+    next()
+  })
 
   app.get('/health', (_req, res) => {
     const uptimeMs = Date.now() - startTime
@@ -67,6 +86,36 @@ export function createApp(options?: AppOptions): express.Express {
         runtimeMetrics: options.runtimeMetrics,
       }))
     }
+  }
+
+  // Serve frontend static files (SPA)
+  const __dirname = path.dirname(fileURLToPath(import.meta.url))
+  // Resolve frontend dir: works from both src/ (dev) and dist/ (production)
+  const candidatePaths = [
+    process.env.FRONTEND_DIR,
+    path.resolve(__dirname, '../../web-frontend/.output/public'),
+    path.resolve(__dirname, '../../../web-frontend/.output/public'),
+  ].filter(Boolean) as string[]
+  const frontendDir = candidatePaths.find(p => fs.existsSync(path.join(p, 'index.html'))) || candidatePaths[0]
+
+  if (fs.existsSync(frontendDir)) {
+    console.log(`[openagent] Serving frontend from ${frontendDir}`)
+    app.use(express.static(frontendDir))
+
+    // SPA fallback: serve index.html for all non-API/non-WS routes
+    app.get('{*path}', (req, res, next) => {
+      // Skip API and WebSocket paths — let them 404 naturally with JSON
+      if (req.path.startsWith('/api/') || req.path.startsWith('/ws/') || req.path === '/health') {
+        next()
+        return
+      }
+      const indexPath = path.join(frontendDir, 'index.html')
+      if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath)
+      } else {
+        res.status(404).send('Frontend not found')
+      }
+    })
   }
 
   return app
