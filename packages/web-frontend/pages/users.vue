@@ -1,146 +1,215 @@
 <template>
-  <div v-if="!isAdmin" class="admin-gate">
-    <AppIcon name="lock" class="gate-icon" size="xl" />
-    <h1>{{ $t('admin.title') }}</h1>
-    <p>{{ $t('admin.description') }}</p>
+  <!-- Admin gate -->
+  <div v-if="!isAdmin" class="flex h-full flex-col items-center justify-center gap-3 p-10 text-center text-muted-foreground">
+    <AppIcon name="lock" size="xl" class="h-10 w-10" />
+    <h1 class="text-xl font-semibold text-foreground">{{ $t('admin.title') }}</h1>
+    <p class="text-sm">{{ $t('admin.description') }}</p>
   </div>
 
-  <div v-else class="users-page">
-    <div class="users-header">
+  <!-- Page body -->
+  <div v-else class="mx-auto flex h-full max-w-5xl flex-col overflow-y-auto p-6">
+    <!-- Page header -->
+    <div class="mb-6 flex items-end justify-between gap-4">
       <div>
-        <p class="eyebrow">{{ $t('users.kicker') }}</p>
-        <h1>{{ $t('users.title') }}</h1>
-        <p class="users-subtitle">{{ $t('users.subtitle') }}</p>
+        <p class="mb-1.5 text-xs font-semibold uppercase tracking-widest text-primary">{{ $t('users.kicker') }}</p>
+        <h1 class="text-2xl font-bold text-foreground">{{ $t('users.title') }}</h1>
+        <p class="mt-1.5 text-sm text-muted-foreground">{{ $t('users.subtitle') }}</p>
       </div>
-      <button class="btn btn-primary" @click="openCreateModal">
-        <AppIcon name="add" class="btn-icon" />
+      <Button @click="openCreateModal">
+        <AppIcon name="add" class="mr-1 h-4 w-4" />
         {{ $t('users.addUser') }}
-      </button>
+      </Button>
     </div>
 
-    <div v-if="errorMessage" class="error-banner">
-      {{ errorMessage }}
-      <button class="error-dismiss" @click="clearMessages">
-        <AppIcon name="close" />
-      </button>
-    </div>
-    <div v-if="successMessage" class="success-banner">
-      {{ successMessage }}
-      <button class="success-dismiss" @click="clearMessages">
-        <AppIcon name="close" />
-      </button>
+    <!-- Error / success banners -->
+    <Alert v-if="errorMessage" variant="destructive" class="mb-4">
+      <AlertDescription class="flex items-center justify-between">
+        <span>{{ errorMessage }}</span>
+        <button type="button" class="ml-2 opacity-70 hover:opacity-100 transition-opacity" @click="clearMessages">
+          <AppIcon name="close" class="h-4 w-4" />
+        </button>
+      </AlertDescription>
+    </Alert>
+
+    <Alert v-if="successMessage" variant="success" class="mb-4">
+      <AlertDescription class="flex items-center justify-between">
+        <span>{{ successMessage }}</span>
+        <button type="button" class="ml-2 opacity-70 hover:opacity-100 transition-opacity" @click="clearMessages">
+          <AppIcon name="close" class="h-4 w-4" />
+        </button>
+      </AlertDescription>
+    </Alert>
+
+    <!-- Loading state -->
+    <div v-if="loading && users.length === 0" class="flex flex-1 items-center justify-center py-20 text-sm text-muted-foreground">
+      {{ $t('users.loading') }}
     </div>
 
-    <div v-if="loading && users.length === 0" class="loading-state">{{ $t('users.loading') }}</div>
-
-    <div v-else-if="users.length === 0" class="empty-state">
-      <AppIcon name="users" class="empty-icon" size="xl" />
-      <p>{{ $t('users.empty') }}</p>
+    <!-- Empty state -->
+    <div v-else-if="users.length === 0" class="flex flex-1 flex-col items-center justify-center gap-3 py-20 text-center text-muted-foreground">
+      <AppIcon name="users" size="xl" class="h-10 w-10 opacity-40" />
+      <p class="text-sm">{{ $t('users.empty') }}</p>
     </div>
 
-    <div v-else class="users-table-wrap glass">
-      <table class="users-table">
-        <thead>
-          <tr>
-            <th>{{ $t('users.columns.username') }}</th>
-            <th>{{ $t('users.columns.role') }}</th>
-            <th>{{ $t('users.columns.telegram') }}</th>
-            <th>{{ $t('users.columns.createdAt') }}</th>
-            <th>{{ $t('users.columns.actions') }}</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="entry in users" :key="entry.id">
-            <td>
-              <div class="user-cell">
-                <span class="user-dot">{{ entry.username.slice(0, 1).toUpperCase() }}</span>
-                <div>
-                  <div class="username-row">
-                    <span class="username">{{ entry.username }}</span>
-                    <span v-if="entry.id === currentUserId" class="self-pill">{{ $t('users.you') }}</span>
+    <!-- Users table -->
+    <div v-else class="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+      <div class="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow class="hover:bg-transparent">
+              <TableHead>{{ $t('users.columns.username') }}</TableHead>
+              <TableHead>{{ $t('users.columns.role') }}</TableHead>
+              <TableHead>{{ $t('users.columns.telegram') }}</TableHead>
+              <TableHead>{{ $t('users.columns.createdAt') }}</TableHead>
+              <TableHead class="text-right">{{ $t('users.columns.actions') }}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <TableRow v-for="entry in users" :key="entry.id">
+              <!-- Username + avatar -->
+              <TableCell>
+                <div class="flex items-center gap-3">
+                  <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
+                    {{ entry.username.slice(0, 1).toUpperCase() }}
+                  </span>
+                  <div class="min-w-0">
+                    <div class="flex items-center gap-2">
+                      <span class="font-semibold text-foreground">{{ entry.username }}</span>
+                      <Badge v-if="entry.id === currentUserId" variant="secondary" class="px-1.5 py-0 text-[10px]">
+                        {{ $t('users.you') }}
+                      </Badge>
+                    </div>
+                    <span class="text-xs text-muted-foreground">
+                      {{ $t('users.updatedAt', { date: formatDate(entry.updatedAt) }) }}
+                    </span>
                   </div>
-                  <span class="user-updated">{{ $t('users.updatedAt', { date: formatDate(entry.updatedAt) }) }}</span>
                 </div>
-              </div>
-            </td>
-            <td>
-              <span class="role-badge" :class="entry.role">{{ entry.role === 'admin' ? $t('roles.admin') : $t('roles.user') }}</span>
-            </td>
-            <td>
-              <span v-if="entry.telegramId" class="telegram-linked">{{ entry.telegramId }}</span>
-              <span v-else class="telegram-empty">{{ $t('users.notLinked') }}</span>
-            </td>
-            <td>{{ formatDate(entry.createdAt) }}</td>
-            <td>
-              <div class="table-actions">
-                <button class="btn btn-sm btn-outline" @click="openEditModal(entry)">{{ $t('users.edit') }}</button>
-                <button
-                  class="btn btn-sm btn-outline btn-danger"
-                  :disabled="entry.id === currentUserId || actionPending"
-                  @click="openDeleteModal(entry)"
-                >{{ $t('users.delete') }}</button>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+              </TableCell>
 
-    <div v-if="showModal" class="modal-overlay" @click.self="closeModal">
-      <div class="modal glass">
-        <h2>{{ mode === 'create' ? $t('users.addUser') : $t('users.editUser') }}</h2>
+              <!-- Role -->
+              <TableCell>
+                <Badge :variant="entry.role === 'admin' ? 'warning' : 'success'">
+                  {{ entry.role === 'admin' ? $t('roles.admin') : $t('roles.user') }}
+                </Badge>
+              </TableCell>
 
-        <form @submit.prevent="handleSubmit">
-          <div v-if="mode === 'create'" class="form-group">
-            <label>{{ $t('users.username') }}</label>
-            <input v-model="form.username" type="text" autocomplete="username" required />
-          </div>
+              <!-- Telegram -->
+              <TableCell>
+                <span v-if="entry.telegramId" class="font-mono text-xs text-foreground">{{ entry.telegramId }}</span>
+                <span v-else class="text-xs text-muted-foreground">{{ $t('users.notLinked') }}</span>
+              </TableCell>
 
-          <div class="form-group">
-            <label>{{ $t('users.role') }}</label>
-            <select v-model="form.role">
-              <option value="user">{{ $t('roles.user') }}</option>
-              <option value="admin">{{ $t('roles.admin') }}</option>
-            </select>
-          </div>
+              <!-- Created -->
+              <TableCell class="text-sm text-muted-foreground">
+                {{ formatDate(entry.createdAt) }}
+              </TableCell>
 
-          <div class="form-group">
-            <label>{{ mode === 'create' ? $t('users.password') : $t('users.resetPassword') }}</label>
-            <input
-              v-model="form.password"
-              type="password"
-              autocomplete="new-password"
-              :required="mode === 'create'"
-              :placeholder="mode === 'create' ? $t('users.passwordPlaceholder') : $t('users.passwordOptional')"
-            />
-            <small class="form-hint">{{ mode === 'create' ? $t('users.passwordHint') : $t('users.passwordResetHint') }}</small>
-          </div>
-
-          <div class="form-actions">
-            <button type="button" class="btn btn-outline" @click="closeModal">{{ $t('common.cancel') }}</button>
-            <button type="submit" class="btn btn-primary" :disabled="actionPending">
-              <span v-if="actionPending" class="spinner" />
-              {{ $t('common.save') }}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-
-    <div v-if="deleteTarget" class="modal-overlay" @click.self="deleteTarget = null">
-      <div class="modal modal-sm glass">
-        <h2>{{ $t('users.delete') }}</h2>
-        <p>{{ $t('users.deleteConfirm', { username: deleteTarget.username }) }}</p>
-        <div class="form-actions">
-          <button class="btn btn-outline" @click="deleteTarget = null">{{ $t('common.cancel') }}</button>
-          <button class="btn btn-danger" :disabled="actionPending" @click="handleDelete">
-            <span v-if="actionPending" class="spinner" />
-            {{ $t('users.delete') }}
-          </button>
-        </div>
+              <!-- Actions -->
+              <TableCell class="text-right">
+                <div class="flex items-center justify-end gap-2">
+                  <Button variant="outline" size="sm" @click="openEditModal(entry)">
+                    {{ $t('users.edit') }}
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    :disabled="entry.id === currentUserId || actionPending"
+                    @click="openDeleteModal(entry)"
+                  >
+                    {{ $t('users.delete') }}
+                  </Button>
+                </div>
+              </TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
       </div>
     </div>
   </div>
+
+  <!-- Add / Edit dialog -->
+  <Dialog :open="showModal" @update:open="(v: boolean) => { if (!v) closeModal() }">
+    <DialogContent>
+      <DialogHeader>
+        <DialogTitle>{{ mode === 'create' ? $t('users.addUser') : $t('users.editUser') }}</DialogTitle>
+      </DialogHeader>
+
+      <form class="flex flex-col gap-4" @submit.prevent="handleSubmit">
+        <!-- Username (create only) -->
+        <div v-if="mode === 'create'" class="flex flex-col gap-1.5">
+          <Label for="modal-username">{{ $t('users.username') }}</Label>
+          <Input
+            id="modal-username"
+            v-model="form.username"
+            type="text"
+            autocomplete="username"
+            required
+          />
+        </div>
+
+        <!-- Role -->
+        <div class="flex flex-col gap-1.5">
+          <Label for="modal-role">{{ $t('users.role') }}</Label>
+          <Select id="modal-role" v-model="form.role">
+            <option value="user">{{ $t('roles.user') }}</option>
+            <option value="admin">{{ $t('roles.admin') }}</option>
+          </Select>
+        </div>
+
+        <!-- Password -->
+        <div class="flex flex-col gap-1.5">
+          <Label for="modal-password">{{ mode === 'create' ? $t('users.password') : $t('users.resetPassword') }}</Label>
+          <Input
+            id="modal-password"
+            v-model="form.password"
+            type="password"
+            autocomplete="new-password"
+            :required="mode === 'create'"
+            :placeholder="mode === 'create' ? $t('users.passwordPlaceholder') : $t('users.passwordOptional')"
+          />
+          <p class="text-xs text-muted-foreground">
+            {{ mode === 'create' ? $t('users.passwordHint') : $t('users.passwordResetHint') }}
+          </p>
+        </div>
+
+        <DialogFooter>
+          <Button type="button" variant="outline" @click="closeModal">{{ $t('common.cancel') }}</Button>
+          <Button type="submit" :disabled="actionPending">
+            <span
+              v-if="actionPending"
+              class="mr-1 h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground"
+              aria-hidden="true"
+            />
+            {{ $t('common.save') }}
+          </Button>
+        </DialogFooter>
+      </form>
+    </DialogContent>
+  </Dialog>
+
+  <!-- Delete confirmation dialog -->
+  <Dialog :open="!!deleteTarget" @update:open="(v: boolean) => { if (!v) deleteTarget = null }">
+    <DialogContent class="max-w-sm">
+      <DialogHeader>
+        <DialogTitle>{{ $t('users.delete') }}</DialogTitle>
+        <DialogDescription>
+          {{ $t('users.deleteConfirm', { username: deleteTarget?.username ?? '' }) }}
+        </DialogDescription>
+      </DialogHeader>
+
+      <DialogFooter>
+        <Button variant="outline" @click="deleteTarget = null">{{ $t('common.cancel') }}</Button>
+        <Button variant="destructive" :disabled="actionPending" @click="handleDelete">
+          <span
+            v-if="actionPending"
+            class="mr-1 h-4 w-4 animate-spin rounded-full border-2 border-destructive-foreground/30 border-t-destructive-foreground"
+            aria-hidden="true"
+          />
+          {{ $t('users.delete') }}
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
 </template>
 
 <script setup lang="ts">
@@ -272,355 +341,3 @@ function autoHideSuccess() {
   }, 3000)
 }
 </script>
-
-<style scoped>
-.users-page {
-  padding: 24px;
-  max-width: 1180px;
-  margin: 0 auto;
-  height: 100%;
-  overflow-y: auto;
-}
-
-.admin-gate {
-  display: grid;
-  place-items: center;
-  gap: 10px;
-  padding: 40px;
-  height: 100%;
-  color: var(--color-text-muted);
-  text-align: center;
-}
-
-.gate-icon {
-  width: 40px;
-  height: 40px;
-}
-
-.users-header {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 24px;
-}
-
-.eyebrow {
-  font-size: 12px;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: #a5b4fc;
-  margin-bottom: 8px;
-}
-
-.users-header h1 {
-  font-size: 28px;
-  margin: 0;
-}
-
-.users-subtitle {
-  margin-top: 8px;
-  color: var(--color-text-secondary);
-}
-
-.glass {
-  background: var(--color-bg-secondary);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.16);
-}
-
-.error-banner,
-.success-banner {
-  padding: 12px 16px;
-  border-radius: 12px;
-  margin-bottom: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 14px;
-}
-
-.error-banner {
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid var(--color-error, #ef4444);
-  color: var(--color-error, #ef4444);
-}
-
-.success-banner {
-  background: rgba(34, 197, 94, 0.1);
-  border: 1px solid rgba(34, 197, 94, 0.25);
-  color: #4ade80;
-}
-
-.error-dismiss,
-.success-dismiss {
-  background: none;
-  border: none;
-  color: inherit;
-}
-
-.loading-state,
-.empty-state {
-  display: grid;
-  place-items: center;
-  gap: 12px;
-  padding: 70px 20px;
-  color: var(--color-text-muted);
-}
-
-.empty-icon {
-  width: 40px;
-  height: 40px;
-}
-
-.users-table-wrap {
-  border-radius: 18px;
-  overflow: hidden;
-}
-
-.users-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.users-table th,
-.users-table td {
-  padding: 16px;
-  text-align: left;
-  font-size: 14px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.users-table th {
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--color-text-muted);
-}
-
-.user-cell {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.user-dot {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(99, 102, 241, 0.14);
-  color: #c7d2fe;
-  font-weight: 700;
-}
-
-.username-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.username {
-  font-weight: 600;
-  color: var(--color-text);
-}
-
-.self-pill {
-  display: inline-flex;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 11px;
-  background: rgba(99, 102, 241, 0.14);
-  color: #c7d2fe;
-}
-
-.user-updated,
-.telegram-empty {
-  font-size: 12px;
-  color: var(--color-text-muted);
-}
-
-.telegram-linked {
-  color: var(--color-text);
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 13px;
-}
-
-.role-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.role-badge.admin {
-  background: rgba(245, 158, 11, 0.14);
-  color: #fbbf24;
-}
-
-.role-badge.user {
-  background: rgba(34, 197, 94, 0.14);
-  color: #4ade80;
-}
-
-.table-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 16px;
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 600;
-  border: none;
-}
-
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-primary {
-  background: var(--color-primary);
-  color: white;
-}
-
-.btn-outline {
-  background: transparent;
-  border: 1px solid var(--color-border);
-  color: var(--color-text-secondary);
-}
-
-.btn-outline:hover:not(:disabled) {
-  background: var(--color-bg-tertiary);
-  color: var(--color-text);
-}
-
-.btn-danger {
-  background: #ef4444;
-  color: white;
-}
-
-.btn-outline.btn-danger {
-  background: transparent;
-  color: #f87171;
-  border-color: rgba(239, 68, 68, 0.28);
-}
-
-.btn-sm {
-  padding: 7px 10px;
-  font-size: 13px;
-}
-
-.btn-icon {
-  width: 16px;
-  height: 16px;
-}
-
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 500;
-  padding: 20px;
-}
-
-.modal {
-  width: 100%;
-  max-width: 500px;
-  border-radius: 20px;
-  padding: 24px;
-}
-
-.modal-sm {
-  max-width: 420px;
-}
-
-.modal h2 {
-  margin: 0 0 18px;
-  font-size: 20px;
-}
-
-.modal p {
-  color: var(--color-text-secondary);
-  line-height: 1.6;
-}
-
-.form-group {
-  margin-bottom: 16px;
-}
-
-.form-group label {
-  display: block;
-  margin-bottom: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--color-text-secondary);
-}
-
-.form-group input,
-.form-group select {
-  width: 100%;
-  padding: 11px 12px;
-  background: rgba(15, 17, 23, 0.76);
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
-  color: var(--color-text);
-}
-
-.form-hint {
-  display: block;
-  margin-top: 6px;
-  color: var(--color-text-muted);
-  font-size: 12px;
-}
-
-.form-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 24px;
-}
-
-.spinner {
-  width: 14px;
-  height: 14px;
-  border: 2px solid currentColor;
-  border-top-color: transparent;
-  border-radius: 50%;
-  animation: spin 0.6s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-@media (max-width: 860px) {
-  .users-page {
-    padding: 16px;
-  }
-
-  .users-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .users-table-wrap {
-    overflow-x: auto;
-  }
-}
-</style>
