@@ -30,7 +30,10 @@ export {
   logToolCall,
   getTokenUsage,
   getToolCalls,
+  queryToolCalls,
+  getToolCallById,
+  getDistinctToolNames,
 } from './token-logger.js'
-export type { TokenUsageRecord, ToolCallRecord } from './token-logger.js'
+export type { TokenUsageRecord, ToolCallRecord, ToolCallQueryOptions, ToolCallQueryResult } from './token-logger.js'
 export { AgentCore } from './agent.js'
 export type { ResponseChunk, AgentCoreOptions } from './agent.js'

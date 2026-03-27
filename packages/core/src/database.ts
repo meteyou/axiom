@@ -25,7 +25,8 @@ CREATE TABLE IF NOT EXISTS tool_calls (
   tool_name TEXT NOT NULL,
   input TEXT,
   output TEXT,
-  duration_ms INTEGER
+  duration_ms INTEGER,
+  status TEXT NOT NULL DEFAULT 'success' CHECK(status IN ('success', 'error'))
 );
 
 CREATE TABLE IF NOT EXISTS users (
@@ -52,6 +53,8 @@ CREATE TABLE IF NOT EXISTS sessions (
 CREATE INDEX IF NOT EXISTS idx_token_usage_timestamp ON token_usage(timestamp);
 CREATE INDEX IF NOT EXISTS idx_token_usage_provider ON token_usage(provider);
 CREATE INDEX IF NOT EXISTS idx_tool_calls_session ON tool_calls(session_id);
+CREATE INDEX IF NOT EXISTS idx_tool_calls_timestamp ON tool_calls(timestamp);
+CREATE INDEX IF NOT EXISTS idx_tool_calls_tool_name ON tool_calls(tool_name);
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 
 CREATE TABLE IF NOT EXISTS chat_messages (
@@ -86,6 +89,12 @@ export function initDatabase(dbPath?: string): Database {
   db.pragma('journal_mode = WAL')
   db.pragma('foreign_keys = ON')
   db.exec(SCHEMA)
+
+  // Migration: add status column to tool_calls if missing
+  const cols = db.prepare("PRAGMA table_info(tool_calls)").all() as { name: string }[]
+  if (!cols.find(c => c.name === 'status')) {
+    db.exec("ALTER TABLE tool_calls ADD COLUMN status TEXT NOT NULL DEFAULT 'success' CHECK(status IN ('success', 'error'))")
+  }
 
   return db
 }
