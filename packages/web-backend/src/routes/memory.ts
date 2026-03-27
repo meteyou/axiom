@@ -5,8 +5,8 @@ import {
   getMemoryDir,
   ensureMemoryStructure,
   readSoulFile,
-  readAgentsFile,
-  writeAgentsFile,
+  readMemoryFile,
+  writeMemoryFile,
 } from '@openagent/core'
 import type { AgentCore } from '@openagent/core'
 import { jwtMiddleware } from '../auth.js'
@@ -62,12 +62,40 @@ export function createMemoryRouter(agentCore?: AgentCore | null): Router {
     }
   })
 
-  router.get('/agents', (_req, res) => {
+  // Core memory endpoints (MEMORY.md)
+  // Support both /memory (new) and /agents (legacy) paths
+  router.get('/core', (_req, res) => {
     try {
-      const content = readAgentsFile()
+      const content = readMemoryFile()
       res.json({ content })
     } catch (err) {
-      res.status(500).json({ error: `Failed to read AGENTS.md: ${(err as Error).message}` })
+      res.status(500).json({ error: `Failed to read MEMORY.md: ${(err as Error).message}` })
+    }
+  })
+
+  router.put('/core', (req: AuthenticatedRequest, res) => {
+    const { content } = req.body as { content?: string }
+    if (content === undefined || content === null) {
+      res.status(400).json({ error: 'Content is required' })
+      return
+    }
+
+    try {
+      writeMemoryFile(content)
+      refreshAgentPrompt()
+      res.json({ message: 'MEMORY.md updated', content })
+    } catch (err) {
+      res.status(500).json({ error: `Failed to write MEMORY.md: ${(err as Error).message}` })
+    }
+  })
+
+  // Legacy /agents endpoints for backward compatibility
+  router.get('/agents', (_req, res) => {
+    try {
+      const content = readMemoryFile()
+      res.json({ content })
+    } catch (err) {
+      res.status(500).json({ error: `Failed to read MEMORY.md: ${(err as Error).message}` })
     }
   })
 
@@ -79,11 +107,11 @@ export function createMemoryRouter(agentCore?: AgentCore | null): Router {
     }
 
     try {
-      writeAgentsFile(content)
+      writeMemoryFile(content)
       refreshAgentPrompt()
-      res.json({ message: 'AGENTS.md updated', content })
+      res.json({ message: 'MEMORY.md updated', content })
     } catch (err) {
-      res.status(500).json({ error: `Failed to write AGENTS.md: ${(err as Error).message}` })
+      res.status(500).json({ error: `Failed to write MEMORY.md: ${(err as Error).message}` })
     }
   })
 
