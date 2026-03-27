@@ -3,6 +3,7 @@
     <DialogContent>
       <DialogHeader>
         <DialogTitle>{{ mode === 'create' ? $t('users.addUser') : $t('users.editUser') }}</DialogTitle>
+        <DialogDescription>{{ mode === 'create' ? $t('users.addUserDescription') : $t('users.editUserDescription') }}</DialogDescription>
       </DialogHeader>
 
       <form class="flex flex-col gap-4" @submit.prevent="handleSubmit">
