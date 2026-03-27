@@ -1,7 +1,22 @@
 export { initDatabase, getDatabase } from './database.js'
 export type { Database } from './database.js'
 export { loadConfig, getConfigDir, ensureConfigTemplates } from './config.js'
-export { ensureMemoryStructure, getMemoryDir } from './memory.js'
+export {
+  ensureMemoryStructure,
+  getMemoryDir,
+  readSoulFile,
+  readAgentsFile,
+  writeAgentsFile,
+  getDailyFilePath,
+  ensureDailyFile,
+  readDailyFile,
+  appendToDailyFile,
+  readRecentDailyFiles,
+  assembleSystemPrompt,
+} from './memory.js'
+export { createMemoryTools } from './memory-tools.js'
+export { SessionManager } from './session-manager.js'
+export type { SessionInfo, SessionManagerOptions } from './session-manager.js'
 export {
   loadProviders,
   getActiveProvider,
