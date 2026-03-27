@@ -14,7 +14,7 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222 47% 11%;
 
-    --primary: 235 100% 60%;
+    --primary: 160 84% 39%;
     --primary-foreground: 0 0% 100%;
 
     --secondary: 210 40% 96%;
@@ -37,7 +37,7 @@
 
     --border: 214 32% 91%;
     --input: 214 32% 91%;
-    --ring: 235 100% 60%;
+    --ring: 160 84% 39%;
 
     --radius: 0.625rem;
     --shadow-color: 222 47% 11%;
@@ -57,13 +57,13 @@
     --color-text: hsl(222 47% 11%);
     --color-text-secondary: hsl(215 25% 35%);
     --color-text-muted: hsl(215 16% 55%);
-    --color-primary: hsl(235 100% 60%);
-    --color-primary-hover: hsl(235 100% 55%);
-    --color-primary-bg: hsl(235 100% 60% / 0.1);
+    --color-primary: hsl(160 84% 39%);
+    --color-primary-hover: hsl(160 84% 34%);
+    --color-primary-bg: hsl(160 84% 39% / 0.1);
     --color-danger: hsl(0 84% 60%);
     --color-success: hsl(142 71% 45%);
     --color-warning: hsl(38 92% 50%);
-    --color-user-bubble: hsl(235 100% 60%);
+    --color-user-bubble: hsl(160 84% 39%);
     --color-assistant-bubble: hsl(210 40% 96%);
     --color-system-bubble: hsl(210 40% 92%);
     --sidebar-width: 260px;
@@ -73,26 +73,26 @@
 
   /* ─── Dark theme ─── */
   .dark {
-    --background: 225 49% 8%;
-    --foreground: 228 50% 94%;
+    --background: 228 22% 12%;
+    --foreground: 220 20% 90%;
 
-    --card: 225 40% 12%;
-    --card-foreground: 228 50% 94%;
+    --card: 228 22% 14%;
+    --card-foreground: 220 20% 90%;
 
-    --popover: 225 40% 12%;
-    --popover-foreground: 228 50% 94%;
+    --popover: 228 22% 14%;
+    --popover-foreground: 220 20% 90%;
 
-    --primary: 235 100% 68%;
+    --primary: 160 84% 39%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 225 37% 16%;
-    --secondary-foreground: 228 50% 94%;
+    --secondary: 228 18% 18%;
+    --secondary-foreground: 220 20% 90%;
 
-    --muted: 225 37% 16%;
-    --muted-foreground: 220 15% 65%;
+    --muted: 228 18% 18%;
+    --muted-foreground: 220 15% 55%;
 
-    --accent: 225 37% 16%;
-    --accent-foreground: 228 50% 94%;
+    --accent: 228 18% 18%;
+    --accent-foreground: 220 20% 90%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
@@ -103,36 +103,36 @@
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
 
-    --border: 224 28% 22%;
-    --input: 224 28% 22%;
-    --ring: 235 100% 68%;
+    --border: 228 18% 20%;
+    --input: 228 18% 20%;
+    --ring: 160 84% 39%;
 
-    --shadow-color: 225 49% 4%;
+    --shadow-color: 228 22% 5%;
 
     /* Sidebar */
-    --sidebar: 225 40% 10%;
-    --sidebar-foreground: 228 50% 94%;
-    --sidebar-border: 224 28% 18%;
-    --sidebar-accent: 225 37% 16%;
-    --sidebar-accent-foreground: 228 50% 94%;
+    --sidebar: 228 24% 8%;
+    --sidebar-foreground: 220 20% 90%;
+    --sidebar-border: 228 18% 16%;
+    --sidebar-accent: 228 20% 14%;
+    --sidebar-accent-foreground: 220 20% 90%;
 
     /* Legacy compat — keeps old scoped CSS working during migration */
-    --color-bg: #0b1020;
-    --color-bg-secondary: #12182a;
-    --color-bg-tertiary: #1a2237;
-    --color-border: #27314a;
-    --color-text: #e8ecf8;
-    --color-text-secondary: #b2bccf;
-    --color-text-muted: #7f8aa3;
-    --color-primary: #5a66ff;
-    --color-primary-hover: #7680ff;
-    --color-primary-bg: rgba(90, 102, 255, 0.12);
+    --color-bg: #181c2a;
+    --color-bg-secondary: #1e2233;
+    --color-bg-tertiary: #252a3a;
+    --color-border: #2e3348;
+    --color-text: #dde1ec;
+    --color-text-secondary: #a0a8be;
+    --color-text-muted: #6b7280;
+    --color-primary: #10b981;
+    --color-primary-hover: #059669;
+    --color-primary-bg: rgba(16, 185, 129, 0.12);
     --color-danger: #ef4444;
     --color-success: #22c55e;
     --color-warning: #f59e0b;
-    --color-user-bubble: #5a66ff;
-    --color-assistant-bubble: #12182a;
-    --color-system-bubble: #0f1526;
+    --color-user-bubble: #10b981;
+    --color-assistant-bubble: #1e2233;
+    --color-system-bubble: #181c2a;
     --sidebar-width: 260px;
     --header-height: 56px;
     --font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
