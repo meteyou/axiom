@@ -1,162 +1,232 @@
 <template>
-  <div v-if="!isAdmin" class="admin-gate">
-    <AppIcon name="lock" class="gate-icon" size="xl" />
-    <h1>{{ $t('admin.title') }}</h1>
-    <p>{{ $t('admin.description') }}</p>
+  <!-- Admin gate -->
+  <div
+    v-if="!isAdmin"
+    class="flex h-full flex-col items-center justify-center gap-3 p-10 text-center text-muted-foreground"
+  >
+    <AppIcon name="lock" class="h-10 w-10 opacity-50" />
+    <h1 class="text-lg font-semibold text-foreground">{{ $t('admin.title') }}</h1>
+    <p class="max-w-xs text-sm">{{ $t('admin.description') }}</p>
   </div>
 
-  <div v-else class="dashboard-page">
-    <div class="dashboard-hero glass">
-      <div>
-        <p class="eyebrow">{{ $t('dashboard.kicker') }}</p>
-        <h1>{{ $t('dashboard.title') }}</h1>
-        <p class="dashboard-subtitle">{{ $t('dashboard.subtitle') }}</p>
+  <div v-else class="mx-auto flex h-full max-w-5xl flex-col overflow-y-auto p-6">
+    <!-- Hero -->
+    <Card class="mb-5">
+      <CardContent class="flex flex-wrap items-start justify-between gap-4 p-6">
+        <div>
+          <p class="mb-1.5 text-xs font-semibold uppercase tracking-widest text-primary">
+            {{ $t('dashboard.kicker') }}
+          </p>
+          <h1 class="text-2xl font-bold text-foreground">{{ $t('dashboard.title') }}</h1>
+          <p class="mt-1.5 max-w-xl text-sm text-muted-foreground">{{ $t('dashboard.subtitle') }}</p>
+        </div>
+        <Button variant="outline" :disabled="loading" class="gap-2" @click="loadDashboard">
+          <AppIcon name="refresh" class="h-4 w-4" />
+          {{ $t('dashboard.refresh') }}
+        </Button>
+      </CardContent>
+    </Card>
+
+    <!-- Error banner -->
+    <Alert v-if="error" variant="destructive" class="mb-4">
+      <AlertDescription class="flex items-center justify-between">
+        <span>{{ error }}</span>
+        <button
+          type="button"
+          class="ml-2 opacity-70 transition-opacity hover:opacity-100"
+          @click="error = null"
+        >
+          <AppIcon name="close" class="h-4 w-4" />
+        </button>
+      </AlertDescription>
+    </Alert>
+
+    <!-- Loading skeletons -->
+    <template v-if="loading">
+      <!-- Stat skeleton row -->
+      <div class="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Skeleton v-for="i in 4" :key="i" class="h-28 rounded-xl" />
       </div>
-      <button class="btn btn-outline" :disabled="loading" @click="loadDashboard">
-        <AppIcon name="refresh" />
-        {{ $t('dashboard.refresh') }}
-      </button>
-    </div>
-
-    <div v-if="error" class="error-banner">
-      {{ error }}
-      <button class="error-dismiss" @click="error = null">
-        <AppIcon name="close" />
-      </button>
-    </div>
-
-    <div v-if="loading" class="loading-state">{{ $t('dashboard.loading') }}</div>
+      <!-- Panel skeleton row -->
+      <div class="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+        <Skeleton class="h-52 rounded-xl" />
+        <Skeleton class="h-52 rounded-xl" />
+      </div>
+      <!-- Bottom skeleton row -->
+      <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <Skeleton class="h-64 rounded-xl" />
+        <Skeleton class="h-64 rounded-xl" />
+      </div>
+    </template>
 
     <template v-else>
-      <section class="stats-grid">
-        <article class="stat-card glass" v-for="card in statCards" :key="card.label">
-          <span class="stat-label">{{ card.label }}</span>
-          <strong class="stat-value">{{ card.value }}</strong>
-          <span class="stat-meta">{{ card.meta }}</span>
-        </article>
-      </section>
-
-      <section class="status-grid">
-        <article class="panel glass provider-panel">
-          <div class="panel-head">
-            <div>
-              <p class="panel-kicker">{{ $t('dashboard.providerHealth') }}</p>
-              <h2>{{ providerName }}</h2>
-              <p>{{ providerModel }}</p>
-            </div>
-            <span class="status-badge" :class="statusBadgeClass(providerStatus)">
-              {{ providerStatusLabel }}
+      <!-- Stat cards (4-col → 2-col → 1-col) -->
+      <section class="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Card v-for="card in statCards" :key="card.label">
+          <CardContent class="p-5">
+            <span class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+              {{ card.label }}
             </span>
-          </div>
-
-          <div class="provider-summary">
-            <div class="signal-ring" :class="statusBadgeClass(providerStatus)">
-              <span />
-            </div>
-
-            <div class="provider-meta">
-              <div class="meta-row">
-                <span>{{ $t('dashboard.agentStatus') }}</span>
-                <strong>{{ agentStatusLabel }}</strong>
-              </div>
-              <div class="meta-row">
-                <span>{{ $t('dashboard.lastHealthCheck') }}</span>
-                <strong>{{ lastCheckLabel }}</strong>
-              </div>
-              <div class="meta-row">
-                <span>{{ $t('dashboard.latency') }}</span>
-                <strong>{{ latencyLabel }}</strong>
-              </div>
-              <div class="meta-row">
-                <span>{{ $t('dashboard.queueDepth') }}</span>
-                <strong>{{ formatNumber(health.queueDepth) }}</strong>
-              </div>
-            </div>
-          </div>
-
-          <p v-if="health.lastCheck?.errorMessage" class="provider-error">
-            {{ health.lastCheck.errorMessage }}
-          </p>
-        </article>
-
-        <article class="panel glass">
-          <div class="panel-head">
-            <h2>{{ $t('dashboard.systemSnapshot') }}</h2>
-            <p>{{ $t('dashboard.systemSnapshotDescription') }}</p>
-          </div>
-
-          <dl class="snapshot-list">
-            <div class="snapshot-row">
-              <dt>{{ $t('dashboard.activeProvider') }}</dt>
-              <dd>{{ providerName }}</dd>
-            </div>
-            <div class="snapshot-row">
-              <dt>{{ $t('dashboard.model') }}</dt>
-              <dd>{{ providerModel }}</dd>
-            </div>
-            <div class="snapshot-row">
-              <dt>{{ $t('dashboard.language') }}</dt>
-              <dd>{{ languageLabel }}</dd>
-            </div>
-            <div class="snapshot-row">
-              <dt>{{ $t('dashboard.sessionTimeout') }}</dt>
-              <dd>{{ settingsSummary.sessionTimeoutMinutes }} {{ $t('settings.minutes') }}</dd>
-            </div>
-            <div class="snapshot-row">
-              <dt>{{ $t('dashboard.heartbeat') }}</dt>
-              <dd>{{ health.intervalMinutes }} {{ $t('settings.minutes') }}</dd>
-            </div>
-            <div class="snapshot-row">
-              <dt>{{ $t('dashboard.batchDelay') }}</dt>
-              <dd>{{ settingsSummary.batchingDelayMs }} ms</dd>
-            </div>
-          </dl>
-        </article>
+            <strong class="mt-3 block text-4xl font-bold text-foreground">{{ card.value }}</strong>
+            <span class="mt-2 block text-sm text-muted-foreground">{{ card.meta }}</span>
+          </CardContent>
+        </Card>
       </section>
 
-      <section class="dashboard-grid">
-        <article class="panel glass">
-          <div class="panel-head">
-            <h2>{{ $t('dashboard.quickActions') }}</h2>
-            <p>{{ $t('dashboard.quickActionsDescription') }}</p>
-          </div>
-
-          <div class="action-grid">
-            <NuxtLink v-for="action in quickActions" :key="action.to" :to="action.to" class="action-card">
-              <AppIcon :name="action.icon" class="action-icon" size="lg" />
+      <!-- Provider health + System snapshot (2-col → 1-col) -->
+      <section class="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+        <!-- Provider health -->
+        <Card>
+          <CardHeader class="pb-3">
+            <div class="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <strong>{{ action.label }}</strong>
-                <p>{{ action.description }}</p>
+                <p class="mb-1 text-xs font-semibold uppercase tracking-widest text-primary">
+                  {{ $t('dashboard.providerHealth') }}
+                </p>
+                <CardTitle class="text-base">{{ providerName }}</CardTitle>
+                <CardDescription>{{ providerModel }}</CardDescription>
               </div>
-            </NuxtLink>
-          </div>
-        </article>
-
-        <article class="panel glass">
-          <div class="panel-head">
-            <h2>{{ $t('dashboard.recentHealthChecks') }}</h2>
-            <p>{{ $t('dashboard.recentHealthChecksDescription') }}</p>
-          </div>
-
-          <div v-if="healthHistory.length === 0" class="history-empty">
-            {{ $t('dashboard.noHealthHistory') }}
-          </div>
-
-          <div v-else class="history-list">
-            <div class="history-row" v-for="entry in healthHistory" :key="entry.id">
-              <div>
-                <strong>{{ entry.provider || $t('dashboard.notConfigured') }}</strong>
-                <p>{{ formatDateTime(entry.timestamp) }}</p>
-              </div>
-              <div class="history-metrics">
-                <span class="status-badge compact" :class="statusBadgeClass(entry.status)">
-                  {{ statusLabel(entry.status) }}
-                </span>
-                <small>{{ entry.latencyMs ? `${entry.latencyMs} ms` : '—' }}</small>
-              </div>
+              <Badge :variant="statusBadgeVariant(providerStatus)">
+                {{ providerStatusLabel }}
+              </Badge>
             </div>
-          </div>
-        </article>
+          </CardHeader>
+          <CardContent class="pt-0">
+            <div class="flex flex-wrap items-center gap-4">
+              <!-- CSS signal dot indicator (no gradient ring) -->
+              <div class="flex h-16 w-16 shrink-0 items-center justify-center rounded-full border border-border bg-muted/40">
+                <span
+                  class="h-5 w-5 rounded-full"
+                  :class="statusDotClass(providerStatus)"
+                />
+              </div>
+              <dl class="flex-1 space-y-2">
+                <div class="flex items-center justify-between gap-2 text-sm">
+                  <dt class="text-muted-foreground">{{ $t('dashboard.agentStatus') }}</dt>
+                  <dd class="font-semibold text-foreground">{{ agentStatusLabel }}</dd>
+                </div>
+                <div class="flex items-center justify-between gap-2 text-sm">
+                  <dt class="text-muted-foreground">{{ $t('dashboard.lastHealthCheck') }}</dt>
+                  <dd class="font-semibold text-foreground">{{ lastCheckLabel }}</dd>
+                </div>
+                <div class="flex items-center justify-between gap-2 text-sm">
+                  <dt class="text-muted-foreground">{{ $t('dashboard.latency') }}</dt>
+                  <dd class="font-semibold text-foreground">{{ latencyLabel }}</dd>
+                </div>
+                <div class="flex items-center justify-between gap-2 text-sm">
+                  <dt class="text-muted-foreground">{{ $t('dashboard.queueDepth') }}</dt>
+                  <dd class="font-semibold text-foreground">{{ formatNumber(health.queueDepth) }}</dd>
+                </div>
+              </dl>
+            </div>
+
+            <Alert v-if="health.lastCheck?.errorMessage" variant="destructive" class="mt-4">
+              <AlertDescription>{{ health.lastCheck.errorMessage }}</AlertDescription>
+            </Alert>
+          </CardContent>
+        </Card>
+
+        <!-- System snapshot -->
+        <Card>
+          <CardHeader class="pb-3">
+            <CardTitle>{{ $t('dashboard.systemSnapshot') }}</CardTitle>
+            <CardDescription>{{ $t('dashboard.systemSnapshotDescription') }}</CardDescription>
+          </CardHeader>
+          <CardContent class="pt-0">
+            <dl class="divide-y divide-border">
+              <div class="flex items-center justify-between gap-2 py-2.5 text-sm">
+                <dt class="text-muted-foreground">{{ $t('dashboard.activeProvider') }}</dt>
+                <dd class="font-semibold text-foreground">{{ providerName }}</dd>
+              </div>
+              <div class="flex items-center justify-between gap-2 py-2.5 text-sm">
+                <dt class="text-muted-foreground">{{ $t('dashboard.model') }}</dt>
+                <dd class="font-semibold text-foreground">{{ providerModel }}</dd>
+              </div>
+              <div class="flex items-center justify-between gap-2 py-2.5 text-sm">
+                <dt class="text-muted-foreground">{{ $t('dashboard.language') }}</dt>
+                <dd class="font-semibold text-foreground">{{ languageLabel }}</dd>
+              </div>
+              <div class="flex items-center justify-between gap-2 py-2.5 text-sm">
+                <dt class="text-muted-foreground">{{ $t('dashboard.sessionTimeout') }}</dt>
+                <dd class="font-semibold text-foreground">
+                  {{ settingsSummary.sessionTimeoutMinutes }} {{ $t('settings.minutes') }}
+                </dd>
+              </div>
+              <div class="flex items-center justify-between gap-2 py-2.5 text-sm">
+                <dt class="text-muted-foreground">{{ $t('dashboard.heartbeat') }}</dt>
+                <dd class="font-semibold text-foreground">
+                  {{ health.intervalMinutes }} {{ $t('settings.minutes') }}
+                </dd>
+              </div>
+              <div class="flex items-center justify-between gap-2 py-2.5 text-sm">
+                <dt class="text-muted-foreground">{{ $t('dashboard.batchDelay') }}</dt>
+                <dd class="font-semibold text-foreground">{{ settingsSummary.batchingDelayMs }} ms</dd>
+              </div>
+            </dl>
+          </CardContent>
+        </Card>
+      </section>
+
+      <!-- Quick actions + Health history (2-col → 1-col) -->
+      <section class="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <!-- Quick actions -->
+        <Card>
+          <CardHeader class="pb-3">
+            <CardTitle>{{ $t('dashboard.quickActions') }}</CardTitle>
+            <CardDescription>{{ $t('dashboard.quickActionsDescription') }}</CardDescription>
+          </CardHeader>
+          <CardContent class="pt-0">
+            <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <NuxtLink
+                v-for="action in quickActions"
+                :key="action.to"
+                :to="action.to"
+                class="flex items-start gap-3 rounded-lg border border-border bg-muted/30 p-3 transition-colors hover:border-primary/40 hover:bg-muted/60"
+              >
+                <AppIcon :name="action.icon" class="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
+                <div class="min-w-0">
+                  <strong class="block text-sm font-semibold text-foreground">{{ action.label }}</strong>
+                  <p class="mt-0.5 text-xs text-muted-foreground">{{ action.description }}</p>
+                </div>
+              </NuxtLink>
+            </div>
+          </CardContent>
+        </Card>
+
+        <!-- Health history -->
+        <Card>
+          <CardHeader class="pb-3">
+            <CardTitle>{{ $t('dashboard.recentHealthChecks') }}</CardTitle>
+            <CardDescription>{{ $t('dashboard.recentHealthChecksDescription') }}</CardDescription>
+          </CardHeader>
+          <CardContent class="pt-0">
+            <p v-if="healthHistory.length === 0" class="py-6 text-center text-sm text-muted-foreground">
+              {{ $t('dashboard.noHealthHistory') }}
+            </p>
+            <ul v-else class="space-y-2">
+              <li
+                v-for="entry in healthHistory"
+                :key="entry.id"
+                class="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/30 p-3"
+              >
+                <div class="min-w-0">
+                  <strong class="block truncate text-sm font-semibold text-foreground">
+                    {{ entry.provider || $t('dashboard.notConfigured') }}
+                  </strong>
+                  <p class="mt-0.5 text-xs text-muted-foreground">{{ formatDateTime(entry.timestamp) }}</p>
+                </div>
+                <div class="flex shrink-0 flex-col items-end gap-1">
+                  <Badge :variant="statusBadgeVariant(entry.status)">
+                    {{ statusLabel(entry.status) }}
+                  </Badge>
+                  <span class="text-xs text-muted-foreground">
+                    {{ entry.latencyMs ? `${entry.latencyMs} ms` : '—' }}
+                  </span>
+                </div>
+              </li>
+            </ul>
+          </CardContent>
+        </Card>
       </section>
     </template>
   </div>
@@ -353,393 +423,27 @@ function formatDateTime(value: string): string {
   }).format(new Date(value))
 }
 
-function statusLabel(status: 'healthy' | 'degraded' | 'down' | 'unconfigured'): string {
+type ProviderStatus = 'healthy' | 'degraded' | 'down' | 'unconfigured'
+
+function statusLabel(status: ProviderStatus): string {
   return t(`dashboard.providerStates.${status}`)
 }
 
-function statusBadgeClass(status: 'healthy' | 'degraded' | 'down' | 'unconfigured'): string {
-  return `status-${status}`
+function statusBadgeVariant(status: ProviderStatus): 'success' | 'warning' | 'destructive' | 'muted' {
+  switch (status) {
+    case 'healthy': return 'success'
+    case 'degraded': return 'warning'
+    case 'down': return 'destructive'
+    default: return 'muted'
+  }
+}
+
+function statusDotClass(status: ProviderStatus): string {
+  switch (status) {
+    case 'healthy': return 'bg-success'
+    case 'degraded': return 'bg-warning'
+    case 'down': return 'bg-destructive'
+    default: return 'bg-muted-foreground'
+  }
 }
 </script>
-
-<style scoped>
-.dashboard-page {
-  padding: 24px;
-  max-width: 1180px;
-  margin: 0 auto;
-  height: 100%;
-  overflow-y: auto;
-}
-
-.admin-gate {
-  display: grid;
-  place-items: center;
-  gap: 10px;
-  padding: 40px;
-  height: 100%;
-  color: var(--color-text-muted);
-  text-align: center;
-}
-
-.gate-icon {
-  width: 40px;
-  height: 40px;
-}
-
-.glass {
-  background: var(--color-bg-secondary);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.18);
-}
-
-.dashboard-hero {
-  border-radius: 24px;
-  padding: 28px;
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 20px;
-  margin-bottom: 18px;
-}
-
-.eyebrow,
-.panel-kicker {
-  font-size: 12px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: #93c5fd;
-  margin-bottom: 8px;
-}
-
-.dashboard-hero h1 {
-  margin: 0;
-  font-size: 32px;
-}
-
-.dashboard-subtitle {
-  margin-top: 8px;
-  color: var(--color-text-secondary);
-  max-width: 680px;
-}
-
-.error-banner {
-  padding: 12px 16px;
-  border-radius: 12px;
-  margin-bottom: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 14px;
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid var(--color-error, #ef4444);
-  color: var(--color-error, #ef4444);
-}
-
-.error-dismiss {
-  background: none;
-  border: none;
-  color: inherit;
-}
-
-.loading-state {
-  display: grid;
-  place-items: center;
-  padding: 100px 20px;
-  color: var(--color-text-muted);
-}
-
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
-  margin-bottom: 18px;
-}
-
-.stat-card {
-  padding: 20px;
-  border-radius: 18px;
-}
-
-.stat-label {
-  display: block;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--color-text-muted);
-}
-
-.stat-value {
-  display: block;
-  margin-top: 14px;
-  font-size: 34px;
-  color: var(--color-text);
-}
-
-.stat-meta {
-  display: block;
-  margin-top: 10px;
-  color: var(--color-text-secondary);
-  font-size: 13px;
-}
-
-.status-grid,
-.dashboard-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-  margin-bottom: 16px;
-}
-
-.panel {
-  border-radius: 22px;
-  padding: 22px;
-}
-
-.panel-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
-}
-
-.panel-head h2 {
-  font-size: 18px;
-  margin: 0;
-}
-
-.panel-head p {
-  margin-top: 6px;
-  font-size: 13px;
-  color: var(--color-text-muted);
-}
-
-.provider-panel {
-  overflow: hidden;
-  position: relative;
-}
-
-.provider-summary {
-  margin-top: 18px;
-  display: flex;
-  gap: 18px;
-  align-items: center;
-}
-
-.signal-ring {
-  width: 110px;
-  height: 110px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  flex-shrink: 0;
-}
-
-.signal-ring span {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: currentColor;
-  box-shadow: 0 0 22px currentColor;
-}
-
-.provider-meta {
-  flex: 1;
-  display: grid;
-  gap: 10px;
-}
-
-.meta-row,
-.snapshot-row,
-.history-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
-}
-
-.meta-row span,
-.snapshot-row dt {
-  color: var(--color-text-muted);
-}
-
-.meta-row strong,
-.snapshot-row dd {
-  color: var(--color-text);
-  font-weight: 600;
-  text-align: right;
-}
-
-.provider-error {
-  margin-top: 16px;
-  padding: 12px 14px;
-  border-radius: 14px;
-  background: rgba(239, 68, 68, 0.08);
-  border: 1px solid rgba(239, 68, 68, 0.2);
-  color: #fca5a5;
-  font-size: 13px;
-}
-
-.snapshot-list {
-  margin-top: 18px;
-}
-
-.snapshot-row {
-  padding: 12px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.action-grid {
-  margin-top: 18px;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.action-card {
-  display: flex;
-  gap: 12px;
-  padding: 14px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  color: inherit;
-}
-
-.action-card:hover {
-  border-color: rgba(129, 140, 248, 0.24);
-}
-
-.action-icon {
-  width: 20px;
-  height: 20px;
-  color: var(--color-text-secondary);
-}
-
-.action-card strong {
-  display: block;
-  color: var(--color-text);
-}
-
-.action-card p {
-  margin-top: 4px;
-  font-size: 13px;
-  color: var(--color-text-muted);
-}
-
-.history-empty {
-  margin-top: 18px;
-  color: var(--color-text-muted);
-}
-
-.history-list {
-  margin-top: 18px;
-  display: grid;
-  gap: 12px;
-}
-
-.history-row {
-  padding: 14px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.history-row strong {
-  color: var(--color-text);
-}
-
-.history-row p,
-.history-row small {
-  margin-top: 4px;
-  color: var(--color-text-muted);
-}
-
-.history-metrics {
-  text-align: right;
-}
-
-.status-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 92px;
-  padding: 8px 12px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  border: 1px solid currentColor;
-}
-
-.status-badge.compact {
-  min-width: 0;
-  padding: 6px 10px;
-  font-size: 11px;
-}
-
-.status-healthy {
-  color: #4ade80;
-}
-
-.status-degraded {
-  color: #facc15;
-}
-
-.status-down {
-  color: #f87171;
-}
-
-.status-unconfigured {
-  color: #94a3b8;
-}
-
-.btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 16px;
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 600;
-  border: 1px solid var(--color-border);
-  background: transparent;
-  color: var(--color-text-secondary);
-}
-
-.btn:hover:not(:disabled) {
-  background: var(--color-bg-tertiary);
-  color: var(--color-text);
-}
-
-@media (max-width: 960px) {
-  .dashboard-page {
-    padding: 16px;
-  }
-
-  .stats-grid,
-  .status-grid,
-  .dashboard-grid,
-  .action-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .dashboard-hero,
-  .panel-head,
-  .provider-summary,
-  .meta-row,
-  .snapshot-row,
-  .history-row {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .meta-row strong,
-  .snapshot-row dd,
-  .history-metrics {
-    text-align: left;
-  }
-}
-</style>
