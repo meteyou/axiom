@@ -27,6 +27,7 @@ console.log('[openagent] Starting local dev environment...')
 console.log(`[openagent] DATA_DIR=${process.env.DATA_DIR}`)
 console.log(`[openagent] Backend:  http://localhost:${process.env.PORT}`)
 console.log('[openagent] Frontend: http://localhost:3001')
+console.log('[openagent] Core:     watching for changes (tsc --watch)')
 
 const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm'
 const spawnOpts = {
@@ -36,8 +37,21 @@ const spawnOpts = {
   detached: true,
 }
 
+const backendSrc = path.join(rootDir, 'packages', 'web-backend', 'src')
+const coreDist = path.join(rootDir, 'packages', 'core', 'dist')
+
 const children = [
-  spawn(npmCmd, ['run', 'dev:backend'], spawnOpts),
+  // 1. Core: tsc --watch recompiles on source changes → outputs to dist/
+  spawn(npmCmd, ['run', 'dev', '--workspace=packages/core'], spawnOpts),
+  // 2. Backend: --watch restarts when backend src/ or core dist/ changes
+  spawn('node', [
+    '--watch',
+    `--watch-path=${backendSrc}`,
+    `--watch-path=${coreDist}`,
+    '--import', 'tsx',
+    path.join(backendSrc, 'server.ts'),
+  ], spawnOpts),
+  // 3. Frontend: Nuxt dev server with HMR
   spawn(npmCmd, ['run', 'dev:frontend'], spawnOpts),
 ]
 
