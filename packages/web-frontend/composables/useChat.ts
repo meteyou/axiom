@@ -144,7 +144,7 @@ export function useChat() {
         if (msg.toolName) {
           messages.value = [...messages.value, {
             role: 'system',
-            content: `🔧 Calling tool: ${msg.toolName}`,
+            content: `Calling tool: ${msg.toolName}`,
             timestamp: new Date().toISOString(),
           }]
         }
