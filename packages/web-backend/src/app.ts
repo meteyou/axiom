@@ -16,6 +16,7 @@ import { createHealthRouter } from './routes/health.js'
 import { ensureAdminUser } from './auth.js'
 import type { HeartbeatService } from './heartbeat.js'
 import type { RuntimeMetrics } from './runtime-metrics.js'
+import type { MemoryConsolidationScheduler } from './memory-consolidation-scheduler.js'
 
 const startTime = Date.now()
 
@@ -24,6 +25,7 @@ export interface AppOptions {
   agentCore?: AgentCore | null
   heartbeatService?: HeartbeatService | null
   runtimeMetrics?: RuntimeMetrics | null
+  consolidationScheduler?: MemoryConsolidationScheduler | null
 }
 
 export function createApp(options?: AppOptions): express.Express {
@@ -69,11 +71,14 @@ export function createApp(options?: AppOptions): express.Express {
         options.heartbeatService?.restart({ resetState: true })
       },
     }))
-    app.use('/api/memory', createMemoryRouter(options.agentCore ?? null))
+    app.use('/api/memory', createMemoryRouter(options.agentCore ?? null, options.consolidationScheduler ?? null))
     app.use('/api/settings', createSettingsRouter({
       agentCore: options.agentCore ?? null,
       onHeartbeatSettingsChanged: () => {
         options.heartbeatService?.restart()
+      },
+      onConsolidationSettingsChanged: () => {
+        options.consolidationScheduler?.restart()
       },
     }))
     app.use('/api/users', createUsersRouter(options.db))

@@ -11,8 +11,9 @@ import {
 import type { AgentCore } from '@openagent/core'
 import { jwtMiddleware } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
+import type { MemoryConsolidationScheduler } from '../memory-consolidation-scheduler.js'
 
-export function createMemoryRouter(agentCore?: AgentCore | null): Router {
+export function createMemoryRouter(agentCore?: AgentCore | null, consolidationScheduler?: MemoryConsolidationScheduler | null): Router {
   const router = Router()
 
   router.use(jwtMiddleware)
@@ -201,6 +202,39 @@ export function createMemoryRouter(agentCore?: AgentCore | null): Router {
       res.json({ message: `Daily file for ${date} updated`, date, content })
     } catch (err) {
       res.status(500).json({ error: `Failed to write daily file: ${(err as Error).message}` })
+    }
+  })
+
+  // Consolidation endpoints
+  router.get('/consolidation/status', (_req, res) => {
+    if (!consolidationScheduler) {
+      res.json({
+        enabled: false,
+        runAtHour: 3,
+        lookbackDays: 3,
+        providerId: '',
+        lastRun: null,
+        lastResult: null,
+        nextRunEstimate: null,
+      })
+      return
+    }
+
+    res.json(consolidationScheduler.getSnapshot())
+  })
+
+  router.post('/consolidation/run', async (_req, res) => {
+    if (!consolidationScheduler) {
+      res.status(503).json({ error: 'Consolidation scheduler not available' })
+      return
+    }
+
+    try {
+      const result = await consolidationScheduler.runNow()
+      refreshAgentPrompt()
+      res.json(result)
+    } catch (err) {
+      res.status(500).json({ error: `Consolidation failed: ${(err as Error).message}` })
     }
   })
 

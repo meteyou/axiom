@@ -23,9 +23,17 @@ export interface TelegramData {
   batchingDelayMs?: number
 }
 
+export interface MemoryConsolidationSettingsData {
+  enabled: boolean
+  runAtHour: number
+  lookbackDays: number
+  providerId: string
+}
+
 export interface SettingsRouterOptions {
   agentCore?: AgentCore | null
   onHeartbeatSettingsChanged?: () => void
+  onConsolidationSettingsChanged?: () => void
 }
 
 export function createSettingsRouter(options: SettingsRouterOptions = {}): Router {
@@ -47,6 +55,8 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
       const settings = loadConfig<SettingsData>('settings.json')
       const telegram = loadConfig<TelegramData>('telegram.json')
 
+      const consolidation = (settings as unknown as Record<string, unknown>).memoryConsolidation as Partial<MemoryConsolidationSettingsData> | undefined
+
       res.json({
         sessionTimeoutMinutes: settings.sessionTimeoutMinutes ?? 15,
         language: settings.language ?? 'match',
@@ -54,6 +64,12 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
         yoloMode: settings.yoloMode ?? true,
         batchingDelayMs: settings.batchingDelayMs ?? telegram.batchingDelayMs ?? 2500,
         telegramBotToken: telegram.botToken ?? '',
+        memoryConsolidation: {
+          enabled: consolidation?.enabled ?? false,
+          runAtHour: consolidation?.runAtHour ?? 3,
+          lookbackDays: consolidation?.lookbackDays ?? 3,
+          providerId: consolidation?.providerId ?? '',
+        },
       })
     } catch (err) {
       res.status(500).json({ error: `Failed to read settings: ${(err as Error).message}` })
@@ -68,6 +84,7 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
       yoloMode: boolean
       batchingDelayMs: number
       telegramBotToken: string
+      memoryConsolidation: Partial<MemoryConsolidationSettingsData>
     }>
 
     try {
@@ -117,6 +134,40 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
         settings.batchingDelayMs = body.batchingDelayMs
       }
 
+      // Handle memory consolidation settings
+      const settingsRaw = settings as unknown as Record<string, unknown>
+      let consolidationChanged = false
+      if (body.memoryConsolidation !== undefined) {
+        const mc = body.memoryConsolidation
+        const existing = (settingsRaw.memoryConsolidation ?? {}) as Record<string, unknown>
+
+        if (mc.enabled !== undefined) existing.enabled = !!mc.enabled
+        if (mc.runAtHour !== undefined) {
+          if (typeof mc.runAtHour !== 'number' || !Number.isInteger(mc.runAtHour) || mc.runAtHour < 0 || mc.runAtHour > 23) {
+            res.status(400).json({ error: 'memoryConsolidation.runAtHour must be an integer 0-23' })
+            return
+          }
+          existing.runAtHour = mc.runAtHour
+        }
+        if (mc.lookbackDays !== undefined) {
+          if (typeof mc.lookbackDays !== 'number' || !Number.isInteger(mc.lookbackDays) || mc.lookbackDays < 1 || mc.lookbackDays > 30) {
+            res.status(400).json({ error: 'memoryConsolidation.lookbackDays must be an integer 1-30' })
+            return
+          }
+          existing.lookbackDays = mc.lookbackDays
+        }
+        if (mc.providerId !== undefined) {
+          if (typeof mc.providerId !== 'string') {
+            res.status(400).json({ error: 'memoryConsolidation.providerId must be a string' })
+            return
+          }
+          existing.providerId = mc.providerId
+        }
+
+        settingsRaw.memoryConsolidation = existing
+        consolidationChanged = true
+      }
+
       if (body.telegramBotToken !== undefined) {
         if (typeof body.telegramBotToken !== 'string') {
           res.status(400).json({ error: 'telegramBotToken must be a string' })
@@ -145,6 +196,12 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
         options.onHeartbeatSettingsChanged?.()
       }
 
+      if (consolidationChanged) {
+        options.onConsolidationSettingsChanged?.()
+      }
+
+      const consolidationOut = (settingsRaw.memoryConsolidation ?? {}) as Record<string, unknown>
+
       res.json({
         message: 'Settings updated',
         sessionTimeoutMinutes: settings.sessionTimeoutMinutes,
@@ -153,6 +210,12 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
         yoloMode: settings.yoloMode,
         batchingDelayMs: settings.batchingDelayMs ?? previousBatchingDelayMs,
         telegramBotToken: telegram.botToken,
+        memoryConsolidation: {
+          enabled: consolidationOut.enabled ?? false,
+          runAtHour: consolidationOut.runAtHour ?? 3,
+          lookbackDays: consolidationOut.lookbackDays ?? 3,
+          providerId: consolidationOut.providerId ?? '',
+        },
       })
     } catch (err) {
       res.status(500).json({ error: `Failed to update settings: ${(err as Error).message}` })

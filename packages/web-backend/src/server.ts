@@ -8,6 +8,7 @@ import { setupWebSocketChat } from './ws-chat.js'
 import { setupWebSocketLogs } from './ws-logs.js'
 import { HeartbeatService } from './heartbeat.js'
 import { RuntimeMetrics } from './runtime-metrics.js'
+import { MemoryConsolidationScheduler } from './memory-consolidation-scheduler.js'
 
 const PORT = parseInt(process.env.PORT ?? '3000', 10)
 const HOST = process.env.HOST ?? '0.0.0.0'
@@ -48,8 +49,15 @@ if (provider) {
   console.warn('[openagent] No provider configured — chat will be unavailable. Configure a provider in Settings.')
 }
 
+// Initialize memory consolidation scheduler
+const consolidationScheduler = new MemoryConsolidationScheduler({
+  db,
+  agentCore,
+})
+consolidationScheduler.start()
+
 // Start server
-const app = createApp({ db, agentCore, heartbeatService, runtimeMetrics })
+const app = createApp({ db, agentCore, heartbeatService, runtimeMetrics, consolidationScheduler })
 const server = http.createServer(app)
 
 // Set up WebSocket chat
@@ -71,5 +79,6 @@ server.listen(PORT, HOST, () => {
 for (const signal of ['SIGINT', 'SIGTERM']) {
   process.on(signal, () => {
     heartbeatService.stop()
+    consolidationScheduler.stop()
   })
 }
