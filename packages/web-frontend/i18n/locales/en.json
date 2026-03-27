@@ -1,6 +1,9 @@
 {
   "app": {
-    "title": "OpenAgent"
+    "title": "OpenAgent",
+    "adminConsole": "Admin console",
+    "workspace": "Workspace",
+    "toggleMenu": "Toggle menu"
   },
   "nav": {
     "chat": "Chat",
@@ -11,6 +14,20 @@
     "usage": "Token Usage",
     "logs": "Activity Logs",
     "users": "Users"
+  },
+  "roles": {
+    "admin": "Admin",
+    "user": "User"
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "saveFailed": "Could not save changes.",
+    "deleteFailed": "Could not delete item."
+  },
+  "admin": {
+    "title": "Admin access required",
+    "description": "This page is only available to administrators."
   },
   "auth": {
     "login": "Login",
@@ -98,5 +115,166 @@
     "prev": "Previous",
     "next": "Next",
     "pageInfo": "Page {page} of {total}"
+  },
+  "memory": {
+    "kicker": "Persistent context",
+    "title": "Memory",
+    "subtitle": "Edit personality, core memory, and day-by-day notes without leaving the dashboard.",
+    "soulTab": "Soul",
+    "agentsTab": "Core Memory",
+    "dailyTab": "Daily",
+    "loading": "Loading memory...",
+    "edit": "Edit",
+    "preview": "Preview",
+    "split": "Split",
+    "editorPlaceholder": "Write markdown here...",
+    "save": "Save changes",
+    "saveSuccess": "Memory updated successfully.",
+    "noDailyFiles": "No daily files yet. Pick a date to create one.",
+    "backToList": "Back to daily files",
+    "dailyBrowserTitle": "Daily memory browser",
+    "dailyBrowserDescription": "Jump to any day, review existing notes, or create a new memory entry for the selected date.",
+    "dailyEditorDescription": "Daily notes are included in the rolling memory context for the agent.",
+    "openDate": "Open date",
+    "lastUpdated": "Updated {date}"
+  },
+  "settings": {
+    "kicker": "Runtime configuration",
+    "title": "Settings",
+    "subtitle": "Tune how the agent behaves, how long sessions live, and how Telegram messages are handled.",
+    "loading": "Loading settings...",
+    "save": "Save settings",
+    "saveSuccess": "Settings saved successfully.",
+    "minutes": "minutes",
+    "sessionSection": "Sessions",
+    "sessionSectionDescription": "Control how long conversations stay warm before they are summarized and closed.",
+    "sessionTimeout": "Session timeout",
+    "sessionTimeoutHint": "After this many minutes of inactivity, the current session is summarized and reset.",
+    "languageSection": "Language",
+    "languageSectionDescription": "Decide whether the agent follows a fixed language or mirrors the user's language automatically.",
+    "language": "Agent language",
+    "languageHint": "This setting is injected directly into the system prompt and applies immediately.",
+    "languageMatch": "Match user's language",
+    "languages": {
+      "english": "English",
+      "german": "German",
+      "french": "French",
+      "spanish": "Spanish",
+      "italian": "Italian",
+      "portuguese": "Portuguese",
+      "dutch": "Dutch",
+      "russian": "Russian",
+      "chinese": "Chinese",
+      "japanese": "Japanese",
+      "korean": "Korean"
+    },
+    "agentSection": "Agent behavior",
+    "agentSectionDescription": "Fine-tune heartbeat timing and message batching for connected channels.",
+    "heartbeatInterval": "Heartbeat interval",
+    "heartbeatHint": "Defines how often heartbeat checks should run.",
+    "batchingDelay": "Message batching delay",
+    "batchingDelayHint": "Telegram messages received inside this window are grouped before the agent responds.",
+    "telegramSection": "Telegram",
+    "telegramSectionDescription": "Manage the bot token used by the Telegram integration.",
+    "telegramBotToken": "Telegram bot token",
+    "telegramBotTokenPlaceholder": "Paste your Telegram bot token",
+    "telegramBotTokenHint": "Leave empty to disable the configured token or replace it with a new one."
+  },
+  "users": {
+    "kicker": "Access control",
+    "title": "Users",
+    "subtitle": "Create accounts, assign roles, and manage linked Telegram identities.",
+    "loading": "Loading users...",
+    "empty": "No users found.",
+    "addUser": "Add user",
+    "editUser": "Edit user",
+    "username": "Username",
+    "password": "Password",
+    "passwordPlaceholder": "Enter a password",
+    "passwordHint": "Passwords must be at least 4 characters.",
+    "role": "Role",
+    "resetPassword": "Reset password",
+    "passwordOptional": "Leave blank to keep the current password",
+    "passwordResetHint": "Only enter a value if you want to replace the current password.",
+    "edit": "Edit",
+    "delete": "Delete",
+    "deleteConfirm": "Delete user \"{username}\"? This action cannot be undone.",
+    "createSuccess": "User created successfully.",
+    "updateSuccess": "User updated successfully.",
+    "deleteSuccess": "User deleted successfully.",
+    "notLinked": "Not linked",
+    "you": "You",
+    "updatedAt": "Updated {date}",
+    "columns": {
+      "username": "Username",
+      "role": "Role",
+      "telegram": "Telegram ID",
+      "createdAt": "Created",
+      "actions": "Actions"
+    }
+  },
+  "dashboard": {
+    "kicker": "Operations overview",
+    "title": "Dashboard",
+    "subtitle": "A quick control room for the most important moving parts in your OpenAgent deployment.",
+    "refresh": "Refresh",
+    "loading": "Loading dashboard...",
+    "quickActions": "Quick actions",
+    "quickActionsDescription": "Jump straight into the parts of the system you manage most often.",
+    "systemSnapshot": "System snapshot",
+    "systemSnapshotDescription": "Current runtime configuration at a glance.",
+    "activeProvider": "Active provider",
+    "language": "Language mode",
+    "sessionTimeout": "Session timeout",
+    "heartbeat": "Heartbeat interval",
+    "batchDelay": "Batching delay",
+    "notConfigured": "Not configured",
+    "cards": {
+      "users": "Users",
+      "usersMeta": "Accounts with dashboard access",
+      "providers": "Providers",
+      "providersMeta": "Configured model providers",
+      "logs": "Tool calls",
+      "logsMeta": "Recorded operational events",
+      "requests": "Model requests"
+    },
+    "actions": {
+      "memory": "Edit SOUL.md, AGENTS.md, and daily memory files.",
+      "settings": "Change runtime behavior and Telegram configuration.",
+      "providers": "Manage model providers and activate a default model.",
+      "users": "Add admins, reset passwords, and remove unused accounts.",
+      "logs": "Inspect recent tool activity and historical execution data.",
+      "usage": "Review token consumption, providers, and estimated spend."
+    }
+  },
+  "usage": {
+    "kicker": "Consumption analytics",
+    "title": "Token Usage",
+    "subtitle": "Track model activity, compare providers, and keep an eye on estimated spend.",
+    "refresh": "Refresh",
+    "loading": "Loading usage...",
+    "empty": "No usage data yet.",
+    "byProvider": "By provider",
+    "byProviderDescription": "See which providers are handling the most requests and cost.",
+    "byModel": "By model",
+    "byModelDescription": "Top models ranked by estimated spend and request volume.",
+    "recentRequests": "Recent requests",
+    "recentRequestsDescription": "Latest token usage records captured by the backend.",
+    "summary": {
+      "requests": "Requests",
+      "totalTokens": "Total tokens",
+      "promptTokens": "Prompt tokens",
+      "completionTokens": "Completion tokens",
+      "estimatedCost": "Estimated cost"
+    },
+    "columns": {
+      "provider": "Provider",
+      "model": "Model",
+      "requests": "Requests",
+      "tokens": "Tokens",
+      "cost": "Cost",
+      "timestamp": "Timestamp",
+      "session": "Session"
+    }
   }
 }

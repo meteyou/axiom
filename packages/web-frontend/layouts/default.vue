@@ -1,56 +1,68 @@
 <template>
   <div class="app-shell">
-    <!-- Sidebar overlay for mobile -->
     <div
       v-if="sidebarOpen"
       class="sidebar-overlay"
       @click="sidebarOpen = false"
     />
 
-    <!-- Sidebar -->
     <aside class="sidebar" :class="{ open: sidebarOpen }">
       <div class="sidebar-header">
         <span class="sidebar-logo">🤖</span>
-        <span class="sidebar-title">{{ $t('app.title') }}</span>
+        <div>
+          <span class="sidebar-title">{{ $t('app.title') }}</span>
+          <p class="sidebar-subtitle">{{ isAdmin ? $t('app.adminConsole') : $t('app.workspace') }}</p>
+        </div>
       </div>
 
       <nav class="sidebar-nav">
-        <NuxtLink to="/" class="nav-item" :class="{ active: route.path === '/' }" @click="sidebarOpen = false">
+        <NuxtLink to="/" class="nav-item" :class="navClass('/')" @click="sidebarOpen = false">
           <span class="nav-icon">💬</span>
           <span>{{ $t('nav.chat') }}</span>
         </NuxtLink>
-        <NuxtLink to="/dashboard" class="nav-item placeholder" @click="sidebarOpen = false">
-          <span class="nav-icon">📊</span>
-          <span>{{ $t('nav.dashboard') }}</span>
-        </NuxtLink>
-        <NuxtLink to="/memory" class="nav-item placeholder" @click="sidebarOpen = false">
-          <span class="nav-icon">🧠</span>
-          <span>{{ $t('nav.memory') }}</span>
-        </NuxtLink>
-        <NuxtLink to="/providers" class="nav-item" :class="{ active: route.path === '/providers' }" @click="sidebarOpen = false">
-          <span class="nav-icon">🔌</span>
-          <span>{{ $t('nav.providers') }}</span>
-        </NuxtLink>
-        <NuxtLink to="/usage" class="nav-item placeholder" @click="sidebarOpen = false">
-          <span class="nav-icon">📈</span>
-          <span>{{ $t('nav.usage') }}</span>
-        </NuxtLink>
-        <NuxtLink to="/logs" class="nav-item" :class="{ active: route.path === '/logs' }" @click="sidebarOpen = false">
-          <span class="nav-icon">📋</span>
-          <span>{{ $t('nav.logs') }}</span>
-        </NuxtLink>
-        <NuxtLink to="/settings" class="nav-item placeholder" @click="sidebarOpen = false">
-          <span class="nav-icon">⚙️</span>
-          <span>{{ $t('nav.settings') }}</span>
-        </NuxtLink>
+
+        <template v-if="isAdmin">
+          <NuxtLink to="/dashboard" class="nav-item" :class="navClass('/dashboard')" @click="sidebarOpen = false">
+            <span class="nav-icon">📊</span>
+            <span>{{ $t('nav.dashboard') }}</span>
+          </NuxtLink>
+          <NuxtLink to="/memory" class="nav-item" :class="navClass('/memory')" @click="sidebarOpen = false">
+            <span class="nav-icon">🧠</span>
+            <span>{{ $t('nav.memory') }}</span>
+          </NuxtLink>
+          <NuxtLink to="/providers" class="nav-item" :class="navClass('/providers')" @click="sidebarOpen = false">
+            <span class="nav-icon">🔌</span>
+            <span>{{ $t('nav.providers') }}</span>
+          </NuxtLink>
+          <NuxtLink to="/usage" class="nav-item" :class="navClass('/usage')" @click="sidebarOpen = false">
+            <span class="nav-icon">📈</span>
+            <span>{{ $t('nav.usage') }}</span>
+          </NuxtLink>
+          <NuxtLink to="/logs" class="nav-item" :class="navClass('/logs')" @click="sidebarOpen = false">
+            <span class="nav-icon">📋</span>
+            <span>{{ $t('nav.logs') }}</span>
+          </NuxtLink>
+          <NuxtLink to="/settings" class="nav-item" :class="navClass('/settings')" @click="sidebarOpen = false">
+            <span class="nav-icon">⚙️</span>
+            <span>{{ $t('nav.settings') }}</span>
+          </NuxtLink>
+          <NuxtLink to="/users" class="nav-item" :class="navClass('/users')" @click="sidebarOpen = false">
+            <span class="nav-icon">👥</span>
+            <span>{{ $t('nav.users') }}</span>
+          </NuxtLink>
+        </template>
       </nav>
+
+      <div class="sidebar-footer">
+        <span class="role-badge" :class="isAdmin ? 'admin' : 'user'">
+          {{ isAdmin ? $t('roles.admin') : $t('roles.user') }}
+        </span>
+      </div>
     </aside>
 
-    <!-- Main content area -->
     <div class="main-area">
-      <!-- Header -->
       <header class="app-header">
-        <button class="menu-toggle" @click="sidebarOpen = !sidebarOpen" aria-label="Toggle menu">
+        <button class="menu-toggle" @click="sidebarOpen = !sidebarOpen" :aria-label="$t('app.toggleMenu')">
           <span class="hamburger">☰</span>
         </button>
 
@@ -62,7 +74,10 @@
         <div class="header-actions">
           <div class="user-menu" @click="userMenuOpen = !userMenuOpen">
             <span class="user-avatar">{{ userInitial }}</span>
-            <span class="user-name">{{ user?.username }}</span>
+            <div class="user-meta">
+              <span class="user-name">{{ user?.username }}</span>
+              <span class="user-role">{{ isAdmin ? $t('roles.admin') : $t('roles.user') }}</span>
+            </div>
 
             <div v-if="userMenuOpen" class="user-dropdown">
               <button class="dropdown-item" @click="handleLogout">
@@ -73,7 +88,6 @@
         </div>
       </header>
 
-      <!-- Page content -->
       <main class="page-content">
         <slot />
       </main>
@@ -89,10 +103,9 @@ const { connectionStatus } = useChat()
 
 const sidebarOpen = ref(false)
 const userMenuOpen = ref(false)
+const isAdmin = computed(() => user.value?.role === 'admin')
 
-const userInitial = computed(() => {
-  return user.value?.username?.charAt(0).toUpperCase() || '?'
-})
+const userInitial = computed(() => user.value?.username?.charAt(0).toUpperCase() || '?')
 
 const statusClass = computed(() => {
   switch (connectionStatus.value) {
@@ -110,12 +123,17 @@ const statusText = computed(() => {
   }
 })
 
+function navClass(path: string) {
+  return {
+    active: route.path === path,
+  }
+}
+
 function handleLogout() {
   userMenuOpen.value = false
   logout()
 }
 
-// Close user menu on click outside
 if (import.meta.client) {
   document.addEventListener('click', (e) => {
     const target = e.target as HTMLElement
@@ -133,19 +151,20 @@ if (import.meta.client) {
   overflow: hidden;
 }
 
-/* Sidebar overlay (mobile) */
 .sidebar-overlay {
   display: none;
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.55);
   z-index: 90;
 }
 
-/* Sidebar */
 .sidebar {
   width: var(--sidebar-width);
-  background: var(--color-bg-secondary);
+  background:
+    radial-gradient(circle at top left, rgba(99, 102, 241, 0.18), transparent 32%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 24%),
+    var(--color-bg-secondary);
   border-right: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
@@ -156,35 +175,50 @@ if (import.meta.client) {
 .sidebar-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--color-border);
+  gap: 12px;
+  padding: 18px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .sidebar-logo {
-  font-size: 24px;
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(99, 102, 241, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(129, 140, 248, 0.2);
+  font-size: 20px;
 }
 
 .sidebar-title {
+  display: block;
   font-size: 18px;
   font-weight: 700;
   color: var(--color-text);
 }
 
+.sidebar-subtitle {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
 .sidebar-nav {
   flex: 1;
-  padding: 12px 8px;
+  padding: 14px 10px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
 
 .nav-item {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 12px;
-  border-radius: 8px;
+  padding: 11px 12px;
+  border-radius: 10px;
   color: var(--color-text-secondary);
   font-size: 14px;
   font-weight: 500;
@@ -193,18 +227,16 @@ if (import.meta.client) {
 }
 
 .nav-item:hover {
-  background: var(--color-bg-tertiary);
+  background: rgba(255, 255, 255, 0.04);
   color: var(--color-text);
+  transform: translateX(2px);
 }
 
 .nav-item.active,
 .nav-item.router-link-exact-active {
-  background: var(--color-primary-bg);
-  color: var(--color-primary);
-}
-
-.nav-item.placeholder {
-  opacity: 0.5;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.18), rgba(99, 102, 241, 0.08));
+  color: #c7d2fe;
+  box-shadow: inset 0 0 0 1px rgba(129, 140, 248, 0.2);
 }
 
 .nav-icon {
@@ -213,7 +245,33 @@ if (import.meta.client) {
   text-align: center;
 }
 
-/* Main area */
+.sidebar-footer {
+  padding: 16px 20px 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.role-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.role-badge.admin {
+  background: rgba(245, 158, 11, 0.14);
+  color: #fbbf24;
+}
+
+.role-badge.user {
+  background: rgba(34, 197, 94, 0.14);
+  color: #4ade80;
+}
+
 .main-area {
   flex: 1;
   display: flex;
@@ -222,14 +280,14 @@ if (import.meta.client) {
   overflow: hidden;
 }
 
-/* Header */
 .app-header {
   height: var(--header-height);
   display: flex;
   align-items: center;
   padding: 0 16px;
   border-bottom: 1px solid var(--color-border);
-  background: var(--color-bg-secondary);
+  background: rgba(15, 17, 23, 0.88);
+  backdrop-filter: blur(12px);
   flex-shrink: 0;
   gap: 12px;
 }
@@ -292,10 +350,10 @@ if (import.meta.client) {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   cursor: pointer;
   padding: 6px 10px;
-  border-radius: 8px;
+  border-radius: 12px;
   transition: background 0.15s ease;
 }
 
@@ -304,10 +362,10 @@ if (import.meta.client) {
 }
 
 .user-avatar {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
-  background: var(--color-primary);
+  background: linear-gradient(135deg, var(--color-primary), #8b5cf6);
   color: white;
   display: flex;
   align-items: center;
@@ -316,35 +374,47 @@ if (import.meta.client) {
   font-weight: 600;
 }
 
+.user-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
 .user-name {
   font-size: 14px;
   color: var(--color-text);
 }
 
+.user-role {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 .user-dropdown {
   position: absolute;
-  top: 100%;
+  top: calc(100% + 6px);
   right: 0;
-  margin-top: 4px;
-  min-width: 150px;
+  min-width: 160px;
   background: var(--color-bg-secondary);
   border: 1px solid var(--color-border);
-  border-radius: 8px;
-  padding: 4px;
+  border-radius: 12px;
+  padding: 6px;
   z-index: 200;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
 }
 
 .dropdown-item {
   display: block;
   width: 100%;
-  padding: 8px 12px;
+  padding: 10px 12px;
   background: none;
   border: none;
   color: var(--color-text);
   font-size: 14px;
   text-align: left;
-  border-radius: 6px;
+  border-radius: 8px;
   transition: background 0.15s ease;
 }
 
@@ -352,7 +422,6 @@ if (import.meta.client) {
   background: var(--color-bg-tertiary);
 }
 
-/* Page content */
 .page-content {
   flex: 1;
   overflow: hidden;
@@ -360,7 +429,6 @@ if (import.meta.client) {
   flex-direction: column;
 }
 
-/* Mobile responsive */
 @media (max-width: 768px) {
   .sidebar {
     position: fixed;
@@ -383,7 +451,7 @@ if (import.meta.client) {
     display: block;
   }
 
-  .user-name {
+  .user-meta {
     display: none;
   }
 }

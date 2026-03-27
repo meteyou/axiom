@@ -1,6 +1,9 @@
 {
   "app": {
-    "title": "OpenAgent"
+    "title": "OpenAgent",
+    "adminConsole": "Admin-Konsole",
+    "workspace": "Arbeitsbereich",
+    "toggleMenu": "Menü umschalten"
   },
   "nav": {
     "chat": "Chat",
@@ -11,6 +14,20 @@
     "usage": "Token-Verbrauch",
     "logs": "Aktivitätsprotokolle",
     "users": "Benutzer"
+  },
+  "roles": {
+    "admin": "Admin",
+    "user": "Benutzer"
+  },
+  "common": {
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "saveFailed": "Änderungen konnten nicht gespeichert werden.",
+    "deleteFailed": "Element konnte nicht gelöscht werden."
+  },
+  "admin": {
+    "title": "Admin-Zugriff erforderlich",
+    "description": "Diese Seite ist nur für Administratoren verfügbar."
   },
   "auth": {
     "login": "Anmelden",
@@ -98,5 +115,166 @@
     "prev": "Zurück",
     "next": "Weiter",
     "pageInfo": "Seite {page} von {total}"
+  },
+  "memory": {
+    "kicker": "Persistenter Kontext",
+    "title": "Gedächtnis",
+    "subtitle": "Bearbeiten Sie Persönlichkeit, Kernspeicher und tägliche Notizen direkt im Dashboard.",
+    "soulTab": "Seele",
+    "agentsTab": "Kernspeicher",
+    "dailyTab": "Täglich",
+    "loading": "Gedächtnis wird geladen...",
+    "edit": "Bearbeiten",
+    "preview": "Vorschau",
+    "split": "Geteilt",
+    "editorPlaceholder": "Markdown hier schreiben...",
+    "save": "Änderungen speichern",
+    "saveSuccess": "Gedächtnis erfolgreich gespeichert.",
+    "noDailyFiles": "Noch keine Tagesdateien. Wählen Sie ein Datum, um eine zu erstellen.",
+    "backToList": "Zurück zur Liste",
+    "dailyBrowserTitle": "Tagesgedächtnis durchsuchen",
+    "dailyBrowserDescription": "Springen Sie zu einem beliebigen Datum, prüfen Sie bestehende Notizen oder erstellen Sie einen neuen Eintrag.",
+    "dailyEditorDescription": "Tägliche Notizen fließen in den rollierenden Kontext des Agenten ein.",
+    "openDate": "Datum öffnen",
+    "lastUpdated": "Aktualisiert {date}"
+  },
+  "settings": {
+    "kicker": "Laufzeit-Konfiguration",
+    "title": "Einstellungen",
+    "subtitle": "Steuern Sie Agent-Verhalten, Sitzungsdauer und den Umgang mit Telegram-Nachrichten.",
+    "loading": "Einstellungen werden geladen...",
+    "save": "Einstellungen speichern",
+    "saveSuccess": "Einstellungen erfolgreich gespeichert.",
+    "minutes": "Minuten",
+    "sessionSection": "Sitzungen",
+    "sessionSectionDescription": "Legen Sie fest, wie lange Gespräche aktiv bleiben, bevor sie zusammengefasst und geschlossen werden.",
+    "sessionTimeout": "Sitzungs-Timeout",
+    "sessionTimeoutHint": "Nach so vielen Minuten Inaktivität wird die Sitzung zusammengefasst und zurückgesetzt.",
+    "languageSection": "Sprache",
+    "languageSectionDescription": "Legen Sie fest, ob der Agent eine feste Sprache nutzt oder automatisch der Sprache des Nutzers folgt.",
+    "language": "Agentensprache",
+    "languageHint": "Diese Einstellung wird direkt in den System-Prompt eingefügt und sofort übernommen.",
+    "languageMatch": "Sprache des Nutzers übernehmen",
+    "languages": {
+      "english": "Englisch",
+      "german": "Deutsch",
+      "french": "Französisch",
+      "spanish": "Spanisch",
+      "italian": "Italienisch",
+      "portuguese": "Portugiesisch",
+      "dutch": "Niederländisch",
+      "russian": "Russisch",
+      "chinese": "Chinesisch",
+      "japanese": "Japanisch",
+      "korean": "Koreanisch"
+    },
+    "agentSection": "Agent-Verhalten",
+    "agentSectionDescription": "Feinabstimmung für Heartbeat-Timing und Nachrichten-Batching verbundener Kanäle.",
+    "heartbeatInterval": "Heartbeat-Intervall",
+    "heartbeatHint": "Legt fest, wie oft Heartbeat-Prüfungen ausgeführt werden.",
+    "batchingDelay": "Batching-Verzögerung",
+    "batchingDelayHint": "Telegram-Nachrichten innerhalb dieses Fensters werden vor der Antwort gruppiert.",
+    "telegramSection": "Telegram",
+    "telegramSectionDescription": "Verwalten Sie das Bot-Token der Telegram-Integration.",
+    "telegramBotToken": "Telegram-Bot-Token",
+    "telegramBotTokenPlaceholder": "Telegram-Bot-Token einfügen",
+    "telegramBotTokenHint": "Leer lassen, um das konfigurierte Token zu entfernen oder durch ein neues zu ersetzen."
+  },
+  "users": {
+    "kicker": "Zugriffssteuerung",
+    "title": "Benutzer",
+    "subtitle": "Erstellen Sie Konten, vergeben Sie Rollen und verwalten Sie verknüpfte Telegram-Identitäten.",
+    "loading": "Benutzer werden geladen...",
+    "empty": "Keine Benutzer gefunden.",
+    "addUser": "Benutzer hinzufügen",
+    "editUser": "Benutzer bearbeiten",
+    "username": "Benutzername",
+    "password": "Passwort",
+    "passwordPlaceholder": "Passwort eingeben",
+    "passwordHint": "Passwörter müssen mindestens 4 Zeichen lang sein.",
+    "role": "Rolle",
+    "resetPassword": "Passwort zurücksetzen",
+    "passwordOptional": "Leer lassen, um das aktuelle Passwort zu behalten",
+    "passwordResetHint": "Nur ausfüllen, wenn das Passwort ersetzt werden soll.",
+    "edit": "Bearbeiten",
+    "delete": "Löschen",
+    "deleteConfirm": "Benutzer \"{username}\" löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
+    "createSuccess": "Benutzer erfolgreich erstellt.",
+    "updateSuccess": "Benutzer erfolgreich aktualisiert.",
+    "deleteSuccess": "Benutzer erfolgreich gelöscht.",
+    "notLinked": "Nicht verknüpft",
+    "you": "Sie",
+    "updatedAt": "Aktualisiert {date}",
+    "columns": {
+      "username": "Benutzername",
+      "role": "Rolle",
+      "telegram": "Telegram-ID",
+      "createdAt": "Erstellt",
+      "actions": "Aktionen"
+    }
+  },
+  "dashboard": {
+    "kicker": "Betriebsübersicht",
+    "title": "Dashboard",
+    "subtitle": "Eine kompakte Steuerzentrale für die wichtigsten Bereiche Ihrer OpenAgent-Instanz.",
+    "refresh": "Aktualisieren",
+    "loading": "Dashboard wird geladen...",
+    "quickActions": "Schnellzugriffe",
+    "quickActionsDescription": "Springen Sie direkt in die Bereiche, die Sie am häufigsten verwalten.",
+    "systemSnapshot": "Systemübersicht",
+    "systemSnapshotDescription": "Aktuelle Laufzeit-Konfiguration auf einen Blick.",
+    "activeProvider": "Aktiver Anbieter",
+    "language": "Sprachmodus",
+    "sessionTimeout": "Sitzungs-Timeout",
+    "heartbeat": "Heartbeat-Intervall",
+    "batchDelay": "Batching-Verzögerung",
+    "notConfigured": "Nicht konfiguriert",
+    "cards": {
+      "users": "Benutzer",
+      "usersMeta": "Konten mit Dashboard-Zugriff",
+      "providers": "Anbieter",
+      "providersMeta": "Konfigurierte Modellanbieter",
+      "logs": "Tool-Aufrufe",
+      "logsMeta": "Erfasste Betriebsereignisse",
+      "requests": "Modellanfragen"
+    },
+    "actions": {
+      "memory": "Bearbeiten Sie SOUL.md, AGENTS.md und tägliche Gedächtnisdateien.",
+      "settings": "Ändern Sie Laufzeitverhalten und Telegram-Konfiguration.",
+      "providers": "Verwalten Sie Modellanbieter und aktivieren Sie ein Standardmodell.",
+      "users": "Fügen Sie Admins hinzu, setzen Sie Passwörter zurück und löschen Sie ungenutzte Konten.",
+      "logs": "Prüfen Sie aktuelle Tool-Aktivität und historische Ausführungsdaten.",
+      "usage": "Analysieren Sie Token-Verbrauch, Anbieter und geschätzte Kosten."
+    }
+  },
+  "usage": {
+    "kicker": "Verbrauchsanalysen",
+    "title": "Token-Verbrauch",
+    "subtitle": "Verfolgen Sie Modellaktivität, vergleichen Sie Anbieter und behalten Sie geschätzte Kosten im Blick.",
+    "refresh": "Aktualisieren",
+    "loading": "Verbrauch wird geladen...",
+    "empty": "Noch keine Verbrauchsdaten.",
+    "byProvider": "Nach Anbieter",
+    "byProviderDescription": "Zeigt, welche Anbieter die meisten Anfragen und Kosten verursachen.",
+    "byModel": "Nach Modell",
+    "byModelDescription": "Top-Modelle sortiert nach geschätzten Kosten und Anfragevolumen.",
+    "recentRequests": "Letzte Anfragen",
+    "recentRequestsDescription": "Neueste Token-Verbrauchseinträge aus dem Backend.",
+    "summary": {
+      "requests": "Anfragen",
+      "totalTokens": "Gesamte Tokens",
+      "promptTokens": "Prompt-Tokens",
+      "completionTokens": "Antwort-Tokens",
+      "estimatedCost": "Geschätzte Kosten"
+    },
+    "columns": {
+      "provider": "Anbieter",
+      "model": "Modell",
+      "requests": "Anfragen",
+      "tokens": "Tokens",
+      "cost": "Kosten",
+      "timestamp": "Zeitpunkt",
+      "session": "Sitzung"
+    }
   }
 }
