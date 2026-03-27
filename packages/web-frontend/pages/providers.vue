@@ -72,6 +72,7 @@
     :presets="presets"
     @close="closeForm"
     @submit="handleSubmit"
+    @oauth-complete="closeForm"
   />
 
   <!-- Delete confirmation dialog -->
