@@ -60,35 +60,6 @@
         </Button>
       </div>
 
-      <!-- Fallback provider dropdown -->
-      <div v-else class="mb-4">
-        <div class="flex items-center gap-4 rounded-xl border border-border bg-card p-4 shadow-sm">
-          <div class="min-w-0 flex-1">
-            <label for="fallback-select" class="block text-sm font-semibold text-foreground">
-              {{ $t('providers.fallbackProvider') }}
-            </label>
-            <p class="mt-0.5 text-xs text-muted-foreground">
-              {{ $t('providers.fallbackProviderHint') }}
-            </p>
-          </div>
-          <Select
-            id="fallback-select"
-            :model-value="fallbackProviderId ?? ''"
-            class="w-56"
-            @update:model-value="handleFallbackChange"
-          >
-            <option value="">{{ $t('providers.fallbackNone') }}</option>
-            <option
-              v-for="p in fallbackOptions"
-              :key="p.id"
-              :value="p.id"
-            >
-              {{ p.name }}
-            </option>
-          </Select>
-        </div>
-      </div>
-
       <!-- Providers table -->
       <div v-if="providers.length > 0" class="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
         <div class="overflow-x-auto">
@@ -115,6 +86,9 @@
                       <span class="font-semibold text-foreground">{{ provider.name }}</span>
                       <Badge v-if="provider.id === activeProviderId" variant="default" class="px-1.5 py-0 text-[10px]">
                         {{ $t('providers.active') }}
+                      </Badge>
+                      <Badge v-if="provider.id === fallbackProviderId" variant="outline" class="px-1.5 py-0 text-[10px]">
+                        {{ $t('providers.fallback') }}
                       </Badge>
                     </div>
                     <span class="text-xs text-muted-foreground">
@@ -171,6 +145,20 @@
                       >
                         <AppIcon name="check" class="h-4 w-4" />
                         {{ $t('providers.setActive') }}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        v-if="provider.id !== activeProviderId && provider.id !== fallbackProviderId"
+                        @click="handleSetFallback(provider.id)"
+                      >
+                        <AppIcon name="shield" class="h-4 w-4" />
+                        {{ $t('providers.setFallback') }}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        v-if="provider.id === fallbackProviderId"
+                        @click="handleSetFallback(null)"
+                      >
+                        <AppIcon name="close" class="h-4 w-4" />
+                        {{ $t('providers.removeFallback') }}
                       </DropdownMenuItem>
                       <DropdownMenuItem @click="openEdit(provider)">
                         <AppIcon name="edit" class="h-4 w-4" />
@@ -254,11 +242,7 @@ const sortedProviders = computed(() =>
   [...providers.value].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })),
 )
 
-const fallbackOptions = computed(() =>
-  providers.value
-    .filter(p => p.id !== activeProviderId.value)
-    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })),
-)
+
 
 onMounted(() => {
   fetchProviders()
@@ -369,7 +353,7 @@ async function handleActivate(id: string) {
   await activateProvider(id)
 }
 
-async function handleFallbackChange(value: string) {
-  await setFallbackProvider(value || null)
+async function handleSetFallback(id: string | null) {
+  await setFallbackProvider(id)
 }
 </script>
