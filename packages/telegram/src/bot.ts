@@ -91,6 +91,80 @@ const MAX_MESSAGE_LENGTH = 4096
 const STOP_COMMANDS = new Set(['/stop', '/kill'])
 
 /**
+ * Convert standard Markdown to Telegram-compatible HTML.
+ * Handles: bold, italic, code, code blocks, links, and escapes HTML entities.
+ * Falls back gracefully — if conversion produces invalid HTML, caller should
+ * fall back to plain text.
+ */
+function markdownToTelegramHtml(text: string): string {
+  // Step 1: Extract code blocks and inline code to protect them from other transformations
+  const codeBlocks: string[] = []
+  const inlineCodes: string[] = []
+
+  // Replace fenced code blocks with placeholders
+  let result = text.replace(/```(\w+)?\n([\s\S]*?)```/g, (_match, lang, code) => {
+    const escaped = escapeHtml(code.replace(/\n$/, ''))
+    const block = lang ? `<pre><code class="language-${escapeHtml(lang)}">${escaped}</code></pre>` : `<pre>${escaped}</pre>`
+    codeBlocks.push(block)
+    return `\x00CODEBLOCK${codeBlocks.length - 1}\x00`
+  })
+
+  // Replace inline code with placeholders
+  result = result.replace(/`([^`\n]+)`/g, (_match, code) => {
+    inlineCodes.push(`<code>${escapeHtml(code)}</code>`)
+    return `\x00INLINECODE${inlineCodes.length - 1}\x00`
+  })
+
+  // Step 2: Escape HTML entities in the remaining text
+  result = escapeHtml(result)
+
+  // Step 3: Apply formatting conversions
+
+  // Headings: # text → bold (Telegram has no heading support)
+  result = result.replace(/^#{1,6}\s+(.+)$/gm, '<b>$1</b>')
+
+  // Blockquotes: > text → <blockquote>
+  // Collect consecutive > lines into a single blockquote
+  result = result.replace(/(?:^&gt;\s?(.*)$\n?)+/gm, (match) => {
+    const lines = match.split('\n')
+      .filter(line => line.startsWith('&gt;'))
+      .map(line => line.replace(/^&gt;\s?/, ''))
+    return `<blockquote>${lines.join('\n')}</blockquote>\n`
+  })
+
+  // Bold+Italic: ***text*** or ___text___
+  result = result.replace(/\*\*\*(.+?)\*\*\*/g, '<b><i>$1</i></b>')
+  result = result.replace(/___(.+?)___/g, '<b><i>$1</i></b>')
+
+  // Bold: **text** or __text__
+  result = result.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+  result = result.replace(/__(.+?)__/g, '<b>$1</b>')
+
+  // Italic: *text* or _text_ (but not within words for underscores)
+  result = result.replace(/(?<!\w)\*([^\n*]+?)\*(?!\w)/g, '<i>$1</i>')
+  result = result.replace(/(?<!\w)_([^\n_]+?)_(?!\w)/g, '<i>$1</i>')
+
+  // Strikethrough: ~~text~~
+  result = result.replace(/~~(.+?)~~/g, '<s>$1</s>')
+
+  // Links: [text](url)
+  result = result.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
+
+  // Step 4: Restore code blocks and inline code
+  result = result.replace(/\x00CODEBLOCK(\d+)\x00/g, (_match, idx) => codeBlocks[Number(idx)])
+  result = result.replace(/\x00INLINECODE(\d+)\x00/g, (_match, idx) => inlineCodes[Number(idx)])
+
+  return result
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+/**
  * Split a long text into chunks that fit within Telegram's message limit.
  * Tries to split at newline boundaries when possible.
  */
@@ -668,38 +742,61 @@ export class TelegramBot {
   }
 
   /**
-   * Send a message with error handling for Telegram API issues
+   * Send a message with error handling for Telegram API issues.
+   * Attempts to send as HTML (converted from Markdown) first, then falls back to plain text.
    */
   private async safeSendMessage(ctx: Context, text: string, retries = 2): Promise<void> {
-    for (let attempt = 0; attempt <= retries; attempt++) {
-      try {
-        await ctx.reply(text)
-        return
-      } catch (err) {
-        if (err instanceof GrammyError) {
-          // Handle rate limiting
-          if (err.error_code === 429) {
-            const retryAfter = (err.parameters?.retry_after ?? 5) * 1000
-            console.warn(`Telegram rate limited. Retrying after ${retryAfter}ms`)
-            await sleep(retryAfter)
-            continue
+    // Try sending with HTML formatting first
+    const htmlText = markdownToTelegramHtml(text)
+    const attempts: Array<{ text: string; parseMode?: 'HTML' }> = [
+      { text: htmlText, parseMode: 'HTML' },
+      { text }, // fallback: plain text, no parse_mode
+    ]
+
+    for (const { text: msgText, parseMode } of attempts) {
+      let succeeded = false
+      for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+          if (parseMode) {
+            await ctx.reply(msgText, { parse_mode: parseMode })
+          } else {
+            await ctx.reply(msgText)
+          }
+          succeeded = true
+          return
+        } catch (err) {
+          if (err instanceof GrammyError) {
+            // Handle rate limiting
+            if (err.error_code === 429) {
+              const retryAfter = (err.parameters?.retry_after ?? 5) * 1000
+              console.warn(`Telegram rate limited. Retrying after ${retryAfter}ms`)
+              await sleep(retryAfter)
+              continue
+            }
+
+            // Bad Request (parse error) — skip to plain text fallback
+            if (err.error_code === 400 && parseMode) {
+              console.warn(`Telegram HTML parse error, falling back to plain text: ${err.description}`)
+              break
+            }
+
+            // Other Telegram API errors
+            console.error(`Telegram API error (${err.error_code}): ${err.description}`)
+          } else if (err instanceof HttpError) {
+            console.error('Telegram network error:', err.message)
+            if (attempt < retries) {
+              await sleep(1000 * (attempt + 1))
+              continue
+            }
           }
 
-          // Other Telegram API errors
-          console.error(`Telegram API error (${err.error_code}): ${err.description}`)
-        } else if (err instanceof HttpError) {
-          console.error('Telegram network error:', err.message)
-          if (attempt < retries) {
-            await sleep(1000 * (attempt + 1))
-            continue
+          // If we've exhausted retries or it's a non-retriable error, give up
+          if (attempt === retries) {
+            console.error('Failed to send Telegram message after retries:', err)
           }
-        }
-
-        // If we've exhausted retries or it's a non-retriable error, give up
-        if (attempt === retries) {
-          console.error('Failed to send Telegram message after retries:', err)
         }
       }
+      if (succeeded) return
     }
   }
 

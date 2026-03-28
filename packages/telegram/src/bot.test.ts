@@ -287,7 +287,7 @@ describe('TelegramBot', () => {
       expect(agentCore.sendMessage).toHaveBeenCalledTimes(1)
       expect(agentCore.sendMessage).toHaveBeenCalledWith(
         'telegram-12345',
-        'Message from @johndoe (John Doe): Hello\nworld',
+        'Hello\nworld',
         'telegram'
       )
     })
@@ -400,8 +400,8 @@ describe('TelegramBot', () => {
 
       expect(agentCore.sendMessage).toHaveBeenCalledTimes(2)
       expect(vi.mocked(agentCore.sendMessage).mock.calls.map((call) => call[1])).toEqual([
-        'Message from @johndoe (John Doe): First task',
-        'Message from @johndoe (John Doe): Second task',
+        'First task',
+        'Second task',
       ])
     })
   })
@@ -439,7 +439,7 @@ describe('TelegramBot', () => {
       await stopHandler(stopCtx)
 
       expect(agentCore.abort).toHaveBeenCalledTimes(1)
-      expect(stopCtx.reply).toHaveBeenCalledWith('⛔ Aborted. 1 messages removed from queue.')
+      expect(stopCtx.reply).toHaveBeenCalledWith('⛔ Aborted. 1 messages removed from queue.', { parse_mode: 'HTML' })
       expect(bot.getQueueDepth()).toBe(1)
 
       releaseFirst()
@@ -475,7 +475,7 @@ describe('TelegramBot', () => {
       await killHandler(killCtx)
 
       expect(agentCore.abort).toHaveBeenCalledTimes(1)
-      expect(killCtx.reply).toHaveBeenCalledWith('Task aborted. No queued messages.')
+      expect(killCtx.reply).toHaveBeenCalledWith('Task aborted. No queued messages.', { parse_mode: 'HTML' })
 
       releaseTask()
       await flushAsyncWork()
@@ -492,7 +492,7 @@ describe('TelegramBot', () => {
       await stopHandler(ctx)
 
       expect(agentCore.abort).not.toHaveBeenCalled()
-      expect(ctx.reply).toHaveBeenCalledWith('Nothing to stop.')
+      expect(ctx.reply).toHaveBeenCalledWith('Nothing to stop.', { parse_mode: 'HTML' })
       expect(bot.getQueueDepth()).toBe(0)
     })
 
@@ -522,7 +522,7 @@ describe('TelegramBot', () => {
       await stopHandler(stopCtx)
 
       expect(agentCore.abort).toHaveBeenCalledTimes(1)
-      expect(stopCtx.reply).toHaveBeenCalledWith('Task aborted. No queued messages.')
+      expect(stopCtx.reply).toHaveBeenCalledWith('Task aborted. No queued messages.', { parse_mode: 'HTML' })
 
       releaseTask()
       await flushAsyncWork()
@@ -549,10 +549,10 @@ describe('TelegramBot', () => {
 
       expect(agentCore.sendMessage).toHaveBeenCalledWith(
         'telegram-12345',
-        'Message from @johndoe (John Doe): Hello agent',
+        'Hello agent',
         'telegram'
       )
-      expect(ctx.reply).toHaveBeenCalledWith('Hello human!')
+      expect(ctx.reply).toHaveBeenCalledWith('Hello human!', { parse_mode: 'HTML' })
     })
 
     it('handles empty responses gracefully', async () => {
@@ -583,7 +583,8 @@ describe('TelegramBot', () => {
       await vi.advanceTimersByTimeAsync(2500)
 
       expect(ctx.reply).toHaveBeenCalledWith(
-        expect.stringContaining('encountered an error')
+        expect.stringContaining('encountered an error'),
+        { parse_mode: 'HTML' }
       )
     })
   })
