@@ -5,6 +5,23 @@ export interface MemoryConsolidationSettings {
   providerId: string
 }
 
+export interface HeartbeatNotificationToggles {
+  healthyToDegraded: boolean
+  degradedToHealthy: boolean
+  degradedToDown: boolean
+  healthyToDown: boolean
+  downToFallback: boolean
+  fallbackToHealthy: boolean
+}
+
+export interface HeartbeatSettings {
+  fallbackTrigger: 'down' | 'degraded'
+  failuresBeforeFallback: number
+  recoveryCheckIntervalMinutes: number
+  successesBeforeRecovery: number
+  notifications: HeartbeatNotificationToggles
+}
+
 export interface Settings {
   sessionTimeoutMinutes: number
   language: string
@@ -13,6 +30,7 @@ export interface Settings {
   batchingDelayMs: number
   telegramEnabled: boolean
   telegramBotToken: string
+  heartbeat: HeartbeatSettings
   memoryConsolidation: MemoryConsolidationSettings
 }
 
@@ -55,6 +73,20 @@ export function useSettings() {
         batchingDelayMs: result.batchingDelayMs,
         telegramEnabled: result.telegramEnabled,
         telegramBotToken: result.telegramBotToken,
+        heartbeat: result.heartbeat ?? {
+          fallbackTrigger: 'down',
+          failuresBeforeFallback: 1,
+          recoveryCheckIntervalMinutes: 1,
+          successesBeforeRecovery: 3,
+          notifications: {
+            healthyToDegraded: false,
+            degradedToHealthy: false,
+            degradedToDown: true,
+            healthyToDown: true,
+            downToFallback: true,
+            fallbackToHealthy: true,
+          },
+        },
         memoryConsolidation: result.memoryConsolidation ?? {
           enabled: false,
           runAtHour: 3,
