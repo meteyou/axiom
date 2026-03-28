@@ -81,7 +81,7 @@
     "apiKeyHint": "Leer lassen, um bestehenden Schlüssel beizubehalten",
     "model": "Standardmodell",
     "modelPlaceholder": "z.B. gpt-4o",
-    "modelPlaceholderCustom": "z.B. llama3:latest",
+    "modelPlaceholderCustom": "z.B. google/gemini-2.5-pro",
     "selectModel": "Modell auswählen",
     "loadingModels": "Modelle werden geladen...",
     "ollamaUrlHint": "Standard: http://localhost:11434/v1",
