@@ -20,6 +20,7 @@ export interface HeartbeatSnapshot {
   activeProvider: {
     id: string
     name: string
+    type: string
     model: string
     status: ProviderHealthStatus
   } | null
@@ -107,6 +108,7 @@ export class HeartbeatService {
         ? {
             id: provider.id,
             name: provider.name,
+            type: provider.providerType,
             model: provider.defaultModel,
             status: this.lastCheck?.providerId === provider.id
               ? this.lastCheck.status

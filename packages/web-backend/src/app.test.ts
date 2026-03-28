@@ -109,6 +109,7 @@ describe('API health monitoring', () => {
     heartbeatSnapshot.activeProvider = {
       id: 'provider-1',
       name: 'Primary OpenAI',
+      type: 'openai',
       model: 'gpt-4o-mini',
       status: 'degraded',
     }
