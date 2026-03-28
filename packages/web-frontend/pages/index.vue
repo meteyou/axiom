@@ -216,7 +216,7 @@
                 v-if="msg.timestamp && !msg.streaming"
                 class="mt-1 text-right text-[10px] leading-none"
                 :class="{
-                  'text-primary-foreground/50': msg.role === 'user' && msg.source !== 'telegram',
+                  'text-primary-foreground/70': msg.role === 'user' && msg.source !== 'telegram',
                   'text-muted-foreground/50': msg.role !== 'user' || msg.source === 'telegram',
                 }"
               >
