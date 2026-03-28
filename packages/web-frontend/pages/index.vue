@@ -1,11 +1,7 @@
 <template>
   <div class="flex h-full flex-col overflow-hidden">
     <!-- Chat toolbar -->
-    <div class="flex shrink-0 items-center gap-2 border-b border-border bg-background px-4 py-2">
-      <Button variant="outline" size="sm" class="gap-2" @click="handleNewSession">
-        <AppIcon name="sparkles" class="h-4 w-4" />
-        <span class="hidden sm:inline">{{ $t('chat.newSession') }}</span>
-      </Button>
+    <div class="flex shrink-0 items-center justify-end gap-2 border-b border-border bg-background px-4 py-2">
       <Button
         variant="outline"
         size="sm"
@@ -15,6 +11,10 @@
       >
         <AppIcon name="square" class="h-4 w-4" />
         <span class="hidden sm:inline">{{ $t('chat.stop') }}</span>
+      </Button>
+      <Button variant="outline" size="sm" class="gap-2" @click="handleNewSession">
+        <AppIcon name="sparkles" class="h-4 w-4" />
+        <span class="hidden sm:inline">{{ $t('chat.newSession') }}</span>
       </Button>
     </div>
 
