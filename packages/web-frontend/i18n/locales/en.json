@@ -54,7 +54,10 @@
     "offline": "Offline",
     "connecting": "Connecting",
     "healthy": "Healthy ({provider})",
-    "degraded": "Degraded ({provider})"
+    "degraded": "Degraded ({provider})",
+    "fallback": "Fallback",
+    "fallbackActive": "System is operating in fallback mode",
+    "fallbackTooltip": "Using fallback provider: {provider}"
   },
   "theme": {
     "switchToDark": "Switch to dark mode",
@@ -126,6 +129,9 @@
     "costOutput": "Out",
     "costFree": "Free",
     "costNA": "—",
+    "fallbackProvider": "Fallback Provider",
+    "fallbackProviderHint": "Automatically switch to this provider when the active one goes down.",
+    "fallbackNone": "None (no fallback)",
     "degradedThreshold": "Degraded Threshold",
     "degradedThresholdPlaceholder": "5000",
     "degradedThresholdHint": "Latency above this value (in ms) marks the provider as degraded in health checks."
@@ -316,6 +322,15 @@
     "quickActionsDescription": "Jump straight into the parts of the system you manage most often.",
     "systemSnapshot": "System snapshot",
     "systemSnapshotDescription": "Current runtime configuration at a glance.",
+    "operatingMode": "Operating mode",
+    "operatingModes": {
+      "normal": "Normal",
+      "fallback": "Fallback"
+    },
+    "fallbackProvider": "Fallback provider",
+    "primaryProviderStatus": "Primary provider",
+    "recoveryStatus": "Recovery",
+    "recoveryChecksRunning": "Recovery checks running…",
     "providerHealth": "Provider heartbeat",
     "recentHealthChecks": "Recent health checks",
     "recentHealthChecksDescription": "A short trail of the latest provider heartbeat results.",
