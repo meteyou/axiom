@@ -27,6 +27,18 @@ export function isValidSkillName(name: string): boolean {
 }
 
 /**
+ * Convert a freeform name to a valid skill slug.
+ * "Agent Browser" → "agent-browser"
+ */
+export function slugifySkillName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')  // replace non-alphanumeric runs with a hyphen
+    .replace(/^-+|-+$/g, '')       // trim leading/trailing hyphens
+    .slice(0, 64)
+}
+
+/**
  * Extract YAML frontmatter from a markdown file.
  * Returns the parsed object and the remaining body content.
  */
@@ -124,9 +136,10 @@ export function parseSkillMd(content: string): ParsedSkill {
     throw new Error('SKILL.md frontmatter missing required "name" field')
   }
 
-  if (!isValidSkillName(name)) {
+  const normalizedName = isValidSkillName(name) ? name : slugifySkillName(name)
+  if (!normalizedName) {
     throw new Error(
-      `Invalid skill name "${name}": must be 1-64 chars, lowercase alphanumeric and hyphens, starting/ending with alphanumeric`
+      `Invalid skill name "${name}": cannot be converted to a valid slug (1-64 chars, lowercase alphanumeric and hyphens)`
     )
   }
 
@@ -153,7 +166,7 @@ export function parseSkillMd(content: string): ParsedSkill {
   }
 
   return {
-    name,
+    name: normalizedName,
     description,
     license: typeof frontmatter.license === 'string' ? frontmatter.license : undefined,
     compatibility,

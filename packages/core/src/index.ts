@@ -82,6 +82,7 @@ export {
   parseSkillMd,
   extractFrontmatter,
   isValidSkillName,
+  slugifySkillName,
 } from './skill-parser.js'
 export type { ParsedSkill } from './skill-parser.js'
 export {

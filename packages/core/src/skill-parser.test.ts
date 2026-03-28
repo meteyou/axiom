@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseSkillMd, extractFrontmatter, isValidSkillName } from './skill-parser.js'
+import { parseSkillMd, extractFrontmatter, isValidSkillName, slugifySkillName } from './skill-parser.js'
 
 describe('skill-parser', () => {
   describe('isValidSkillName', () => {
@@ -19,6 +19,26 @@ describe('skill-parser', () => {
       expect(isValidSkillName('has spaces')).toBe(false)
       expect(isValidSkillName('has_underscores')).toBe(false)
       expect(isValidSkillName('a'.repeat(65))).toBe(false) // too long
+    })
+  })
+
+  describe('slugifySkillName', () => {
+    it('converts display names to valid slugs', () => {
+      expect(slugifySkillName('Agent Browser')).toBe('agent-browser')
+      expect(slugifySkillName('My-Skill')).toBe('my-skill')
+      expect(slugifySkillName('has_underscores')).toBe('has-underscores')
+      expect(slugifySkillName('  Extra  Spaces  ')).toBe('extra-spaces')
+      expect(slugifySkillName('ALLCAPS')).toBe('allcaps')
+    })
+
+    it('trims leading/trailing hyphens', () => {
+      expect(slugifySkillName('-starts-with-dash')).toBe('starts-with-dash')
+      expect(slugifySkillName('ends-with-dash-')).toBe('ends-with-dash')
+    })
+
+    it('truncates to 64 chars', () => {
+      const long = 'a'.repeat(100)
+      expect(slugifySkillName(long).length).toBe(64)
     })
   })
 
@@ -195,13 +215,24 @@ body`
       expect(() => parseSkillMd(content)).toThrow('missing required "name"')
     })
 
-    it('throws on invalid name', () => {
+    it('auto-slugifies invalid names', () => {
+      const content = `---
+name: Agent Browser
+description: A browser skill
+---
+body`
+      const result = parseSkillMd(content)
+      expect(result.name).toBe('agent-browser')
+    })
+
+    it('auto-slugifies names with underscores', () => {
       const content = `---
 name: Invalid_Name
 description: Bad name
 ---
 body`
-      expect(() => parseSkillMd(content)).toThrow('Invalid skill name')
+      const result = parseSkillMd(content)
+      expect(result.name).toBe('invalid-name')
     })
 
     it('throws on missing description', () => {
