@@ -73,8 +73,9 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   session_id TEXT NOT NULL,
   user_id INTEGER,
-  role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
+  role TEXT NOT NULL CHECK(role IN ('user', 'assistant', 'tool')),
   content TEXT NOT NULL,
+  metadata TEXT,
   timestamp TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (user_id) REFERENCES users(id)
 );
@@ -120,6 +121,36 @@ export function initDatabase(dbPath?: string): Database {
   const cols = db.prepare("PRAGMA table_info(tool_calls)").all() as { name: string }[]
   if (!cols.find(c => c.name === 'status')) {
     db.exec("ALTER TABLE tool_calls ADD COLUMN status TEXT NOT NULL DEFAULT 'success' CHECK(status IN ('success', 'error'))")
+  }
+
+  // Migration: add metadata column and tool role to chat_messages if missing
+  const chatCols = db.prepare("PRAGMA table_info(chat_messages)").all() as { name: string }[]
+  if (!chatCols.find(c => c.name === 'metadata')) {
+    db.exec("ALTER TABLE chat_messages ADD COLUMN metadata TEXT")
+  }
+  // Recreate table if CHECK constraint doesn't include 'tool' role
+  // SQLite doesn't support ALTER CHECK, so we test by inserting
+  try {
+    db.exec("INSERT INTO chat_messages (session_id, user_id, role, content) VALUES ('__migration_test__', NULL, 'tool', 'test')")
+    db.exec("DELETE FROM chat_messages WHERE session_id = '__migration_test__'")
+  } catch {
+    // CHECK constraint failed — need to recreate table
+    db.exec(`
+      ALTER TABLE chat_messages RENAME TO chat_messages_old;
+      CREATE TABLE chat_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        user_id INTEGER,
+        role TEXT NOT NULL CHECK(role IN ('user', 'assistant', 'tool')),
+        content TEXT NOT NULL,
+        metadata TEXT,
+        timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      );
+      INSERT INTO chat_messages (id, session_id, user_id, role, content, timestamp)
+        SELECT id, session_id, user_id, role, content, timestamp FROM chat_messages_old;
+      DROP TABLE chat_messages_old;
+    `)
   }
 
   return db
