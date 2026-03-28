@@ -4,7 +4,7 @@ import nodePath from 'node:path'
 import { Agent as PiAgent } from '@mariozechner/pi-agent-core'
 import type { AgentEvent, AgentTool } from '@mariozechner/pi-agent-core'
 import type { Api, AssistantMessage, Message, Model } from '@mariozechner/pi-ai'
-import { Type } from '@mariozechner/pi-ai'
+import { Type, completeSimple } from '@mariozechner/pi-ai'
 import type { Database } from './database.js'
 import { logTokenUsage, logToolCall } from './token-logger.js'
 import { estimateCost, getApiKeyForProvider } from './provider-config.js'
@@ -40,6 +40,8 @@ export interface AgentCoreOptions {
   sessionTimeoutMinutes?: number
   baseInstructions?: string
   providerConfig?: ProviderConfig // For OAuth token refresh
+  /** Called when a session ends (timeout or /new command) with the summary text */
+  onSessionEnd?: (userId: string, summary: string | null) => void
 }
 
 /**
@@ -200,6 +202,7 @@ export class AgentCore {
   private memoryDir?: string
   private baseInstructions?: string
   private providerConfig?: ProviderConfig
+  private onSessionEndCallback?: (userId: string, summary: string | null) => void
 
   constructor(options: AgentCoreOptions) {
     this.model = options.model
@@ -208,6 +211,7 @@ export class AgentCore {
     this.memoryDir = options.memoryDir
     this.baseInstructions = options.baseInstructions
     this.providerConfig = options.providerConfig
+    this.onSessionEndCallback = options.onSessionEnd
 
     // Ensure memory structure exists
     ensureMemoryStructure(options.memoryDir)
@@ -264,13 +268,20 @@ export class AgentCore {
       db: this.db,
       timeoutMinutes: options.sessionTimeoutMinutes ?? 15,
       memoryDir: options.memoryDir,
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      onSessionEnd: (_session: SessionInfo) => {
+      onSummarize: async (_sessionId: string, userId: string) => {
+        return this.generateSessionSummary(userId)
+      },
+      onSessionEnd: (session: SessionInfo, summary: string | null) => {
         // Clear agent messages when session ends
         this.agent.clearMessages()
 
         // Rebuild system prompt with fresh memory context
         this.refreshSystemPrompt()
+
+        // Notify external listener (e.g. ws-chat)
+        if (this.onSessionEndCallback) {
+          this.onSessionEndCallback(session.userId, summary)
+        }
       },
     })
   }
@@ -354,7 +365,70 @@ export class AgentCore {
    * Handle /new command: summarize current session and start fresh
    */
   async handleNewCommand(userId: string): Promise<string | null> {
-    return this.sessionManager.handleNewCommand(userId)
+    const summary = await this.sessionManager.handleNewCommand(userId)
+    return summary
+  }
+
+  /**
+   * Generate a summary of the current conversation using the LLM
+   */
+  private async generateSessionSummary(_userId: string): Promise<string> {
+    const messages = this.agent.state.messages
+    if (messages.length === 0) return 'Empty session.'
+
+    // Build a compact representation of the conversation for summarization
+    const conversationLines: string[] = []
+    for (const msg of messages) {
+      if ('role' in msg) {
+        if (msg.role === 'user') {
+          const text = 'content' in msg && typeof msg.content === 'string'
+            ? msg.content
+            : Array.isArray(msg.content)
+              ? msg.content.filter((c: { type: string }) => c.type === 'text').map((c: { type: string; text?: string }) => c.text ?? '').join('')
+              : ''
+          if (text) conversationLines.push(`User: ${text}`)
+        } else if (msg.role === 'assistant') {
+          const text = 'content' in msg && Array.isArray(msg.content)
+            ? msg.content.filter((c: { type: string }) => c.type === 'text').map((c: { type: string; text?: string }) => c.text ?? '').join('')
+            : ''
+          if (text) conversationLines.push(`Assistant: ${text.slice(0, 500)}`)
+        }
+      }
+    }
+
+    if (conversationLines.length === 0) return 'Empty session.'
+
+    // Truncate to avoid excessive token usage
+    const conversationText = conversationLines.join('\n').slice(0, 4000)
+
+    try {
+      const response = await completeSimple(this.model, {
+        systemPrompt: 'You are a concise summarizer. Summarize the following conversation in 2-4 bullet points. Focus on key topics discussed, decisions made, and any action items. Respond only with the bullet points, no preamble.',
+        messages: [{
+          role: 'user' as const,
+          content: conversationText,
+          timestamp: Date.now(),
+        }],
+      }, { apiKey: this.apiKey })
+
+      const summary = response.content
+        .filter(c => c.type === 'text')
+        .map(c => (c as { type: 'text'; text: string }).text)
+        .join('')
+        .trim()
+
+      return summary || 'Session ended.'
+    } catch (err) {
+      console.error('Failed to generate session summary:', err)
+      return 'Session ended (summary generation failed).'
+    }
+  }
+
+  /**
+   * Set the callback for session end events
+   */
+  setOnSessionEnd(callback: (userId: string, summary: string | null) => void): void {
+    this.onSessionEndCallback = callback
   }
 
   /**
@@ -460,11 +534,11 @@ export class AgentCore {
   }
 
   /**
-   * Reset a user's session
+   * Reset a user's session (async - generates summary before reset)
    */
-  resetSession(userId: string): void {
-    this.sessionManager.handleNewCommand(userId)
-    this.agent.clearMessages()
+  async resetSession(userId: string): Promise<string | null> {
+    const summary = await this.sessionManager.handleNewCommand(userId)
+    return summary
   }
 
   /**
