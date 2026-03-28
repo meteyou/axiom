@@ -47,6 +47,7 @@
           <MarkdownEditor
             v-model="soulContent"
             :saving="saving"
+            file-path=".data/memory/SOUL.md"
             @save="handleSaveSoul"
           />
         </div>
@@ -61,6 +62,7 @@
           <MarkdownEditor
             v-model="coreMemoryContent"
             :saving="saving"
+            file-path=".data/memory/MEMORY.md"
             @save="handleSaveCoreMemory"
           />
         </div>
@@ -169,6 +171,7 @@
             <MarkdownEditor
               v-model="dailyContent"
               :saving="saving"
+              :file-path="`.data/memory/daily/${selectedDaily}.md`"
               @save="handleSaveDaily"
             />
           </div>
