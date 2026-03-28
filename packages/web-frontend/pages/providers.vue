@@ -60,8 +60,37 @@
         </Button>
       </div>
 
+      <!-- Fallback provider dropdown -->
+      <div v-else class="mb-4">
+        <div class="flex items-center gap-4 rounded-xl border border-border bg-card p-4 shadow-sm">
+          <div class="min-w-0 flex-1">
+            <label for="fallback-select" class="block text-sm font-semibold text-foreground">
+              {{ $t('providers.fallbackProvider') }}
+            </label>
+            <p class="mt-0.5 text-xs text-muted-foreground">
+              {{ $t('providers.fallbackProviderHint') }}
+            </p>
+          </div>
+          <Select
+            id="fallback-select"
+            :model-value="fallbackProviderId ?? ''"
+            class="w-56"
+            @update:model-value="handleFallbackChange"
+          >
+            <option value="">{{ $t('providers.fallbackNone') }}</option>
+            <option
+              v-for="p in fallbackOptions"
+              :key="p.id"
+              :value="p.id"
+            >
+              {{ p.name }}
+            </option>
+          </Select>
+        </div>
+      </div>
+
       <!-- Providers table -->
-      <div v-else class="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+      <div v-if="providers.length > 0" class="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
         <div class="overflow-x-auto">
           <Table>
             <TableHeader>
@@ -200,6 +229,7 @@ const { t } = useI18n()
 const {
   providers,
   activeProviderId,
+  fallbackProviderId,
   presets,
   loading,
   error,
@@ -210,6 +240,7 @@ const {
   deleteProvider,
   testProvider,
   activateProvider,
+  setFallbackProvider,
 } = useProviders()
 
 /* ── State ── */
@@ -221,6 +252,12 @@ const successMessage = ref<string | null>(null)
 
 const sortedProviders = computed(() =>
   [...providers.value].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })),
+)
+
+const fallbackOptions = computed(() =>
+  providers.value
+    .filter(p => p.id !== activeProviderId.value)
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })),
 )
 
 onMounted(() => {
@@ -330,5 +367,9 @@ async function handleTest(id: string) {
 
 async function handleActivate(id: string) {
   await activateProvider(id)
+}
+
+async function handleFallbackChange(value: string) {
+  await setFallbackProvider(value || null)
 }
 </script>
