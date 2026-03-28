@@ -18,7 +18,7 @@ export interface SessionManagerOptions {
   /** Called to generate a summary of the session. Returns the summary text. */
   onSummarize?: (sessionId: string, userId: string) => Promise<string>
   /** Called when a session is disposed (after summary if applicable) */
-  onSessionEnd?: (session: SessionInfo) => void
+  onSessionEnd?: (session: SessionInfo, summary: string | null) => void
 }
 
 /**
@@ -31,7 +31,7 @@ export class SessionManager {
   private timeoutMs: number
   private memoryDir?: string
   private onSummarize?: (sessionId: string, userId: string) => Promise<string>
-  private onSessionEnd?: (session: SessionInfo) => void
+  private onSessionEnd?: (session: SessionInfo, summary: string | null) => void
 
   constructor(options: SessionManagerOptions) {
     this.db = options.db
@@ -159,7 +159,7 @@ export class SessionManager {
 
     // Notify listener
     if (this.onSessionEnd) {
-      this.onSessionEnd(session)
+      this.onSessionEnd(session, summary)
     }
 
     // Remove from active sessions
