@@ -25,7 +25,7 @@ export function createChatRouter(db: Database): Router {
 
     if (sessionId) {
       messages = db.prepare(
-        'SELECT id, session_id, user_id, role, content, timestamp FROM chat_messages WHERE user_id = ? AND session_id = ? ORDER BY timestamp DESC LIMIT ? OFFSET ?'
+        'SELECT id, session_id, user_id, role, content, metadata, timestamp FROM chat_messages WHERE user_id = ? AND session_id = ? ORDER BY timestamp DESC LIMIT ? OFFSET ?'
       ).all(userId, sessionId, limit, offset)
 
       total = (db.prepare(
@@ -33,7 +33,7 @@ export function createChatRouter(db: Database): Router {
       ).get(userId, sessionId) as { count: number }).count
     } else {
       messages = db.prepare(
-        'SELECT id, session_id, user_id, role, content, timestamp FROM chat_messages WHERE user_id = ? ORDER BY timestamp DESC LIMIT ? OFFSET ?'
+        'SELECT id, session_id, user_id, role, content, metadata, timestamp FROM chat_messages WHERE user_id = ? ORDER BY timestamp DESC LIMIT ? OFFSET ?'
       ).all(userId, limit, offset)
 
       total = (db.prepare(

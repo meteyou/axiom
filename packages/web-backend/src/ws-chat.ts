@@ -34,12 +34,13 @@ function saveChatMessage(
   db: Database,
   sessionId: string,
   userId: number,
-  role: 'user' | 'assistant',
-  content: string
+  role: 'user' | 'assistant' | 'tool',
+  content: string,
+  metadata?: string,
 ): void {
   db.prepare(
-    'INSERT INTO chat_messages (session_id, user_id, role, content) VALUES (?, ?, ?, ?)'
-  ).run(sessionId, userId, role, content)
+    'INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)'
+  ).run(sessionId, userId, role, content, metadata ?? null)
 }
 
 export interface WebSocketChatResult {
@@ -214,6 +215,8 @@ export function setupWebSocketChat(
       runtimeMetrics?.startRequest()
 
       let fullResponse = ''
+      // Track pending tool calls to save input+output together
+      const pendingToolCalls = new Map<string, { toolName: string; toolArgs: unknown }>()
 
       try {
         for await (const chunk of agentCore.sendMessage(String(currentUser.userId), parsed.content)) {
@@ -221,6 +224,29 @@ export function setupWebSocketChat(
 
           if (chunk.type === 'text' && chunk.text) {
             fullResponse += chunk.text
+          }
+
+          // Track tool call start
+          if (chunk.type === 'tool_call_start' && chunk.toolCallId) {
+            pendingToolCalls.set(chunk.toolCallId, {
+              toolName: chunk.toolName ?? 'unknown',
+              toolArgs: chunk.toolArgs,
+            })
+          }
+
+          // Save completed tool call to DB
+          if (chunk.type === 'tool_call_end' && chunk.toolCallId) {
+            const pending = pendingToolCalls.get(chunk.toolCallId)
+            const toolName = pending?.toolName ?? chunk.toolName ?? 'unknown'
+            const metadata = JSON.stringify({
+              toolName,
+              toolCallId: chunk.toolCallId,
+              toolArgs: pending?.toolArgs ?? null,
+              toolResult: chunk.toolResult ?? null,
+              toolIsError: chunk.toolIsError ?? false,
+            })
+            saveChatMessage(db, sessionId, currentUser.userId, 'tool', `Tool: ${toolName}`, metadata)
+            pendingToolCalls.delete(chunk.toolCallId)
           }
 
           sendMessage(ws, chunkToResponse(chunk))
