@@ -10,6 +10,7 @@ import { HeartbeatService } from './heartbeat.js'
 import { RuntimeMetrics } from './runtime-metrics.js'
 import { MemoryConsolidationScheduler } from './memory-consolidation-scheduler.js'
 import { createTelegramBot } from '@openagent/telegram'
+import { ChatEventBus } from './chat-event-bus.js'
 
 const PORT = parseInt(process.env.PORT ?? '3000', 10)
 const HOST = process.env.HOST ?? '0.0.0.0'
@@ -57,8 +58,29 @@ const consolidationScheduler = new MemoryConsolidationScheduler({
 })
 consolidationScheduler.start()
 
+// Create the cross-channel chat event bus
+const chatEventBus = new ChatEventBus()
+
 // Initialize Telegram bot (if configured and enabled)
-const telegramBot = agentCore ? createTelegramBot(agentCore, db) : null
+// Wire Telegram chat events into the cross-channel event bus
+const telegramBot = agentCore
+  ? createTelegramBot(agentCore, db, (event) => {
+      if (event.userId == null) return // unlinked telegram users can't sync
+      chatEventBus.broadcast({
+        type: event.type,
+        userId: event.userId,
+        source: 'telegram',
+        sessionId: event.sessionId,
+        text: event.text,
+        toolName: event.toolName,
+        toolCallId: event.toolCallId,
+        toolArgs: event.toolArgs,
+        toolResult: event.toolResult,
+        toolIsError: event.toolIsError,
+        senderName: event.senderName,
+      })
+    })
+  : null
 if (telegramBot) {
   telegramBot.start().catch((err) => {
     console.error('[openagent] Failed to start Telegram bot:', err)
@@ -69,8 +91,8 @@ if (telegramBot) {
 const app = createApp({ db, agentCore, heartbeatService, runtimeMetrics, consolidationScheduler, telegramBot })
 const server = http.createServer(app)
 
-// Set up WebSocket chat
-setupWebSocketChat(server, db, agentCore, runtimeMetrics)
+// Set up WebSocket chat (with cross-channel event bus)
+setupWebSocketChat(server, db, agentCore, runtimeMetrics, chatEventBus)
 
 // Set up WebSocket logs for real-time streaming
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
