@@ -1,7 +1,10 @@
 import type { AgentTool } from '@mariozechner/pi-agent-core'
 import { Type } from '@mariozechner/pi-ai'
+import { encrypt, decrypt, isEncrypted } from './encryption.js'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
+
+export type SearchProvider = 'duckduckgo' | 'brave' | 'searxng'
 
 export interface WebSearchResult {
   title: string
@@ -10,7 +13,9 @@ export interface WebSearchResult {
 }
 
 export interface WebSearchConfig {
-  provider?: 'duckduckgo'
+  provider?: SearchProvider
+  braveSearchApiKey?: string
+  searxngUrl?: string
 }
 
 export interface WebFetchConfig {
@@ -20,6 +25,8 @@ export interface WebFetchConfig {
 export interface BuiltinToolsConfig {
   webSearch?: { enabled?: boolean; provider?: string }
   webFetch?: { enabled?: boolean }
+  braveSearchApiKey?: string
+  searxngUrl?: string
 }
 
 // ─── HTML-to-Text Extraction ─────────────────────────────────────────────────
@@ -149,14 +156,166 @@ export function parseDuckDuckGoLiteHtml(html: string, count: number): WebSearchR
   return results
 }
 
+// ─── Brave Search Provider ───────────────────────────────────────────────────
+
+/**
+ * Search using Brave Search API v1.
+ * Requires an API key sent via X-Subscription-Token header.
+ */
+export async function searchBrave(
+  query: string,
+  apiKey: string,
+  count: number = 5,
+  fetchFn: typeof globalThis.fetch = globalThis.fetch,
+): Promise<WebSearchResult[]> {
+  const url = new URL('https://api.search.brave.com/res/v1/web/search')
+  url.searchParams.set('q', query)
+  url.searchParams.set('count', String(count))
+
+  const response = await fetchFn(url.toString(), {
+    method: 'GET',
+    headers: {
+      'Accept': 'application/json',
+      'Accept-Encoding': 'gzip',
+      'X-Subscription-Token': apiKey,
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error(`Brave Search failed: HTTP ${response.status}`)
+  }
+
+  const data = await response.json() as { web?: { results?: Array<{ title?: string; url?: string; description?: string }> } }
+  const webResults = data?.web?.results ?? []
+
+  return webResults.slice(0, count).map(r => ({
+    title: r.title ?? '',
+    url: r.url ?? '',
+    snippet: r.description ?? '',
+  }))
+}
+
+// ─── SearXNG Search Provider ─────────────────────────────────────────────────
+
+/**
+ * Search using a SearXNG instance JSON API.
+ * Requires the base URL of the SearXNG instance.
+ */
+export async function searchSearXNG(
+  query: string,
+  searxngUrl: string,
+  count: number = 5,
+  fetchFn: typeof globalThis.fetch = globalThis.fetch,
+): Promise<WebSearchResult[]> {
+  // Normalize URL: remove trailing slash
+  const baseUrl = searxngUrl.replace(/\/+$/, '')
+  const url = new URL(`${baseUrl}/search`)
+  url.searchParams.set('q', query)
+  url.searchParams.set('format', 'json')
+
+  const response = await fetchFn(url.toString(), {
+    method: 'GET',
+    headers: {
+      'Accept': 'application/json',
+      'User-Agent': 'Mozilla/5.0 (compatible; OpenAgent/1.0)',
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error(`SearXNG search failed: HTTP ${response.status}`)
+  }
+
+  const data = await response.json() as { results?: Array<{ title?: string; url?: string; content?: string }> }
+  const results = data?.results ?? []
+
+  return results.slice(0, count).map(r => ({
+    title: r.title ?? '',
+    url: r.url ?? '',
+    snippet: r.content ?? '',
+  }))
+}
+
+// ─── Provider Selection ──────────────────────────────────────────────────────
+
+/**
+ * Encrypt a Brave Search API key for storage in settings.json.
+ */
+export function encryptBraveApiKey(apiKey: string): string {
+  return encrypt(apiKey)
+}
+
+/**
+ * Decrypt a Brave Search API key from settings.json.
+ */
+export function decryptBraveApiKey(encryptedKey: string): string {
+  return decrypt(encryptedKey)
+}
+
+export interface ResolvedSearchProvider {
+  provider: SearchProvider
+  searchFn: (query: string, count: number) => Promise<WebSearchResult[]>
+  warning?: string
+}
+
+/**
+ * Resolve the search provider based on config.
+ * Falls back to DuckDuckGo with a warning if the selected provider is misconfigured.
+ */
+export function resolveSearchProvider(config?: WebSearchConfig): ResolvedSearchProvider {
+  const requested = config?.provider ?? 'duckduckgo'
+
+  if (requested === 'brave') {
+    const rawKey = config?.braveSearchApiKey ?? ''
+    if (!rawKey) {
+      return {
+        provider: 'duckduckgo',
+        searchFn: (query, count) => searchDuckDuckGo(query, count),
+        warning: 'Brave Search selected but no API key configured. Falling back to DuckDuckGo.',
+      }
+    }
+    // Decrypt key if it looks encrypted
+    const apiKey = isEncrypted(rawKey) ? decryptBraveApiKey(rawKey) : rawKey
+    return {
+      provider: 'brave',
+      searchFn: (query, count) => searchBrave(query, apiKey, count),
+    }
+  }
+
+  if (requested === 'searxng') {
+    const searxngUrl = config?.searxngUrl ?? ''
+    if (!searxngUrl) {
+      return {
+        provider: 'duckduckgo',
+        searchFn: (query, count) => searchDuckDuckGo(query, count),
+        warning: 'SearXNG selected but no instance URL configured. Falling back to DuckDuckGo.',
+      }
+    }
+    return {
+      provider: 'searxng',
+      searchFn: (query, count) => searchSearXNG(query, searxngUrl, count),
+    }
+  }
+
+  // Default: DuckDuckGo
+  return {
+    provider: 'duckduckgo',
+    searchFn: (query, count) => searchDuckDuckGo(query, count),
+  }
+}
+
 // ─── Tool Factories ──────────────────────────────────────────────────────────
 
 /**
  * Create the web_search AgentTool.
- * Currently supports DuckDuckGo as the search provider.
+ * Supports DuckDuckGo, Brave Search, and SearXNG providers.
  */
 export function createWebSearchTool(config?: WebSearchConfig): AgentTool {
-  const _provider = config?.provider ?? 'duckduckgo'
+  const resolved = resolveSearchProvider(config)
+
+  // Log warning if provider fallback occurred
+  if (resolved.warning) {
+    console.warn(`[web_search] ${resolved.warning}`)
+  }
 
   return {
     name: 'web_search',
@@ -173,12 +332,12 @@ export function createWebSearchTool(config?: WebSearchConfig): AgentTool {
       const count = Math.min(Math.max(rawCount ?? 5, 1), 20)
 
       try {
-        const results = await searchDuckDuckGo(query, count)
+        const results = await resolved.searchFn(query, count)
 
         if (results.length === 0) {
           return {
             content: [{ type: 'text' as const, text: `No results found for: "${query}"` }],
-            details: { query, count: 0, provider: 'duckduckgo' },
+            details: { query, count: 0, provider: resolved.provider },
           }
         }
 
@@ -188,13 +347,13 @@ export function createWebSearchTool(config?: WebSearchConfig): AgentTool {
 
         return {
           content: [{ type: 'text' as const, text: formatted }],
-          details: { query, count: results.length, provider: 'duckduckgo', results },
+          details: { query, count: results.length, provider: resolved.provider, results },
         }
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err)
         return {
           content: [{ type: 'text' as const, text: `Search failed: ${message}` }],
-          details: { error: true, query },
+          details: { error: true, query, provider: resolved.provider },
         }
       }
     },
@@ -279,8 +438,12 @@ export function createBuiltinWebTools(config?: BuiltinToolsConfig): AgentTool[] 
 
   // web_search — enabled by default
   if (config?.webSearch?.enabled !== false) {
-    const provider = (config?.webSearch?.provider ?? 'duckduckgo') as 'duckduckgo'
-    tools.push(createWebSearchTool({ provider }))
+    const provider = (config?.webSearch?.provider ?? 'duckduckgo') as SearchProvider
+    tools.push(createWebSearchTool({
+      provider,
+      braveSearchApiKey: config?.braveSearchApiKey,
+      searxngUrl: config?.searxngUrl,
+    }))
   }
 
   // web_fetch — enabled by default

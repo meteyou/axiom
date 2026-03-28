@@ -42,6 +42,8 @@ const TEMPLATES: Record<string, object> = {
       webSearch: { enabled: true, provider: 'duckduckgo' },
       webFetch: { enabled: true },
     },
+    braveSearchApiKey: '',
+    searxngUrl: '',
   },
   'skills.json': {
     skills: [],

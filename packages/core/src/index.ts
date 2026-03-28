@@ -108,8 +108,13 @@ export {
   extractTextFromHtml,
   searchDuckDuckGo,
   parseDuckDuckGoLiteHtml,
+  searchBrave,
+  searchSearXNG,
+  resolveSearchProvider,
+  encryptBraveApiKey,
+  decryptBraveApiKey,
 } from './web-tools.js'
-export type { WebSearchResult, WebSearchConfig, WebFetchConfig, BuiltinToolsConfig } from './web-tools.js'
+export type { WebSearchResult, WebSearchConfig, WebFetchConfig, BuiltinToolsConfig, SearchProvider, ResolvedSearchProvider } from './web-tools.js'
 export { AgentCore } from './agent.js'
 export type { ResponseChunk, AgentCoreOptions } from './agent.js'
 export { ProviderManager } from './provider-manager.js'
