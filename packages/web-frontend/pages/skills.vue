@@ -126,6 +126,28 @@
           </div>
 
           <div v-else class="flex-1 space-y-4 overflow-y-auto min-h-0">
+            <!-- web_fetch card -->
+            <Card>
+              <CardHeader class="pb-4">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-3">
+                    <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+                      <AppIcon name="file" class="h-5 w-5 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <CardTitle class="text-base">{{ $t('skills.webFetchTitle') }}</CardTitle>
+                      <CardDescription class="mt-0.5">{{ $t('skills.webFetchDescription') }}</CardDescription>
+                    </div>
+                  </div>
+                  <Switch
+                    :model-value="localWebFetch.enabled"
+                    :aria-label="$t('skills.toggleEnabled')"
+                    @change="handleToggleWebFetch"
+                  />
+                </div>
+              </CardHeader>
+            </Card>
+
             <!-- web_search card -->
             <Card>
               <CardHeader class="pb-4">
@@ -196,28 +218,6 @@
                   {{ $t('common.save') }}
                 </Button>
               </CardContent>
-            </Card>
-
-            <!-- web_fetch card -->
-            <Card>
-              <CardHeader class="pb-4">
-                <div class="flex items-center justify-between">
-                  <div class="flex items-center gap-3">
-                    <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
-                      <AppIcon name="file" class="h-5 w-5 text-muted-foreground" />
-                    </div>
-                    <div>
-                      <CardTitle class="text-base">{{ $t('skills.webFetchTitle') }}</CardTitle>
-                      <CardDescription class="mt-0.5">{{ $t('skills.webFetchDescription') }}</CardDescription>
-                    </div>
-                  </div>
-                  <Switch
-                    :model-value="localWebFetch.enabled"
-                    :aria-label="$t('skills.toggleEnabled')"
-                    @change="handleToggleWebFetch"
-                  />
-                </div>
-              </CardHeader>
             </Card>
           </div>
         </TabsContent>
