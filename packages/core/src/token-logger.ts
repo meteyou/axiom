@@ -159,11 +159,14 @@ export function queryToolCalls(db: Database, options: ToolCallQueryOptions = {})
   }
   if (options.dateFrom) {
     where += ' AND timestamp >= ?'
-    params.push(options.dateFrom)
+    // dateFrom is a date string like "2026-03-28" — ensure start-of-day
+    params.push(options.dateFrom.length === 10 ? `${options.dateFrom} 00:00:00` : options.dateFrom)
   }
   if (options.dateTo) {
     where += ' AND timestamp <= ?'
-    params.push(options.dateTo)
+    // dateTo is a date string like "2026-03-28", but timestamps are "2026-03-28 HH:MM:SS"
+    // Append end-of-day time so the entire day is included
+    params.push(options.dateTo.length === 10 ? `${options.dateTo} 23:59:59` : options.dateTo)
   }
 
   const total = (db.prepare(`SELECT COUNT(*) as count FROM tool_calls ${where}`).get(...params) as { count: number }).count
