@@ -307,6 +307,24 @@
               </div>
 
               <div class="flex flex-col gap-6">
+                <!-- Enable toggle -->
+                <div class="flex items-center justify-between rounded-lg border border-border px-4 py-3">
+                  <div class="flex flex-col gap-0.5 pr-4">
+                    <Label for="telegram-enabled" class="cursor-pointer">
+                      {{ $t('settings.telegramEnabled') }}
+                    </Label>
+                    <p class="text-xs text-muted-foreground">
+                      {{ $t('settings.telegramEnabledHint') }}
+                    </p>
+                  </div>
+                  <Switch
+                    id="telegram-enabled"
+                    v-model="form.telegramEnabled"
+                  />
+                </div>
+
+                <!-- Configuration — progressive disclosure -->
+                <template v-if="form.telegramEnabled">
                 <!-- Bot token -->
                 <div class="flex flex-col gap-1.5">
                   <Label for="telegram-token">{{ $t('settings.telegramBotToken') }}</Label>
@@ -338,6 +356,148 @@
                   </div>
                   <p class="text-xs text-muted-foreground">{{ $t('settings.batchingDelayHint') }}</p>
                 </div>
+
+                <!-- Telegram users section -->
+                <Separator />
+
+                <div>
+                  <h3 class="text-base font-semibold tracking-tight text-foreground">
+                    {{ $t('settings.telegramUsers') }}
+                  </h3>
+                  <p class="mt-1 text-sm text-muted-foreground">
+                    {{ $t('settings.telegramUsersDescription') }}
+                  </p>
+                </div>
+
+                <!-- Loading -->
+                <div v-if="telegramUsersLoading" class="flex flex-col gap-2">
+                  <Skeleton class="h-[72px] w-full rounded-lg" />
+                  <Skeleton class="h-[72px] w-full rounded-lg" />
+                </div>
+
+                <!-- Empty state -->
+                <div v-else-if="telegramUsers.length === 0" class="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border px-4 py-8 text-center">
+                  <AppIcon name="send" size="lg" class="text-muted-foreground/40" />
+                  <p class="text-sm text-muted-foreground">{{ $t('settings.telegramUsersEmpty') }}</p>
+                </div>
+
+                <!-- User list -->
+                <div v-else class="overflow-hidden rounded-lg border border-border">
+                  <div
+                    v-for="(tgUser, index) in telegramUsers"
+                    :key="tgUser.id"
+                    :class="[
+                      'flex items-center gap-3 px-4 py-3 transition-colors',
+                      index > 0 ? 'border-t border-border' : '',
+                    ]"
+                  >
+                    <!-- Avatar -->
+                    <img
+                      v-if="tgUser.hasAvatar"
+                      :src="getTelegramAvatarUrl(tgUser.id)"
+                      :alt="tgUser.telegramDisplayName || tgUser.telegramUsername || ''"
+                      class="h-9 w-9 shrink-0 rounded-full object-cover"
+                      @error="($event.target as HTMLImageElement).style.display = 'none'; ($event.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden')"
+                    >
+                    <span
+                      :class="[
+                        'flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold',
+                        tgUser.hasAvatar ? 'hidden' : '',
+                        tgUser.status === 'approved'
+                          ? 'bg-success/10 text-success'
+                          : tgUser.status === 'pending'
+                            ? 'bg-warning/10 text-warning'
+                            : 'bg-muted text-muted-foreground',
+                      ]"
+                    >
+                      {{ (tgUser.telegramDisplayName || tgUser.telegramUsername || '?').slice(0, 1).toUpperCase() }}
+                    </span>
+
+                    <!-- Info -->
+                    <div class="min-w-0 flex-1">
+                      <div class="flex items-center gap-2">
+                        <span class="truncate font-medium text-foreground">
+                          {{ tgUser.telegramDisplayName || tgUser.telegramUsername || tgUser.telegramId }}
+                        </span>
+                        <Badge
+                          :variant="tgUser.status === 'approved' ? 'success' : tgUser.status === 'pending' ? 'warning' : 'destructive'"
+                          class="shrink-0"
+                        >
+                          {{ $t(`settings.telegramUsers${tgUser.status.charAt(0).toUpperCase() + tgUser.status.slice(1)}`) }}
+                        </Badge>
+                      </div>
+                      <div class="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <span v-if="tgUser.telegramUsername">@{{ tgUser.telegramUsername }}</span>
+                        <span v-else>{{ $t('settings.telegramUsersNoUsername') }}</span>
+                        <span class="text-border">·</span>
+                        <span class="font-mono">{{ tgUser.telegramId }}</span>
+                        <template v-if="tgUser.linkedUsername">
+                          <span class="text-border">·</span>
+                          <span class="inline-flex items-center gap-1">
+                            <AppIcon name="user" size="sm" />
+                            {{ tgUser.linkedUsername }}
+                          </span>
+                        </template>
+                      </div>
+                    </div>
+
+                    <!-- Primary action: Approve for pending users -->
+                    <Button
+                      v-if="tgUser.status === 'pending'"
+                      size="sm"
+                      @click="handleApproveTelegramUser(tgUser.id)"
+                    >
+                      <AppIcon name="check" size="sm" class="mr-1" />
+                      {{ $t('settings.telegramUsersApprove') }}
+                    </Button>
+
+                    <!-- Row actions dropdown -->
+                    <DropdownMenu>
+                      <DropdownMenuTrigger>
+                        <Button variant="ghost" size="icon-sm" :aria-label="$t('aria.userMenu')">
+                          <AppIcon name="moreVertical" class="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem v-if="tgUser.status !== 'approved'" @click="handleApproveTelegramUser(tgUser.id)">
+                          <AppIcon name="check" class="h-4 w-4" />
+                          {{ $t('settings.telegramUsersApprove') }}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem v-if="tgUser.status !== 'rejected'" @click="handleRejectTelegramUser(tgUser.id)">
+                          <AppIcon name="close" class="h-4 w-4" />
+                          {{ $t('settings.telegramUsersReject') }}
+                        </DropdownMenuItem>
+
+                        <!-- User assignment submenu -->
+                        <DropdownMenuSeparator />
+                        <DropdownMenuLabel>{{ $t('settings.telegramUsersAssignUser') }}</DropdownMenuLabel>
+                        <DropdownMenuItem
+                          :class="tgUser.userId === null ? 'font-medium' : ''"
+                          @click="handleAssignUser(tgUser.id, '')"
+                        >
+                          {{ $t('settings.telegramUsersUnassigned') }}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          v-for="u in users"
+                          :key="u.id"
+                          :class="tgUser.userId === u.id ? 'font-medium' : ''"
+                          @click="handleAssignUser(tgUser.id, String(u.id))"
+                        >
+                          <AppIcon name="user" class="h-4 w-4" />
+                          {{ u.username }}
+                          <AppIcon v-if="tgUser.userId === u.id" name="check" class="ml-auto h-4 w-4" />
+                        </DropdownMenuItem>
+
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem destructive @click="handleDeleteTelegramUser(tgUser)">
+                          <AppIcon name="trash" class="h-4 w-4" />
+                          {{ $t('settings.telegramUsersDelete') }}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </div>
+                </template>
               </div>
             </div>
 
@@ -350,6 +510,7 @@
 
 <script setup lang="ts">
 import type { MemoryConsolidationSettings } from '~/composables/useSettings'
+import type { TelegramUser } from '~/composables/useTelegramUsers'
 
 /* ── Auth ── */
 const { user } = useAuth()
@@ -394,6 +555,44 @@ const {
 
 /* ── Providers (consolidation dropdown) ── */
 const { providers, fetchProviders } = useProviders()
+
+/* ── Users (for telegram user assignment) ── */
+const { users, fetchUsers } = useUsers()
+
+/* ── Telegram users ── */
+const {
+  telegramUsers,
+  loading: telegramUsersLoading,
+  fetchTelegramUsers,
+  updateTelegramUser,
+  deleteTelegramUser,
+} = useTelegramUsers()
+
+function getTelegramAvatarUrl(telegramUserId: number): string {
+  const config = useRuntimeConfig()
+  const { getAccessToken } = useAuth()
+  const token = getAccessToken()
+  return `${config.public.apiBase}/api/telegram-users/${telegramUserId}/avatar${token ? `?token=${token}` : ''}`
+}
+
+async function handleApproveTelegramUser(id: number) {
+  await updateTelegramUser(id, { status: 'approved' })
+}
+
+async function handleRejectTelegramUser(id: number) {
+  await updateTelegramUser(id, { status: 'rejected' })
+}
+
+async function handleAssignUser(telegramUserId: number, userIdStr: string) {
+  const userId = userIdStr ? parseInt(userIdStr, 10) : null
+  await updateTelegramUser(telegramUserId, { userId })
+}
+
+async function handleDeleteTelegramUser(tgUser: TelegramUser) {
+  const name = tgUser.telegramDisplayName || tgUser.telegramUsername || tgUser.telegramId
+  if (!confirm(t('settings.telegramUsersDeleteConfirm', { name }))) return
+  await deleteTelegramUser(tgUser.id)
+}
 
 /* ── Consolidation runtime ── */
 const { apiFetch } = useApi()
@@ -440,6 +639,7 @@ interface SettingsForm {
   language: string
   heartbeatIntervalMinutes: number
   batchingDelayMs: number
+  telegramEnabled: boolean
   telegramBotToken: string
   memoryConsolidation: MemoryConsolidationSettings
 }
@@ -454,6 +654,7 @@ function hydrateForm() {
     language: s.language,
     heartbeatIntervalMinutes: s.heartbeatIntervalMinutes,
     batchingDelayMs: s.batchingDelayMs,
+    telegramEnabled: s.telegramEnabled,
     telegramBotToken: s.telegramBotToken,
     memoryConsolidation: { ...s.memoryConsolidation },
   }
@@ -479,6 +680,8 @@ onMounted(async () => {
   await Promise.all([
     fetchSettings(),
     fetchProviders(),
+    fetchUsers(),
+    fetchTelegramUsers(),
     fetchConsolidationStatus(),
   ])
   hydrateForm()
