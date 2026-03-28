@@ -17,11 +17,38 @@ export interface TelegramConfig {
   batchingDelayMs: number
 }
 
+/**
+ * Chat event emitted by the Telegram bot for cross-channel sync.
+ */
+export interface TelegramChatEvent {
+  type: 'user_message' | 'text' | 'tool_call_start' | 'tool_call_end' | 'done' | 'error'
+  /** OpenAgent user ID (integer) — only set for linked users */
+  userId: number | null
+  /** Session ID used for chat_messages */
+  sessionId: string
+  /** Text content */
+  text?: string
+  /** Tool name */
+  toolName?: string
+  /** Tool call ID */
+  toolCallId?: string
+  /** Tool arguments */
+  toolArgs?: unknown
+  /** Tool result */
+  toolResult?: unknown
+  /** Whether the tool call errored */
+  toolIsError?: boolean
+  /** Display name of the sender */
+  senderName?: string
+}
+
 export interface TelegramBotOptions {
   agentCore: AgentCore
   db?: Database
   config?: TelegramConfig
   onQueueDepthChanged?: (queueDepth: number) => void
+  /** Called for every chat event (user message, response chunks, etc.) for cross-channel sync */
+  onChatEvent?: (event: TelegramChatEvent) => void
 }
 
 export type TelegramUserStatus = 'pending' | 'approved' | 'rejected'
@@ -167,12 +194,14 @@ export class TelegramBot {
   private running = false
   private chatStates = new Map<string, ChatState>()
   private onQueueDepthChanged?: (queueDepth: number) => void
+  private onChatEvent?: (event: TelegramChatEvent) => void
 
   constructor(options: TelegramBotOptions) {
     this.agentCore = options.agentCore
     this.db = options.db ?? null
     this.config = options.config ?? loadTelegramRuntimeConfig()
     this.onQueueDepthChanged = options.onQueueDepthChanged
+    this.onChatEvent = options.onChatEvent
 
     if (!this.config.botToken) {
       throw new Error(
@@ -399,7 +428,8 @@ export class TelegramBot {
 
   /**
    * Resolve the user ID for session management.
-   * If the telegram user is linked to an OpenAgent user, use that user's ID.
+   * If the telegram user is linked to an OpenAgent user, use that user's ID
+   * in the same format as the web backend (plain string number).
    */
   private resolveUserId(ctx: Context): string {
     if (!this.db || !ctx.from) return getUserId(ctx)
@@ -410,10 +440,35 @@ export class TelegramBot {
     ).get(telegramId, 'approved') as { user_id: number | null } | undefined
 
     if (row?.user_id) {
-      return `user-${row.user_id}`
+      return String(row.user_id)
     }
 
     return getUserId(ctx)
+  }
+
+  /**
+   * Resolve the numeric OpenAgent user ID for a Telegram user.
+   * Returns null if unlinked.
+   */
+  private resolveNumericUserId(ctx: Context): number | null {
+    if (!this.db || !ctx.from) return null
+
+    const telegramId = String(ctx.from.id)
+    const row = this.db.prepare(
+      'SELECT user_id FROM telegram_users WHERE telegram_id = ? AND status = ?'
+    ).get(telegramId, 'approved') as { user_id: number | null } | undefined
+
+    return row?.user_id ?? null
+  }
+
+  /**
+   * Get a display name for the Telegram user.
+   */
+  private getSenderName(ctx: Context): string {
+    const from = ctx.from
+    if (!from) return 'Unknown'
+    if (from.username) return `@${from.username}`
+    return [from.first_name, from.last_name].filter(Boolean).join(' ') || 'Unknown'
   }
 
   /**
@@ -505,7 +560,28 @@ export class TelegramBot {
 
     const { ctx, text } = queuedMessage
     const userId = this.resolveUserId(ctx)
+    const numericUserId = this.resolveNumericUserId(ctx)
     const messageForAgent = `${formatUserContext(ctx)}${text}`
+    const senderName = this.getSenderName(ctx)
+
+    // Generate a session ID for chat_messages storage
+    const sessionId = `telegram-${userId}-${Date.now()}`
+
+    // Save user message to chat_messages (if linked to a web user)
+    if (this.db && numericUserId) {
+      this.db.prepare(
+        'INSERT INTO chat_messages (session_id, user_id, role, content) VALUES (?, ?, ?, ?)'
+      ).run(sessionId, numericUserId, 'user', text)
+    }
+
+    // Broadcast user message event
+    this.onChatEvent?.({
+      type: 'user_message',
+      userId: numericUserId,
+      sessionId,
+      text,
+      senderName,
+    })
 
     try {
       // Send "typing" indicator
@@ -530,6 +606,19 @@ export class TelegramBot {
           if (chunk.type === 'text' && chunk.text) {
             fullResponse += chunk.text
           }
+
+          // Broadcast response chunks for cross-channel sync
+          this.onChatEvent?.({
+            type: chunk.type === 'done' ? 'done' : chunk.type,
+            userId: numericUserId,
+            sessionId,
+            text: chunk.text,
+            toolName: chunk.toolName,
+            toolCallId: chunk.toolCallId,
+            toolArgs: chunk.toolArgs,
+            toolResult: chunk.toolResult,
+            toolIsError: chunk.toolIsError,
+          })
         }
       } finally {
         clearInterval(typingInterval)
@@ -537,6 +626,13 @@ export class TelegramBot {
 
       if (!state.abortRequested && fullResponse.trim()) {
         await this.sendLongMessage(ctx, fullResponse.trim())
+      }
+
+      // Save assistant response to chat_messages (if linked to a web user)
+      if (this.db && numericUserId && fullResponse.trim()) {
+        this.db.prepare(
+          'INSERT INTO chat_messages (session_id, user_id, role, content) VALUES (?, ?, ?, ?)'
+        ).run(sessionId, numericUserId, 'assistant', fullResponse.trim())
       }
     } catch (err) {
       if (state.abortRequested) {
@@ -723,7 +819,11 @@ export class TelegramBot {
  * Create a Telegram bot if configured, or return null for web-only mode.
  * Does not throw if Telegram is disabled or not configured.
  */
-export function createTelegramBot(agentCore: AgentCore, db?: Database): TelegramBot | null {
+export function createTelegramBot(
+  agentCore: AgentCore,
+  db?: Database,
+  onChatEvent?: (event: TelegramChatEvent) => void,
+): TelegramBot | null {
   try {
     const config = loadTelegramRuntimeConfig()
 
@@ -737,7 +837,7 @@ export function createTelegramBot(agentCore: AgentCore, db?: Database): Telegram
       return null
     }
 
-    return new TelegramBot({ agentCore, db, config })
+    return new TelegramBot({ agentCore, db, config, onChatEvent })
   } catch {
     console.log('ℹ️  Telegram config not found. Running in web-only mode.')
     return null
