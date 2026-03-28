@@ -30,29 +30,33 @@ console.log('[openagent] Frontend: http://localhost:3001')
 console.log('[openagent] Core:     watching for changes (tsc --watch)')
 
 const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-const spawnOpts = {
+const baseOpts = {
   cwd: rootDir,
   env: process.env,
   stdio: 'inherit',
-  detached: true,
 }
 
 const backendSrc = path.join(rootDir, 'packages', 'web-backend', 'src')
 const coreDist = path.join(rootDir, 'packages', 'core', 'dist')
+const telegramDist = path.join(rootDir, 'packages', 'telegram', 'dist')
 
 const children = [
   // 1. Core: tsc --watch recompiles on source changes → outputs to dist/
-  spawn(npmCmd, ['run', 'dev', '--workspace=packages/core'], spawnOpts),
-  // 2. Backend: --watch restarts when backend src/ or core dist/ changes
+  spawn(npmCmd, ['run', 'dev', '--workspace=packages/core'], { ...baseOpts, detached: true }),
+  // 1b. Telegram: tsc --watch recompiles on source changes → outputs to dist/
+  spawn(npmCmd, ['run', 'dev', '--workspace=packages/telegram'], { ...baseOpts, detached: true }),
+  // 2. Backend: --watch restarts when backend src/ or core/telegram dist/ changes
+  //    Not detached — node --watch manages its own child; we just need to kill this tree.
   spawn('node', [
     '--watch',
     `--watch-path=${backendSrc}`,
     `--watch-path=${coreDist}`,
+    `--watch-path=${telegramDist}`,
     '--import', 'tsx',
     path.join(backendSrc, 'server.ts'),
-  ], spawnOpts),
+  ], { ...baseOpts, detached: true }),
   // 3. Frontend: Nuxt dev server with HMR
-  spawn(npmCmd, ['run', 'dev:frontend'], spawnOpts),
+  spawn(npmCmd, ['run', 'dev:frontend'], { ...baseOpts, detached: true }),
 ]
 
 let shuttingDown = false
@@ -61,16 +65,22 @@ let exitCode = 0
 function shutdown(signal = 'SIGTERM') {
   if (shuttingDown) return
   shuttingDown = true
+  console.log(`\n[openagent] Shutting down dev environment...`)
 
+  // Send signal to each process group
   for (const child of children) {
     try { process.kill(-child.pid, signal) } catch {}
   }
 
-  setTimeout(() => {
+  // Force kill after timeout
+  const forceTimer = setTimeout(() => {
     for (const child of children) {
       try { process.kill(-child.pid, 'SIGKILL') } catch {}
     }
-  }, 3000).unref()
+    // Final fallback: exit ourselves
+    setTimeout(() => process.exit(exitCode), 500).unref()
+  }, 4000)
+  forceTimer.unref()
 }
 
 for (const signal of ['SIGINT', 'SIGTERM']) {
