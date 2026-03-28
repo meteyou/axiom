@@ -62,72 +62,136 @@
         <div
           v-for="(msg, i) in messages"
           :key="i"
-          class="flex max-w-[80%] gap-3 animate-in fade-in slide-in-from-bottom-2 duration-200 sm:max-w-[75%]"
-          :class="{
-            'self-end flex-row-reverse': msg.role === 'user',
-            'self-start': msg.role === 'assistant',
-            'self-center max-w-[90%] sm:max-w-[85%]': msg.role === 'system',
-          }"
+          :class="[
+            msg.role === 'tool'
+              ? 'self-start w-full max-w-[80%] sm:max-w-[75%] pl-11'
+              : 'flex max-w-[80%] gap-3 sm:max-w-[75%]',
+            msg.role === 'tool' ? '' : 'animate-in fade-in slide-in-from-bottom-2 duration-200',
+            {
+              'self-end flex-row-reverse': msg.role === 'user',
+              'self-start': msg.role === 'assistant',
+              'self-center max-w-[90%] !sm:max-w-[85%]': msg.role === 'system',
+            },
+          ]"
         >
-          <!-- Avatar -->
-          <div
-            class="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border bg-muted text-muted-foreground"
-          >
-            <!-- User avatar -->
-            <template v-if="msg.role === 'user'">
-              <img
-                v-if="userAvatarUrl && !avatarFailed"
-                :src="userAvatarUrl"
-                :alt="user?.username"
-                class="h-8 w-8 rounded-full object-cover"
-                @error="onAvatarError"
-              >
-              <span
-                v-else-if="user?.username"
-                class="text-xs font-semibold"
-              >
-                {{ userInitial }}
-              </span>
-              <AppIcon v-else name="user" class="h-4 w-4" />
-            </template>
-            <AppIcon v-else-if="msg.role === 'assistant'" name="bot" class="h-4 w-4" />
-            <AppIcon v-else name="info" class="h-4 w-4" />
-
-            <!-- Telegram source badge -->
-            <span
-              v-if="msg.source === 'telegram'"
-              class="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#2AABEE] text-white shadow-sm"
-              :title="msg.senderName ? `via Telegram (${msg.senderName})` : 'via Telegram'"
+          <!-- Tool call card (clickable/expandable) -->
+          <template v-if="msg.role === 'tool' && msg.toolData">
+            <button
+              class="group flex w-full items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-muted/60"
+              @click="toggleTool(msg.toolData!.toolCallId)"
             >
-              <svg class="h-2 w-2" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 0C5.37 0 0 5.37 0 12s5.37 12 12 12 12-5.37 12-12S18.63 0 12 0zm5.53 7.18l-1.97 9.3c-.15.67-.54.83-1.09.52l-3.01-2.22-1.45 1.4c-.16.16-.3.3-.61.3l.22-3.05 5.55-5.02c.24-.22-.05-.34-.38-.13l-6.87 4.33-2.96-.93c-.64-.2-.66-.64.13-.95l11.57-4.46c.54-.19 1.01.13.87.91z"/>
+              <svg
+                class="h-3 w-3 shrink-0 transition-transform duration-200"
+                :class="{ 'rotate-90': expandedTools.has(msg.toolData!.toolCallId) }"
+                viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              >
+                <polyline points="9 18 15 12 9 6" />
               </svg>
-            </span>
-          </div>
-
-          <!-- Bubble -->
-          <div
-            class="rounded-2xl px-4 py-2.5 text-sm leading-relaxed"
-            :class="{
-              'rounded-br-sm bg-primary text-primary-foreground': msg.role === 'user' && msg.source !== 'telegram',
-              'rounded-br-sm border border-[#2AABEE]/30 bg-[#2AABEE]/10 text-foreground': msg.role === 'user' && msg.source === 'telegram',
-              'rounded-bl-sm border border-border bg-muted text-foreground': msg.role === 'assistant',
-              'rounded-lg border border-border bg-muted/50 text-muted-foreground text-xs': msg.role === 'system',
-            }"
-          >
-            <!-- Telegram source label -->
-            <p v-if="msg.source === 'telegram'" class="mb-1 text-xs font-medium text-[#2AABEE]">
-              via Telegram{{ msg.senderName ? ` (${msg.senderName})` : '' }}
-            </p>
-            <p class="whitespace-pre-wrap break-words">{{ msg.content }}</p>
-
-            <!-- Typing indicator (animated dots when streaming) -->
-            <div v-if="msg.streaming" class="mt-1.5 flex items-center gap-1" :aria-label="$t('chat.typing')">
-              <span class="h-1.5 w-1.5 animate-[typingDot_1.4s_ease-in-out_infinite] rounded-full bg-current opacity-60" />
-              <span class="h-1.5 w-1.5 animate-[typingDot_1.4s_ease-in-out_0.2s_infinite] rounded-full bg-current opacity-60" />
-              <span class="h-1.5 w-1.5 animate-[typingDot_1.4s_ease-in-out_0.4s_infinite] rounded-full bg-current opacity-60" />
+              <AppIcon name="settings" class="h-3 w-3 shrink-0 opacity-60" />
+              <span class="font-medium">{{ msg.toolData!.toolName }}</span>
+              <span
+                v-if="msg.toolData!.toolIsError"
+                class="ml-auto rounded bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium text-destructive"
+              >
+                Error
+              </span>
+              <span
+                v-else-if="msg.toolData!.toolResult !== undefined"
+                class="ml-auto rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400"
+              >
+                Success
+              </span>
+              <span
+                v-else
+                class="ml-auto inline-flex items-center gap-1 text-[10px]"
+              >
+                <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
+                Running
+              </span>
+            </button>
+            <!-- Expanded details -->
+            <div
+              v-if="expandedTools.has(msg.toolData!.toolCallId)"
+              class="mt-1 overflow-hidden rounded-lg border border-border bg-background text-xs"
+            >
+              <!-- Input -->
+              <div class="border-b border-border px-3 py-2">
+                <p class="mb-1 font-semibold text-muted-foreground">Input</p>
+                <pre class="max-h-48 overflow-auto whitespace-pre-wrap break-all text-foreground">{{ formatToolData(msg.toolData!.toolArgs) }}</pre>
+              </div>
+              <!-- Output -->
+              <div class="px-3 py-2">
+                <p class="mb-1 font-semibold text-muted-foreground">Output</p>
+                <pre
+                  class="max-h-48 overflow-auto whitespace-pre-wrap break-all"
+                  :class="msg.toolData!.toolIsError ? 'text-destructive' : 'text-foreground'"
+                >{{ formatToolData(msg.toolData!.toolResult) }}</pre>
+              </div>
             </div>
-          </div>
+          </template>
+
+          <!-- Regular messages (user / assistant / system) -->
+          <template v-else>
+            <!-- Avatar -->
+            <div
+              class="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border bg-muted text-muted-foreground"
+            >
+              <!-- User avatar -->
+              <template v-if="msg.role === 'user'">
+                <img
+                  v-if="userAvatarUrl && !avatarFailed"
+                  :src="userAvatarUrl"
+                  :alt="user?.username"
+                  class="h-8 w-8 rounded-full object-cover"
+                  @error="onAvatarError"
+                >
+                <span
+                  v-else-if="user?.username"
+                  class="text-xs font-semibold"
+                >
+                  {{ userInitial }}
+                </span>
+                <AppIcon v-else name="user" class="h-4 w-4" />
+              </template>
+              <AppIcon v-else-if="msg.role === 'assistant'" name="bot" class="h-4 w-4" />
+              <AppIcon v-else name="info" class="h-4 w-4" />
+
+              <!-- Telegram source badge -->
+              <span
+                v-if="msg.source === 'telegram'"
+                class="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#2AABEE] text-white shadow-sm"
+                :title="msg.senderName ? `via Telegram (${msg.senderName})` : 'via Telegram'"
+              >
+                <svg class="h-2 w-2" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 0C5.37 0 0 5.37 0 12s5.37 12 12 12 12-5.37 12-12S18.63 0 12 0zm5.53 7.18l-1.97 9.3c-.15.67-.54.83-1.09.52l-3.01-2.22-1.45 1.4c-.16.16-.3.3-.61.3l.22-3.05 5.55-5.02c.24-.22-.05-.34-.38-.13l-6.87 4.33-2.96-.93c-.64-.2-.66-.64.13-.95l11.57-4.46c.54-.19 1.01.13.87.91z"/>
+                </svg>
+              </span>
+            </div>
+
+            <!-- Bubble -->
+            <div
+              class="rounded-2xl px-4 py-2.5 text-sm leading-relaxed"
+              :class="{
+                'rounded-br-sm bg-primary text-primary-foreground': msg.role === 'user' && msg.source !== 'telegram',
+                'rounded-br-sm border border-[#2AABEE]/30 bg-[#2AABEE]/10 text-foreground': msg.role === 'user' && msg.source === 'telegram',
+                'rounded-bl-sm border border-border bg-muted text-foreground': msg.role === 'assistant',
+                'rounded-lg border border-border bg-muted/50 text-muted-foreground text-xs': msg.role === 'system',
+              }"
+            >
+              <!-- Telegram source label -->
+              <p v-if="msg.source === 'telegram'" class="mb-1 text-xs font-medium text-[#2AABEE]">
+                via Telegram{{ msg.senderName ? ` (${msg.senderName})` : '' }}
+              </p>
+              <p class="whitespace-pre-wrap break-words">{{ msg.content }}</p>
+
+              <!-- Typing indicator (animated dots when streaming) -->
+              <div v-if="msg.streaming" class="mt-1.5 flex items-center gap-1" :aria-label="$t('chat.typing')">
+                <span class="h-1.5 w-1.5 animate-[typingDot_1.4s_ease-in-out_infinite] rounded-full bg-current opacity-60" />
+                <span class="h-1.5 w-1.5 animate-[typingDot_1.4s_ease-in-out_0.2s_infinite] rounded-full bg-current opacity-60" />
+                <span class="h-1.5 w-1.5 animate-[typingDot_1.4s_ease-in-out_0.4s_infinite] rounded-full bg-current opacity-60" />
+              </div>
+            </div>
+          </template>
         </div>
       </template>
     </div>
@@ -159,10 +223,35 @@
 </template>
 
 <script setup lang="ts">
+import type { ChatMessage } from '~/composables/useChat'
+
 const { t } = useI18n()
 const { apiFetch } = useApi()
 const { user } = useAuth()
 const { userAvatarUrl, avatarFailed, userInitial, onAvatarError } = useUserAvatar()
+
+// Track which tool calls are expanded
+const expandedTools = ref<Set<string>>(new Set())
+
+function toggleTool(toolCallId: string) {
+  const updated = new Set(expandedTools.value)
+  if (updated.has(toolCallId)) {
+    updated.delete(toolCallId)
+  } else {
+    updated.add(toolCallId)
+  }
+  expandedTools.value = updated
+}
+
+function formatToolData(data: unknown): string {
+  if (data === null || data === undefined) return '—'
+  if (typeof data === 'string') return data
+  try {
+    return JSON.stringify(data, null, 2)
+  } catch {
+    return String(data)
+  }
+}
 
 const {
   messages,
@@ -219,8 +308,9 @@ async function loadHistory() {
     interface HistoryResponse {
       messages: Array<{
         id: number
-        role: 'user' | 'assistant'
+        role: 'user' | 'assistant' | 'tool'
         content: string
+        metadata?: string
         timestamp: string
         session_id: string
       }>
@@ -229,14 +319,23 @@ async function loadHistory() {
     const data = await apiFetch<HistoryResponse>('/api/chat/history?limit=50')
     if (data.messages && data.messages.length > 0) {
       // Messages come in DESC order, reverse for display
-      const historyMessages = data.messages.reverse().map((m) => ({
-        id: m.id,
-        role: m.role,
-        content: m.content,
-        timestamp: m.timestamp,
-        // Derive source from session_id prefix
-        source: m.session_id.startsWith('telegram-') ? 'telegram' as const : undefined,
-      }))
+      const historyMessages = data.messages.reverse().map((m) => {
+        const base: ChatMessage = {
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          timestamp: m.timestamp,
+          // Derive source from session_id prefix
+          source: m.session_id.startsWith('telegram-') ? 'telegram' as const : undefined,
+        }
+        // Parse tool metadata from DB
+        if (m.role === 'tool' && m.metadata) {
+          try {
+            base.toolData = JSON.parse(m.metadata)
+          } catch { /* ignore */ }
+        }
+        return base
+      })
       messages.value = historyMessages
     }
   } catch {

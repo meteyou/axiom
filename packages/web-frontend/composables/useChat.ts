@@ -1,6 +1,14 @@
+export interface ToolCallData {
+  toolName: string
+  toolCallId: string
+  toolArgs?: unknown
+  toolResult?: unknown
+  toolIsError?: boolean
+}
+
 export interface ChatMessage {
   id?: number
-  role: 'user' | 'assistant' | 'system'
+  role: 'user' | 'assistant' | 'system' | 'tool'
   content: string
   timestamp?: string
   streaming?: boolean
@@ -8,6 +16,8 @@ export interface ChatMessage {
   source?: 'web' | 'telegram'
   /** Sender display name (for cross-channel messages) */
   senderName?: string
+  /** Tool call details (for role=tool) */
+  toolData?: ToolCallData
 }
 
 interface WsMessage {
@@ -28,14 +38,15 @@ interface WsMessage {
 
 type ConnectionStatus = 'connecting' | 'connected' | 'disconnected'
 
+// Module-level singletons so multiple useChat() calls share the same WebSocket
+let ws: WebSocket | null = null
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+
 export function useChat() {
   const messages = useState<ChatMessage[]>('chat_messages', () => [])
   const connectionStatus = useState<ConnectionStatus>('chat_status', () => 'disconnected')
   const sessionId = useState<string | null>('chat_session_id', () => null)
   const isStreaming = useState<boolean>('chat_streaming', () => false)
-
-  let ws: WebSocket | null = null
-  let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
   function connect() {
     const { getAccessToken } = useAuth()
@@ -164,15 +175,36 @@ export function useChat() {
       case 'tool_call_start':
         if (msg.toolName) {
           messages.value = [...messages.value, {
-            role: 'system',
-            content: `Calling tool: ${msg.toolName}`,
+            role: 'tool',
+            content: `Tool: ${msg.toolName}`,
             timestamp: new Date().toISOString(),
+            toolData: {
+              toolName: msg.toolName,
+              toolCallId: msg.toolCallId ?? '',
+              toolArgs: msg.toolArgs,
+            },
           }]
         }
         break
 
       case 'tool_call_end':
-        // Tool result — could enhance display later
+        if (msg.toolCallId) {
+          const updated = [...messages.value]
+          const toolMsgIdx = updated.findLastIndex(
+            m => m.role === 'tool' && m.toolData?.toolCallId === msg.toolCallId
+          )
+          if (toolMsgIdx !== -1) {
+            updated[toolMsgIdx] = {
+              ...updated[toolMsgIdx],
+              toolData: {
+                ...updated[toolMsgIdx].toolData!,
+                toolResult: msg.toolResult,
+                toolIsError: msg.toolIsError,
+              },
+            }
+            messages.value = updated
+          }
+        }
         break
     }
   }
