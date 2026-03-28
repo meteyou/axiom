@@ -88,12 +88,16 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
       res.json({
         sessionTimeoutMinutes: settings.sessionTimeoutMinutes ?? 15,
         language: settings.language ?? 'match',
-        heartbeatIntervalMinutes: settings.heartbeatIntervalMinutes ?? 5,
+        heartbeatIntervalMinutes: settings.heartbeatIntervalMinutes ?? settings.heartbeat?.intervalMinutes ?? 5,
         yoloMode: settings.yoloMode ?? true,
         batchingDelayMs: settings.batchingDelayMs ?? telegram.batchingDelayMs ?? 2500,
         telegramEnabled: telegram.enabled ?? false,
         telegramBotToken: telegram.botToken ?? '',
         heartbeat: {
+          fallbackTrigger: settings.heartbeat?.fallbackTrigger ?? 'down',
+          failuresBeforeFallback: settings.heartbeat?.failuresBeforeFallback ?? 1,
+          recoveryCheckIntervalMinutes: settings.heartbeat?.recoveryCheckIntervalMinutes ?? 1,
+          successesBeforeRecovery: settings.heartbeat?.successesBeforeRecovery ?? 3,
           notifications: { ...defaultNotifications, ...settings.heartbeat?.notifications },
         },
         memoryConsolidation: {
@@ -117,7 +121,13 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
       batchingDelayMs: number
       telegramEnabled: boolean
       telegramBotToken: string
-      heartbeat: { notifications?: Partial<HeartbeatNotificationToggles> }
+      heartbeat: {
+        fallbackTrigger?: 'down' | 'degraded'
+        failuresBeforeFallback?: number
+        recoveryCheckIntervalMinutes?: number
+        successesBeforeRecovery?: number
+        notifications?: Partial<HeartbeatNotificationToggles>
+      }
       memoryConsolidation: Partial<MemoryConsolidationSettingsData>
     }>
 
@@ -171,18 +181,55 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
       // Handle heartbeat notification settings
       const settingsRaw = settings as unknown as Record<string, unknown>
       let heartbeatChanged = false
-      if (body.heartbeat?.notifications !== undefined) {
+      if (body.heartbeat !== undefined) {
         const existingHeartbeat = (settingsRaw.heartbeat ?? {}) as Record<string, unknown>
-        const existingNotifications = (existingHeartbeat.notifications ?? {}) as Record<string, unknown>
-        const incoming = body.heartbeat.notifications
-        for (const key of ['healthyToDegraded', 'degradedToHealthy', 'degradedToDown', 'healthyToDown', 'downToFallback', 'fallbackToHealthy'] as const) {
-          if (incoming[key] !== undefined) {
-            existingNotifications[key] = !!incoming[key]
+
+        if (body.heartbeat.fallbackTrigger !== undefined) {
+          if (!['down', 'degraded'].includes(body.heartbeat.fallbackTrigger)) {
+            res.status(400).json({ error: 'heartbeat.fallbackTrigger must be "down" or "degraded"' })
+            return
           }
+          existingHeartbeat.fallbackTrigger = body.heartbeat.fallbackTrigger
+          heartbeatChanged = true
         }
-        existingHeartbeat.notifications = existingNotifications
+        if (body.heartbeat.failuresBeforeFallback !== undefined) {
+          if (typeof body.heartbeat.failuresBeforeFallback !== 'number' || !Number.isFinite(body.heartbeat.failuresBeforeFallback) || body.heartbeat.failuresBeforeFallback < 1) {
+            res.status(400).json({ error: 'heartbeat.failuresBeforeFallback must be a number >= 1' })
+            return
+          }
+          existingHeartbeat.failuresBeforeFallback = body.heartbeat.failuresBeforeFallback
+          heartbeatChanged = true
+        }
+        if (body.heartbeat.recoveryCheckIntervalMinutes !== undefined) {
+          if (typeof body.heartbeat.recoveryCheckIntervalMinutes !== 'number' || !Number.isFinite(body.heartbeat.recoveryCheckIntervalMinutes) || body.heartbeat.recoveryCheckIntervalMinutes < 1) {
+            res.status(400).json({ error: 'heartbeat.recoveryCheckIntervalMinutes must be a number >= 1' })
+            return
+          }
+          existingHeartbeat.recoveryCheckIntervalMinutes = body.heartbeat.recoveryCheckIntervalMinutes
+          heartbeatChanged = true
+        }
+        if (body.heartbeat.successesBeforeRecovery !== undefined) {
+          if (typeof body.heartbeat.successesBeforeRecovery !== 'number' || !Number.isFinite(body.heartbeat.successesBeforeRecovery) || body.heartbeat.successesBeforeRecovery < 1) {
+            res.status(400).json({ error: 'heartbeat.successesBeforeRecovery must be a number >= 1' })
+            return
+          }
+          existingHeartbeat.successesBeforeRecovery = body.heartbeat.successesBeforeRecovery
+          heartbeatChanged = true
+        }
+
+        if (body.heartbeat.notifications !== undefined) {
+          const existingNotifications = (existingHeartbeat.notifications ?? {}) as Record<string, unknown>
+          const incoming = body.heartbeat.notifications
+          for (const key of ['healthyToDegraded', 'degradedToHealthy', 'degradedToDown', 'healthyToDown', 'downToFallback', 'fallbackToHealthy'] as const) {
+            if (incoming[key] !== undefined) {
+              existingNotifications[key] = !!incoming[key]
+            }
+          }
+          existingHeartbeat.notifications = existingNotifications
+          heartbeatChanged = true
+        }
+
         settingsRaw.heartbeat = existingHeartbeat
-        heartbeatChanged = true
       }
 
       // Handle memory consolidation settings
@@ -277,6 +324,10 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
         telegramEnabled: telegram.enabled,
         telegramBotToken: telegram.botToken,
         heartbeat: {
+          fallbackTrigger: heartbeatOut.fallbackTrigger ?? 'down',
+          failuresBeforeFallback: heartbeatOut.failuresBeforeFallback ?? 1,
+          recoveryCheckIntervalMinutes: heartbeatOut.recoveryCheckIntervalMinutes ?? 1,
+          successesBeforeRecovery: heartbeatOut.successesBeforeRecovery ?? 3,
           notifications: { ...defaultNotifications, ...notificationsOut },
         },
         memoryConsolidation: {
