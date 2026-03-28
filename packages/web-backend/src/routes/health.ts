@@ -33,7 +33,10 @@ export function createHealthRouter(options: HealthRouterOptions): Router {
         agent: {
           status: snapshot.agentStatus,
         },
+        operatingMode: snapshot.operatingMode,
         provider: snapshot.activeProvider,
+        primaryProvider: snapshot.primaryProvider,
+        fallbackProvider: snapshot.fallbackProvider,
         lastCheck: snapshot.lastCheck,
         queueDepth: options.runtimeMetrics.getQueueDepth(),
         activity,
