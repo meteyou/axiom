@@ -207,6 +207,7 @@ export interface ProviderConfig {
   baseUrl: string
   apiKey: string // encrypted at rest
   defaultModel: string
+  degradedThresholdMs?: number
   models?: ProviderModelConfig[]
   status?: 'connected' | 'error' | 'untested'
   authMethod?: AuthMethod
@@ -386,6 +387,7 @@ export function addProvider(input: {
   baseUrl?: string
   apiKey?: string
   defaultModel: string
+  degradedThresholdMs?: number
 }): ProviderConfig {
   const preset = PROVIDER_TYPE_PRESETS[input.providerType]
   if (!preset) {
@@ -408,6 +410,7 @@ export function addProvider(input: {
     baseUrl: input.baseUrl || preset.baseUrl,
     apiKey: input.apiKey ? encrypt(input.apiKey) : '',
     defaultModel: input.defaultModel,
+    degradedThresholdMs: input.degradedThresholdMs ?? 5000,
     status: 'untested',
     authMethod: preset.authMethod,
   }
@@ -430,6 +433,7 @@ export function addOAuthProvider(input: {
   name: string
   providerType: ProviderType
   defaultModel: string
+  degradedThresholdMs?: number
   oauthCredentials: OAuthCredentials
 }): ProviderConfig {
   const preset = PROVIDER_TYPE_PRESETS[input.providerType]
@@ -456,6 +460,7 @@ export function addOAuthProvider(input: {
     baseUrl: preset.baseUrl,
     apiKey: '',
     defaultModel: input.defaultModel,
+    degradedThresholdMs: input.degradedThresholdMs ?? 5000,
     status: 'untested',
     authMethod: 'oauth',
     oauthCredentials: encryptOAuthCredentials(input.oauthCredentials),
@@ -480,6 +485,7 @@ export function updateProvider(id: string, input: {
   baseUrl?: string
   apiKey?: string
   defaultModel?: string
+  degradedThresholdMs?: number
 }): ProviderConfig {
   const file = loadProviders()
   const index = file.providers.findIndex(p => p.id === id)
@@ -513,6 +519,7 @@ export function updateProvider(id: string, input: {
   if (input.baseUrl !== undefined) existing.baseUrl = input.baseUrl
   if (input.apiKey !== undefined) existing.apiKey = input.apiKey ? encrypt(input.apiKey) : ''
   if (input.defaultModel !== undefined) existing.defaultModel = input.defaultModel
+  if (input.degradedThresholdMs !== undefined) existing.degradedThresholdMs = input.degradedThresholdMs
 
   // For providers with fixed URLs, always sync from preset
   const currentPreset = PROVIDER_TYPE_PRESETS[existing.providerType]

@@ -213,7 +213,7 @@ export async function performProviderHealthCheck(
   }
 
   const timeoutMs = options.timeoutMs ?? 15000
-  const degradedThresholdMs = options.degradedThresholdMs ?? 5000
+  const degradedThresholdMs = options.degradedThresholdMs ?? provider.degradedThresholdMs ?? 5000
   const fetchImpl = options.fetchImpl ?? fetch
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
