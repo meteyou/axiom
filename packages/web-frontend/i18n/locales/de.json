@@ -43,7 +43,8 @@
     "newSession": "Neue Sitzung",
     "stop": "Stopp",
     "noMessages": "Noch keine Nachrichten. Starten Sie eine Unterhaltung!",
-    "typing": "Schreibt..."
+    "typing": "Schreibt...",
+    "newSessionDivider": "Neue Sitzung"
   },
   "status": {
     "online": "Online",

@@ -43,7 +43,8 @@
     "newSession": "New Session",
     "stop": "Stop",
     "noMessages": "No messages yet. Start a conversation!",
-    "typing": "Typing..."
+    "typing": "Typing...",
+    "newSessionDivider": "New Session"
   },
   "status": {
     "online": "Online",

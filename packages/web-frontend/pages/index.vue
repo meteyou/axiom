@@ -63,10 +63,12 @@
           v-for="(msg, i) in messages"
           :key="i"
           :class="[
-            msg.role === 'tool'
-              ? 'self-start w-full max-w-[80%] sm:max-w-[75%] pl-11'
-              : 'flex max-w-[80%] gap-3 sm:max-w-[75%]',
-            msg.role === 'tool' ? '' : 'animate-in fade-in slide-in-from-bottom-2 duration-200',
+            msg.role === 'divider'
+              ? 'w-full animate-in fade-in duration-200'
+              : msg.role === 'tool'
+                ? 'self-start w-full max-w-[80%] sm:max-w-[75%] pl-11'
+                : 'flex max-w-[80%] gap-3 sm:max-w-[75%]',
+            msg.role === 'tool' || msg.role === 'divider' ? '' : 'animate-in fade-in slide-in-from-bottom-2 duration-200',
             {
               'self-end flex-row-reverse': msg.role === 'user',
               'self-start': msg.role === 'assistant',
@@ -74,8 +76,25 @@
             },
           ]"
         >
+          <!-- Session divider -->
+          <template v-if="msg.role === 'divider'">
+            <div class="w-full max-w-none px-2">
+              <div class="relative flex items-center py-2">
+                <div class="grow border-t border-border" />
+                <div class="mx-4 flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+                  <AppIcon name="sparkles" class="h-3 w-3" />
+                  <span>{{ $t('chat.newSessionDivider') }}</span>
+                </div>
+                <div class="grow border-t border-border" />
+              </div>
+              <p v-if="msg.content" class="mx-auto max-w-md text-center text-xs leading-relaxed text-muted-foreground/70">
+                {{ msg.content }}
+              </p>
+            </div>
+          </template>
+
           <!-- Tool call card (clickable/expandable) -->
-          <template v-if="msg.role === 'tool' && msg.toolData">
+          <template v-else-if="msg.role === 'tool' && msg.toolData">
             <div class="w-full overflow-hidden rounded-lg border border-border">
               <!-- Header (clickable) -->
               <button
@@ -310,7 +329,7 @@ async function loadHistory() {
     interface HistoryResponse {
       messages: Array<{
         id: number
-        role: 'user' | 'assistant' | 'tool'
+        role: 'user' | 'assistant' | 'tool' | 'system'
         content: string
         metadata?: string
         timestamp: string
@@ -329,6 +348,16 @@ async function loadHistory() {
           timestamp: m.timestamp,
           // Derive source from session_id prefix
           source: m.session_id.startsWith('telegram-') ? 'telegram' as const : undefined,
+        }
+        // Parse system messages with session_divider metadata as dividers
+        if (m.role === 'system' && m.metadata) {
+          try {
+            const meta = JSON.parse(m.metadata)
+            if (meta.type === 'session_divider') {
+              base.role = 'divider'
+              base.content = meta.summary ?? ''
+            }
+          } catch { /* ignore */ }
         }
         // Parse tool metadata from DB
         if (m.role === 'tool' && m.metadata) {

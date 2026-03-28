@@ -8,7 +8,7 @@ export interface ToolCallData {
 
 export interface ChatMessage {
   id?: number
-  role: 'user' | 'assistant' | 'system' | 'tool'
+  role: 'user' | 'assistant' | 'system' | 'tool' | 'divider'
   content: string
   timestamp?: string
   streaming?: boolean
@@ -21,7 +21,7 @@ export interface ChatMessage {
 }
 
 interface WsMessage {
-  type: 'text' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message'
+  type: 'text' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end'
   text?: string
   toolName?: string
   toolCallId?: string
@@ -110,6 +110,19 @@ export function useChat() {
             timestamp: new Date().toISOString(),
           }]
         }
+        isStreaming.value = false
+        break
+
+      case 'session_end':
+        if (msg.sessionId) {
+          sessionId.value = msg.sessionId
+        }
+        // Add a divider with optional summary to the chat
+        messages.value = [...messages.value, {
+          role: 'divider',
+          content: msg.text ?? '',
+          timestamp: new Date().toISOString(),
+        }]
         isStreaming.value = false
         break
 
@@ -230,7 +243,6 @@ export function useChat() {
 
   function newSession() {
     sendCommand('new')
-    messages.value = []
   }
 
   function stopTask() {
