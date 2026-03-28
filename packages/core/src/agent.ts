@@ -7,8 +7,9 @@ import type { Api, AssistantMessage, Message, Model } from '@mariozechner/pi-ai'
 import { Type, completeSimple } from '@mariozechner/pi-ai'
 import type { Database } from './database.js'
 import { logTokenUsage, logToolCall } from './token-logger.js'
-import { estimateCost, getApiKeyForProvider } from './provider-config.js'
+import { estimateCost, getApiKeyForProvider, buildModel } from './provider-config.js'
 import type { ProviderConfig } from './provider-config.js'
+import type { ProviderManager } from './provider-manager.js'
 import { assembleSystemPrompt, ensureMemoryStructure } from './memory.js'
 import { loadConfig, ensureConfigTemplates } from './config.js'
 import { createMemoryTools } from './memory-tools.js'
@@ -40,6 +41,7 @@ export interface AgentCoreOptions {
   sessionTimeoutMinutes?: number
   baseInstructions?: string
   providerConfig?: ProviderConfig // For OAuth token refresh
+  providerManager?: ProviderManager // For fallback retry support
   /** Called when a session ends (timeout or /new command) with the summary text */
   onSessionEnd?: (userId: string, summary: string | null) => void
 }
@@ -202,6 +204,7 @@ export class AgentCore {
   private memoryDir?: string
   private baseInstructions?: string
   private providerConfig?: ProviderConfig
+  private providerManager?: ProviderManager
   private onSessionEndCallback?: (userId: string, summary: string | null) => void
 
   constructor(options: AgentCoreOptions) {
@@ -211,6 +214,7 @@ export class AgentCore {
     this.memoryDir = options.memoryDir
     this.baseInstructions = options.baseInstructions
     this.providerConfig = options.providerConfig
+    this.providerManager = options.providerManager
     this.onSessionEndCallback = options.onSessionEnd
 
     // Ensure memory structure exists
@@ -294,6 +298,24 @@ export class AgentCore {
   }
 
   /**
+   * Hot-swap the provider at runtime while preserving conversation context.
+   * Updates model, apiKey, and providerConfig, then calls agent.setModel().
+   */
+  swapProvider(provider: ProviderConfig, apiKey: string): void {
+    this.model = buildModel(provider)
+    this.apiKey = apiKey
+    this.providerConfig = provider
+    this.agent.setModel(this.model)
+  }
+
+  /**
+   * Get the ProviderManager reference (if configured).
+   */
+  getProviderManager(): ProviderManager | undefined {
+    return this.providerManager
+  }
+
+  /**
    * Send a message and get back an async iterable of response chunks
    */
   async *sendMessage(userId: string, text: string, source: string = 'web'): AsyncIterable<ResponseChunk> {
@@ -307,10 +329,41 @@ export class AgentCore {
     // Record the message
     this.sessionManager.recordMessage(userId)
 
-    // Collect events via subscription
+    yield* this.executePromptWithRetry(text, sessionId)
+  }
+
+  /**
+   * Check if an error is a retryable pre-stream error (429, 5xx, connection refused).
+   */
+  private isRetryablePreStreamError(err: unknown): boolean {
+    const message = (err instanceof Error ? err.message : String(err)).toLowerCase()
+
+    // HTTP 429 rate limit
+    if (message.includes('429') || message.includes('rate limit') || message.includes('too many requests')) {
+      return true
+    }
+
+    // HTTP 5xx server errors
+    if (/\b5\d{2}\b/.test(message) || message.includes('internal server error') || message.includes('bad gateway') || message.includes('service unavailable') || message.includes('gateway timeout')) {
+      return true
+    }
+
+    // Connection errors
+    if (message.includes('econnrefused') || message.includes('econnreset') || message.includes('enotfound') || message.includes('connection refused') || message.includes('fetch failed')) {
+      return true
+    }
+
+    return false
+  }
+
+  /**
+   * Execute a prompt with optional fallback retry on pre-stream errors.
+   */
+  private async *executePromptWithRetry(text: string, sessionId: string, isRetry: boolean = false): AsyncIterable<ResponseChunk> {
     const eventQueue: AgentEvent[] = []
     let resolveWaiting: (() => void) | null = null
     let done = false
+    let preStreamError: unknown = null
 
     const unsubscribe = this.agent.subscribe((event: AgentEvent) => {
       eventQueue.push(event)
@@ -328,13 +381,19 @@ export class AgentCore {
         resolveWaiting = null
       }
     }).catch((err) => {
-      eventQueue.push({ type: 'agent_end', messages: [] })
+      // If no events have been received yet, this is a pre-stream error
+      if (eventQueue.length === 0) {
+        preStreamError = err
+      } else {
+        // Mid-stream error — surface as normal error
+        eventQueue.push({ type: 'agent_end', messages: [] })
+        console.error('Agent prompt error (mid-stream):', err)
+      }
       done = true
       if (resolveWaiting) {
         resolveWaiting()
         resolveWaiting = null
       }
-      console.error('Agent prompt error:', err)
     })
 
     try {
@@ -358,6 +417,32 @@ export class AgentCore {
     } finally {
       unsubscribe()
       await promptPromise
+    }
+
+    // Handle pre-stream error with fallback retry
+    if (preStreamError) {
+      const canRetry = !isRetry
+        && this.providerManager
+        && this.providerManager.getOperatingMode() === 'normal'
+        && this.providerManager.getFallbackProvider() !== null
+        && this.isRetryablePreStreamError(preStreamError)
+
+      if (canRetry) {
+        console.warn('[AgentCore] Pre-stream error detected, swapping to fallback provider:', (preStreamError as Error).message)
+        this.providerManager!.swapToFallback()
+        const fallback = this.providerManager!.getEffectiveProvider()!
+        const apiKey = await getApiKeyForProvider(fallback)
+        this.swapProvider(fallback, apiKey)
+
+        // Retry once with fallback
+        yield* this.executePromptWithRetry(text, sessionId, true)
+        return
+      }
+
+      // No retry possible — surface the error
+      console.error('Agent prompt error (pre-stream):', preStreamError)
+      yield { type: 'error' as const, error: (preStreamError as Error).message ?? String(preStreamError) }
+      yield { type: 'done' as const }
     }
   }
 
