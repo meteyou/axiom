@@ -118,11 +118,11 @@
                 </p>
               </div>
 
-              <div class="flex flex-col gap-6">
+              <div class="flex flex-col gap-8">
                 <!-- Language -->
-                <div class="flex flex-col gap-1.5">
+                <div class="flex flex-col gap-2">
                   <Label for="language-select">{{ $t('settings.language') }}</Label>
-                  <Select id="language-select" v-model="form.language" class="w-56">
+                  <Select id="language-select" v-model="form.language">
                     <option value="match">{{ $t('settings.languageMatch') }}</option>
                     <option value="English">{{ $t('settings.languages.english') }}</option>
                     <option value="German">{{ $t('settings.languages.german') }}</option>
@@ -153,9 +153,9 @@
                 </p>
               </div>
 
-              <div class="flex flex-col gap-6">
+              <div class="flex flex-col gap-8">
                 <!-- Session timeout -->
-                <div class="flex flex-col gap-1.5">
+                <div class="flex flex-col gap-2">
                   <Label for="session-timeout">{{ $t('settings.sessionTimeout') }}</Label>
                   <div class="flex items-center gap-2">
                     <Input
@@ -164,7 +164,7 @@
                       type="number"
                       min="1"
                       max="1440"
-                      class="w-28"
+                      class="w-full"
                     />
                     <span class="text-sm text-muted-foreground">{{ $t('settings.minutes') }}</span>
                   </div>
@@ -191,8 +191,8 @@
 
                 <!-- Configuration — progressive disclosure -->
                 <template v-if="form.memoryConsolidation.enabled">
-                  <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                    <div class="flex flex-col gap-1.5">
+                  <div class="flex flex-col gap-8">
+                    <div class="flex flex-col gap-2">
                       <Label for="consolidation-hour">{{ $t('settings.consolidationRunAtHour') }}</Label>
                       <div class="flex items-center gap-2">
                         <Input
@@ -201,14 +201,14 @@
                           type="number"
                           min="0"
                           max="23"
-                          class="w-20"
+                          class="w-full"
                         />
                         <span class="text-sm text-muted-foreground">{{ $t('settings.oClock') }}</span>
                       </div>
                       <p class="text-xs text-muted-foreground">{{ $t('settings.consolidationRunAtHourHint') }}</p>
                     </div>
 
-                    <div class="flex flex-col gap-1.5">
+                    <div class="flex flex-col gap-2">
                       <Label for="consolidation-days">{{ $t('settings.consolidationLookbackDays') }}</Label>
                       <div class="flex items-center gap-2">
                         <Input
@@ -217,51 +217,51 @@
                           type="number"
                           min="1"
                           max="30"
-                          class="w-20"
+                          class="w-full"
                         />
                         <span class="text-sm text-muted-foreground">{{ $t('settings.days') }}</span>
                       </div>
                       <p class="text-xs text-muted-foreground">{{ $t('settings.consolidationLookbackDaysHint') }}</p>
                     </div>
-                  </div>
 
-                  <div class="flex flex-col gap-1.5">
-                    <Label for="consolidation-provider">{{ $t('settings.consolidationProvider') }}</Label>
-                    <Select id="consolidation-provider" v-model="form.memoryConsolidation.providerId" class="sm:w-72">
-                      <option value="">{{ $t('settings.consolidationProviderDefault') }}</option>
-                      <option v-for="p in providers" :key="p.id" :value="p.id">
-                        {{ p.name }} ({{ p.defaultModel }})
-                      </option>
-                    </Select>
-                    <p class="text-xs text-muted-foreground">{{ $t('settings.consolidationProviderHint') }}</p>
-                  </div>
-
-                  <!-- Manual run + status -->
-                  <div class="flex flex-col gap-3 rounded-lg bg-muted/50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div v-if="consolidationStatus" class="text-xs text-muted-foreground">
-                      <span class="font-medium">{{ $t('settings.consolidationLastRun') }}:</span>
-                      {{ consolidationStatus.lastRun ? new Date(consolidationStatus.lastRun).toLocaleString() : $t('settings.consolidationNeverRun') }}
-                      <template v-if="consolidationStatus.lastResult">
-                        · <span :class="consolidationStatus.lastResult.updated ? 'text-green-600 dark:text-green-400' : ''">
-                          {{ consolidationStatus.lastResult.updated ? $t('settings.consolidationResultUpdated') : $t('settings.consolidationResultNoChange') }}
-                        </span>
-                      </template>
+                    <div class="flex flex-col gap-2">
+                      <Label for="consolidation-provider">{{ $t('settings.consolidationProvider') }}</Label>
+                      <Select id="consolidation-provider" v-model="form.memoryConsolidation.providerId">
+                        <option value="">{{ $t('settings.consolidationProviderDefault') }}</option>
+                        <option v-for="p in providers" :key="p.id" :value="p.id">
+                          {{ p.name }} ({{ p.defaultModel }})
+                        </option>
+                      </Select>
+                      <p class="text-xs text-muted-foreground">{{ $t('settings.consolidationProviderHint') }}</p>
                     </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      class="shrink-0"
-                      :disabled="consolidationRunning"
-                      @click="handleRunConsolidation"
-                    >
-                      <span
-                        v-if="consolidationRunning"
-                        class="h-3.5 w-3.5 animate-spin rounded-full border-2 border-foreground/30 border-t-foreground"
-                        aria-hidden="true"
-                      />
-                      {{ consolidationRunning ? $t('settings.consolidationRunning') : $t('settings.consolidationRunNow') }}
-                    </Button>
+
+                    <!-- Manual run + status -->
+                    <div class="flex flex-col gap-3 rounded-lg bg-muted/50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div v-if="consolidationStatus" class="text-xs text-muted-foreground">
+                        <span class="font-medium">{{ $t('settings.consolidationLastRun') }}:</span>
+                        {{ consolidationStatus.lastRun ? new Date(consolidationStatus.lastRun).toLocaleString() : $t('settings.consolidationNeverRun') }}
+                        <template v-if="consolidationStatus.lastResult">
+                          · <span :class="consolidationStatus.lastResult.updated ? 'text-green-600 dark:text-green-400' : ''">
+                            {{ consolidationStatus.lastResult.updated ? $t('settings.consolidationResultUpdated') : $t('settings.consolidationResultNoChange') }}
+                          </span>
+                        </template>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        class="shrink-0"
+                        :disabled="consolidationRunning"
+                        @click="handleRunConsolidation"
+                      >
+                        <span
+                          v-if="consolidationRunning"
+                          class="h-3.5 w-3.5 animate-spin rounded-full border-2 border-foreground/30 border-t-foreground"
+                          aria-hidden="true"
+                        />
+                        {{ consolidationRunning ? $t('settings.consolidationRunning') : $t('settings.consolidationRunNow') }}
+                      </Button>
+                    </div>
                   </div>
                 </template>
               </div>
@@ -278,9 +278,9 @@
                 </p>
               </div>
 
-              <div class="flex flex-col gap-6">
+              <div class="flex flex-col gap-8">
                 <!-- Heartbeat interval -->
-                <div class="flex flex-col gap-1.5">
+                <div class="flex flex-col gap-2">
                   <Label for="heartbeat-interval">{{ $t('settings.heartbeatInterval') }}</Label>
                   <div class="flex items-center gap-2">
                     <Input
@@ -289,7 +289,7 @@
                       type="number"
                       min="1"
                       max="60"
-                      class="w-24"
+                      class="w-full"
                     />
                     <span class="text-sm text-muted-foreground">{{ $t('settings.minutes') }}</span>
                   </div>
@@ -297,57 +297,55 @@
                 </div>
 
                 <!-- Fallback trigger -->
-                <div class="flex flex-col gap-1.5">
+                <div class="flex flex-col gap-2">
                   <Label for="fallback-trigger">{{ $t('settings.heartbeatFallbackTrigger') }}</Label>
-                  <Select id="fallback-trigger" v-model="form.heartbeat.fallbackTrigger" class="w-64">
+                  <Select id="fallback-trigger" v-model="form.heartbeat.fallbackTrigger">
                     <option value="down">{{ $t('settings.heartbeatFallbackTriggerDown') }}</option>
                     <option value="degraded">{{ $t('settings.heartbeatFallbackTriggerDegraded') }}</option>
                   </Select>
                   <p class="text-xs text-muted-foreground">{{ $t('settings.heartbeatFallbackTriggerHint') }}</p>
                 </div>
 
-                <div class="grid grid-cols-1 gap-6 sm:grid-cols-3">
-                  <!-- Failures before fallback -->
-                  <div class="flex flex-col gap-1.5">
-                    <Label for="failures-before-fallback">{{ $t('settings.heartbeatFailuresBeforeFallback') }}</Label>
+                <!-- Failures before fallback -->
+                <div class="flex flex-col gap-2">
+                  <Label for="failures-before-fallback">{{ $t('settings.heartbeatFailuresBeforeFallback') }}</Label>
+                  <Input
+                    id="failures-before-fallback"
+                    v-model.number="form.heartbeat.failuresBeforeFallback"
+                    type="number"
+                    min="1"
+                    class="w-full"
+                  />
+                  <p class="text-xs text-muted-foreground">{{ $t('settings.heartbeatFailuresBeforeFallbackHint') }}</p>
+                </div>
+
+                <!-- Recovery check interval -->
+                <div class="flex flex-col gap-2">
+                  <Label for="recovery-check-interval">{{ $t('settings.heartbeatRecoveryCheckInterval') }}</Label>
+                  <div class="flex items-center gap-2">
                     <Input
-                      id="failures-before-fallback"
-                      v-model.number="form.heartbeat.failuresBeforeFallback"
+                      id="recovery-check-interval"
+                      v-model.number="form.heartbeat.recoveryCheckIntervalMinutes"
                       type="number"
                       min="1"
-                      class="w-24"
+                      class="w-full"
                     />
-                    <p class="text-xs text-muted-foreground">{{ $t('settings.heartbeatFailuresBeforeFallbackHint') }}</p>
+                    <span class="text-sm text-muted-foreground">{{ $t('settings.minutes') }}</span>
                   </div>
+                  <p class="text-xs text-muted-foreground">{{ $t('settings.heartbeatRecoveryCheckIntervalHint') }}</p>
+                </div>
 
-                  <!-- Recovery check interval -->
-                  <div class="flex flex-col gap-1.5">
-                    <Label for="recovery-check-interval">{{ $t('settings.heartbeatRecoveryCheckInterval') }}</Label>
-                    <div class="flex items-center gap-2">
-                      <Input
-                        id="recovery-check-interval"
-                        v-model.number="form.heartbeat.recoveryCheckIntervalMinutes"
-                        type="number"
-                        min="1"
-                        class="w-24"
-                      />
-                      <span class="text-sm text-muted-foreground">{{ $t('settings.minutes') }}</span>
-                    </div>
-                    <p class="text-xs text-muted-foreground">{{ $t('settings.heartbeatRecoveryCheckIntervalHint') }}</p>
-                  </div>
-
-                  <!-- Successes before recovery -->
-                  <div class="flex flex-col gap-1.5">
-                    <Label for="successes-before-recovery">{{ $t('settings.heartbeatSuccessesBeforeRecovery') }}</Label>
-                    <Input
-                      id="successes-before-recovery"
-                      v-model.number="form.heartbeat.successesBeforeRecovery"
-                      type="number"
-                      min="1"
-                      class="w-24"
-                    />
-                    <p class="text-xs text-muted-foreground">{{ $t('settings.heartbeatSuccessesBeforeRecoveryHint') }}</p>
-                  </div>
+                <!-- Successes before recovery -->
+                <div class="flex flex-col gap-2">
+                  <Label for="successes-before-recovery">{{ $t('settings.heartbeatSuccessesBeforeRecovery') }}</Label>
+                  <Input
+                    id="successes-before-recovery"
+                    v-model.number="form.heartbeat.successesBeforeRecovery"
+                    type="number"
+                    min="1"
+                    class="w-full"
+                  />
+                  <p class="text-xs text-muted-foreground">{{ $t('settings.heartbeatSuccessesBeforeRecoveryHint') }}</p>
                 </div>
 
                 <Separator />
@@ -393,7 +391,7 @@
                 </p>
               </div>
 
-              <div class="flex flex-col gap-6">
+              <div class="flex flex-col gap-8">
                 <!-- Enable toggle -->
                 <div class="flex items-center justify-between rounded-lg border border-border px-4 py-3">
                   <div class="flex flex-col gap-0.5 pr-4">
@@ -413,7 +411,7 @@
                 <!-- Configuration — progressive disclosure -->
                 <template v-if="form.telegramEnabled">
                 <!-- Bot token -->
-                <div class="flex flex-col gap-1.5">
+                <div class="flex flex-col gap-2">
                   <Label for="telegram-token">{{ $t('settings.telegramBotToken') }}</Label>
                   <Input
                     id="telegram-token"
@@ -421,13 +419,12 @@
                     type="password"
                     autocomplete="off"
                     :placeholder="$t('settings.telegramBotTokenPlaceholder')"
-                    class="sm:w-96"
                   />
                   <p class="text-xs text-muted-foreground">{{ $t('settings.telegramBotTokenHint') }}</p>
                 </div>
 
                 <!-- Batching delay -->
-                <div class="flex flex-col gap-1.5">
+                <div class="flex flex-col gap-2">
                   <Label for="batching-delay">{{ $t('settings.batchingDelay') }}</Label>
                   <div class="flex items-center gap-2">
                     <Input
@@ -437,7 +434,7 @@
                       min="0"
                       max="10000"
                       step="100"
-                      class="w-28"
+                      class="w-full"
                     />
                     <span class="text-sm text-muted-foreground">ms</span>
                   </div>
