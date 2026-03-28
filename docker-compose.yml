@@ -4,7 +4,7 @@ services:
     container_name: openagent
     restart: unless-stopped
     ports:
-      - "${PORT:-3000}:3000"
+      - "${HOST_PORT:-3000}:3000"
     volumes:
       - openagent-data:/data
       - openagent-workspace:/workspace
@@ -12,7 +12,7 @@ services:
       - NODE_ENV=production
       - DATA_DIR=/data
       - WORKSPACE_DIR=/workspace
-      - PORT=${PORT:-3000}
+      - PORT=3000
       - HOST=0.0.0.0
       - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:?ADMIN_PASSWORD must be set}
