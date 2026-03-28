@@ -1,0 +1,215 @@
+import { describe, it, expect } from 'vitest'
+import { parseSkillMd, extractFrontmatter, isValidSkillName } from './skill-parser.js'
+
+describe('skill-parser', () => {
+  describe('isValidSkillName', () => {
+    it('accepts valid names', () => {
+      expect(isValidSkillName('perplexity')).toBe(true)
+      expect(isValidSkillName('web-search')).toBe(true)
+      expect(isValidSkillName('a')).toBe(true)
+      expect(isValidSkillName('my-cool-skill-2')).toBe(true)
+      expect(isValidSkillName('a1')).toBe(true)
+    })
+
+    it('rejects invalid names', () => {
+      expect(isValidSkillName('')).toBe(false)
+      expect(isValidSkillName('My-Skill')).toBe(false) // uppercase
+      expect(isValidSkillName('-starts-with-dash')).toBe(false)
+      expect(isValidSkillName('ends-with-dash-')).toBe(false)
+      expect(isValidSkillName('has spaces')).toBe(false)
+      expect(isValidSkillName('has_underscores')).toBe(false)
+      expect(isValidSkillName('a'.repeat(65))).toBe(false) // too long
+    })
+  })
+
+  describe('extractFrontmatter', () => {
+    it('extracts YAML frontmatter', () => {
+      const content = `---
+name: test-skill
+description: A test skill
+---
+
+# Body content`
+
+      const result = extractFrontmatter(content)
+      expect(result.frontmatter).toEqual({ name: 'test-skill', description: 'A test skill' })
+      expect(result.body).toBe('# Body content')
+    })
+
+    it('returns null for content without frontmatter', () => {
+      const result = extractFrontmatter('# Just markdown')
+      expect(result.frontmatter).toBeNull()
+      expect(result.body).toBe('# Just markdown')
+    })
+
+    it('returns null for invalid YAML', () => {
+      const content = `---
+: invalid: yaml: [
+---
+
+body`
+      const result = extractFrontmatter(content)
+      expect(result.frontmatter).toBeNull()
+    })
+
+    it('handles leading whitespace', () => {
+      const content = `  \n---
+name: test
+---
+
+body`
+      const result = extractFrontmatter(content)
+      expect(result.frontmatter).toEqual({ name: 'test' })
+    })
+  })
+
+  describe('parseSkillMd', () => {
+    it('parses a complete SKILL.md', () => {
+      const content = `---
+name: perplexity
+description: Search the web with AI-powered answers
+license: MIT
+compatibility:
+  - claude
+  - openai
+allowed-tools:
+  - web_search
+  - shell
+metadata:
+  clawdbot:
+    emoji: "🔍"
+    env:
+      PERPLEXITY_API_KEY: "Your Perplexity API key"
+---
+
+# Perplexity Skill
+
+Use this skill to search the web.`
+
+      const result = parseSkillMd(content)
+      expect(result.name).toBe('perplexity')
+      expect(result.description).toBe('Search the web with AI-powered answers')
+      expect(result.license).toBe('MIT')
+      expect(result.compatibility).toEqual(['claude', 'openai'])
+      expect(result.allowedTools).toEqual(['web_search', 'shell'])
+      expect(result.emoji).toBe('🔍')
+      expect(result.envKeys).toEqual(['PERPLEXITY_API_KEY'])
+      expect(result.envDescriptions).toEqual({ PERPLEXITY_API_KEY: 'Your Perplexity API key' })
+    })
+
+    it('parses env vars from format 1 (metadata.clawdbot.env as Object)', () => {
+      const content = `---
+name: test-skill
+description: Test
+metadata:
+  clawdbot:
+    env:
+      API_KEY: "The API key"
+      SECRET: "The secret"
+---
+body`
+
+      const result = parseSkillMd(content)
+      expect(result.envKeys).toEqual(['API_KEY', 'SECRET'])
+      expect(result.envDescriptions).toEqual({
+        API_KEY: 'The API key',
+        SECRET: 'The secret',
+      })
+    })
+
+    it('parses env vars from format 2 (metadata.clawdbot.requires.env as Array)', () => {
+      const content = `---
+name: test-skill
+description: Test
+metadata:
+  clawdbot:
+    requires:
+      env:
+        - API_KEY
+        - SECRET
+---
+body`
+
+      const result = parseSkillMd(content)
+      expect(result.envKeys).toEqual(['API_KEY', 'SECRET'])
+      expect(result.envDescriptions).toEqual({})
+    })
+
+    it('merges both env var formats without duplicates', () => {
+      const content = `---
+name: test-skill
+description: Test
+metadata:
+  clawdbot:
+    env:
+      API_KEY: "The API key"
+    requires:
+      env:
+        - API_KEY
+        - EXTRA_KEY
+---
+body`
+
+      const result = parseSkillMd(content)
+      expect(result.envKeys).toEqual(['API_KEY', 'EXTRA_KEY'])
+      expect(result.envDescriptions).toEqual({ API_KEY: 'The API key' })
+    })
+
+    it('extracts emoji from metadata', () => {
+      const content = `---
+name: test-skill
+description: Test
+metadata:
+  clawdbot:
+    emoji: "🚀"
+---
+body`
+
+      const result = parseSkillMd(content)
+      expect(result.emoji).toBe('🚀')
+    })
+
+    it('handles missing metadata gracefully', () => {
+      const content = `---
+name: simple-skill
+description: A simple skill
+---
+body`
+
+      const result = parseSkillMd(content)
+      expect(result.envKeys).toEqual([])
+      expect(result.envDescriptions).toEqual({})
+      expect(result.emoji).toBeUndefined()
+      expect(result.rawMetadata).toBeUndefined()
+    })
+
+    it('throws on missing frontmatter', () => {
+      expect(() => parseSkillMd('# No frontmatter')).toThrow('no valid YAML frontmatter')
+    })
+
+    it('throws on missing name', () => {
+      const content = `---
+description: No name
+---
+body`
+      expect(() => parseSkillMd(content)).toThrow('missing required "name"')
+    })
+
+    it('throws on invalid name', () => {
+      const content = `---
+name: Invalid_Name
+description: Bad name
+---
+body`
+      expect(() => parseSkillMd(content)).toThrow('Invalid skill name')
+    })
+
+    it('throws on missing description', () => {
+      const content = `---
+name: test-skill
+---
+body`
+      expect(() => parseSkillMd(content)).toThrow('missing required "description"')
+    })
+  })
+})
