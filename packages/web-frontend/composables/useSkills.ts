@@ -95,6 +95,7 @@ export function useSkills() {
   async function updateSkill(id: string, input: {
     enabled?: boolean
     envValues?: Record<string, string>
+    envKeys?: string[]
   }): Promise<Skill | null> {
     error.value = null
     try {

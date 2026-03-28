@@ -425,7 +425,7 @@
     "install": "Installieren",
     "installing": "Wird installiert...",
     "installSuccess": "Skill erfolgreich installiert.",
-    "settingsDescription": "Umgebungsvariablen konfigurieren, die dieser Skill benötigt.",
+    "settingsDescription": "Umgebungsvariablen für diesen Skill konfigurieren.",
     "envValuePlaceholder": "Wert eingeben (leer lassen, um aktuellen Wert zu behalten)",
     "settingsSaved": "Skill-Einstellungen gespeichert.",
     "webSearchTitle": "Websuche",
@@ -439,7 +439,10 @@
     "searxngUrlHint": "Die URL Ihrer selbst gehosteten SearXNG-Instanz.",
     "webFetchTitle": "Web-Abruf",
     "webFetchDescription": "Dem Agenten erlauben, Webseiteninhalte abzurufen und zu lesen.",
-    "builtinSaved": "Einstellungen für integrierte Tools gespeichert."
+    "builtinSaved": "Einstellungen für integrierte Tools gespeichert.",
+    "addEnvVar": "Umgebungsvariable hinzufügen",
+    "envKeyPlaceholder": "VARIABLEN_NAME",
+    "removeEnvVar": "Variable entfernen"
   },
   "usage": {
     "kicker": "Verbrauchsanalysen",

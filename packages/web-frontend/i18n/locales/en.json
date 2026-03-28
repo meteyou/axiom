@@ -427,7 +427,7 @@
     "install": "Install",
     "installing": "Installing...",
     "installSuccess": "Skill installed successfully.",
-    "settingsDescription": "Configure environment variables required by this skill.",
+    "settingsDescription": "Configure environment variables for this skill.",
     "envValuePlaceholder": "Enter value (leave empty to keep current)",
     "settingsSaved": "Skill settings saved.",
     "webSearchTitle": "Web Search",
@@ -441,7 +441,10 @@
     "searxngUrlHint": "The URL of your self-hosted SearXNG instance.",
     "webFetchTitle": "Web Fetch",
     "webFetchDescription": "Allow the agent to fetch and read web page content.",
-    "builtinSaved": "Built-in tools settings saved."
+    "builtinSaved": "Built-in tools settings saved.",
+    "addEnvVar": "Add Environment Variable",
+    "envKeyPlaceholder": "VARIABLE_NAME",
+    "removeEnvVar": "Remove variable"
   },
   "usage": {
     "kicker": "Consumption analytics",

@@ -87,8 +87,8 @@
 
                 <!-- Actions -->
                 <div class="flex shrink-0 items-center gap-2">
-                  <!-- Settings (only if envKeys) -->
-                  <Tooltip v-if="skill.envKeys && skill.envKeys.length > 0">
+                  <!-- Settings -->
+                  <Tooltip>
                     <TooltipTrigger>
                       <Button variant="ghost" size="icon-sm" :aria-label="$t('skills.settings')" @click.stop="openSettings(skill)">
                         <AppIcon name="settings" class="h-4 w-4" />
@@ -288,8 +288,20 @@
       </DialogHeader>
 
       <div class="space-y-4">
-        <div v-for="key in settingsSkill?.envKeys" :key="key" class="space-y-2">
-          <Label :for="`env-${key}`">{{ key }}</Label>
+        <!-- Declared env vars -->
+        <div v-for="key in settingsEnvKeys" :key="key" class="space-y-2">
+          <div class="flex items-center gap-2">
+            <Label :for="`env-${key}`" class="flex-1">{{ key }}</Label>
+            <button
+              v-if="!settingsSkill?.envKeys?.includes(key)"
+              type="button"
+              class="text-muted-foreground hover:text-destructive transition-colors"
+              :aria-label="$t('skills.removeEnvVar')"
+              @click="removeEnvKey(key)"
+            >
+              <AppIcon name="close" class="h-3.5 w-3.5" />
+            </button>
+          </div>
           <Input
             :id="`env-${key}`"
             :model-value="envValuesForm[key] || ''"
@@ -298,6 +310,24 @@
             autocomplete="off"
             @update:model-value="envValuesForm[key] = $event"
           />
+        </div>
+
+        <!-- Add new env var -->
+        <div class="space-y-2">
+          <Label>{{ $t('skills.addEnvVar') }}</Label>
+          <div class="flex gap-2">
+            <Input
+              v-model="newEnvKey"
+              type="text"
+              :placeholder="$t('skills.envKeyPlaceholder')"
+              class="flex-1 font-mono"
+              autocomplete="off"
+              @keydown.enter.prevent="addEnvKey"
+            />
+            <Button variant="outline" size="sm" :disabled="!newEnvKey.trim()" @click="addEnvKey">
+              <AppIcon name="add" class="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -366,7 +396,15 @@ const installError = ref<string | null>(null)
 // Settings dialog
 const settingsSkill = ref<Skill | null>(null)
 const envValuesForm = ref<Record<string, string>>({})
+const customEnvKeys = ref<string[]>([])
+const newEnvKey = ref('')
 const savingSettings = ref(false)
+
+// Combined env keys: declared from SKILL.md + custom added by user
+const settingsEnvKeys = computed(() => {
+  const declared = settingsSkill.value?.envKeys ?? []
+  return [...declared, ...customEnvKeys.value]
+})
 
 // Delete dialog
 const deleteTarget = ref<Skill | null>(null)
@@ -445,6 +483,8 @@ async function handleToggleSkill(skill: Skill) {
 function openSettings(skill: Skill) {
   settingsSkill.value = skill
   envValuesForm.value = {}
+  customEnvKeys.value = []
+  newEnvKey.value = ''
   // Pre-populate with empty strings for each envKey
   for (const key of skill.envKeys ?? []) {
     envValuesForm.value[key] = ''
@@ -454,6 +494,23 @@ function openSettings(skill: Skill) {
 function closeSettings() {
   settingsSkill.value = null
   envValuesForm.value = {}
+  customEnvKeys.value = []
+  newEnvKey.value = ''
+}
+
+function addEnvKey() {
+  const key = newEnvKey.value.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '_')
+  if (!key) return
+  const declared = settingsSkill.value?.envKeys ?? []
+  if (declared.includes(key) || customEnvKeys.value.includes(key)) return
+  customEnvKeys.value.push(key)
+  envValuesForm.value[key] = ''
+  newEnvKey.value = ''
+}
+
+function removeEnvKey(key: string) {
+  customEnvKeys.value = customEnvKeys.value.filter(k => k !== key)
+  delete envValuesForm.value[key]
 }
 
 async function handleSaveSettings() {
@@ -466,7 +523,16 @@ async function handleSaveSettings() {
     if (value) envValues[key] = value
   }
 
-  const result = await updateSkill(settingsSkill.value.id, { envValues })
+  // Merge declared + custom env keys
+  const allEnvKeys = [...new Set([...(settingsSkill.value.envKeys ?? []), ...customEnvKeys.value])]
+
+  const updatePayload: { envValues: Record<string, string>; envKeys?: string[] } = { envValues }
+  // Only send envKeys if custom keys were added
+  if (customEnvKeys.value.length > 0) {
+    updatePayload.envKeys = allEnvKeys
+  }
+
+  const result = await updateSkill(settingsSkill.value.id, updatePayload)
   savingSettings.value = false
 
   if (result) {
