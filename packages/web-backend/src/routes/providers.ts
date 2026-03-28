@@ -14,6 +14,9 @@ import {
   buildModel,
   PROVIDER_TYPE_PRESETS,
   performProviderHealthCheck,
+  getFallbackProvider,
+  setFallbackProvider,
+  clearFallbackProvider,
 } from '@openagent/core'
 import { getModels as getPiAiModels } from '@mariozechner/pi-ai'
 import type { KnownProvider as PiAiKnownProvider } from '@mariozechner/pi-ai'
@@ -27,6 +30,7 @@ const VALID_PROVIDER_TYPES = Object.keys(PROVIDER_TYPE_PRESETS)
 
 export interface ProvidersRouterOptions {
   onActiveProviderChanged?: () => void
+  onFallbackProviderChanged?: () => void
 }
 
 /**
@@ -71,6 +75,39 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
   })
 
   /**
+   * PUT /api/providers/fallback
+   * Set or clear the fallback provider
+   */
+  router.put('/fallback', (req: AuthenticatedRequest, res) => {
+    const { providerId } = req.body as { providerId?: string | null }
+
+    try {
+      if (providerId === null || providerId === undefined) {
+        clearFallbackProvider()
+        options.onFallbackProviderChanged?.()
+        res.json({ message: 'Fallback provider cleared', fallbackProvider: null })
+        return
+      }
+
+      if (typeof providerId !== 'string' || !providerId.trim()) {
+        res.status(400).json({ error: 'providerId must be a non-empty string or null' })
+        return
+      }
+
+      setFallbackProvider(providerId)
+      options.onFallbackProviderChanged?.()
+      res.json({ message: 'Fallback provider set', fallbackProvider: providerId })
+    } catch (err) {
+      const message = (err as Error).message
+      if (message.includes('not found')) {
+        res.status(404).json({ error: message })
+      } else {
+        res.status(400).json({ error: message })
+      }
+    }
+  })
+
+  /**
    * GET /api/providers
    * List all providers with masked API keys
    */
@@ -108,6 +145,7 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
       res.json({
         providers: providersWithCost,
         activeProvider: data.activeProvider ?? null,
+        fallbackProvider: data.fallbackProvider ?? null,
         presets: PROVIDER_TYPE_PRESETS,
       })
     } catch (err) {

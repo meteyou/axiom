@@ -32,6 +32,9 @@ export {
   setActiveProvider,
   updateProviderStatus,
   getActiveProvider,
+  getFallbackProvider,
+  setFallbackProvider,
+  clearFallbackProvider,
   getApiKeyForProvider,
   getAvailableModels,
   addOAuthProvider,
@@ -76,3 +79,5 @@ export type {
 } from './provider-health.js'
 export { AgentCore } from './agent.js'
 export type { ResponseChunk, AgentCoreOptions } from './agent.js'
+export { ProviderManager } from './provider-manager.js'
+export type { OperatingMode, ProviderManagerEvents } from './provider-manager.js'
