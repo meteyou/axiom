@@ -63,6 +63,7 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
         heartbeatIntervalMinutes: settings.heartbeatIntervalMinutes ?? 5,
         yoloMode: settings.yoloMode ?? true,
         batchingDelayMs: settings.batchingDelayMs ?? telegram.batchingDelayMs ?? 2500,
+        telegramEnabled: telegram.enabled ?? false,
         telegramBotToken: telegram.botToken ?? '',
         memoryConsolidation: {
           enabled: consolidation?.enabled ?? false,
@@ -83,6 +84,7 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
       heartbeatIntervalMinutes: number
       yoloMode: boolean
       batchingDelayMs: number
+      telegramEnabled: boolean
       telegramBotToken: string
       memoryConsolidation: Partial<MemoryConsolidationSettingsData>
     }>
@@ -168,6 +170,10 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
         consolidationChanged = true
       }
 
+      if (body.telegramEnabled !== undefined) {
+        telegram.enabled = !!body.telegramEnabled
+      }
+
       if (body.telegramBotToken !== undefined) {
         if (typeof body.telegramBotToken !== 'string') {
           res.status(400).json({ error: 'telegramBotToken must be a string' })
@@ -209,6 +215,7 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
         heartbeatIntervalMinutes: settings.heartbeatIntervalMinutes,
         yoloMode: settings.yoloMode,
         batchingDelayMs: settings.batchingDelayMs ?? previousBatchingDelayMs,
+        telegramEnabled: telegram.enabled,
         telegramBotToken: telegram.botToken,
         memoryConsolidation: {
           enabled: consolidationOut.enabled ?? false,
