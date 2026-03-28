@@ -54,7 +54,10 @@
     "offline": "Offline",
     "connecting": "Verbindung",
     "healthy": "Healthy ({provider})",
-    "degraded": "Degraded ({provider})"
+    "degraded": "Degraded ({provider})",
+    "fallback": "Fallback",
+    "fallbackActive": "System arbeitet im Fallback-Modus",
+    "fallbackTooltip": "Fallback-Anbieter aktiv: {provider}"
   },
   "theme": {
     "switchToDark": "Zu Dunkelmodus wechseln",
@@ -126,6 +129,9 @@
     "costOutput": "Out",
     "costFree": "Kostenlos",
     "costNA": "—",
+    "fallbackProvider": "Fallback-Anbieter",
+    "fallbackProviderHint": "Automatisch zu diesem Anbieter wechseln, wenn der aktive ausfällt.",
+    "fallbackNone": "Keiner (kein Fallback)",
     "degradedThreshold": "Degraded-Schwellenwert",
     "degradedThresholdPlaceholder": "5000",
     "degradedThresholdHint": "Latenz über diesem Wert (in ms) kennzeichnet den Anbieter im Health-Check als degraded."
@@ -314,6 +320,15 @@
     "quickActionsDescription": "Springen Sie direkt in die Bereiche, die Sie am häufigsten verwalten.",
     "systemSnapshot": "Systemübersicht",
     "systemSnapshotDescription": "Aktuelle Laufzeit-Konfiguration auf einen Blick.",
+    "operatingMode": "Betriebsmodus",
+    "operatingModes": {
+      "normal": "Normal",
+      "fallback": "Fallback"
+    },
+    "fallbackProvider": "Fallback-Anbieter",
+    "primaryProviderStatus": "Primäranbieter",
+    "recoveryStatus": "Wiederherstellung",
+    "recoveryChecksRunning": "Wiederherstellungsprüfungen laufen…",
     "providerHealth": "Provider-Heartbeat",
     "recentHealthChecks": "Letzte Health-Checks",
     "recentHealthChecksDescription": "Ein kurzer Verlauf der letzten Heartbeat-Ergebnisse des Providers.",
