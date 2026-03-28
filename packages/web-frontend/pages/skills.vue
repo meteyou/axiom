@@ -128,7 +128,7 @@
           <div v-else class="flex-1 space-y-4 overflow-y-auto min-h-0">
             <!-- web_fetch card -->
             <Card>
-              <CardHeader class="pb-4">
+              <CardHeader class="py-4">
                 <div class="flex items-center justify-between">
                   <div class="flex items-center gap-3">
                     <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
@@ -150,7 +150,7 @@
 
             <!-- web_search card -->
             <Card>
-              <CardHeader class="pb-4">
+              <CardHeader class="py-4">
                 <div class="flex items-center justify-between">
                   <div class="flex items-center gap-3">
                     <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
@@ -209,6 +209,7 @@
                   <p class="text-xs text-muted-foreground">{{ $t('skills.searxngUrlHint') }}</p>
                 </div>
 
+                <div class="flex justify-end">
                 <Button size="sm" :disabled="savingBuiltin" @click="handleSaveWebSearch">
                   <span
                     v-if="savingBuiltin"
@@ -217,6 +218,7 @@
                   />
                   {{ $t('common.save') }}
                 </Button>
+                </div>
               </CardContent>
             </Card>
           </div>
