@@ -125,27 +125,6 @@ function splitMessage(text: string, maxLen: number = MAX_MESSAGE_LENGTH): string
 }
 
 /**
- * Build user context prefix for the agent
- */
-function formatUserContext(ctx: Context): string {
-  const from = ctx.from
-  if (!from) return ''
-
-  const username = from.username ? `@${from.username}` : null
-  const displayName = [from.first_name, from.last_name].filter(Boolean).join(' ')
-
-  if (username && displayName) {
-    return `Message from ${username} (${displayName}): `
-  } else if (username) {
-    return `Message from ${username}: `
-  } else if (displayName) {
-    return `Message from ${displayName}: `
-  }
-
-  return ''
-}
-
-/**
  * Get a unique user identifier for session management
  */
 function getUserId(ctx: Context): string {
@@ -561,7 +540,7 @@ export class TelegramBot {
     const { ctx, text } = queuedMessage
     const userId = this.resolveUserId(ctx)
     const numericUserId = this.resolveNumericUserId(ctx)
-    const messageForAgent = `${formatUserContext(ctx)}${text}`
+    const messageForAgent = text
     const senderName = this.getSenderName(ctx)
 
     // Generate a session ID for chat_messages storage
