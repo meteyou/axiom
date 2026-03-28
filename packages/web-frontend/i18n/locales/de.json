@@ -141,7 +141,15 @@
     "status": "Status",
     "prev": "Zurück",
     "next": "Weiter",
-    "pageInfo": "Seite {page} von {total}"
+    "pageInfo": "Seite {page} von {total}",
+    "dateRange": "Zeitraum",
+    "dateRangeFrom": "Ab",
+    "dateRangeUntil": "Bis",
+    "clearDateRange": "Zeitraum zurücksetzen",
+    "preset_today": "Heute",
+    "preset_yesterday": "Gestern",
+    "preset_last7": "Letzte 7 Tage",
+    "preset_last30": "Letzte 30 Tage"
   },
   "memory": {
     "kicker": "Persistenter Kontext",

@@ -47,18 +47,9 @@
           <option v-for="name in toolNames" :key="name" :value="name">{{ name }}</option>
         </Select>
 
-        <Input
-          v-model="dateFrom"
-          type="date"
-          class="w-[145px]"
-          :aria-label="$t('logs.dateFrom')"
-          @change="applyFilters"
-        />
-        <Input
-          v-model="dateTo"
-          type="date"
-          class="w-[145px]"
-          :aria-label="$t('logs.dateTo')"
+        <DateRangePicker
+          v-model:date-from="dateFrom"
+          v-model:date-to="dateTo"
           @change="applyFilters"
         />
       </div>

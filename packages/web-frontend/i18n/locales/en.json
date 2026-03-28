@@ -141,7 +141,15 @@
     "status": "Status",
     "prev": "Previous",
     "next": "Next",
-    "pageInfo": "Page {page} of {total}"
+    "pageInfo": "Page {page} of {total}",
+    "dateRange": "Date range",
+    "dateRangeFrom": "From",
+    "dateRangeUntil": "Until",
+    "clearDateRange": "Clear date range",
+    "preset_today": "Today",
+    "preset_yesterday": "Yesterday",
+    "preset_last7": "Last 7 days",
+    "preset_last30": "Last 30 days"
   },
   "memory": {
     "kicker": "Persistent context",
