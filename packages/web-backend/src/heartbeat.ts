@@ -15,20 +15,33 @@ interface TelegramConfig {
   adminUserIds: number[]
 }
 
+export interface HeartbeatNotificationToggles {
+  healthyToDegraded: boolean
+  degradedToHealthy: boolean
+  degradedToDown: boolean
+  healthyToDown: boolean
+  downToFallback: boolean
+  fallbackToHealthy: boolean
+}
+
+const DEFAULT_NOTIFICATION_TOGGLES: HeartbeatNotificationToggles = {
+  healthyToDegraded: false,
+  degradedToHealthy: false,
+  degradedToDown: true,
+  healthyToDown: true,
+  downToFallback: true,
+  fallbackToHealthy: true,
+}
+
+type NotificationTransition = keyof HeartbeatNotificationToggles
+
 interface HeartbeatSettings {
   intervalMinutes: number
   fallbackTrigger: 'down' | 'degraded'
   failuresBeforeFallback: number
   recoveryCheckIntervalMinutes: number
   successesBeforeRecovery: number
-  notifications?: {
-    healthyToDegraded?: boolean
-    degradedToHealthy?: boolean
-    degradedToDown?: boolean
-    healthyToDown?: boolean
-    downToFallback?: boolean
-    fallbackToHealthy?: boolean
-  }
+  notifications: HeartbeatNotificationToggles
 }
 
 export interface HeartbeatSnapshot {
@@ -260,6 +273,7 @@ export class HeartbeatService {
     this.lastCheck = result
 
     // Count failures and trigger fallback if threshold reached
+    let justSwappedToFallback = false
     if (this.providerManager && provider) {
       const isFailure = this.isFailureStatus(result.status)
       if (isFailure) {
@@ -268,6 +282,7 @@ export class HeartbeatService {
           this.providerManager.swapToFallback()
           // Reset counters after mode change
           this.providerManager.resetCounters()
+          justSwappedToFallback = true
         }
       } else {
         // Reset failure counter on success
@@ -276,13 +291,12 @@ export class HeartbeatService {
     }
 
     // Send notifications based on status transition
-    const shouldNotifyDown = result.status === 'down' && previousStatus !== 'down'
-    const shouldNotifyRecovery = previousStatus === 'down' && result.status === 'healthy'
+    await this.evaluateAndNotify(previousStatus, result.status, provider, result)
 
-    if (shouldNotifyDown) {
-      await this.sendTelegramAlert('down', provider, result)
-    } else if (shouldNotifyRecovery) {
-      await this.sendTelegramAlert('recovery', provider, result)
+    // Send downToFallback notification only on the actual transition
+    if (justSwappedToFallback && this.providerManager) {
+      const fallback = this.providerManager.getFallbackProvider()
+      await this.sendTransitionAlert('downToFallback', provider, result, fallback ?? undefined)
     }
 
     return result
@@ -316,26 +330,26 @@ export class HeartbeatService {
     this.lastCheck = result
 
     // Count consecutive successes for recovery
+    let justRecovered = false
     if (result.status === 'healthy') {
       this.providerManager!.incrementSuccesses()
       if (this.providerManager!.getConsecutiveSuccesses() >= this.settings.successesBeforeRecovery) {
         this.providerManager!.swapToPrimary()
         // Reset counters after mode change
         this.providerManager!.resetCounters()
+        justRecovered = true
       }
     } else {
       // Reset success counter on any non-healthy check
       this.providerManager!.resetCounters()
     }
 
-    // Notifications for recovery checks
-    const shouldNotifyDown = result.status === 'down' && previousStatus !== 'down'
-    const shouldNotifyRecovery = previousStatus === 'down' && result.status === 'healthy'
+    // Notifications for recovery checks (only status transitions, not fallback/recovery mode changes)
+    await this.evaluateAndNotify(previousStatus, result.status, primary, result)
 
-    if (shouldNotifyDown) {
-      await this.sendTelegramAlert('down', primary, result)
-    } else if (shouldNotifyRecovery) {
-      await this.sendTelegramAlert('recovery', primary, result)
+    // Send fallbackToHealthy notification only on the actual transition back to primary
+    if (justRecovered) {
+      await this.sendTransitionAlert('fallbackToHealthy', primary, result)
     }
 
     return result
@@ -365,7 +379,7 @@ export class HeartbeatService {
           failuresBeforeFallback: this.safePositiveInt(heartbeat.failuresBeforeFallback, 1),
           recoveryCheckIntervalMinutes: this.safePositiveNumber(heartbeat.recoveryCheckIntervalMinutes, 1),
           successesBeforeRecovery: this.safePositiveInt(heartbeat.successesBeforeRecovery, 3),
-          notifications: heartbeat.notifications,
+          notifications: { ...DEFAULT_NOTIFICATION_TOGGLES, ...heartbeat.notifications },
         }
       }
 
@@ -377,6 +391,7 @@ export class HeartbeatService {
         failuresBeforeFallback: 1,
         recoveryCheckIntervalMinutes: 1,
         successesBeforeRecovery: 3,
+        notifications: { ...DEFAULT_NOTIFICATION_TOGGLES },
       }
     } catch {
       return {
@@ -385,6 +400,7 @@ export class HeartbeatService {
         failuresBeforeFallback: 1,
         recoveryCheckIntervalMinutes: 1,
         successesBeforeRecovery: 3,
+        notifications: { ...DEFAULT_NOTIFICATION_TOGGLES },
       }
     }
   }
@@ -421,11 +437,82 @@ export class HeartbeatService {
     return Array.from(new Set([...configuredIds, ...dbIds].filter((id) => Number.isFinite(id))))
   }
 
-  private async sendTelegramAlert(
-    kind: 'down' | 'recovery',
+  private resolveTransition(
+    previousStatus: ProviderHealthStatus | null,
+    currentStatus: ProviderHealthStatus,
+  ): NotificationTransition | null {
+    if ((previousStatus === 'healthy' || previousStatus === null) && currentStatus === 'degraded') return 'healthyToDegraded'
+    if (previousStatus === 'degraded' && currentStatus === 'healthy') return 'degradedToHealthy'
+    if (previousStatus === 'degraded' && currentStatus === 'down') return 'degradedToDown'
+    if ((previousStatus === 'healthy' || previousStatus === null) && currentStatus === 'down') return 'healthyToDown'
+    return null
+  }
+
+  private async evaluateAndNotify(
+    previousStatus: ProviderHealthStatus | null,
+    currentStatus: ProviderHealthStatus,
     provider: ProviderConfig | null,
     result: ProviderHealthCheckResult,
   ): Promise<void> {
+    const transition = this.resolveTransition(previousStatus, currentStatus)
+    if (transition) {
+      await this.sendTransitionAlert(transition, provider, result)
+    }
+  }
+
+  private getTransitionMessage(
+    transition: NotificationTransition,
+    provider: ProviderConfig | null,
+    result: ProviderHealthCheckResult,
+    fallbackProvider?: ProviderConfig,
+  ): string {
+    const messages: Record<NotificationTransition, { emoji: string; title: string }> = {
+      healthyToDegraded: { emoji: '⚠️', title: 'OpenAgent provider is degraded' },
+      degradedToHealthy: { emoji: '✅', title: 'OpenAgent provider recovered from degraded' },
+      degradedToDown: { emoji: '🚨', title: 'OpenAgent provider is down' },
+      healthyToDown: { emoji: '🚨', title: 'OpenAgent provider is down' },
+      downToFallback: { emoji: '🔄', title: 'OpenAgent switched to fallback provider' },
+      fallbackToHealthy: { emoji: '✅', title: 'OpenAgent primary provider restored' },
+    }
+
+    const { emoji, title } = messages[transition]
+    const lines = [
+      `${emoji} ${title}`,
+      `Provider: ${provider?.name ?? 'Not configured'}`,
+      `Model: ${provider?.defaultModel ?? '—'}`,
+      `Status: ${result.status}`,
+      `Checked at: ${result.checkedAt}`,
+    ]
+
+    if (transition === 'downToFallback' && fallbackProvider) {
+      lines.push(`Fallback: ${fallbackProvider.name} (${fallbackProvider.defaultModel})`)
+    }
+
+    if (transition === 'fallbackToHealthy') {
+      lines.push('Primary provider is back online')
+    }
+
+    if (result.latencyMs !== null) {
+      lines.push(`Latency: ${result.latencyMs}ms`)
+    }
+
+    if (result.errorMessage) {
+      lines.push(`Error: ${result.errorMessage}`)
+    }
+
+    return lines.join('\n')
+  }
+
+  private async sendTransitionAlert(
+    transition: NotificationTransition,
+    provider: ProviderConfig | null,
+    result: ProviderHealthCheckResult,
+    fallbackProvider?: ProviderConfig,
+  ): Promise<void> {
+    if (!this.settings.notifications[transition]) {
+      return
+    }
+
     const telegram = this.loadTelegramConfig()
     if (!telegram?.enabled || !telegram.botToken) {
       return
@@ -436,24 +523,7 @@ export class HeartbeatService {
       return
     }
 
-    const title = kind === 'down' ? '🚨 OpenAgent provider is down' : '✅ OpenAgent provider recovered'
-    const lines = [
-      title,
-      `Provider: ${provider?.name ?? 'Not configured'}`,
-      `Model: ${provider?.defaultModel ?? '—'}`,
-      `Status: ${result.status}`,
-      `Checked at: ${result.checkedAt}`,
-    ]
-
-    if (result.latencyMs !== null) {
-      lines.push(`Latency: ${result.latencyMs}ms`)
-    }
-
-    if (result.errorMessage) {
-      lines.push(`Error: ${result.errorMessage}`)
-    }
-
-    const text = lines.join('\n')
+    const text = this.getTransitionMessage(transition, provider, result, fallbackProvider)
 
     await Promise.all(adminIds.map(async (chatId) => {
       try {
