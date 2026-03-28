@@ -7,6 +7,7 @@ import type { JwtPayload } from './auth.js'
 import { URL } from 'node:url'
 import crypto from 'node:crypto'
 import type { RuntimeMetrics } from './runtime-metrics.js'
+import type { ChatEventBus, ChatEvent } from './chat-event-bus.js'
 
 interface ChatMessage {
   type: 'message' | 'command'
@@ -14,7 +15,7 @@ interface ChatMessage {
 }
 
 interface ChatResponse {
-  type: 'text' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system'
+  type: 'text' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message'
   text?: string
   toolName?: string
   toolCallId?: string
@@ -23,6 +24,10 @@ interface ChatResponse {
   toolIsError?: boolean
   error?: string
   sessionId?: string
+  /** The source channel (for external_user_message) */
+  source?: string
+  /** Sender display name (for external_user_message) */
+  senderName?: string
 }
 
 function saveChatMessage(
@@ -37,6 +42,10 @@ function saveChatMessage(
   ).run(sessionId, userId, role, content)
 }
 
+export interface WebSocketChatResult {
+  wss: WebSocketServer
+}
+
 /**
  * Set up WebSocket server for real-time chat
  */
@@ -45,7 +54,8 @@ export function setupWebSocketChat(
   db: Database,
   agentCore: AgentCore | null,
   runtimeMetrics?: RuntimeMetrics,
-): WebSocketServer {
+  chatEventBus?: ChatEventBus,
+): WebSocketChatResult {
   const wss = new WebSocketServer({ noServer: true })
 
   // Handle upgrade requests for /ws/chat path
@@ -62,6 +72,10 @@ export function setupWebSocketChat(
   const authenticatedClients = new Map<WebSocket, JwtPayload>()
   const clientSessions = new Map<WebSocket, string>()
   const activeStreams = new Map<WebSocket, AbortController>()
+  /** Unique connection ID per WebSocket (to avoid echoing messages back to sender) */
+  const connectionIds = new Map<WebSocket, string>()
+  /** Lookup: userId -> set of connected WebSockets */
+  const userClients = new Map<number, Set<WebSocket>>()
 
   wss.on('connection', (ws, req) => {
     // Try to authenticate from query parameter
@@ -81,8 +95,17 @@ export function setupWebSocketChat(
 
     if (user) {
       authenticatedClients.set(ws, user)
+      const connId = crypto.randomBytes(8).toString('hex')
+      connectionIds.set(ws, connId)
       const sessionId = `web-${user.userId}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`
       clientSessions.set(ws, sessionId)
+
+      // Track by userId
+      if (!userClients.has(user.userId)) {
+        userClients.set(user.userId, new Set())
+      }
+      userClients.get(user.userId)!.add(ws)
+
       sendMessage(ws, { type: 'system', text: 'Authenticated', sessionId })
     }
 
@@ -103,8 +126,17 @@ export function setupWebSocketChat(
           const tokenUser = verifyToken(parsed.content)
           if (tokenUser) {
             authenticatedClients.set(ws, tokenUser)
+            const connId = crypto.randomBytes(8).toString('hex')
+            connectionIds.set(ws, connId)
             const sessionId = `web-${tokenUser.userId}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`
             clientSessions.set(ws, sessionId)
+
+            // Track by userId
+            if (!userClients.has(tokenUser.userId)) {
+              userClients.set(tokenUser.userId, new Set())
+            }
+            userClients.get(tokenUser.userId)!.add(ws)
+
             sendMessage(ws, { type: 'system', text: 'Authenticated', sessionId })
             return
           }
@@ -161,6 +193,17 @@ export function setupWebSocketChat(
       // Regular message — route to agent
       saveChatMessage(db, sessionId, currentUser.userId, 'user', parsed.content)
 
+      // Broadcast user message to other clients of same user (e.g. other browser tabs)
+      const connId = connectionIds.get(ws)
+      chatEventBus?.broadcast({
+        type: 'user_message',
+        userId: currentUser.userId,
+        source: 'web',
+        sourceConnectionId: connId,
+        sessionId,
+        text: parsed.content,
+      })
+
       if (!agentCore) {
         sendMessage(ws, { type: 'error', error: 'Agent core not available' })
         return
@@ -181,6 +224,22 @@ export function setupWebSocketChat(
           }
 
           sendMessage(ws, chunkToResponse(chunk))
+
+          // Broadcast response chunks to other clients of same user
+          chatEventBus?.broadcast({
+            type: chunk.type === 'done' ? 'done' : chunk.type,
+            userId: currentUser.userId,
+            source: 'web',
+            sourceConnectionId: connId,
+            sessionId,
+            text: chunk.text,
+            toolName: chunk.toolName,
+            toolCallId: chunk.toolCallId,
+            toolArgs: chunk.toolArgs,
+            toolResult: chunk.toolResult,
+            toolIsError: chunk.toolIsError,
+            error: chunk.error,
+          })
         }
 
         // Save the full assistant response
@@ -200,13 +259,61 @@ export function setupWebSocketChat(
     ws.on('close', () => {
       const controller = activeStreams.get(ws)
       if (controller) controller.abort()
+
+      // Remove from user tracking
+      const closingUser = authenticatedClients.get(ws)
+      if (closingUser) {
+        const clients = userClients.get(closingUser.userId)
+        if (clients) {
+          clients.delete(ws)
+          if (clients.size === 0) {
+            userClients.delete(closingUser.userId)
+          }
+        }
+      }
+
       authenticatedClients.delete(ws)
       clientSessions.delete(ws)
+      connectionIds.delete(ws)
       activeStreams.delete(ws)
     })
   })
 
-  return wss
+  // Subscribe to cross-channel events and forward to the right web clients
+  if (chatEventBus) {
+    chatEventBus.subscribe((event: ChatEvent) => {
+      const clients = userClients.get(event.userId)
+      if (!clients || clients.size === 0) return
+
+      for (const client of clients) {
+        // Skip the connection that originated this event (avoid echo)
+        const clientConnId = connectionIds.get(client)
+        if (event.sourceConnectionId && clientConnId === event.sourceConnectionId) continue
+
+        if (event.type === 'user_message') {
+          sendMessage(client, {
+            type: 'external_user_message',
+            text: event.text,
+            source: event.source,
+            senderName: event.senderName,
+          })
+        } else {
+          sendMessage(client, {
+            type: event.type,
+            text: event.text,
+            toolName: event.toolName,
+            toolCallId: event.toolCallId,
+            toolArgs: event.toolArgs,
+            toolResult: event.toolResult,
+            toolIsError: event.toolIsError,
+            error: event.error,
+          })
+        }
+      }
+    })
+  }
+
+  return { wss }
 }
 
 function sendMessage(ws: WebSocket, msg: ChatResponse): void {
