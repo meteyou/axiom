@@ -39,6 +39,9 @@ const TEMPLATES: Record<string, object> = {
       providerId: '',
     }
   },
+  'skills.json': {
+    skills: [],
+  },
   'telegram.json': {
     enabled: false,
     botToken: '',
