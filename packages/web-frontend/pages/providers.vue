@@ -111,7 +111,14 @@
 
                 <!-- Status -->
                 <TableCell>
-                  <Badge :variant="getStatusVariant(provider.status)">
+                  <div v-if="testingId === provider.id" class="flex items-center gap-1.5">
+                    <span
+                      class="h-3.5 w-3.5 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent"
+                      aria-hidden="true"
+                    />
+                    <span class="text-xs text-muted-foreground">{{ $t('providers.testing') }}</span>
+                  </div>
+                  <Badge v-else :variant="getStatusVariant(provider.status)">
                     {{ getStatusLabel(provider.status) }}
                   </Badge>
                 </TableCell>
