@@ -71,7 +71,19 @@
                 <!-- Username + avatar -->
                 <TableCell>
                   <div class="flex items-center gap-3">
-                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
+                    <img
+                      v-if="entry.telegramId"
+                      :src="getUserAvatarUrl(entry.telegramId)"
+                      :alt="entry.username"
+                      class="h-9 w-9 shrink-0 rounded-full object-cover"
+                      @error="($event.target as HTMLImageElement).style.display = 'none'; ($event.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden')"
+                    >
+                    <span
+                      :class="[
+                        'flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary',
+                        entry.telegramId ? 'hidden' : '',
+                      ]"
+                    >
                       {{ entry.username.slice(0, 1).toUpperCase() }}
                     </span>
                     <div class="min-w-0">
@@ -187,6 +199,14 @@ onMounted(async () => {
   if (!isAdmin.value) return
   await fetchUsers()
 })
+
+/* ── Avatar ── */
+function getUserAvatarUrl(telegramId: string): string {
+  const config = useRuntimeConfig()
+  const { getAccessToken } = useAuth()
+  const token = getAccessToken()
+  return `${config.public.apiBase}/api/telegram-users/avatar-by-telegram-id/${telegramId}${token ? `?token=${token}` : ''}`
+}
 
 /* ── Helpers ── */
 function clearMessages() {
