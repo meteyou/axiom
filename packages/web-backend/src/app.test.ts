@@ -122,6 +122,7 @@ describe('API health monitoring', () => {
       status: 'degraded',
       latencyMs: 6200,
       errorMessage: null,
+      isRateLimited: false,
     }
 
     db.prepare(`INSERT INTO sessions (id, source, started_at, message_count, summary_written) VALUES (?, ?, datetime('now'), ?, ?)`)

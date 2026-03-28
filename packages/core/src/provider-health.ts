@@ -20,6 +20,7 @@ export interface ProviderHealthCheckResult {
   status: ProviderHealthStatus
   latencyMs: number | null
   errorMessage: string | null
+  isRateLimited: boolean
 }
 
 export interface HealthCheckLogInput {
@@ -170,6 +171,7 @@ async function performOAuthHealthCheck(
         status: latencyMs > degradedThresholdMs ? 'degraded' : 'healthy',
         latencyMs,
         errorMessage: null,
+        isRateLimited: false,
       }
     } finally {
       clearTimeout(timer)
@@ -179,6 +181,7 @@ async function performOAuthHealthCheck(
     const errorMessage = message.includes('abort') || (err as Error).name === 'AbortError'
       ? 'Connection timed out'
       : message
+    const isRateLimited = message.includes('429') || message.toLowerCase().includes('rate limit')
 
     return {
       checkedAt,
@@ -189,6 +192,7 @@ async function performOAuthHealthCheck(
       status: 'down',
       latencyMs: Date.now() - startedAt,
       errorMessage,
+      isRateLimited,
     }
   }
 }
@@ -209,6 +213,7 @@ export async function performProviderHealthCheck(
       status: 'unconfigured',
       latencyMs: null,
       errorMessage: 'No active provider configured',
+      isRateLimited: false,
     }
   }
 
@@ -250,6 +255,7 @@ export async function performProviderHealthCheck(
         status: 'down',
         latencyMs,
         errorMessage: parseErrorMessage(body) ?? `HTTP ${response.status}`,
+        isRateLimited: response.status === 429,
       }
     }
 
@@ -262,6 +268,7 @@ export async function performProviderHealthCheck(
       status: latencyMs > degradedThresholdMs ? 'degraded' : 'healthy',
       latencyMs,
       errorMessage: null,
+      isRateLimited: false,
     }
   } catch (err) {
     const message = (err as Error).message || 'Unknown error'
@@ -278,6 +285,7 @@ export async function performProviderHealthCheck(
       status: 'down',
       latencyMs: Date.now() - startedAt,
       errorMessage,
+      isRateLimited: false,
     }
   } finally {
     clearTimeout(timer)

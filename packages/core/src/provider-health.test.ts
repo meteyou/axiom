@@ -25,6 +25,7 @@ describe('provider-health', () => {
     expect(result.status).toBe('unconfigured')
     expect(result.errorMessage).toContain('No active provider')
     expect(result.providerName).toBeNull()
+    expect(result.isRateLimited).toBe(false)
   })
 
   it('classifies successful checks as healthy or degraded based on latency', async () => {
@@ -34,6 +35,7 @@ describe('provider-health', () => {
     })
     expect(healthy.status).toBe('healthy')
     expect(healthy.errorMessage).toBeNull()
+    expect(healthy.isRateLimited).toBe(false)
 
     const degraded = await performProviderHealthCheck(provider, {
       degradedThresholdMs: 1,
@@ -44,6 +46,23 @@ describe('provider-health', () => {
     })
     expect(degraded.status).toBe('degraded')
     expect(degraded.latencyMs).toBeGreaterThanOrEqual(1)
+    expect(degraded.isRateLimited).toBe(false)
+  })
+
+  it('detects HTTP 429 and sets isRateLimited to true', async () => {
+    const result = await performProviderHealthCheck(provider, {
+      fetchImpl: async () => new Response(JSON.stringify({ error: 'Rate limit exceeded' }), { status: 429 }),
+    })
+    expect(result.status).toBe('down')
+    expect(result.isRateLimited).toBe(true)
+  })
+
+  it('sets isRateLimited to false for non-429 errors', async () => {
+    const result = await performProviderHealthCheck(provider, {
+      fetchImpl: async () => new Response(JSON.stringify({ error: 'Server error' }), { status: 500 }),
+    })
+    expect(result.status).toBe('down')
+    expect(result.isRateLimited).toBe(false)
   })
 
   it('logs history rows and activity summary in sqlite', () => {
