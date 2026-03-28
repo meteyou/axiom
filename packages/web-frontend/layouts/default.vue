@@ -212,6 +212,22 @@
           <span class="hidden text-sm text-muted-foreground sm:block">{{ statusText }}</span>
         </div>
 
+        <!-- Fallback mode indicator -->
+        <Tooltip v-if="isInFallbackMode">
+          <TooltipTrigger>
+            <div class="flex items-center gap-1.5 rounded-md bg-warning/10 px-2.5 py-1 ring-1 ring-warning/30">
+              <span class="h-2 w-2 shrink-0 rounded-full bg-warning shadow-[0_0_6px_hsl(var(--warning))]" />
+              <span class="text-xs font-medium text-warning">{{ t('status.fallback') }}</span>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            {{ globalFallbackProviderName
+              ? t('status.fallbackTooltip', { provider: globalFallbackProviderName })
+              : t('status.fallbackActive')
+            }}
+          </TooltipContent>
+        </Tooltip>
+
         <!-- Spacer -->
         <div class="flex-1" />
 
@@ -246,7 +262,9 @@ import { useMediaQuery } from '@vueuse/core'
 
 const route = useRoute()
 const { user, logout } = useAuth()
-const { status: globalStatus, providerName: globalProviderName, start: startStatusPolling, stop: stopStatusPolling } = useConnectionStatus()
+const { status: globalStatus, providerName: globalProviderName, operatingMode: globalOperatingMode, fallbackProviderName: globalFallbackProviderName, start: startStatusPolling, stop: stopStatusPolling } = useConnectionStatus()
+
+const isInFallbackMode = computed(() => globalOperatingMode.value === 'fallback')
 const { isDark, toggle: toggleTheme } = useTheme()
 
 const sidebarOpen = ref(false)
