@@ -9,6 +9,7 @@ import { setupWebSocketLogs } from './ws-logs.js'
 import { HeartbeatService } from './heartbeat.js'
 import { RuntimeMetrics } from './runtime-metrics.js'
 import { MemoryConsolidationScheduler } from './memory-consolidation-scheduler.js'
+import { createTelegramBot } from '@openagent/telegram'
 
 const PORT = parseInt(process.env.PORT ?? '3000', 10)
 const HOST = process.env.HOST ?? '0.0.0.0'
@@ -56,8 +57,16 @@ const consolidationScheduler = new MemoryConsolidationScheduler({
 })
 consolidationScheduler.start()
 
+// Initialize Telegram bot (if configured and enabled)
+const telegramBot = agentCore ? createTelegramBot(agentCore, db) : null
+if (telegramBot) {
+  telegramBot.start().catch((err) => {
+    console.error('[openagent] Failed to start Telegram bot:', err)
+  })
+}
+
 // Start server
-const app = createApp({ db, agentCore, heartbeatService, runtimeMetrics, consolidationScheduler })
+const app = createApp({ db, agentCore, heartbeatService, runtimeMetrics, consolidationScheduler, telegramBot })
 const server = http.createServer(app)
 
 // Set up WebSocket chat
@@ -76,9 +85,29 @@ server.listen(PORT, HOST, () => {
   console.log(`[openagent] WebSocket logs: ws://${HOST}:${PORT}/ws/logs`)
 })
 
+let shuttingDown = false
+
 for (const signal of ['SIGINT', 'SIGTERM']) {
   process.on(signal, () => {
+    if (shuttingDown) return
+    shuttingDown = true
+
+    console.log(`\n[openagent] Received ${signal}, shutting down...`)
     heartbeatService.stop()
     consolidationScheduler.stop()
+
+    const cleanup = async () => {
+      try {
+        await telegramBot?.stop()
+      } catch { /* ignore */ }
+      server.close(() => {
+        console.log('[openagent] Server closed.')
+        process.exit(0)
+      })
+      // Force exit after 3s if something hangs
+      setTimeout(() => process.exit(1), 3000).unref()
+    }
+
+    cleanup().catch(() => process.exit(1))
   })
 }

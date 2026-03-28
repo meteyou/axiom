@@ -11,6 +11,8 @@ import { createProvidersRouter } from './routes/providers.js'
 import { createMemoryRouter } from './routes/memory.js'
 import { createSettingsRouter } from './routes/settings.js'
 import { createUsersRouter } from './routes/users.js'
+import { createTelegramUsersRouter } from './routes/telegram-users.js'
+import type { TelegramBot } from '@openagent/telegram'
 import { createStatsRouter } from './routes/stats.js'
 import { createHealthRouter } from './routes/health.js'
 import { ensureAdminUser } from './auth.js'
@@ -26,6 +28,7 @@ export interface AppOptions {
   heartbeatService?: HeartbeatService | null
   runtimeMetrics?: RuntimeMetrics | null
   consolidationScheduler?: MemoryConsolidationScheduler | null
+  telegramBot?: TelegramBot | null
 }
 
 export function createApp(options?: AppOptions): express.Express {
@@ -82,6 +85,10 @@ export function createApp(options?: AppOptions): express.Express {
       },
     }))
     app.use('/api/users', createUsersRouter(options.db))
+    app.use('/api/telegram-users', createTelegramUsersRouter({
+      db: options.db,
+      telegramBot: options.telegramBot ?? null,
+    }))
     app.use('/api/stats', createStatsRouter(options.db))
 
     if (options.heartbeatService && options.runtimeMetrics) {
