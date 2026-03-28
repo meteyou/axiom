@@ -115,6 +115,15 @@
             </NuxtLink>
 
             <NuxtLink
+              to="/skills"
+              :class="navItemClass('/skills')"
+              @click="closeSidebarOnMobile"
+            >
+              <AppIcon name="puzzle" class="shrink-0" />
+              <span>{{ $t('nav.skills') }}</span>
+            </NuxtLink>
+
+            <NuxtLink
               to="/settings"
               :class="navItemClass('/settings')"
               @click="closeSidebarOnMobile"
