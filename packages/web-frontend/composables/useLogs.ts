@@ -64,8 +64,16 @@ export function useLogs() {
       if (options.sessionId) params.set('session_id', options.sessionId)
       if (options.toolName) params.set('tool_name', options.toolName)
       if (options.search) params.set('search', options.search)
-      if (options.dateFrom) params.set('date_from', options.dateFrom)
-      if (options.dateTo) params.set('date_to', options.dateTo)
+      if (options.dateFrom) {
+        // Convert local date to UTC start-of-day: "2026-03-28" → "2026-03-27 23:00:00" (for UTC+1)
+        const fromLocal = new Date(`${options.dateFrom}T00:00:00`)
+        params.set('date_from', fromLocal.toISOString().replace('T', ' ').slice(0, 19))
+      }
+      if (options.dateTo) {
+        // Convert local date to UTC end-of-day: "2026-03-28" → "2026-03-28 22:59:59" (for UTC+1)
+        const toLocal = new Date(`${options.dateTo}T23:59:59`)
+        params.set('date_to', toLocal.toISOString().replace('T', ' ').slice(0, 19))
+      }
 
       const qs = params.toString()
       const data = await apiFetch<LogsResponse>(`/api/logs${qs ? `?${qs}` : ''}`)
