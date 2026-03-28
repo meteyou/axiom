@@ -272,11 +272,12 @@ function closeForm() {
 
 async function handleSubmit(payload: ProviderFormPayload) {
   if (formMode.value === 'edit' && editingProvider.value) {
-    const input: Record<string, string | undefined> = {
+    const input: Record<string, string | number | undefined> = {
       name: payload.name,
       providerType: payload.providerType,
       baseUrl: payload.baseUrl,
       defaultModel: payload.defaultModel,
+      degradedThresholdMs: payload.degradedThresholdMs,
     }
     if (payload.apiKey) {
       input.apiKey = payload.apiKey
@@ -290,6 +291,7 @@ async function handleSubmit(payload: ProviderFormPayload) {
       baseUrl: payload.baseUrl || undefined,
       apiKey: payload.apiKey || undefined,
       defaultModel: payload.defaultModel,
+      degradedThresholdMs: payload.degradedThresholdMs,
     })
     if (result) closeForm()
   }

@@ -8,6 +8,7 @@ export interface Provider {
   apiKey: string
   apiKeyMasked: string
   defaultModel: string
+  degradedThresholdMs?: number
   status?: 'connected' | 'error' | 'untested'
   authMethod?: 'api-key' | 'oauth'
   oauthCredentials?: { expires: number }
@@ -92,6 +93,7 @@ export function useProviders() {
     baseUrl?: string
     apiKey?: string
     defaultModel: string
+    degradedThresholdMs?: number
   }): Promise<Provider | null> {
     error.value = null
     try {
@@ -113,6 +115,7 @@ export function useProviders() {
     baseUrl?: string
     apiKey?: string
     defaultModel?: string
+    degradedThresholdMs?: number
   }): Promise<Provider | null> {
     error.value = null
     try {

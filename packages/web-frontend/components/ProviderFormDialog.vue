@@ -100,6 +100,25 @@
           </p>
         </div>
 
+        <!-- Degraded Threshold -->
+        <div v-if="form.providerType" class="flex flex-col gap-1.5">
+          <Label for="provider-degraded-threshold">{{ $t('providers.degradedThreshold') }}</Label>
+          <div class="flex items-center gap-2">
+            <Input
+              id="provider-degraded-threshold"
+              v-model.number="form.degradedThresholdMs"
+              type="number"
+              min="1"
+              step="1"
+              :placeholder="$t('providers.degradedThresholdPlaceholder')"
+              :disabled="oauthInProgress"
+              class="flex-1"
+            />
+            <span class="text-xs text-muted-foreground">ms</span>
+          </div>
+          <p class="text-xs text-muted-foreground">{{ $t('providers.degradedThresholdHint') }}</p>
+        </div>
+
         <!-- OAuth Login Section -->
         <div v-if="isOAuthProvider && mode === 'create'" class="flex flex-col gap-3">
           <!-- OAuth status messages -->
@@ -184,6 +203,7 @@ export interface ProviderFormPayload {
   baseUrl: string
   apiKey: string
   defaultModel: string
+  degradedThresholdMs: number
 }
 
 const props = defineProps<{
@@ -207,6 +227,7 @@ const form = reactive({
   baseUrl: '',
   apiKey: '',
   defaultModel: '',
+  degradedThresholdMs: 5000,
 })
 
 const availableModels = ref<AvailableModel[]>([])
@@ -254,6 +275,7 @@ watch(() => [props.open, props.provider] as const, ([isOpen, entry]) => {
     form.baseUrl = entry.baseUrl
     form.apiKey = ''
     form.defaultModel = entry.defaultModel
+    form.degradedThresholdMs = entry.degradedThresholdMs ?? 5000
     if (entry.providerType) {
       loadModelsForType(entry.providerType)
     }
@@ -263,6 +285,7 @@ watch(() => [props.open, props.provider] as const, ([isOpen, entry]) => {
     form.baseUrl = ''
     form.apiKey = ''
     form.defaultModel = ''
+    form.degradedThresholdMs = 5000
     availableModels.value = []
     oauthInProgress.value = false
     oauthError.value = null

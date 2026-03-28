@@ -310,12 +310,13 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
    * Add a new provider
    */
   router.post('/', (req: AuthenticatedRequest, res) => {
-    const { name, providerType, baseUrl, apiKey, defaultModel } = req.body as {
+    const { name, providerType, baseUrl, apiKey, defaultModel, degradedThresholdMs } = req.body as {
       name?: string
       providerType?: string
       baseUrl?: string
       apiKey?: string
       defaultModel?: string
+      degradedThresholdMs?: number
     }
 
     if (!name?.trim()) {
@@ -345,6 +346,7 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
         baseUrl: baseUrl?.trim(),
         apiKey: apiKey?.trim(),
         defaultModel: defaultModel.trim(),
+        degradedThresholdMs: degradedThresholdMs != null ? Math.max(1, Math.round(degradedThresholdMs)) : undefined,
       })
       const afterActiveProvider = loadProviders().activeProvider ?? null
 
@@ -370,12 +372,13 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
    */
   router.put('/:id', (req: AuthenticatedRequest, res) => {
     const id = req.params.id as string
-    const { name, providerType, baseUrl, apiKey, defaultModel } = req.body as {
+    const { name, providerType, baseUrl, apiKey, defaultModel, degradedThresholdMs } = req.body as {
       name?: string
       providerType?: string
       baseUrl?: string
       apiKey?: string
       defaultModel?: string
+      degradedThresholdMs?: number
     }
 
     if (providerType && !VALID_PROVIDER_TYPES.includes(providerType)) {
@@ -391,6 +394,7 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
         baseUrl: baseUrl?.trim(),
         apiKey: apiKey?.trim(),
         defaultModel: defaultModel?.trim(),
+        degradedThresholdMs: degradedThresholdMs != null ? Math.max(1, Math.round(degradedThresholdMs)) : undefined,
       })
 
       if (activeProvider === id) {
