@@ -290,6 +290,9 @@ export class AgentCore {
     const session = this.sessionManager.getOrCreateSession(userId, source)
     const sessionId = session.id
 
+    // Update system prompt with channel context so the model knows how it's communicating
+    this.refreshSystemPrompt(source)
+
     // Record the message
     this.sessionManager.recordMessage(userId)
 
@@ -467,7 +470,7 @@ export class AgentCore {
   /**
    * Refresh the system prompt from current memory state
    */
-  refreshSystemPrompt(): void {
+  refreshSystemPrompt(channel?: string): void {
     let language: string | undefined
     try {
       ensureConfigTemplates()
@@ -481,6 +484,7 @@ export class AgentCore {
       memoryDir: this.memoryDir,
       baseInstructions: this.baseInstructions,
       language,
+      channel,
     })
     this.agent.setSystemPrompt(prompt)
   }

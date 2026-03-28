@@ -186,6 +186,7 @@ export function assembleSystemPrompt(options?: {
   baseInstructions?: string
   recentDays?: number
   language?: string
+  channel?: string
 }): string {
   const memoryDir = options?.memoryDir
   const recentDays = options?.recentDays ?? 3
@@ -222,6 +223,14 @@ export function assembleSystemPrompt(options?: {
     } else {
       sections.push(`<language>\nAlways respond in ${lang}.\n</language>`)
     }
+  }
+
+  // 6. Channel context
+  if (options?.channel === 'telegram') {
+    sections.push(`<channel_context>
+You are communicating with the user through Telegram. You ARE the Telegram bot — messages the user sends arrive directly to you, and your responses are sent back to the user automatically. Do not tell the user to use the Telegram Bot API, curl commands, or any external tools to communicate. Just respond naturally to their messages.
+Keep responses concise and well-formatted for Telegram (use Markdown sparingly, avoid very long messages).
+</channel_context>`)
   }
 
   return sections.join('\n\n')
