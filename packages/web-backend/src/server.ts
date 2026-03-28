@@ -26,8 +26,6 @@ console.log('[openagent] Ensuring memory structure...')
 ensureMemoryStructure()
 
 const runtimeMetrics = new RuntimeMetrics()
-const heartbeatService = new HeartbeatService({ db })
-heartbeatService.start()
 
 // Load session timeout from settings
 let sessionTimeoutMinutes = 15
@@ -98,6 +96,10 @@ if (provider) {
 } else {
   console.warn('[openagent] No provider configured — chat will be unavailable. Configure a provider in Settings.')
 }
+
+// Initialize heartbeat service with provider manager
+const heartbeatService = new HeartbeatService({ db, providerManager })
+heartbeatService.start()
 
 // Initialize memory consolidation scheduler
 const consolidationScheduler = new MemoryConsolidationScheduler({
