@@ -11,7 +11,13 @@ services:
     environment:
       - NODE_ENV=production
       - DATA_DIR=/data
+      - WORKSPACE_DIR=/workspace
       - PORT=3000
+      - HOST=0.0.0.0
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:?ADMIN_PASSWORD must be set}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
 
   # Uncomment to enable local Ollama for running local LLM models
   # ollama:
