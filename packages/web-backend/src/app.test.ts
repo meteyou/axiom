@@ -230,11 +230,61 @@ describe('auth flow', () => {
     expect(body.refreshToken).toBeDefined()
   })
 
+  it('POST /api/auth/refresh returns new tokens with user data', async () => {
+    const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'admin', password: 'admin' }),
+    })
+    const loginBody = (await loginRes.json()) as { refreshToken: string }
+
+    const res = await fetch(`${baseUrl}/api/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken: loginBody.refreshToken }),
+    })
+    const body = (await res.json()) as { accessToken: string; refreshToken: string; user: { id: number; username: string; role: string } }
+    expect(res.status).toBe(200)
+    expect(body.user).toBeDefined()
+    expect(body.user.username).toBe('admin')
+    expect(body.user.role).toBe('admin')
+  })
+
   it('POST /api/auth/refresh fails with invalid token', async () => {
     const res = await fetch(`${baseUrl}/api/auth/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refreshToken: 'invalid-token' }),
+    })
+    expect(res.status).toBe(401)
+  })
+
+  it('GET /api/auth/me returns current user', async () => {
+    const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'admin', password: 'admin' }),
+    })
+    const { accessToken } = (await loginRes.json()) as { accessToken: string }
+
+    const res = await fetch(`${baseUrl}/api/auth/me`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    const body = (await res.json()) as { user: { id: number; username: string; role: string } }
+    expect(res.status).toBe(200)
+    expect(body.user).toBeDefined()
+    expect(body.user.username).toBe('admin')
+    expect(body.user.role).toBe('admin')
+  })
+
+  it('GET /api/auth/me rejects unauthenticated requests', async () => {
+    const res = await fetch(`${baseUrl}/api/auth/me`)
+    expect(res.status).toBe(401)
+  })
+
+  it('GET /api/auth/me rejects expired tokens', async () => {
+    const res = await fetch(`${baseUrl}/api/auth/me`, {
+      headers: { Authorization: 'Bearer invalid-token' },
     })
     expect(res.status).toBe(401)
   })
