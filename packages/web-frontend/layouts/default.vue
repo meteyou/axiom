@@ -246,7 +246,7 @@ import { useMediaQuery } from '@vueuse/core'
 
 const route = useRoute()
 const { user, logout } = useAuth()
-const { connectionStatus } = useChat()
+const { status: globalStatus, providerName: globalProviderName, start: startStatusPolling, stop: stopStatusPolling } = useConnectionStatus()
 const { isDark, toggle: toggleTheme } = useTheme()
 
 const sidebarOpen = ref(false)
@@ -256,9 +256,9 @@ const isAdmin = computed(() => user.value?.role === 'admin')
 const { userAvatarUrl, avatarFailed, userInitial, onAvatarError } = useUserAvatar()
 
 const statusDotClass = computed(() => {
-  switch (connectionStatus.value) {
-    case 'connected': return 'bg-success shadow-[0_0_6px_hsl(var(--success))]'
-    case 'connecting': return 'bg-warning animate-pulse'
+  switch (globalStatus.value) {
+    case 'healthy': return 'bg-success shadow-[0_0_6px_hsl(var(--success))]'
+    case 'degraded': return 'bg-warning shadow-[0_0_6px_hsl(var(--warning))]'
     default: return 'bg-muted-foreground'
   }
 })
@@ -267,11 +267,26 @@ const { t, locale, locales, setLocale } = useI18n()
 
 const localeList = computed(() => (locales.value as Array<{ code: string; name: string }>))
 const statusText = computed(() => {
-  switch (connectionStatus.value) {
-    case 'connected': return t('status.online')
-    case 'connecting': return t('status.connecting')
-    default: return t('status.offline')
+  switch (globalStatus.value) {
+    case 'healthy': {
+      const name = globalProviderName.value
+      return name ? t('status.healthy', { provider: name }) : t('status.online')
+    }
+    case 'degraded': {
+      const name = globalProviderName.value
+      return name ? t('status.degraded', { provider: name }) : t('status.degraded', { provider: '' })
+    }
+    default:
+      return t('status.offline')
   }
+})
+
+onMounted(() => {
+  startStatusPolling()
+})
+
+onUnmounted(() => {
+  stopStatusPolling()
 })
 
 function navItemClass(path: string) {
