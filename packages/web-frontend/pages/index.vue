@@ -1,7 +1,22 @@
 <template>
   <div class="flex h-full flex-col overflow-hidden">
     <!-- Chat toolbar -->
-    <div class="flex shrink-0 items-center justify-end gap-2 border-b border-border bg-background px-4 py-2">
+    <div class="flex shrink-0 items-center gap-2 border-b border-border bg-background px-6 py-2">
+      <!-- Chat connection status -->
+      <div class="flex items-center gap-2 text-sm text-muted-foreground">
+        <span
+          class="h-2 w-2 shrink-0 rounded-full"
+          :class="{
+            'bg-success shadow-[0_0_6px_hsl(var(--success))]': connectionStatus === 'connected',
+            'bg-warning animate-pulse': connectionStatus === 'connecting',
+            'bg-muted-foreground': connectionStatus === 'disconnected',
+          }"
+        />
+        <span class="hidden sm:inline">{{ chatStatusText }}</span>
+      </div>
+
+      <div class="flex-1" />
+
       <Button
         variant="outline"
         size="sm"
@@ -303,6 +318,14 @@ const {
   newSession,
   stopTask,
 } = useChat()
+
+const chatStatusText = computed(() => {
+  switch (connectionStatus.value) {
+    case 'connected': return t('chat.statusConnected')
+    case 'connecting': return t('chat.statusConnecting')
+    default: return t('chat.statusDisconnected')
+  }
+})
 
 const inputText = ref('')
 const inputRef = ref<HTMLTextAreaElement | null>(null)
