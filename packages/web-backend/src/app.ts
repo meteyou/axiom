@@ -17,7 +17,8 @@ import { createSkillsRouter } from './routes/skills.js'
 import { createStatsRouter } from './routes/stats.js'
 import { createHealthRouter } from './routes/health.js'
 import { createTasksRouter } from './routes/tasks.js'
-import type { TaskRunner } from '@openagent/core'
+import { createCronjobsRouter } from './routes/cronjobs.js'
+import type { TaskRunner, TaskScheduler } from '@openagent/core'
 import { ensureAdminUser } from './auth.js'
 import type { HeartbeatService } from './heartbeat.js'
 import type { RuntimeMetrics } from './runtime-metrics.js'
@@ -34,6 +35,7 @@ export interface AppOptions {
   getTelegramBot?: () => TelegramBot | null
   onTelegramSettingsChanged?: () => void
   getTaskRunner?: () => TaskRunner | null
+  getTaskScheduler?: () => TaskScheduler | null
 }
 
 export function createApp(options?: AppOptions): express.Express {
@@ -104,6 +106,10 @@ export function createApp(options?: AppOptions): express.Express {
     app.use('/api/tasks', createTasksRouter({
       db: options.db,
       getTaskRunner: options.getTaskRunner,
+    }))
+    app.use('/api/cronjobs', createCronjobsRouter({
+      db: options.db,
+      getTaskScheduler: options.getTaskScheduler,
     }))
 
     if (options.heartbeatService && options.runtimeMetrics) {
