@@ -30,12 +30,19 @@ export function createLogsRouter(db: Database): Router {
     const page = Math.max(1, parseInt(req.query.page as string) || 1)
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 50))
 
+    const sourceFilter = req.query.source as string | undefined
+    const validSourceFilters = ['main', 'task'] as const
+    const parsedSourceFilter = sourceFilter && validSourceFilters.includes(sourceFilter as 'main' | 'task')
+      ? (sourceFilter as 'main' | 'task')
+      : undefined
+
     const result = queryToolCalls(db, {
       sessionId: req.query.session_id as string | undefined,
       toolName: req.query.tool_name as string | undefined,
       search: req.query.search as string | undefined,
       dateFrom: req.query.date_from as string | undefined,
       dateTo: req.query.date_to as string | undefined,
+      sourceFilter: parsedSourceFilter,
       page,
       limit,
     })
