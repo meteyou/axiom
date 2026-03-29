@@ -19,6 +19,7 @@ import { createBuiltinWebTools } from './web-tools.js'
 import type { BuiltinToolsConfig } from './web-tools.js'
 import { SessionManager } from './session-manager.js'
 import type { SessionInfo } from './session-manager.js'
+import { MessageQueue } from './message-queue.js'
 
 /**
  * A chunk yielded from the agent's response stream
@@ -271,6 +272,7 @@ export class AgentCore {
   private providerConfig?: ProviderConfig
   private providerManager?: ProviderManager
   private onSessionEndCallback?: (userId: string, summary: string | null) => void
+  private messageQueue: MessageQueue
 
   constructor(options: AgentCoreOptions) {
     this.model = options.model
@@ -346,6 +348,9 @@ export class AgentCore {
         : () => this.apiKey,
     })
 
+    // Initialize message queue for sequential processing
+    this.messageQueue = new MessageQueue()
+
     // Initialize session manager
     this.sessionManager = new SessionManager({
       db: this.db,
@@ -395,20 +400,66 @@ export class AgentCore {
   }
 
   /**
-   * Send a message and get back an async iterable of response chunks
+   * Send a message and get back an async iterable of response chunks.
+   * All messages are queued and processed sequentially to prevent collisions.
    */
   async *sendMessage(userId: string, text: string, source: string = 'web'): AsyncIterable<ResponseChunk> {
-    // Get or create session
+    const self = this
+    const iterable = await this.messageQueue.enqueue<ResponseChunk>(
+      'user_message',
+      userId,
+      text,
+      source,
+      (msg) => {
+        return self.processUserMessage(msg.payload.userId, msg.payload.text, msg.payload.source)
+      },
+    )
+    yield* iterable
+  }
+
+  /**
+   * Inject a task result into the main agent via the message queue.
+   * The injection is queued and processed sequentially like any other message.
+   */
+  async injectTaskResult(injection: string): Promise<void> {
+    const self = this
+    const iterable = await this.messageQueue.enqueue<ResponseChunk>(
+      'task_injection',
+      'system',
+      injection,
+      'task',
+      (msg) => {
+        return self.processTaskInjection(msg.payload.text)
+      },
+    )
+    // Drain the iterable (task injections are consumed internally)
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    for await (const _chunk of iterable) {
+      // drain
+    }
+  }
+
+  /**
+   * Process a user message (called from the queue)
+   */
+  private async *processUserMessage(userId: string, text: string, source: string): AsyncIterable<ResponseChunk> {
     const session = this.sessionManager.getOrCreateSession(userId, source)
     const sessionId = session.id
 
-    // Update system prompt with channel context so the model knows how it's communicating
     this.refreshSystemPrompt(source)
-
-    // Record the message
     this.sessionManager.recordMessage(userId)
 
     yield* this.executePromptWithRetry(text, sessionId)
+  }
+
+  /**
+   * Process a task injection by sending it through the agent
+   */
+  private async *processTaskInjection(injection: string): AsyncIterable<ResponseChunk> {
+    const session = this.sessionManager.getOrCreateSession('system', 'task')
+    const sessionId = session.id
+
+    yield* this.executePromptWithRetry(injection, sessionId)
   }
 
   /**
@@ -739,6 +790,13 @@ export class AgentCore {
    */
   refreshSkills(): void {
     this.refreshSystemPrompt()
+  }
+
+  /**
+   * Get the message queue (for monitoring/testing)
+   */
+  getMessageQueue(): MessageQueue {
+    return this.messageQueue
   }
 
   /**

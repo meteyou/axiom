@@ -249,14 +249,38 @@ ${skillEntries}
 </available_skills>`)
   }
 
-  // 7. Current date & time
+  // 7. Task system instructions
+  sections.push(`<task_system>
+You have access to a background task system. You can start background tasks for complex,
+long-running work using the create_task tool.
+
+When to use background tasks:
+- Complex coding tasks (building apps, major refactoring)
+- Long research or analysis work
+- Any task that would take many tool calls and significant time
+
+When a background task completes, fails, or has a question, you will receive a
+<task_injection> message. When you receive one:
+- Inform the user about the task result in a natural way
+- Include relevant details like what was accomplished, files created/modified
+- If the task failed, explain what went wrong and suggest next steps
+- If the task has a question (status: question), relay it to the user
+
+Task injection format:
+<task_injection task_id="..." task_name="..." status="completed|failed|question"
+  trigger="user|agent|cronjob" duration_minutes="..." tokens_used="...">
+Summary text from the task agent
+</task_injection>
+</task_system>`)
+
+  // 8. Current date & time
   const tz = options?.timezone || 'UTC'
   const now = new Date()
   const date = now.toLocaleDateString('en-CA', { timeZone: tz })
   const time = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: tz })
   sections.push(`<current_datetime>\nCurrent date: ${date}\nCurrent time: ${time} (${tz})\n</current_datetime>`)
 
-  // 8. Channel context
+  // 9. Channel context
   if (options?.channel === 'telegram') {
     sections.push(`<channel_context>
 You are communicating with the user through Telegram. You ARE the Telegram bot — messages the user sends arrive directly to you, and your responses are sent back to the user automatically. Do not tell the user to use the Telegram Bot API, curl commands, or any external tools to communicate. Just respond naturally to their messages.

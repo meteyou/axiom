@@ -45,6 +45,10 @@ const TEMPLATES: Record<string, object> = {
     },
     braveSearchApiKey: '',
     searxngUrl: '',
+    tasks: {
+      defaultProvider: '',
+      maxDurationMinutes: 60,
+    },
   },
   'skills.json': {
     skills: [],
