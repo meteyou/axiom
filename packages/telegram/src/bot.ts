@@ -911,6 +911,41 @@ export class TelegramBot {
   }
 
   /**
+   * Send a task notification to a Telegram chat with HTML formatting.
+   * Used for proactive task result notifications.
+   */
+  async sendTaskNotification(chatId: string | number, html: string): Promise<boolean> {
+    try {
+      await this.bot.api.sendMessage(chatId, html, { parse_mode: 'HTML' })
+      return true
+    } catch (err) {
+      // Fallback to plain text if HTML parsing fails
+      try {
+        const plainText = html.replace(/<[^>]+>/g, '')
+        await this.bot.api.sendMessage(chatId, plainText)
+        return true
+      } catch (fallbackErr) {
+        console.error(`[telegram] Failed to send task notification to ${chatId}:`, fallbackErr)
+        return false
+      }
+    }
+  }
+
+  /**
+   * Get the Telegram chat ID for a given OpenAgent user ID.
+   * Returns null if no linked & approved Telegram user exists.
+   */
+  getTelegramChatIdForUser(userId: number): string | null {
+    if (!this.db) return null
+
+    const row = this.db.prepare(
+      'SELECT telegram_id FROM telegram_users WHERE user_id = ? AND status = ?'
+    ).get(userId, 'approved') as { telegram_id: string } | undefined
+
+    return row?.telegram_id ?? null
+  }
+
+  /**
    * Get the underlying grammy Bot instance (for advanced usage)
    */
   getBot(): Bot {
