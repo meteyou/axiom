@@ -81,12 +81,18 @@ export function createStatsRouter(db: Database): Router {
         return
       }
 
+      const sessionTypeParam = normalizeFilter(req.query.session_type)
+      const sessionType = sessionTypeParam === 'main' || sessionTypeParam === 'task'
+        ? sessionTypeParam
+        : undefined
+
       const result = queryUsageStats(db, {
         groupBy: parseGroupBy(req.query.group_by as string | string[] | undefined),
         dateFrom,
         dateTo,
         provider: normalizeFilter(req.query.provider),
         model: normalizeFilter(req.query.model),
+        sessionType,
       })
 
       res.json({
