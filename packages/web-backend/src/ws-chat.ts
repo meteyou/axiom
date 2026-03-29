@@ -15,7 +15,7 @@ interface ChatMessage {
 }
 
 interface ChatResponse {
-  type: 'text' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end'
+  type: 'text' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'task_completed' | 'task_failed' | 'task_question'
   text?: string
   toolName?: string
   toolCallId?: string
@@ -28,6 +28,18 @@ interface ChatResponse {
   source?: string
   /** Sender display name (for external_user_message) */
   senderName?: string
+  /** Task ID (for task events) */
+  taskId?: string
+  /** Task name (for task events) */
+  taskName?: string
+  /** Task result summary (for task events) */
+  taskSummary?: string
+  /** Task duration in minutes (for task events) */
+  taskDurationMinutes?: number
+  /** Total tokens used (for task events) */
+  taskTokensUsed?: number
+  /** Task trigger type (for task events) */
+  taskTriggerType?: string
 }
 
 function saveChatMessage(
@@ -45,6 +57,8 @@ function saveChatMessage(
 
 export interface WebSocketChatResult {
   wss: WebSocketServer
+  /** Check whether the given user ID has at least one active WebSocket connection */
+  hasActiveWebSocket: (userId: number) => boolean
 }
 
 /**
@@ -343,6 +357,17 @@ export function setupWebSocketChat(
             text: event.text,
             sessionId: newSessionId,
           })
+        } else if (event.type === 'task_completed' || event.type === 'task_failed' || event.type === 'task_question') {
+          sendMessage(client, {
+            type: event.type as ChatResponse['type'],
+            text: event.text,
+            taskId: event.taskId,
+            taskName: event.taskName,
+            taskSummary: event.taskSummary,
+            taskDurationMinutes: event.taskDurationMinutes,
+            taskTokensUsed: event.taskTokensUsed,
+            taskTriggerType: event.taskTriggerType,
+          })
         } else {
           sendMessage(client, {
             type: event.type,
@@ -359,7 +384,13 @@ export function setupWebSocketChat(
     })
   }
 
-  return { wss }
+  return {
+    wss,
+    hasActiveWebSocket: (userId: number) => {
+      const clients = userClients.get(userId)
+      return !!clients && clients.size > 0
+    },
+  }
 }
 
 function sendMessage(ws: WebSocket, msg: ChatResponse): void {

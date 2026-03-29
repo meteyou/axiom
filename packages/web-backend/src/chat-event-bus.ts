@@ -6,11 +6,11 @@ import { EventEmitter } from 'node:events'
  */
 export interface ChatEvent {
   /** The kind of event being broadcast */
-  type: 'user_message' | 'text' | 'tool_call_start' | 'tool_call_end' | 'done' | 'error' | 'system' | 'session_end'
+  type: 'user_message' | 'text' | 'tool_call_start' | 'tool_call_end' | 'done' | 'error' | 'system' | 'session_end' | 'task_completed' | 'task_failed' | 'task_question'
   /** The OpenAgent user ID (integer) this event belongs to */
   userId: number
   /** Where the event originated */
-  source: 'web' | 'telegram'
+  source: 'web' | 'telegram' | 'task'
   /** Opaque ID of the originating connection (to avoid echo) */
   sourceConnectionId?: string
   /** Chat session ID */
@@ -31,6 +31,18 @@ export interface ChatEvent {
   error?: string
   /** Display name of the sender (e.g. Telegram username) */
   senderName?: string
+  /** Task ID (for task_completed, task_failed, task_question events) */
+  taskId?: string
+  /** Task name (for task events) */
+  taskName?: string
+  /** Task result summary (for task events) */
+  taskSummary?: string
+  /** Task duration in minutes (for task events) */
+  taskDurationMinutes?: number
+  /** Total tokens used by the task (for task events) */
+  taskTokensUsed?: number
+  /** Task trigger type (user, agent, cronjob) */
+  taskTriggerType?: string
 }
 
 /**
