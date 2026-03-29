@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import fs from 'node:fs'
 import path from 'node:path'
+import multer from 'multer'
 import {
   loadSkills,
   addSkill,
@@ -8,6 +9,7 @@ import {
   deleteSkill as deleteSkillConfig,
   getSkill,
   installSkill,
+  installSkillFromZip,
   loadConfig,
   ensureConfigTemplates,
   getConfigDir,
@@ -17,6 +19,20 @@ import {
 import type { AgentCore, SkillConfig, BuiltinToolsConfig } from '@openagent/core'
 import { jwtMiddleware } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
+
+// Multer configured for in-memory storage, max 50 MB
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase()
+    if (ext === '.zip' || ext === '.skill') {
+      cb(null, true)
+    } else {
+      cb(new Error('Only .zip and .skill files are allowed'))
+    }
+  },
+})
 
 export interface SkillsRouterOptions {
   agentCore?: AgentCore | null
@@ -103,6 +119,43 @@ export function createSkillsRouter(options: SkillsRouterOptions = {}): Router {
       res.status(201).json({ skill: sanitizeSkill(skill) })
     } catch (err) {
       res.status(400).json({ error: `Failed to install skill: ${(err as Error).message}` })
+    }
+  })
+
+  /**
+   * POST /api/skills/upload — Install a skill from a .zip or .skill file upload
+   * Multipart form-data with field "file"
+   */
+  router.post('/upload', upload.single('file'), (req: AuthenticatedRequest, res) => {
+    const file = (req as AuthenticatedRequest & { file?: Express.Multer.File }).file
+    if (!file) {
+      res.status(400).json({ error: 'No file uploaded. Send a .zip or .skill file as "file" field.' })
+      return
+    }
+
+    try {
+      const result = installSkillFromZip(file.buffer, file.originalname)
+
+      // Register in skills.json
+      const skillId = `${result.owner}/${result.name}`
+      const skill = addSkill({
+        id: skillId,
+        owner: result.owner,
+        name: result.name,
+        description: result.parsed.description,
+        source: 'upload',
+        sourceUrl: '',
+        path: result.installPath,
+        envKeys: result.parsed.envKeys,
+        emoji: result.parsed.emoji,
+      })
+
+      // Refresh agent skills
+      agentCore?.refreshSkills()
+
+      res.status(201).json({ skill: sanitizeSkill(skill) })
+    } catch (err) {
+      res.status(400).json({ error: `Failed to install skill from file: ${(err as Error).message}` })
     }
   })
 
