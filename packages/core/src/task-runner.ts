@@ -16,6 +16,7 @@ import {
   formatPeriodicStatusUpdate,
 } from './loop-detection.js'
 import type { LoopDetectionConfig, LoopDetectionResult } from './loop-detection.js'
+import type { TaskEventBus } from './task-event-bus.js'
 
 export interface TaskRunnerOptions {
   db: Database
@@ -39,6 +40,8 @@ export interface TaskRunnerOptions {
   statusUpdateIntervalMinutes?: number
   /** Function to resolve a provider config by ID (for smart detection) */
   getProviderById?: (providerId: string) => ProviderConfig | null
+  /** Optional event bus for streaming task execution events to WebSocket clients */
+  taskEventBus?: TaskEventBus
 }
 
 interface RunningTask {
@@ -312,7 +315,7 @@ export class TaskRunner {
         const startedAt = task.startedAt ? new Date(task.startedAt).getTime() : Date.now()
         const durationMinutes = Math.round((Date.now() - startedAt) / 60000)
         const injection = formatTaskInjection(task, durationMinutes)
-        this.options.onTaskPaused?.(taskId, injection)
+        this.notifyTaskPaused(taskId, injection, summary)
         unsubscribe()
         return
       }
@@ -333,7 +336,7 @@ export class TaskRunner {
         const startedAt = task.startedAt ? new Date(task.startedAt).getTime() : Date.now()
         const durationMinutes = Math.round((Date.now() - startedAt) / 60000)
         const injection = formatTaskInjection(task, durationMinutes)
-        this.options.onTaskComplete(taskId, injection)
+        this.notifyTaskComplete(taskId, injection, task.status, task.resultSummary ?? undefined)
       }
     } catch (err) {
       // Task failed
@@ -360,7 +363,7 @@ export class TaskRunner {
         const startedAt = task.startedAt ? new Date(task.startedAt).getTime() : Date.now()
         const durationMinutes = Math.round((Date.now() - startedAt) / 60000)
         const injection = formatTaskInjection(task, durationMinutes)
-        this.options.onTaskComplete(taskId, injection)
+        this.notifyTaskComplete(taskId, injection, "failed", errorMessage)
       }
     }
   }
@@ -375,6 +378,20 @@ export class TaskRunner {
     model: Model<Api>,
   ): void {
     switch (event.type) {
+      case 'message_update': {
+        // Emit text deltas to task event bus
+        const assistantEvent = event.assistantMessageEvent
+        if (assistantEvent.type === 'text_delta') {
+          this.options.taskEventBus?.emitTaskEvent({
+            type: 'text_delta',
+            taskId: runningTask.taskId,
+            timestamp: new Date().toISOString(),
+            text: assistantEvent.delta,
+          })
+        }
+        break
+      }
+
       case 'message_end': {
         const msg = event.message as Message
         if ('role' in msg && msg.role === 'assistant') {
@@ -410,6 +427,16 @@ export class TaskRunner {
       case 'tool_execution_start': {
         runningTask.toolCallTimers.set(event.toolCallId, Date.now())
         runningTask.toolCallArgs.set(event.toolCallId, event.args)
+
+        // Emit to task event bus
+        this.options.taskEventBus?.emitTaskEvent({
+          type: 'tool_call_start',
+          taskId: runningTask.taskId,
+          timestamp: new Date().toISOString(),
+          toolName: event.toolName,
+          toolCallId: event.toolCallId,
+          toolArgs: event.args,
+        })
         break
       }
 
@@ -430,6 +457,18 @@ export class TaskRunner {
 
         // Check for loops
         this.checkForLoops(runningTask)
+
+        // Emit to task event bus
+        this.options.taskEventBus?.emitTaskEvent({
+          type: 'tool_call_end',
+          taskId: runningTask.taskId,
+          timestamp: new Date().toISOString(),
+          toolName: event.toolName,
+          toolCallId: event.toolCallId,
+          toolResult: event.result,
+          toolIsError: isError,
+          durationMs,
+        })
 
         // Log to tool_calls table with task's session_id
         logToolCall(this.db, {
@@ -582,7 +621,7 @@ export class TaskRunner {
 ${reason}
 Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
 </task_injection>`
-      this.options.onTaskComplete(taskId, injection)
+      this.notifyTaskComplete(taskId, injection, "failed", reason)
     }
   }
 
@@ -605,6 +644,35 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
     )
 
     this.options.onStatusUpdate(task.id, statusMessage)
+  }
+
+  /**
+   * Emit a status change event to the task event bus
+   */
+  private emitStatusChange(taskId: string, status: string, message?: string): void {
+    this.options.taskEventBus?.emitTaskEvent({
+      type: 'status_change',
+      taskId,
+      timestamp: new Date().toISOString(),
+      status,
+      statusMessage: message,
+    })
+  }
+
+  /**
+   * Notify completion/failure and emit status change
+   */
+  private notifyTaskComplete(taskId: string, injection: string, status: string, message?: string): void {
+    this.emitStatusChange(taskId, status, message)
+    this.options.onTaskComplete(taskId, injection)
+  }
+
+  /**
+   * Notify task paused and emit status change
+   */
+  private notifyTaskPaused(taskId: string, injection: string, message?: string): void {
+    this.emitStatusChange(taskId, 'paused', message)
+    this.options.onTaskPaused?.(taskId, injection)
   }
 
   /**
@@ -636,7 +704,7 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
       const startedAt = task.startedAt ? new Date(task.startedAt).getTime() : Date.now()
       const durationMinutes = Math.round((Date.now() - startedAt) / 60000)
       const injection = formatTaskInjection(task, durationMinutes)
-      this.options.onTaskComplete(taskId, injection)
+      this.notifyTaskComplete(taskId, injection, "failed", reason)
     }
   }
 
@@ -811,7 +879,7 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
         const startedAt = task.startedAt ? new Date(task.startedAt).getTime() : Date.now()
         const durationMinutes = Math.round((Date.now() - startedAt) / 60000)
         const injection = formatTaskInjection(task, durationMinutes)
-        this.options.onTaskPaused?.(taskId, injection)
+        this.notifyTaskPaused(taskId, injection, summary)
         return
       }
 
@@ -830,7 +898,7 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
       const startedAt = task.startedAt ? new Date(task.startedAt).getTime() : Date.now()
       const durationMinutes = Math.round((Date.now() - startedAt) / 60000)
       const injection = formatTaskInjection(task, durationMinutes)
-      this.options.onTaskComplete(taskId, injection)
+      this.notifyTaskComplete(taskId, injection, task.status, task.resultSummary ?? undefined)
     } catch (err) {
       unsubscribe()
       this.cleanupRunningTask(taskId)
@@ -854,7 +922,7 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
       const startedAt = task.startedAt ? new Date(task.startedAt).getTime() : Date.now()
       const durationMinutes = Math.round((Date.now() - startedAt) / 60000)
       const injection = formatTaskInjection(task, durationMinutes)
-      this.options.onTaskComplete(taskId, injection)
+      this.notifyTaskComplete(taskId, injection, "failed", errorMessage)
     }
   }
 
@@ -891,7 +959,7 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
           const startedAt = task.startedAt ? new Date(task.startedAt).getTime() : Date.now()
           const durationMinutes = Math.round((Date.now() - startedAt) / 60000)
           const injection = formatTaskInjection(task, durationMinutes)
-          this.options.onTaskComplete(taskId, injection)
+          this.notifyTaskComplete(taskId, injection, "failed", "timeout — no response received")
         }
 
         cleanedCount++
