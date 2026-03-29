@@ -125,6 +125,14 @@ export { TaskStore, initTasksTable } from './task-store.js'
 export type { Task, TaskStatus, TaskTriggerType, TaskResultStatus, CreateTaskInput, UpdateTaskInput, TaskListFilters } from './task-store.js'
 export { TaskRunner, formatTaskInjection } from './task-runner.js'
 export type { TaskRunnerOptions } from './task-runner.js'
+export {
+  ToolCallTracker,
+  buildSmartDetectionPrompt,
+  parseSmartDetectionResponse,
+  resolveDetectionMethod,
+  formatPeriodicStatusUpdate,
+} from './loop-detection.js'
+export type { TrackedToolCall, LoopDetectionConfig, LoopDetectionResult } from './loop-detection.js'
 export { createTaskTool, createResumeTaskTool } from './task-tools.js'
 export type { TaskToolsOptions } from './task-tools.js'
 export { MessageQueue } from './message-queue.js'
