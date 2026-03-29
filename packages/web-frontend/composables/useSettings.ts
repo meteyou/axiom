@@ -22,6 +22,22 @@ export interface HeartbeatSettings {
   notifications: HeartbeatNotificationToggles
 }
 
+export interface LoopDetectionSettings {
+  enabled: boolean
+  method: 'systematic' | 'smart' | 'auto'
+  maxConsecutiveFailures: number
+  smartProvider: string
+  smartCheckInterval: number
+}
+
+export interface TasksSettings {
+  defaultProvider: string
+  maxDurationMinutes: number
+  telegramDelivery: string
+  loopDetection: LoopDetectionSettings
+  statusUpdateIntervalMinutes: number
+}
+
 export interface Settings {
   sessionTimeoutMinutes: number
   language: string
@@ -33,6 +49,7 @@ export interface Settings {
   telegramBotToken: string
   heartbeat: HeartbeatSettings
   memoryConsolidation: MemoryConsolidationSettings
+  tasks: TasksSettings
 }
 
 export function useSettings() {
@@ -94,6 +111,19 @@ export function useSettings() {
           runAtHour: 3,
           lookbackDays: 3,
           providerId: '',
+        },
+        tasks: result.tasks ?? {
+          defaultProvider: '',
+          maxDurationMinutes: 60,
+          telegramDelivery: 'auto',
+          loopDetection: {
+            enabled: true,
+            method: 'systematic',
+            maxConsecutiveFailures: 3,
+            smartProvider: '',
+            smartCheckInterval: 5,
+          },
+          statusUpdateIntervalMinutes: 10,
         },
       }
       successMessage.value = 'saved'

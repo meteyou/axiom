@@ -609,6 +609,132 @@
               </div>
             </div>
 
+            <!-- ═══ Tasks ═══ -->
+            <div v-else-if="activeTab === 'tasks'">
+              <div class="mb-8">
+                <h2 class="text-lg font-semibold tracking-tight text-foreground">
+                  {{ $t('settings.tabs.tasks') }}
+                </h2>
+                <p class="mt-1 text-sm text-muted-foreground">
+                  {{ $t('settings.tabs.tasksDescription') }}
+                </p>
+              </div>
+
+              <div class="flex flex-col gap-8">
+                <!-- Loop Detection Section -->
+                <div>
+                  <h3 class="text-base font-semibold tracking-tight text-foreground">
+                    {{ $t('settings.tasksLoopDetection') }}
+                  </h3>
+                  <p class="mt-1 text-sm text-muted-foreground">
+                    {{ $t('settings.tasksLoopDetectionHint') }}
+                  </p>
+                </div>
+
+                <!-- Enable toggle -->
+                <div class="flex items-center justify-between rounded-lg border border-border px-4 py-3">
+                  <div class="flex flex-col gap-0.5 pr-4">
+                    <Label for="loop-detection-enabled" class="cursor-pointer">
+                      {{ $t('settings.tasksLoopDetectionEnabled') }}
+                    </Label>
+                    <p class="text-xs text-muted-foreground">
+                      {{ $t('settings.tasksLoopDetectionEnabledHint') }}
+                    </p>
+                  </div>
+                  <Switch
+                    id="loop-detection-enabled"
+                    v-model="form.tasks.loopDetection.enabled"
+                  />
+                </div>
+
+                <template v-if="form.tasks.loopDetection.enabled">
+                  <!-- Detection method -->
+                  <div class="flex flex-col gap-2">
+                    <Label for="loop-detection-method">{{ $t('settings.tasksLoopDetectionMethod') }}</Label>
+                    <Select id="loop-detection-method" v-model="form.tasks.loopDetection.method">
+                      <option value="systematic">{{ $t('settings.tasksLoopDetectionMethodSystematic') }}</option>
+                      <option value="smart">{{ $t('settings.tasksLoopDetectionMethodSmart') }}</option>
+                      <option value="auto">{{ $t('settings.tasksLoopDetectionMethodAuto') }}</option>
+                    </Select>
+                    <p class="text-xs text-muted-foreground">{{ $t('settings.tasksLoopDetectionMethodHint') }}</p>
+                  </div>
+
+                  <!-- Max consecutive failures -->
+                  <div class="flex flex-col gap-2">
+                    <Label for="loop-max-failures">{{ $t('settings.tasksLoopDetectionMaxFailures') }}</Label>
+                    <Input
+                      id="loop-max-failures"
+                      v-model.number="form.tasks.loopDetection.maxConsecutiveFailures"
+                      type="number"
+                      min="1"
+                      max="20"
+                      class="w-full"
+                    />
+                    <p class="text-xs text-muted-foreground">{{ $t('settings.tasksLoopDetectionMaxFailuresHint') }}</p>
+                  </div>
+
+                  <!-- Smart provider (shown when method is smart or auto) -->
+                  <template v-if="form.tasks.loopDetection.method !== 'systematic'">
+                    <div class="flex flex-col gap-2">
+                      <Label for="loop-smart-provider">{{ $t('settings.tasksLoopDetectionSmartProvider') }}</Label>
+                      <Select id="loop-smart-provider" v-model="form.tasks.loopDetection.smartProvider">
+                        <option value="">{{ $t('settings.tasksLoopDetectionSmartProviderDefault') }}</option>
+                        <option v-for="p in providers" :key="p.id" :value="p.id">
+                          {{ p.name }} ({{ p.defaultModel }})
+                        </option>
+                      </Select>
+                      <p class="text-xs text-muted-foreground">{{ $t('settings.tasksLoopDetectionSmartProviderHint') }}</p>
+                    </div>
+
+                    <!-- Smart check interval -->
+                    <div class="flex flex-col gap-2">
+                      <Label for="loop-smart-interval">{{ $t('settings.tasksLoopDetectionSmartInterval') }}</Label>
+                      <div class="flex items-center gap-2">
+                        <Input
+                          id="loop-smart-interval"
+                          v-model.number="form.tasks.loopDetection.smartCheckInterval"
+                          type="number"
+                          min="1"
+                          max="50"
+                          class="w-full"
+                        />
+                        <span class="text-sm text-muted-foreground">{{ $t('settings.tasksToolCalls') }}</span>
+                      </div>
+                      <p class="text-xs text-muted-foreground">{{ $t('settings.tasksLoopDetectionSmartIntervalHint') }}</p>
+                    </div>
+                  </template>
+                </template>
+
+                <Separator />
+
+                <!-- Status Updates Section -->
+                <div>
+                  <h3 class="text-base font-semibold tracking-tight text-foreground">
+                    {{ $t('settings.tasksStatusUpdates') }}
+                  </h3>
+                  <p class="mt-1 text-sm text-muted-foreground">
+                    {{ $t('settings.tasksStatusUpdatesHint') }}
+                  </p>
+                </div>
+
+                <div class="flex flex-col gap-2">
+                  <Label for="status-update-interval">{{ $t('settings.tasksStatusUpdateInterval') }}</Label>
+                  <div class="flex items-center gap-2">
+                    <Input
+                      id="status-update-interval"
+                      v-model.number="form.tasks.statusUpdateIntervalMinutes"
+                      type="number"
+                      min="1"
+                      max="120"
+                      class="w-full"
+                    />
+                    <span class="text-sm text-muted-foreground">{{ $t('settings.minutes') }}</span>
+                  </div>
+                  <p class="text-xs text-muted-foreground">{{ $t('settings.tasksStatusUpdateIntervalHint') }}</p>
+                </div>
+              </div>
+            </div>
+
           </template>
         </div>
       </div>
@@ -617,7 +743,7 @@
 </template>
 
 <script setup lang="ts">
-import type { MemoryConsolidationSettings, HeartbeatNotificationToggles, HeartbeatSettings } from '~/composables/useSettings'
+import type { MemoryConsolidationSettings, HeartbeatNotificationToggles, HeartbeatSettings, TasksSettings } from '~/composables/useSettings'
 import type { TelegramUser } from '~/composables/useTelegramUsers'
 
 /* ── Auth ── */
@@ -661,7 +787,7 @@ const timezones = [
   'America/Argentina/Buenos_Aires',
 ]
 
-const VALID_TABS = ['agent', 'memory', 'heartbeat', 'telegram'] as const
+const VALID_TABS = ['agent', 'memory', 'heartbeat', 'telegram', 'tasks'] as const
 type TabId = (typeof VALID_TABS)[number]
 
 const activeTab = computed<TabId>({
@@ -679,6 +805,7 @@ const tabs = computed(() => [
   { id: 'memory' as TabId, icon: 'brain', label: t('settings.tabs.memory') },
   { id: 'heartbeat' as TabId, icon: 'activity', label: t('settings.tabs.heartbeat') },
   { id: 'telegram' as TabId, icon: 'send', label: t('settings.tabs.telegram') },
+  { id: 'tasks' as TabId, icon: 'bot', label: t('settings.tabs.tasks') },
 ])
 
 /* ── Settings state ── */
@@ -787,6 +914,7 @@ interface SettingsForm {
   telegramBotToken: string
   heartbeat: HeartbeatSettings
   memoryConsolidation: MemoryConsolidationSettings
+  tasks: TasksSettings
 }
 
 const form = ref<SettingsForm | null>(null)
@@ -810,6 +938,7 @@ function hydrateForm() {
       notifications: { ...s.heartbeat.notifications },
     },
     memoryConsolidation: { ...s.memoryConsolidation },
+    tasks: { ...s.tasks, loopDetection: { ...s.tasks.loopDetection } },
   }
 }
 

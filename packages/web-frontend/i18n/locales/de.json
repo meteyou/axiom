@@ -305,8 +305,31 @@
       "memory": "Gedächtnis",
       "memoryDescription": "Sitzungsverhalten und automatische Gedächtniskonsolidierung.",
       "telegram": "Telegram",
-      "telegramDescription": "Telegram-Bot-Token und Nachrichten-Batching konfigurieren."
-    }
+      "telegramDescription": "Telegram-Bot-Token und Nachrichten-Batching konfigurieren.",
+      "tasks": "Aufgaben",
+      "tasksDescription": "Schleifenerkennung und periodische Statusupdates für Hintergrundaufgaben."
+    },
+    "tasksLoopDetection": "Schleifenerkennung",
+    "tasksLoopDetectionHint": "Erkennen, wenn ein Hintergrundaufgaben-Agent in einer Schleife feststeckt.",
+    "tasksLoopDetectionEnabled": "Schleifenerkennung aktivieren",
+    "tasksLoopDetectionEnabledHint": "Feststeckende Aufgaben-Agenten automatisch erkennen und stoppen.",
+    "tasksLoopDetectionMethod": "Erkennungsmethode",
+    "tasksLoopDetectionMethodSystematic": "Systematisch (Mustererkennung)",
+    "tasksLoopDetectionMethodSmart": "Smart (LLM-basiert)",
+    "tasksLoopDetectionMethodAuto": "Auto (systematisch + smart wenn verfügbar)",
+    "tasksLoopDetectionMethodHint": "Systematisch prüft auf wiederholte identische Fehler. Smart nutzt ein LLM zur Fortschrittsbewertung.",
+    "tasksLoopDetectionMaxFailures": "Maximale aufeinanderfolgende Fehler",
+    "tasksLoopDetectionMaxFailuresHint": "Anzahl identischer aufeinanderfolgender Fehler bevor eine Schleife erkannt wird.",
+    "tasksLoopDetectionSmartProvider": "Smart-Erkennungs-Provider",
+    "tasksLoopDetectionSmartProviderDefault": "Keiner (Smart-Erkennung deaktivieren)",
+    "tasksLoopDetectionSmartProviderHint": "Wähle einen schnellen/günstigen LLM-Provider für die Schleifenbewertung.",
+    "tasksLoopDetectionSmartInterval": "Smart-Prüffrequenz",
+    "tasksLoopDetectionSmartIntervalHint": "LLM-basierte Erkennung alle N Tool-Aufrufe ausführen.",
+    "tasksToolCalls": "Tool-Aufrufe",
+    "tasksStatusUpdates": "Periodische Statusupdates",
+    "tasksStatusUpdatesHint": "Regelmäßige Updates über laufende Hintergrundaufgaben erhalten.",
+    "tasksStatusUpdateInterval": "Statusupdate-Intervall",
+    "tasksStatusUpdateIntervalHint": "Wie oft ein Statusupdate über laufende Aufgaben in den Haupt-Agenten injiziert werden soll."
   },
   "users": {
     "kicker": "Zugriffssteuerung",

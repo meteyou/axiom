@@ -307,8 +307,31 @@
       "memory": "Memory",
       "memoryDescription": "Session behavior and automatic memory consolidation.",
       "telegram": "Telegram",
-      "telegramDescription": "Configure the Telegram bot token and message batching."
-    }
+      "telegramDescription": "Configure the Telegram bot token and message batching.",
+      "tasks": "Tasks",
+      "tasksDescription": "Loop detection and periodic status updates for background tasks."
+    },
+    "tasksLoopDetection": "Loop Detection",
+    "tasksLoopDetectionHint": "Detect when a background task agent is stuck repeating the same failing action.",
+    "tasksLoopDetectionEnabled": "Enable loop detection",
+    "tasksLoopDetectionEnabledHint": "Automatically detect and stop stuck task agents.",
+    "tasksLoopDetectionMethod": "Detection method",
+    "tasksLoopDetectionMethodSystematic": "Systematic (pattern matching)",
+    "tasksLoopDetectionMethodSmart": "Smart (LLM-based)",
+    "tasksLoopDetectionMethodAuto": "Auto (systematic + smart when available)",
+    "tasksLoopDetectionMethodHint": "Systematic checks for repeated identical errors. Smart uses an LLM to evaluate progress.",
+    "tasksLoopDetectionMaxFailures": "Max consecutive failures",
+    "tasksLoopDetectionMaxFailuresHint": "Number of identical consecutive errors before a loop is detected.",
+    "tasksLoopDetectionSmartProvider": "Smart detection provider",
+    "tasksLoopDetectionSmartProviderDefault": "None (disable smart detection)",
+    "tasksLoopDetectionSmartProviderHint": "Select a fast/cheap LLM provider for loop evaluation.",
+    "tasksLoopDetectionSmartInterval": "Smart check frequency",
+    "tasksLoopDetectionSmartIntervalHint": "Run LLM-based detection every N tool calls.",
+    "tasksToolCalls": "tool calls",
+    "tasksStatusUpdates": "Periodic Status Updates",
+    "tasksStatusUpdatesHint": "Receive periodic updates about running background tasks.",
+    "tasksStatusUpdateInterval": "Status update interval",
+    "tasksStatusUpdateIntervalHint": "How often to inject a status update about running tasks into the main agent."
   },
   "users": {
     "kicker": "Access control",
