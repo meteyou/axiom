@@ -285,13 +285,15 @@ export class AgentCore {
     // Ensure memory structure exists
     ensureMemoryStructure(options.memoryDir)
 
-    // Load language and builtinTools settings from config
+    // Load language, timezone, and builtinTools settings from config
     let language: string | undefined
+    let timezone: string | undefined
     let builtinToolsConfig: BuiltinToolsConfig | undefined
     try {
       ensureConfigTemplates()
-      const settings = loadConfig<{ language?: string; builtinTools?: BuiltinToolsConfig; braveSearchApiKey?: string; searxngUrl?: string }>('settings.json')
+      const settings = loadConfig<{ language?: string; timezone?: string; builtinTools?: BuiltinToolsConfig; braveSearchApiKey?: string; searxngUrl?: string }>('settings.json')
       language = settings.language
+      timezone = settings.timezone
       builtinToolsConfig = {
         ...settings.builtinTools,
         braveSearchApiKey: settings.braveSearchApiKey ?? settings.builtinTools?.braveSearchApiKey,
@@ -309,6 +311,7 @@ export class AgentCore {
       memoryDir: options.memoryDir,
       baseInstructions: options.baseInstructions,
       language,
+      timezone,
       skills: activeSkills,
     })
 
@@ -707,10 +710,12 @@ export class AgentCore {
    */
   refreshSystemPrompt(channel?: string): void {
     let language: string | undefined
+    let timezone: string | undefined
     try {
       ensureConfigTemplates()
-      const settings = loadConfig<{ language?: string }>('settings.json')
+      const settings = loadConfig<{ language?: string; timezone?: string }>('settings.json')
       language = settings.language
+      timezone = settings.timezone
     } catch {
       // Config not available
     }
@@ -721,6 +726,7 @@ export class AgentCore {
       memoryDir: this.memoryDir,
       baseInstructions: this.baseInstructions,
       language,
+      timezone,
       channel,
       skills: activeSkills,
     })

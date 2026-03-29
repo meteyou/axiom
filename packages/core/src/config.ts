@@ -9,6 +9,7 @@ const TEMPLATES: Record<string, object> = {
   'settings.json': {
     sessionTimeoutMinutes: 15,
     language: 'en',
+    timezone: 'UTC',
     heartbeat: {
       intervalMinutes: 5,
       fallbackTrigger: 'down',

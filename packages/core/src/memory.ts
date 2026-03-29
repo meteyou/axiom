@@ -195,6 +195,7 @@ export function assembleSystemPrompt(options?: {
   baseInstructions?: string
   recentDays?: number
   language?: string
+  timezone?: string
   channel?: string
   skills?: SkillPromptEntry[]
 }): string {
@@ -248,7 +249,14 @@ ${skillEntries}
 </available_skills>`)
   }
 
-  // 7. Channel context
+  // 7. Current date & time
+  const tz = options?.timezone || 'UTC'
+  const now = new Date()
+  const date = now.toLocaleDateString('en-CA', { timeZone: tz })
+  const time = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: tz })
+  sections.push(`<current_datetime>\nCurrent date: ${date}\nCurrent time: ${time} (${tz})\n</current_datetime>`)
+
+  // 8. Channel context
   if (options?.channel === 'telegram') {
     sections.push(`<channel_context>
 You are communicating with the user through Telegram. You ARE the Telegram bot — messages the user sends arrive directly to you, and your responses are sent back to the user automatically. Do not tell the user to use the Telegram Bot API, curl commands, or any external tools to communicate. Just respond naturally to their messages.
