@@ -13,7 +13,8 @@
     "usage": "Token Usage",
     "logs": "Activity Logs",
     "users": "Users",
-    "skills": "Skills"
+    "skills": "Skills",
+    "tasks": "Tasks"
   },
   "roles": {
     "admin": "Admin",
@@ -498,6 +499,41 @@
         "totalTokens": "Total tokens",
         "cost": "Est. cost"
       }
+    }
+  },
+  "tasks": {
+    "title": "Tasks",
+    "subtitle": "View and manage background tasks, cronjobs, and agent-triggered tasks.",
+    "refresh": "Refresh",
+    "emptyTitle": "No tasks yet",
+    "emptyDescription": "Background tasks will appear here once they are triggered by you, the agent, or a scheduled cronjob.",
+    "killConfirmTitle": "Kill running task?",
+    "killConfirmDescription": "This will immediately abort the task. Any work in progress will be lost.",
+    "killButton": "Kill",
+    "killSuccess": "Task killed successfully.",
+    "filters": {
+      "allStatuses": "All statuses",
+      "allTriggers": "All triggers"
+    },
+    "columns": {
+      "name": "Name",
+      "status": "Status",
+      "trigger": "Trigger",
+      "duration": "Duration",
+      "tokens": "Tokens",
+      "cost": "Est. cost",
+      "created": "Created"
+    },
+    "status": {
+      "running": "Running",
+      "paused": "Paused",
+      "completed": "Completed",
+      "failed": "Failed"
+    },
+    "trigger": {
+      "user": "User",
+      "agent": "Agent",
+      "cronjob": "Cronjob"
     }
   }
 }

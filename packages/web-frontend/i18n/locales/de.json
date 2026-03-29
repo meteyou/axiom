@@ -13,7 +13,8 @@
     "usage": "Token-Verbrauch",
     "logs": "Aktivitätsprotokolle",
     "users": "Benutzer",
-    "skills": "Skills"
+    "skills": "Skills",
+    "tasks": "Aufgaben"
   },
   "roles": {
     "admin": "Admin",
@@ -496,6 +497,41 @@
         "totalTokens": "Gesamt-Tokens",
         "cost": "Gesch. Kosten"
       }
+    }
+  },
+  "tasks": {
+    "title": "Aufgaben",
+    "subtitle": "Hintergrundaufgaben, Cronjobs und vom Agenten ausgelöste Aufgaben anzeigen und verwalten.",
+    "refresh": "Aktualisieren",
+    "emptyTitle": "Noch keine Aufgaben",
+    "emptyDescription": "Hintergrundaufgaben werden hier angezeigt, sobald sie von Ihnen, dem Agenten oder einem geplanten Cronjob ausgelöst werden.",
+    "killConfirmTitle": "Laufende Aufgabe beenden?",
+    "killConfirmDescription": "Die Aufgabe wird sofort abgebrochen. Nicht gespeicherter Fortschritt geht verloren.",
+    "killButton": "Beenden",
+    "killSuccess": "Aufgabe erfolgreich beendet.",
+    "filters": {
+      "allStatuses": "Alle Status",
+      "allTriggers": "Alle Auslöser"
+    },
+    "columns": {
+      "name": "Name",
+      "status": "Status",
+      "trigger": "Auslöser",
+      "duration": "Dauer",
+      "tokens": "Tokens",
+      "cost": "Gesch. Kosten",
+      "created": "Erstellt"
+    },
+    "status": {
+      "running": "Läuft",
+      "paused": "Pausiert",
+      "completed": "Abgeschlossen",
+      "failed": "Fehlgeschlagen"
+    },
+    "trigger": {
+      "user": "Benutzer",
+      "agent": "Agent",
+      "cronjob": "Cronjob"
     }
   }
 }
