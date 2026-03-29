@@ -48,7 +48,8 @@
     "newSessionDivider": "New Session",
     "statusConnected": "Chat connected",
     "statusConnecting": "Connecting",
-    "statusDisconnected": "Chat disconnected"
+    "statusDisconnected": "Chat disconnected",
+    "scrollToBottom": "Scroll to bottom"
   },
   "status": {
     "online": "Online",
