@@ -153,6 +153,37 @@ export function initDatabase(dbPath?: string): Database {
     `)
   }
 
+  // Create tasks table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS tasks (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      prompt TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('running', 'completed', 'failed')),
+      trigger_type TEXT NOT NULL CHECK(trigger_type IN ('user', 'agent', 'cronjob')),
+      trigger_source_id TEXT,
+      provider TEXT,
+      model TEXT,
+      max_duration_minutes INTEGER,
+      prompt_tokens INTEGER NOT NULL DEFAULT 0,
+      completion_tokens INTEGER NOT NULL DEFAULT 0,
+      estimated_cost REAL NOT NULL DEFAULT 0.0,
+      tool_call_count INTEGER NOT NULL DEFAULT 0,
+      result_summary TEXT,
+      result_status TEXT CHECK(result_status IS NULL OR result_status IN ('completed', 'failed', 'question')),
+      error_message TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      started_at TEXT,
+      completed_at TEXT,
+      session_id TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+    CREATE INDEX IF NOT EXISTS idx_tasks_trigger_type ON tasks(trigger_type);
+    CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at);
+    CREATE INDEX IF NOT EXISTS idx_tasks_session_id ON tasks(session_id);
+  `)
+
   return db
 }
 
