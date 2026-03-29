@@ -29,7 +29,8 @@ export interface AppOptions {
   heartbeatService?: HeartbeatService | null
   runtimeMetrics?: RuntimeMetrics | null
   consolidationScheduler?: MemoryConsolidationScheduler | null
-  telegramBot?: TelegramBot | null
+  getTelegramBot?: () => TelegramBot | null
+  onTelegramSettingsChanged?: () => void
 }
 
 export function createApp(options?: AppOptions): express.Express {
@@ -84,11 +85,14 @@ export function createApp(options?: AppOptions): express.Express {
       onConsolidationSettingsChanged: () => {
         options.consolidationScheduler?.restart()
       },
+      onTelegramSettingsChanged: () => {
+        options.onTelegramSettingsChanged?.()
+      },
     }))
     app.use('/api/users', createUsersRouter(options.db))
     app.use('/api/telegram-users', createTelegramUsersRouter({
       db: options.db,
-      telegramBot: options.telegramBot ?? null,
+      getTelegramBot: options.getTelegramBot ?? (() => null),
     }))
     app.use('/api/skills', createSkillsRouter({
       agentCore: options.agentCore ?? null,

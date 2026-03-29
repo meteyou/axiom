@@ -24,11 +24,11 @@ interface UserRow {
 
 export interface TelegramUsersRouterOptions {
   db: Database
-  telegramBot?: TelegramBot | null
+  getTelegramBot?: () => TelegramBot | null
 }
 
 export function createTelegramUsersRouter(options: TelegramUsersRouterOptions): Router {
-  const { db, telegramBot } = options
+  const { db, getTelegramBot } = options
   const router = Router()
 
   /**
@@ -282,14 +282,15 @@ export function createTelegramUsersRouter(options: TelegramUsersRouterOptions): 
       ).get(id) as TelegramUserRow & { linked_username: string | null }
 
       // Notify user via Telegram when status changes
-      if (status && status !== previousStatus && telegramBot?.isRunning()) {
+      const bot = getTelegramBot?.()
+      if (status && status !== previousStatus && bot?.isRunning()) {
         const chatId = updated.telegram_id
         if (status === 'approved') {
-          telegramBot.sendDirectMessage(chatId,
+          bot.sendDirectMessage(chatId,
             '✅ Your access has been approved! You can now send messages to the bot.'
           ).catch(() => {})
         } else if (status === 'rejected') {
-          telegramBot.sendDirectMessage(chatId,
+          bot.sendDirectMessage(chatId,
             '❌ Your access request has been declined.'
           ).catch(() => {})
         }
