@@ -16,6 +16,8 @@ import type { TelegramBot } from '@openagent/telegram'
 import { createSkillsRouter } from './routes/skills.js'
 import { createStatsRouter } from './routes/stats.js'
 import { createHealthRouter } from './routes/health.js'
+import { createTasksRouter } from './routes/tasks.js'
+import type { TaskRunner } from '@openagent/core'
 import { ensureAdminUser } from './auth.js'
 import type { HeartbeatService } from './heartbeat.js'
 import type { RuntimeMetrics } from './runtime-metrics.js'
@@ -31,6 +33,7 @@ export interface AppOptions {
   consolidationScheduler?: MemoryConsolidationScheduler | null
   getTelegramBot?: () => TelegramBot | null
   onTelegramSettingsChanged?: () => void
+  getTaskRunner?: () => TaskRunner | null
 }
 
 export function createApp(options?: AppOptions): express.Express {
@@ -98,6 +101,10 @@ export function createApp(options?: AppOptions): express.Express {
       agentCore: options.agentCore ?? null,
     }))
     app.use('/api/stats', createStatsRouter(options.db))
+    app.use('/api/tasks', createTasksRouter({
+      db: options.db,
+      getTaskRunner: options.getTaskRunner,
+    }))
 
     if (options.heartbeatService && options.runtimeMetrics) {
       app.use('/api/health', createHealthRouter({
