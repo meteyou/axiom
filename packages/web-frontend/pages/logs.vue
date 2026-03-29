@@ -42,6 +42,12 @@
           @input="debouncedSearch"
         />
 
+        <Select v-model="selectedSourceFilter" class="w-[150px]" @change="applyFilters">
+          <option value="">{{ $t('logs.allSources') }}</option>
+          <option value="main">{{ $t('logs.sourceMainAgent') }}</option>
+          <option value="task">{{ $t('logs.sourceTasks') }}</option>
+        </Select>
+
         <Select v-model="selectedToolName" class="w-[150px]" @change="applyFilters">
           <option value="">{{ $t('logs.allTools') }}</option>
           <option v-for="name in toolNames" :key="name" :value="name">{{ name }}</option>
@@ -95,6 +101,16 @@
           <Badge :class="toolBadgeClass(entryDisplayName(entry))" class="shrink-0 gap-1 font-mono text-xs">
             <AppIcon :name="toolIcon(entryDisplayName(entry))" class="h-3 w-3" />
             {{ entryDisplayName(entry) }}
+          </Badge>
+
+          <!-- Source badge -->
+          <Badge
+            :class="isTaskSession(entry.sessionId)
+              ? 'border-transparent bg-amber-500/15 text-amber-600 dark:text-amber-400'
+              : 'border-transparent bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'"
+            class="hidden shrink-0 text-[11px] sm:inline-flex"
+          >
+            {{ getSourceLabel(entry.sessionId) }}
           </Badge>
 
           <!-- Input preview as badges (hidden on small screens) -->
@@ -228,6 +244,18 @@ function entryDisplayName(entry: LogEntry): string {
   return isEntrySkillLoad(entry) ? 'Load Skill' : entry.toolName
 }
 
+function isTaskSession(sessionId: string | null | undefined): boolean {
+  return !!sessionId && sessionId.startsWith('task-')
+}
+
+function getSourceLabel(sessionId: string | null | undefined): string {
+  if (isTaskSession(sessionId)) {
+    // Extract task name from session_id like "task-abc123"
+    return t('logs.sourceTask')
+  }
+  return t('logs.sourceMainAgent')
+}
+
 const {
   logs,
   pagination,
@@ -244,8 +272,11 @@ const {
   setLiveMode,
 } = useLogs()
 
+const { t } = useI18n()
+
 const searchQuery = ref('')
 const selectedToolName = ref('')
+const selectedSourceFilter = ref<'main' | 'task' | ''>('')
 const dateFrom = ref('')
 const dateTo = ref('')
 const expandedId = ref<number | null>(null)
@@ -270,6 +301,7 @@ async function applyFilters() {
     toolName: selectedToolName.value || undefined,
     dateFrom: dateFrom.value || undefined,
     dateTo: dateTo.value || undefined,
+    sourceFilter: selectedSourceFilter.value || undefined,
   })
 }
 
@@ -306,6 +338,7 @@ function goToPage(page: number) {
     toolName: selectedToolName.value || undefined,
     dateFrom: dateFrom.value || undefined,
     dateTo: dateTo.value || undefined,
+    sourceFilter: selectedSourceFilter.value || undefined,
   })
 }
 
