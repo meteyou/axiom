@@ -27,6 +27,7 @@ export interface HeartbeatData {
 export interface SettingsData {
   sessionTimeoutMinutes: number
   language: string
+  timezone: string
   heartbeatIntervalMinutes: number
   heartbeat?: HeartbeatData
   batchingDelayMs?: number
@@ -89,6 +90,7 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
       res.json({
         sessionTimeoutMinutes: settings.sessionTimeoutMinutes ?? 15,
         language: settings.language ?? 'match',
+        timezone: settings.timezone ?? 'UTC',
         heartbeatIntervalMinutes: settings.heartbeatIntervalMinutes ?? settings.heartbeat?.intervalMinutes ?? 5,
         yoloMode: settings.yoloMode ?? true,
         batchingDelayMs: settings.batchingDelayMs ?? telegram.batchingDelayMs ?? 2500,
@@ -117,6 +119,7 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
     const body = req.body as Partial<{
       sessionTimeoutMinutes: number
       language: string
+      timezone: string
       heartbeatIntervalMinutes: number
       yoloMode: boolean
       batchingDelayMs: number
@@ -159,6 +162,14 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
           return
         }
         settings.language = body.language.trim()
+      }
+
+      if (body.timezone !== undefined) {
+        if (typeof body.timezone !== 'string' || !body.timezone.trim()) {
+          res.status(400).json({ error: 'timezone must be a non-empty string' })
+          return
+        }
+        settings.timezone = body.timezone.trim()
       }
 
       if (body.heartbeatIntervalMinutes !== undefined) {
@@ -288,7 +299,7 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
           if (body.sessionTimeoutMinutes !== undefined) {
             agentCore.getSessionManager().setTimeoutMinutes(settings.sessionTimeoutMinutes)
           }
-          if (body.language !== undefined) {
+          if (body.language !== undefined || body.timezone !== undefined) {
             agentCore.refreshSystemPrompt()
           }
         } catch (err) {
@@ -325,6 +336,7 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
         message: 'Settings updated',
         sessionTimeoutMinutes: settings.sessionTimeoutMinutes,
         language: settings.language,
+        timezone: settings.timezone ?? 'UTC',
         heartbeatIntervalMinutes: settings.heartbeatIntervalMinutes,
         yoloMode: settings.yoloMode,
         batchingDelayMs: settings.batchingDelayMs ?? previousBatchingDelayMs,
