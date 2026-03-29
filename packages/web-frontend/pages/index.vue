@@ -1,5 +1,5 @@
 <template>
-  <div class="flex h-full flex-col overflow-hidden">
+  <div class="relative flex h-full flex-col overflow-hidden">
     <!-- Chat toolbar -->
     <div class="flex shrink-0 items-center gap-2 border-b border-border bg-background px-6 py-2">
       <!-- Chat connection status -->
@@ -34,7 +34,7 @@
     </div>
 
     <!-- Messages area -->
-    <div ref="messagesContainer" class="flex flex-1 flex-col gap-4 overflow-y-auto p-4" @copy="handleCopyAsMarkdown">
+    <div ref="messagesContainer" class="relative flex flex-1 flex-col gap-4 overflow-y-auto p-4" @scroll="onMessagesScroll" @copy="handleCopyAsMarkdown">
       <!-- Loading history -->
       <template v-if="loadingHistory">
         <div class="flex flex-col gap-3">
@@ -254,6 +254,27 @@
       </template>
     </div>
 
+    <!-- Scroll-to-bottom FAB -->
+    <Transition
+      enter-active-class="transition duration-200 ease-out"
+      enter-from-class="translate-y-2 opacity-0"
+      enter-to-class="translate-y-0 opacity-100"
+      leave-active-class="transition duration-150 ease-in"
+      leave-from-class="translate-y-0 opacity-100"
+      leave-to-class="translate-y-2 opacity-0"
+    >
+      <button
+        v-if="!isNearBottom"
+        class="absolute bottom-20 right-6 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-md transition-colors hover:bg-muted hover:text-foreground"
+        :aria-label="$t('chat.scrollToBottom')"
+        @click="jumpToBottom"
+      >
+        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+    </Transition>
+
     <!-- Input area -->
     <div class="shrink-0 border-t border-border bg-background p-3">
       <form class="flex items-end gap-2" @submit.prevent="handleSend">
@@ -350,6 +371,22 @@ const inputRef = ref<HTMLTextAreaElement | null>(null)
 const messagesContainer = ref<HTMLDivElement | null>(null)
 const loadingHistory = ref(false)
 
+// Smart auto-scroll: only scroll when user is near bottom
+const isNearBottom = ref(true)
+const SCROLL_THRESHOLD = 120 // px from bottom to count as "near bottom"
+
+function onMessagesScroll() {
+  const el = messagesContainer.value
+  if (!el) return
+  const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+  isNearBottom.value = distanceFromBottom <= SCROLL_THRESHOLD
+}
+
+function jumpToBottom() {
+  isNearBottom.value = true
+  nextTick(() => scrollToBottom())
+}
+
 // Connect WebSocket on mount
 onMounted(async () => {
   connect()
@@ -360,26 +397,29 @@ onUnmounted(() => {
   disconnect()
 })
 
-// Auto-scroll to bottom when new messages arrive
+// Auto-scroll to bottom when new messages arrive (only if user is near bottom)
 watch(
   () => messages.value.length,
-  () => {
-    nextTick(() => {
-      scrollToBottom()
-    })
+  (_newLen, oldLen) => {
+    // Always scroll for user's own message (last added is 'user')
+    const lastMsg = messages.value[messages.value.length - 1]
+    const isOwnMessage = lastMsg?.role === 'user' && lastMsg.source !== 'telegram'
+    if (isNearBottom.value || isOwnMessage) {
+      nextTick(() => scrollToBottom())
+    }
   }
 )
 
-// Also watch for streaming content changes
+// Also watch for streaming content changes (only if near bottom)
 watch(
   () => {
     const last = messages.value[messages.value.length - 1]
     return last?.content?.length ?? 0
   },
   () => {
-    nextTick(() => {
-      scrollToBottom()
-    })
+    if (isNearBottom.value) {
+      nextTick(() => scrollToBottom())
+    }
   }
 )
 
