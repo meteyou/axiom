@@ -18,6 +18,83 @@ export interface TaskToolsOptions {
 }
 
 /**
+ * Create the `resume_task` agent tool
+ */
+export function createResumeTaskTool(options: TaskToolsOptions): AgentTool {
+  return {
+    name: 'resume_task',
+    label: 'Resume Paused Task',
+    description:
+      'Send a response to a paused background task. Use this when a task has asked a question ' +
+      '(status: question) and the user has provided an answer. The task will resume with the provided message.',
+    parameters: Type.Object({
+      task_id: Type.String({
+        description: 'The ID of the paused task to resume.',
+      }),
+      message: Type.String({
+        description: 'The response message to send to the paused task. Include the user\'s answer and any relevant context.',
+      }),
+    }),
+    execute: async (_toolCallId, params) => {
+      const { task_id, message } = params as { task_id: string; message: string }
+
+      try {
+        // Check task exists
+        const task = options.taskStore.getById(task_id)
+        if (!task) {
+          return {
+            content: [{ type: 'text' as const, text: `Error: Task "${task_id}" not found.` }],
+            details: { error: true },
+          }
+        }
+
+        if (task.status !== 'paused') {
+          return {
+            content: [{ type: 'text' as const, text: `Error: Task "${task_id}" is not paused (current status: ${task.status}).` }],
+            details: { error: true },
+          }
+        }
+
+        // Check if the task agent is still in memory
+        if (!options.taskRunner.isPaused(task_id)) {
+          return {
+            content: [{ type: 'text' as const, text: `Error: Task "${task_id}" agent is no longer in memory. The task may have timed out.` }],
+            details: { error: true },
+          }
+        }
+
+        // Resume the task
+        const resumed = await options.taskRunner.resumeTask(task_id, message)
+        if (!resumed) {
+          return {
+            content: [{ type: 'text' as const, text: `Error: Failed to resume task "${task_id}".` }],
+            details: { error: true },
+          }
+        }
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: `Task "${task.name}" (${task_id}) has been resumed with your response. It will continue working in the background.`,
+          }],
+          details: {
+            taskId: task_id,
+            name: task.name,
+            status: 'running',
+          },
+        }
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err)
+        return {
+          content: [{ type: 'text' as const, text: `Error resuming task: ${errorMsg}` }],
+          details: { error: true },
+        }
+      }
+    },
+  }
+}
+
+/**
  * Create the `create_task` agent tool
  */
 export function createTaskTool(options: TaskToolsOptions): AgentTool {
