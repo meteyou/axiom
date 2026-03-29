@@ -89,6 +89,7 @@ describe('TaskRunner', () => {
   let runner: TaskRunner
   const tmpFiles: string[] = []
   let onTaskCompleteCalls: { taskId: string; injection: string }[] = []
+  let onTaskPausedCalls: { taskId: string; injection: string }[] = []
 
   function tmpDbPath(): string {
     const p = path.join(os.tmpdir(), `openagent-runner-test-${Date.now()}-${Math.random().toString(36).slice(2)}.db`)
@@ -100,6 +101,7 @@ describe('TaskRunner', () => {
     db = initDatabase(tmpDbPath())
     store = new TaskStore(db)
     onTaskCompleteCalls = []
+    onTaskPausedCalls = []
 
     const options: TaskRunnerOptions = {
       db,
@@ -109,6 +111,9 @@ describe('TaskRunner', () => {
       memoryDir: undefined,
       onTaskComplete: (taskId: string, injection: string) => {
         onTaskCompleteCalls.push({ taskId, injection })
+      },
+      onTaskPaused: (taskId: string, injection: string) => {
+        onTaskPausedCalls.push({ taskId, injection })
       },
     }
 
@@ -350,6 +355,373 @@ describe('TaskRunner', () => {
       await new Promise(resolve => setTimeout(resolve, 50))
 
       expect(runner.isRunning(task.id)).toBe(false)
+    })
+  })
+
+  describe('pause/resume lifecycle', () => {
+    it('pauses a task when agent outputs STATUS: question', async () => {
+      const { Agent } = await import('@mariozechner/pi-agent-core')
+      const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
+
+      MockAgent.mockImplementationOnce(() => {
+        const messages: unknown[] = []
+        return {
+          subscribe: vi.fn(() => () => {}),
+          prompt: vi.fn(async () => {
+            messages.push({
+              role: 'assistant',
+              content: [{ type: 'text', text: 'STATUS: question\nSUMMARY: What database should I use? PostgreSQL or MySQL?' }],
+            })
+          }),
+          abort: vi.fn(),
+          state: { get messages() { return messages } },
+        }
+      })
+
+      const task = store.create({
+        name: 'Question Task',
+        prompt: 'Build a web app',
+        triggerType: 'agent',
+      })
+
+      await runner.startTask(task, mockProvider)
+      await new Promise(resolve => setTimeout(resolve, 100))
+
+      const updated = store.getById(task.id)!
+      expect(updated.status).toBe('paused')
+      expect(updated.resultStatus).toBe('question')
+      expect(updated.resultSummary).toContain('What database should I use?')
+      expect(updated.completedAt).toBeNull()
+
+      // Task should be in paused map, not running
+      expect(runner.isRunning(task.id)).toBe(false)
+      expect(runner.isPaused(task.id)).toBe(true)
+      expect(runner.getPausedTaskIds()).toContain(task.id)
+
+      // onTaskPaused should have been called
+      expect(onTaskPausedCalls).toHaveLength(1)
+      expect(onTaskPausedCalls[0].taskId).toBe(task.id)
+      expect(onTaskPausedCalls[0].injection).toContain('status="question"')
+      expect(onTaskPausedCalls[0].injection).toContain('What database should I use?')
+
+      // onTaskComplete should NOT have been called
+      expect(onTaskCompleteCalls).toHaveLength(0)
+    })
+
+    it('resumes a paused task and completes', async () => {
+      const { Agent } = await import('@mariozechner/pi-agent-core')
+      const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
+
+      let promptCount = 0
+      const messages: unknown[] = []
+      MockAgent.mockImplementationOnce(() => {
+        return {
+          subscribe: vi.fn(() => () => {}),
+          prompt: vi.fn(async () => {
+            promptCount++
+            if (promptCount === 1) {
+              // First prompt: ask a question
+              messages.push({
+                role: 'assistant',
+                content: [{ type: 'text', text: 'STATUS: question\nSUMMARY: Which framework should I use?' }],
+              })
+            } else {
+              // Second prompt (resume): complete the task
+              messages.push({
+                role: 'assistant',
+                content: [{ type: 'text', text: 'STATUS: completed\nSUMMARY: Built the app using React as requested.' }],
+              })
+            }
+          }),
+          abort: vi.fn(),
+          state: { get messages() { return messages } },
+        }
+      })
+
+      const task = store.create({
+        name: 'Resume Task',
+        prompt: 'Build a web app',
+        triggerType: 'agent',
+      })
+
+      // Start → pauses with question
+      await runner.startTask(task, mockProvider)
+      await new Promise(resolve => setTimeout(resolve, 100))
+
+      expect(runner.isPaused(task.id)).toBe(true)
+      expect(store.getById(task.id)!.status).toBe('paused')
+
+      // Resume with answer
+      const resumed = await runner.resumeTask(task.id, 'Use React please')
+      expect(resumed).toBe(true)
+
+      await new Promise(resolve => setTimeout(resolve, 100))
+
+      // Task should be completed
+      const updated = store.getById(task.id)!
+      expect(updated.status).toBe('completed')
+      expect(updated.resultStatus).toBe('completed')
+      expect(updated.resultSummary).toContain('Built the app using React')
+      expect(updated.completedAt).toBeTruthy()
+
+      // Should not be in paused or running maps
+      expect(runner.isPaused(task.id)).toBe(false)
+      expect(runner.isRunning(task.id)).toBe(false)
+
+      // onTaskComplete should have been called
+      expect(onTaskCompleteCalls).toHaveLength(1)
+      expect(onTaskCompleteCalls[0].injection).toContain('status="completed"')
+    })
+
+    it('status transitions: running → paused → running → completed', async () => {
+      const { Agent } = await import('@mariozechner/pi-agent-core')
+      const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
+
+      let promptCount = 0
+      const messages: unknown[] = []
+      MockAgent.mockImplementationOnce(() => {
+        return {
+          subscribe: vi.fn(() => () => {}),
+          prompt: vi.fn(async () => {
+            promptCount++
+            if (promptCount === 1) {
+              messages.push({
+                role: 'assistant',
+                content: [{ type: 'text', text: 'STATUS: question\nSUMMARY: Need clarification' }],
+              })
+            } else {
+              messages.push({
+                role: 'assistant',
+                content: [{ type: 'text', text: 'STATUS: completed\nSUMMARY: Done' }],
+              })
+            }
+          }),
+          abort: vi.fn(),
+          state: { get messages() { return messages } },
+        }
+      })
+
+      const task = store.create({
+        name: 'Transition Task',
+        prompt: 'Do work',
+        triggerType: 'agent',
+      })
+
+      // running
+      expect(store.getById(task.id)!.status).toBe('running')
+
+      await runner.startTask(task, mockProvider)
+      await new Promise(resolve => setTimeout(resolve, 100))
+
+      // paused
+      expect(store.getById(task.id)!.status).toBe('paused')
+
+      await runner.resumeTask(task.id, 'Clarification provided')
+      await new Promise(resolve => setTimeout(resolve, 100))
+
+      // completed
+      expect(store.getById(task.id)!.status).toBe('completed')
+    })
+
+    it('returns false when resuming a non-paused task', async () => {
+      const result = await runner.resumeTask('non-existent-id', 'hello')
+      expect(result).toBe(false)
+    })
+  })
+
+  describe('24h cleanup of stale paused tasks', () => {
+    it('cleans up tasks paused for >24h', async () => {
+      const { Agent } = await import('@mariozechner/pi-agent-core')
+      const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
+
+      MockAgent.mockImplementationOnce(() => {
+        const messages: unknown[] = []
+        return {
+          subscribe: vi.fn(() => () => {}),
+          prompt: vi.fn(async () => {
+            messages.push({
+              role: 'assistant',
+              content: [{ type: 'text', text: 'STATUS: question\nSUMMARY: What should I do?' }],
+            })
+          }),
+          abort: vi.fn(),
+          state: { get messages() { return messages } },
+        }
+      })
+
+      const task = store.create({
+        name: 'Stale Task',
+        prompt: 'Do something',
+        triggerType: 'agent',
+      })
+
+      await runner.startTask(task, mockProvider)
+      await new Promise(resolve => setTimeout(resolve, 100))
+
+      expect(runner.isPaused(task.id)).toBe(true)
+
+      // Manually set pausedAt to >24h ago by accessing private field
+      const pausedTasks = (runner as any).pausedTasks as Map<string, any>
+      const pausedTask = pausedTasks.get(task.id)!
+      pausedTask.pausedAt = Date.now() - (25 * 60 * 60 * 1000) // 25 hours ago
+
+      // Run cleanup
+      const cleaned = runner.cleanupStalePausedTasks()
+      expect(cleaned).toBe(1)
+
+      // Task should be removed from memory
+      expect(runner.isPaused(task.id)).toBe(false)
+
+      // Task should be marked as failed in DB
+      const updated = store.getById(task.id)!
+      expect(updated.status).toBe('failed')
+      expect(updated.resultStatus).toBe('failed')
+      expect(updated.errorMessage).toBe('timeout — no response received')
+      expect(updated.completedAt).toBeTruthy()
+
+      // onTaskComplete should have been called for the timed-out task
+      expect(onTaskCompleteCalls).toHaveLength(1)
+    })
+
+    it('does not clean up tasks paused for <24h', async () => {
+      const { Agent } = await import('@mariozechner/pi-agent-core')
+      const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
+
+      MockAgent.mockImplementationOnce(() => {
+        const messages: unknown[] = []
+        return {
+          subscribe: vi.fn(() => () => {}),
+          prompt: vi.fn(async () => {
+            messages.push({
+              role: 'assistant',
+              content: [{ type: 'text', text: 'STATUS: question\nSUMMARY: What should I do?' }],
+            })
+          }),
+          abort: vi.fn(),
+          state: { get messages() { return messages } },
+        }
+      })
+
+      const task = store.create({
+        name: 'Fresh Task',
+        prompt: 'Do something',
+        triggerType: 'agent',
+      })
+
+      await runner.startTask(task, mockProvider)
+      await new Promise(resolve => setTimeout(resolve, 100))
+
+      expect(runner.isPaused(task.id)).toBe(true)
+
+      // Run cleanup — task is freshly paused, should not be cleaned
+      const cleaned = runner.cleanupStalePausedTasks()
+      expect(cleaned).toBe(0)
+      expect(runner.isPaused(task.id)).toBe(true)
+      expect(store.getById(task.id)!.status).toBe('paused')
+    })
+  })
+
+  describe('server restart recovery', () => {
+    it('marks paused tasks as failed on recovery', async () => {
+      // Manually insert a paused task in DB (simulating a task left from a previous server session)
+      const task = store.create({
+        name: 'Paused Before Restart',
+        prompt: 'Build something',
+        triggerType: 'agent',
+      })
+      store.update(task.id, { status: 'paused', resultStatus: 'question', resultSummary: 'Which DB?' })
+
+      const result = await runner.recoverTasks(
+        () => mockProvider,
+        mockProvider,
+      )
+
+      expect(result.failed).toBe(1)
+      const updated = store.getById(task.id)!
+      expect(updated.status).toBe('failed')
+      expect(updated.errorMessage).toBe('server restart')
+      expect(updated.resultSummary).toContain('server restart')
+    })
+
+    it('resumes running tasks on recovery', async () => {
+      // Manually insert a running task in DB
+      const task = store.create({
+        name: 'Running Before Restart',
+        prompt: 'Build an app',
+        triggerType: 'agent',
+        sessionId: 'session-restart-test',
+      })
+      store.update(task.id, { status: 'running', provider: 'test-provider', model: 'test-model' })
+
+      // Add some tool calls for the session
+      db.prepare(
+        "INSERT INTO tool_calls (session_id, tool_name, input, output, duration_ms, status) VALUES (?, ?, ?, ?, ?, 'success')"
+      ).run('session-restart-test', 'read_file', '{"path":"index.ts"}', '"file contents"', 100)
+
+      const result = await runner.recoverTasks(
+        (name) => name === 'test-provider' ? mockProvider : null,
+        mockProvider,
+      )
+
+      expect(result.resumed).toBe(1)
+
+      // Original task should be marked as failed
+      const original = store.getById(task.id)!
+      expect(original.status).toBe('failed')
+      expect(original.errorMessage).toBe('server restart')
+
+      // A new resumed task should have been created
+      const allTasks = store.list()
+      const resumedTask = allTasks.find(t => t.name === 'Running Before Restart (resumed)')
+      expect(resumedTask).toBeDefined()
+      expect(resumedTask!.prompt).toContain('Build an app')
+      expect(resumedTask!.prompt).toContain('server restart')
+    })
+
+    it('handles recovery with no orphaned tasks', async () => {
+      const result = await runner.recoverTasks(
+        () => mockProvider,
+        mockProvider,
+      )
+
+      expect(result.resumed).toBe(0)
+      expect(result.failed).toBe(0)
+    })
+
+    it('marks running task as failed when provider is not found and resume fails', async () => {
+      const { Agent } = await import('@mariozechner/pi-agent-core')
+      const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
+
+      MockAgent.mockImplementationOnce(() => {
+        return {
+          subscribe: vi.fn(() => () => {}),
+          prompt: vi.fn(async () => {
+            throw new Error('Cannot connect')
+          }),
+          abort: vi.fn(),
+          state: { messages: [] },
+        }
+      })
+
+      const task = store.create({
+        name: 'Unreachable Task',
+        prompt: 'Work',
+        triggerType: 'agent',
+      })
+      store.update(task.id, { status: 'running', provider: 'unknown-provider', model: 'model' })
+
+      const result = await runner.recoverTasks(
+        () => null,
+        mockProvider,
+      )
+
+      // Should attempt to resume with default provider but the mock throws
+      // Wait for async task to complete
+      await new Promise(resolve => setTimeout(resolve, 200))
+
+      // Original task should be marked as failed (server restart)
+      const original = store.getById(task.id)!
+      expect(original.status).toBe('failed')
     })
   })
 })
