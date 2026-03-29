@@ -125,6 +125,8 @@ export { TaskStore, initTasksTable } from './task-store.js'
 export type { Task, TaskStatus, TaskTriggerType, TaskResultStatus, CreateTaskInput, UpdateTaskInput, TaskListFilters } from './task-store.js'
 export { TaskRunner, formatTaskInjection } from './task-runner.js'
 export type { TaskRunnerOptions } from './task-runner.js'
+export { TaskEventBus } from './task-event-bus.js'
+export type { TaskEvent, TaskEventType } from './task-event-bus.js'
 export {
   ToolCallTracker,
   buildSmartDetectionPrompt,
