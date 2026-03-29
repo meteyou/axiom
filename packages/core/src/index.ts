@@ -129,3 +129,13 @@ export { createTaskTool, createResumeTaskTool } from './task-tools.js'
 export type { TaskToolsOptions } from './task-tools.js'
 export { MessageQueue } from './message-queue.js'
 export type { QueuedMessage } from './message-queue.js'
+export {
+  formatTaskTelegramMessage,
+  persistTaskResultMessage,
+  deliverTaskNotification,
+} from './task-notification.js'
+export type {
+  TelegramDeliveryMode,
+  TaskNotificationOptions,
+  TaskNotificationEvent,
+} from './task-notification.js'

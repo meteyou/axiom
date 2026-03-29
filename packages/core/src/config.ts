@@ -48,6 +48,7 @@ const TEMPLATES: Record<string, object> = {
     tasks: {
       defaultProvider: '',
       maxDurationMinutes: 60,
+      telegramDelivery: 'auto',
     },
   },
   'skills.json': {
