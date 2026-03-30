@@ -6,7 +6,7 @@ import { EventEmitter } from 'node:events'
  */
 export interface ChatEvent {
   /** The kind of event being broadcast */
-  type: 'user_message' | 'text' | 'tool_call_start' | 'tool_call_end' | 'done' | 'error' | 'system' | 'session_end' | 'task_completed' | 'task_failed' | 'task_question'
+  type: 'user_message' | 'text' | 'tool_call_start' | 'tool_call_end' | 'done' | 'error' | 'system' | 'session_end' | 'task_completed' | 'task_failed' | 'task_question' | 'reminder'
   /** The OpenAgent user ID (integer) this event belongs to */
   userId: number
   /** Where the event originated */
@@ -43,6 +43,12 @@ export interface ChatEvent {
   taskTokensUsed?: number
   /** Task trigger type (user, agent, cronjob) */
   taskTriggerType?: string
+  /** Reminder message (for reminder events) */
+  reminderMessage?: string
+  /** Reminder/cronjob name (for reminder events) */
+  reminderName?: string
+  /** Cronjob ID (for reminder events) */
+  cronjobId?: string
 }
 
 /**

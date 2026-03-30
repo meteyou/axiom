@@ -223,16 +223,53 @@ const taskScheduler = new TaskScheduler({
   taskRunner,
   getDefaultProvider: getTaskDefaultProvider,
   resolveProvider,
-  onInjection: (scheduledTaskId: string, injection: string) => {
-    if (agentCore) {
-      agentCore.injectTaskResult(injection).catch(err => {
-        console.error(`[openagent] Failed to inject reminder for scheduled task ${scheduledTaskId}:`, err)
-      })
+  onInjection: (scheduledTask) => {
+    const userId = 1 // Default admin user
+
+    // Reminders are delivered ONLY via Telegram — they do NOT appear in the
+    // main agent chat (no chat_messages persistence, no agent injection).
+    // The chatEventBus broadcast uses a dedicated 'reminder' type so the
+    // frontend can optionally show a toast notification without polluting
+    // the chat history.
+
+    // 1. Broadcast via ChatEventBus (frontend can show toast if connected)
+    chatEventBus.broadcast({
+      type: 'reminder',
+      userId,
+      source: 'task',
+      reminderMessage: scheduledTask.prompt,
+      reminderName: scheduledTask.name,
+      cronjobId: scheduledTask.id,
+    })
+
+    // 2. Always send Telegram notification (reminders are meant to reach
+    //    the user even when they're not looking at the chat)
+    if (telegramBot) {
+      const chatId = telegramBot.getTelegramChatIdForUser(userId)
+      if (chatId) {
+        const telegramHtml = `⏰ <b>${escapeHtmlForTelegram(scheduledTask.name)}</b>\n\n${escapeHtmlForTelegram(scheduledTask.prompt)}`
+        telegramBot.sendTaskNotification(chatId, telegramHtml).catch(err => {
+          console.error(`[openagent] Failed to send Telegram reminder for ${scheduledTask.id}:`, err)
+        })
+        console.log(`[openagent] Reminder "${scheduledTask.name}" sent via Telegram to chat ${chatId}`)
+      } else {
+        console.log(`[openagent] No linked Telegram chat for user ${userId}`)
+      }
     } else {
-      console.warn(`[openagent] Cannot inject reminder: no agent core initialized`)
+      console.log(`[openagent] No Telegram bot available for reminder "${scheduledTask.name}"`)
     }
+
+    console.log(`[openagent] Reminder "${scheduledTask.name}" fired for user ${userId}`)
   },
 })
+
+/** Escape HTML for Telegram messages */
+function escapeHtmlForTelegram(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
 
 // Build agent tools for tasks and cronjobs
 const taskToolsOptions = {

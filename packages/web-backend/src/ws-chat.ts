@@ -15,7 +15,7 @@ interface ChatMessage {
 }
 
 interface ChatResponse {
-  type: 'text' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'task_completed' | 'task_failed' | 'task_question'
+  type: 'text' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'task_completed' | 'task_failed' | 'task_question' | 'reminder'
   text?: string
   toolName?: string
   toolCallId?: string
@@ -40,6 +40,12 @@ interface ChatResponse {
   taskTokensUsed?: number
   /** Task trigger type (for task events) */
   taskTriggerType?: string
+  /** Reminder message (for reminder events) */
+  reminderMessage?: string
+  /** Reminder/cronjob name (for reminder events) */
+  reminderName?: string
+  /** Cronjob ID (for reminder events) */
+  cronjobId?: string
 }
 
 function saveChatMessage(
@@ -370,6 +376,13 @@ export function setupWebSocketChat(
             taskDurationMinutes: event.taskDurationMinutes,
             taskTokensUsed: event.taskTokensUsed,
             taskTriggerType: event.taskTriggerType,
+          })
+        } else if (event.type === 'reminder') {
+          sendMessage(client, {
+            type: 'reminder',
+            reminderMessage: event.reminderMessage,
+            reminderName: event.reminderName,
+            cronjobId: event.cronjobId,
           })
         } else {
           sendMessage(client, {
