@@ -15,6 +15,8 @@ export interface TaskSchedulerOptions {
   getDefaultProvider: () => ProviderConfig
   /** Resolve a provider by name/id */
   resolveProvider: (nameOrId: string) => ProviderConfig | null
+  /** Callback for injection-type cronjobs — injects a message into the main agent */
+  onInjection?: (scheduledTaskId: string, injection: string) => void
 }
 
 interface ScheduleEntry {
@@ -108,6 +110,11 @@ export class TaskScheduler {
     const scheduledTask = this.scheduledTaskStore.getById(scheduledTaskId)
     if (!scheduledTask) return null
 
+    if (scheduledTask.actionType === 'injection') {
+      this.fireInjection(scheduledTask)
+      return `injection-${scheduledTask.id}`
+    }
+
     return this.fireTask(scheduledTask)
   }
 
@@ -132,6 +139,23 @@ export class TaskScheduler {
     console.log(`[openagent] Task scheduler loaded ${enabledTasks.length} enabled schedule(s)`)
   }
 
+  /** Minimum cooldown between firings of the same cronjob (in ms) */
+  private static readonly FIRE_COOLDOWN_MS = 55_000 // 55 seconds — prevents double-firing within the same cron minute
+
+  /**
+   * Check whether a cronjob was already fired recently (deduplication guard).
+   * Protects against double-firing caused by server restarts, watch-mode reloads, etc.
+   */
+  private wasFiredRecently(scheduledTask: ScheduledTask): boolean {
+    if (!scheduledTask.lastRunAt) return false
+    try {
+      const lastRun = new Date(scheduledTask.lastRunAt.replace(' ', 'T') + 'Z').getTime()
+      return (Date.now() - lastRun) < TaskScheduler.FIRE_COOLDOWN_MS
+    } catch {
+      return false
+    }
+  }
+
   /**
    * Calculate next run time and set a timer for a scheduled task
    */
@@ -146,6 +170,13 @@ export class TaskScheduler {
       }
 
       const delayMs = nextRun.getTime() - Date.now()
+
+      // Guard: if the next run is in the past (e.g. server restart after the
+      // scheduled time), skip it rather than firing immediately.
+      if (delayMs < -5_000) {
+        console.log(`[openagent] Skipping past-due schedule "${scheduledTask.name}" (was due ${Math.round(-delayMs / 60000)} min ago)`)
+        return
+      }
 
       const timer = setTimeout(() => {
         this.onCronFired(scheduledTask.id)
@@ -179,11 +210,26 @@ export class TaskScheduler {
     const scheduledTask = this.scheduledTaskStore.getById(scheduledTaskId)
     if (!scheduledTask || !scheduledTask.enabled) return
 
-    try {
-      const taskId = await this.fireTask(scheduledTask)
+    // Deduplication guard: skip if this cronjob already fired very recently
+    // (protects against double-fire from server restarts / watch-mode reloads)
+    if (this.wasFiredRecently(scheduledTask)) {
+      console.log(`[openagent] Skipping cronjob "${scheduledTask.name}" — already fired recently (lastRunAt: ${scheduledTask.lastRunAt})`)
+      // Still schedule the next run
+      if (this.running) {
+        this.setNextTimer(scheduledTask)
+      }
+      return
+    }
 
-      if (taskId) {
-        console.log(`[openagent] Cronjob "${scheduledTask.name}" fired → task ${taskId}`)
+    try {
+      if (scheduledTask.actionType === 'injection') {
+        this.fireInjection(scheduledTask)
+        console.log(`[openagent] Cronjob "${scheduledTask.name}" fired → injection`)
+      } else {
+        const taskId = await this.fireTask(scheduledTask)
+        if (taskId) {
+          console.log(`[openagent] Cronjob "${scheduledTask.name}" fired → task ${taskId}`)
+        }
       }
     } catch (err) {
       console.error(`[openagent] Cronjob "${scheduledTask.name}" failed to fire:`, (err as Error).message)
@@ -195,6 +241,31 @@ export class TaskScheduler {
       if (refreshed && refreshed.enabled) {
         this.setNextTimer(refreshed)
       }
+    }
+  }
+
+  /**
+   * Fire an injection — send the prompt directly into the main agent
+   */
+  private fireInjection(scheduledTask: ScheduledTask): void {
+    const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
+
+    // Build the injection message
+    const injection = `<scheduled_reminder cronjob_id="${scheduledTask.id}" cronjob_name="${scheduledTask.name}">
+${scheduledTask.prompt}
+</scheduled_reminder>`
+
+    // Update last_run fields
+    this.scheduledTaskStore.update(scheduledTask.id, {
+      lastRunAt: now,
+      lastRunStatus: 'completed',
+    })
+
+    // Deliver via callback
+    if (this.options.onInjection) {
+      this.options.onInjection(scheduledTask.id, injection)
+    } else {
+      console.warn(`[openagent] Injection cronjob "${scheduledTask.name}" fired but no onInjection handler is set`)
     }
   }
 
