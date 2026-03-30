@@ -129,12 +129,16 @@ export function setupWebSocketTask(options: WebSocketTaskOptions): WebSocketServ
         'SELECT role, content, metadata, timestamp FROM chat_messages WHERE session_id = ? ORDER BY timestamp ASC'
       ).all(sessionId) as { role: string; content: string; metadata: string | null; timestamp: string }[])
         .filter(m => m.role === 'assistant')
-        .map(m => ({
-          type: 'text_delta' as const,
-          taskId,
-          timestamp: m.timestamp,
-          text: m.content,
-        }))
+        .map(m => {
+          const meta = m.metadata ? safeParseJson(m.metadata) as Record<string, unknown> | null : null
+          return {
+            type: 'text_delta' as const,
+            taskId,
+            timestamp: m.timestamp,
+            text: m.content,
+            thinking: meta?.thinking as string | undefined,
+          }
+        })
 
       // Merge chronologically
       const events = [...toolCalls, ...messages].sort((a, b) =>

@@ -143,7 +143,7 @@ export function createTasksRouter(options: TasksRouterOptions): Router {
         (a.timestamp ?? '').localeCompare(b.timestamp ?? '')
       )
 
-      res.json({ events, task: { id: task.id, name: task.name, status: task.status } })
+      res.json({ events, task: { id: task.id, name: task.name, status: task.status, prompt: task.prompt } })
     } catch (err) {
       res.status(500).json({ error: `Failed to get task events: ${(err as Error).message}` })
     }

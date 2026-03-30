@@ -17,6 +17,7 @@ export interface TaskEventItem {
   role?: string
   content?: string
   metadata?: unknown
+  thinking?: string
 }
 
 interface TaskInfo {
@@ -202,11 +203,14 @@ export function useTaskViewer() {
         }
       }
       if (evt.type === 'message') {
+        const meta = evt.metadata as Record<string, unknown> | null
+        const thinking = meta?.thinking as string | undefined
         return {
           type: 'text_delta' as const,
           timestamp: evt.timestamp,
           text: evt.content,
           role: evt.role,
+          thinking,
         }
       }
       return evt

@@ -48,6 +48,17 @@
 
     <!-- Events list -->
     <div v-else ref="eventsContainer" class="flex flex-1 flex-col gap-1 overflow-y-auto px-5 py-3">
+      <!-- Task prompt -->
+      <div v-if="taskInfo?.prompt" class="rounded-lg border border-border bg-card px-4 py-3">
+        <div class="flex items-start gap-3">
+          <AppIcon name="send" size="sm" class="mt-0.5 text-primary" />
+          <div class="min-w-0 flex-1">
+            <p class="mb-1 text-xs font-medium text-primary">Prompt</p>
+            <p class="text-sm text-foreground whitespace-pre-wrap">{{ taskInfo.prompt }}</p>
+          </div>
+        </div>
+      </div>
+
       <div
         v-for="(event, idx) in groupedEvents"
         :key="idx"
@@ -109,8 +120,28 @@
         </div>
 
         <!-- Text delta event -->
-        <div v-else-if="event.type === 'text_delta' && event.text" class="px-4 py-3">
-          <div class="flex items-start gap-3">
+        <div v-else-if="event.type === 'text_delta' && (event.text || event.thinking)" class="px-4 py-3 space-y-3">
+          <!-- Thinking -->
+          <div v-if="event.thinking" class="flex items-start gap-3">
+            <AppIcon name="sparkles" size="sm" class="mt-0.5 text-muted-foreground/50" />
+            <div class="min-w-0 flex-1">
+              <button
+                class="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors mb-1"
+                @click="toggleThinking(idx)"
+              >
+                <AppIcon
+                  :name="expandedThinking.has(idx) ? 'chevronDown' : 'chevronRight'"
+                  size="sm"
+                />
+                {{ $t('taskViewer.thinking') }}
+              </button>
+              <div v-if="expandedThinking.has(idx)" class="rounded border border-border/50 bg-muted/30 p-2.5">
+                <p class="whitespace-pre-wrap text-xs text-muted-foreground">{{ event.thinking }}</p>
+              </div>
+            </div>
+          </div>
+          <!-- Agent text -->
+          <div v-if="event.text" class="flex items-start gap-3">
             <AppIcon name="bot" size="sm" class="mt-0.5 text-muted-foreground" />
             <div class="min-w-0 flex-1">
               <div class="flex items-center gap-2 mb-1">
@@ -177,6 +208,7 @@ const {
 
 // Expandable items
 const expandedItems = ref(new Set<number>())
+const expandedThinking = ref(new Set<number>())
 
 function toggleExpanded(idx: number) {
   if (expandedItems.value.has(idx)) {
@@ -184,8 +216,16 @@ function toggleExpanded(idx: number) {
   } else {
     expandedItems.value.add(idx)
   }
-  // Trigger reactivity
   expandedItems.value = new Set(expandedItems.value)
+}
+
+function toggleThinking(idx: number) {
+  if (expandedThinking.value.has(idx)) {
+    expandedThinking.value.delete(idx)
+  } else {
+    expandedThinking.value.add(idx)
+  }
+  expandedThinking.value = new Set(expandedThinking.value)
 }
 
 /**
