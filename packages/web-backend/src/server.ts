@@ -292,8 +292,16 @@ const taskScheduler = new TaskScheduler({
         })
         console.log(`[openagent] Reminder "${scheduledTask.name}" sent via Telegram to chat ${chatId}`)
       } else {
-        deliveryResults.push('telegram: no linked chat')
+        deliveryResults.push('telegram: no linked chat for this user (requires approved telegram_users entry linked to the same user_id)')
         console.log(`[openagent] No linked Telegram chat for user ${userId}`)
+
+        chatEventBus.broadcast({
+          type: 'system',
+          userId,
+          source: 'task',
+          text: 'Telegram reminder could not be delivered: no approved Telegram account is linked to this user. Open Settings → Telegram, let the Telegram account message the bot, then approve and assign it to this user.',
+        })
+
         // Log without Telegram
         logToolCall(db, {
           sessionId: `cronjob-${scheduledTask.id}`,
@@ -312,6 +320,14 @@ const taskScheduler = new TaskScheduler({
     } else {
       deliveryResults.push('telegram: bot not available')
       console.log(`[openagent] No Telegram bot available for reminder "${scheduledTask.name}"`)
+
+      chatEventBus.broadcast({
+        type: 'system',
+        userId,
+        source: 'task',
+        text: 'Telegram reminder could not be delivered because the Telegram bot is not available.',
+      })
+
       // Log without Telegram
       logToolCall(db, {
         sessionId: `cronjob-${scheduledTask.id}`,
