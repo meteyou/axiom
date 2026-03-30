@@ -254,7 +254,7 @@
 
             <!-- Bubble -->
             <div
-              class="rounded-2xl px-4 py-2.5 text-sm leading-relaxed"
+              class="min-w-0 rounded-2xl px-4 py-2.5 text-sm leading-relaxed"
               :class="{
                 'rounded-br-sm border border-primary/[0.22] bg-primary/[0.12] text-foreground': msg.role === 'user' && msg.source !== 'telegram',
                 'rounded-br-sm border border-[#2AABEE]/30 bg-[#2AABEE]/10 text-foreground': msg.role === 'user' && msg.source === 'telegram',
