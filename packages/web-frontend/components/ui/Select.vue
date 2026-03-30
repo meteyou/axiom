@@ -25,7 +25,7 @@ function handleChange(event: Event) {
 </script>
 
 <template>
-  <div class="relative w-full" :class="props.class">
+  <div :class="cn('relative w-full', props.class)">
     <select
       :id="id"
       :name="name"
