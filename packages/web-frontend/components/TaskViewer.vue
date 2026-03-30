@@ -56,6 +56,9 @@
             <p class="mb-1 text-xs font-medium text-primary">Prompt</p>
             <p class="text-sm text-foreground whitespace-pre-wrap">{{ taskInfo.prompt }}</p>
           </div>
+          <span v-if="firstEventTimestamp" class="flex-shrink-0 text-xs text-muted-foreground">
+            {{ formatTimestamp(firstEventTimestamp) }}
+          </span>
         </div>
       </div>
 
@@ -140,21 +143,43 @@
               </div>
             </div>
           </div>
-          <!-- Agent text -->
+          <!-- Agent text (structured or plain) -->
           <div v-if="event.text" class="flex items-start gap-3">
-            <AppIcon name="bot" size="sm" class="mt-0.5 text-muted-foreground" />
-            <div class="min-w-0 flex-1">
-              <div class="flex items-center gap-2 mb-1">
-                <span class="text-xs font-medium text-muted-foreground">
-                  {{ $t('taskViewer.agentResponse') }}
-                </span>
-                <span class="text-xs text-muted-foreground">
-                  {{ formatTimestamp(event.timestamp) }}
-                </span>
+            <template v-if="parseStructuredResponse(event.text)">
+              <AppIcon
+                :name="parseStructuredResponse(event.text)!.status === 'completed' ? 'check' : 'close'"
+                size="sm"
+                :class="parseStructuredResponse(event.text)!.status === 'completed' ? 'mt-0.5 text-green-500' : 'mt-0.5 text-destructive'"
+              />
+              <div class="min-w-0 flex-1">
+                <p
+                  class="mb-1 text-xs font-medium"
+                  :class="parseStructuredResponse(event.text)!.status === 'completed' ? 'text-green-500' : 'text-destructive'"
+                >
+                  {{ parseStructuredResponse(event.text)!.statusLabel }}
+                </p>
+                <!-- eslint-disable-next-line vue/no-v-html -->
+                <div class="prose-chat text-sm" v-html="renderMarkdown(parseStructuredResponse(event.text)!.summary)" />
               </div>
-              <!-- eslint-disable-next-line vue/no-v-html -->
-              <div class="prose-chat text-sm" v-html="renderMarkdown(event.text)" />
-            </div>
+              <span class="flex-shrink-0 text-xs text-muted-foreground">
+                {{ formatTimestamp(event.timestamp) }}
+              </span>
+            </template>
+            <template v-else>
+              <AppIcon name="bot" size="sm" class="mt-0.5 text-muted-foreground" />
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="text-xs font-medium text-muted-foreground">
+                    {{ $t('taskViewer.agentResponse') }}
+                  </span>
+                  <span class="text-xs text-muted-foreground">
+                    {{ formatTimestamp(event.timestamp) }}
+                  </span>
+                </div>
+                <!-- eslint-disable-next-line vue/no-v-html -->
+                <div class="prose-chat text-sm" v-html="renderMarkdown(event.text)" />
+              </div>
+            </template>
           </div>
         </div>
 
@@ -176,28 +201,7 @@
         </div>
       </div>
 
-      <!-- Task result summary (end message sent back to main agent) -->
-      <div
-        v-if="taskInfo?.status === 'completed' || taskInfo?.status === 'failed'"
-        class="rounded-lg border border-border bg-card"
-      >
-        <div class="px-4 py-3">
-          <div class="flex items-start gap-3">
-            <AppIcon
-              :name="taskInfo.status === 'completed' ? 'check' : 'close'"
-              size="sm"
-              :class="taskInfo.status === 'completed' ? 'mt-0.5 text-green-500' : 'mt-0.5 text-destructive'"
-            />
-            <div class="min-w-0 flex-1">
-              <p class="mb-1 text-xs font-medium" :class="taskInfo.status === 'completed' ? 'text-green-500' : 'text-destructive'">
-                {{ $t('taskViewer.resultSummary') }}
-              </p>
-              <!-- eslint-disable-next-line vue/no-v-html -->
-              <div class="prose-chat text-sm" v-html="renderMarkdown(taskInfo.resultSummary ?? taskInfo.errorMessage ?? $t('taskViewer.noSummary'))" />
-            </div>
-          </div>
-        </div>
-      </div>
+
 
       <!-- Auto-scroll anchor -->
       <div ref="scrollAnchor" />
@@ -232,6 +236,10 @@ const {
 // Expandable items
 const expandedItems = ref(new Set<number>())
 const expandedThinking = ref(new Set<number>())
+
+const firstEventTimestamp = computed(() => {
+  return events.value.length > 0 ? events.value[0].timestamp : undefined
+})
 
 function toggleExpanded(idx: number) {
   if (expandedItems.value.has(idx)) {
@@ -322,6 +330,22 @@ function formatTimestamp(ts: string | undefined): string {
 function formatDurationMs(ms: number): string {
   if (ms < 1000) return `${ms}ms`
   return `${(ms / 1000).toFixed(1)}s`
+}
+
+/**
+ * Parse structured agent responses that follow the "STATUS: ...\nSUMMARY:\n..." format.
+ * Returns parsed data or null if the text doesn't match.
+ */
+function parseStructuredResponse(text: string): { status: string; statusLabel: string; summary: string } | null {
+  const match = text.match(/^STATUS:\s*(\S+)\s*\nSUMMARY:\s*\n?(.*)/s)
+  if (!match) return null
+
+  const rawStatus = match[1].toLowerCase()
+  const summary = match[2].trim()
+  if (!summary) return null
+
+  const statusLabel = rawStatus.charAt(0).toUpperCase() + rawStatus.slice(1)
+  return { status: rawStatus, statusLabel, summary }
 }
 
 // Load events on mount
