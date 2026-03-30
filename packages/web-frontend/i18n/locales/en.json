@@ -14,7 +14,8 @@
     "logs": "Activity Logs",
     "users": "Users",
     "skills": "Skills",
-    "tasks": "Tasks"
+    "tasks": "Tasks",
+    "cronjobs": "Cronjobs"
   },
   "roles": {
     "admin": "Admin",
@@ -556,7 +557,7 @@
   },
   "tasks": {
     "title": "Tasks",
-    "subtitle": "View and manage background tasks, cronjobs, and agent-triggered tasks.",
+    "subtitle": "View and manage background tasks and agent-triggered tasks.",
     "refresh": "Refresh",
     "emptyTitle": "No tasks yet",
     "emptyDescription": "Background tasks will appear here once they are triggered by you, the agent, or a scheduled cronjob.",
@@ -588,12 +589,10 @@
       "agent": "Agent",
       "cronjob": "Cronjob"
     },
-    "tabs": {
-      "tasks": "Tasks",
-      "scheduled": "Scheduled Tasks"
-    }
   },
   "cronjobs": {
+    "pageTitle": "Cronjobs",
+    "pageSubtitle": "Manage scheduled tasks that run automatically on a recurring schedule.",
     "create": "New Cronjob",
     "createTitle": "Create Cronjob",
     "createDescription": "Set up a recurring scheduled task with a cron expression.",
@@ -647,6 +646,7 @@
     "error": "Error",
     "arguments": "Arguments",
     "result": "Result",
-    "agentResponse": "Agent response"
+    "agentResponse": "Agent response",
+    "thinking": "Thinking"
   }
 }

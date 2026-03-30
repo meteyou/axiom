@@ -14,7 +14,8 @@
     "logs": "Aktivitätsprotokolle",
     "users": "Benutzer",
     "skills": "Skills",
-    "tasks": "Aufgaben"
+    "tasks": "Aufgaben",
+    "cronjobs": "Cronjobs"
   },
   "roles": {
     "admin": "Admin",
@@ -554,7 +555,7 @@
   },
   "tasks": {
     "title": "Aufgaben",
-    "subtitle": "Hintergrundaufgaben, Cronjobs und vom Agenten ausgelöste Aufgaben anzeigen und verwalten.",
+    "subtitle": "Hintergrundaufgaben und vom Agenten ausgelöste Aufgaben anzeigen und verwalten.",
     "refresh": "Aktualisieren",
     "emptyTitle": "Noch keine Aufgaben",
     "emptyDescription": "Hintergrundaufgaben werden hier angezeigt, sobald sie von Ihnen, dem Agenten oder einem geplanten Cronjob ausgelöst werden.",
@@ -586,12 +587,10 @@
       "agent": "Agent",
       "cronjob": "Cronjob"
     },
-    "tabs": {
-      "tasks": "Aufgaben",
-      "scheduled": "Geplante Aufgaben"
-    }
   },
   "cronjobs": {
+    "pageTitle": "Cronjobs",
+    "pageSubtitle": "Geplante Aufgaben verwalten, die automatisch nach einem wiederkehrenden Zeitplan ausgeführt werden.",
     "create": "Neuer Cronjob",
     "createTitle": "Cronjob erstellen",
     "createDescription": "Richten Sie eine wiederkehrende geplante Aufgabe mit einem Cron-Ausdruck ein.",
@@ -645,6 +644,7 @@
     "error": "Fehler",
     "arguments": "Argumente",
     "result": "Ergebnis",
-    "agentResponse": "Agent-Antwort"
+    "agentResponse": "Agent-Antwort",
+    "thinking": "Überlegung"
   }
 }
