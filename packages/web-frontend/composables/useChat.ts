@@ -41,6 +41,8 @@ type ConnectionStatus = 'connecting' | 'connected' | 'disconnected'
 // Module-level singletons so multiple useChat() calls share the same WebSocket
 let ws: WebSocket | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+/** Set to true during intentional disconnect (navigation away) to suppress auto-reconnect */
+let intentionalDisconnect = false
 
 export function useChat() {
   const messages = useState<ChatMessage[]>('chat_messages', () => [])
@@ -82,13 +84,17 @@ export function useChat() {
     ws.onclose = () => {
       connectionStatus.value = 'disconnected'
       ws = null
-      // Auto-reconnect after 3 seconds
-      reconnectTimer = setTimeout(() => {
-        const { isAuthenticated } = useAuth()
-        if (isAuthenticated.value) {
-          connect()
-        }
-      }, 3000)
+      // Only auto-reconnect if this was NOT an intentional disconnect
+      // (e.g. navigating away from the chat page)
+      if (!intentionalDisconnect) {
+        reconnectTimer = setTimeout(() => {
+          const { isAuthenticated } = useAuth()
+          if (isAuthenticated.value) {
+            connect()
+          }
+        }, 3000)
+      }
+      intentionalDisconnect = false
     }
 
     ws.onerror = () => {
@@ -250,6 +256,7 @@ export function useChat() {
   }
 
   function disconnect() {
+    intentionalDisconnect = true
     if (reconnectTimer) {
       clearTimeout(reconnectTimer)
       reconnectTimer = null
