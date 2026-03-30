@@ -122,6 +122,13 @@ const taskEventBus = new TaskEventBus()
 // Late-bound reference to WebSocket chat (set after server setup)
 let wsChat: { hasActiveWebSocket: (userId: number) => boolean } | null = null
 
+/** Metadata for pending task injections awaiting agent response (for Telegram delivery) */
+interface PendingTaskInjectionMeta {
+  taskId: string
+  userId: number
+}
+const pendingTaskInjections: PendingTaskInjectionMeta[] = []
+
 /**
  * Handle task completion/pause notifications:
  * 1. Inject into agent so it can relay to the user
@@ -136,18 +143,23 @@ function handleTaskNotification(taskId: string, injection: string, taskStore: Ta
   const endMs = task.completedAt ? new Date(task.completedAt.replace(' ', 'T') + 'Z').getTime() : Date.now()
   const durationMinutes = Math.round((endMs - startMs) / 60000)
 
-  // 1. Inject into the main agent so it can respond in chat
+  // 1. Inject into the main agent so it can respond in chat.
+  //    Telegram delivery happens AFTER the agent generates a formatted response
+  //    (see wireAgentCoreEvents → setOnTaskInjectionChunk).
+  const userId = 1
   if (agentCore) {
+    pendingTaskInjections.push({ taskId: task.id, userId })
     agentCore.injectTaskResult(injection).catch(err => {
       console.error(`[openagent] Failed to inject task result for ${taskId}:`, err)
+      // Remove the pending injection metadata on failure
+      const idx = pendingTaskInjections.findIndex(p => p.taskId === task.id)
+      if (idx >= 0) pendingTaskInjections.splice(idx, 1)
     })
   }
 
-  // 2. Deliver notification (persist to DB, broadcast to web clients, optionally Telegram)
-  // Determine userId — for user-triggered tasks we'd ideally have a userId,
-  // but tasks don't store it. Use admin user (1) as default.
-  const userId = 1
-
+  // 2. Deliver notification (persist to DB + broadcast to web clients).
+  //    Telegram is NOT sent here — it's sent after the agent generates a
+  //    formatted response (see wireAgentCoreEvents).
   deliverTaskNotification({
     db,
     userId,
@@ -155,24 +167,7 @@ function handleTaskNotification(taskId: string, injection: string, taskStore: Ta
     durationMinutes,
     telegramDeliveryMode: (taskSettings.telegramDelivery as 'auto' | 'always') ?? 'auto',
     hasActiveWebSocket: (uid: number) => wsChat?.hasActiveWebSocket(uid) ?? false,
-    sendTelegram: async (message: string) => {
-      if (!telegramBot) {
-        console.log(`[task-notification] No Telegram bot available for task ${taskId}`)
-        return false
-      }
-      try {
-        const chatId = telegramBot.getTelegramChatIdForUser(userId)
-        if (!chatId) {
-          console.log(`[task-notification] No linked Telegram chat for user ${userId}`)
-          return false
-        }
-        console.log(`[task-notification] Sending Telegram notification for task ${taskId} to chat ${chatId}`)
-        return await telegramBot.sendTaskNotification(chatId, message)
-      } catch (err) {
-        console.error(`[task-notification] Failed to send Telegram for task ${taskId}:`, err)
-        return false
-      }
-    },
+    // No sendTelegram — delivery moved to wireAgentCoreEvents after agent response
     broadcastEvent: (event) => {
       chatEventBus.broadcast({
         type: event.type,
@@ -468,15 +463,37 @@ function wireAgentCoreEvents(): void {
       taskInjectionResponseBuffer += chunk.text
     }
 
-    if (chunk.type === 'done' && taskInjectionResponseBuffer) {
+    if (chunk.type === 'done') {
       const responseText = taskInjectionResponseBuffer
       taskInjectionResponseBuffer = ''
-      try {
-        db.prepare(
-          'INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)'
-        ).run(`task-injection-${Date.now()}`, 1, 'assistant', responseText, JSON.stringify({ type: 'task_injection_response' }))
-      } catch (err) {
-        console.error('[openagent] Failed to persist task injection response:', err)
+
+      // Persist agent response to chat_messages
+      if (responseText) {
+        try {
+          db.prepare(
+            'INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)'
+          ).run(`task-injection-${Date.now()}`, 1, 'assistant', responseText, JSON.stringify({ type: 'task_injection_response' }))
+        } catch (err) {
+          console.error('[openagent] Failed to persist task injection response:', err)
+        }
+      }
+
+      // Send the agent's formatted response to Telegram
+      // (instead of the raw task summary that was sent before)
+      const pendingMeta = pendingTaskInjections.shift()
+      if (pendingMeta && telegramBot && responseText) {
+        const shouldSend =
+          taskSettings.telegramDelivery === 'always' ||
+          (taskSettings.telegramDelivery === 'auto' && !(wsChat?.hasActiveWebSocket(pendingMeta.userId) ?? false))
+
+        if (shouldSend) {
+          const chatId = telegramBot.getTelegramChatIdForUser(pendingMeta.userId)
+          if (chatId) {
+            telegramBot.sendFormattedMessage(chatId, responseText).catch(err => {
+              console.error(`[openagent] Failed to send Telegram for task ${pendingMeta.taskId}:`, err)
+            })
+          }
+        }
       }
     }
 
