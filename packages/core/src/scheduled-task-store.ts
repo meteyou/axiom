@@ -1,11 +1,14 @@
 import { randomUUID } from 'node:crypto'
 import type { Database } from './database.js'
 
+export type ScheduledTaskActionType = 'task' | 'injection'
+
 export interface ScheduledTask {
   id: string
   name: string
   prompt: string
   schedule: string
+  actionType: ScheduledTaskActionType
   provider: string | null
   enabled: boolean
   toolsOverride: string | null
@@ -22,6 +25,7 @@ export interface CreateScheduledTaskInput {
   name: string
   prompt: string
   schedule: string
+  actionType?: ScheduledTaskActionType
   provider?: string
   enabled?: boolean
 }
@@ -30,6 +34,7 @@ export interface UpdateScheduledTaskInput {
   name?: string
   prompt?: string
   schedule?: string
+  actionType?: ScheduledTaskActionType
   provider?: string
   enabled?: boolean
   toolsOverride?: string | null
@@ -45,6 +50,7 @@ interface ScheduledTaskRow {
   name: string
   prompt: string
   schedule: string
+  action_type: string
   provider: string | null
   enabled: number
   tools_override: string | null
@@ -63,6 +69,7 @@ function rowToScheduledTask(row: ScheduledTaskRow): ScheduledTask {
     name: row.name,
     prompt: row.prompt,
     schedule: row.schedule,
+    actionType: (row.action_type === 'injection' ? 'injection' : 'task') as ScheduledTaskActionType,
     provider: row.provider,
     enabled: row.enabled === 1,
     toolsOverride: row.tools_override,
@@ -114,13 +121,14 @@ export class ScheduledTaskStore {
     const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
 
     this.db.prepare(`
-      INSERT INTO scheduled_tasks (id, name, prompt, schedule, provider, enabled, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO scheduled_tasks (id, name, prompt, schedule, action_type, provider, enabled, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       input.name,
       input.prompt,
       input.schedule,
+      input.actionType ?? 'task',
       input.provider ?? null,
       input.enabled !== undefined ? (input.enabled ? 1 : 0) : 1,
       now,
@@ -172,6 +180,10 @@ export class ScheduledTaskStore {
     if (input.schedule !== undefined) {
       setClauses.push('schedule = ?')
       params.push(input.schedule)
+    }
+    if (input.actionType !== undefined) {
+      setClauses.push('action_type = ?')
+      params.push(input.actionType)
     }
     if (input.provider !== undefined) {
       setClauses.push('provider = ?')

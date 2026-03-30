@@ -204,6 +204,12 @@ export function initDatabase(dbPath?: string): Database {
     );
   `)
 
+  // Migration: add action_type column to scheduled_tasks
+  const scheduledCols = db.prepare("PRAGMA table_info(scheduled_tasks)").all() as { name: string }[]
+  if (!scheduledCols.find(c => c.name === 'action_type')) {
+    db.exec("ALTER TABLE scheduled_tasks ADD COLUMN action_type TEXT NOT NULL DEFAULT 'task'")
+  }
+
   // Migration: add 'paused' to tasks status CHECK constraint
   // Test by inserting a paused row — if CHECK fails, recreate the table
   try {
