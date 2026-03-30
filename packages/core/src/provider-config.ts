@@ -12,7 +12,7 @@ import { encrypt, decrypt, isEncrypted, maskApiKey } from './encryption.js'
  * Supported provider types with presets
  */
 export type ProviderType =
-  | 'openai' | 'anthropic' | 'ollama-local' | 'ollama-cloud' | 'openrouter' | 'kimi' | 'zai'
+  | 'openai' | 'anthropic' | 'mistral' | 'ollama-local' | 'ollama-cloud' | 'openrouter' | 'kimi' | 'zai'
   | 'openai-codex' | 'github-copilot' | 'google-gemini-cli' | 'google-antigravity' | 'anthropic-oauth'
 
 export type AuthMethod = 'api-key' | 'oauth'
@@ -57,6 +57,17 @@ export const PROVIDER_TYPE_PRESETS: Record<ProviderType, ProviderTypePreset> = {
     requiresApiKey: true,
     urlEditable: false,
     piAiProvider: 'anthropic',
+    authMethod: 'api-key',
+  },
+  mistral: {
+    type: 'mistral',
+    label: 'Mistral',
+    apiType: 'mistral-conversations',
+    providerName: 'mistral',
+    baseUrl: 'https://api.mistral.ai',
+    requiresApiKey: true,
+    urlEditable: false,
+    piAiProvider: 'mistral',
     authMethod: 'api-key',
   },
   'ollama-local': {
