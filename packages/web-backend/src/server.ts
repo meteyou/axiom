@@ -250,7 +250,7 @@ const taskScheduler = new TaskScheduler({
     if (telegramBot) {
       const chatId = telegramBot.getTelegramChatIdForUser(userId)
       if (chatId) {
-        const telegramHtml = `⏰ <b>${escapeHtmlForTelegram(scheduledTask.name)}</b>\n\n${escapeHtmlForTelegram(scheduledTask.prompt)}`
+        const telegramHtml = formatReminderTelegramHtml(scheduledTask.name, scheduledTask.prompt)
         telegramBot.sendTaskNotification(chatId, telegramHtml).then(ok => {
           // Log delivery result asynchronously
           const status = ok ? 'sent' : 'failed'
@@ -354,6 +354,36 @@ function escapeHtmlForTelegram(text: string): string {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
+}
+
+function normalizeReminderText(text: string): string {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/^⏰\s*/u, '')
+    .replace(/^(reminder|erinnerung)\s*:\s*/u, '')
+    .replace(/[.!?]+$/u, '')
+    .replace(/\s+/g, ' ')
+}
+
+function areReminderFieldsDistinct(name: string, message: string): boolean {
+  const normalizedName = normalizeReminderText(name)
+  const normalizedMessage = normalizeReminderText(message)
+
+  if (!normalizedName || !normalizedMessage) return normalizedName !== normalizedMessage
+  if (normalizedName === normalizedMessage) return false
+  if (normalizedMessage.includes(normalizedName) || normalizedName.includes(normalizedMessage)) return false
+
+  return true
+}
+
+function formatReminderTelegramHtml(name: string, message: string): string {
+  if (!areReminderFieldsDistinct(name, message)) {
+    const singleLine = message.trim() || name.trim()
+    return `⏰ ${escapeHtmlForTelegram(singleLine)}`
+  }
+
+  return `⏰ <b>${escapeHtmlForTelegram(name)}</b>\n\n${escapeHtmlForTelegram(message)}`
 }
 
 // Build agent tools for tasks and cronjobs

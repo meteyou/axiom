@@ -44,6 +44,37 @@ interface WsMessage {
 
 type ConnectionStatus = 'connecting' | 'connected' | 'disconnected'
 
+function normalizeReminderText(text: string): string {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/^⏰\s*/u, '')
+    .replace(/^(reminder|erinnerung)\s*:\s*/u, '')
+    .replace(/[.!?]+$/u, '')
+    .replace(/\s+/g, ' ')
+}
+
+function formatReminderContent(name?: string, message?: string): string {
+  const trimmedName = name?.trim() ?? ''
+  const trimmedMessage = message?.trim() ?? ''
+
+  if (!trimmedName) return trimmedMessage ? `⏰ ${trimmedMessage}` : '⏰'
+  if (!trimmedMessage) return `⏰ ${trimmedName}`
+
+  const normalizedName = normalizeReminderText(trimmedName)
+  const normalizedMessage = normalizeReminderText(trimmedMessage)
+
+  if (
+    normalizedName === normalizedMessage
+    || normalizedMessage.includes(normalizedName)
+    || normalizedName.includes(normalizedMessage)
+  ) {
+    return `⏰ ${trimmedMessage}`
+  }
+
+  return `⏰ ${trimmedName}\n\n${trimmedMessage}`
+}
+
 // Module-level singletons so multiple useChat() calls share the same WebSocket
 let ws: WebSocket | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
@@ -152,10 +183,7 @@ export function useChat() {
         break
 
       case 'reminder': {
-        const reminderContent = [
-          msg.reminderName ? `⏰ ${msg.reminderName}` : '⏰',
-          msg.reminderMessage ?? '',
-        ].filter(Boolean).join('\n\n')
+        const reminderContent = formatReminderContent(msg.reminderName, msg.reminderMessage)
 
         if (reminderContent) {
           messages.value = [...messages.value, {
