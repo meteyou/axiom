@@ -2,7 +2,7 @@ import type { AgentTool } from '@mariozechner/pi-agent-core'
 import { Type } from '@mariozechner/pi-ai'
 import type { ScheduledTaskStore } from './scheduled-task-store.js'
 import type { TaskScheduler } from './task-scheduler.js'
-import { validateCronExpression, cronToHumanReadable } from './cron-parser.js'
+import { validateCronExpression, cronToHumanReadable, parseCronExpression, getNextRunTime } from './cron-parser.js'
 
 export interface CronjobToolsOptions {
   scheduledTaskStore: ScheduledTaskStore
@@ -262,6 +262,100 @@ export function removeCronjobTool(options: CronjobToolsOptions): AgentTool {
         const errorMsg = err instanceof Error ? err.message : String(err)
         return {
           content: [{ type: 'text' as const, text: `Error removing cronjob: ${errorMsg}` }],
+          details: { error: true },
+        }
+      }
+    },
+  }
+}
+
+/**
+ * Create the `list_cronjobs` agent tool
+ */
+export function listCronjobsTool(options: CronjobToolsOptions): AgentTool {
+  return {
+    name: 'list_cronjobs',
+    label: 'List Cronjobs',
+    description:
+      'List all configured cronjobs with their schedules, status, and upcoming run times. ' +
+      'Use this to answer questions like "which cronjobs are active?", "what runs tomorrow morning?", ' +
+      'or "show me all scheduled tasks". Optionally compute the next N run times for each cronjob.',
+    parameters: Type.Object({
+      enabled_only: Type.Optional(
+        Type.Boolean({
+          description: 'If true, only show enabled cronjobs. Default: false (show all).',
+        })
+      ),
+      next_runs: Type.Optional(
+        Type.Number({
+          description: 'Number of upcoming run times to compute for each cronjob (default: 3, max: 10).',
+        })
+      ),
+    }),
+    execute: async (_toolCallId, params) => {
+      const { enabled_only, next_runs } = params as {
+        enabled_only?: boolean
+        next_runs?: number
+      }
+
+      try {
+        const cronjobs = enabled_only
+          ? options.scheduledTaskStore.listEnabled()
+          : options.scheduledTaskStore.list()
+
+        if (cronjobs.length === 0) {
+          return {
+            content: [{ type: 'text' as const, text: enabled_only
+              ? 'No enabled cronjobs found.'
+              : 'No cronjobs configured.'
+            }],
+            details: { count: 0 },
+          }
+        }
+
+        const numRuns = Math.min(Math.max(next_runs ?? 3, 1), 10)
+        const now = new Date()
+
+        const lines = cronjobs.map(cj => {
+          const humanSchedule = cronToHumanReadable(cj.schedule)
+          const status = cj.enabled ? 'ENABLED' : 'DISABLED'
+
+          // Compute next run times
+          let nextRunsStr = ''
+          if (cj.enabled) {
+            try {
+              const fields = parseCronExpression(cj.schedule)
+              const runs: string[] = []
+              let cursor = new Date(now.getTime() - 60000) // start from now
+              for (let i = 0; i < numRuns; i++) {
+                const next = getNextRunTime(fields, cursor)
+                if (!next) break
+                runs.push(next.toISOString().replace('T', ' ').slice(0, 16) + ' UTC')
+                cursor = next
+              }
+              if (runs.length > 0) {
+                nextRunsStr = `\n  Next runs: ${runs.join(', ')}` 
+              }
+            } catch {
+              // Skip if cron parse fails
+            }
+          }
+
+          const lastRun = cj.lastRunAt
+            ? `${cj.lastRunStatus ?? 'unknown'} at ${cj.lastRunAt}`
+            : 'never'
+
+          return `\u2022 [${status}] ${cj.name}\n  ID: ${cj.id}\n  Schedule: ${humanSchedule} (${cj.schedule})\n  Provider: ${cj.provider ?? 'default'}\n  Last run: ${lastRun}${nextRunsStr}`
+        })
+
+        return {
+          content: [{ type: 'text' as const, text: `Found ${cronjobs.length} cronjob(s):\n\n${lines.join('\n\n')}` }],
+          details: { count: cronjobs.length },
+        }
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err)
+        return {
+          content: [{ type: 'text' as const, text: `Error listing cronjobs: ${errorMsg}` }],
           details: { error: true },
         }
       }

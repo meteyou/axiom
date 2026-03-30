@@ -1,6 +1,7 @@
 import type { AgentTool } from '@mariozechner/pi-agent-core'
 import { Type } from '@mariozechner/pi-ai'
 import type { TaskStore } from './task-store.js'
+import type { TaskStatus, TaskTriggerType } from './task-store.js'
 import type { TaskRunner } from './task-runner.js'
 import type { ProviderConfig } from './provider-config.js'
 
@@ -186,6 +187,88 @@ export function createTaskTool(options: TaskToolsOptions): AgentTool {
         const errorMsg = err instanceof Error ? err.message : String(err)
         return {
           content: [{ type: 'text' as const, text: `Error creating task: ${errorMsg}` }],
+          details: { error: true },
+        }
+      }
+    },
+  }
+}
+
+/**
+ * Create the `list_tasks` agent tool
+ */
+export function listTasksTool(options: Pick<TaskToolsOptions, 'taskStore'>): AgentTool {
+  return {
+    name: 'list_tasks',
+    label: 'List Background Tasks',
+    description:
+      'List background tasks with optional filters. Use this to check the status of running tasks, ' +
+      'find completed or failed tasks, or get an overview of all tasks. Returns the most recent tasks first.',
+    parameters: Type.Object({
+      status: Type.Optional(
+        Type.String({
+          description: 'Filter by status: "running", "paused", "completed", or "failed". Omit to show all.',
+        })
+      ),
+      trigger_type: Type.Optional(
+        Type.String({
+          description: 'Filter by trigger type: "user", "agent", or "cronjob". Omit to show all.',
+        })
+      ),
+      limit: Type.Optional(
+        Type.Number({
+          description: 'Maximum number of tasks to return (default: 20, max: 50).',
+        })
+      ),
+    }),
+    execute: async (_toolCallId, params) => {
+      const { status, trigger_type, limit } = params as {
+        status?: string
+        trigger_type?: string
+        limit?: number
+      }
+
+      try {
+        const tasks = options.taskStore.list({
+          status: status as TaskStatus | undefined,
+          triggerType: trigger_type as TaskTriggerType | undefined,
+          limit: Math.min(limit ?? 20, 50),
+        })
+
+        if (tasks.length === 0) {
+          const filterDesc = [status, trigger_type].filter(Boolean).join(', ')
+          return {
+            content: [{ type: 'text' as const, text: filterDesc
+              ? `No tasks found matching filters: ${filterDesc}.`
+              : 'No tasks found.'
+            }],
+            details: { count: 0 },
+          }
+        }
+
+        const lines = tasks.map(t => {
+          const duration = t.startedAt
+            ? (() => {
+                const start = new Date(t.startedAt.replace(' ', 'T') + 'Z').getTime()
+                const end = t.completedAt
+                  ? new Date(t.completedAt.replace(' ', 'T') + 'Z').getTime()
+                  : Date.now()
+                const mins = Math.round((end - start) / 60000)
+                return mins < 1 ? '<1m' : `${mins}m`
+              })()
+            : '\u2014'
+          const tokens = t.promptTokens + t.completionTokens
+          return `\u2022 [${t.status.toUpperCase()}] ${t.name}\n  ID: ${t.id}\n  Trigger: ${t.triggerType} | Duration: ${duration} | Tokens: ${tokens} | Cost: $${t.estimatedCost.toFixed(4)}\n  Created: ${t.createdAt}`
+        })
+
+        return {
+          content: [{ type: 'text' as const, text: `Found ${tasks.length} task(s):\n\n${lines.join('\n\n')}` }],
+          details: { count: tasks.length },
+        }
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err)
+        return {
+          content: [{ type: 'text' as const, text: `Error listing tasks: ${errorMsg}` }],
           details: { error: true },
         }
       }
