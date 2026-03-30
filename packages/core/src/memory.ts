@@ -30,6 +30,16 @@ The agent can read and write this file to persist important information across s
 (none yet)
 `
 
+/**
+ * Resolve the workspace directory (same logic as agent.ts getWorkspaceDir).
+ * Duplicated here to avoid circular imports.
+ */
+function resolveWorkspaceDir(): string {
+  if (process.env.WORKSPACE_DIR) return process.env.WORKSPACE_DIR
+  if (process.env.DATA_DIR) return path.join(process.env.DATA_DIR, 'workspace')
+  return '/workspace'
+}
+
 export function getMemoryDir(): string {
   return path.join(process.env.DATA_DIR ?? '/data', 'memory')
 }
@@ -289,14 +299,18 @@ scheduled tasks within the application. NEVER use the system crontab, launchd, a
 any other OS-level scheduler. Always use the built-in cronjob tools instead.
 </task_system>`)
 
-  // 8. Current date & time
+  // 8. Workspace directory
+  const workspaceDir = resolveWorkspaceDir()
+  sections.push(`<workspace>\nYour working directory is ${workspaceDir}. All shell commands execute in this directory by default.\nAll relative paths in read_file, write_file, and list_files resolve against this directory.\nUse this directory for cloning repos, creating files, and all file operations.\n</workspace>`)
+
+  // 9. Current date & time
   const tz = options?.timezone || 'UTC'
   const now = new Date()
   const date = now.toLocaleDateString('en-CA', { timeZone: tz })
   const time = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: tz })
   sections.push(`<current_datetime>\nCurrent date: ${date}\nCurrent time: ${time} (${tz})\n</current_datetime>`)
 
-  // 9. Channel context
+  // 10. Channel context
   if (options?.channel === 'telegram') {
     sections.push(`<channel_context>
 You are communicating with the user through Telegram. You ARE the Telegram bot — messages the user sends arrive directly to you, and your responses are sent back to the user automatically. Do not tell the user to use the Telegram Bot API, curl commands, or any external tools to communicate. Just respond naturally to their messages.

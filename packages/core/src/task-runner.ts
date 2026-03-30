@@ -17,6 +17,7 @@ import {
 } from './loop-detection.js'
 import type { LoopDetectionConfig, LoopDetectionResult } from './loop-detection.js'
 import type { TaskEventBus } from './task-event-bus.js'
+import { getWorkspaceDir } from './agent.js'
 
 export interface TaskOverrides {
   /** JSON array of tool names to exclude (null = all enabled) */
@@ -94,9 +95,17 @@ const MAX_PAUSE_DURATION_MS = 24 * 60 * 60 * 1000
 function buildTaskSystemPrompt(taskPrompt: string, memoryDir?: string): string {
   const sections: string[] = []
 
+  const workspaceDir = getWorkspaceDir()
   sections.push(`You are a background task agent. You are NOT a chatbot — you are an autonomous worker.
 
 Your task: ${taskPrompt}
+
+<workspace>
+Your working directory is ${workspaceDir}. All shell commands execute in this directory by default.
+All relative paths in read_file, write_file, and list_files resolve against this directory.
+Use this directory for cloning repos, creating files, and all file operations.
+Do NOT create working directories elsewhere (e.g. /tmp) — use ${workspaceDir} instead.
+</workspace>
 
 Guidelines:
 - Work independently for as long as possible
