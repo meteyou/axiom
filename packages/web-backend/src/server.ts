@@ -28,6 +28,7 @@ import {
   deliverTaskNotification,
   createYoloTools,
   createBuiltinWebTools,
+  logToolCall,
 } from '@openagent/core'
 import type { ProviderConfig, LoopDetectionConfig, BuiltinToolsConfig } from '@openagent/core'
 import { setupWebSocketChat } from './ws-chat.js'
@@ -225,6 +226,7 @@ const taskScheduler = new TaskScheduler({
   resolveProvider,
   onInjection: (scheduledTask) => {
     const userId = 1 // Default admin user
+    const deliveryResults: string[] = []
 
     // Reminders are delivered ONLY via Telegram — they do NOT appear in the
     // main agent chat (no chat_messages persistence, no agent injection).
@@ -241,6 +243,7 @@ const taskScheduler = new TaskScheduler({
       reminderName: scheduledTask.name,
       cronjobId: scheduledTask.id,
     })
+    deliveryResults.push('chatEventBus: broadcast sent')
 
     // 2. Always send Telegram notification (reminders are meant to reach
     //    the user even when they're not looking at the chat)
@@ -248,15 +251,81 @@ const taskScheduler = new TaskScheduler({
       const chatId = telegramBot.getTelegramChatIdForUser(userId)
       if (chatId) {
         const telegramHtml = `⏰ <b>${escapeHtmlForTelegram(scheduledTask.name)}</b>\n\n${escapeHtmlForTelegram(scheduledTask.prompt)}`
-        telegramBot.sendTaskNotification(chatId, telegramHtml).catch(err => {
+        telegramBot.sendTaskNotification(chatId, telegramHtml).then(ok => {
+          // Log delivery result asynchronously
+          const status = ok ? 'sent' : 'failed'
+          logToolCall(db, {
+            sessionId: `cronjob-${scheduledTask.id}`,
+            toolName: 'reminder_delivery',
+            input: JSON.stringify({
+              cronjobId: scheduledTask.id,
+              name: scheduledTask.name,
+              message: scheduledTask.prompt,
+              schedule: scheduledTask.schedule,
+            }),
+            output: JSON.stringify({
+              telegramChatId: chatId,
+              telegramStatus: status,
+              deliveryResults: [...deliveryResults, `telegram: ${status} (chat ${chatId})`],
+            }),
+            durationMs: 0,
+            status: ok ? 'success' : 'error',
+          })
+        }).catch(err => {
           console.error(`[openagent] Failed to send Telegram reminder for ${scheduledTask.id}:`, err)
+          logToolCall(db, {
+            sessionId: `cronjob-${scheduledTask.id}`,
+            toolName: 'reminder_delivery',
+            input: JSON.stringify({
+              cronjobId: scheduledTask.id,
+              name: scheduledTask.name,
+              message: scheduledTask.prompt,
+              schedule: scheduledTask.schedule,
+            }),
+            output: JSON.stringify({
+              error: (err as Error).message,
+              deliveryResults: [...deliveryResults, `telegram: error - ${(err as Error).message}`],
+            }),
+            durationMs: 0,
+            status: 'error',
+          })
         })
         console.log(`[openagent] Reminder "${scheduledTask.name}" sent via Telegram to chat ${chatId}`)
       } else {
+        deliveryResults.push('telegram: no linked chat')
         console.log(`[openagent] No linked Telegram chat for user ${userId}`)
+        // Log without Telegram
+        logToolCall(db, {
+          sessionId: `cronjob-${scheduledTask.id}`,
+          toolName: 'reminder_delivery',
+          input: JSON.stringify({
+            cronjobId: scheduledTask.id,
+            name: scheduledTask.name,
+            message: scheduledTask.prompt,
+            schedule: scheduledTask.schedule,
+          }),
+          output: JSON.stringify({ deliveryResults }),
+          durationMs: 0,
+          status: 'error',
+        })
       }
     } else {
+      deliveryResults.push('telegram: bot not available')
       console.log(`[openagent] No Telegram bot available for reminder "${scheduledTask.name}"`)
+      // Log without Telegram
+      logToolCall(db, {
+        sessionId: `cronjob-${scheduledTask.id}`,
+        toolName: 'reminder_delivery',
+        input: JSON.stringify({
+          cronjobId: scheduledTask.id,
+          name: scheduledTask.name,
+          message: scheduledTask.prompt,
+          schedule: scheduledTask.schedule,
+        }),
+        output: JSON.stringify({ deliveryResults }),
+        durationMs: 0,
+        status: 'error',
+      })
     }
 
     console.log(`[openagent] Reminder "${scheduledTask.name}" fired for user ${userId}`)
