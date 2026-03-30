@@ -3,11 +3,35 @@ import { createApp } from './app.js'
 import { initDatabase } from '@openagent/core'
 import { ensureConfigTemplates } from '@openagent/core'
 import { ensureMemoryStructure } from '@openagent/core'
-import { AgentCore, getActiveProvider, getFallbackProvider, buildModel, getApiKeyForProvider, loadConfig, ProviderManager } from '@openagent/core'
+import {
+  AgentCore,
+  getActiveProvider,
+  getFallbackProvider,
+  buildModel,
+  getApiKeyForProvider,
+  loadConfig,
+  ProviderManager,
+  TaskStore,
+  TaskRunner,
+  TaskScheduler,
+  ScheduledTaskStore,
+  TaskEventBus,
+  createTaskTool,
+  createResumeTaskTool,
+  createCronjobTool,
+  editCronjobTool,
+  removeCronjobTool,
+  listCronjobsTool,
+  listTasksTool,
+  loadProvidersDecrypted,
+  deliverTaskNotification,
+  createYoloTools,
+  createBuiltinWebTools,
+} from '@openagent/core'
+import type { ProviderConfig, LoopDetectionConfig, BuiltinToolsConfig } from '@openagent/core'
 import { setupWebSocketChat } from './ws-chat.js'
 import { setupWebSocketLogs } from './ws-logs.js'
 import { setupWebSocketTask } from './ws-task.js'
-import { TaskEventBus } from '@openagent/core'
 import { HeartbeatService } from './heartbeat.js'
 import { RuntimeMetrics } from './runtime-metrics.js'
 import { MemoryConsolidationScheduler } from './memory-consolidation-scheduler.js'
@@ -29,18 +53,146 @@ ensureMemoryStructure()
 
 const runtimeMetrics = new RuntimeMetrics()
 
-// Load session timeout from settings
+// Load settings
 let sessionTimeoutMinutes = 15
+let taskSettings = {
+  defaultProvider: '',
+  maxDurationMinutes: 60,
+  telegramDelivery: 'auto' as string,
+  loopDetection: {
+    enabled: true,
+    method: 'systematic' as string,
+    maxConsecutiveFailures: 3,
+    smartProvider: '',
+    smartCheckInterval: 5,
+  },
+  statusUpdateIntervalMinutes: 10,
+}
+let builtinToolsConfig: BuiltinToolsConfig | undefined
 try {
-  const settings = loadConfig<{ sessionTimeoutMinutes?: number }>('settings.json')
+  const settings = loadConfig<{
+    sessionTimeoutMinutes?: number
+    tasks?: typeof taskSettings
+    builtinTools?: BuiltinToolsConfig
+    braveSearchApiKey?: string
+    searxngUrl?: string
+  }>('settings.json')
   if (settings.sessionTimeoutMinutes && settings.sessionTimeoutMinutes > 0) {
     sessionTimeoutMinutes = settings.sessionTimeoutMinutes
   }
+  if (settings.tasks) {
+    taskSettings = { ...taskSettings, ...settings.tasks }
+  }
+  builtinToolsConfig = {
+    ...settings.builtinTools,
+    braveSearchApiKey: settings.braveSearchApiKey ?? settings.builtinTools?.braveSearchApiKey,
+    searxngUrl: settings.searxngUrl ?? settings.builtinTools?.searxngUrl,
+  }
 } catch { /* use default */ }
+
+// Helper: resolve a provider by name or ID
+function resolveProvider(nameOrId: string): ProviderConfig | null {
+  try {
+    const file = loadProvidersDecrypted()
+    return file.providers.find(
+      p => p.id === nameOrId || p.name.toLowerCase() === nameOrId.toLowerCase()
+    ) ?? null
+  } catch {
+    return null
+  }
+}
+
+// Helper: get the default provider for tasks
+function getTaskDefaultProvider(): ProviderConfig {
+  if (taskSettings.defaultProvider) {
+    const resolved = resolveProvider(taskSettings.defaultProvider)
+    if (resolved) return resolved
+  }
+  // Fall back to active provider
+  return getActiveProvider()!
+}
+
+// Create event buses early — needed by TaskRunner and Telegram
+const chatEventBus = new ChatEventBus()
+const taskEventBus = new TaskEventBus()
+
+// Late-bound reference to WebSocket chat (set after server setup)
+let wsChat: { hasActiveWebSocket: (userId: number) => boolean } | null = null
+
+/**
+ * Handle task completion/pause notifications:
+ * 1. Inject into agent so it can relay to the user
+ * 2. Deliver via notification system (persist, broadcast, Telegram)
+ */
+function handleTaskNotification(taskId: string, injection: string, taskStore: TaskStore): void {
+  const task = taskStore.getById(taskId)
+  if (!task) return
+
+  // Calculate duration
+  const startMs = task.startedAt ? new Date(task.startedAt.replace(' ', 'T') + 'Z').getTime() : Date.now()
+  const endMs = task.completedAt ? new Date(task.completedAt.replace(' ', 'T') + 'Z').getTime() : Date.now()
+  const durationMinutes = Math.round((endMs - startMs) / 60000)
+
+  // 1. Inject into the main agent so it can respond in chat
+  if (agentCore) {
+    agentCore.injectTaskResult(injection).catch(err => {
+      console.error(`[openagent] Failed to inject task result for ${taskId}:`, err)
+    })
+  }
+
+  // 2. Deliver notification (persist to DB, broadcast to web clients, optionally Telegram)
+  // Determine userId — for user-triggered tasks we'd ideally have a userId,
+  // but tasks don't store it. Use admin user (1) as default.
+  const userId = 1
+
+  deliverTaskNotification({
+    db,
+    userId,
+    task,
+    durationMinutes,
+    telegramDeliveryMode: (taskSettings.telegramDelivery as 'auto' | 'always') ?? 'auto',
+    hasActiveWebSocket: (uid: number) => wsChat?.hasActiveWebSocket(uid) ?? false,
+    sendTelegram: async (message: string) => {
+      if (!telegramBot) {
+        console.log(`[task-notification] No Telegram bot available for task ${taskId}`)
+        return false
+      }
+      try {
+        const chatId = telegramBot.getTelegramChatIdForUser(userId)
+        if (!chatId) {
+          console.log(`[task-notification] No linked Telegram chat for user ${userId}`)
+          return false
+        }
+        console.log(`[task-notification] Sending Telegram notification for task ${taskId} to chat ${chatId}`)
+        return await telegramBot.sendTaskNotification(chatId, message)
+      } catch (err) {
+        console.error(`[task-notification] Failed to send Telegram for task ${taskId}:`, err)
+        return false
+      }
+    },
+    broadcastEvent: (event) => {
+      chatEventBus.broadcast({
+        type: event.type,
+        userId: event.userId,
+        source: 'task',
+        taskId: event.taskId,
+        taskName: event.taskName,
+        taskSummary: event.taskSummary,
+        taskDurationMinutes: event.taskDurationMinutes,
+        taskTokensUsed: event.taskTokensUsed,
+        taskTriggerType: event.taskTriggerType,
+      })
+    },
+  }).catch(err => {
+    console.error(`[openagent] Failed to deliver task notification for ${taskId}:`, err)
+  })
+}
 
 // Initialize Agent Core with the active provider
 let agentCore: AgentCore | null = null
 let providerManager: ProviderManager | null = null
+let taskRunner: TaskRunner | null = null
+let taskScheduler: TaskScheduler | null = null
 const provider = getActiveProvider()
 if (provider) {
   try {
@@ -51,15 +203,80 @@ if (provider) {
     const fallbackProvider = getFallbackProvider()
     providerManager = new ProviderManager(provider, fallbackProvider)
 
+    // Initialize TaskStore, TaskRunner, and TaskScheduler
+    const taskStore = new TaskStore(db)
+    taskRunner = new TaskRunner({
+      db,
+      buildModel,
+      getApiKey: getApiKeyForProvider,
+      tools: [...createYoloTools(), ...createBuiltinWebTools(builtinToolsConfig)],
+      onTaskComplete: (taskId: string, injection: string) => {
+        handleTaskNotification(taskId, injection, taskStore)
+      },
+      onTaskPaused: (taskId: string, injection: string) => {
+        handleTaskNotification(taskId, injection, taskStore)
+      },
+      loopDetection: taskSettings.loopDetection.enabled
+        ? {
+            enabled: true,
+            method: taskSettings.loopDetection.method as LoopDetectionConfig['method'],
+            maxConsecutiveFailures: taskSettings.loopDetection.maxConsecutiveFailures,
+            smartProvider: taskSettings.loopDetection.smartProvider || undefined,
+            smartCheckInterval: taskSettings.loopDetection.smartCheckInterval,
+          }
+        : undefined,
+      statusUpdateIntervalMinutes: taskSettings.statusUpdateIntervalMinutes,
+      getProviderById: (id: string) => resolveProvider(id),
+      taskEventBus,
+    })
+
+    taskScheduler = new TaskScheduler({
+      db,
+      taskStore,
+      taskRunner,
+      getDefaultProvider: getTaskDefaultProvider,
+      resolveProvider,
+    })
+
+    // Build agent tools for tasks and cronjobs
+    const taskToolsOptions = {
+      taskStore,
+      taskRunner,
+      getDefaultProvider: getTaskDefaultProvider,
+      resolveProvider,
+      defaultMaxDurationMinutes: taskSettings.maxDurationMinutes,
+      maxDurationMinutesCap: taskSettings.maxDurationMinutes * 2,
+    }
+
+    const scheduledTaskStore = new ScheduledTaskStore(db)
+    const cronjobToolsOptions = {
+      scheduledTaskStore,
+      taskScheduler,
+    }
+
+    const agentTools = [
+      createTaskTool(taskToolsOptions),
+      createResumeTaskTool(taskToolsOptions),
+      listTasksTool({ taskStore }),
+      createCronjobTool(cronjobToolsOptions),
+      editCronjobTool(cronjobToolsOptions),
+      removeCronjobTool(cronjobToolsOptions),
+      listCronjobsTool(cronjobToolsOptions),
+    ]
+
     agentCore = new AgentCore({
       model,
       apiKey,
       db,
       yoloMode: true,
+      tools: agentTools,
       providerConfig: provider,
       providerManager,
       sessionTimeoutMinutes,
     })
+
+    // Start the task scheduler to pick up existing cronjobs
+    taskScheduler.start()
 
     // Wire ProviderManager events to AgentCore.swapProvider()
     providerManager.on('mode:fallback', async () => {
@@ -109,12 +326,6 @@ const consolidationScheduler = new MemoryConsolidationScheduler({
   agentCore,
 })
 consolidationScheduler.start()
-
-// Create the cross-channel chat event bus
-const chatEventBus = new ChatEventBus()
-
-// Create the task event bus for live task streaming
-const taskEventBus = new TaskEventBus()
 
 // Initialize Telegram bot (if configured and enabled)
 // Wire Telegram chat events into the cross-channel event bus
@@ -184,6 +395,8 @@ const app = createApp({
   heartbeatService,
   runtimeMetrics,
   consolidationScheduler,
+  getTaskRunner: () => taskRunner ?? null,
+  getTaskScheduler: () => taskScheduler ?? null,
   getTelegramBot: () => telegramBot,
   onTelegramSettingsChanged: () => {
     restartTelegramBot().catch((err) => {
@@ -203,10 +416,47 @@ if (agentCore) {
       text: summary ?? undefined,
     })
   })
+
+  // Stream agent responses to task injections to all connected admin clients
+  // and persist the full response to chat_messages
+  let taskInjectionResponseBuffer = ''
+  agentCore.setOnTaskInjectionChunk((chunk) => {
+    // Collect text for persistence
+    if (chunk.type === 'text' && chunk.text) {
+      taskInjectionResponseBuffer += chunk.text
+    }
+
+    // When done, persist the agent's response to DB so it shows in chat history
+    if (chunk.type === 'done' && taskInjectionResponseBuffer) {
+      const responseText = taskInjectionResponseBuffer
+      taskInjectionResponseBuffer = ''
+      try {
+        db.prepare(
+          'INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)'
+        ).run(`task-injection-${Date.now()}`, 1, 'assistant', responseText, JSON.stringify({ type: 'task_injection_response' }))
+      } catch (err) {
+        console.error('[openagent] Failed to persist task injection response:', err)
+      }
+    }
+
+    // Broadcast to admin user (userId=1) — the agent's natural language response
+    chatEventBus.broadcast({
+      type: chunk.type === 'done' ? 'done' : chunk.type,
+      userId: 1,
+      source: 'task',
+      text: chunk.text,
+      toolName: chunk.toolName,
+      toolCallId: chunk.toolCallId,
+      toolArgs: chunk.toolArgs,
+      toolResult: chunk.toolResult,
+      toolIsError: chunk.toolIsError,
+      error: chunk.error,
+    })
+  })
 }
 
 // Set up WebSocket chat (with cross-channel event bus)
-setupWebSocketChat(server, db, agentCore, runtimeMetrics, chatEventBus)
+wsChat = setupWebSocketChat(server, db, agentCore, runtimeMetrics, chatEventBus)
 
 // Set up WebSocket task viewer (live event streaming)
 setupWebSocketTask({ server, db, taskEventBus })
