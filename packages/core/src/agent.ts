@@ -76,7 +76,7 @@ function resolveWorkspacePath(filePath: string): string {
 /**
  * Build YOLO-mode tools that give the agent unrestricted access
  */
-function createYoloTools(): AgentTool[] {
+export function createYoloTools(): AgentTool[] {
   const shellTool: AgentTool = {
     name: 'shell',
     label: 'Execute Shell Command',
@@ -272,6 +272,7 @@ export class AgentCore {
   private providerConfig?: ProviderConfig
   private providerManager?: ProviderManager
   private onSessionEndCallback?: (userId: string, summary: string | null) => void
+  private onTaskInjectionChunkCallback?: (chunk: ResponseChunk) => void
   private messageQueue: MessageQueue
 
   constructor(options: AgentCoreOptions) {
@@ -432,10 +433,9 @@ export class AgentCore {
         return self.processTaskInjection(msg.payload.text)
       },
     )
-    // Drain the iterable (task injections are consumed internally)
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    for await (const _chunk of iterable) {
-      // drain
+    // Stream response chunks via callback (if set), otherwise drain silently
+    for await (const chunk of iterable) {
+      this.onTaskInjectionChunkCallback?.(chunk)
     }
   }
 
@@ -644,6 +644,14 @@ export class AgentCore {
    */
   setOnSessionEnd(callback: (userId: string, summary: string | null) => void): void {
     this.onSessionEndCallback = callback
+  }
+
+  /**
+   * Set a callback for response chunks generated when the agent processes a task injection.
+   * This allows streaming the agent's natural-language response to connected clients.
+   */
+  setOnTaskInjectionChunk(callback: (chunk: ResponseChunk) => void): void {
+    this.onTaskInjectionChunkCallback = callback
   }
 
   /**

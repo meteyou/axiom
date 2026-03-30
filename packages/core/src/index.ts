@@ -117,7 +117,7 @@ export {
   decryptBraveApiKey,
 } from './web-tools.js'
 export type { WebSearchResult, WebSearchConfig, WebFetchConfig, BuiltinToolsConfig, SearchProvider, ResolvedSearchProvider } from './web-tools.js'
-export { AgentCore } from './agent.js'
+export { AgentCore, createYoloTools } from './agent.js'
 export type { ResponseChunk, AgentCoreOptions } from './agent.js'
 export { ProviderManager } from './provider-manager.js'
 export type { OperatingMode, ProviderManagerEvents } from './provider-manager.js'
@@ -135,7 +135,7 @@ export {
   formatPeriodicStatusUpdate,
 } from './loop-detection.js'
 export type { TrackedToolCall, LoopDetectionConfig, LoopDetectionResult } from './loop-detection.js'
-export { createTaskTool, createResumeTaskTool } from './task-tools.js'
+export { createTaskTool, createResumeTaskTool, listTasksTool } from './task-tools.js'
 export type { TaskToolsOptions } from './task-tools.js'
 export { MessageQueue } from './message-queue.js'
 export type { QueuedMessage } from './message-queue.js'
@@ -150,7 +150,7 @@ export { ScheduledTaskStore, initScheduledTasksTable } from './scheduled-task-st
 export type { ScheduledTask, CreateScheduledTaskInput, UpdateScheduledTaskInput } from './scheduled-task-store.js'
 export { TaskScheduler } from './task-scheduler.js'
 export type { TaskSchedulerOptions } from './task-scheduler.js'
-export { createCronjobTool, editCronjobTool, removeCronjobTool } from './cronjob-tools.js'
+export { createCronjobTool, editCronjobTool, removeCronjobTool, listCronjobsTool } from './cronjob-tools.js'
 export type { CronjobToolsOptions } from './cronjob-tools.js'
 export {
   formatTaskTelegramMessage,
