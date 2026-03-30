@@ -134,10 +134,11 @@ async function parseJsonSafely(response: Response): Promise<unknown> {
 }
 
 /**
- * Health check for OAuth providers using pi-ai's completeSimple
- * This handles all API types correctly (codex-responses, gemini-cli, etc.)
+ * Health check using pi-ai's completeSimple.
+ * Handles all API types correctly (codex-responses, gemini-cli, mistral-conversations, etc.)
+ * Used for OAuth providers and non-standard API types without a custom request builder.
  */
-async function performOAuthHealthCheck(
+async function performPiAiHealthCheck(
   provider: ProviderConfig,
   startedAt: number,
   checkedAt: string,
@@ -225,10 +226,12 @@ export async function performProviderHealthCheck(
   const startedAt = Date.now()
 
   try {
-    // For OAuth providers, use pi-ai's completeSimple for proper API-type-aware health check
+    // For OAuth providers or non-standard API types (e.g. mistral-conversations),
+    // use pi-ai's completeSimple for proper API-type-aware health check
     const preset = PROVIDER_TYPE_PRESETS[provider.providerType as keyof typeof PROVIDER_TYPE_PRESETS]
-    if (preset?.authMethod === 'oauth') {
-      return await performOAuthHealthCheck(provider, startedAt, checkedAt, timeoutMs, degradedThresholdMs)
+    const hasCustomRequestBuilder = provider.type === 'anthropic-messages' || provider.type === 'openai-completions'
+    if (preset?.authMethod === 'oauth' || !hasCustomRequestBuilder) {
+      return await performPiAiHealthCheck(provider, startedAt, checkedAt, timeoutMs, degradedThresholdMs)
     }
 
     const request = provider.type === 'anthropic-messages'
