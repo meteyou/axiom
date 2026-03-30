@@ -13,7 +13,7 @@ import { jwtMiddleware } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
 import type { MemoryConsolidationScheduler } from '../memory-consolidation-scheduler.js'
 
-export function createMemoryRouter(agentCore?: AgentCore | null, consolidationScheduler?: MemoryConsolidationScheduler | null): Router {
+export function createMemoryRouter(getAgentCore: () => AgentCore | null = () => null, consolidationScheduler?: MemoryConsolidationScheduler | null): Router {
   const router = Router()
 
   router.use(jwtMiddleware)
@@ -26,6 +26,7 @@ export function createMemoryRouter(agentCore?: AgentCore | null, consolidationSc
   })
 
   function refreshAgentPrompt(): void {
+    const agentCore = getAgentCore()
     if (!agentCore) return
 
     try {

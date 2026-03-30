@@ -51,7 +51,7 @@ export interface MemoryConsolidationSettingsData {
 }
 
 export interface SettingsRouterOptions {
-  agentCore?: AgentCore | null
+  getAgentCore?: () => AgentCore | null
   onHeartbeatSettingsChanged?: () => void
   onConsolidationSettingsChanged?: () => void
   onTelegramSettingsChanged?: () => void
@@ -59,7 +59,7 @@ export interface SettingsRouterOptions {
 
 export function createSettingsRouter(options: SettingsRouterOptions = {}): Router {
   const router = Router()
-  const agentCore = options.agentCore ?? null
+  const getAgentCore = options.getAgentCore ?? (() => null)
 
   router.use(jwtMiddleware)
   router.use((req: AuthenticatedRequest, res, next) => {
@@ -409,6 +409,7 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
       fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf-8')
       fs.writeFileSync(telegramPath, JSON.stringify(telegram, null, 2) + '\n', 'utf-8')
 
+      const agentCore = getAgentCore()
       if (agentCore) {
         try {
           if (body.sessionTimeoutMinutes !== undefined) {

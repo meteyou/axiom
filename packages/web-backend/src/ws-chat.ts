@@ -67,10 +67,12 @@ export interface WebSocketChatResult {
 export function setupWebSocketChat(
   server: Server,
   db: Database,
-  agentCore: AgentCore | null,
+  getAgentCore: (() => AgentCore | null) | AgentCore | null,
   runtimeMetrics?: RuntimeMetrics,
   chatEventBus?: ChatEventBus,
 ): WebSocketChatResult {
+  // Support both getter function and direct reference (backward compat)
+  const resolveAgentCore = typeof getAgentCore === 'function' ? getAgentCore : () => getAgentCore
   const wss = new WebSocketServer({ noServer: true })
 
   // Handle upgrade requests for /ws/chat path
@@ -177,9 +179,9 @@ export function setupWebSocketChat(
 
           // Reset session (generates summary + writes daily log)
           let summary: string | null = null
-          if (agentCore) {
+          if (resolveAgentCore()) {
             try {
-              summary = await agentCore.resetSession(String(currentUser.userId))
+              summary = await resolveAgentCore()!.resetSession(String(currentUser.userId))
             } catch (err) {
               console.error('Failed to reset session:', err)
             }
@@ -207,8 +209,8 @@ export function setupWebSocketChat(
           controller.abort()
           activeStreams.delete(ws)
 
-          if (agentCore) {
-            agentCore.abort()
+          if (resolveAgentCore()) {
+            resolveAgentCore()!.abort()
           }
 
           sendMessage(ws, { type: 'system', text: 'Task aborted. No queued messages.' })
@@ -230,6 +232,7 @@ export function setupWebSocketChat(
         text: parsed.content,
       })
 
+      const agentCore = resolveAgentCore()
       if (!agentCore) {
         sendMessage(ws, { type: 'error', error: 'Agent core not available' })
         return

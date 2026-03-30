@@ -35,7 +35,7 @@ const upload = multer({
 })
 
 export interface SkillsRouterOptions {
-  agentCore?: AgentCore | null
+  getAgentCore?: () => AgentCore | null
 }
 
 /**
@@ -58,7 +58,7 @@ function sanitizeSkill(skill: SkillConfig): Omit<SkillConfig, 'envValues'> {
 
 export function createSkillsRouter(options: SkillsRouterOptions = {}): Router {
   const router = Router()
-  const agentCore = options.agentCore ?? null
+  const getAgentCore = options.getAgentCore ?? (() => null)
 
   // All routes require auth
   router.use(jwtMiddleware)
@@ -114,7 +114,7 @@ export function createSkillsRouter(options: SkillsRouterOptions = {}): Router {
       })
 
       // Refresh agent skills
-      agentCore?.refreshSkills()
+      getAgentCore()?.refreshSkills()
 
       res.status(201).json({ skill: sanitizeSkill(skill) })
     } catch (err) {
@@ -151,7 +151,7 @@ export function createSkillsRouter(options: SkillsRouterOptions = {}): Router {
       })
 
       // Refresh agent skills
-      agentCore?.refreshSkills()
+      getAgentCore()?.refreshSkills()
 
       res.status(201).json({ skill: sanitizeSkill(skill) })
     } catch (err) {
@@ -238,7 +238,7 @@ export function createSkillsRouter(options: SkillsRouterOptions = {}): Router {
       fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf-8')
 
       // Refresh agent tools (skills + built-in tools)
-      agentCore?.refreshSkills()
+      getAgentCore()?.refreshSkills()
 
       // Mask API key in response
       const maskedApiKey = settings.braveSearchApiKey
@@ -280,7 +280,7 @@ export function createSkillsRouter(options: SkillsRouterOptions = {}): Router {
       deleteSkillConfig(id)
 
       // Refresh agent skills
-      agentCore?.refreshSkills()
+      getAgentCore()?.refreshSkills()
 
       res.json({ message: 'Skill deleted', id })
     } catch (err) {
@@ -310,7 +310,7 @@ export function createSkillsRouter(options: SkillsRouterOptions = {}): Router {
       })
 
       // Refresh agent skills
-      agentCore?.refreshSkills()
+      getAgentCore()?.refreshSkills()
 
       res.json({ skill: sanitizeSkill(updated) })
     } catch (err) {
