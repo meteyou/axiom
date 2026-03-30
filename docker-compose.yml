@@ -9,6 +9,7 @@ services:
       - openagent-data:/data
       - openagent-workspace:/workspace
     environment:
+      - TZ=Europe/Vienna
       - NODE_ENV=production
       - DATA_DIR=/data
       - WORKSPACE_DIR=/workspace
