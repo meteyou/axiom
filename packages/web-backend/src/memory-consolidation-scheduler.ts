@@ -12,6 +12,7 @@ import {
   logTokenUsage,
   logToolCall,
   estimateCost,
+  readMemoryFile,
 } from '@openagent/core'
 
 export interface ConsolidationSettings {
@@ -29,6 +30,24 @@ export const DEFAULT_CONSOLIDATION_SETTINGS: ConsolidationSettings = {
   runAtHour: 3,
   lookbackDays: 3,
   providerId: '',
+}
+
+function buildConsolidationLogOutput(result: ConsolidationResult, previousMemory: string): Record<string, unknown> {
+  const output: Record<string, unknown> = {
+    updated: result.updated,
+    dailyFilesReviewed: result.dailyFilesReviewed,
+    reason: result.reason ?? null,
+    tokens: result.usage ? result.usage.input + result.usage.output : null,
+  }
+
+  if (result.updated && typeof result.newContent === 'string') {
+    output.memoryDiff = {
+      before: previousMemory,
+      after: result.newContent,
+    }
+  }
+
+  return output
 }
 
 export interface ConsolidationSchedulerOptions {
@@ -189,6 +208,7 @@ export class MemoryConsolidationScheduler {
 
       const model = buildModel(provider)
       const apiKey = await getApiKeyForProvider(provider)
+      const previousMemory = readMemoryFile()
 
       const result = await consolidateMemory({
         lookbackDays: this.settings.lookbackDays,
@@ -230,12 +250,7 @@ export class MemoryConsolidationScheduler {
           provider: provider.provider,
           model: model.id,
         }),
-        output: JSON.stringify({
-          updated: result.updated,
-          dailyFilesReviewed: result.dailyFilesReviewed,
-          reason: result.reason ?? null,
-          tokens: result.usage ? result.usage.input + result.usage.output : null,
-        }),
+        output: JSON.stringify(buildConsolidationLogOutput(result, previousMemory)),
         durationMs: Date.now() - startTime,
         status: 'success',
       })
