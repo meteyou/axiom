@@ -198,7 +198,7 @@
                 <DropdownMenuItem
                   v-for="loc in localeList"
                   :key="loc.code"
-                  @click="setLocale(loc.code)"
+                  @click="setLocale(loc.code as 'en' | 'de')"
                 >
                   {{ loc.name }}
                   <AppIcon v-if="locale === loc.code" name="check" size="sm" class="ml-auto" />
