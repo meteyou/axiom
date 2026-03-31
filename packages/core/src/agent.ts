@@ -462,6 +462,8 @@ export class AgentCore {
     const session = this.sessionManager.getOrCreateSession('system', 'task')
     const sessionId = session.id
 
+    this.sessionManager.recordMessage('system')
+
     yield* this.executePromptWithRetry(injection, sessionId)
   }
 
