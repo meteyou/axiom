@@ -306,11 +306,7 @@
               <!-- Timestamp -->
               <p
                 v-if="msg.timestamp && !msg.streaming"
-                class="mt-1 text-right text-[10px] leading-none"
-                :class="{
-                  'text-muted-foreground/70': msg.role === 'user' && msg.source !== 'telegram',
-                  'text-muted-foreground/70': msg.role !== 'user' || msg.source === 'telegram',
-                }"
+                class="mt-1 text-right text-[10px] leading-none text-muted-foreground/70"
               >
                 {{ formatMessageTime(msg.timestamp) }}
               </p>
