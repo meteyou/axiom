@@ -93,22 +93,23 @@
         <!-- Main row -->
         <div class="flex items-center gap-3 px-5 py-2.5 text-sm">
           <!-- Timestamp -->
-          <span class="w-[130px] shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
+          <span class="w-[150px] shrink-0 whitespace-nowrap font-mono text-xs tabular-nums text-muted-foreground">
             {{ formatTimestamp(entry.timestamp) }}
           </span>
 
           <!-- Tool badge -->
-          <Badge :class="toolBadgeClass(entryDisplayName(entry))" class="shrink-0 gap-1 font-mono text-xs">
+          <Badge
+            :class="toolBadgeClass(entryDisplayName(entry))"
+            class="h-[22px] shrink-0 gap-1 px-2 py-0 font-mono text-[11px] leading-none"
+          >
             <AppIcon :name="toolIcon(entryDisplayName(entry))" class="h-3 w-3" />
             {{ entryDisplayName(entry) }}
           </Badge>
 
-          <!-- Source badge -->
+          <!-- Source badge (only for task sessions) -->
           <Badge
-            :class="isTaskSession(entry.sessionId)
-              ? 'border-transparent bg-amber-500/15 text-amber-600 dark:text-amber-400'
-              : 'border-transparent bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'"
-            class="hidden shrink-0 text-[11px] sm:inline-flex"
+            v-if="isTaskSession(entry.sessionId)"
+            class="hidden h-[22px] shrink-0 border-transparent bg-amber-500/15 px-2 py-0 text-[11px] leading-none text-amber-600 sm:inline-flex dark:text-amber-400"
           >
             {{ getSourceLabel(entry.sessionId) }}
           </Badge>
@@ -116,13 +117,13 @@
           <!-- Input preview as badges (hidden on small screens) -->
           <div class="hidden min-w-0 flex-1 items-center gap-1.5 overflow-hidden sm:flex">
             <template v-if="isEntrySkillLoad(entry)">
-              <span class="inline-flex shrink-0 items-center gap-1 rounded bg-violet-500/15 px-1.5 py-0.5 font-mono text-[11px] text-violet-600 dark:text-violet-400">
+              <span class="inline-flex h-[22px] shrink-0 items-center gap-1 rounded bg-violet-500/15 px-1.5 font-mono text-[11px] leading-none text-violet-600 dark:text-violet-400">
                 <span class="font-medium">{{ getSkillName(entry.input) }}</span>
               </span>
             </template>
             <template v-else>
               <template v-for="(value, key) in parseInputParams(entry.input)" :key="key">
-                <span class="inline-flex shrink-0 items-center gap-1 rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+                <span class="inline-flex h-[22px] shrink-0 items-center gap-1 rounded bg-muted px-1.5 font-mono text-[11px] leading-none text-muted-foreground">
                   <span class="font-medium">{{ key }}</span>
                   <span class="max-w-[200px] truncate opacity-70">{{ value }}</span>
                 </span>
