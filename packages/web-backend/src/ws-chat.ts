@@ -253,6 +253,7 @@ export function setupWebSocketChat(
       runtimeMetrics?.startRequest()
 
       let fullResponse = ''
+      let doneSent = false
       // Track pending tool calls to save input+output together
       const pendingToolCalls = new Map<string, { toolName: string; toolArgs: unknown }>()
 
@@ -262,6 +263,10 @@ export function setupWebSocketChat(
 
           if (chunk.type === 'text' && chunk.text) {
             fullResponse += chunk.text
+          }
+
+          if (chunk.type === 'done') {
+            doneSent = true
           }
 
           // Track tool call start
@@ -315,6 +320,18 @@ export function setupWebSocketChat(
           sendMessage(ws, { type: 'error', error: `Agent error: ${(err as Error).message}` })
         }
       } finally {
+        // Always send a 'done' if one wasn't already sent, so the frontend
+        // never gets stuck with a streaming indicator that never resolves.
+        if (!doneSent) {
+          sendMessage(ws, { type: 'done' })
+          chatEventBus?.broadcast({
+            type: 'done',
+            userId: currentUser.userId,
+            source: 'web',
+            sourceConnectionId: connId,
+            sessionId,
+          })
+        }
         activeStreams.delete(ws)
         runtimeMetrics?.endRequest()
       }
