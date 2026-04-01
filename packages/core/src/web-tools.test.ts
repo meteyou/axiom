@@ -1189,8 +1189,7 @@ describe('createBuiltinWebTools', () => {
 
   it('passes braveSearchApiKey and searxngUrl to search tool', () => {
     const tools = createBuiltinWebTools({
-      webSearch: { enabled: true, provider: 'brave' },
-      braveSearchApiKey: 'test-key',
+      webSearch: { enabled: true, provider: 'brave', braveSearchApiKey: 'test-key' },
     })
     expect(tools).toHaveLength(2)
     expect(tools[0].name).toBe('web_search')
@@ -1198,8 +1197,7 @@ describe('createBuiltinWebTools', () => {
 
   it('passes searxng config to search tool', () => {
     const tools = createBuiltinWebTools({
-      webSearch: { enabled: true, provider: 'searxng' },
-      searxngUrl: 'https://searx.example.com',
+      webSearch: { enabled: true, provider: 'searxng', searxngUrl: 'https://searx.example.com' },
     })
     expect(tools).toHaveLength(2)
     expect(tools[0].name).toBe('web_search')
