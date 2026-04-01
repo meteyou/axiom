@@ -174,15 +174,17 @@ export function createSkillsRouter(options: SkillsRouterOptions = {}): Router {
         webFetch: { enabled: true },
       }
 
-      // Mask braveSearchApiKey if present
-      const maskedApiKey = settings.braveSearchApiKey
-        ? maskApiKey(settings.braveSearchApiKey)
-        : ''
+      // Read braveSearchApiKey from builtinTools.webSearch (preferred) or top-level (legacy)
+      const rawApiKey = builtinTools.webSearch?.braveSearchApiKey ?? settings.braveSearchApiKey ?? ''
+      const maskedApiKey = rawApiKey ? maskApiKey(rawApiKey) : ''
+
+      // Read searxngUrl from builtinTools.webSearch (preferred) or top-level (legacy)
+      const resolvedSearxngUrl = builtinTools.webSearch?.searxngUrl ?? settings.searxngUrl ?? ''
 
       res.json({
         builtinTools,
         braveSearchApiKey: maskedApiKey,
-        searxngUrl: settings.searxngUrl ?? '',
+        searxngUrl: resolvedSearxngUrl,
       })
     } catch (err) {
       res.status(500).json({ error: `Failed to load built-in tools config: ${(err as Error).message}` })
@@ -223,16 +225,22 @@ export function createSkillsRouter(options: SkillsRouterOptions = {}): Router {
         settings.builtinTools = existing
       }
 
-      // Encrypt and store braveSearchApiKey if provided
+      // Encrypt and store braveSearchApiKey — write into builtinTools.webSearch
+      // so createBuiltinWebTools() picks it up, plus top-level for API response
       if (body.braveSearchApiKey !== undefined) {
-        settings.braveSearchApiKey = body.braveSearchApiKey
-          ? encrypt(body.braveSearchApiKey)
-          : ''
+        const encrypted = body.braveSearchApiKey ? encrypt(body.braveSearchApiKey) : ''
+        settings.braveSearchApiKey = encrypted
+        if (!settings.builtinTools) settings.builtinTools = {}
+        if (!settings.builtinTools.webSearch) settings.builtinTools.webSearch = { enabled: true, provider: 'duckduckgo' }
+        settings.builtinTools.webSearch.braveSearchApiKey = encrypted
       }
 
-      // Store searxngUrl
+      // Store searxngUrl — write into builtinTools.webSearch + top-level
       if (body.searxngUrl !== undefined) {
         settings.searxngUrl = body.searxngUrl
+        if (!settings.builtinTools) settings.builtinTools = {}
+        if (!settings.builtinTools.webSearch) settings.builtinTools.webSearch = { enabled: true, provider: 'duckduckgo' }
+        settings.builtinTools.webSearch.searxngUrl = body.searxngUrl
       }
 
       fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf-8')
@@ -240,16 +248,15 @@ export function createSkillsRouter(options: SkillsRouterOptions = {}): Router {
       // Refresh agent tools (skills + built-in tools)
       getAgentCore()?.refreshSkills()
 
-      // Mask API key in response
-      const maskedApiKey = settings.braveSearchApiKey
-        ? maskApiKey(settings.braveSearchApiKey)
-        : ''
+      // Mask API key in response — read from builtinTools.webSearch (canonical location)
+      const rawKey = settings.builtinTools?.webSearch?.braveSearchApiKey ?? settings.braveSearchApiKey ?? ''
+      const maskedApiKey = rawKey ? maskApiKey(rawKey) : ''
 
       res.json({
         message: 'Built-in tools config updated',
         builtinTools: settings.builtinTools,
         braveSearchApiKey: maskedApiKey,
-        searxngUrl: settings.searxngUrl ?? '',
+        searxngUrl: settings.builtinTools?.webSearch?.searxngUrl ?? settings.searxngUrl ?? '',
       })
     } catch (err) {
       res.status(500).json({ error: `Failed to update built-in tools config: ${(err as Error).message}` })

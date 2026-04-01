@@ -81,6 +81,8 @@ try {
     sessionTimeoutMinutes?: number
     tasks?: typeof taskSettings
     builtinTools?: BuiltinToolsConfig
+    braveSearchApiKey?: string
+    searxngUrl?: string
   }>('settings.json')
   if (settings.sessionTimeoutMinutes && settings.sessionTimeoutMinutes > 0) {
     sessionTimeoutMinutes = settings.sessionTimeoutMinutes
@@ -89,6 +91,16 @@ try {
     taskSettings = { ...taskSettings, ...settings.tasks }
   }
   builtinToolsConfig = settings.builtinTools
+
+  // Migrate legacy top-level keys into builtinTools.webSearch
+  if (settings.braveSearchApiKey && !builtinToolsConfig?.webSearch?.braveSearchApiKey) {
+    builtinToolsConfig = builtinToolsConfig ?? {}
+    builtinToolsConfig.webSearch = { ...builtinToolsConfig.webSearch, braveSearchApiKey: settings.braveSearchApiKey }
+  }
+  if (settings.searxngUrl && !builtinToolsConfig?.webSearch?.searxngUrl) {
+    builtinToolsConfig = builtinToolsConfig ?? {}
+    builtinToolsConfig.webSearch = { ...builtinToolsConfig.webSearch, searxngUrl: settings.searxngUrl }
+  }
 } catch { /* use default */ }
 
 // Helper: resolve a provider by name or ID
