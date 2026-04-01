@@ -29,9 +29,10 @@ import {
   deliverTaskNotification,
   createYoloTools,
   createBuiltinWebTools,
+  resolveBuiltinToolsConfig,
   logToolCall,
 } from '@openagent/core'
-import type { ProviderConfig, LoopDetectionConfig, BuiltinToolsConfig } from '@openagent/core'
+import type { ProviderConfig, LoopDetectionConfig, BuiltinToolsConfig, SettingsBuiltinToolsConfig } from '@openagent/core'
 import { setupWebSocketChat } from './ws-chat.js'
 import { setupWebSocketLogs } from './ws-logs.js'
 import { setupWebSocketTask } from './ws-task.js'
@@ -80,21 +81,14 @@ try {
   const settings = loadConfig<{
     sessionTimeoutMinutes?: number
     tasks?: typeof taskSettings
-    builtinTools?: BuiltinToolsConfig
-    braveSearchApiKey?: string
-    searxngUrl?: string
-  }>('settings.json')
+  } & SettingsBuiltinToolsConfig>('settings.json')
   if (settings.sessionTimeoutMinutes && settings.sessionTimeoutMinutes > 0) {
     sessionTimeoutMinutes = settings.sessionTimeoutMinutes
   }
   if (settings.tasks) {
     taskSettings = { ...taskSettings, ...settings.tasks }
   }
-  builtinToolsConfig = {
-    ...settings.builtinTools,
-    braveSearchApiKey: settings.braveSearchApiKey ?? settings.builtinTools?.braveSearchApiKey,
-    searxngUrl: settings.searxngUrl ?? settings.builtinTools?.searxngUrl,
-  }
+  builtinToolsConfig = resolveBuiltinToolsConfig(settings)
 } catch { /* use default */ }
 
 // Helper: resolve a provider by name or ID

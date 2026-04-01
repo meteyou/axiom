@@ -23,10 +23,54 @@ export interface WebFetchConfig {
 }
 
 export interface BuiltinToolsConfig {
-  webSearch?: { enabled?: boolean; provider?: string }
+  webSearch?: {
+    enabled?: boolean
+    provider?: string
+    braveSearchApiKey?: string
+    searxngUrl?: string
+  }
   webFetch?: { enabled?: boolean }
   braveSearchApiKey?: string
   searxngUrl?: string
+}
+
+export interface SettingsBuiltinToolsConfig {
+  builtinTools?: BuiltinToolsConfig
+  braveSearchApiKey?: string
+  searxngUrl?: string
+}
+
+/**
+ * Resolve built-in web tools config from settings.json.
+ *
+ * Canonical runtime shape keeps provider-specific values on the top level of
+ * BuiltinToolsConfig so createBuiltinWebTools(...) can consume one consistent
+ * structure. For backward compatibility, nested provider values under
+ * builtinTools.webSearch still work, but top-level settings take precedence.
+ */
+export function resolveBuiltinToolsConfig(settings?: SettingsBuiltinToolsConfig): BuiltinToolsConfig | undefined {
+  if (!settings) return undefined
+
+  const builtinTools = settings.builtinTools
+  const webSearch = builtinTools?.webSearch
+  const braveSearchApiKey = settings.braveSearchApiKey ?? webSearch?.braveSearchApiKey ?? builtinTools?.braveSearchApiKey
+  const searxngUrl = settings.searxngUrl ?? webSearch?.searxngUrl ?? builtinTools?.searxngUrl
+
+  if (!builtinTools && braveSearchApiKey === undefined && searxngUrl === undefined) {
+    return undefined
+  }
+
+  return {
+    ...builtinTools,
+    webSearch: webSearch
+      ? {
+          enabled: webSearch.enabled,
+          provider: webSearch.provider,
+        }
+      : builtinTools?.webSearch,
+    braveSearchApiKey,
+    searxngUrl,
+  }
 }
 
 // ─── HTML-to-Text Extraction ─────────────────────────────────────────────────

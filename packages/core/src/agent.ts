@@ -15,8 +15,8 @@ import type { SkillPromptEntry } from './memory.js'
 import { loadConfig, ensureConfigTemplates } from './config.js'
 import { loadSkills, getSkillDecrypted } from './skill-config.js'
 import { createMemoryTools } from './memory-tools.js'
-import { createBuiltinWebTools } from './web-tools.js'
-import type { BuiltinToolsConfig } from './web-tools.js'
+import { createBuiltinWebTools, resolveBuiltinToolsConfig } from './web-tools.js'
+import type { BuiltinToolsConfig, SettingsBuiltinToolsConfig } from './web-tools.js'
 import { SessionManager } from './session-manager.js'
 import type { SessionInfo } from './session-manager.js'
 import { MessageQueue } from './message-queue.js'
@@ -294,14 +294,10 @@ export class AgentCore {
     let builtinToolsConfig: BuiltinToolsConfig | undefined
     try {
       ensureConfigTemplates()
-      const settings = loadConfig<{ language?: string; timezone?: string; builtinTools?: BuiltinToolsConfig; braveSearchApiKey?: string; searxngUrl?: string }>('settings.json')
+      const settings = loadConfig<{ language?: string; timezone?: string } & SettingsBuiltinToolsConfig>('settings.json')
       language = settings.language
       timezone = settings.timezone
-      builtinToolsConfig = {
-        ...settings.builtinTools,
-        braveSearchApiKey: settings.braveSearchApiKey ?? settings.builtinTools?.braveSearchApiKey,
-        searxngUrl: settings.searxngUrl ?? settings.builtinTools?.searxngUrl,
-      }
+      builtinToolsConfig = resolveBuiltinToolsConfig(settings)
     } catch {
       // Config not available yet, use default
     }

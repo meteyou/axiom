@@ -11,6 +11,7 @@ import {
   createWebSearchTool,
   createWebFetchTool,
   createBuiltinWebTools,
+  resolveBuiltinToolsConfig,
 } from './web-tools.js'
 import { encrypt } from './encryption.js'
 
@@ -448,6 +449,45 @@ describe('searchSearXNG', () => {
     const results = await searchSearXNG('test', 'https://searx.example.com', 5, mockFetch)
     expect(results).toHaveLength(1)
     expect(results[0]).toEqual({ title: 'Only Title', url: '', snippet: '' })
+  })
+})
+
+// ─── resolveBuiltinToolsConfig ──────────────────────────────────────────────
+
+describe('resolveBuiltinToolsConfig', () => {
+  it('returns undefined when settings are missing', () => {
+    expect(resolveBuiltinToolsConfig()).toBeUndefined()
+  })
+
+  it('prefers top-level provider-specific settings', () => {
+    const resolved = resolveBuiltinToolsConfig({
+      builtinTools: {
+        webSearch: { enabled: true, provider: 'brave', braveSearchApiKey: 'nested-key', searxngUrl: 'https://nested.example' },
+        webFetch: { enabled: false },
+      },
+      braveSearchApiKey: 'top-level-key',
+      searxngUrl: 'https://top-level.example',
+    })
+
+    expect(resolved).toEqual({
+      webSearch: { enabled: true, provider: 'brave' },
+      webFetch: { enabled: false },
+      braveSearchApiKey: 'top-level-key',
+      searxngUrl: 'https://top-level.example',
+    })
+  })
+
+  it('falls back to nested webSearch provider-specific settings for backward compatibility', () => {
+    const resolved = resolveBuiltinToolsConfig({
+      builtinTools: {
+        webSearch: { enabled: true, provider: 'searxng', searxngUrl: 'https://nested.example' },
+      },
+    })
+
+    expect(resolved).toEqual({
+      webSearch: { enabled: true, provider: 'searxng' },
+      searxngUrl: 'https://nested.example',
+    })
   })
 })
 
