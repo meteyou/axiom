@@ -52,6 +52,15 @@ ENV PATH="/data/npm-global/bin:${PATH}"
 # Create data directories
 RUN mkdir -p /data/db /data/config /data/memory/daily /data/skills /data/npm-global /workspace
 
+# Save baseline package snapshot for auto-tracking agent-installed packages
+RUN dpkg-query -W -f='${Package}\n' | sort -u > /etc/dpkg-base-packages.txt
+
+# Install apt hook to auto-track packages installed at runtime
+COPY track-packages.sh /usr/local/bin/track-packages.sh
+RUN chmod +x /usr/local/bin/track-packages.sh \
+    && echo 'DPkg::Post-Invoke {"/usr/local/bin/track-packages.sh";};' \
+       > /etc/apt/apt.conf.d/99track-packages
+
 # Create non-root agent user with /workspace as home
 ARG USERNAME=agent
 ARG USER_UID=1000
