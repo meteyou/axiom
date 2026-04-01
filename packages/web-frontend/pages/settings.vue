@@ -8,9 +8,9 @@
 
   <!-- Settings page -->
   <div v-else class="flex h-full flex-col overflow-hidden">
-    <!-- Header with save action -->
+    <!-- Header with save action (hidden on secrets tab which has its own save flow) -->
     <PageHeader :title="$t('settings.title')" :subtitle="$t('settings.subtitle')">
-      <template #actions>
+      <template v-if="activeTab !== 'secrets'" #actions>
         <Button :disabled="saving || !form" @click="handleSave">
           <span
             v-if="saving"
@@ -22,8 +22,8 @@
       </template>
     </PageHeader>
 
-    <!-- Feedback alerts — always visible above tab layout -->
-    <div v-if="error || successMessage" class="shrink-0 border-b border-border px-6 py-3">
+    <!-- Feedback alerts — only for non-secrets tabs (secrets tab handles its own feedback) -->
+    <div v-if="activeTab !== 'secrets' && (error || successMessage)" class="shrink-0 border-b border-border px-6 py-3">
       <Alert v-if="error" variant="destructive">
         <AlertDescription class="flex items-center justify-between">
           <span>{{ error }}</span>
@@ -786,6 +786,194 @@
               </div>
             </div>
 
+            <!-- ═══ Secrets ═══ -->
+            <div v-else-if="activeTab === 'secrets'">
+              <div class="mb-8">
+                <h2 class="text-lg font-semibold tracking-tight text-foreground">
+                  {{ $t('settings.secretsTitle') }}
+                </h2>
+                <p class="mt-1 text-sm text-muted-foreground">
+                  {{ $t('settings.secretsSubtitle') }}
+                </p>
+              </div>
+
+              <!-- Secrets feedback alerts -->
+              <div v-if="secretsError || secretsSuccess" class="mb-6">
+                <Alert v-if="secretsError" variant="destructive">
+                  <AlertDescription class="flex items-center justify-between">
+                    <span>{{ secretsError }}</span>
+                    <button
+                      type="button"
+                      class="ml-2 opacity-70 transition-opacity hover:opacity-100"
+                      :aria-label="$t('aria.closeAlert')"
+                      @click="clearSecretsMessages()"
+                    >
+                      <AppIcon name="close" class="h-4 w-4" />
+                    </button>
+                  </AlertDescription>
+                </Alert>
+                <Alert v-if="secretsSuccess" variant="success" :class="secretsError ? 'mt-2' : ''">
+                  <AlertDescription class="flex items-center justify-between">
+                    <span>{{ secretsSuccess === 'deleted' ? $t('settings.secretsDeleteSuccess') : $t('settings.secretsSaveSuccess') }}</span>
+                    <button
+                      type="button"
+                      class="ml-2 opacity-70 transition-opacity hover:opacity-100"
+                      :aria-label="$t('aria.closeAlert')"
+                      @click="clearSecretsMessages()"
+                    >
+                      <AppIcon name="close" class="h-4 w-4" />
+                    </button>
+                  </AlertDescription>
+                </Alert>
+              </div>
+
+              <!-- Loading -->
+              <div v-if="secretsLoading" class="flex flex-col gap-4">
+                <Skeleton class="h-16 w-full rounded-lg" />
+                <Skeleton class="h-16 w-full rounded-lg" />
+              </div>
+
+              <div v-else class="flex flex-col gap-8">
+                <!-- Existing secrets list -->
+                <div v-if="secretsList.length > 0" class="overflow-hidden rounded-lg border border-border">
+                  <div
+                    v-for="(secret, index) in secretsList"
+                    :key="secret.key"
+                    :class="[
+                      'px-4 py-3',
+                      index > 0 ? 'border-t border-border' : '',
+                    ]"
+                  >
+                    <div class="flex items-center justify-between gap-3">
+                      <div class="flex min-w-0 items-center gap-3">
+                        <span class="font-mono text-sm font-medium text-foreground">{{ secret.key }}</span>
+                        <span v-if="secret.configured" class="font-mono text-xs text-muted-foreground">
+                          {{ secret.maskedValue }}
+                        </span>
+                        <Badge v-else variant="outline">{{ $t('settings.secretsNotConfigured') }}</Badge>
+                      </div>
+                      <div class="flex shrink-0 items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          :aria-label="$t('common.edit')"
+                          @click="toggleSecretEdit(secret.key)"
+                        >
+                          <AppIcon name="edit" class="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          class="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                          :aria-label="$t('settings.secretsDelete')"
+                          @click="secretToDelete = secret.key"
+                        >
+                          <AppIcon name="trash" class="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                    <!-- Inline update field — shown on edit click -->
+                    <div v-if="secretEditOpen.has(secret.key)" class="mt-3 flex flex-col gap-1.5">
+                      <Label :for="`secret-edit-${secret.key}`">{{ $t('settings.secretsNewValue') }}</Label>
+                      <div class="flex items-center gap-2">
+                        <Input
+                          :id="`secret-edit-${secret.key}`"
+                          v-model="secretEdits[secret.key]"
+                          type="password"
+                          autocomplete="off"
+                          :placeholder="$t('settings.secretsValuePlaceholder')"
+                          class="flex-1"
+                        />
+                        <Button
+                          size="sm"
+                          :disabled="secretsSaving || !secretEdits[secret.key]"
+                          @click="handleSaveSingleSecret(secret.key)"
+                        >
+                          <span
+                            v-if="secretsSaving"
+                            class="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground"
+                            aria-hidden="true"
+                          />
+                          {{ $t('common.save') }}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          @click="toggleSecretEdit(secret.key)"
+                        >
+                          {{ $t('common.cancel') }}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Empty state -->
+                <div v-else class="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border px-4 py-8 text-center">
+                  <AppIcon name="key" size="lg" class="text-muted-foreground/40" />
+                  <p class="text-sm text-muted-foreground">{{ $t('settings.secretsEmpty') }}</p>
+                </div>
+
+                <Separator />
+
+                <!-- Add new secret -->
+                <div>
+                  <h3 class="text-base font-semibold tracking-tight text-foreground">
+                    {{ $t('settings.secretsAdd') }}
+                  </h3>
+                </div>
+
+                <div class="flex flex-col gap-4">
+                  <div class="flex flex-col gap-2">
+                    <Label for="new-secret-key">{{ $t('settings.secretsKey') }}</Label>
+                    <Input
+                      id="new-secret-key"
+                      v-model="newSecretKey"
+                      :placeholder="$t('settings.secretsKeyPlaceholder')"
+                      class="font-mono"
+                      @input="newSecretError = validateNewSecretKey(newSecretKey)"
+                    />
+                    <p v-if="newSecretError" class="text-xs text-destructive">{{ newSecretError }}</p>
+                  </div>
+
+                  <div class="flex flex-col gap-2">
+                    <Label for="new-secret-value">{{ $t('settings.secretsValue') }}</Label>
+                    <Input
+                      id="new-secret-value"
+                      v-model="newSecretValue"
+                      type="password"
+                      autocomplete="off"
+                      :placeholder="$t('settings.secretsValuePlaceholder')"
+                    />
+                  </div>
+                </div>
+
+                <!-- Save button -->
+                <div class="flex justify-end">
+                  <Button :disabled="secretsSaving" @click="handleSaveSecrets">
+                    <span
+                      v-if="secretsSaving"
+                      class="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground"
+                      aria-hidden="true"
+                    />
+                    {{ $t('settings.secretsSave') }}
+                  </Button>
+                </div>
+              </div>
+
+              <!-- Delete confirmation dialog -->
+              <ConfirmDialog
+                :open="!!secretToDelete"
+                :title="$t('settings.secretsDelete')"
+                :description="$t('settings.secretsDeleteConfirm', { key: secretToDelete ?? '' })"
+                :confirm-label="$t('settings.secretsDelete')"
+                destructive
+                :loading="secretsSaving"
+                @confirm="handleDeleteSecret"
+                @cancel="secretToDelete = null"
+              />
+            </div>
+
           </template>
         </div>
       </div>
@@ -838,7 +1026,7 @@ const timezones = [
   'America/Argentina/Buenos_Aires',
 ]
 
-const VALID_TABS = ['agent', 'memory', 'heartbeat', 'telegram', 'tasks'] as const
+const VALID_TABS = ['agent', 'memory', 'heartbeat', 'telegram', 'tasks', 'secrets'] as const
 type TabId = (typeof VALID_TABS)[number]
 
 const activeTab = computed<TabId>({
@@ -853,10 +1041,11 @@ const activeTab = computed<TabId>({
 
 const tabs = computed(() => [
   { id: 'agent' as TabId, icon: 'bot', label: t('settings.tabs.agent') },
-  { id: 'memory' as TabId, icon: 'brain', label: t('settings.tabs.memory') },
   { id: 'heartbeat' as TabId, icon: 'activity', label: t('settings.tabs.heartbeat') },
-  { id: 'telegram' as TabId, icon: 'send', label: t('settings.tabs.telegram') },
+  { id: 'memory' as TabId, icon: 'brain', label: t('settings.tabs.memory') },
+  { id: 'secrets' as TabId, icon: 'key', label: t('settings.tabs.secrets') },
   { id: 'tasks' as TabId, icon: 'bot', label: t('settings.tabs.tasks') },
+  { id: 'telegram' as TabId, icon: 'send', label: t('settings.tabs.telegram') },
 ])
 
 /* ── Settings state ── */
@@ -886,6 +1075,108 @@ const {
   updateTelegramUser,
   deleteTelegramUser,
 } = useTelegramUsers()
+
+/* ── Secrets ── */
+const {
+  secrets: secretsList,
+  loading: secretsLoading,
+  saving: secretsSaving,
+  error: secretsError,
+  successMessage: secretsSuccess,
+  fetchSecrets,
+  updateSecrets,
+  removeSecret,
+  clearMessages: clearSecretsMessages,
+} = useSecrets()
+
+/** Inline editing state for existing secrets */
+const secretEdits = ref<Record<string, string>>({})
+
+/** Which secrets have their edit field expanded */
+const secretEditOpen = ref<Set<string>>(new Set())
+
+/** State for adding a new secret */
+const newSecretKey = ref('')
+const newSecretValue = ref('')
+const newSecretError = ref<string | null>(null)
+
+/** Delete confirmation */
+const secretToDelete = ref<string | null>(null)
+
+function toggleSecretEdit(key: string) {
+  const s = new Set(secretEditOpen.value)
+  if (s.has(key)) {
+    s.delete(key)
+    delete secretEdits.value[key]
+  } else {
+    s.add(key)
+  }
+  secretEditOpen.value = s
+}
+
+function resetSecretEdits() {
+  secretEdits.value = {}
+  secretEditOpen.value = new Set()
+  newSecretKey.value = ''
+  newSecretValue.value = ''
+  newSecretError.value = null
+}
+
+function validateNewSecretKey(key: string): string | null {
+  if (!key) return null
+  if (!/^[A-Z][A-Z0-9_]*$/.test(key)) return t('settings.secretsKeyInvalid')
+  if (secretsList.value.some(s => s.key === key)) return t('settings.secretsKeyExists')
+  return null
+}
+
+async function handleSaveSingleSecret(key: string) {
+  const value = secretEdits.value[key]
+  if (!value) return
+
+  const ok = await updateSecrets({ [key]: value })
+  if (ok) {
+    toggleSecretEdit(key)
+    setTimeout(() => { secretsSuccess.value = null }, 3000)
+  }
+}
+
+async function handleSaveSecrets() {
+  const updates: Record<string, string> = {}
+
+  // Collect edits for existing secrets
+  for (const [key, value] of Object.entries(secretEdits.value)) {
+    if (value) updates[key] = value
+  }
+
+  // Add new secret if provided
+  if (newSecretKey.value) {
+    const err = validateNewSecretKey(newSecretKey.value)
+    if (err) {
+      newSecretError.value = err
+      return
+    }
+    if (newSecretValue.value) {
+      updates[newSecretKey.value] = newSecretValue.value
+    }
+  }
+
+  if (Object.keys(updates).length === 0) return
+
+  const ok = await updateSecrets(updates)
+  if (ok) {
+    resetSecretEdits()
+    setTimeout(() => { secretsSuccess.value = null }, 3000)
+  }
+}
+
+async function handleDeleteSecret() {
+  if (!secretToDelete.value) return
+  const ok = await removeSecret(secretToDelete.value)
+  secretToDelete.value = null
+  if (ok) {
+    setTimeout(() => { secretsSuccess.value = null }, 3000)
+  }
+}
 
 function getTelegramAvatarUrl(telegramUserId: number): string {
   const config = useRuntimeConfig()
@@ -1026,6 +1317,7 @@ onMounted(async () => {
     fetchUsers(),
     fetchTelegramUsers(),
     fetchConsolidationStatus(),
+    fetchSecrets(),
   ])
   hydrateForm()
 })
