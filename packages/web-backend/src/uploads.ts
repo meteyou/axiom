@@ -8,7 +8,7 @@ import {
   type UploadDescriptor,
 } from '@openagent/core'
 
-const MAX_UPLOAD_SIZE = 25 * 1024 * 1024
+const MAX_UPLOAD_SIZE = 50 * 1024 * 1024
 
 export const uploadMiddleware = multer({
   storage: multer.memoryStorage(),
@@ -24,7 +24,8 @@ export function extractUploadsFromMetadata(metadata?: string | null): UploadDesc
 
 export function sendUploadedFile(req: Request, res: Response, next: NextFunction): void {
   try {
-    const relativePath = Array.isArray(req.params[0]) ? req.params[0].join('/') : req.params[0]
+    const rawPath = req.params.path ?? req.params[0]
+    const relativePath = Array.isArray(rawPath) ? rawPath.join('/') : rawPath
     if (!relativePath) {
       res.status(404).json({ error: 'File not found' })
       return
@@ -36,8 +37,8 @@ export function sendUploadedFile(req: Request, res: Response, next: NextFunction
       return
     }
 
-    const absolutePath = path.join(getUploadsDir(), normalized)
-    const uploadsDir = getUploadsDir()
+    const uploadsDir = path.resolve(getUploadsDir())
+    const absolutePath = path.resolve(uploadsDir, normalized)
     if (!absolutePath.startsWith(uploadsDir) || !fs.existsSync(absolutePath)) {
       res.status(404).json({ error: 'File not found' })
       return
@@ -58,7 +59,7 @@ export function sendUploadedFile(req: Request, res: Response, next: NextFunction
     if (download) {
       res.setHeader('Content-Disposition', `attachment; filename="${path.basename(absolutePath).replace(/"/g, '')}"`)
     }
-    res.sendFile(absolutePath)
+    res.sendFile(absolutePath, { dotfiles: 'allow' })
   } catch (err) {
     next(err)
   }
