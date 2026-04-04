@@ -17,9 +17,6 @@ vi.mock('./config.js', () => ({
   getConfigDir: vi.fn(() => '/tmp/test-config'),
 }))
 
-vi.mock('./memory-tools.js', () => ({
-  createMemoryTools: vi.fn(() => []),
-}))
 
 function makeProvider(overrides: Partial<ProviderConfig> = {}): ProviderConfig {
   return {

@@ -16,7 +16,6 @@ import { loadConfig, ensureConfigTemplates } from './config.js'
 import { loadSkills, getSkillDecrypted } from './skill-config.js'
 import { getUploadsDir } from './uploads.js'
 import type { UploadDescriptor } from './uploads.js'
-import { createMemoryTools } from './memory-tools.js'
 import { createBuiltinWebTools } from './web-tools.js'
 import type { BuiltinToolsConfig } from './web-tools.js'
 import { SessionManager } from './session-manager.js'
@@ -318,7 +317,6 @@ export class AgentCore {
 
     const tools: AgentTool[] = [
       ...(options.tools ?? []),
-      ...createMemoryTools(options.memoryDir),
       ...createBuiltinWebTools(builtinToolsConfig),
       ...(options.yoloMode !== false ? createYoloTools() : []),
     ]
