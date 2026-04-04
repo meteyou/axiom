@@ -474,7 +474,22 @@ export class AgentCore {
     const session = this.sessionManager.getOrCreateSession(userId, source)
     const sessionId = session.id
 
-    this.refreshSystemPrompt(source)
+    // Resolve username for user profile injection (skip for group chats)
+    let currentUser: { username: string } | undefined
+    if (source !== 'telegram-group') {
+      try {
+        const row = this.db.prepare('SELECT username FROM users WHERE id = ?').get(userId) as { username: string } | undefined
+        if (row?.username) {
+          currentUser = { username: row.username }
+        }
+      } catch {
+        // userId might not be a numeric ID (e.g. telegram-12345), skip
+      }
+    }
+
+    // Pass channel as 'telegram' for both DM and group sources
+    const channel = source.startsWith('telegram') ? 'telegram' : source
+    this.refreshSystemPrompt(channel, currentUser)
     this.sessionManager.recordMessage(userId)
 
     // Build image content and file context from attachments
@@ -836,7 +851,7 @@ export class AgentCore {
   /**
    * Refresh the system prompt from current memory state
    */
-  refreshSystemPrompt(channel?: string): void {
+  refreshSystemPrompt(channel?: string, currentUser?: { username: string }): void {
     let language: string | undefined
     let timezone: string | undefined
     try {
@@ -861,6 +876,7 @@ export class AgentCore {
       channel,
       skills: allSkills,
       agentSkillsOverflowCount: totalAgentSkills > 10 ? totalAgentSkills : undefined,
+      currentUser,
     })
     this.agent.setSystemPrompt(prompt)
   }
