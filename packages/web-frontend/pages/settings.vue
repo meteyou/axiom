@@ -180,6 +180,15 @@
                   <p class="text-xs text-muted-foreground">{{ $t('settings.sessionTimeoutHint') }}</p>
                 </div>
 
+                <div class="flex flex-col gap-2">
+                  <Label for="upload-retention">Upload retention</Label>
+                  <div class="flex items-center gap-2">
+                    <Input id="upload-retention" v-model.number="form.uploadRetentionDays" type="number" min="0" class="w-full" />
+                    <span class="text-sm text-muted-foreground">{{ $t('settings.days') }}</span>
+                  </div>
+                  <p class="text-xs text-muted-foreground">Delete uploaded files automatically after this many days. Set to 0 to remove them immediately on cleanup.</p>
+                </div>
+
                 <Separator />
 
                 <!-- Enable toggle -->
@@ -1252,6 +1261,7 @@ interface SettingsForm {
   timezone: string
   heartbeatIntervalMinutes: number
   batchingDelayMs: number
+  uploadRetentionDays: number
   telegramEnabled: boolean
   telegramBotToken: string
   heartbeat: HeartbeatSettings
@@ -1270,6 +1280,7 @@ function hydrateForm() {
     timezone: s.timezone,
     heartbeatIntervalMinutes: s.heartbeatIntervalMinutes,
     batchingDelayMs: s.batchingDelayMs,
+    uploadRetentionDays: s.uploadRetentionDays,
     telegramEnabled: s.telegramEnabled,
     telegramBotToken: s.telegramBotToken,
     heartbeat: {

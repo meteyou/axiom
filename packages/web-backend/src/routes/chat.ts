@@ -1,12 +1,51 @@
 import { Router } from 'express'
 import type { Database } from '@openagent/core'
+import { saveUpload, serializeUploadsMetadata } from '@openagent/core'
 import { jwtMiddleware } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
+import { uploadMiddleware } from '../uploads.js'
 
 export function createChatRouter(db: Database): Router {
   const router = Router()
 
   router.use(jwtMiddleware)
+
+  router.post('/message', uploadMiddleware.array('files', 5), (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.userId
+    const text = typeof req.body?.content === 'string' ? req.body.content.trim() : ''
+    const files = (req.files as Express.Multer.File[] | undefined) ?? []
+
+    if (!text && files.length === 0) {
+      res.status(400).json({ error: 'Message content or at least one file is required' })
+      return
+    }
+
+    const sessionId = `web-${userId}-${Date.now()}`
+    const uploads = files.map(file => saveUpload({
+      buffer: file.buffer,
+      originalName: file.originalname,
+      mimeType: file.mimetype,
+      source: 'web',
+      userId,
+      sessionId,
+    }))
+
+    const metadata = uploads.length > 0 ? serializeUploadsMetadata(uploads) : null
+    db.prepare(
+      'INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)'
+    ).run(sessionId, userId, 'user', text, metadata)
+
+    res.status(201).json({
+      message: {
+        session_id: sessionId,
+        user_id: userId,
+        role: 'user',
+        content: text,
+        metadata,
+        timestamp: new Date().toISOString(),
+      },
+    })
+  })
 
   /**
    * GET /api/chat/history

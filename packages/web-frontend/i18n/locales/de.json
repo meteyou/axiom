@@ -55,7 +55,11 @@
     "statusConnected": "Chat verbunden",
     "statusConnecting": "Verbinde",
     "statusDisconnected": "Chat getrennt",
-    "scrollToBottom": "Nach unten scrollen"
+    "scrollToBottom": "Nach unten scrollen",
+    "attachments": {
+      "openOriginal": "Original öffnen",
+      "download": "Herunterladen"
+    }
   },
   "status": {
     "online": "Online",

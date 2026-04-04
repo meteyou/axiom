@@ -1078,3 +1078,35 @@ describe('stats API', () => {
     expect(res.status).toBe(401)
   })
 })
+
+describe('upload API', () => {
+  let adminToken: string
+
+  beforeAll(async () => {
+    const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'admin', password: 'admin' }),
+    })
+    adminToken = (await loginRes.json() as { accessToken: string }).accessToken
+  })
+
+  it('stores uploaded files with chat messages', async () => {
+    const form = new FormData()
+    form.append('content', 'with file')
+    form.append('files', new Blob(['hello upload'], { type: 'text/plain' }), 'note.txt')
+
+    const res = await fetch(`${baseUrl}/api/chat/message`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: form,
+    })
+    const body = await res.json() as { message: { metadata: string } }
+    expect(res.status).toBe(201)
+    expect(body.message.metadata).toContain('note.txt')
+
+    const meta = JSON.parse(body.message.metadata) as { files: Array<{ relativePath: string }> }
+    const filePath = path.join(tempDataDir, 'uploads', meta.files[0].relativePath)
+    expect(fs.existsSync(filePath)).toBe(true)
+  })
+})

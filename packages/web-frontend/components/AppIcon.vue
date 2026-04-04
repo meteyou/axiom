@@ -54,6 +54,10 @@ import {
   X,
   ListTodo,
   OctagonX,
+  Paperclip,
+  Download,
+  ExternalLink,
+  Image,
   Zap,
 } from 'lucide-vue-next'
 
@@ -103,6 +107,10 @@ const iconMap = {
   upload: Upload,
   tasks: ListTodo,
   kill: OctagonX,
+  paperclip: Paperclip,
+  download: Download,
+  externalLink: ExternalLink,
+  image: Image,
   zap: Zap,
 } as const
 

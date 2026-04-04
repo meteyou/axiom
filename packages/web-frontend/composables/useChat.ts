@@ -6,12 +6,26 @@ export interface ToolCallData {
   toolIsError?: boolean
 }
 
+export interface ChatAttachment {
+  kind: 'image' | 'file'
+  originalName: string
+  storedName: string
+  relativePath: string
+  urlPath: string
+  mimeType: string
+  size: number
+  previewUrl?: string
+  width?: number
+  height?: number
+}
+
 export interface ChatMessage {
   id?: number
   role: 'user' | 'assistant' | 'system' | 'tool' | 'divider'
   content: string
   timestamp?: string
   streaming?: boolean
+  attachments?: ChatAttachment[]
   /** The source channel (for cross-channel messages) */
   source?: 'web' | 'telegram'
   /** Sender display name (for cross-channel messages) */
@@ -20,7 +34,7 @@ export interface ChatMessage {
   toolData?: ToolCallData
   /** Whether this message was also delivered to Telegram */
   telegramDelivered?: boolean
-  /** Whether this message is a task injection response */
+  /** Whether this is a task injection response */
   isTaskInjection?: boolean
   /** Whether this is a task result notification (system message) */
   isTaskResult?: boolean
@@ -97,6 +111,16 @@ function formatReminderContent(name?: string, message?: string): string {
   }
 
   return `⏰ ${trimmedName}\n\n${trimmedMessage}`
+}
+
+function parseAttachments(metadata?: string): ChatAttachment[] {
+  if (!metadata) return []
+  try {
+    const parsed = JSON.parse(metadata) as { files?: ChatAttachment[] }
+    return Array.isArray(parsed.files) ? parsed.files : []
+  } catch {
+    return []
+  }
 }
 
 // Module-level singletons so multiple useChat() calls share the same WebSocket
@@ -246,9 +270,7 @@ export function useChat() {
       case 'task_question': {
         const emoji = msg.type === 'task_completed' ? '✅' : msg.type === 'task_failed' ? '❌' : '❓'
         const statusLabel = msg.type.replace('task_', '')
-        const content = `${emoji} Task ${statusLabel}: ${msg.taskName ?? 'Unknown'}
-
-${msg.taskSummary ?? msg.text ?? 'No summary available.'}`
+        const content = `${emoji} Task ${statusLabel}: ${msg.taskName ?? 'Unknown'}\n\n${msg.taskSummary ?? msg.text ?? 'No summary available.'}`
         messages.value = [...messages.value, {
           role: 'system',
           content,
@@ -360,18 +382,46 @@ ${msg.taskSummary ?? msg.text ?? 'No summary available.'}`
     }
   }
 
-  function sendMessage(content: string) {
-    if (!ws || ws.readyState !== WebSocket.OPEN) return
-    if (!content.trim()) return
+  async function sendMessage(content: string, files: File[] = []) {
+    const trimmed = content.trim()
+    if (!trimmed && files.length === 0) return
 
-    // Add user message to UI immediately
+    if (files.length > 0) {
+      const { apiFetch } = useApi()
+      const formData = new FormData()
+      formData.append('content', trimmed)
+      for (const file of files) formData.append('files', file)
+
+      const response = await apiFetch<{ message: { session_id: string; role: 'user'; content: string; metadata?: string; timestamp: string } }>('/api/chat/message', {
+        method: 'POST',
+        body: formData as unknown as BodyInit,
+      })
+
+      const attachments = parseAttachments(response.message.metadata)
+      messages.value = [...messages.value, {
+        role: 'user',
+        content: response.message.content,
+        timestamp: response.message.timestamp,
+        attachments,
+      }]
+
+      // Trigger the agent via WebSocket (message already saved by HTTP route)
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'message', content: response.message.content, skipSave: true, attachments }))
+      }
+      return
+    }
+
+    if (!ws || ws.readyState !== WebSocket.OPEN) return
+    if (!trimmed) return
+
     messages.value = [...messages.value, {
       role: 'user',
-      content: content.trim(),
+      content: trimmed,
       timestamp: new Date().toISOString(),
     }]
 
-    ws.send(JSON.stringify({ type: 'message', content: content.trim() }))
+    ws.send(JSON.stringify({ type: 'message', content: trimmed }))
   }
 
   function sendCommand(command: string) {

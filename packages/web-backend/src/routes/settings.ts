@@ -31,6 +31,7 @@ export interface SettingsData {
   heartbeatIntervalMinutes: number
   heartbeat?: HeartbeatData
   batchingDelayMs?: number
+  uploadRetentionDays?: number
   yoloMode: boolean
 }
 
@@ -106,6 +107,7 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
         timezone: settings.timezone ?? 'UTC',
         heartbeatIntervalMinutes: settings.heartbeatIntervalMinutes ?? settings.heartbeat?.intervalMinutes ?? 5,
         yoloMode: settings.yoloMode ?? true,
+        uploadRetentionDays: settings.uploadRetentionDays ?? 30,
         batchingDelayMs: settings.batchingDelayMs ?? telegram.batchingDelayMs ?? 2500,
         telegramEnabled: telegram.enabled ?? false,
         telegramBotToken: telegram.botToken ?? '',
@@ -149,6 +151,7 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
       heartbeatIntervalMinutes: number
       yoloMode: boolean
       batchingDelayMs: number
+      uploadRetentionDays: number
       telegramEnabled: boolean
       telegramBotToken: string
       heartbeat: {
@@ -221,6 +224,14 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
 
       if (body.yoloMode !== undefined) {
         settings.yoloMode = !!body.yoloMode
+      }
+
+      if (body.uploadRetentionDays !== undefined) {
+        if (typeof body.uploadRetentionDays !== 'number' || !Number.isFinite(body.uploadRetentionDays) || body.uploadRetentionDays < 0) {
+          res.status(400).json({ error: 'uploadRetentionDays must be a non-negative number' })
+          return
+        }
+        settings.uploadRetentionDays = body.uploadRetentionDays
       }
 
       if (body.batchingDelayMs !== undefined) {
@@ -457,6 +468,7 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
         heartbeatIntervalMinutes: settings.heartbeatIntervalMinutes,
         yoloMode: settings.yoloMode,
         batchingDelayMs: settings.batchingDelayMs ?? previousBatchingDelayMs,
+        uploadRetentionDays: settings.uploadRetentionDays ?? 30,
         telegramEnabled: telegram.enabled,
         telegramBotToken: telegram.botToken,
         heartbeat: {

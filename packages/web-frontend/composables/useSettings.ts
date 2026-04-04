@@ -45,6 +45,7 @@ export interface Settings {
   heartbeatIntervalMinutes: number
   yoloMode: boolean
   batchingDelayMs: number
+  uploadRetentionDays: number
   telegramEnabled: boolean
   telegramBotToken: string
   heartbeat: HeartbeatSettings
@@ -90,6 +91,7 @@ export function useSettings() {
         heartbeatIntervalMinutes: result.heartbeatIntervalMinutes,
         yoloMode: result.yoloMode,
         batchingDelayMs: result.batchingDelayMs,
+        uploadRetentionDays: result.uploadRetentionDays,
         telegramEnabled: result.telegramEnabled,
         telegramBotToken: result.telegramBotToken,
         heartbeat: result.heartbeat ?? {

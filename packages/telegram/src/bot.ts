@@ -1,9 +1,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { Bot, GrammyError, HttpError } from 'grammy'
+import { Bot, GrammyError, HttpError, InputFile } from 'grammy'
 import type { Context } from 'grammy'
 import type { AgentCore, Database } from '@openagent/core'
-import { loadConfig } from '@openagent/core'
+import { loadConfig, saveUpload, serializeUploadsMetadata, parseUploadsMetadata } from '@openagent/core'
+import type { UploadDescriptor } from '@openagent/core'
 
 /**
  * Telegram config stored in /data/config/telegram.json
@@ -71,6 +72,7 @@ interface TelegramSettings {
 interface QueuedMessage {
   ctx: Context
   text: string
+  attachments?: UploadDescriptor[]
 }
 
 interface PendingBatch {
@@ -372,9 +374,16 @@ export class TelegramBot {
       await this.handleKillSwitch(ctx)
     })
 
-    // Regular text messages
     this.bot.on('message:text', async (ctx) => {
       await this.handleMessage(ctx)
+    })
+
+    this.bot.on('message:document', async (ctx) => {
+      await this.handleIncomingAttachment(ctx, 'document')
+    })
+
+    this.bot.on('message:photo', async (ctx) => {
+      await this.handleIncomingAttachment(ctx, 'photo')
     })
   }
 
@@ -556,6 +565,71 @@ export class TelegramBot {
     this.bufferMessage(ctx, text)
   }
 
+  private async downloadTelegramFile(fileId: string): Promise<{ buffer: Buffer; mimeType?: string }> {
+    const file = await this.bot.api.getFile(fileId)
+    if (!file.file_path) throw new Error('Missing Telegram file path')
+    const url = `https://api.telegram.org/file/bot${this.config.botToken}/${file.file_path}`
+    const response = await fetch(url)
+    if (!response.ok) throw new Error('Failed to download Telegram file')
+    return { buffer: Buffer.from(await response.arrayBuffer()) }
+  }
+
+  private async handleIncomingAttachment(ctx: Context, kind: 'document' | 'photo'): Promise<void> {
+    if (!await this.checkAuthorized(ctx)) return
+
+    const userId = this.resolveUserId(ctx)
+    const numericUserId = this.resolveNumericUserId(ctx)
+    const caption = ctx.msg?.caption?.trim() ?? ''
+    const sessionId = `telegram-${userId}-${Date.now()}`
+
+    try {
+      let upload
+      if (kind === 'document' && ctx.message?.document) {
+        const payload = await this.downloadTelegramFile(ctx.message.document.file_id)
+        upload = saveUpload({
+          buffer: payload.buffer,
+          originalName: ctx.message.document.file_name ?? 'document',
+          mimeType: ctx.message.document.mime_type ?? 'application/octet-stream',
+          source: 'telegram',
+          userId: numericUserId,
+          sessionId,
+        })
+      } else if (kind === 'photo' && ctx.message?.photo?.length) {
+        const photo = ctx.message.photo[ctx.message.photo.length - 1]
+        const payload = await this.downloadTelegramFile(photo.file_id)
+        upload = saveUpload({
+          buffer: payload.buffer,
+          originalName: 'telegram-photo.jpg',
+          mimeType: 'image/jpeg',
+          source: 'telegram',
+          userId: numericUserId,
+          sessionId,
+        })
+      }
+
+      if (!upload) return
+
+      const messageText = caption || upload.originalName
+
+      if (this.db && numericUserId) {
+        this.db.prepare('INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)')
+          .run(sessionId, numericUserId, 'user', messageText, serializeUploadsMetadata([upload]))
+      }
+
+      this.onChatEvent?.({ type: 'user_message', userId: numericUserId, sessionId, text: messageText, senderName: this.getSenderName(ctx) })
+
+      // Route to agent for processing (same path as text messages)
+      const chatKey = getChatKey(ctx)
+      const state = this.getOrCreateChatState(chatKey)
+      state.queue.push({ ctx, text: messageText, attachments: [upload] })
+      this.emitQueueDepthChanged()
+      await this.processQueue(chatKey)
+    } catch (err) {
+      console.error('Error handling Telegram attachment:', err)
+      await this.safeSendMessage(ctx, '⚠️ Datei konnte nicht gespeichert werden.')
+    }
+  }
+
   private bufferMessage(ctx: Context, text: string): void {
     const chatKey = getChatKey(ctx)
     const state = this.getOrCreateChatState(chatKey)
@@ -617,11 +691,55 @@ export class TelegramBot {
     }
   }
 
+  private async sendUploadToTelegram(chatId: string | number, file: ReturnType<typeof parseUploadsMetadata>[number]): Promise<void> {
+    const absolutePath = path.join(process.env.DATA_DIR ?? '/data', 'uploads', file.relativePath)
+    if (!fs.existsSync(absolutePath)) {
+      throw new Error(`Upload file not found: ${file.relativePath}`)
+    }
+
+    const inputFile = new InputFile(absolutePath, file.originalName)
+    if (file.kind === 'image') {
+      await this.bot.api.sendPhoto(chatId, inputFile)
+    } else {
+      await this.bot.api.sendDocument(chatId, inputFile)
+    }
+  }
+
+  private async sendAssistantResponseToTelegram(chatId: string | number, text: string, uploads: ReturnType<typeof parseUploadsMetadata>): Promise<void> {
+    for (const file of uploads) {
+      try {
+        await this.sendUploadToTelegram(chatId, file)
+      } catch (err) {
+        console.error(`[telegram] Failed to send assistant upload to ${chatId}:`, err)
+      }
+    }
+
+    if (text.trim()) {
+      await this.sendLongMessageToChatId(chatId, text.trim())
+    }
+  }
+
+  private async sendLongMessageToChatId(chatId: string | number, text: string): Promise<void> {
+    const parts = splitMessage(text)
+    for (const part of parts) {
+      await this.sendPlainOrFormatted(chatId, part)
+    }
+  }
+
+  private async sendPlainOrFormatted(chatId: string | number, text: string): Promise<void> {
+    const htmlText = markdownToTelegramHtml(text)
+    try {
+      await this.bot.api.sendMessage(chatId, htmlText, { parse_mode: 'HTML' })
+    } catch {
+      await this.bot.api.sendMessage(chatId, text)
+    }
+  }
+
   private async processQueuedMessage(chatKey: string, queuedMessage: QueuedMessage): Promise<void> {
     const state = this.chatStates.get(chatKey)
     if (!state) return
 
-    const { ctx, text } = queuedMessage
+    const { ctx, text, attachments } = queuedMessage
     const userId = this.resolveUserId(ctx)
     const numericUserId = this.resolveNumericUserId(ctx)
     const messageForAgent = text
@@ -631,20 +749,23 @@ export class TelegramBot {
     const sessionId = `telegram-${userId}-${Date.now()}`
 
     // Save user message to chat_messages (if linked to a web user)
-    if (this.db && numericUserId) {
+    // Skip if this came from handleIncomingAttachment (already saved)
+    if (this.db && numericUserId && !attachments?.length) {
       this.db.prepare(
         'INSERT INTO chat_messages (session_id, user_id, role, content) VALUES (?, ?, ?, ?)'
       ).run(sessionId, numericUserId, 'user', text)
     }
 
-    // Broadcast user message event
-    this.onChatEvent?.({
-      type: 'user_message',
-      userId: numericUserId,
-      sessionId,
-      text,
-      senderName,
-    })
+    // Broadcast user message event (skip if already broadcast by attachment handler)
+    if (!attachments?.length) {
+      this.onChatEvent?.({
+        type: 'user_message',
+        userId: numericUserId,
+        sessionId,
+        text,
+        senderName,
+      })
+    }
 
     try {
       // Send "typing" indicator
@@ -652,6 +773,7 @@ export class TelegramBot {
 
       // Collect the full response from agent
       let fullResponse = ''
+      let assistantUploads = [] as ReturnType<typeof parseUploadsMetadata>
       // Track pending tool calls to save input+output together
       const pendingToolCalls = new Map<string, { toolName: string; toolArgs: unknown }>()
 
@@ -665,7 +787,7 @@ export class TelegramBot {
       }, 4000)
 
       try {
-        for await (const chunk of this.agentCore.sendMessage(userId, messageForAgent, 'telegram')) {
+        for await (const chunk of this.agentCore.sendMessage(userId, messageForAgent, 'telegram', attachments)) {
           if (state.abortRequested) break
 
           if (chunk.type === 'text' && chunk.text) {
@@ -714,8 +836,22 @@ export class TelegramBot {
         clearInterval(typingInterval)
       }
 
-      if (!state.abortRequested && fullResponse.trim()) {
-        await this.sendLongMessage(ctx, fullResponse.trim())
+      if (this.db && numericUserId) {
+        const latestAssistant = this.db.prepare(
+          `SELECT content, metadata
+           FROM chat_messages
+           WHERE user_id = ? AND role = 'assistant'
+           ORDER BY id DESC
+           LIMIT 1`
+        ).get(numericUserId) as { content: string; metadata: string | null } | undefined
+
+        if (latestAssistant && latestAssistant.content === fullResponse.trim()) {
+          assistantUploads = parseUploadsMetadata(latestAssistant.metadata)
+        }
+      }
+
+      if (!state.abortRequested && (fullResponse.trim() || assistantUploads.length > 0)) {
+        await this.sendAssistantResponseToTelegram(ctx.chat!.id, fullResponse, assistantUploads)
       }
 
       // Save assistant response to chat_messages (if linked to a web user)

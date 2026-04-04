@@ -1,5 +1,16 @@
 export { initDatabase, getDatabase } from './database.js'
 export type { Database } from './database.js'
+export {
+  getDataDir,
+  getUploadsDir,
+  saveUpload,
+  serializeUploadsMetadata,
+  parseUploadsMetadata,
+  getUploadRetentionDays,
+  cleanupExpiredUploads,
+  getImageDimensions,
+} from './uploads.js'
+export type { UploadDescriptor, SaveUploadInput, UploadSettings } from './uploads.js'
 export { loadConfig, getConfigDir, ensureConfigTemplates } from './config.js'
 export {
   ensureMemoryStructure,

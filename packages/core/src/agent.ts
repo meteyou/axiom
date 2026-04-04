@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import nodePath from 'node:path'
 import { Agent as PiAgent } from '@mariozechner/pi-agent-core'
 import type { AgentEvent, AgentTool } from '@mariozechner/pi-agent-core'
-import type { Api, AssistantMessage, Message, Model } from '@mariozechner/pi-ai'
+import type { Api, AssistantMessage, ImageContent, Message, Model } from '@mariozechner/pi-ai'
 import { Type, completeSimple } from '@mariozechner/pi-ai'
 import type { Database } from './database.js'
 import { logTokenUsage, logToolCall } from './token-logger.js'
@@ -14,6 +14,8 @@ import { assembleSystemPrompt, ensureMemoryStructure } from './memory.js'
 import type { SkillPromptEntry } from './memory.js'
 import { loadConfig, ensureConfigTemplates } from './config.js'
 import { loadSkills, getSkillDecrypted } from './skill-config.js'
+import { getUploadsDir } from './uploads.js'
+import type { UploadDescriptor } from './uploads.js'
 import { createMemoryTools } from './memory-tools.js'
 import { createBuiltinWebTools } from './web-tools.js'
 import type { BuiltinToolsConfig } from './web-tools.js'
@@ -403,15 +405,16 @@ export class AgentCore {
    * Send a message and get back an async iterable of response chunks.
    * All messages are queued and processed sequentially to prevent collisions.
    */
-  async *sendMessage(userId: string, text: string, source: string = 'web'): AsyncIterable<ResponseChunk> {
+  async *sendMessage(userId: string, text: string, source: string = 'web', attachments?: UploadDescriptor[]): AsyncIterable<ResponseChunk> {
     const self = this
+    const uploads = attachments
     const iterable = await this.messageQueue.enqueue<ResponseChunk>(
       'user_message',
       userId,
       text,
       source,
       (msg) => {
-        return self.processUserMessage(msg.payload.userId, msg.payload.text, msg.payload.source)
+        return self.processUserMessage(msg.payload.userId, msg.payload.text, msg.payload.source, uploads)
       },
     )
     yield* iterable
@@ -441,14 +444,35 @@ export class AgentCore {
   /**
    * Process a user message (called from the queue)
    */
-  private async *processUserMessage(userId: string, text: string, source: string): AsyncIterable<ResponseChunk> {
+  private async *processUserMessage(userId: string, text: string, source: string, attachments?: UploadDescriptor[]): AsyncIterable<ResponseChunk> {
     const session = this.sessionManager.getOrCreateSession(userId, source)
     const sessionId = session.id
 
     this.refreshSystemPrompt(source)
     this.sessionManager.recordMessage(userId)
 
-    yield* this.executePromptWithRetry(text, sessionId)
+    // Build image content and file context from attachments
+    const images: ImageContent[] = []
+    const fileHints: string[] = []
+    if (attachments?.length) {
+      for (const att of attachments) {
+        if (att.kind === 'image') {
+          try {
+            const absPath = nodePath.resolve(getUploadsDir(), att.relativePath)
+            const buf = fs.readFileSync(absPath)
+            images.push({ type: 'image', data: buf.toString('base64'), mimeType: att.mimeType })
+          } catch {
+            fileHints.push(`[Image upload failed to read: ${att.originalName}]`)
+          }
+        } else {
+          const absPath = nodePath.resolve(getUploadsDir(), att.relativePath)
+          fileHints.push(`[Uploaded file: ${att.originalName} (${att.mimeType}, ${att.size} bytes) at ${absPath}]`)
+        }
+      }
+    }
+
+    const enrichedText = fileHints.length > 0 ? `${text}\n\n${fileHints.join('\n')}` : text
+    yield* this.executePromptWithRetry(enrichedText, sessionId, false, images.length > 0 ? images : undefined)
   }
 
   /**
@@ -490,11 +514,12 @@ export class AgentCore {
   /**
    * Execute a prompt with optional fallback retry on pre-stream errors.
    */
-  private async *executePromptWithRetry(text: string, sessionId: string, isRetry: boolean = false): AsyncIterable<ResponseChunk> {
+  private async *executePromptWithRetry(text: string, sessionId: string, isRetry: boolean = false, images?: ImageContent[]): AsyncIterable<ResponseChunk> {
     const eventQueue: AgentEvent[] = []
     let resolveWaiting: (() => void) | null = null
     let done = false
     let preStreamError: unknown = null
+    let midStreamError: unknown = null
 
     const unsubscribe = this.agent.subscribe((event: AgentEvent) => {
       eventQueue.push(event)
@@ -505,7 +530,7 @@ export class AgentCore {
     })
 
     // Start the prompt (non-blocking)
-    const promptPromise = this.agent.prompt(text).then(() => {
+    const promptPromise = this.agent.prompt(text, images).then(() => {
       done = true
       if (resolveWaiting) {
         resolveWaiting()
@@ -516,9 +541,10 @@ export class AgentCore {
       if (eventQueue.length === 0) {
         preStreamError = err
       } else {
-        // Mid-stream error — surface as normal error
-        eventQueue.push({ type: 'agent_end', messages: [] })
+        // Mid-stream error — surface error to the user, then signal agent_end
         console.error('Agent prompt error (mid-stream):', err)
+        midStreamError = err
+        eventQueue.push({ type: 'agent_end', messages: [] })
       }
       done = true
       if (resolveWaiting) {
@@ -553,6 +579,13 @@ export class AgentCore {
       await promptPromise
     }
 
+    // Surface mid-stream errors (e.g. context window exceeded after tool calls)
+    if (midStreamError) {
+      const errMsg = (midStreamError instanceof Error ? midStreamError.message : String(midStreamError)) || 'Unknown error'
+      console.error('Agent mid-stream error surfaced to user:', errMsg)
+      yield { type: 'error' as const, error: errMsg }
+    }
+
     // Safety net: if no 'done' chunk was yielded (e.g. agent_end never fired),
     // ensure we always signal completion so the frontend doesn't hang.
     if (!yieldedDone && !preStreamError) {
@@ -575,7 +608,7 @@ export class AgentCore {
         this.swapProvider(fallback, apiKey)
 
         // Retry once with fallback
-        yield* this.executePromptWithRetry(text, sessionId, true)
+        yield* this.executePromptWithRetry(text, sessionId, true, images)
         return
       }
 

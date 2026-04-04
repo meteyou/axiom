@@ -55,7 +55,11 @@
     "statusConnected": "Chat connected",
     "statusConnecting": "Connecting",
     "statusDisconnected": "Chat disconnected",
-    "scrollToBottom": "Scroll to bottom"
+    "scrollToBottom": "Scroll to bottom",
+    "attachments": {
+      "openOriginal": "Open original",
+      "download": "Download"
+    }
   },
   "status": {
     "online": "Online",
