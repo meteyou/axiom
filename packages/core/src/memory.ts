@@ -30,6 +30,43 @@ The agent can read and write this file to persist important information across s
 (none yet)
 `
 
+const AGENTS_TEMPLATE = `# Agent Rules
+
+This file defines how the agent should work. Both the user and the agent can edit this file.
+The agent reads this file on every conversation to follow these rules.
+
+## Work Style
+
+- Be concise and direct
+- Ask before making destructive changes
+- Explain reasoning when making decisions
+
+## Red Lines
+
+- Never share sensitive information from memory files
+- Never execute destructive commands without confirmation
+
+## Preferences
+
+(none yet)
+`
+
+const HEARTBEAT_TEMPLATE = `# Heartbeat Tasks
+
+This file defines periodic tasks the agent runs during heartbeat cycles.
+Both the user and the agent can edit this file.
+
+## Memory Maintenance
+
+- Review daily memory files and consolidate important learnings into MEMORY.md
+- Clean up outdated or redundant entries in MEMORY.md
+- Skip if nothing meaningful happened since last maintenance
+
+## Open Notes
+
+(none yet)
+`
+
 /**
  * Resolve the workspace directory (same logic as agent.ts getWorkspaceDir).
  * Duplicated here to avoid circular imports.
@@ -64,12 +101,23 @@ export function ensureMemoryStructure(memoryDir?: string): void {
   const memoryPath = path.join(dir, 'MEMORY.md')
   if (!fs.existsSync(memoryPath)) {
     // Migrate legacy AGENTS.md to MEMORY.md if it exists
+    // (only if new AGENTS.md doesn't exist yet — avoid conflict)
     const legacyPath = path.join(dir, 'AGENTS.md')
     if (fs.existsSync(legacyPath)) {
       fs.renameSync(legacyPath, memoryPath)
     } else {
       fs.writeFileSync(memoryPath, MEMORY_TEMPLATE, 'utf-8')
     }
+  }
+
+  const agentsPath = path.join(dir, 'AGENTS.md')
+  if (!fs.existsSync(agentsPath)) {
+    fs.writeFileSync(agentsPath, AGENTS_TEMPLATE, 'utf-8')
+  }
+
+  const heartbeatPath = path.join(dir, 'HEARTBEAT.md')
+  if (!fs.existsSync(heartbeatPath)) {
+    fs.writeFileSync(heartbeatPath, HEARTBEAT_TEMPLATE, 'utf-8')
   }
 }
 
@@ -110,6 +158,30 @@ export function writeMemoryFile(content: string, memoryDir?: string): void {
 // Legacy aliases for backward compatibility
 export const readAgentsFile = readMemoryFile
 export const writeAgentsFile = writeMemoryFile
+
+/**
+ * Read the AGENTS.md rules file
+ */
+export function readAgentsRulesFile(memoryDir?: string): string {
+  const dir = memoryDir ?? getMemoryDir()
+  const agentsPath = path.join(dir, 'AGENTS.md')
+  if (!fs.existsSync(agentsPath)) {
+    ensureMemoryStructure(dir)
+  }
+  return fs.readFileSync(agentsPath, 'utf-8')
+}
+
+/**
+ * Read the HEARTBEAT.md file
+ */
+export function readHeartbeatFile(memoryDir?: string): string {
+  const dir = memoryDir ?? getMemoryDir()
+  const heartbeatPath = path.join(dir, 'HEARTBEAT.md')
+  if (!fs.existsSync(heartbeatPath)) {
+    ensureMemoryStructure(dir)
+  }
+  return fs.readFileSync(heartbeatPath, 'utf-8')
+}
 
 /**
  * Get the path for today's daily memory file
@@ -226,17 +298,34 @@ export function assembleSystemPrompt(options?: {
     sections.push(`<instructions>\n${options.baseInstructions.trim()}\n</instructions>`)
   }
 
-  // 3. Core memory from MEMORY.md
+  // 3. Agent rules from AGENTS.md
+  const agentsRules = readAgentsRulesFile(memoryDir)
+  sections.push(`<agent_rules>\n${agentsRules.trim()}\n</agent_rules>`)
+
+  // 4. Core memory from MEMORY.md
   const agents = readMemoryFile(memoryDir)
   sections.push(`<core_memory>\n${agents.trim()}\n</core_memory>`)
 
-  // 4. Recent daily context
+  // 5. Recent daily context
   const dailyContext = readRecentDailyFiles(recentDays, memoryDir)
   if (dailyContext) {
     sections.push(`<recent_memory>\n${dailyContext}\n</recent_memory>`)
   }
 
-  // 5. Language setting
+  // 6. Memory file paths for agent self-access
+  const dir = memoryDir ?? getMemoryDir()
+  const today = new Date().toISOString().split('T')[0]
+  sections.push(`<memory_paths>
+You can read and write your memory files directly using read_file/write_file tools.
+- SOUL.md: ${path.join(dir, 'SOUL.md')}
+- MEMORY.md: ${path.join(dir, 'MEMORY.md')}
+- AGENTS.md: ${path.join(dir, 'AGENTS.md')}
+- HEARTBEAT.md: ${path.join(dir, 'HEARTBEAT.md')}
+- Daily memory directory: ${path.join(dir, 'daily/')}
+- Today's daily file: ${path.join(dir, 'daily', `${today}.md`)}
+</memory_paths>`)
+
+  // 7. Language setting
   if (options?.language) {
     const lang = options.language.trim()
     if (lang.toLowerCase() === 'match' || lang.toLowerCase() === "match user's language") {
@@ -246,7 +335,7 @@ export function assembleSystemPrompt(options?: {
     }
   }
 
-  // 6. Available skills (progressive disclosure)
+  // 8. Available skills (progressive disclosure)
   if (options?.skills && options.skills.length > 0) {
     const skillEntries = options.skills.map(s =>
       `  <skill>\n    <name>${s.name}</name>\n    <description>${s.description}</description>\n    <location>${s.location}</location>\n  </skill>`
@@ -262,7 +351,7 @@ ${skillEntries}
 </available_skills>`)
   }
 
-  // 7. Task system instructions
+  // 9. Task system instructions
   sections.push(`<task_system>
 You have access to a background task system. You can start background tasks for complex,
 long-running work using the create_task tool.
@@ -312,18 +401,18 @@ Use create_reminder only for static reminder text delivered verbatim later. If t
 Do not promise that a reminder or cronjob will fetch fresh data unless the configured action type actually supports that.
 </task_system>`)
 
-  // 8. Workspace directory
+  // 10. Workspace directory
   const workspaceDir = resolveWorkspaceDir()
   sections.push(`<workspace>\nYour working directory is ${workspaceDir}. All shell commands execute in this directory by default.\nAll relative paths in read_file, write_file, and list_files resolve against this directory.\nUse this directory for cloning repos, creating files, and all file operations.\n</workspace>`)
 
-  // 9. Current date & time
+  // 11. Current date & time
   const tz = options?.timezone || 'UTC'
   const now = new Date()
   const date = now.toLocaleDateString('en-CA', { timeZone: tz })
   const time = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: tz })
   sections.push(`<current_datetime>\nCurrent date: ${date}\nCurrent time: ${time} (${tz})\n</current_datetime>`)
 
-  // 10. Channel context
+  // 12. Channel context
   if (options?.channel === 'telegram') {
     sections.push(`<channel_context>
 You are communicating with the user through Telegram. You ARE the Telegram bot — messages the user sends arrive directly to you, and your responses are sent back to the user automatically. Do not tell the user to use the Telegram Bot API, curl commands, or any external tools to communicate. Just respond naturally to their messages.

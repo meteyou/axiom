@@ -20,6 +20,8 @@ export {
   writeMemoryFile,
   readAgentsFile,
   writeAgentsFile,
+  readAgentsRulesFile,
+  readHeartbeatFile,
   getDailyFilePath,
   ensureDailyFile,
   readDailyFile,
