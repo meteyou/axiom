@@ -51,10 +51,21 @@ export interface MemoryConsolidationSettingsData {
   providerId: string
 }
 
+export interface AgentHeartbeatSettingsData {
+  enabled: boolean
+  intervalMinutes: number
+  nightMode: {
+    enabled: boolean
+    startHour: number
+    endHour: number
+  }
+}
+
 export interface SettingsRouterOptions {
   getAgentCore?: () => AgentCore | null
   onHeartbeatSettingsChanged?: () => void
   onConsolidationSettingsChanged?: () => void
+  onAgentHeartbeatSettingsChanged?: () => void
   onTelegramSettingsChanged?: () => void
 }
 
@@ -78,6 +89,7 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
       const telegram = loadConfig<TelegramData>('telegram.json')
 
       const consolidation = (settings as unknown as Record<string, unknown>).memoryConsolidation as Partial<MemoryConsolidationSettingsData> | undefined
+      const agentHeartbeat = (settings as unknown as Record<string, unknown>).agentHeartbeat as Partial<AgentHeartbeatSettingsData> | undefined
       const tasks = (settings as unknown as Record<string, unknown>).tasks as {
         defaultProvider?: string
         maxDurationMinutes?: number
@@ -124,6 +136,15 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
           lookbackDays: consolidation?.lookbackDays ?? 3,
           providerId: consolidation?.providerId ?? '',
         },
+        agentHeartbeat: {
+          enabled: agentHeartbeat?.enabled ?? false,
+          intervalMinutes: agentHeartbeat?.intervalMinutes ?? 60,
+          nightMode: {
+            enabled: agentHeartbeat?.nightMode?.enabled ?? true,
+            startHour: agentHeartbeat?.nightMode?.startHour ?? 23,
+            endHour: agentHeartbeat?.nightMode?.endHour ?? 8,
+          },
+        },
         tasks: {
           defaultProvider: tasks?.defaultProvider ?? '',
           maxDurationMinutes: tasks?.maxDurationMinutes ?? 60,
@@ -162,6 +183,15 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
         notifications?: Partial<HeartbeatNotificationToggles>
       }
       memoryConsolidation: Partial<MemoryConsolidationSettingsData>
+      agentHeartbeat: Partial<{
+        enabled: boolean
+        intervalMinutes: number
+        nightMode: Partial<{
+          enabled: boolean
+          startHour: number
+          endHour: number
+        }>
+      }>
       tasks: Partial<{
         defaultProvider: string
         maxDurationMinutes: number
@@ -329,6 +359,44 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
         consolidationChanged = true
       }
 
+      // Handle agent heartbeat settings
+      let agentHeartbeatChanged = false
+      if (body.agentHeartbeat !== undefined) {
+        const ah = body.agentHeartbeat
+        const existing = (settingsRaw.agentHeartbeat ?? {}) as Record<string, unknown>
+
+        if (ah.enabled !== undefined) existing.enabled = !!ah.enabled
+        if (ah.intervalMinutes !== undefined) {
+          if (typeof ah.intervalMinutes !== 'number' || !Number.isFinite(ah.intervalMinutes) || ah.intervalMinutes < 1) {
+            res.status(400).json({ error: 'agentHeartbeat.intervalMinutes must be a positive number' })
+            return
+          }
+          existing.intervalMinutes = ah.intervalMinutes
+        }
+        if (ah.nightMode !== undefined) {
+          const existingNm = (existing.nightMode ?? {}) as Record<string, unknown>
+          if (ah.nightMode.enabled !== undefined) existingNm.enabled = !!ah.nightMode.enabled
+          if (ah.nightMode.startHour !== undefined) {
+            if (typeof ah.nightMode.startHour !== 'number' || !Number.isInteger(ah.nightMode.startHour) || ah.nightMode.startHour < 0 || ah.nightMode.startHour > 23) {
+              res.status(400).json({ error: 'agentHeartbeat.nightMode.startHour must be an integer 0-23' })
+              return
+            }
+            existingNm.startHour = ah.nightMode.startHour
+          }
+          if (ah.nightMode.endHour !== undefined) {
+            if (typeof ah.nightMode.endHour !== 'number' || !Number.isInteger(ah.nightMode.endHour) || ah.nightMode.endHour < 0 || ah.nightMode.endHour > 23) {
+              res.status(400).json({ error: 'agentHeartbeat.nightMode.endHour must be an integer 0-23' })
+              return
+            }
+            existingNm.endHour = ah.nightMode.endHour
+          }
+          existing.nightMode = existingNm
+        }
+
+        settingsRaw.agentHeartbeat = existing
+        agentHeartbeatChanged = true
+      }
+
       // Handle tasks settings
       if (body.tasks !== undefined) {
         const existingTasks = (settingsRaw.tasks ?? {}) as Record<string, unknown>
@@ -442,12 +510,18 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
         options.onConsolidationSettingsChanged?.()
       }
 
+      if (agentHeartbeatChanged) {
+        options.onAgentHeartbeatSettingsChanged?.()
+      }
+
       if (telegram.enabled !== previousTelegramEnabled || telegram.botToken !== previousTelegramBotToken) {
         options.onTelegramSettingsChanged?.()
       }
 
       const tasksOut = (settingsRaw.tasks ?? {}) as Record<string, unknown>
       const consolidationOut = (settingsRaw.memoryConsolidation ?? {}) as Record<string, unknown>
+      const agentHeartbeatOut = (settingsRaw.agentHeartbeat ?? {}) as Record<string, unknown>
+      const agentHeartbeatNmOut = (agentHeartbeatOut.nightMode ?? {}) as Record<string, unknown>
 
       const defaultNotifications: HeartbeatNotificationToggles = {
         healthyToDegraded: false,
@@ -483,6 +557,15 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
           runAtHour: consolidationOut.runAtHour ?? 3,
           lookbackDays: consolidationOut.lookbackDays ?? 3,
           providerId: consolidationOut.providerId ?? '',
+        },
+        agentHeartbeat: {
+          enabled: agentHeartbeatOut.enabled ?? false,
+          intervalMinutes: agentHeartbeatOut.intervalMinutes ?? 60,
+          nightMode: {
+            enabled: agentHeartbeatNmOut.enabled ?? true,
+            startHour: agentHeartbeatNmOut.startHour ?? 23,
+            endHour: agentHeartbeatNmOut.endHour ?? 8,
+          },
         },
         tasks: {
           defaultProvider: tasksOut.defaultProvider ?? '',

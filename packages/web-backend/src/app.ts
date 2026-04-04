@@ -19,7 +19,7 @@ import { createHealthRouter } from './routes/health.js'
 import { createTasksRouter } from './routes/tasks.js'
 import { createCronjobsRouter } from './routes/cronjobs.js'
 import { createSecretsRouter } from './routes/secrets.js'
-import type { TaskRunner, TaskScheduler, TaskEventBus } from '@openagent/core'
+import type { TaskRunner, TaskScheduler, TaskEventBus, AgentHeartbeatService } from '@openagent/core'
 import { ensureAdminUser } from './auth.js'
 import type { HeartbeatService } from './heartbeat.js'
 import type { RuntimeMetrics } from './runtime-metrics.js'
@@ -35,6 +35,7 @@ export interface AppOptions {
   heartbeatService?: HeartbeatService | null
   runtimeMetrics?: RuntimeMetrics | null
   consolidationScheduler?: MemoryConsolidationScheduler | null
+  agentHeartbeatService?: AgentHeartbeatService | null
   getTelegramBot?: () => TelegramBot | null
   onTelegramSettingsChanged?: () => void
   onActiveProviderChanged?: () => void
@@ -99,6 +100,9 @@ export function createApp(options?: AppOptions): express.Express {
       },
       onConsolidationSettingsChanged: () => {
         options.consolidationScheduler?.restart()
+      },
+      onAgentHeartbeatSettingsChanged: () => {
+        options.agentHeartbeatService?.restart()
       },
       onTelegramSettingsChanged: () => {
         options.onTelegramSettingsChanged?.()

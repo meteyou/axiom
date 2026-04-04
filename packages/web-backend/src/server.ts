@@ -5,6 +5,7 @@ import { ensureConfigTemplates } from '@openagent/core'
 import { ensureMemoryStructure } from '@openagent/core'
 import {
   AgentCore,
+  AgentHeartbeatService,
   injectSecretsIntoEnv,
   getActiveProvider,
   getFallbackProvider,
@@ -433,6 +434,14 @@ heartbeatService.start()
 const consolidationScheduler = new MemoryConsolidationScheduler({ db, agentCore: null })
 consolidationScheduler.start()
 
+// Initialize agent heartbeat service (periodic background tasks via HEARTBEAT.md)
+const agentHeartbeatService = new AgentHeartbeatService({
+  taskStore,
+  taskRunner,
+  getDefaultProvider: getTaskDefaultProvider,
+})
+agentHeartbeatService.start()
+
 // Wire Telegram chat events into the cross-channel event bus
 const onTelegramChatEvent = (event: import('@openagent/telegram').TelegramChatEvent) => {
   if (event.userId == null) return // unlinked telegram users can't sync
@@ -646,6 +655,7 @@ const app = createApp({
   heartbeatService,
   runtimeMetrics,
   consolidationScheduler,
+  agentHeartbeatService,
   getTaskRunner: () => taskRunner,
   getTaskScheduler: () => taskScheduler,
   getTelegramBot: () => telegramBot,
@@ -693,6 +703,7 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
     console.log(`\n[openagent] Received ${signal}, shutting down...`)
     heartbeatService.stop()
     consolidationScheduler.stop()
+    agentHeartbeatService.stop()
 
     const cleanup = async () => {
       try {
