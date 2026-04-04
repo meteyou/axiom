@@ -48,7 +48,7 @@
             <div class="w-full overflow-hidden rounded-lg border border-border">
               <button class="group flex w-full items-center gap-2 bg-muted/30 px-3 py-1.5 text-left text-xs text-muted-foreground" :class="{ 'border-b border-border': expandedTools.has(msg.toolData!.toolCallId) }" @click="toggleTool(msg.toolData!.toolCallId)">
                 <svg class="h-3 w-3 shrink-0 transition-transform duration-200" :class="{ 'rotate-90': expandedTools.has(msg.toolData!.toolCallId) }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6" /></svg>
-                <AppIcon :name="isToolSkillLoad(msg.toolData!) ? 'puzzle' : 'settings'" class="h-3 w-3 shrink-0 opacity-60" />
+                <AppIcon :name="toolIconName(msg.toolData!)" class="h-3 w-3 shrink-0 opacity-60" />
                 <span class="font-medium">{{ toolDisplayName(msg.toolData!) }}</span>
               </button>
               <div v-if="expandedTools.has(msg.toolData!.toolCallId)" class="bg-background text-xs">
@@ -121,7 +121,19 @@ const { userAvatarUrl, avatarFailed, userInitial, onAvatarError } = useUserAvata
 const { renderMarkdown, handleCopyAsMarkdown } = useMarkdown()
 const { isSkillLoad, getSkillName } = useSkillDetection()
 function isToolSkillLoad(toolData: ToolCallData): boolean { return isSkillLoad(toolData.toolName, toolData.toolArgs) }
-function toolDisplayName(toolData: ToolCallData): string { return isToolSkillLoad(toolData) ? `Load Skill: ${getSkillName(toolData.toolArgs)}` : toolData.toolName }
+function getToolMemoryInfo(toolData: ToolCallData) { return detectMemoryFile(toolData.toolName, toolData.toolArgs) }
+function toolDisplayName(toolData: ToolCallData): string {
+  if (isToolSkillLoad(toolData)) return `Load Skill: ${getSkillName(toolData.toolArgs)}`
+  const memInfo = getToolMemoryInfo(toolData)
+  if (memInfo.isMemoryFile) return memInfo.label
+  return toolData.toolName
+}
+function toolIconName(toolData: ToolCallData): string {
+  if (isToolSkillLoad(toolData)) return 'puzzle'
+  const memInfo = getToolMemoryInfo(toolData)
+  if (memInfo.isMemoryFile) return memInfo.icon
+  return 'settings'
+}
 const filteredMessages = computed(() => messages.value)
 const expandedTools = ref<Set<string>>(new Set())
 function toggleTool(toolCallId: string) { const updated = new Set(expandedTools.value); updated.has(toolCallId) ? updated.delete(toolCallId) : updated.add(toolCallId); expandedTools.value = updated }
