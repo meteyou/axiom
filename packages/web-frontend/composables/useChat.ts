@@ -404,6 +404,11 @@ export function useChat() {
         timestamp: response.message.timestamp,
         attachments,
       }]
+
+      // Trigger the agent via WebSocket (message already saved by HTTP route)
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'message', content: response.message.content, skipSave: true, attachments }))
+      }
       return
     }
 

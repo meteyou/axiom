@@ -1,6 +1,6 @@
 import { WebSocketServer, WebSocket } from 'ws'
 import type { Server } from 'node:http'
-import type { Database } from '@openagent/core'
+import type { Database, UploadDescriptor } from '@openagent/core'
 import type { AgentCore, ResponseChunk } from '@openagent/core'
 import { verifyToken } from './auth.js'
 import type { JwtPayload } from './auth.js'
@@ -12,6 +12,10 @@ import type { ChatEventBus, ChatEvent } from './chat-event-bus.js'
 interface ChatMessage {
   type: 'message' | 'command'
   content: string
+  /** When true, skip saving to DB (message already persisted via HTTP upload) */
+  skipSave?: boolean
+  /** Upload descriptors for file attachments (passed when skipSave is true) */
+  attachments?: UploadDescriptor[]
 }
 
 interface ChatResponse {
@@ -229,7 +233,9 @@ export function setupWebSocketChat(
       }
 
       // Regular message — route to agent
-      saveChatMessage(db, sessionId, currentUser.userId, 'user', parsed.content)
+      if (!parsed.skipSave) {
+        saveChatMessage(db, sessionId, currentUser.userId, 'user', parsed.content)
+      }
 
       // Broadcast user message to other clients of same user (e.g. other browser tabs)
       const connId = connectionIds.get(ws)
@@ -258,7 +264,7 @@ export function setupWebSocketChat(
       const pendingToolCalls = new Map<string, { toolName: string; toolArgs: unknown }>()
 
       try {
-        for await (const chunk of agentCore.sendMessage(String(currentUser.userId), parsed.content)) {
+        for await (const chunk of agentCore.sendMessage(String(currentUser.userId), parsed.content, 'web', parsed.attachments)) {
           if (abortController.signal.aborted) break
 
           if (chunk.type === 'text' && chunk.text) {
