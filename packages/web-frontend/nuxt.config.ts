@@ -1,15 +1,16 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import tailwindcss from '@tailwindcss/vite'
 
 const rootPkg = JSON.parse(readFileSync(resolve(__dirname, '../../package.json'), 'utf-8'))
 
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
-  compatibilityDate: '2025-01-01',
+  compatibilityDate: '2026-04-05',
   devtools: { enabled: true },
   ssr: false,
 
-  modules: ['@nuxtjs/tailwindcss', '@nuxtjs/i18n'],
+  modules: ['@nuxtjs/i18n'],
 
   components: [
     {
@@ -18,11 +19,7 @@ export default defineNuxtConfig({
     },
   ],
 
-  tailwindcss: {
-    configPath: '~/tailwind.config.ts',
-    cssPath: '~/assets/css/tailwind.css',
-    exposeConfig: false,
-  },
+  css: ['~/assets/css/tailwind.css'],
 
   i18n: {
     locales: [
@@ -30,15 +27,15 @@ export default defineNuxtConfig({
       { code: 'de', name: 'Deutsch', file: 'de.json' },
     ],
     defaultLocale: 'en',
-    lazy: true,
-    langDir: 'locales/',
+    langDir: 'locales',
+    restructureDir: 'app/i18n',
     strategy: 'no_prefix',
-    bundle: {
-      optimizeTranslationDirective: false,
-    },
   },
 
   vite: {
+    plugins: [
+      tailwindcss(),
+    ],
     server: {
       fs: {
         // Allow serving files from the workspace root (monorepo hoisted node_modules)
