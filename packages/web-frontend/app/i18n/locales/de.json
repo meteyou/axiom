@@ -547,7 +547,11 @@
     "uploadFile": "Skill-Datei",
     "uploadDropzone": "Klicken, um eine Datei auszuwählen",
     "uploadHint": ".zip- und .skill-Dateien werden akzeptiert (max. 50 MB)",
-    "removeFile": "Datei entfernen"
+    "removeFile": "Datei entfernen",
+    "agentTab": "Agent Skills",
+    "agentEmpty": "Noch keine Agent-Skills vorhanden",
+    "agentEmptyDescription": "Der Agent kann während Unterhaltungen eigene Skills erstellen. Sie werden hier angezeigt.",
+    "agentLoading": "Lade Agent-Skills..."
   },
   "usage": {
     "kicker": "Verbrauchsanalysen",

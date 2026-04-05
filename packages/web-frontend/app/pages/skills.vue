@@ -43,6 +43,7 @@
         <div class="mb-4 flex shrink-0 flex-wrap items-center gap-3">
           <TabsList class="self-start">
             <TabsTrigger value="installed" @click="switchTab('installed')">{{ $t('skills.installedTab') }}</TabsTrigger>
+            <TabsTrigger value="agent" @click="switchTab('agent')">{{ $t('skills.agentTab') }}</TabsTrigger>
             <TabsTrigger value="builtin" @click="switchTab('builtin')">{{ $t('skills.builtinTab') }}</TabsTrigger>
           </TabsList>
         </div>
@@ -115,6 +116,39 @@
                     :aria-label="$t('skills.toggleEnabled')"
                     @update:checked="handleToggleSkill(skill)"
                   />
+                </div>
+              </div>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <!-- Agent Skills tab -->
+        <TabsContent value="agent" class="flex flex-1 flex-col overflow-hidden min-h-0 mt-0">
+          <div v-if="agentLoading" class="flex flex-1 items-center justify-center py-20 text-sm text-muted-foreground">
+            {{ $t('skills.agentLoading') }}
+          </div>
+
+          <!-- Empty state -->
+          <div v-else-if="agentSkills.length === 0" class="flex flex-1 flex-col items-center justify-center gap-4 py-20 text-center text-muted-foreground">
+            <AppIcon name="puzzle" size="xl" class="h-12 w-12 opacity-40" />
+            <div>
+              <p class="text-sm font-medium text-foreground">{{ $t('skills.agentEmpty') }}</p>
+              <p class="mt-1 text-sm">{{ $t('skills.agentEmptyDescription') }}</p>
+            </div>
+          </div>
+
+          <!-- Agent skills list -->
+          <div v-else class="flex-1 space-y-3 overflow-y-auto min-h-0">
+            <Card v-for="skill in agentSkills" :key="skill.name" class="transition-colors">
+              <div class="flex items-center gap-4 p-4">
+                <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+                  <AppIcon name="sparkles" class="h-5 w-5 text-muted-foreground" />
+                </div>
+                <div class="min-w-0 flex-1">
+                  <span class="font-semibold text-foreground truncate">{{ skill.name }}</span>
+                  <p v-if="skill.description" class="mt-0.5 text-sm text-muted-foreground line-clamp-1">
+                    {{ skill.description }}
+                  </p>
                 </div>
               </div>
             </Card>
@@ -431,6 +465,7 @@ const isAdmin = computed(() => user.value?.role === 'admin')
 
 const {
   skills,
+  agentSkills,
   builtinTools,
   braveSearchApiKey,
   searxngUrl,
@@ -438,6 +473,7 @@ const {
   error,
   installing,
   fetchSkills,
+  fetchAgentSkills,
   fetchBuiltinTools,
   installSkill,
   uploadSkill,
@@ -447,7 +483,8 @@ const {
   clearError,
 } = useSkills()
 
-const activeTab = ref<'installed' | 'builtin'>('installed')
+const activeTab = ref<'installed' | 'agent' | 'builtin'>('installed')
+const agentLoading = ref(false)
 const successMessage = ref<string | null>(null)
 const builtinLoading = ref(false)
 
@@ -496,12 +533,16 @@ function syncBuiltinLocal() {
   localSearxngUrl.value = searxngUrl.value
 }
 
-async function switchTab(tab: 'installed' | 'builtin') {
+async function switchTab(tab: 'installed' | 'agent' | 'builtin') {
   clearError()
   successMessage.value = null
   activeTab.value = tab
 
-  if (tab === 'builtin') {
+  if (tab === 'agent') {
+    agentLoading.value = true
+    await fetchAgentSkills()
+    agentLoading.value = false
+  } else if (tab === 'builtin') {
     builtinLoading.value = true
     await fetchBuiltinTools()
     syncBuiltinLocal()

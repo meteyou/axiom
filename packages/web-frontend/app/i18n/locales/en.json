@@ -547,7 +547,11 @@
     "uploadFile": "Skill File",
     "uploadDropzone": "Click to select a file",
     "uploadHint": "Accepts .zip and .skill files (max 50 MB)",
-    "removeFile": "Remove file"
+    "removeFile": "Remove file",
+    "agentTab": "Agent Skills",
+    "agentEmpty": "No agent-created skills yet",
+    "agentEmptyDescription": "The agent can create its own skills during conversations. They will appear here.",
+    "agentLoading": "Loading agent skills..."
   },
   "usage": {
     "kicker": "Consumption analytics",

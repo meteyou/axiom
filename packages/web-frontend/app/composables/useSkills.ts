@@ -11,6 +11,13 @@ export interface Skill {
   emoji?: string
 }
 
+export interface AgentSkill {
+  name: string
+  description: string
+  location: string
+  lastUsed?: string
+}
+
 export interface BuiltinToolsConfig {
   webSearch: {
     enabled: boolean
@@ -23,6 +30,10 @@ export interface BuiltinToolsConfig {
 
 interface SkillsResponse {
   skills: Skill[]
+}
+
+interface AgentSkillsResponse {
+  skills: AgentSkill[]
 }
 
 interface BuiltinToolsResponse {
@@ -39,6 +50,7 @@ export function useSkills() {
   const { apiFetch } = useApi()
 
   const skills = useState<Skill[]>('skills_list', () => [])
+  const agentSkills = useState<AgentSkill[]>('skills_agent_list', () => [])
   const builtinTools = useState<BuiltinToolsConfig>('skills_builtin_tools', () => ({
     webSearch: { enabled: true, provider: 'duckduckgo' },
     webFetch: { enabled: true },
@@ -59,6 +71,16 @@ export function useSkills() {
       error.value = (err as Error).message
     } finally {
       loading.value = false
+    }
+  }
+
+  async function fetchAgentSkills(): Promise<void> {
+    error.value = null
+    try {
+      const data = await apiFetch<AgentSkillsResponse>('/api/skills/agent')
+      agentSkills.value = data.skills
+    } catch (err) {
+      error.value = (err as Error).message
     }
   }
 
@@ -173,6 +195,7 @@ export function useSkills() {
 
   return {
     skills,
+    agentSkills,
     builtinTools,
     braveSearchApiKey,
     searxngUrl,
@@ -180,6 +203,7 @@ export function useSkills() {
     error,
     installing,
     fetchSkills,
+    fetchAgentSkills,
     fetchBuiltinTools,
     installSkill,
     uploadSkill,
