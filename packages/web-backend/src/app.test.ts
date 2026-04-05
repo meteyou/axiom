@@ -873,6 +873,81 @@ describe('settings API', () => {
     expect(settings.batchingDelayMs).toBe(4000)
     expect(telegram.botToken).toBe('telegram-secret')
   })
+
+  it('persists agentHeartbeat when saving full form (like the frontend)', async () => {
+    // Step 1: GET defaults
+    const getRes = await fetch(`${baseUrl}/api/settings`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    })
+    const defaults = (await getRes.json()) as Record<string, unknown>
+    expect(defaults.agentHeartbeat).toEqual({
+      enabled: false,
+      intervalMinutes: 60,
+      nightMode: { enabled: true, startHour: 23, endHour: 8 },
+    })
+
+    // Step 2: PUT the full form (like the frontend does), with agentHeartbeat.enabled = true
+    const fullForm = {
+      ...defaults,
+      agentHeartbeat: {
+        ...(defaults.agentHeartbeat as Record<string, unknown>),
+        enabled: true,
+      },
+    }
+    delete (fullForm as Record<string, unknown>).message // remove any extra keys
+
+    const putRes = await fetch(`${baseUrl}/api/settings`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(fullForm),
+    })
+    const putBody = (await putRes.json()) as { agentHeartbeat: { enabled: boolean } }
+    expect(putRes.status).toBe(200)
+    expect(putBody.agentHeartbeat.enabled).toBe(true)
+
+    // Step 3: Verify file was written
+    const settingsPath = path.join(tempDataDir, 'config', 'settings.json')
+    const raw = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as Record<string, unknown>
+    expect((raw.agentHeartbeat as Record<string, unknown>)?.enabled).toBe(true)
+
+    // Step 4: GET again (simulating page reload) — should still be enabled
+    const reloadRes = await fetch(`${baseUrl}/api/settings`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    })
+    const reloaded = (await reloadRes.json()) as { agentHeartbeat: { enabled: boolean } }
+    expect(reloaded.agentHeartbeat.enabled).toBe(true)
+  })
+
+  it('persists telegramEnabled when saving full form', async () => {
+    // GET defaults
+    const getRes = await fetch(`${baseUrl}/api/settings`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    })
+    const defaults = (await getRes.json()) as Record<string, unknown>
+
+    // PUT with telegramEnabled = true
+    const putRes = await fetch(`${baseUrl}/api/settings`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ ...defaults, telegramEnabled: true }),
+    })
+    expect(putRes.status).toBe(200)
+    const putBody = (await putRes.json()) as { telegramEnabled: boolean }
+    expect(putBody.telegramEnabled).toBe(true)
+
+    // GET again — should persist
+    const reloadRes = await fetch(`${baseUrl}/api/settings`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    })
+    const reloaded = (await reloadRes.json()) as { telegramEnabled: boolean }
+    expect(reloaded.telegramEnabled).toBe(true)
+  })
 })
 
 describe('providers API', () => {

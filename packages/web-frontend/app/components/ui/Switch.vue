@@ -1,26 +1,36 @@
 <script setup lang="ts">
 import { type HTMLAttributes, computed } from 'vue'
-import { SwitchRoot, SwitchThumb, type SwitchRootEmits, type SwitchRootProps, useForwardPropsEmits } from 'reka-ui'
+import { SwitchRoot, SwitchThumb, type SwitchRootProps } from 'reka-ui'
 import { cn } from '~/lib/utils'
 
-interface Props extends SwitchRootProps {
+// Extend SwitchRootProps but replace modelValue with checked
+// so the component supports v-model:checked (shadcn convention)
+interface Props extends /* @vue-ignore */ Omit<SwitchRootProps, 'modelValue'> {
   class?: HTMLAttributes['class']
+  checked?: boolean
 }
 
 const props = defineProps<Props>()
-const emits = defineEmits<SwitchRootEmits>()
+const emits = defineEmits<{
+  'update:checked': [value: boolean]
+}>()
 
-const delegatedProps = computed(() => {
-  const { class: _, ...delegated } = props
-  return delegated
+// Bridge: map checked/update:checked → modelValue/update:modelValue
+const modelValue = computed({
+  get: () => props.checked,
+  set: (val) => emits('update:checked', !!val),
 })
-
-const forwarded = useForwardPropsEmits(delegatedProps, emits)
 </script>
 
 <template>
   <SwitchRoot
-    v-bind="forwarded"
+    v-model="modelValue"
+    :disabled="props.disabled"
+    :name="props.name"
+    :required="props.required"
+    :id="props.id"
+    :as="props.as"
+    :as-child="props.asChild"
     :class="cn(
       'peer relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors',
       'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
