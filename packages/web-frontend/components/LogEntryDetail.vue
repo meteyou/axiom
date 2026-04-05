@@ -14,13 +14,80 @@ const { isEntrySkillLoad, extractSkillContent } = useLogDisplay()
 
 const showInput = computed(() => {
   if (!props.entry) return false
-  return hasInputData(props.entry.input) && !isEntrySkillLoad(props.entry)
+  if (!hasInputData(props.entry.input)) return false
+  if (isEntrySkillLoad(props.entry)) return false
+  // Hide raw input when a memory diff view is available (it's redundant)
+  if (memoryEditsInfo.value || memoryFileDiff.value) return false
+  return true
 })
 
-const showMemoryDiff = computed(() => {
+const showMemoryConsolidationDiff = computed(() => {
   if (!props.entry) return false
   return hasMemoryConsolidationDiff(props.entry.toolName, props.entry.output)
 })
+
+/** Extract filename from log entry input using shared utility */
+function extractFileNameFromInput(input: string | null | undefined): string | null {
+  try {
+    const parsed = JSON.parse(input ?? '{}')
+    return extractMemoryFileName(parsed)
+  } catch { /* ignore */ }
+  return null
+}
+
+/** Check if this is an edit_file on a memory file — render edits directly from input */
+const memoryEditsInfo = computed<{ edits: Array<{ oldText: string; newText: string }>; fileName: string | null } | null>(() => {
+  if (!props.entry) return null
+  const toolName = props.entry.toolName
+  if (toolName !== 'edit_file' && toolName !== 'Edit') return null
+
+  try {
+    const input = JSON.parse(props.entry.input ?? '{}')
+    const filePath = input?.path ?? input?.file_path ?? ''
+    if (!filePath.includes('/memory/')) return null
+
+    const edits = input?.edits
+    if (!Array.isArray(edits) || edits.length === 0) return null
+    const valid = edits.every((e: unknown) => e && typeof e === 'object' && typeof (e as Record<string, unknown>).oldText === 'string' && typeof (e as Record<string, unknown>).newText === 'string')
+    if (!valid) return null
+
+    return { edits: edits as Array<{ oldText: string; newText: string }>, fileName: extractFileNameFromInput(props.entry.input) }
+  } catch {
+    return null
+  }
+})
+
+/** Detect memoryDiff from write_file tool calls on memory files */
+const memoryFileDiff = computed<{ before: string; after: string; fileName: string | null } | null>(() => {
+  if (!props.entry) return null
+  const toolName = props.entry.toolName
+  if (toolName !== 'write_file' && toolName !== 'Write') return null
+
+  const fileName = extractFileNameFromInput(props.entry.input)
+
+  // Try to extract memoryDiff from output
+  try {
+    const output = JSON.parse(props.entry.output ?? '{}')
+    const diff = output?.details?.memoryDiff ?? output?.memoryDiff
+    if (diff && typeof diff.before === 'string' && typeof diff.after === 'string') {
+      return { before: diff.before, after: diff.after, fileName }
+    }
+  } catch { /* ignore */ }
+
+  // Fallback: if it's a memory file write without diff, show content as all-added
+  if (fileName) {
+    try {
+      const input = JSON.parse(props.entry.input ?? '{}')
+      if (typeof input.content === 'string') {
+        return { before: '', after: input.content, fileName }
+      }
+    } catch { /* ignore */ }
+  }
+
+  return null
+})
+
+const showMemoryDiff = computed(() => showMemoryConsolidationDiff.value || memoryFileDiff.value !== null || memoryEditsInfo.value !== null)
 
 const isSkillLoad = computed(() => {
   if (!props.entry) return false
@@ -47,18 +114,38 @@ const isSkillLoad = computed(() => {
 
       <!-- Output -->
       <div class="mb-3">
-        <h4 class="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        <h4 v-if="!showMemoryDiff" class="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           {{ t('logs.output') }}
         </h4>
+        <!-- Memory diffs: edge-to-edge inside a single border container -->
         <div
-          class="oa-scrollbar overflow-y-auto rounded-md border border-border bg-muted/50 p-3 text-xs leading-snug"
-          :class="showMemoryDiff ? 'max-h-[420px]' : 'max-h-[300px]'"
+          v-if="memoryEditsInfo || memoryFileDiff || showMemoryConsolidationDiff"
+          class="oa-scrollbar max-h-[420px] overflow-y-auto overflow-x-hidden rounded-md border border-border bg-muted/50 text-xs leading-snug"
+        >
+          <template v-if="memoryEditsInfo">
+            <MemoryEditsDiff
+              :edits="memoryEditsInfo.edits"
+              :file-name="memoryEditsInfo.fileName ?? undefined"
+            />
+          </template>
+          <template v-else-if="memoryFileDiff">
+            <MemoryFileDiff
+              :before="memoryFileDiff.before"
+              :after="memoryFileDiff.after"
+              :file-name="memoryFileDiff.fileName ?? undefined"
+            />
+          </template>
+          <template v-else-if="showMemoryConsolidationDiff">
+            <MemoryConsolidationDiff :output="entry.output" />
+          </template>
+        </div>
+        <!-- Standard output -->
+        <div
+          v-else
+          class="oa-scrollbar max-h-[300px] overflow-y-auto rounded-md border border-border bg-muted/50 p-3 text-xs leading-snug"
         >
           <template v-if="isSkillLoad">
             <pre class="whitespace-pre-wrap break-all text-foreground">{{ extractSkillContent(entry.output) ?? '' }}</pre>
-          </template>
-          <template v-else-if="showMemoryDiff">
-            <MemoryConsolidationDiff :output="entry.output" />
           </template>
           <template v-else>
             <ToolDataDisplay :data="parseLogData(entry.output)" :is-error="entry.status === 'error'" />

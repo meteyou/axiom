@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { detectMemoryFile } from './memoryFileDetection'
+import { detectMemoryFile, extractMemoryFileName } from './memoryFileDetection'
 
 describe('detectMemoryFile', () => {
   it('detects SOUL.md read as memory file', () => {
@@ -66,13 +66,13 @@ describe('detectMemoryFile', () => {
   it('handles Edit tool name for memory files', () => {
     const result = detectMemoryFile('Edit', { path: '/data/memory/MEMORY.md' })
     expect(result.isMemoryFile).toBe(true)
-    expect(result.label).toBe('Writing Memory')
+    expect(result.label).toBe('Editing Memory')
   })
 
   it('handles edit_file tool name for memory files', () => {
     const result = detectMemoryFile('edit_file', { path: '/data/memory/SOUL.md' })
     expect(result.isMemoryFile).toBe(true)
-    expect(result.label).toBe('Writing Personality')
+    expect(result.label).toBe('Editing Personality')
   })
 
   it('handles null/undefined toolArgs', () => {
@@ -84,5 +84,26 @@ describe('detectMemoryFile', () => {
     const result = detectMemoryFile('read_file', { file_path: '/data/memory/SOUL.md' })
     expect(result.isMemoryFile).toBe(true)
     expect(result.label).toBe('Reading Personality')
+  })
+})
+
+describe('extractMemoryFileName', () => {
+  it('returns canonical path for core memory files', () => {
+    expect(extractMemoryFileName({ path: '/data/memory/SOUL.md' })).toBe('/data/memory/SOUL.md')
+    expect(extractMemoryFileName({ path: '/data/memory/MEMORY.md' })).toBe('/data/memory/MEMORY.md')
+    expect(extractMemoryFileName({ path: '/data/memory/AGENTS.md' })).toBe('/data/memory/AGENTS.md')
+    expect(extractMemoryFileName({ path: '/data/memory/HEARTBEAT.md' })).toBe('/data/memory/HEARTBEAT.md')
+  })
+
+  it('normalizes dev paths to canonical /data/memory/ prefix', () => {
+    expect(extractMemoryFileName({ path: '/Users/dev/project/.data/memory/users/admin.md' })).toBe('/data/memory/users/admin.md')
+    expect(extractMemoryFileName({ path: '/home/user/openagent/.data/memory/SOUL.md' })).toBe('/data/memory/SOUL.md')
+    expect(extractMemoryFileName({ path: '/Users/dev/project/.data/memory/daily/2026-04-05.md' })).toBe('/data/memory/daily/2026-04-05.md')
+  })
+
+  it('returns null for non-memory paths', () => {
+    expect(extractMemoryFileName({ path: '/workspace/src/index.ts' })).toBeNull()
+    expect(extractMemoryFileName(null)).toBeNull()
+    expect(extractMemoryFileName(undefined)).toBeNull()
   })
 })

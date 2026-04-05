@@ -52,8 +52,36 @@
                 <span class="font-medium">{{ toolDisplayName(msg.toolData!) }}</span>
               </button>
               <div v-if="expandedTools.has(msg.toolData!.toolCallId)" class="bg-background text-xs">
-                <div v-if="!isToolSkillLoad(msg.toolData!)" class="border-b border-border px-3 py-2"><p class="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Input</p><ToolDataDisplay :data="msg.toolData!.toolArgs" /></div>
-                <div class="max-h-60 overflow-y-auto px-3 py-2"><p class="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Output</p><ToolDataDisplay :data="msg.toolData!.toolResult" :is-error="msg.toolData!.toolIsError" /></div>
+                <div v-if="!isToolSkillLoad(msg.toolData!) && !hasMemoryView(msg.toolData!)" class="border-b border-border px-3 py-2"><p class="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Input</p><ToolDataDisplay :data="msg.toolData!.toolArgs" /></div>
+                <template v-if="isEditFileTool(msg.toolData!) && getToolEdits(msg.toolData!) && getToolMemoryInfo(msg.toolData!).isMemoryFile">
+                  <div class="max-h-80 overflow-y-auto">
+                    <MemoryEditsDiff
+                      :edits="getToolEdits(msg.toolData!)!"
+                      :file-name="getToolMemoryFileName(msg.toolData!)"
+                    />
+                  </div>
+                </template>
+                <template v-else-if="getToolMemoryDiff(msg.toolData!)">
+                  <div class="max-h-80 overflow-y-auto">
+                    <MemoryFileDiff
+                      :before="getToolMemoryDiff(msg.toolData!)!.before"
+                      :after="getToolMemoryDiff(msg.toolData!)!.after"
+                      :file-name="getToolMemoryFileName(msg.toolData!)"
+                    />
+                  </div>
+                </template>
+                <template v-else-if="getToolMemoryWriteContent(msg.toolData!) !== null">
+                  <div class="max-h-80 overflow-y-auto">
+                    <MemoryFileDiff
+                      before=""
+                      :after="getToolMemoryWriteContent(msg.toolData!)!"
+                      :file-name="getToolMemoryFileName(msg.toolData!)"
+                    />
+                  </div>
+                </template>
+                <div v-else class="max-h-80 overflow-y-auto px-3 py-2">
+                  <p class="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Output</p><ToolDataDisplay :data="msg.toolData!.toolResult" :is-error="msg.toolData!.toolIsError" />
+                </div>
               </div>
             </div>
           </template>
@@ -122,6 +150,16 @@ const { renderMarkdown, handleCopyAsMarkdown } = useMarkdown()
 const { isSkillLoad, getSkillName } = useSkillDetection()
 function isToolSkillLoad(toolData: ToolCallData): boolean { return isSkillLoad(toolData.toolName, toolData.toolArgs) }
 function getToolMemoryInfo(toolData: ToolCallData) { return detectMemoryFile(toolData.toolName, toolData.toolArgs) }
+function getToolMemoryDiff(toolData: ToolCallData) { return extractMemoryDiff(toolData.toolResult) }
+function getToolEdits(toolData: ToolCallData) { return extractEditsFromArgs(toolData.toolArgs) }
+function getToolMemoryFileName(toolData: ToolCallData) { return extractMemoryFileName(toolData.toolArgs) ?? undefined }
+function isEditFileTool(toolData: ToolCallData) { return toolData.toolName === 'edit_file' || toolData.toolName === 'Edit' }
+function getToolMemoryWriteContent(toolData: ToolCallData) { return extractMemoryWriteContent(toolData.toolName, toolData.toolArgs) }
+function hasMemoryView(toolData: ToolCallData) {
+  return (isEditFileTool(toolData) && getToolEdits(toolData) && getToolMemoryInfo(toolData).isMemoryFile)
+    || getToolMemoryDiff(toolData) !== null
+    || getToolMemoryWriteContent(toolData) !== null
+}
 function toolDisplayName(toolData: ToolCallData): string {
   if (isToolSkillLoad(toolData)) return `Load Skill: ${getSkillName(toolData.toolArgs)}`
   const memInfo = getToolMemoryInfo(toolData)
