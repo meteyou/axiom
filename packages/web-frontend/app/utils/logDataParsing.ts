@@ -71,7 +71,7 @@ function extractParamsFromTruncated(input: string): Record<string, string> {
   let match
 
   while ((match = keyRegex.exec(input)) !== null) {
-    const key = match[1]
+    const key = match[1]!
     const afterColon = input.slice(match.index + match[0].length)
 
     if (afterColon.startsWith('"')) {
@@ -84,7 +84,7 @@ function extractParamsFromTruncated(input: string): Record<string, string> {
       }
     } else {
       const valMatch = afterColon.match(/^(true|false|null|-?\d+\.?\d*)/)
-      if (valMatch) {
+      if (valMatch?.[1]) {
         result[key] = valMatch[1]
       }
     }

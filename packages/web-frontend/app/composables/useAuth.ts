@@ -22,7 +22,7 @@ const USER_KEY = 'openagent_user'
 function isTokenExpired(token: string): boolean {
   try {
     const parts = token.split('.')
-    if (parts.length !== 3) return true
+    if (parts.length !== 3 || !parts[1]) return true
     const payload = JSON.parse(atob(parts[1])) as { exp?: number }
     if (!payload.exp) return true
     // Expire 30 seconds early to avoid race conditions

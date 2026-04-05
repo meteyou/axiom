@@ -23,7 +23,7 @@ export function useSkillDetection() {
     if (!path) return 'unknown'
     const parts = path.replace(/\\/g, '/').split('/')
     const idx = parts.findIndex(p => /^SKILL\.md$/i.test(p))
-    if (idx > 0) return parts[idx - 1]
+    if (idx > 0) return parts[idx - 1] ?? 'unknown'
     return 'unknown'
   }
 
@@ -62,15 +62,15 @@ export function useSkillDetection() {
     if (typeof input === 'string') {
       const parsed = safeParse(input)
       if (parsed && typeof parsed === 'object') {
-        return (parsed as Record<string, unknown>).path as string ?? null
+        return ((parsed as Record<string, unknown>).path as string | undefined) ?? null
       }
       // Try regex for truncated JSON
       const match = input.match(/"path"\s*:\s*"([^"]*SKILL\.md[^"]*)"/)
-      return match ? match[1] : null
+      return match?.[1] ?? null
     }
 
     if (typeof input === 'object' && input !== null) {
-      return (input as Record<string, unknown>).path as string ?? null
+      return ((input as Record<string, unknown>).path as string | undefined) ?? null
     }
 
     return null

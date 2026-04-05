@@ -238,7 +238,7 @@ const expandedItems = ref(new Set<number>())
 const expandedThinking = ref(new Set<number>())
 
 const firstEventTimestamp = computed(() => {
-  return events.value.length > 0 ? events.value[0].timestamp : undefined
+  return events.value.length > 0 ? events.value[0]!.timestamp : undefined
 })
 
 function toggleExpanded(idx: number) {
@@ -340,8 +340,8 @@ function parseStructuredResponse(text: string): { status: string; statusLabel: s
   const match = text.match(/^STATUS:\s*(\S+)\s*\nSUMMARY:\s*\n?(.*)/s)
   if (!match) return null
 
-  const rawStatus = match[1].toLowerCase()
-  const summary = match[2].trim()
+  const rawStatus = match[1]!.toLowerCase()
+  const summary = match[2]!.trim()
   if (!summary) return null
 
   const statusLabel = rawStatus.charAt(0).toUpperCase() + rawStatus.slice(1)

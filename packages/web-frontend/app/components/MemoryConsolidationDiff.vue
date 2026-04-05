@@ -120,9 +120,9 @@ function buildLineDiff(beforeLines: string[], afterLines: string[]): DiffLine[] 
 
   for (let beforeIndex = beforeCount - 1; beforeIndex >= 0; beforeIndex--) {
     for (let afterIndex = afterCount - 1; afterIndex >= 0; afterIndex--) {
-      lcs[beforeIndex][afterIndex] = beforeLines[beforeIndex] === afterLines[afterIndex]
-        ? lcs[beforeIndex + 1][afterIndex + 1] + 1
-        : Math.max(lcs[beforeIndex + 1][afterIndex], lcs[beforeIndex][afterIndex + 1])
+      lcs[beforeIndex]![afterIndex] = beforeLines[beforeIndex] === afterLines[afterIndex]
+        ? lcs[beforeIndex + 1]![afterIndex + 1]! + 1
+        : Math.max(lcs[beforeIndex + 1]![afterIndex]!, lcs[beforeIndex]![afterIndex + 1]!)
     }
   }
 
@@ -132,29 +132,29 @@ function buildLineDiff(beforeLines: string[], afterLines: string[]): DiffLine[] 
 
   while (beforeIndex < beforeCount && afterIndex < afterCount) {
     if (beforeLines[beforeIndex] === afterLines[afterIndex]) {
-      diff.push({ type: 'context', content: beforeLines[beforeIndex] })
+      diff.push({ type: 'context', content: beforeLines[beforeIndex]! })
       beforeIndex++
       afterIndex++
       continue
     }
 
-    if (lcs[beforeIndex + 1][afterIndex] >= lcs[beforeIndex][afterIndex + 1]) {
-      diff.push({ type: 'removed', content: beforeLines[beforeIndex] })
+    if (lcs[beforeIndex + 1]![afterIndex]! >= lcs[beforeIndex]![afterIndex + 1]!) {
+      diff.push({ type: 'removed', content: beforeLines[beforeIndex]! })
       beforeIndex++
       continue
     }
 
-    diff.push({ type: 'added', content: afterLines[afterIndex] })
+    diff.push({ type: 'added', content: afterLines[afterIndex]! })
     afterIndex++
   }
 
   while (beforeIndex < beforeCount) {
-    diff.push({ type: 'removed', content: beforeLines[beforeIndex] })
+    diff.push({ type: 'removed', content: beforeLines[beforeIndex]! })
     beforeIndex++
   }
 
   while (afterIndex < afterCount) {
-    diff.push({ type: 'added', content: afterLines[afterIndex] })
+    diff.push({ type: 'added', content: afterLines[afterIndex]! })
     afterIndex++
   }
 
@@ -166,14 +166,15 @@ function collapseContext(lines: DiffLine[]): DiffLine[] {
   let index = 0
 
   while (index < lines.length) {
-    if (lines[index].type !== 'context') {
-      collapsed.push(lines[index])
+    const current = lines[index]!
+    if (current.type !== 'context') {
+      collapsed.push(current)
       index++
       continue
     }
 
     let end = index
-    while (end < lines.length && lines[end].type === 'context') {
+    while (end < lines.length && lines[end]!.type === 'context') {
       end++
     }
 

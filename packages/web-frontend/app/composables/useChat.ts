@@ -366,11 +366,12 @@ export function useChat() {
           const toolMsgIdx = updated.findLastIndex(
             m => m.role === 'tool' && m.toolData?.toolCallId === msg.toolCallId
           )
-          if (toolMsgIdx !== -1) {
+          const existingMsg = toolMsgIdx !== -1 ? updated[toolMsgIdx] : undefined
+          if (existingMsg) {
             updated[toolMsgIdx] = {
-              ...updated[toolMsgIdx],
+              ...existingMsg,
               toolData: {
-                ...updated[toolMsgIdx].toolData!,
+                ...existingMsg.toolData!,
                 toolResult: msg.toolResult,
                 toolIsError: msg.toolIsError,
               },

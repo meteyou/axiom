@@ -550,7 +550,7 @@ async function handleInstall() {
 function handleFileSelect(event: Event) {
   const input = event.target as HTMLInputElement
   if (input.files && input.files.length > 0) {
-    selectedFile.value = input.files[0]
+    selectedFile.value = input.files[0] ?? null
   }
 }
 
@@ -568,12 +568,12 @@ async function handleToggleSkill(skill: Skill) {
   const newEnabled = !skill.enabled
   // Optimistic update
   const idx = skills.value.findIndex(s => s.id === skill.id)
-  if (idx >= 0) skills.value[idx] = { ...skills.value[idx], enabled: newEnabled }
+  if (idx >= 0) skills.value[idx] = { ...skills.value[idx]!, enabled: newEnabled }
 
   const result = await updateSkill(skill.id, { enabled: newEnabled })
   if (!result && idx >= 0) {
     // Revert on failure
-    skills.value[idx] = { ...skills.value[idx], enabled: !newEnabled }
+    skills.value[idx] = { ...skills.value[idx]!, enabled: !newEnabled }
   }
 }
 
