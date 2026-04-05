@@ -178,6 +178,8 @@ export {
 export type { TrackedToolCall, LoopDetectionConfig, LoopDetectionResult } from './loop-detection.js'
 export { createTaskTool, createResumeTaskTool, listTasksTool } from './task-tools.js'
 export type { TaskToolsOptions } from './task-tools.js'
+export { createReadChatHistoryTool } from './chat-history-tools.js'
+export type { ChatHistoryToolsOptions } from './chat-history-tools.js'
 export { MessageQueue } from './message-queue.js'
 export type { QueuedMessage } from './message-queue.js'
 export {
