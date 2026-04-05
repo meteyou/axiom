@@ -1,51 +1,39 @@
 <script setup lang="ts">
+import { type HTMLAttributes, computed } from 'vue'
+import { SwitchRoot, SwitchThumb, type SwitchRootEmits, type SwitchRootProps, useForwardPropsEmits } from 'reka-ui'
 import { cn } from '~/lib/utils'
 
-interface Props {
-  class?: string
-  modelValue?: boolean
-  disabled?: boolean
-  id?: string
-  name?: string
+interface Props extends SwitchRootProps {
+  class?: HTMLAttributes['class']
 }
 
 const props = defineProps<Props>()
+const emits = defineEmits<SwitchRootEmits>()
 
-const emit = defineEmits<{
-  (e: 'update:modelValue', value: boolean): void
-  (e: 'change', value: boolean): void
-}>()
+const delegatedProps = computed(() => {
+  const { class: _, ...delegated } = props
+  return delegated
+})
 
-function toggle() {
-  if (props.disabled) return
-  const next = !props.modelValue
-  emit('update:modelValue', next)
-  emit('change', next)
-}
+const forwarded = useForwardPropsEmits(delegatedProps, emits)
 </script>
 
 <template>
-  <button
-    :id="id"
-    type="button"
-    role="switch"
-    :aria-checked="modelValue"
-    :disabled="disabled"
+  <SwitchRoot
+    v-bind="forwarded"
     :class="cn(
-      'relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors',
+      'peer relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors',
       'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
       'disabled:cursor-not-allowed disabled:opacity-50',
-      modelValue ? 'bg-primary' : 'bg-input',
+      'data-[state=checked]:bg-primary data-[state=unchecked]:bg-input',
       props.class
     )"
-    v-bind="$attrs"
-    @click="toggle"
   >
-    <span
+    <SwitchThumb
       :class="cn(
         'pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform',
-        modelValue ? 'translate-x-5' : 'translate-x-0'
+        'data-[state=checked]:translate-x-5 data-[state=unchecked]:translate-x-0'
       )"
     />
-  </button>
+  </SwitchRoot>
 </template>

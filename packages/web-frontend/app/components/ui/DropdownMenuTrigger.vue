@@ -1,25 +1,11 @@
 <script setup lang="ts">
-const toggle = inject<() => void>('dropdownMenuToggle')
-const open = inject<Ref<boolean>>('dropdownMenuOpen')
-const triggerEl = inject<Ref<HTMLElement | null>>('dropdownMenuTriggerEl')
+import { DropdownMenuTrigger, type DropdownMenuTriggerProps } from 'reka-ui'
 
-const el = ref<HTMLElement | null>(null)
-
-// Expose trigger element to parent for positioning
-watchEffect(() => {
-  if (triggerEl) triggerEl.value = el.value
-})
+const props = defineProps<DropdownMenuTriggerProps>()
 </script>
 
 <template>
-  <div
-    ref="el"
-    role="button"
-    :aria-expanded="open"
-    aria-haspopup="true"
-    class="cursor-pointer"
-    @click.stop="toggle?.()"
-  >
+  <DropdownMenuTrigger v-bind="props" v-bind.attr="$attrs">
     <slot />
-  </div>
+  </DropdownMenuTrigger>
 </template>

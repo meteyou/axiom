@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { type HTMLAttributes, computed } from 'vue'
-import { DialogDescription, type DialogDescriptionProps } from 'reka-ui'
+import { SelectSeparator, type SelectSeparatorProps } from 'reka-ui'
 import { cn } from '~/lib/utils'
 
-interface Props extends DialogDescriptionProps {
+interface Props extends SelectSeparatorProps {
   class?: HTMLAttributes['class']
 }
 
@@ -16,10 +16,8 @@ const delegatedProps = computed(() => {
 </script>
 
 <template>
-  <DialogDescription
+  <SelectSeparator
     v-bind="delegatedProps"
-    :class="cn('text-sm text-muted-foreground', props.class)"
-  >
-    <slot />
-  </DialogDescription>
+    :class="cn('-mx-1 my-1 h-px bg-muted', props.class)"
+  />
 </template>

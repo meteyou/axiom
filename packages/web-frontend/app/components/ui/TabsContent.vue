@@ -1,29 +1,28 @@
 <script setup lang="ts">
+import { type HTMLAttributes, computed } from 'vue'
+import { TabsContent, type TabsContentProps } from 'reka-ui'
 import { cn } from '~/lib/utils'
 
-interface Props {
-  value: string
-  class?: string
+interface Props extends TabsContentProps {
+  class?: HTMLAttributes['class']
 }
 
 const props = defineProps<Props>()
 
-const activeTab = inject<Ref<string>>('tabs-active', ref(''))
-
-const isActive = computed(() => activeTab.value === props.value)
+const delegatedProps = computed(() => {
+  const { class: _, ...delegated } = props
+  return delegated
+})
 </script>
 
 <template>
-  <div
-    v-if="isActive"
-    role="tabpanel"
-    :data-state="isActive ? 'active' : 'inactive'"
+  <TabsContent
+    v-bind="delegatedProps"
     :class="cn(
       'mt-4 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
       props.class
     )"
-    v-bind="$attrs"
   >
     <slot />
-  </div>
+  </TabsContent>
 </template>

@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import { type HTMLAttributes } from 'vue'
 import { cn } from '~/lib/utils'
 
-interface Props {
-  class?: string
+const props = withDefaults(defineProps<{
+  class?: HTMLAttributes['class']
   type?: string
   placeholder?: string
   disabled?: boolean
@@ -13,9 +14,7 @@ interface Props {
   autocomplete?: string
   autofocus?: boolean
   required?: boolean
-}
-
-const props = withDefaults(defineProps<Props>(), {
+}>(), {
   type: 'text',
 })
 

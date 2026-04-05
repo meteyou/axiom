@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { type HTMLAttributes } from 'vue'
 import { type VariantProps, cva } from 'class-variance-authority'
 import { cn } from '~/lib/utils'
 
@@ -24,12 +25,10 @@ const badgeVariants = cva(
 
 type BadgeVariants = VariantProps<typeof badgeVariants>
 
-interface Props {
+const props = defineProps<{
   variant?: BadgeVariants['variant']
-  class?: string
-}
-
-const props = defineProps<Props>()
+  class?: HTMLAttributes['class']
+}>()
 </script>
 
 <template>

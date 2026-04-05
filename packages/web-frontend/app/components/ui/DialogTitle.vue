@@ -1,18 +1,25 @@
 <script setup lang="ts">
+import { type HTMLAttributes, computed } from 'vue'
+import { DialogTitle, type DialogTitleProps } from 'reka-ui'
 import { cn } from '~/lib/utils'
 
-interface Props {
-  class?: string
+interface Props extends DialogTitleProps {
+  class?: HTMLAttributes['class']
 }
 
 const props = defineProps<Props>()
+
+const delegatedProps = computed(() => {
+  const { class: _, ...delegated } = props
+  return delegated
+})
 </script>
 
 <template>
-  <h2
+  <DialogTitle
+    v-bind="delegatedProps"
     :class="cn('text-lg font-semibold leading-none tracking-tight text-foreground', props.class)"
-    v-bind="$attrs"
   >
     <slot />
-  </h2>
+  </DialogTitle>
 </template>

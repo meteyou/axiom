@@ -1,55 +1,45 @@
 <script setup lang="ts">
+import { type HTMLAttributes, computed } from 'vue'
+import {
+  DialogContent,
+  DialogOverlay,
+  DialogPortal,
+  type DialogContentEmits,
+  type DialogContentProps,
+  useForwardPropsEmits,
+} from 'reka-ui'
 import { cn } from '~/lib/utils'
 
-interface Props {
-  class?: string
+interface Props extends DialogContentProps {
+  class?: HTMLAttributes['class']
 }
 
 const props = defineProps<Props>()
+const emits = defineEmits<DialogContentEmits>()
 
-const isOpen = inject<ComputedRef<boolean>>('dialog-open', computed(() => false))
-const closeDialog = inject<() => void>('dialog-close', () => {})
+const delegatedProps = computed(() => {
+  const { class: _, ...delegated } = props
+  return delegated
+})
 
-function handleBackdropClick(e: MouseEvent) {
-  if (e.target === e.currentTarget) {
-    closeDialog()
-  }
-}
-
-function handleKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape') closeDialog()
-}
+const forwarded = useForwardPropsEmits(delegatedProps, emits)
 </script>
 
 <template>
-  <Teleport to="body">
-    <Transition
-      enter-active-class="transition-opacity duration-150"
-      enter-from-class="opacity-0"
-      enter-to-class="opacity-100"
-      leave-active-class="transition-opacity duration-150"
-      leave-from-class="opacity-100"
-      leave-to-class="opacity-0"
+  <DialogPortal>
+    <DialogOverlay
+      class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm data-[state=open]:animate-fade-in data-[state=closed]:animate-fade-out"
+    />
+    <DialogContent
+      v-bind="forwarded"
+      :class="cn(
+        'fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-card p-6 shadow-xl',
+        'focus:outline-none',
+        'data-[state=open]:animate-fade-in data-[state=closed]:animate-fade-out',
+        props.class
+      )"
     >
-      <div
-        v-if="isOpen"
-        class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-        @click="handleBackdropClick"
-        @keydown="handleKeydown"
-      >
-        <div
-          :class="cn(
-            'relative z-50 w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-xl',
-            'focus:outline-none',
-            props.class
-          )"
-          role="dialog"
-          aria-modal="true"
-          tabindex="-1"
-        >
-          <slot />
-        </div>
-      </div>
-    </Transition>
-  </Teleport>
+      <slot />
+    </DialogContent>
+  </DialogPortal>
 </template>

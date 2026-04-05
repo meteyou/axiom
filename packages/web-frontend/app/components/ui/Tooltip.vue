@@ -1,15 +1,13 @@
 <script setup lang="ts">
-const show = ref(false)
-const triggerEl = ref<HTMLElement | null>(null)
+import { TooltipRoot, type TooltipRootEmits, type TooltipRootProps, useForwardPropsEmits } from 'reka-ui'
 
-provide('tooltipShow', show)
-provide('tooltipOpen', () => { show.value = true })
-provide('tooltipClose', () => { show.value = false })
-provide('tooltipTriggerEl', triggerEl)
+const props = defineProps<TooltipRootProps>()
+const emits = defineEmits<TooltipRootEmits>()
+const forwarded = useForwardPropsEmits(props, emits)
 </script>
 
 <template>
-  <div class="relative inline-flex">
+  <TooltipRoot v-bind="forwarded">
     <slot />
-  </div>
+  </TooltipRoot>
 </template>

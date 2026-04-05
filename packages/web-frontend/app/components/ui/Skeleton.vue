@@ -1,19 +1,15 @@
 <script setup lang="ts">
+import { type HTMLAttributes } from 'vue'
 import { cn } from '~/lib/utils'
 
-interface Props {
-  class?: string
-}
-
-const props = defineProps<Props>()
+const props = defineProps<{
+  class?: HTMLAttributes['class']
+}>()
 </script>
 
 <template>
   <div
-    :class="cn(
-      'animate-pulse rounded-md bg-muted',
-      props.class
-    )"
+    :class="cn('animate-pulse rounded-md bg-muted', props.class)"
     v-bind="$attrs"
   />
 </template>

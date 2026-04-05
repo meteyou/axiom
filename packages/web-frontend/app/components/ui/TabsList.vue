@@ -1,22 +1,28 @@
 <script setup lang="ts">
+import { type HTMLAttributes, computed } from 'vue'
+import { TabsList, type TabsListProps } from 'reka-ui'
 import { cn } from '~/lib/utils'
 
-interface Props {
-  class?: string
+interface Props extends TabsListProps {
+  class?: HTMLAttributes['class']
 }
 
 const props = defineProps<Props>()
+
+const delegatedProps = computed(() => {
+  const { class: _, ...delegated } = props
+  return delegated
+})
 </script>
 
 <template>
-  <div
-    role="tablist"
+  <TabsList
+    v-bind="delegatedProps"
     :class="cn(
       'inline-flex items-center rounded-lg bg-muted p-1 text-muted-foreground gap-1',
       props.class
     )"
-    v-bind="$attrs"
   >
     <slot />
-  </div>
+  </TabsList>
 </template>

@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { type HTMLAttributes, computed } from 'vue'
-import { DialogDescription, type DialogDescriptionProps } from 'reka-ui'
+import { SelectLabel, type SelectLabelProps } from 'reka-ui'
 import { cn } from '~/lib/utils'
 
-interface Props extends DialogDescriptionProps {
+interface Props extends SelectLabelProps {
   class?: HTMLAttributes['class']
 }
 
@@ -16,10 +16,10 @@ const delegatedProps = computed(() => {
 </script>
 
 <template>
-  <DialogDescription
+  <SelectLabel
     v-bind="delegatedProps"
-    :class="cn('text-sm text-muted-foreground', props.class)"
+    :class="cn('py-1.5 pl-8 pr-2 text-xs font-semibold text-muted-foreground', props.class)"
   >
     <slot />
-  </DialogDescription>
+  </SelectLabel>
 </template>

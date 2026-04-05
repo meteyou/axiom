@@ -1,24 +1,20 @@
 <script setup lang="ts">
 import { type HTMLAttributes, computed } from 'vue'
 import {
-  DropdownMenuContent,
+  DropdownMenuSubContent,
   DropdownMenuPortal,
-  type DropdownMenuContentEmits,
-  type DropdownMenuContentProps,
+  type DropdownMenuSubContentEmits,
+  type DropdownMenuSubContentProps,
   useForwardPropsEmits,
 } from 'reka-ui'
 import { cn } from '~/lib/utils'
 
-interface Props extends DropdownMenuContentProps {
+interface Props extends DropdownMenuSubContentProps {
   class?: HTMLAttributes['class']
 }
 
-const props = withDefaults(defineProps<Props>(), {
-  sideOffset: 6,
-  align: 'end',
-})
-
-const emits = defineEmits<DropdownMenuContentEmits>()
+const props = defineProps<Props>()
+const emits = defineEmits<DropdownMenuSubContentEmits>()
 
 const delegatedProps = computed(() => {
   const { class: _, ...delegated } = props
@@ -30,7 +26,7 @@ const forwarded = useForwardPropsEmits(delegatedProps, emits)
 
 <template>
   <DropdownMenuPortal>
-    <DropdownMenuContent
+    <DropdownMenuSubContent
       v-bind="forwarded"
       :class="cn(
         'z-[100] min-w-[160px] overflow-hidden rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg',
@@ -39,6 +35,6 @@ const forwarded = useForwardPropsEmits(delegatedProps, emits)
       )"
     >
       <slot />
-    </DropdownMenuContent>
+    </DropdownMenuSubContent>
   </DropdownMenuPortal>
 </template>

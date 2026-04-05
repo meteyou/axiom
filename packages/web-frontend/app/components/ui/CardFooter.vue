@@ -1,18 +1,14 @@
 <script setup lang="ts">
+import { type HTMLAttributes } from 'vue'
 import { cn } from '~/lib/utils'
 
-interface Props {
-  class?: string
-}
-
-const props = defineProps<Props>()
+const props = defineProps<{
+  class?: HTMLAttributes['class']
+}>()
 </script>
 
 <template>
-  <div
-    :class="cn('flex items-center p-6 pt-0', props.class)"
-    v-bind="$attrs"
-  >
+  <div :class="cn('flex items-center p-6 pt-0', props.class)" v-bind="$attrs">
     <slot />
   </div>
 </template>

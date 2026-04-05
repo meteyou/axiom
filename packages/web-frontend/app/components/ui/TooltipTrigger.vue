@@ -1,24 +1,11 @@
 <script setup lang="ts">
-const open = inject<() => void>('tooltipOpen')
-const close = inject<() => void>('tooltipClose')
-const triggerEl = inject<Ref<HTMLElement | null>>('tooltipTriggerEl')
+import { TooltipTrigger, type TooltipTriggerProps } from 'reka-ui'
 
-const el = ref<HTMLElement | null>(null)
-
-watch(el, (value) => {
-  if (triggerEl) triggerEl.value = value
-}, { immediate: true })
+const props = defineProps<TooltipTriggerProps>()
 </script>
 
 <template>
-  <div
-    ref="el"
-    class="inline-flex"
-    @mouseenter="open?.()"
-    @mouseleave="close?.()"
-    @focus="open?.()"
-    @blur="close?.()"
-  >
+  <TooltipTrigger v-bind="props" v-bind.attr="$attrs">
     <slot />
-  </div>
+  </TooltipTrigger>
 </template>

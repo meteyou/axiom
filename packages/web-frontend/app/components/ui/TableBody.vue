@@ -1,18 +1,14 @@
 <script setup lang="ts">
+import { type HTMLAttributes } from 'vue'
 import { cn } from '~/lib/utils'
 
-interface Props {
-  class?: string
-}
-
-const props = defineProps<Props>()
+const props = defineProps<{
+  class?: HTMLAttributes['class']
+}>()
 </script>
 
 <template>
-  <tbody
-    :class="cn('[&_tr:last-child]:border-0', props.class)"
-    v-bind="$attrs"
-  >
+  <tbody :class="cn('[&_tr:last-child]:border-0', props.class)" v-bind="$attrs">
     <slot />
   </tbody>
 </template>
