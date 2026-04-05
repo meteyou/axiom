@@ -6,7 +6,7 @@ import type { AgentCore } from '@openagent/core'
 import { jwtMiddleware } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
 
-export interface HeartbeatNotificationToggles {
+export interface HealthMonitorNotificationToggles {
   healthyToDegraded: boolean
   degradedToHealthy: boolean
   degradedToDown: boolean
@@ -15,21 +15,21 @@ export interface HeartbeatNotificationToggles {
   fallbackToHealthy: boolean
 }
 
-export interface HeartbeatData {
+export interface HealthMonitorData {
   intervalMinutes?: number
   fallbackTrigger?: 'down' | 'degraded'
   failuresBeforeFallback?: number
   recoveryCheckIntervalMinutes?: number
   successesBeforeRecovery?: number
-  notifications?: Partial<HeartbeatNotificationToggles>
+  notifications?: Partial<HealthMonitorNotificationToggles>
 }
 
 export interface SettingsData {
   sessionTimeoutMinutes: number
   language: string
   timezone: string
-  heartbeatIntervalMinutes: number
-  heartbeat?: HeartbeatData
+  healthMonitorIntervalMinutes: number
+  healthMonitor?: HealthMonitorData
   batchingDelayMs?: number
   uploadRetentionDays?: number
   yoloMode: boolean
@@ -63,7 +63,7 @@ export interface AgentHeartbeatSettingsData {
 
 export interface SettingsRouterOptions {
   getAgentCore?: () => AgentCore | null
-  onHeartbeatSettingsChanged?: () => void
+  onHealthMonitorSettingsChanged?: () => void
   onConsolidationSettingsChanged?: () => void
   onAgentHeartbeatSettingsChanged?: () => void
   onTelegramSettingsChanged?: () => void
@@ -104,7 +104,7 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
         statusUpdateIntervalMinutes?: number
       } | undefined
 
-      const defaultNotifications: HeartbeatNotificationToggles = {
+      const defaultNotifications: HealthMonitorNotificationToggles = {
         healthyToDegraded: false,
         degradedToHealthy: false,
         degradedToDown: true,
@@ -117,18 +117,18 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
         sessionTimeoutMinutes: settings.sessionTimeoutMinutes ?? 15,
         language: settings.language ?? 'match',
         timezone: settings.timezone ?? 'UTC',
-        heartbeatIntervalMinutes: settings.heartbeatIntervalMinutes ?? settings.heartbeat?.intervalMinutes ?? 5,
+        healthMonitorIntervalMinutes: settings.healthMonitorIntervalMinutes ?? settings.healthMonitor?.intervalMinutes ?? 5,
         yoloMode: settings.yoloMode ?? true,
         uploadRetentionDays: settings.uploadRetentionDays ?? 30,
         batchingDelayMs: settings.batchingDelayMs ?? telegram.batchingDelayMs ?? 2500,
         telegramEnabled: telegram.enabled ?? false,
         telegramBotToken: telegram.botToken ?? '',
-        heartbeat: {
-          fallbackTrigger: settings.heartbeat?.fallbackTrigger ?? 'down',
-          failuresBeforeFallback: settings.heartbeat?.failuresBeforeFallback ?? 1,
-          recoveryCheckIntervalMinutes: settings.heartbeat?.recoveryCheckIntervalMinutes ?? 1,
-          successesBeforeRecovery: settings.heartbeat?.successesBeforeRecovery ?? 3,
-          notifications: { ...defaultNotifications, ...settings.heartbeat?.notifications },
+        healthMonitor: {
+          fallbackTrigger: settings.healthMonitor?.fallbackTrigger ?? 'down',
+          failuresBeforeFallback: settings.healthMonitor?.failuresBeforeFallback ?? 1,
+          recoveryCheckIntervalMinutes: settings.healthMonitor?.recoveryCheckIntervalMinutes ?? 1,
+          successesBeforeRecovery: settings.healthMonitor?.successesBeforeRecovery ?? 3,
+          notifications: { ...defaultNotifications, ...settings.healthMonitor?.notifications },
         },
         memoryConsolidation: {
           enabled: consolidation?.enabled ?? false,
@@ -169,18 +169,18 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
       sessionTimeoutMinutes: number
       language: string
       timezone: string
-      heartbeatIntervalMinutes: number
+      healthMonitorIntervalMinutes: number
       yoloMode: boolean
       batchingDelayMs: number
       uploadRetentionDays: number
       telegramEnabled: boolean
       telegramBotToken: string
-      heartbeat: {
+      healthMonitor: {
         fallbackTrigger?: 'down' | 'degraded'
         failuresBeforeFallback?: number
         recoveryCheckIntervalMinutes?: number
         successesBeforeRecovery?: number
-        notifications?: Partial<HeartbeatNotificationToggles>
+        notifications?: Partial<HealthMonitorNotificationToggles>
       }
       memoryConsolidation: Partial<MemoryConsolidationSettingsData>
       agentHeartbeat: Partial<{
@@ -215,7 +215,7 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
 
       const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as SettingsData
       const telegram = JSON.parse(fs.readFileSync(telegramPath, 'utf-8')) as TelegramData
-      const previousHeartbeatInterval = settings.heartbeatIntervalMinutes ?? 5
+      const previousHealthMonitorInterval = settings.healthMonitorIntervalMinutes ?? 5
       const previousBatchingDelayMs = settings.batchingDelayMs ?? telegram.batchingDelayMs ?? 2500
       const previousTelegramEnabled = telegram.enabled
       const previousTelegramBotToken = telegram.botToken
@@ -244,12 +244,12 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
         settings.timezone = body.timezone.trim()
       }
 
-      if (body.heartbeatIntervalMinutes !== undefined) {
-        if (typeof body.heartbeatIntervalMinutes !== 'number' || !Number.isFinite(body.heartbeatIntervalMinutes) || body.heartbeatIntervalMinutes < 1) {
-          res.status(400).json({ error: 'heartbeatIntervalMinutes must be a positive number' })
+      if (body.healthMonitorIntervalMinutes !== undefined) {
+        if (typeof body.healthMonitorIntervalMinutes !== 'number' || !Number.isFinite(body.healthMonitorIntervalMinutes) || body.healthMonitorIntervalMinutes < 1) {
+          res.status(400).json({ error: 'healthMonitorIntervalMinutes must be a positive number' })
           return
         }
-        settings.heartbeatIntervalMinutes = body.heartbeatIntervalMinutes
+        settings.healthMonitorIntervalMinutes = body.healthMonitorIntervalMinutes
       }
 
       if (body.yoloMode !== undefined) {
@@ -272,58 +272,58 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
         settings.batchingDelayMs = body.batchingDelayMs
       }
 
-      // Handle heartbeat notification settings
+      // Handle health monitor settings
       const settingsRaw = settings as unknown as Record<string, unknown>
-      let heartbeatChanged = false
-      if (body.heartbeat !== undefined) {
-        const existingHeartbeat = (settingsRaw.heartbeat ?? {}) as Record<string, unknown>
+      let healthMonitorChanged = false
+      if (body.healthMonitor !== undefined) {
+        const existingHealthMonitor = (settingsRaw.healthMonitor ?? {}) as Record<string, unknown>
 
-        if (body.heartbeat.fallbackTrigger !== undefined) {
-          if (!['down', 'degraded'].includes(body.heartbeat.fallbackTrigger)) {
-            res.status(400).json({ error: 'heartbeat.fallbackTrigger must be "down" or "degraded"' })
+        if (body.healthMonitor.fallbackTrigger !== undefined) {
+          if (!['down', 'degraded'].includes(body.healthMonitor.fallbackTrigger)) {
+            res.status(400).json({ error: 'healthMonitor.fallbackTrigger must be "down" or "degraded"' })
             return
           }
-          existingHeartbeat.fallbackTrigger = body.heartbeat.fallbackTrigger
-          heartbeatChanged = true
+          existingHealthMonitor.fallbackTrigger = body.healthMonitor.fallbackTrigger
+          healthMonitorChanged = true
         }
-        if (body.heartbeat.failuresBeforeFallback !== undefined) {
-          if (typeof body.heartbeat.failuresBeforeFallback !== 'number' || !Number.isFinite(body.heartbeat.failuresBeforeFallback) || body.heartbeat.failuresBeforeFallback < 1) {
-            res.status(400).json({ error: 'heartbeat.failuresBeforeFallback must be a number >= 1' })
+        if (body.healthMonitor.failuresBeforeFallback !== undefined) {
+          if (typeof body.healthMonitor.failuresBeforeFallback !== 'number' || !Number.isFinite(body.healthMonitor.failuresBeforeFallback) || body.healthMonitor.failuresBeforeFallback < 1) {
+            res.status(400).json({ error: 'healthMonitor.failuresBeforeFallback must be a number >= 1' })
             return
           }
-          existingHeartbeat.failuresBeforeFallback = body.heartbeat.failuresBeforeFallback
-          heartbeatChanged = true
+          existingHealthMonitor.failuresBeforeFallback = body.healthMonitor.failuresBeforeFallback
+          healthMonitorChanged = true
         }
-        if (body.heartbeat.recoveryCheckIntervalMinutes !== undefined) {
-          if (typeof body.heartbeat.recoveryCheckIntervalMinutes !== 'number' || !Number.isFinite(body.heartbeat.recoveryCheckIntervalMinutes) || body.heartbeat.recoveryCheckIntervalMinutes < 1) {
-            res.status(400).json({ error: 'heartbeat.recoveryCheckIntervalMinutes must be a number >= 1' })
+        if (body.healthMonitor.recoveryCheckIntervalMinutes !== undefined) {
+          if (typeof body.healthMonitor.recoveryCheckIntervalMinutes !== 'number' || !Number.isFinite(body.healthMonitor.recoveryCheckIntervalMinutes) || body.healthMonitor.recoveryCheckIntervalMinutes < 1) {
+            res.status(400).json({ error: 'healthMonitor.recoveryCheckIntervalMinutes must be a number >= 1' })
             return
           }
-          existingHeartbeat.recoveryCheckIntervalMinutes = body.heartbeat.recoveryCheckIntervalMinutes
-          heartbeatChanged = true
+          existingHealthMonitor.recoveryCheckIntervalMinutes = body.healthMonitor.recoveryCheckIntervalMinutes
+          healthMonitorChanged = true
         }
-        if (body.heartbeat.successesBeforeRecovery !== undefined) {
-          if (typeof body.heartbeat.successesBeforeRecovery !== 'number' || !Number.isFinite(body.heartbeat.successesBeforeRecovery) || body.heartbeat.successesBeforeRecovery < 1) {
-            res.status(400).json({ error: 'heartbeat.successesBeforeRecovery must be a number >= 1' })
+        if (body.healthMonitor.successesBeforeRecovery !== undefined) {
+          if (typeof body.healthMonitor.successesBeforeRecovery !== 'number' || !Number.isFinite(body.healthMonitor.successesBeforeRecovery) || body.healthMonitor.successesBeforeRecovery < 1) {
+            res.status(400).json({ error: 'healthMonitor.successesBeforeRecovery must be a number >= 1' })
             return
           }
-          existingHeartbeat.successesBeforeRecovery = body.heartbeat.successesBeforeRecovery
-          heartbeatChanged = true
+          existingHealthMonitor.successesBeforeRecovery = body.healthMonitor.successesBeforeRecovery
+          healthMonitorChanged = true
         }
 
-        if (body.heartbeat.notifications !== undefined) {
-          const existingNotifications = (existingHeartbeat.notifications ?? {}) as Record<string, unknown>
-          const incoming = body.heartbeat.notifications
+        if (body.healthMonitor.notifications !== undefined) {
+          const existingNotifications = (existingHealthMonitor.notifications ?? {}) as Record<string, unknown>
+          const incoming = body.healthMonitor.notifications
           for (const key of ['healthyToDegraded', 'degradedToHealthy', 'degradedToDown', 'healthyToDown', 'downToFallback', 'fallbackToHealthy'] as const) {
             if (incoming[key] !== undefined) {
               existingNotifications[key] = !!incoming[key]
             }
           }
-          existingHeartbeat.notifications = existingNotifications
-          heartbeatChanged = true
+          existingHealthMonitor.notifications = existingNotifications
+          healthMonitorChanged = true
         }
 
-        settingsRaw.heartbeat = existingHeartbeat
+        settingsRaw.healthMonitor = existingHealthMonitor
       }
 
       // Handle memory consolidation settings
@@ -502,8 +502,8 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
         }
       }
 
-      if ((settings.heartbeatIntervalMinutes ?? 5) !== previousHeartbeatInterval || heartbeatChanged) {
-        options.onHeartbeatSettingsChanged?.()
+      if ((settings.healthMonitorIntervalMinutes ?? 5) !== previousHealthMonitorInterval || healthMonitorChanged) {
+        options.onHealthMonitorSettingsChanged?.()
       }
 
       if (consolidationChanged) {
@@ -523,7 +523,7 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
       const agentHeartbeatOut = (settingsRaw.agentHeartbeat ?? {}) as Record<string, unknown>
       const agentHeartbeatNmOut = (agentHeartbeatOut.nightMode ?? {}) as Record<string, unknown>
 
-      const defaultNotifications: HeartbeatNotificationToggles = {
+      const defaultNotifications: HealthMonitorNotificationToggles = {
         healthyToDegraded: false,
         degradedToHealthy: false,
         degradedToDown: true,
@@ -531,25 +531,25 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
         downToFallback: true,
         fallbackToHealthy: true,
       }
-      const heartbeatOut = (settingsRaw.heartbeat ?? {}) as Record<string, unknown>
-      const notificationsOut = (heartbeatOut.notifications ?? {}) as Record<string, unknown>
+      const healthMonitorOut = (settingsRaw.healthMonitor ?? {}) as Record<string, unknown>
+      const notificationsOut = (healthMonitorOut.notifications ?? {}) as Record<string, unknown>
 
       res.json({
         message: 'Settings updated',
         sessionTimeoutMinutes: settings.sessionTimeoutMinutes,
         language: settings.language,
         timezone: settings.timezone ?? 'UTC',
-        heartbeatIntervalMinutes: settings.heartbeatIntervalMinutes,
+        healthMonitorIntervalMinutes: settings.healthMonitorIntervalMinutes,
         yoloMode: settings.yoloMode,
         batchingDelayMs: settings.batchingDelayMs ?? previousBatchingDelayMs,
         uploadRetentionDays: settings.uploadRetentionDays ?? 30,
         telegramEnabled: telegram.enabled,
         telegramBotToken: telegram.botToken,
-        heartbeat: {
-          fallbackTrigger: heartbeatOut.fallbackTrigger ?? 'down',
-          failuresBeforeFallback: heartbeatOut.failuresBeforeFallback ?? 1,
-          recoveryCheckIntervalMinutes: heartbeatOut.recoveryCheckIntervalMinutes ?? 1,
-          successesBeforeRecovery: heartbeatOut.successesBeforeRecovery ?? 3,
+        healthMonitor: {
+          fallbackTrigger: healthMonitorOut.fallbackTrigger ?? 'down',
+          failuresBeforeFallback: healthMonitorOut.failuresBeforeFallback ?? 1,
+          recoveryCheckIntervalMinutes: healthMonitorOut.recoveryCheckIntervalMinutes ?? 1,
+          successesBeforeRecovery: healthMonitorOut.successesBeforeRecovery ?? 3,
           notifications: { ...defaultNotifications, ...notificationsOut },
         },
         memoryConsolidation: {

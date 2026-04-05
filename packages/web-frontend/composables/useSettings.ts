@@ -5,7 +5,7 @@ export interface MemoryConsolidationSettings {
   providerId: string
 }
 
-export interface HeartbeatNotificationToggles {
+export interface HealthMonitorNotificationToggles {
   healthyToDegraded: boolean
   degradedToHealthy: boolean
   degradedToDown: boolean
@@ -14,12 +14,12 @@ export interface HeartbeatNotificationToggles {
   fallbackToHealthy: boolean
 }
 
-export interface HeartbeatSettings {
+export interface HealthMonitorSettings {
   fallbackTrigger: 'down' | 'degraded'
   failuresBeforeFallback: number
   recoveryCheckIntervalMinutes: number
   successesBeforeRecovery: number
-  notifications: HeartbeatNotificationToggles
+  notifications: HealthMonitorNotificationToggles
 }
 
 export interface LoopDetectionSettings {
@@ -42,13 +42,13 @@ export interface Settings {
   sessionTimeoutMinutes: number
   language: string
   timezone: string
-  heartbeatIntervalMinutes: number
+  healthMonitorIntervalMinutes: number
   yoloMode: boolean
   batchingDelayMs: number
   uploadRetentionDays: number
   telegramEnabled: boolean
   telegramBotToken: string
-  heartbeat: HeartbeatSettings
+  healthMonitor: HealthMonitorSettings
   memoryConsolidation: MemoryConsolidationSettings
   tasks: TasksSettings
 }
@@ -88,13 +88,13 @@ export function useSettings() {
         sessionTimeoutMinutes: result.sessionTimeoutMinutes,
         language: result.language,
         timezone: result.timezone,
-        heartbeatIntervalMinutes: result.heartbeatIntervalMinutes,
+        healthMonitorIntervalMinutes: result.healthMonitorIntervalMinutes,
         yoloMode: result.yoloMode,
         batchingDelayMs: result.batchingDelayMs,
         uploadRetentionDays: result.uploadRetentionDays,
         telegramEnabled: result.telegramEnabled,
         telegramBotToken: result.telegramBotToken,
-        heartbeat: result.heartbeat ?? {
+        healthMonitor: result.healthMonitor ?? {
           fallbackTrigger: 'down',
           failuresBeforeFallback: 1,
           recoveryCheckIntervalMinutes: 1,
