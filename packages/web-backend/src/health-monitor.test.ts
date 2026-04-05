@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { initDatabase, addProvider, setActiveProvider, ProviderManager } from '@openagent/core'
 import type { ProviderConfig } from '@openagent/core'
-import { HeartbeatService } from './heartbeat.js'
+import { HealthMonitorService } from './health-monitor.js'
 
 let tempDataDir: string
 let previousDataDir: string | undefined
@@ -36,7 +36,7 @@ beforeEach(() => {
   writeConfig('settings.json', {
     sessionTimeoutMinutes: 15,
     language: 'en',
-    heartbeat: {
+    healthMonitor: {
       intervalMinutes: 1,
       fallbackTrigger: 'down',
       failuresBeforeFallback: 1,
@@ -75,7 +75,7 @@ afterEach(() => {
   }
 })
 
-describe('HeartbeatService', () => {
+describe('HealthMonitorService', () => {
   it('runs on an interval in the background', async () => {
     vi.useFakeTimers()
     const db = initDatabase(':memory:')
@@ -89,7 +89,7 @@ describe('HeartbeatService', () => {
       return new Response(JSON.stringify({ ok: true }), { status: 200 })
     })
 
-    const service = new HeartbeatService({ db, fetchImpl: fetchImpl as typeof fetch })
+    const service = new HealthMonitorService({ db, fetchImpl: fetchImpl as typeof fetch })
     service.start()
 
     await vi.runOnlyPendingTimersAsync()
@@ -104,7 +104,7 @@ describe('HeartbeatService', () => {
 
   it('sends healthyToDown notification and downToFallback with fallback provider name', async () => {
     writeConfig('settings.json', {
-      heartbeat: {
+      healthMonitor: {
         intervalMinutes: 1,
         fallbackTrigger: 'down',
         failuresBeforeFallback: 1,
@@ -149,7 +149,7 @@ describe('HeartbeatService', () => {
       throw new Error(`Unexpected fetch URL: ${url}`)
     })
 
-    const service = new HeartbeatService({ db, providerManager: pm, fetchImpl: fetchImpl as typeof fetch })
+    const service = new HealthMonitorService({ db, providerManager: pm, fetchImpl: fetchImpl as typeof fetch })
 
     // First check: provider is down → healthyToDown + downToFallback notifications
     const first = await service.runNow()
@@ -192,7 +192,7 @@ describe('HeartbeatService', () => {
       throw new Error(`Unexpected fetch URL: ${url}`)
     })
 
-    const service = new HeartbeatService({ db, fetchImpl: fetchImpl as typeof fetch })
+    const service = new HealthMonitorService({ db, fetchImpl: fetchImpl as typeof fetch })
     const result = await service.runNow()
 
     expect(result.status).toBe('down')
@@ -217,7 +217,7 @@ describe('HeartbeatService', () => {
       throw new Error(`Unexpected fetch URL: ${url}`)
     })
 
-    const service = new HeartbeatService({ db, fetchImpl: fetchImpl as typeof fetch })
+    const service = new HealthMonitorService({ db, fetchImpl: fetchImpl as typeof fetch })
 
     const unconfigured = await service.runNow()
     expect(unconfigured.status).toBe('unconfigured')
@@ -244,7 +244,7 @@ describe('HeartbeatService', () => {
     const db = initDatabase(':memory:')
     const pm = new ProviderManager(makeProvider(), makeProvider({ id: 'fb', name: 'Fallback' }))
 
-    const service = new HeartbeatService({ db, providerManager: pm })
+    const service = new HealthMonitorService({ db, providerManager: pm })
     const snapshot = service.getSnapshot()
     expect(snapshot.operatingMode).toBe('normal')
     expect(snapshot.primaryProvider).not.toBeNull()
@@ -253,10 +253,10 @@ describe('HeartbeatService', () => {
     db.close()
   })
 
-  it('loads settings from heartbeat namespace', () => {
+  it('loads settings from healthMonitor namespace', () => {
     writeConfig('settings.json', {
       sessionTimeoutMinutes: 15,
-      heartbeat: {
+      healthMonitor: {
         intervalMinutes: 3,
         fallbackTrigger: 'degraded',
         failuresBeforeFallback: 2,
@@ -266,7 +266,7 @@ describe('HeartbeatService', () => {
     })
 
     const db = initDatabase(':memory:')
-    const service = new HeartbeatService({ db })
+    const service = new HealthMonitorService({ db })
     const snapshot = service.getSnapshot()
     expect(snapshot.intervalMinutes).toBe(3)
 
@@ -279,7 +279,7 @@ describe('HeartbeatService', () => {
     const fallback = makeProvider({ id: 'fb', name: 'Fallback', defaultModel: 'gpt-4o-mini' })
     const pm = new ProviderManager(primary, fallback)
 
-    const service = new HeartbeatService({ db, providerManager: pm })
+    const service = new HealthMonitorService({ db, providerManager: pm })
     const snapshot = service.getSnapshot()
 
     expect(snapshot.operatingMode).toBe('normal')
@@ -302,7 +302,7 @@ describe('HeartbeatService', () => {
 
   it('consecutive failures trigger swapToFallback', async () => {
     writeConfig('settings.json', {
-      heartbeat: {
+      healthMonitor: {
         intervalMinutes: 1,
         fallbackTrigger: 'down',
         failuresBeforeFallback: 2,
@@ -330,7 +330,7 @@ describe('HeartbeatService', () => {
       throw new Error(`Unexpected fetch URL: ${url}`)
     })
 
-    const service = new HeartbeatService({ db, providerManager: pm, fetchImpl: fetchImpl as typeof fetch })
+    const service = new HealthMonitorService({ db, providerManager: pm, fetchImpl: fetchImpl as typeof fetch })
 
     // First failure
     await service.runNow()
@@ -347,7 +347,7 @@ describe('HeartbeatService', () => {
 
   it('fallbackTrigger "down" only counts down status as failure', async () => {
     writeConfig('settings.json', {
-      heartbeat: {
+      healthMonitor: {
         intervalMinutes: 1,
         fallbackTrigger: 'down',
         failuresBeforeFallback: 1,
@@ -375,7 +375,7 @@ describe('HeartbeatService', () => {
       throw new Error(`Unexpected fetch URL: ${url}`)
     })
 
-    const service = new HeartbeatService({ db, providerManager: pm, fetchImpl: fetchImpl as typeof fetch })
+    const service = new HealthMonitorService({ db, providerManager: pm, fetchImpl: fetchImpl as typeof fetch })
 
     // Healthy response should NOT trigger fallback even with failuresBeforeFallback=1
     await service.runNow()
@@ -386,7 +386,7 @@ describe('HeartbeatService', () => {
 
   it('fallbackTrigger "degraded" counts both degraded and down as failures', async () => {
     writeConfig('settings.json', {
-      heartbeat: {
+      healthMonitor: {
         intervalMinutes: 1,
         fallbackTrigger: 'degraded',
         failuresBeforeFallback: 1,
@@ -416,7 +416,7 @@ describe('HeartbeatService', () => {
       throw new Error(`Unexpected fetch URL: ${url}`)
     })
 
-    const service = new HeartbeatService({ db, providerManager: pm, fetchImpl: fetchImpl as typeof fetch })
+    const service = new HealthMonitorService({ db, providerManager: pm, fetchImpl: fetchImpl as typeof fetch })
 
     // Degraded response should trigger fallback with fallbackTrigger='degraded'
     await service.runNow()
@@ -429,7 +429,7 @@ describe('HeartbeatService', () => {
     vi.useFakeTimers()
 
     writeConfig('settings.json', {
-      heartbeat: {
+      healthMonitor: {
         intervalMinutes: 5,
         fallbackTrigger: 'down',
         failuresBeforeFallback: 1,
@@ -460,7 +460,7 @@ describe('HeartbeatService', () => {
       throw new Error(`Unexpected fetch URL: ${url}`)
     })
 
-    const service = new HeartbeatService({ db, providerManager: pm, fetchImpl: fetchImpl as typeof fetch })
+    const service = new HealthMonitorService({ db, providerManager: pm, fetchImpl: fetchImpl as typeof fetch })
     service.start()
 
     // First check runs immediately (delay=0), fails, triggers fallback
@@ -482,7 +482,7 @@ describe('HeartbeatService', () => {
 
   it('consecutive successes in fallback mode trigger swapToPrimary', async () => {
     writeConfig('settings.json', {
-      heartbeat: {
+      healthMonitor: {
         intervalMinutes: 1,
         fallbackTrigger: 'down',
         failuresBeforeFallback: 1,
@@ -513,7 +513,7 @@ describe('HeartbeatService', () => {
       throw new Error(`Unexpected fetch URL: ${url}`)
     })
 
-    const service = new HeartbeatService({ db, providerManager: pm, fetchImpl: fetchImpl as typeof fetch })
+    const service = new HealthMonitorService({ db, providerManager: pm, fetchImpl: fetchImpl as typeof fetch })
 
     // Trigger fallback
     await service.runNow()
@@ -536,7 +536,7 @@ describe('HeartbeatService', () => {
 
   it('failure/success counters reset on mode change', async () => {
     writeConfig('settings.json', {
-      heartbeat: {
+      healthMonitor: {
         intervalMinutes: 1,
         fallbackTrigger: 'down',
         failuresBeforeFallback: 1,
@@ -567,7 +567,7 @@ describe('HeartbeatService', () => {
       throw new Error(`Unexpected fetch URL: ${url}`)
     })
 
-    const service = new HeartbeatService({ db, providerManager: pm, fetchImpl: fetchImpl as typeof fetch })
+    const service = new HealthMonitorService({ db, providerManager: pm, fetchImpl: fetchImpl as typeof fetch })
 
     // Trigger fallback
     await service.runNow()
@@ -605,7 +605,7 @@ describe('HeartbeatService', () => {
       throw new Error(`Unexpected fetch URL: ${url}`)
     })
 
-    const service = new HeartbeatService({ db, providerManager: pm, fetchImpl: fetchImpl as typeof fetch })
+    const service = new HealthMonitorService({ db, providerManager: pm, fetchImpl: fetchImpl as typeof fetch })
 
     // Trigger fallback
     await service.runNow()
@@ -622,7 +622,7 @@ describe('HeartbeatService', () => {
 
   it('recovery check failure resets success counter', async () => {
     writeConfig('settings.json', {
-      heartbeat: {
+      healthMonitor: {
         intervalMinutes: 1,
         fallbackTrigger: 'down',
         failuresBeforeFallback: 1,
@@ -654,7 +654,7 @@ describe('HeartbeatService', () => {
       throw new Error(`Unexpected fetch URL: ${url}`)
     })
 
-    const service = new HeartbeatService({ db, providerManager: pm, fetchImpl: fetchImpl as typeof fetch })
+    const service = new HealthMonitorService({ db, providerManager: pm, fetchImpl: fetchImpl as typeof fetch })
 
     // Trigger fallback
     await service.runNow()
@@ -691,7 +691,7 @@ describe('HeartbeatService', () => {
       return new Response(JSON.stringify({ ok: true }), { status: 200 })
     })
 
-    const service = new HeartbeatService({ db, fetchImpl: fetchImpl as typeof fetch })
+    const service = new HealthMonitorService({ db, fetchImpl: fetchImpl as typeof fetch })
     const result = await service.runNow()
 
     expect(result.status).toBe('healthy')
@@ -721,7 +721,7 @@ describe('HeartbeatService', () => {
       throw new Error(`Unexpected fetch URL: ${url}`)
     })
 
-    const service = new HeartbeatService({ db, providerManager: pm, fetchImpl: fetchImpl as typeof fetch })
+    const service = new HealthMonitorService({ db, providerManager: pm, fetchImpl: fetchImpl as typeof fetch })
     await service.runNow()
 
     expect(pm.getOperatingMode()).toBe('fallback')
@@ -744,7 +744,7 @@ describe('HeartbeatService', () => {
       let attempt = 0
 
       writeConfig('settings.json', {
-        heartbeat: {
+        healthMonitor: {
           intervalMinutes: 1,
           fallbackTrigger: 'down',
           failuresBeforeFallback: 1,
@@ -769,7 +769,7 @@ describe('HeartbeatService', () => {
         throw new Error(`Unexpected fetch URL: ${url}`)
       })
 
-      const service = new HeartbeatService({
+      const service = new HealthMonitorService({
         db,
         providerManager: opts.providerManager,
         fetchImpl: fetchImpl as typeof fetch,
@@ -889,7 +889,7 @@ describe('HeartbeatService', () => {
       const telegramBodies: Array<{ chat_id: number; text: string }> = []
 
       writeConfig('settings.json', {
-        heartbeat: {
+        healthMonitor: {
           intervalMinutes: 1,
           fallbackTrigger: 'down',
           failuresBeforeFallback: 1,
@@ -913,7 +913,7 @@ describe('HeartbeatService', () => {
         throw new Error(`Unexpected fetch URL: ${url}`)
       })
 
-      const service = new HeartbeatService({ db, fetchImpl: fetchImpl as typeof fetch })
+      const service = new HealthMonitorService({ db, fetchImpl: fetchImpl as typeof fetch })
       await service.runNow()
       const degradedMessages = telegramBodies.filter(b => b.text.includes('degraded'))
       expect(degradedMessages.length).toBeGreaterThanOrEqual(1)
@@ -955,7 +955,7 @@ describe('HeartbeatService', () => {
       const telegramBodies: Array<{ chat_id: number; text: string }> = []
 
       writeConfig('settings.json', {
-        heartbeat: {
+        healthMonitor: {
           intervalMinutes: 1,
           failuresBeforeFallback: 1,
           recoveryCheckIntervalMinutes: 1,
@@ -982,7 +982,7 @@ describe('HeartbeatService', () => {
         throw new Error(`Unexpected fetch URL: ${url}`)
       })
 
-      const service = new HeartbeatService({ db, fetchImpl: fetchImpl as typeof fetch })
+      const service = new HealthMonitorService({ db, fetchImpl: fetchImpl as typeof fetch })
       await service.runNow() // degraded (1ms threshold + 20ms delay)
 
       // Update the same provider's threshold so next check is healthy
@@ -1108,7 +1108,7 @@ describe('HeartbeatService', () => {
 
     it('uses default toggles when notifications not configured', async () => {
       writeConfig('settings.json', {
-        heartbeat: {
+        healthMonitor: {
           intervalMinutes: 1,
           fallbackTrigger: 'down',
           failuresBeforeFallback: 1,
@@ -1140,7 +1140,7 @@ describe('HeartbeatService', () => {
         throw new Error(`Unexpected fetch URL: ${url}`)
       })
 
-      const service = new HeartbeatService({ db, providerManager: pm, fetchImpl: fetchImpl as typeof fetch })
+      const service = new HealthMonitorService({ db, providerManager: pm, fetchImpl: fetchImpl as typeof fetch })
 
       // Down → should trigger healthyToDown (default: true) and downToFallback (default: true)
       await service.runNow()

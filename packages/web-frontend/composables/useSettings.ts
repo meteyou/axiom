@@ -5,7 +5,7 @@ export interface MemoryConsolidationSettings {
   providerId: string
 }
 
-export interface HeartbeatNotificationToggles {
+export interface HealthMonitorNotificationToggles {
   healthyToDegraded: boolean
   degradedToHealthy: boolean
   degradedToDown: boolean
@@ -14,12 +14,12 @@ export interface HeartbeatNotificationToggles {
   fallbackToHealthy: boolean
 }
 
-export interface HeartbeatSettings {
+export interface HealthMonitorSettings {
   fallbackTrigger: 'down' | 'degraded'
   failuresBeforeFallback: number
   recoveryCheckIntervalMinutes: number
   successesBeforeRecovery: number
-  notifications: HeartbeatNotificationToggles
+  notifications: HealthMonitorNotificationToggles
 }
 
 export interface LoopDetectionSettings {
@@ -38,18 +38,30 @@ export interface TasksSettings {
   statusUpdateIntervalMinutes: number
 }
 
+export interface AgentHeartbeatNightMode {
+  enabled: boolean
+  startHour: number
+  endHour: number
+}
+
+export interface AgentHeartbeatSettings {
+  enabled: boolean
+  intervalMinutes: number
+  nightMode: AgentHeartbeatNightMode
+}
+
 export interface Settings {
   sessionTimeoutMinutes: number
   language: string
   timezone: string
-  heartbeatIntervalMinutes: number
-  yoloMode: boolean
+  healthMonitorIntervalMinutes: number
   batchingDelayMs: number
   uploadRetentionDays: number
   telegramEnabled: boolean
   telegramBotToken: string
-  heartbeat: HeartbeatSettings
+  healthMonitor: HealthMonitorSettings
   memoryConsolidation: MemoryConsolidationSettings
+  agentHeartbeat: AgentHeartbeatSettings
   tasks: TasksSettings
 }
 
@@ -88,13 +100,12 @@ export function useSettings() {
         sessionTimeoutMinutes: result.sessionTimeoutMinutes,
         language: result.language,
         timezone: result.timezone,
-        heartbeatIntervalMinutes: result.heartbeatIntervalMinutes,
-        yoloMode: result.yoloMode,
+        healthMonitorIntervalMinutes: result.healthMonitorIntervalMinutes,
         batchingDelayMs: result.batchingDelayMs,
         uploadRetentionDays: result.uploadRetentionDays,
         telegramEnabled: result.telegramEnabled,
         telegramBotToken: result.telegramBotToken,
-        heartbeat: result.heartbeat ?? {
+        healthMonitor: result.healthMonitor ?? {
           fallbackTrigger: 'down',
           failuresBeforeFallback: 1,
           recoveryCheckIntervalMinutes: 1,
@@ -113,6 +124,15 @@ export function useSettings() {
           runAtHour: 3,
           lookbackDays: 3,
           providerId: '',
+        },
+        agentHeartbeat: result.agentHeartbeat ?? {
+          enabled: false,
+          intervalMinutes: 60,
+          nightMode: {
+            enabled: true,
+            startHour: 23,
+            endHour: 8,
+          },
         },
         tasks: result.tasks ?? {
           defaultProvider: '',

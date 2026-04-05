@@ -14,6 +14,7 @@ vi.mock('grammy', () => {
       first_name: 'TestBot',
       username: 'test_bot',
     }),
+    sendMessage: vi.fn().mockResolvedValue({ message_id: 1 }),
   }
 
   const MockBot = vi.fn().mockImplementation(() => ({
@@ -288,7 +289,8 @@ describe('TelegramBot', () => {
       expect(agentCore.sendMessage).toHaveBeenCalledWith(
         'telegram-12345',
         'Hello\nworld',
-        'telegram'
+        'telegram',
+        undefined
       )
     })
 
@@ -550,9 +552,11 @@ describe('TelegramBot', () => {
       expect(agentCore.sendMessage).toHaveBeenCalledWith(
         'telegram-12345',
         'Hello agent',
-        'telegram'
+        'telegram',
+        undefined
       )
-      expect(ctx.reply).toHaveBeenCalledWith('Hello human!', { parse_mode: 'HTML' })
+      const botApi = (bot.getBot() as any).api
+      expect(botApi.sendMessage).toHaveBeenCalledWith(67890, 'Hello human!', { parse_mode: 'HTML' })
     })
 
     it('handles empty responses gracefully', async () => {
@@ -589,6 +593,74 @@ describe('TelegramBot', () => {
     })
   })
 
+  describe('DM vs group chat', () => {
+    it('sends telegram source for DM (private) chats', async () => {
+      vi.mocked(agentCore.sendMessage).mockReturnValue(doneOnlyStream())
+
+      const bot = new TelegramBot({ agentCore, config: defaultConfig })
+      const underlying = bot.getBot() as unknown as MockBotInternals
+      const handler = underlying._handlers.get('message:text')!
+
+      const ctx = createMockContext({
+        chat: { id: 67890, type: 'private' },
+        message: { text: 'Hello DM', message_id: 1 },
+      })
+      await handler(ctx)
+      await vi.advanceTimersByTimeAsync(2500)
+
+      expect(agentCore.sendMessage).toHaveBeenCalledWith(
+        'telegram-12345',
+        'Hello DM',
+        'telegram',
+        undefined
+      )
+    })
+
+    it('sends telegram-group source for group chats', async () => {
+      vi.mocked(agentCore.sendMessage).mockReturnValue(doneOnlyStream())
+
+      const bot = new TelegramBot({ agentCore, config: defaultConfig })
+      const underlying = bot.getBot() as unknown as MockBotInternals
+      const handler = underlying._handlers.get('message:text')!
+
+      const ctx = createMockContext({
+        chat: { id: 67890, type: 'group' },
+        message: { text: 'Hello group', message_id: 1 },
+      })
+      await handler(ctx)
+      await vi.advanceTimersByTimeAsync(2500)
+
+      expect(agentCore.sendMessage).toHaveBeenCalledWith(
+        'telegram-12345',
+        'Hello group',
+        'telegram-group',
+        undefined
+      )
+    })
+
+    it('sends telegram-group source for supergroup chats', async () => {
+      vi.mocked(agentCore.sendMessage).mockReturnValue(doneOnlyStream())
+
+      const bot = new TelegramBot({ agentCore, config: defaultConfig })
+      const underlying = bot.getBot() as unknown as MockBotInternals
+      const handler = underlying._handlers.get('message:text')!
+
+      const ctx = createMockContext({
+        chat: { id: 67890, type: 'supergroup' },
+        message: { text: 'Hello supergroup', message_id: 1 },
+      })
+      await handler(ctx)
+      await vi.advanceTimersByTimeAsync(2500)
+
+      expect(agentCore.sendMessage).toHaveBeenCalledWith(
+        'telegram-12345',
+        'Hello supergroup',
+        'telegram-group',
+        undefined
+      )
+    })
+  })
+
   describe('message splitting', () => {
     it('splits messages longer than 4096 chars', async () => {
       const longText = 'A'.repeat(5000)
@@ -606,9 +678,10 @@ describe('TelegramBot', () => {
       await handler(ctx)
       await vi.advanceTimersByTimeAsync(2500)
 
-      expect(ctx.reply.mock.calls.length).toBeGreaterThanOrEqual(2)
+      const botApi = (bot.getBot() as any).api
+      expect(botApi.sendMessage.mock.calls.length).toBeGreaterThanOrEqual(2)
 
-      const allText = ctx.reply.mock.calls.map((c: unknown[]) => c[0] as string).join('')
+      const allText = botApi.sendMessage.mock.calls.map((c: unknown[]) => c[1] as string).join('')
       expect(allText.length).toBe(5000)
     })
   })

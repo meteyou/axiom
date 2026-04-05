@@ -6,7 +6,7 @@ import type { AgentCore } from '@openagent/core'
 import { jwtMiddleware } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
 
-export interface HeartbeatNotificationToggles {
+export interface HealthMonitorNotificationToggles {
   healthyToDegraded: boolean
   degradedToHealthy: boolean
   degradedToDown: boolean
@@ -15,24 +15,23 @@ export interface HeartbeatNotificationToggles {
   fallbackToHealthy: boolean
 }
 
-export interface HeartbeatData {
+export interface HealthMonitorData {
   intervalMinutes?: number
   fallbackTrigger?: 'down' | 'degraded'
   failuresBeforeFallback?: number
   recoveryCheckIntervalMinutes?: number
   successesBeforeRecovery?: number
-  notifications?: Partial<HeartbeatNotificationToggles>
+  notifications?: Partial<HealthMonitorNotificationToggles>
 }
 
 export interface SettingsData {
   sessionTimeoutMinutes: number
   language: string
   timezone: string
-  heartbeatIntervalMinutes: number
-  heartbeat?: HeartbeatData
+  healthMonitorIntervalMinutes: number
+  healthMonitor?: HealthMonitorData
   batchingDelayMs?: number
   uploadRetentionDays?: number
-  yoloMode: boolean
 }
 
 export interface TelegramData {
@@ -51,12 +50,308 @@ export interface MemoryConsolidationSettingsData {
   providerId: string
 }
 
+export interface AgentHeartbeatSettingsData {
+  enabled: boolean
+  intervalMinutes: number
+  nightMode: {
+    enabled: boolean
+    startHour: number
+    endHour: number
+  }
+}
+
 export interface SettingsRouterOptions {
   getAgentCore?: () => AgentCore | null
-  onHeartbeatSettingsChanged?: () => void
+  onHealthMonitorSettingsChanged?: () => void
   onConsolidationSettingsChanged?: () => void
+  onAgentHeartbeatSettingsChanged?: () => void
   onTelegramSettingsChanged?: () => void
 }
+
+// ── Validation helpers ────────────────────────────────────────────────
+// Each returns an error string on failure, or null on success.
+// On success it mutates the target object in place.
+
+function validatePositiveNumber(value: unknown, name: string): string | null {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 1) {
+    return `${name} must be a positive number`
+  }
+  return null
+}
+
+function validateNonNegativeNumber(value: unknown, name: string): string | null {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    return `${name} must be a non-negative number`
+  }
+  return null
+}
+
+function validateHour(value: unknown, name: string): string | null {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > 23) {
+    return `${name} must be an integer 0-23`
+  }
+  return null
+}
+
+function validateNonEmptyString(value: unknown, name: string): string | null {
+  if (typeof value !== 'string' || !value.trim()) {
+    return `${name} must be a non-empty string`
+  }
+  return null
+}
+
+function validateEnum(value: unknown, allowed: string[], name: string): string | null {
+  if (!allowed.includes(value as string)) {
+    return `${name} must be ${allowed.map(a => `"${a}"`).join(' or ')}`
+  }
+  return null
+}
+
+// ── Per-group merge functions ─────────────────────────────────────────
+// Each validates + merges incoming body fields into the raw settings object.
+// Returns an error string on validation failure, or null on success.
+
+function mergeHealthMonitor(
+  body: Record<string, unknown>,
+  settingsRaw: Record<string, unknown>,
+): { error: string | null; changed: boolean } {
+  const incoming = body.healthMonitor as Record<string, unknown> | undefined
+  if (!incoming) return { error: null, changed: false }
+
+  const existing = (settingsRaw.healthMonitor ?? {}) as Record<string, unknown>
+  let changed = false
+
+  if (incoming.fallbackTrigger !== undefined) {
+    const err = validateEnum(incoming.fallbackTrigger, ['down', 'degraded'], 'healthMonitor.fallbackTrigger')
+    if (err) return { error: err, changed }
+    existing.fallbackTrigger = incoming.fallbackTrigger
+    changed = true
+  }
+  for (const key of ['failuresBeforeFallback', 'recoveryCheckIntervalMinutes', 'successesBeforeRecovery'] as const) {
+    if (incoming[key] !== undefined) {
+      const err = validatePositiveNumber(incoming[key], `healthMonitor.${key}`)
+      if (err) return { error: err, changed }
+      existing[key] = incoming[key]
+      changed = true
+    }
+  }
+  if (incoming.notifications !== undefined) {
+    const existingNotifications = (existing.notifications ?? {}) as Record<string, unknown>
+    const incomingNotifications = incoming.notifications as Record<string, unknown>
+    for (const key of ['healthyToDegraded', 'degradedToHealthy', 'degradedToDown', 'healthyToDown', 'downToFallback', 'fallbackToHealthy']) {
+      if (incomingNotifications[key] !== undefined) {
+        existingNotifications[key] = !!incomingNotifications[key]
+      }
+    }
+    existing.notifications = existingNotifications
+    changed = true
+  }
+
+  settingsRaw.healthMonitor = existing
+  return { error: null, changed }
+}
+
+function mergeConsolidation(
+  body: Record<string, unknown>,
+  settingsRaw: Record<string, unknown>,
+): { error: string | null; changed: boolean } {
+  const mc = body.memoryConsolidation as Record<string, unknown> | undefined
+  if (!mc) return { error: null, changed: false }
+
+  const existing = (settingsRaw.memoryConsolidation ?? {}) as Record<string, unknown>
+
+  if (mc.enabled !== undefined) existing.enabled = !!mc.enabled
+  if (mc.runAtHour !== undefined) {
+    const err = validateHour(mc.runAtHour, 'memoryConsolidation.runAtHour')
+    if (err) return { error: err, changed: false }
+    existing.runAtHour = mc.runAtHour
+  }
+  if (mc.lookbackDays !== undefined) {
+    if (typeof mc.lookbackDays !== 'number' || !Number.isInteger(mc.lookbackDays) || mc.lookbackDays < 1 || mc.lookbackDays > 30) {
+      return { error: 'memoryConsolidation.lookbackDays must be an integer 1-30', changed: false }
+    }
+    existing.lookbackDays = mc.lookbackDays
+  }
+  if (mc.providerId !== undefined) {
+    if (typeof mc.providerId !== 'string') {
+      return { error: 'memoryConsolidation.providerId must be a string', changed: false }
+    }
+    existing.providerId = mc.providerId
+  }
+
+  settingsRaw.memoryConsolidation = existing
+  return { error: null, changed: true }
+}
+
+function mergeAgentHeartbeat(
+  body: Record<string, unknown>,
+  settingsRaw: Record<string, unknown>,
+): { error: string | null; changed: boolean } {
+  const ah = body.agentHeartbeat as Record<string, unknown> | undefined
+  if (!ah) return { error: null, changed: false }
+
+  const existing = (settingsRaw.agentHeartbeat ?? {}) as Record<string, unknown>
+
+  if (ah.enabled !== undefined) existing.enabled = !!ah.enabled
+  if (ah.intervalMinutes !== undefined) {
+    const err = validatePositiveNumber(ah.intervalMinutes, 'agentHeartbeat.intervalMinutes')
+    if (err) return { error: err, changed: false }
+    existing.intervalMinutes = ah.intervalMinutes
+  }
+  if (ah.nightMode !== undefined) {
+    const nm = ah.nightMode as Record<string, unknown>
+    const existingNm = (existing.nightMode ?? {}) as Record<string, unknown>
+    if (nm.enabled !== undefined) existingNm.enabled = !!nm.enabled
+    if (nm.startHour !== undefined) {
+      const err = validateHour(nm.startHour, 'agentHeartbeat.nightMode.startHour')
+      if (err) return { error: err, changed: false }
+      existingNm.startHour = nm.startHour
+    }
+    if (nm.endHour !== undefined) {
+      const err = validateHour(nm.endHour, 'agentHeartbeat.nightMode.endHour')
+      if (err) return { error: err, changed: false }
+      existingNm.endHour = nm.endHour
+    }
+    existing.nightMode = existingNm
+  }
+
+  settingsRaw.agentHeartbeat = existing
+  return { error: null, changed: true }
+}
+
+function mergeTasks(
+  body: Record<string, unknown>,
+  settingsRaw: Record<string, unknown>,
+): { error: string | null } {
+  const tasks = body.tasks as Record<string, unknown> | undefined
+  if (!tasks) return { error: null }
+
+  const existing = (settingsRaw.tasks ?? {}) as Record<string, unknown>
+
+  if (tasks.defaultProvider !== undefined) {
+    if (typeof tasks.defaultProvider !== 'string') {
+      return { error: 'tasks.defaultProvider must be a string' }
+    }
+    existing.defaultProvider = tasks.defaultProvider
+  }
+  if (tasks.maxDurationMinutes !== undefined) {
+    const err = validatePositiveNumber(tasks.maxDurationMinutes, 'tasks.maxDurationMinutes')
+    if (err) return { error: err }
+    existing.maxDurationMinutes = tasks.maxDurationMinutes
+  }
+  if (tasks.telegramDelivery !== undefined) {
+    const err = validateEnum(tasks.telegramDelivery, ['auto', 'always'], 'tasks.telegramDelivery')
+    if (err) return { error: err }
+    existing.telegramDelivery = tasks.telegramDelivery
+  }
+
+  if (tasks.loopDetection !== undefined) {
+    const ld = tasks.loopDetection as Record<string, unknown>
+    const existingLd = (existing.loopDetection ?? {}) as Record<string, unknown>
+
+    if (ld.enabled !== undefined) existingLd.enabled = !!ld.enabled
+    if (ld.method !== undefined) {
+      const err = validateEnum(ld.method, ['systematic', 'smart', 'auto'], 'tasks.loopDetection.method')
+      if (err) return { error: err }
+      existingLd.method = ld.method
+    }
+    if (ld.maxConsecutiveFailures !== undefined) {
+      const err = validatePositiveNumber(ld.maxConsecutiveFailures, 'tasks.loopDetection.maxConsecutiveFailures')
+      if (err) return { error: err }
+      existingLd.maxConsecutiveFailures = ld.maxConsecutiveFailures
+    }
+    if (ld.smartProvider !== undefined) {
+      if (typeof ld.smartProvider !== 'string') {
+        return { error: 'tasks.loopDetection.smartProvider must be a string' }
+      }
+      existingLd.smartProvider = ld.smartProvider
+    }
+    if (ld.smartCheckInterval !== undefined) {
+      const err = validatePositiveNumber(ld.smartCheckInterval, 'tasks.loopDetection.smartCheckInterval')
+      if (err) return { error: err }
+      existingLd.smartCheckInterval = ld.smartCheckInterval
+    }
+
+    existing.loopDetection = existingLd
+  }
+
+  if (tasks.statusUpdateIntervalMinutes !== undefined) {
+    const err = validatePositiveNumber(tasks.statusUpdateIntervalMinutes, 'tasks.statusUpdateIntervalMinutes')
+    if (err) return { error: err }
+    existing.statusUpdateIntervalMinutes = tasks.statusUpdateIntervalMinutes
+  }
+
+  settingsRaw.tasks = existing
+  return { error: null }
+}
+
+// ── Default notification toggles ──────────────────────────────────────
+
+const DEFAULT_NOTIFICATIONS: HealthMonitorNotificationToggles = {
+  healthyToDegraded: false,
+  degradedToHealthy: false,
+  degradedToDown: true,
+  healthyToDown: true,
+  downToFallback: true,
+  fallbackToHealthy: true,
+}
+
+// ── Response builders ─────────────────────────────────────────────────
+
+function buildHealthMonitorResponse(settingsRaw: Record<string, unknown>) {
+  const hm = (settingsRaw.healthMonitor ?? {}) as Record<string, unknown>
+  return {
+    fallbackTrigger: hm.fallbackTrigger ?? 'down',
+    failuresBeforeFallback: hm.failuresBeforeFallback ?? 1,
+    recoveryCheckIntervalMinutes: hm.recoveryCheckIntervalMinutes ?? 1,
+    successesBeforeRecovery: hm.successesBeforeRecovery ?? 3,
+    notifications: { ...DEFAULT_NOTIFICATIONS, ...(hm.notifications ?? {}) as Record<string, unknown> },
+  }
+}
+
+function buildConsolidationResponse(settingsRaw: Record<string, unknown>) {
+  const mc = (settingsRaw.memoryConsolidation ?? {}) as Record<string, unknown>
+  return {
+    enabled: mc.enabled ?? false,
+    runAtHour: mc.runAtHour ?? 3,
+    lookbackDays: mc.lookbackDays ?? 3,
+    providerId: mc.providerId ?? '',
+  }
+}
+
+function buildAgentHeartbeatResponse(settingsRaw: Record<string, unknown>) {
+  const ah = (settingsRaw.agentHeartbeat ?? {}) as Record<string, unknown>
+  const nm = (ah.nightMode ?? {}) as Record<string, unknown>
+  return {
+    enabled: ah.enabled ?? false,
+    intervalMinutes: ah.intervalMinutes ?? 60,
+    nightMode: {
+      enabled: nm.enabled ?? true,
+      startHour: nm.startHour ?? 23,
+      endHour: nm.endHour ?? 8,
+    },
+  }
+}
+
+function buildTasksResponse(settingsRaw: Record<string, unknown>) {
+  const tasks = (settingsRaw.tasks ?? {}) as Record<string, unknown>
+  const ld = (tasks.loopDetection ?? {}) as Record<string, unknown>
+  return {
+    defaultProvider: tasks.defaultProvider ?? '',
+    maxDurationMinutes: tasks.maxDurationMinutes ?? 60,
+    telegramDelivery: tasks.telegramDelivery ?? 'auto',
+    loopDetection: {
+      enabled: ld.enabled ?? true,
+      method: ld.method ?? 'systematic',
+      maxConsecutiveFailures: ld.maxConsecutiveFailures ?? 3,
+      smartProvider: ld.smartProvider ?? '',
+      smartCheckInterval: ld.smartCheckInterval ?? 5,
+    },
+    statusUpdateIntervalMinutes: tasks.statusUpdateIntervalMinutes ?? 10,
+  }
+}
+
+// ── Router ────────────────────────────────────────────────────────────
 
 export function createSettingsRouter(options: SettingsRouterOptions = {}): Router {
   const router = Router()
@@ -76,67 +371,21 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
       ensureConfigTemplates()
       const settings = loadConfig<SettingsData>('settings.json')
       const telegram = loadConfig<TelegramData>('telegram.json')
-
-      const consolidation = (settings as unknown as Record<string, unknown>).memoryConsolidation as Partial<MemoryConsolidationSettingsData> | undefined
-      const tasks = (settings as unknown as Record<string, unknown>).tasks as {
-        defaultProvider?: string
-        maxDurationMinutes?: number
-        telegramDelivery?: string
-        loopDetection?: {
-          enabled?: boolean
-          method?: string
-          maxConsecutiveFailures?: number
-          smartProvider?: string
-          smartCheckInterval?: number
-        }
-        statusUpdateIntervalMinutes?: number
-      } | undefined
-
-      const defaultNotifications: HeartbeatNotificationToggles = {
-        healthyToDegraded: false,
-        degradedToHealthy: false,
-        degradedToDown: true,
-        healthyToDown: true,
-        downToFallback: true,
-        fallbackToHealthy: true,
-      }
+      const settingsRaw = settings as unknown as Record<string, unknown>
 
       res.json({
         sessionTimeoutMinutes: settings.sessionTimeoutMinutes ?? 15,
         language: settings.language ?? 'match',
         timezone: settings.timezone ?? 'UTC',
-        heartbeatIntervalMinutes: settings.heartbeatIntervalMinutes ?? settings.heartbeat?.intervalMinutes ?? 5,
-        yoloMode: settings.yoloMode ?? true,
+        healthMonitorIntervalMinutes: settings.healthMonitorIntervalMinutes ?? settings.healthMonitor?.intervalMinutes ?? 5,
         uploadRetentionDays: settings.uploadRetentionDays ?? 30,
         batchingDelayMs: settings.batchingDelayMs ?? telegram.batchingDelayMs ?? 2500,
         telegramEnabled: telegram.enabled ?? false,
         telegramBotToken: telegram.botToken ?? '',
-        heartbeat: {
-          fallbackTrigger: settings.heartbeat?.fallbackTrigger ?? 'down',
-          failuresBeforeFallback: settings.heartbeat?.failuresBeforeFallback ?? 1,
-          recoveryCheckIntervalMinutes: settings.heartbeat?.recoveryCheckIntervalMinutes ?? 1,
-          successesBeforeRecovery: settings.heartbeat?.successesBeforeRecovery ?? 3,
-          notifications: { ...defaultNotifications, ...settings.heartbeat?.notifications },
-        },
-        memoryConsolidation: {
-          enabled: consolidation?.enabled ?? false,
-          runAtHour: consolidation?.runAtHour ?? 3,
-          lookbackDays: consolidation?.lookbackDays ?? 3,
-          providerId: consolidation?.providerId ?? '',
-        },
-        tasks: {
-          defaultProvider: tasks?.defaultProvider ?? '',
-          maxDurationMinutes: tasks?.maxDurationMinutes ?? 60,
-          telegramDelivery: tasks?.telegramDelivery ?? 'auto',
-          loopDetection: {
-            enabled: tasks?.loopDetection?.enabled ?? true,
-            method: tasks?.loopDetection?.method ?? 'systematic',
-            maxConsecutiveFailures: tasks?.loopDetection?.maxConsecutiveFailures ?? 3,
-            smartProvider: tasks?.loopDetection?.smartProvider ?? '',
-            smartCheckInterval: tasks?.loopDetection?.smartCheckInterval ?? 5,
-          },
-          statusUpdateIntervalMinutes: tasks?.statusUpdateIntervalMinutes ?? 10,
-        },
+        healthMonitor: buildHealthMonitorResponse(settingsRaw),
+        memoryConsolidation: buildConsolidationResponse(settingsRaw),
+        agentHeartbeat: buildAgentHeartbeatResponse(settingsRaw),
+        tasks: buildTasksResponse(settingsRaw),
       })
     } catch (err) {
       res.status(500).json({ error: `Failed to read settings: ${(err as Error).message}` })
@@ -144,38 +393,7 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
   })
 
   router.put('/', (req: AuthenticatedRequest, res) => {
-    const body = req.body as Partial<{
-      sessionTimeoutMinutes: number
-      language: string
-      timezone: string
-      heartbeatIntervalMinutes: number
-      yoloMode: boolean
-      batchingDelayMs: number
-      uploadRetentionDays: number
-      telegramEnabled: boolean
-      telegramBotToken: string
-      heartbeat: {
-        fallbackTrigger?: 'down' | 'degraded'
-        failuresBeforeFallback?: number
-        recoveryCheckIntervalMinutes?: number
-        successesBeforeRecovery?: number
-        notifications?: Partial<HeartbeatNotificationToggles>
-      }
-      memoryConsolidation: Partial<MemoryConsolidationSettingsData>
-      tasks: Partial<{
-        defaultProvider: string
-        maxDurationMinutes: number
-        telegramDelivery: string
-        loopDetection: Partial<{
-          enabled: boolean
-          method: string
-          maxConsecutiveFailures: number
-          smartProvider: string
-          smartCheckInterval: number
-        }>
-        statusUpdateIntervalMinutes: number
-      }>
-    }>
+    const body = req.body as Record<string, unknown>
 
     try {
       ensureConfigTemplates()
@@ -185,241 +403,75 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
 
       const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as SettingsData
       const telegram = JSON.parse(fs.readFileSync(telegramPath, 'utf-8')) as TelegramData
-      const previousHeartbeatInterval = settings.heartbeatIntervalMinutes ?? 5
+      const previousHealthMonitorInterval = settings.healthMonitorIntervalMinutes ?? 5
       const previousBatchingDelayMs = settings.batchingDelayMs ?? telegram.batchingDelayMs ?? 2500
       const previousTelegramEnabled = telegram.enabled
       const previousTelegramBotToken = telegram.botToken
 
+      // ── Scalar settings ──
       if (body.sessionTimeoutMinutes !== undefined) {
-        if (typeof body.sessionTimeoutMinutes !== 'number' || !Number.isFinite(body.sessionTimeoutMinutes) || body.sessionTimeoutMinutes < 1) {
-          res.status(400).json({ error: 'sessionTimeoutMinutes must be a positive number' })
-          return
-        }
-        settings.sessionTimeoutMinutes = body.sessionTimeoutMinutes
+        const err = validatePositiveNumber(body.sessionTimeoutMinutes, 'sessionTimeoutMinutes')
+        if (err) { res.status(400).json({ error: err }); return }
+        settings.sessionTimeoutMinutes = body.sessionTimeoutMinutes as number
       }
-
       if (body.language !== undefined) {
-        if (typeof body.language !== 'string' || !body.language.trim()) {
-          res.status(400).json({ error: 'language must be a non-empty string' })
-          return
-        }
-        settings.language = body.language.trim()
+        const err = validateNonEmptyString(body.language, 'language')
+        if (err) { res.status(400).json({ error: err }); return }
+        settings.language = (body.language as string).trim()
       }
-
       if (body.timezone !== undefined) {
-        if (typeof body.timezone !== 'string' || !body.timezone.trim()) {
-          res.status(400).json({ error: 'timezone must be a non-empty string' })
-          return
-        }
-        settings.timezone = body.timezone.trim()
+        const err = validateNonEmptyString(body.timezone, 'timezone')
+        if (err) { res.status(400).json({ error: err }); return }
+        settings.timezone = (body.timezone as string).trim()
       }
-
-      if (body.heartbeatIntervalMinutes !== undefined) {
-        if (typeof body.heartbeatIntervalMinutes !== 'number' || !Number.isFinite(body.heartbeatIntervalMinutes) || body.heartbeatIntervalMinutes < 1) {
-          res.status(400).json({ error: 'heartbeatIntervalMinutes must be a positive number' })
-          return
-        }
-        settings.heartbeatIntervalMinutes = body.heartbeatIntervalMinutes
+      if (body.healthMonitorIntervalMinutes !== undefined) {
+        const err = validatePositiveNumber(body.healthMonitorIntervalMinutes, 'healthMonitorIntervalMinutes')
+        if (err) { res.status(400).json({ error: err }); return }
+        settings.healthMonitorIntervalMinutes = body.healthMonitorIntervalMinutes as number
       }
-
-      if (body.yoloMode !== undefined) {
-        settings.yoloMode = !!body.yoloMode
-      }
-
       if (body.uploadRetentionDays !== undefined) {
-        if (typeof body.uploadRetentionDays !== 'number' || !Number.isFinite(body.uploadRetentionDays) || body.uploadRetentionDays < 0) {
-          res.status(400).json({ error: 'uploadRetentionDays must be a non-negative number' })
-          return
-        }
-        settings.uploadRetentionDays = body.uploadRetentionDays
+        const err = validateNonNegativeNumber(body.uploadRetentionDays, 'uploadRetentionDays')
+        if (err) { res.status(400).json({ error: err }); return }
+        settings.uploadRetentionDays = body.uploadRetentionDays as number
       }
-
       if (body.batchingDelayMs !== undefined) {
-        if (typeof body.batchingDelayMs !== 'number' || !Number.isFinite(body.batchingDelayMs) || body.batchingDelayMs < 0) {
-          res.status(400).json({ error: 'batchingDelayMs must be a non-negative number' })
-          return
-        }
-        settings.batchingDelayMs = body.batchingDelayMs
+        const err = validateNonNegativeNumber(body.batchingDelayMs, 'batchingDelayMs')
+        if (err) { res.status(400).json({ error: err }); return }
+        settings.batchingDelayMs = body.batchingDelayMs as number
       }
 
-      // Handle heartbeat notification settings
+      // ── Nested settings groups ──
       const settingsRaw = settings as unknown as Record<string, unknown>
-      let heartbeatChanged = false
-      if (body.heartbeat !== undefined) {
-        const existingHeartbeat = (settingsRaw.heartbeat ?? {}) as Record<string, unknown>
 
-        if (body.heartbeat.fallbackTrigger !== undefined) {
-          if (!['down', 'degraded'].includes(body.heartbeat.fallbackTrigger)) {
-            res.status(400).json({ error: 'heartbeat.fallbackTrigger must be "down" or "degraded"' })
-            return
-          }
-          existingHeartbeat.fallbackTrigger = body.heartbeat.fallbackTrigger
-          heartbeatChanged = true
-        }
-        if (body.heartbeat.failuresBeforeFallback !== undefined) {
-          if (typeof body.heartbeat.failuresBeforeFallback !== 'number' || !Number.isFinite(body.heartbeat.failuresBeforeFallback) || body.heartbeat.failuresBeforeFallback < 1) {
-            res.status(400).json({ error: 'heartbeat.failuresBeforeFallback must be a number >= 1' })
-            return
-          }
-          existingHeartbeat.failuresBeforeFallback = body.heartbeat.failuresBeforeFallback
-          heartbeatChanged = true
-        }
-        if (body.heartbeat.recoveryCheckIntervalMinutes !== undefined) {
-          if (typeof body.heartbeat.recoveryCheckIntervalMinutes !== 'number' || !Number.isFinite(body.heartbeat.recoveryCheckIntervalMinutes) || body.heartbeat.recoveryCheckIntervalMinutes < 1) {
-            res.status(400).json({ error: 'heartbeat.recoveryCheckIntervalMinutes must be a number >= 1' })
-            return
-          }
-          existingHeartbeat.recoveryCheckIntervalMinutes = body.heartbeat.recoveryCheckIntervalMinutes
-          heartbeatChanged = true
-        }
-        if (body.heartbeat.successesBeforeRecovery !== undefined) {
-          if (typeof body.heartbeat.successesBeforeRecovery !== 'number' || !Number.isFinite(body.heartbeat.successesBeforeRecovery) || body.heartbeat.successesBeforeRecovery < 1) {
-            res.status(400).json({ error: 'heartbeat.successesBeforeRecovery must be a number >= 1' })
-            return
-          }
-          existingHeartbeat.successesBeforeRecovery = body.heartbeat.successesBeforeRecovery
-          heartbeatChanged = true
-        }
+      const hm = mergeHealthMonitor(body, settingsRaw)
+      if (hm.error) { res.status(400).json({ error: hm.error }); return }
 
-        if (body.heartbeat.notifications !== undefined) {
-          const existingNotifications = (existingHeartbeat.notifications ?? {}) as Record<string, unknown>
-          const incoming = body.heartbeat.notifications
-          for (const key of ['healthyToDegraded', 'degradedToHealthy', 'degradedToDown', 'healthyToDown', 'downToFallback', 'fallbackToHealthy'] as const) {
-            if (incoming[key] !== undefined) {
-              existingNotifications[key] = !!incoming[key]
-            }
-          }
-          existingHeartbeat.notifications = existingNotifications
-          heartbeatChanged = true
-        }
+      const mc = mergeConsolidation(body, settingsRaw)
+      if (mc.error) { res.status(400).json({ error: mc.error }); return }
 
-        settingsRaw.heartbeat = existingHeartbeat
-      }
+      const ah = mergeAgentHeartbeat(body, settingsRaw)
+      if (ah.error) { res.status(400).json({ error: ah.error }); return }
 
-      // Handle memory consolidation settings
-      let consolidationChanged = false
-      if (body.memoryConsolidation !== undefined) {
-        const mc = body.memoryConsolidation
-        const existing = (settingsRaw.memoryConsolidation ?? {}) as Record<string, unknown>
+      const tk = mergeTasks(body, settingsRaw)
+      if (tk.error) { res.status(400).json({ error: tk.error }); return }
 
-        if (mc.enabled !== undefined) existing.enabled = !!mc.enabled
-        if (mc.runAtHour !== undefined) {
-          if (typeof mc.runAtHour !== 'number' || !Number.isInteger(mc.runAtHour) || mc.runAtHour < 0 || mc.runAtHour > 23) {
-            res.status(400).json({ error: 'memoryConsolidation.runAtHour must be an integer 0-23' })
-            return
-          }
-          existing.runAtHour = mc.runAtHour
-        }
-        if (mc.lookbackDays !== undefined) {
-          if (typeof mc.lookbackDays !== 'number' || !Number.isInteger(mc.lookbackDays) || mc.lookbackDays < 1 || mc.lookbackDays > 30) {
-            res.status(400).json({ error: 'memoryConsolidation.lookbackDays must be an integer 1-30' })
-            return
-          }
-          existing.lookbackDays = mc.lookbackDays
-        }
-        if (mc.providerId !== undefined) {
-          if (typeof mc.providerId !== 'string') {
-            res.status(400).json({ error: 'memoryConsolidation.providerId must be a string' })
-            return
-          }
-          existing.providerId = mc.providerId
-        }
-
-        settingsRaw.memoryConsolidation = existing
-        consolidationChanged = true
-      }
-
-      // Handle tasks settings
-      if (body.tasks !== undefined) {
-        const existingTasks = (settingsRaw.tasks ?? {}) as Record<string, unknown>
-
-        if (body.tasks.defaultProvider !== undefined) {
-          if (typeof body.tasks.defaultProvider !== 'string') {
-            res.status(400).json({ error: 'tasks.defaultProvider must be a string' })
-            return
-          }
-          existingTasks.defaultProvider = body.tasks.defaultProvider
-        }
-        if (body.tasks.maxDurationMinutes !== undefined) {
-          if (typeof body.tasks.maxDurationMinutes !== 'number' || !Number.isFinite(body.tasks.maxDurationMinutes) || body.tasks.maxDurationMinutes < 1) {
-            res.status(400).json({ error: 'tasks.maxDurationMinutes must be a positive number' })
-            return
-          }
-          existingTasks.maxDurationMinutes = body.tasks.maxDurationMinutes
-        }
-        if (body.tasks.telegramDelivery !== undefined) {
-          if (!['auto', 'always'].includes(body.tasks.telegramDelivery)) {
-            res.status(400).json({ error: 'tasks.telegramDelivery must be "auto" or "always"' })
-            return
-          }
-          existingTasks.telegramDelivery = body.tasks.telegramDelivery
-        }
-
-        // Loop detection settings
-        if (body.tasks.loopDetection !== undefined) {
-          const existingLd = (existingTasks.loopDetection ?? {}) as Record<string, unknown>
-          const ld = body.tasks.loopDetection
-
-          if (ld.enabled !== undefined) existingLd.enabled = !!ld.enabled
-          if (ld.method !== undefined) {
-            if (!['systematic', 'smart', 'auto'].includes(ld.method)) {
-              res.status(400).json({ error: 'tasks.loopDetection.method must be "systematic", "smart", or "auto"' })
-              return
-            }
-            existingLd.method = ld.method
-          }
-          if (ld.maxConsecutiveFailures !== undefined) {
-            if (typeof ld.maxConsecutiveFailures !== 'number' || !Number.isFinite(ld.maxConsecutiveFailures) || ld.maxConsecutiveFailures < 1) {
-              res.status(400).json({ error: 'tasks.loopDetection.maxConsecutiveFailures must be a positive number' })
-              return
-            }
-            existingLd.maxConsecutiveFailures = ld.maxConsecutiveFailures
-          }
-          if (ld.smartProvider !== undefined) {
-            if (typeof ld.smartProvider !== 'string') {
-              res.status(400).json({ error: 'tasks.loopDetection.smartProvider must be a string' })
-              return
-            }
-            existingLd.smartProvider = ld.smartProvider
-          }
-          if (ld.smartCheckInterval !== undefined) {
-            if (typeof ld.smartCheckInterval !== 'number' || !Number.isFinite(ld.smartCheckInterval) || ld.smartCheckInterval < 1) {
-              res.status(400).json({ error: 'tasks.loopDetection.smartCheckInterval must be a positive number' })
-              return
-            }
-            existingLd.smartCheckInterval = ld.smartCheckInterval
-          }
-
-          existingTasks.loopDetection = existingLd
-        }
-
-        // Status update interval
-        if (body.tasks.statusUpdateIntervalMinutes !== undefined) {
-          if (typeof body.tasks.statusUpdateIntervalMinutes !== 'number' || !Number.isFinite(body.tasks.statusUpdateIntervalMinutes) || body.tasks.statusUpdateIntervalMinutes < 1) {
-            res.status(400).json({ error: 'tasks.statusUpdateIntervalMinutes must be a positive number' })
-            return
-          }
-          existingTasks.statusUpdateIntervalMinutes = body.tasks.statusUpdateIntervalMinutes
-        }
-
-        settingsRaw.tasks = existingTasks
-      }
-
+      // ── Telegram ──
       if (body.telegramEnabled !== undefined) {
         telegram.enabled = !!body.telegramEnabled
       }
-
       if (body.telegramBotToken !== undefined) {
         if (typeof body.telegramBotToken !== 'string') {
           res.status(400).json({ error: 'telegramBotToken must be a string' })
           return
         }
-        telegram.botToken = body.telegramBotToken.trim()
+        telegram.botToken = (body.telegramBotToken as string).trim()
       }
 
+      // ── Persist ──
       fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf-8')
       fs.writeFileSync(telegramPath, JSON.stringify(telegram, null, 2) + '\n', 'utf-8')
 
+      // ── Live updates ──
       const agentCore = getAgentCore()
       if (agentCore) {
         try {
@@ -434,69 +486,35 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
         }
       }
 
-      if ((settings.heartbeatIntervalMinutes ?? 5) !== previousHeartbeatInterval || heartbeatChanged) {
-        options.onHeartbeatSettingsChanged?.()
+      // ── Notify dependent services ──
+      if ((settings.healthMonitorIntervalMinutes ?? 5) !== previousHealthMonitorInterval || hm.changed) {
+        options.onHealthMonitorSettingsChanged?.()
       }
-
-      if (consolidationChanged) {
+      if (mc.changed) {
         options.onConsolidationSettingsChanged?.()
       }
-
+      if (ah.changed) {
+        options.onAgentHeartbeatSettingsChanged?.()
+      }
       if (telegram.enabled !== previousTelegramEnabled || telegram.botToken !== previousTelegramBotToken) {
         options.onTelegramSettingsChanged?.()
       }
 
-      const tasksOut = (settingsRaw.tasks ?? {}) as Record<string, unknown>
-      const consolidationOut = (settingsRaw.memoryConsolidation ?? {}) as Record<string, unknown>
-
-      const defaultNotifications: HeartbeatNotificationToggles = {
-        healthyToDegraded: false,
-        degradedToHealthy: false,
-        degradedToDown: true,
-        healthyToDown: true,
-        downToFallback: true,
-        fallbackToHealthy: true,
-      }
-      const heartbeatOut = (settingsRaw.heartbeat ?? {}) as Record<string, unknown>
-      const notificationsOut = (heartbeatOut.notifications ?? {}) as Record<string, unknown>
-
+      // ── Response ──
       res.json({
         message: 'Settings updated',
         sessionTimeoutMinutes: settings.sessionTimeoutMinutes,
         language: settings.language,
         timezone: settings.timezone ?? 'UTC',
-        heartbeatIntervalMinutes: settings.heartbeatIntervalMinutes,
-        yoloMode: settings.yoloMode,
+        healthMonitorIntervalMinutes: settings.healthMonitorIntervalMinutes,
         batchingDelayMs: settings.batchingDelayMs ?? previousBatchingDelayMs,
         uploadRetentionDays: settings.uploadRetentionDays ?? 30,
         telegramEnabled: telegram.enabled,
         telegramBotToken: telegram.botToken,
-        heartbeat: {
-          fallbackTrigger: heartbeatOut.fallbackTrigger ?? 'down',
-          failuresBeforeFallback: heartbeatOut.failuresBeforeFallback ?? 1,
-          recoveryCheckIntervalMinutes: heartbeatOut.recoveryCheckIntervalMinutes ?? 1,
-          successesBeforeRecovery: heartbeatOut.successesBeforeRecovery ?? 3,
-          notifications: { ...defaultNotifications, ...notificationsOut },
-        },
-        memoryConsolidation: {
-          enabled: consolidationOut.enabled ?? false,
-          runAtHour: consolidationOut.runAtHour ?? 3,
-          lookbackDays: consolidationOut.lookbackDays ?? 3,
-          providerId: consolidationOut.providerId ?? '',
-        },
-        tasks: {
-          defaultProvider: tasksOut.defaultProvider ?? '',
-          maxDurationMinutes: tasksOut.maxDurationMinutes ?? 60,
-          telegramDelivery: tasksOut.telegramDelivery ?? 'auto',
-          loopDetection: {
-            enabled: (tasksOut.loopDetection as Record<string, unknown>)?.enabled ?? true,
-            method: (tasksOut.loopDetection as Record<string, unknown>)?.method ?? 'systematic',
-            maxConsecutiveFailures: (tasksOut.loopDetection as Record<string, unknown>)?.maxConsecutiveFailures ?? 3,
-            smartProvider: (tasksOut.loopDetection as Record<string, unknown>)?.smartProvider ?? '',
-            smartCheckInterval: (tasksOut.loopDetection as Record<string, unknown>)?.smartCheckInterval ?? 5,
-          },
-          statusUpdateIntervalMinutes: tasksOut.statusUpdateIntervalMinutes ?? 10,
-        },
+        healthMonitor: buildHealthMonitorResponse(settingsRaw),
+        memoryConsolidation: buildConsolidationResponse(settingsRaw),
+        agentHeartbeat: buildAgentHeartbeatResponse(settingsRaw),
+        tasks: buildTasksResponse(settingsRaw),
       })
     } catch (err) {
       res.status(500).json({ error: `Failed to update settings: ${(err as Error).message}` })

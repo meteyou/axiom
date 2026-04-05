@@ -735,6 +735,30 @@ export class TelegramBot {
     }
   }
 
+  /**
+   * Resolve the username from the users table for a linked Telegram user.
+   * Returns null if unlinked or not found.
+   */
+  private resolveUsername(ctx: Context): string | null {
+    if (!this.db || !ctx.from) return null
+
+    const telegramId = String(ctx.from.id)
+    const row = this.db.prepare(
+      `SELECT u.username FROM users u
+       JOIN telegram_users tu ON tu.user_id = u.id
+       WHERE tu.telegram_id = ? AND tu.status = 'approved'`
+    ).get(telegramId) as { username: string } | undefined
+
+    return row?.username ?? null
+  }
+
+  /**
+   * Check if this is a DM (private) chat as opposed to a group chat.
+   */
+  private isDMChat(ctx: Context): boolean {
+    return ctx.chat?.type === 'private'
+  }
+
   private async processQueuedMessage(chatKey: string, queuedMessage: QueuedMessage): Promise<void> {
     const state = this.chatStates.get(chatKey)
     if (!state) return
@@ -744,6 +768,10 @@ export class TelegramBot {
     const numericUserId = this.resolveNumericUserId(ctx)
     const messageForAgent = text
     const senderName = this.getSenderName(ctx)
+
+    // Resolve username for DM chats to enable user profile injection
+    const isDM = this.isDMChat(ctx)
+    const username = isDM ? this.resolveUsername(ctx) : null
 
     // Generate a session ID for chat_messages storage
     const sessionId = `telegram-${userId}-${Date.now()}`
@@ -787,7 +815,8 @@ export class TelegramBot {
       }, 4000)
 
       try {
-        for await (const chunk of this.agentCore.sendMessage(userId, messageForAgent, 'telegram', attachments)) {
+        const source = isDM ? 'telegram' : 'telegram-group'
+        for await (const chunk of this.agentCore.sendMessage(userId, messageForAgent, source, attachments)) {
           if (state.abortRequested) break
 
           if (chunk.type === 'text' && chunk.text) {

@@ -3,12 +3,12 @@ import type { Database } from '@openagent/core'
 import { getActivitySummary, queryHealthCheckHistory } from '@openagent/core'
 import { jwtMiddleware } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
-import type { HeartbeatService } from '../heartbeat.js'
+import type { HealthMonitorService } from '../health-monitor.js'
 import type { RuntimeMetrics } from '../runtime-metrics.js'
 
 export interface HealthRouterOptions {
   db: Database
-  heartbeatService: HeartbeatService
+  healthMonitorService: HealthMonitorService
   runtimeMetrics: RuntimeMetrics
 }
 
@@ -26,7 +26,7 @@ export function createHealthRouter(options: HealthRouterOptions): Router {
 
   router.get('/', (_req, res) => {
     try {
-      const snapshot = options.heartbeatService.getSnapshot()
+      const snapshot = options.healthMonitorService.getSnapshot()
       const activity = getActivitySummary(options.db)
 
       res.json({

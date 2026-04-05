@@ -15,7 +15,7 @@ interface TelegramConfig {
   adminUserIds: number[]
 }
 
-export interface HeartbeatNotificationToggles {
+export interface HealthMonitorNotificationToggles {
   healthyToDegraded: boolean
   degradedToHealthy: boolean
   degradedToDown: boolean
@@ -24,7 +24,7 @@ export interface HeartbeatNotificationToggles {
   fallbackToHealthy: boolean
 }
 
-const DEFAULT_NOTIFICATION_TOGGLES: HeartbeatNotificationToggles = {
+const DEFAULT_NOTIFICATION_TOGGLES: HealthMonitorNotificationToggles = {
   healthyToDegraded: false,
   degradedToHealthy: false,
   degradedToDown: true,
@@ -33,18 +33,18 @@ const DEFAULT_NOTIFICATION_TOGGLES: HeartbeatNotificationToggles = {
   fallbackToHealthy: true,
 }
 
-type NotificationTransition = keyof HeartbeatNotificationToggles
+type NotificationTransition = keyof HealthMonitorNotificationToggles
 
-interface HeartbeatSettings {
+interface HealthMonitorSettings {
   intervalMinutes: number
   fallbackTrigger: 'down' | 'degraded'
   failuresBeforeFallback: number
   recoveryCheckIntervalMinutes: number
   successesBeforeRecovery: number
-  notifications: HeartbeatNotificationToggles
+  notifications: HealthMonitorNotificationToggles
 }
 
-export interface HeartbeatSnapshot {
+export interface HealthMonitorSnapshot {
   agentStatus: 'running' | 'stopped'
   intervalMinutes: number
   operatingMode: OperatingMode
@@ -71,38 +71,38 @@ export interface HeartbeatSnapshot {
   lastCheck: ProviderHealthCheckResult | null
 }
 
-export interface HeartbeatServiceOptions {
+export interface HealthMonitorServiceOptions {
   db: Database
   providerManager?: ProviderManager | null
   fetchImpl?: typeof fetch
   now?: () => Date
 }
 
-export class HeartbeatService {
+export class HealthMonitorService {
   private db: Database
   private providerManager: ProviderManager | null
   private fetchImpl: typeof fetch
   private now: () => Date
   private timer: ReturnType<typeof setTimeout> | null = null
   private running = false
-  private settings: HeartbeatSettings
+  private settings: HealthMonitorSettings
   private lastCheck: ProviderHealthCheckResult | null = null
   private activeProviderId: string | null = null
   private checkInFlight: Promise<ProviderHealthCheckResult> | null = null
   private primaryLastHealthStatus: ProviderHealthStatus | null = null
 
-  constructor(options: HeartbeatServiceOptions) {
+  constructor(options: HealthMonitorServiceOptions) {
     this.db = options.db
     this.providerManager = options.providerManager ?? null
     this.fetchImpl = options.fetchImpl ?? fetch
     this.now = options.now ?? (() => new Date())
-    this.settings = this.loadHeartbeatSettings()
+    this.settings = this.loadHealthMonitorSettings()
   }
 
   start(): void {
     if (this.running) return
     this.running = true
-    this.settings = this.loadHeartbeatSettings()
+    this.settings = this.loadHealthMonitorSettings()
     this.scheduleNext(0)
   }
 
@@ -128,7 +128,7 @@ export class HeartbeatService {
       }
     }
 
-    this.settings = this.loadHeartbeatSettings()
+    this.settings = this.loadHealthMonitorSettings()
 
     if (this.timer) {
       clearTimeout(this.timer)
@@ -156,12 +156,12 @@ export class HeartbeatService {
     return this.checkInFlight
   }
 
-  getSnapshot(): HeartbeatSnapshot {
+  getSnapshot(): HealthMonitorSnapshot {
     const mode = this.providerManager?.getOperatingMode() ?? 'normal'
     const provider = getActiveProvider()
 
     // Build primary provider info
-    let primaryProvider: HeartbeatSnapshot['primaryProvider'] = null
+    let primaryProvider: HealthMonitorSnapshot['primaryProvider'] = null
     const primary = this.providerManager?.getPrimaryProvider()
     if (primary) {
       primaryProvider = {
@@ -174,7 +174,7 @@ export class HeartbeatService {
     }
 
     // Build fallback provider info
-    let fallbackProvider: HeartbeatSnapshot['fallbackProvider'] = null
+    let fallbackProvider: HealthMonitorSnapshot['fallbackProvider'] = null
     const fallback = this.providerManager?.getFallbackProvider()
     if (fallback) {
       fallbackProvider = {
@@ -365,32 +365,32 @@ export class HeartbeatService {
     return false
   }
 
-  private loadHeartbeatSettings(): HeartbeatSettings {
+  private loadHealthMonitorSettings(): HealthMonitorSettings {
     try {
       ensureConfigTemplates()
       const settings = loadConfig<{
-        heartbeat?: Partial<HeartbeatSettings>
-        heartbeatIntervalMinutes?: number
+        healthMonitor?: Partial<HealthMonitorSettings>
+        healthMonitorIntervalMinutes?: number
       }>('settings.json')
 
-      const heartbeat = settings.heartbeat
+      const healthMonitor = settings.healthMonitor
 
-      if (heartbeat) {
-        const intervalMinutes = heartbeat.intervalMinutes ?? 5
+      if (healthMonitor) {
+        const intervalMinutes = healthMonitor.intervalMinutes ?? 5
         return {
           intervalMinutes: Number.isFinite(intervalMinutes) && intervalMinutes >= 1 ? intervalMinutes : 5,
-          fallbackTrigger: heartbeat.fallbackTrigger === 'degraded' ? 'degraded' : 'down',
-          failuresBeforeFallback: this.safePositiveInt(heartbeat.failuresBeforeFallback, 1),
-          recoveryCheckIntervalMinutes: this.safePositiveNumber(heartbeat.recoveryCheckIntervalMinutes, 1),
-          successesBeforeRecovery: this.safePositiveInt(heartbeat.successesBeforeRecovery, 3),
-          notifications: { ...DEFAULT_NOTIFICATION_TOGGLES, ...heartbeat.notifications },
+          fallbackTrigger: healthMonitor.fallbackTrigger === 'degraded' ? 'degraded' : 'down',
+          failuresBeforeFallback: this.safePositiveInt(healthMonitor.failuresBeforeFallback, 1),
+          recoveryCheckIntervalMinutes: this.safePositiveNumber(healthMonitor.recoveryCheckIntervalMinutes, 1),
+          successesBeforeRecovery: this.safePositiveInt(healthMonitor.successesBeforeRecovery, 3),
+          notifications: { ...DEFAULT_NOTIFICATION_TOGGLES, ...healthMonitor.notifications },
         }
       }
 
-      // Legacy fallback: read top-level heartbeatIntervalMinutes
-      const legacyInterval = settings.heartbeatIntervalMinutes ?? 5
+      // Fallback: read top-level healthMonitorIntervalMinutes
+      const topLevelInterval = settings.healthMonitorIntervalMinutes ?? 5
       return {
-        intervalMinutes: Number.isFinite(legacyInterval) && legacyInterval >= 1 ? legacyInterval : 5,
+        intervalMinutes: Number.isFinite(topLevelInterval) && topLevelInterval >= 1 ? topLevelInterval : 5,
         fallbackTrigger: 'down',
         failuresBeforeFallback: 1,
         recoveryCheckIntervalMinutes: 1,
@@ -539,10 +539,10 @@ export class HeartbeatService {
 
         if (!response.ok) {
           const body = await response.text().catch(() => '')
-          console.error(`[openagent] Failed to send Telegram heartbeat alert to ${chatId}: ${response.status} ${body}`)
+          console.error(`[openagent] Failed to send Telegram health alert to ${chatId}: ${response.status} ${body}`)
         }
       } catch (err) {
-        console.error(`[openagent] Failed to send Telegram heartbeat alert to ${chatId}:`, err)
+        console.error(`[openagent] Failed to send Telegram health alert to ${chatId}:`, err)
       }
     }))
   }
