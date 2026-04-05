@@ -35,3 +35,52 @@ The agent has a file-based memory system under `/data/memory/`. There are two se
 - **Language** and **timezone** live only in Settings — not in user profiles or AGENTS.md.
 - **Tool usage instructions** for built-in tools go in the system prompt — not in AGENTS.md.
 - **User-specific data** goes in user profiles — not in MEMORY.md.
+
+## Versioning & Releases
+
+This is a monorepo — all packages share the **same version number**.
+
+### Version bump rules
+
+Follow [Semantic Versioning](https://semver.org/) (while < 1.0.0, minor = breaking/feature, patch = fix):
+
+| Change type | Bump | Example |
+|---|---|---|
+| New feature (`feat:`) | minor | 0.8.0 → 0.9.0 |
+| Bug fix (`fix:`) | patch | 0.8.0 → 0.8.1 |
+| Breaking change | minor (pre-1.0) | 0.8.0 → 0.9.0 |
+| Chore, docs, refactor only | patch | 0.8.0 → 0.8.1 |
+
+### How to bump & release
+
+1. **Update all 5 `package.json` files** with the new version:
+   ```
+   package.json
+   packages/core/package.json
+   packages/web-backend/package.json
+   packages/web-frontend/package.json
+   packages/telegram/package.json
+   ```
+2. **Commit** the version bump:
+   ```
+   git add package.json packages/*/package.json
+   git commit -m "chore: bump version to X.Y.Z"
+   ```
+3. **Tag** the commit:
+   ```
+   git tag vX.Y.Z
+   ```
+4. **Push** commit and tag:
+   ```
+   git push && git push --tags
+   ```
+5. **Create a GitHub Release** from the tag:
+   ```
+   gh release create vX.Y.Z --generate-notes --latest
+   ```
+
+### Important
+
+- The version bump commit should be the **last commit** before tagging.
+- Always push the tag — the web UI displays the version from `package.json`.
+- Use `--generate-notes` to auto-generate the changelog from commit messages.
