@@ -36,6 +36,7 @@ export interface AppOptions {
   runtimeMetrics?: RuntimeMetrics | null
   consolidationScheduler?: MemoryConsolidationScheduler | null
   agentHeartbeatService?: AgentHeartbeatService | null
+  onAgentHeartbeatSettingsChanged?: () => void
   getTelegramBot?: () => TelegramBot | null
   onTelegramSettingsChanged?: () => void
   onActiveProviderChanged?: () => void
@@ -103,6 +104,7 @@ export function createApp(options?: AppOptions): express.Express {
       },
       onAgentHeartbeatSettingsChanged: () => {
         options.agentHeartbeatService?.restart()
+        options.onAgentHeartbeatSettingsChanged?.()
       },
       onTelegramSettingsChanged: () => {
         options.onTelegramSettingsChanged?.()

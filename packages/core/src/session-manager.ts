@@ -33,6 +33,7 @@ export class SessionManager {
   private memoryDir?: string
   private onSummarize?: (sessionId: string, userId: string) => Promise<string>
   private onSessionEnd?: (session: SessionInfo, summary: string | null) => void
+  private _skipSessionSummary = false
 
   constructor(options: SessionManagerOptions) {
     this.db = options.db
@@ -88,6 +89,20 @@ export class SessionManager {
    */
   setTimeoutMinutes(minutes: number): void {
     this.timeoutMs = minutes * 60 * 1000
+  }
+
+  /**
+   * When true, session summaries are skipped (e.g. because AgentHeartbeat handles memory).
+   */
+  setSkipSessionSummary(skip: boolean): void {
+    this._skipSessionSummary = skip
+  }
+
+  /**
+   * Whether session summaries are currently being skipped.
+   */
+  get skipSessionSummary(): boolean {
+    return this._skipSessionSummary
   }
 
   /**
@@ -193,8 +208,9 @@ export class SessionManager {
 
     let summary: string | null = null
 
-    // Generate summary if there were messages and a summarizer is configured
-    if (session.messageCount > 0 && this.onSummarize) {
+    // Generate summary if there were messages, a summarizer is configured,
+    // and session summaries are not skipped (e.g. because Agent Heartbeat handles memory)
+    if (session.messageCount > 0 && this.onSummarize && !this._skipSessionSummary) {
       try {
         summary = await this.onSummarize(session.id, userId)
         if (summary) {
