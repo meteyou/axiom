@@ -30,33 +30,47 @@ The agent can read and write this file to persist important information across s
 (none yet)
 `
 
-const AGENTS_TEMPLATE = `# Agent Rules
+const AGENTS_TEMPLATE = `# Agent Contract
 
-This file defines how the agent should work. Both the user and the agent can edit this file.
-The agent reads this file on every conversation to follow these rules.
+This file defines how the agent should behave, communicate, and execute tasks.
+Both the user and the agent can edit this file. The agent reads it on every conversation.
 
-## Work Style
+## Communication Style
 
-- Be concise and direct
-- Ask before making destructive changes
-- Explain reasoning when making decisions
+- Be concise and direct — no filler, no hedging
+- Use plain, declarative sentences over rhetorical questions
+- When explaining decisions, state what changed and why — skip preamble
+- Use markdown formatting (headings, lists, code blocks) for clarity
+
+## Execution Rules
+
+- Ask before making destructive changes (deleting files, dropping data, overwriting important config)
+- When making code changes, explain the reasoning briefly
+- Prefer small, verifiable changes over large rewrites
+- If a task is ambiguous, ask one clarifying question rather than guessing
+- When multiple approaches exist, state the tradeoff and recommend one
+
+## Memory Rules
+
+- Write important learned facts and project context to MEMORY.md
+- Write daily observations and session notes to the daily memory file
+- Write user-specific information (name, location, preferences, interests, work context) to the user's profile file — not to MEMORY.md
+- Keep MEMORY.md organized: merge related entries, remove outdated info
+- Don't store ephemeral details (one-time commands, temporary paths) in core memory
 
 ## Red Lines
 
-- Never share sensitive information from memory files
-- Never execute destructive commands without confirmation
-
-## Preferences
-
-(none yet)
+- Never share sensitive information from memory files with third parties
+- Never execute destructive commands without explicit confirmation
+- Never fabricate information — say "I don't know" when uncertain
+- Never override user instructions with your own judgment on important decisions
 `
 
 const USER_PROFILE_TEMPLATE = `# User Profile — {username}
 
 ## Basic Info
-- Username: {username}
-- Timezone: {timezone}
-- Language: {language}
+- Name: (not set)
+- Location: (not set)
 
 ## Preferences
 
@@ -71,16 +85,27 @@ const HEARTBEAT_TEMPLATE = `# Heartbeat Tasks
 
 This file defines periodic tasks the agent runs during heartbeat cycles.
 Both the user and the agent can edit this file.
+Be efficient — if nothing needs attention, complete silently.
 
-## Memory Maintenance
+## Daily Memory Update
 
-- Review daily memory files and consolidate important learnings into MEMORY.md
-- Clean up outdated or redundant entries in MEMORY.md
-- Skip if nothing meaningful happened since last maintenance
+- Read recent chat messages from the database (use the chat history tools)
+- Extract important facts, decisions, preferences, and context that aren't yet captured
+- Write new observations to today's daily memory file (/data/memory/daily/YYYY-MM-DD.md)
+- Focus on: user preferences learned, project decisions made, technical facts discovered, open action items
+- Skip ephemeral chatter — only persist information with lasting value
+- Don't duplicate what session summaries already captured
 
-## Open Notes
+## Memory Hygiene
 
-(none yet)
+- Check MEMORY.md for outdated or contradictory entries
+- If daily memory has important insights not yet in MEMORY.md, promote them
+- Keep MEMORY.md well-organized and scannable
+- Skip if nothing meaningful changed since last heartbeat
+
+## Open Tasks
+
+(Add periodic checks, reminders, or monitoring tasks here)
 `
 
 /**
@@ -107,7 +132,7 @@ export function getUserProfileDir(memoryDir?: string): string {
 
 /**
  * Ensure a user profile file exists, creating it from template if missing.
- * Pre-fills username, timezone, and language from settings.
+ * Pre-fills username.
  */
 export function ensureUserProfile(username: string, memoryDir?: string): string {
   const usersDir = getUserProfileDir(memoryDir)
@@ -118,26 +143,8 @@ export function ensureUserProfile(username: string, memoryDir?: string): string 
   }
 
   if (!fs.existsSync(profilePath)) {
-    // Try to load timezone/language from settings
-    let timezone = 'UTC'
-    let language = 'en'
-    try {
-      // Dynamic import to avoid circular dependency — use fs directly
-      const configDir = path.join(process.env.DATA_DIR ?? '/data', 'config')
-      const settingsPath = path.join(configDir, 'settings.json')
-      if (fs.existsSync(settingsPath)) {
-        const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
-        if (settings.timezone) timezone = settings.timezone
-        if (settings.language) language = settings.language
-      }
-    } catch {
-      // Use defaults
-    }
-
     const content = USER_PROFILE_TEMPLATE
       .replaceAll('{username}', username)
-      .replaceAll('{timezone}', timezone)
-      .replaceAll('{language}', language)
     fs.writeFileSync(profilePath, content, 'utf-8')
   }
 
@@ -248,6 +255,16 @@ export function readAgentsRulesFile(memoryDir?: string): string {
 }
 
 /**
+ * Write the AGENTS.md rules file
+ */
+export function writeAgentsRulesFile(content: string, memoryDir?: string): void {
+  const dir = memoryDir ?? getMemoryDir()
+  ensureMemoryStructure(dir)
+  const agentsPath = path.join(dir, 'AGENTS.md')
+  fs.writeFileSync(agentsPath, content, 'utf-8')
+}
+
+/**
  * Read the HEARTBEAT.md file
  */
 export function readHeartbeatFile(memoryDir?: string): string {
@@ -257,6 +274,16 @@ export function readHeartbeatFile(memoryDir?: string): string {
     ensureMemoryStructure(dir)
   }
   return fs.readFileSync(heartbeatPath, 'utf-8')
+}
+
+/**
+ * Write the HEARTBEAT.md file
+ */
+export function writeHeartbeatFile(content: string, memoryDir?: string): void {
+  const dir = memoryDir ?? getMemoryDir()
+  ensureMemoryStructure(dir)
+  const heartbeatPath = path.join(dir, 'HEARTBEAT.md')
+  fs.writeFileSync(heartbeatPath, content, 'utf-8')
 }
 
 /**
@@ -403,7 +430,8 @@ export function assembleSystemPrompt(options?: {
   const dir = memoryDir ?? getMemoryDir()
   const today = new Date().toISOString().split('T')[0]
   sections.push(`<memory_paths>
-You can read and write your memory files directly using read_file/write_file tools.
+You can read and write your memory files directly using read_file, write_file, and edit_file tools.
+When modifying existing files, prefer edit_file (targeted oldText/newText replacements) over write_file (full rewrite) to save tokens and reduce errors.
 - SOUL.md: ${path.join(dir, 'SOUL.md')}
 - MEMORY.md: ${path.join(dir, 'MEMORY.md')}
 - AGENTS.md: ${path.join(dir, 'AGENTS.md')}

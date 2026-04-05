@@ -52,10 +52,10 @@ describe('memory', () => {
       ensureMemoryStructure(dir)
 
       const content = fs.readFileSync(path.join(dir, 'AGENTS.md'), 'utf-8')
-      expect(content).toContain('# Agent Rules')
-      expect(content).toContain('## Work Style')
+      expect(content).toContain('# Agent Contract')
+      expect(content).toContain('## Communication Style')
+      expect(content).toContain('## Execution Rules')
       expect(content).toContain('## Red Lines')
-      expect(content).toContain('## Preferences')
     })
 
     it('creates HEARTBEAT.md with default template', () => {
@@ -64,8 +64,8 @@ describe('memory', () => {
 
       const content = fs.readFileSync(path.join(dir, 'HEARTBEAT.md'), 'utf-8')
       expect(content).toContain('# Heartbeat Tasks')
-      expect(content).toContain('## Memory Maintenance')
-      expect(content).toContain('## Open Notes')
+      expect(content).toContain('## Daily Memory Update')
+      expect(content).toContain('## Memory Hygiene')
     })
 
     it('does not overwrite existing AGENTS.md', () => {
@@ -157,7 +157,7 @@ describe('memory', () => {
       // After migration, AGENTS.md should be recreated with new template
       expect(fs.existsSync(path.join(dir, 'AGENTS.md'))).toBe(true)
       const agentsContent = fs.readFileSync(path.join(dir, 'AGENTS.md'), 'utf-8')
-      expect(agentsContent).toContain('# Agent Rules')
+      expect(agentsContent).toContain('# Agent Contract')
     })
   })
 
@@ -249,14 +249,14 @@ describe('memory', () => {
       ensureMemoryStructure(dir)
 
       const content = readAgentsRulesFile(dir)
-      expect(content).toContain('# Agent Rules')
-      expect(content).toContain('Work Style')
+      expect(content).toContain('# Agent Contract')
+      expect(content).toContain('Communication Style')
     })
 
     it('creates AGENTS.md if missing', () => {
       const dir = makeTmpDir()
       const content = readAgentsRulesFile(dir)
-      expect(content).toContain('# Agent Rules')
+      expect(content).toContain('# Agent Contract')
     })
   })
 
@@ -267,7 +267,7 @@ describe('memory', () => {
 
       const content = readHeartbeatFile(dir)
       expect(content).toContain('# Heartbeat Tasks')
-      expect(content).toContain('Memory Maintenance')
+      expect(content).toContain('Daily Memory Update')
     })
 
     it('creates HEARTBEAT.md if missing', () => {
@@ -350,7 +350,7 @@ describe('memory', () => {
       const prompt = assembleSystemPrompt({ memoryDir: dir })
 
       expect(prompt).toContain('<agent_rules>')
-      expect(prompt).toContain('# Agent Rules')
+      expect(prompt).toContain('# Agent Contract')
       expect(prompt).toContain('</agent_rules>')
     })
 
@@ -366,7 +366,7 @@ describe('memory', () => {
       expect(prompt).toContain('AGENTS.md')
       expect(prompt).toContain('HEARTBEAT.md')
       expect(prompt).toContain('daily/')
-      expect(prompt).toContain('read_file/write_file')
+      expect(prompt).toContain('read_file, write_file, and edit_file')
       expect(prompt).toContain('</memory_paths>')
     })
 
@@ -392,7 +392,8 @@ describe('memory', () => {
       })
 
       expect(prompt).toContain('<user_profile>')
-      expect(prompt).toContain('Username: stefan')
+      expect(prompt).toContain('# User Profile')
+      expect(prompt).toContain('stefan')
       expect(prompt).toContain('</user_profile>')
       expect(prompt).not.toContain('<user_profiles_path>')
     })
@@ -432,18 +433,20 @@ describe('memory', () => {
 
       ensureUserProfile('stefan', dir)
       const content = fs.readFileSync(path.join(dir, 'users', 'stefan.md'), 'utf-8')
-      expect(content).toContain('Username: stefan')
+      expect(content).toContain('Name: (not set)')
+      expect(content).not.toContain('Username:')
       expect(content).toContain('# User Profile \u2014 stefan')
     })
 
-    it('profile has timezone and language defaults', () => {
+    it('profile has location placeholder', () => {
       const dir = makeTmpDir()
       ensureMemoryStructure(dir)
 
       ensureUserProfile('testuser', dir)
       const content = fs.readFileSync(path.join(dir, 'users', 'testuser.md'), 'utf-8')
-      expect(content).toContain('Timezone:')
-      expect(content).toContain('Language:')
+      expect(content).toContain('Location: (not set)')
+      expect(content).not.toContain('Timezone:')
+      expect(content).not.toContain('Language:')
     })
 
     it('does not overwrite existing profile', () => {
@@ -464,8 +467,9 @@ describe('memory', () => {
       ensureMemoryStructure(dir)
 
       const content = readUserProfile('alice', dir)
-      expect(content).toContain('Username: alice')
       expect(content).toContain('# User Profile')
+      expect(content).toContain('alice')
+      expect(content).toContain('Name: (not set)')
     })
 
     it('readUserProfile reads existing profile', () => {
