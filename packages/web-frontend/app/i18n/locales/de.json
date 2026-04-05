@@ -99,6 +99,8 @@
     "apiKey": "API-Schlüssel",
     "apiKeyPlaceholder": "API-Schlüssel eingeben",
     "apiKeyHint": "Leer lassen, um bestehenden Schlüssel beizubehalten",
+    "apiKeyOptionalHint": "Nur nötig, wenn dein Server Authentifizierung erfordert.",
+    "optional": "optional",
     "model": "Standardmodell",
     "modelPlaceholder": "z.B. gpt-4o",
     "modelPlaceholderCustom": "z.B. google/gemini-2.5-pro",

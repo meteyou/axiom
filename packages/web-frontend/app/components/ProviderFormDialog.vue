@@ -81,9 +81,12 @@
           />
         </div>
 
-        <!-- API Key (only for API key providers that require it) -->
-        <div v-if="form.providerType && !isOAuthProvider && selectedPreset?.requiresApiKey" class="flex flex-col gap-1.5">
-          <Label for="provider-key">{{ $t('providers.apiKey') }}</Label>
+        <!-- API Key (all non-OAuth providers; optional for providers that don't require it) -->
+        <div v-if="form.providerType && !isOAuthProvider" class="flex flex-col gap-1.5">
+          <Label for="provider-key">
+            {{ $t('providers.apiKey') }}
+            <span v-if="!selectedPreset?.requiresApiKey" class="text-xs font-normal text-muted-foreground">({{ $t('providers.optional') }})</span>
+          </Label>
           <Input
             id="provider-key"
             v-model="form.apiKey"
@@ -91,6 +94,7 @@
             :placeholder="mode === 'edit' ? $t('providers.apiKeyHint') : $t('providers.apiKeyPlaceholder')"
           />
           <p v-if="mode === 'edit'" class="text-xs text-muted-foreground">{{ $t('providers.apiKeyHint') }}</p>
+          <p v-if="!selectedPreset?.requiresApiKey && mode !== 'edit'" class="text-xs text-muted-foreground">{{ $t('providers.apiKeyOptionalHint') }}</p>
         </div>
 
         <!-- Base URL (only for providers with editable URLs) -->
