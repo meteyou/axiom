@@ -1,144 +1,254 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
+/* ─── Dark mode via .dark class (shadcn convention) ─── */
+@custom-variant dark (&:is(.dark *));
+
+/* ─── Theme configuration ─── */
+@theme {
+  /* Font families */
+  --font-sans: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-manrope: 'Manrope', sans-serif;
+
+  /* Border radius */
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+
+  /* Colors — mapped from CSS variables for shadcn compatibility */
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+
+  --color-success: hsl(var(--success));
+  --color-success-foreground: hsl(var(--success-foreground));
+
+  --color-warning: hsl(var(--warning));
+  --color-warning-foreground: hsl(var(--warning-foreground));
+
+  --color-sidebar: hsl(var(--sidebar));
+  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
+  --color-sidebar-border: hsl(var(--sidebar-border));
+  --color-sidebar-accent: hsl(var(--sidebar-accent));
+  --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
+
+  /* Box shadows */
+  --shadow-xs: 0 1px 2px 0 hsl(var(--shadow-color) / 0.05);
+  --shadow-sm: 0 1px 3px 0 hsl(var(--shadow-color) / 0.1), 0 1px 2px -1px hsl(var(--shadow-color) / 0.1);
+  --shadow-md: 0 4px 6px -1px hsl(var(--shadow-color) / 0.1), 0 2px 4px -2px hsl(var(--shadow-color) / 0.1);
+  --shadow-lg: 0 10px 15px -3px hsl(var(--shadow-color) / 0.15), 0 4px 6px -4px hsl(var(--shadow-color) / 0.1);
+  --shadow-xl: 0 20px 25px -5px hsl(var(--shadow-color) / 0.2), 0 8px 10px -6px hsl(var(--shadow-color) / 0.1);
+  --shadow-2xl: 0 25px 50px -12px hsl(var(--shadow-color) / 0.35);
+  --shadow-inner: inset 0 2px 4px 0 hsl(var(--shadow-color) / 0.06);
+
+  /* Keyframes */
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+  --animate-fade-in: fade-in 0.15s ease-out;
+  --animate-fade-out: fade-out 0.15s ease-in;
+  --animate-slide-in-from-top: slide-in-from-top 0.2s ease-out;
+  --animate-slide-in-from-bottom: slide-in-from-bottom 0.2s ease-out;
+  --animate-shimmer: shimmer 2s infinite;
+
+  @keyframes accordion-down {
+    from { height: 0; }
+    to { height: var(--radix-accordion-content-height); }
+  }
+
+  @keyframes accordion-up {
+    from { height: var(--radix-accordion-content-height); }
+    to { height: 0; }
+  }
+
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes fade-out {
+    from { opacity: 1; }
+    to { opacity: 0; }
+  }
+
+  @keyframes slide-in-from-top {
+    from { transform: translateY(-10px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+
+  @keyframes slide-in-from-bottom {
+    from { transform: translateY(10px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+
+  @keyframes shimmer {
+    100% { transform: translateX(100%); }
+  }
+
+  @keyframes typingDot {
+    0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+    30% { opacity: 1; transform: translateY(-4px); }
+  }
+}
+
+/* ─── Light theme (default) ─── */
+:root {
+  --background: 0 0% 100%;
+  --foreground: 222 47% 11%;
+
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+
+  --primary: 160 84% 30%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 210 40% 96%;
+  --secondary-foreground: 222 47% 11%;
+
+  --muted: 210 40% 96%;
+  --muted-foreground: 215 16% 47%;
+
+  --accent: 210 40% 96%;
+  --accent-foreground: 222 47% 11%;
+
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+
+  --success: 142 71% 45%;
+  --success-foreground: 0 0% 100%;
+
+  --warning: 38 92% 50%;
+  --warning-foreground: 0 0% 100%;
+
+  --border: 214 32% 91%;
+  --input: 214 32% 91%;
+  --ring: 160 84% 30%;
+
+  --radius: 0.625rem;
+  --shadow-color: 222 47% 11%;
+
+  /* Sidebar */
+  --sidebar: 0 0% 98%;
+  --sidebar-foreground: 222 47% 11%;
+  --sidebar-border: 214 32% 91%;
+  --sidebar-accent: 210 40% 96%;
+  --sidebar-accent-foreground: 222 47% 11%;
+
+  /* Legacy compat — pages using old CSS vars will still work */
+  --color-bg: hsl(0 0% 100%);
+  --color-bg-secondary: hsl(210 40% 98%);
+  --color-bg-tertiary: hsl(210 40% 96%);
+  --color-border-legacy: hsl(214 32% 91%);
+  --color-text: hsl(222 47% 11%);
+  --color-text-secondary: hsl(215 25% 35%);
+  --color-text-muted: hsl(215 16% 55%);
+  --color-primary-legacy: hsl(160 84% 30%);
+  --color-primary-hover: hsl(160 84% 25%);
+  --color-primary-bg: hsl(160 84% 30% / 0.1);
+  --color-danger: hsl(0 84% 60%);
+  --color-success-legacy: hsl(142 71% 45%);
+  --color-warning-legacy: hsl(38 92% 50%);
+  --color-user-bubble: hsl(160 84% 30%);
+  --color-assistant-bubble: hsl(210 40% 96%);
+  --color-system-bubble: hsl(210 40% 92%);
+  --sidebar-width: 260px;
+  --header-height: 56px;
+  --font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/* ─── Dark theme ─── */
+.dark {
+  --background: 228 22% 12%;
+  --foreground: 220 20% 90%;
+
+  --card: 228 22% 14%;
+  --card-foreground: 220 20% 90%;
+
+  --popover: 228 22% 14%;
+  --popover-foreground: 220 20% 90%;
+
+  --primary: 160 84% 30%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 228 18% 18%;
+  --secondary-foreground: 220 20% 90%;
+
+  --muted: 228 18% 18%;
+  --muted-foreground: 220 15% 55%;
+
+  --accent: 228 18% 18%;
+  --accent-foreground: 220 20% 90%;
+
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+
+  --success: 142 71% 45%;
+  --success-foreground: 0 0% 100%;
+
+  --warning: 38 92% 50%;
+  --warning-foreground: 0 0% 100%;
+
+  --border: 228 18% 20%;
+  --input: 228 18% 20%;
+  --ring: 160 84% 30%;
+
+  --shadow-color: 228 22% 5%;
+
+  /* Sidebar */
+  --sidebar: 228 24% 8%;
+  --sidebar-foreground: 220 20% 90%;
+  --sidebar-border: 228 18% 16%;
+  --sidebar-accent: 228 20% 14%;
+  --sidebar-accent-foreground: 220 20% 90%;
+
+  /* Legacy compat — keeps old scoped CSS working during migration */
+  --color-bg: #181c2a;
+  --color-bg-secondary: #1e2233;
+  --color-bg-tertiary: #252a3a;
+  --color-border-legacy: #2e3348;
+  --color-text: #dde1ec;
+  --color-text-secondary: #a0a8be;
+  --color-text-muted: #6b7280;
+  --color-primary-legacy: #0d9668;
+  --color-primary-hover: #047857;
+  --color-primary-bg: rgba(13, 150, 104, 0.12);
+  --color-danger: #ef4444;
+  --color-success-legacy: #22c55e;
+  --color-warning-legacy: #f59e0b;
+  --color-user-bubble: #0d9668;
+  --color-assistant-bubble: #1e2233;
+  --color-system-bubble: #181c2a;
+  --sidebar-width: 260px;
+  --header-height: 56px;
+  --font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/* ─── Base resets ─── */
 @layer base {
-  /* ─── Light theme (default) ─── */
-  :root {
-    --background: 0 0% 100%;
-    --foreground: 222 47% 11%;
-
-    --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
-
-    --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
-
-    --primary: 160 84% 30%;
-    --primary-foreground: 0 0% 100%;
-
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222 47% 11%;
-
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
-
-    --accent: 210 40% 96%;
-    --accent-foreground: 222 47% 11%;
-
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 100%;
-
-    --success: 142 71% 45%;
-    --success-foreground: 0 0% 100%;
-
-    --warning: 38 92% 50%;
-    --warning-foreground: 0 0% 100%;
-
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 160 84% 30%;
-
-    --radius: 0.625rem;
-    --shadow-color: 222 47% 11%;
-
-    /* Sidebar */
-    --sidebar: 0 0% 98%;
-    --sidebar-foreground: 222 47% 11%;
-    --sidebar-border: 214 32% 91%;
-    --sidebar-accent: 210 40% 96%;
-    --sidebar-accent-foreground: 222 47% 11%;
-
-    /* Legacy compat — pages using old CSS vars will still work */
-    --color-bg: hsl(0 0% 100%);
-    --color-bg-secondary: hsl(210 40% 98%);
-    --color-bg-tertiary: hsl(210 40% 96%);
-    --color-border: hsl(214 32% 91%);
-    --color-text: hsl(222 47% 11%);
-    --color-text-secondary: hsl(215 25% 35%);
-    --color-text-muted: hsl(215 16% 55%);
-    --color-primary: hsl(160 84% 30%);
-    --color-primary-hover: hsl(160 84% 25%);
-    --color-primary-bg: hsl(160 84% 30% / 0.1);
-    --color-danger: hsl(0 84% 60%);
-    --color-success: hsl(142 71% 45%);
-    --color-warning: hsl(38 92% 50%);
-    --color-user-bubble: hsl(160 84% 30%);
-    --color-assistant-bubble: hsl(210 40% 96%);
-    --color-system-bubble: hsl(210 40% 92%);
-    --sidebar-width: 260px;
-    --header-height: 56px;
-    --font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  }
-
-  /* ─── Dark theme ─── */
-  .dark {
-    --background: 228 22% 12%;
-    --foreground: 220 20% 90%;
-
-    --card: 228 22% 14%;
-    --card-foreground: 220 20% 90%;
-
-    --popover: 228 22% 14%;
-    --popover-foreground: 220 20% 90%;
-
-    --primary: 160 84% 30%;
-    --primary-foreground: 0 0% 100%;
-
-    --secondary: 228 18% 18%;
-    --secondary-foreground: 220 20% 90%;
-
-    --muted: 228 18% 18%;
-    --muted-foreground: 220 15% 55%;
-
-    --accent: 228 18% 18%;
-    --accent-foreground: 220 20% 90%;
-
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 100%;
-
-    --success: 142 71% 45%;
-    --success-foreground: 0 0% 100%;
-
-    --warning: 38 92% 50%;
-    --warning-foreground: 0 0% 100%;
-
-    --border: 228 18% 20%;
-    --input: 228 18% 20%;
-    --ring: 160 84% 30%;
-
-    --shadow-color: 228 22% 5%;
-
-    /* Sidebar */
-    --sidebar: 228 24% 8%;
-    --sidebar-foreground: 220 20% 90%;
-    --sidebar-border: 228 18% 16%;
-    --sidebar-accent: 228 20% 14%;
-    --sidebar-accent-foreground: 220 20% 90%;
-
-    /* Legacy compat — keeps old scoped CSS working during migration */
-    --color-bg: #181c2a;
-    --color-bg-secondary: #1e2233;
-    --color-bg-tertiary: #252a3a;
-    --color-border: #2e3348;
-    --color-text: #dde1ec;
-    --color-text-secondary: #a0a8be;
-    --color-text-muted: #6b7280;
-    --color-primary: #0d9668;
-    --color-primary-hover: #047857;
-    --color-primary-bg: rgba(13, 150, 104, 0.12);
-    --color-danger: #ef4444;
-    --color-success: #22c55e;
-    --color-warning: #f59e0b;
-    --color-user-bubble: #0d9668;
-    --color-assistant-bubble: #1e2233;
-    --color-system-bubble: #181c2a;
-    --sidebar-width: 260px;
-    --header-height: 56px;
-    --font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  }
-
-  /* ─── Base resets ─── */
   *,
   *::before,
   *::after {
@@ -195,30 +305,28 @@
   }
 }
 
-/* ─── Chat markdown prose ─── */
-@layer utilities {
-  .oa-scrollbar {
-    scrollbar-width: thin;
-    scrollbar-color: hsl(var(--border)) transparent;
-  }
+/* ─── Custom scrollbar utility ─── */
+@utility oa-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--border)) transparent;
 
-  .oa-scrollbar::-webkit-scrollbar {
+  &::-webkit-scrollbar {
     width: 10px;
     height: 10px;
   }
 
-  .oa-scrollbar::-webkit-scrollbar-track {
+  &::-webkit-scrollbar-track {
     background: transparent;
   }
 
-  .oa-scrollbar::-webkit-scrollbar-thumb {
+  &::-webkit-scrollbar-thumb {
     background-color: hsl(var(--border));
     border-radius: 9999px;
     border: 2px solid transparent;
     background-clip: padding-box;
   }
 
-  .oa-scrollbar::-webkit-scrollbar-thumb:hover {
+  &::-webkit-scrollbar-thumb:hover {
     background-color: hsl(var(--muted-foreground) / 0.55);
   }
 }
