@@ -7,7 +7,10 @@ import {
   readSoulFile,
   readMemoryFile,
   writeMemoryFile,
+  readAgentsRulesFile,
+  writeAgentsRulesFile,
   readHeartbeatFile,
+  writeHeartbeatFile,
   readUserProfile,
   ensureUserProfile,
 } from '@openagent/core'
@@ -94,13 +97,13 @@ export function createMemoryRouter(getAgentCore: () => AgentCore | null = () => 
     }
   })
 
-  // Legacy /agents endpoints for backward compatibility
+  // Agent rules endpoints (AGENTS.md)
   router.get('/agents', (_req, res) => {
     try {
-      const content = readMemoryFile()
+      const content = readAgentsRulesFile()
       res.json({ content })
     } catch (err) {
-      res.status(500).json({ error: `Failed to read MEMORY.md: ${(err as Error).message}` })
+      res.status(500).json({ error: `Failed to read AGENTS.md: ${(err as Error).message}` })
     }
   })
 
@@ -112,11 +115,11 @@ export function createMemoryRouter(getAgentCore: () => AgentCore | null = () => 
     }
 
     try {
-      writeMemoryFile(content)
+      writeAgentsRulesFile(content)
       refreshAgentPrompt()
-      res.json({ message: 'MEMORY.md updated', content })
+      res.json({ message: 'AGENTS.md updated', content })
     } catch (err) {
-      res.status(500).json({ error: `Failed to write MEMORY.md: ${(err as Error).message}` })
+      res.status(500).json({ error: `Failed to write AGENTS.md: ${(err as Error).message}` })
     }
   })
 
@@ -209,7 +212,7 @@ export function createMemoryRouter(getAgentCore: () => AgentCore | null = () => 
     }
   })
 
-  // Heartbeat endpoints
+  // Heartbeat endpoints (HEARTBEAT.md — agent heartbeat task list)
   router.get('/heartbeat', (_req, res) => {
     try {
       const content = readHeartbeatFile()
@@ -227,10 +230,7 @@ export function createMemoryRouter(getAgentCore: () => AgentCore | null = () => 
     }
 
     try {
-      const memoryDir = getMemoryDir()
-      ensureMemoryStructure(memoryDir)
-      const heartbeatPath = path.join(memoryDir, 'HEARTBEAT.md')
-      fs.writeFileSync(heartbeatPath, content, 'utf-8')
+      writeHeartbeatFile(content)
       refreshAgentPrompt()
       res.json({ message: 'HEARTBEAT.md updated', content })
     } catch (err) {
