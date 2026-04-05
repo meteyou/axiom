@@ -5,7 +5,7 @@ const rootPkg = JSON.parse(readFileSync(resolve(__dirname, '../../package.json')
 
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
-  compatibilityDate: '2025-01-01',
+  compatibilityDate: '2026-04-05',
   devtools: { enabled: true },
   ssr: false,
 
@@ -19,7 +19,7 @@ export default defineNuxtConfig({
   ],
 
   tailwindcss: {
-    configPath: '~/tailwind.config.ts',
+    configPath: './tailwind.config.ts',
     cssPath: '~/assets/css/tailwind.css',
     exposeConfig: false,
   },
@@ -31,7 +31,8 @@ export default defineNuxtConfig({
     ],
     defaultLocale: 'en',
     lazy: true,
-    langDir: 'locales/',
+    langDir: 'i18n/locales/',
+    restructureDir: false,
     strategy: 'no_prefix',
     bundle: {
       optimizeTranslationDirective: false,
