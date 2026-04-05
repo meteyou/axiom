@@ -28,11 +28,14 @@ export const DEFAULT_AGENT_HEARTBEAT_SETTINGS: AgentHeartbeatSettings = {
 const HEARTBEAT_PROMPT = `You are running a periodic heartbeat maintenance cycle.
 
 1. Read \`/data/memory/HEARTBEAT.md\` for the list of tasks to execute.
-2. For the "Daily Memory Update" task: read recent chat messages from the database, extract important facts, decisions, and preferences that haven't been captured yet, and write them to today's daily memory file (\`/data/memory/daily/YYYY-MM-DD.md\`). Focus on lasting value — skip ephemeral chatter.
+2. For the "Daily Memory Update" task: use the read_chat_history tool to read recent chat messages since the last heartbeat. Extract important facts, decisions, and preferences that haven't been captured yet, and write them to today's daily memory file (\`/data/memory/daily/YYYY-MM-DD.md\`). Focus on lasting value — skip ephemeral chatter.
 3. For the "Memory Hygiene" task: check MEMORY.md for outdated entries and promote important insights from daily memory if needed.
 4. Execute any other tasks defined in HEARTBEAT.md.
 
-Use read_file and write_file to work with memory files.
+Available tools:
+- read_chat_history: Read chat messages with optional datetime filtering (start/end), source filtering (web/telegram/task), and role filtering.
+- read_file / write_file / edit_file: Work with memory files.
+
 If you have something important to report to the user, use task injection.
 If nothing needs attention, complete silently without output.
 Be efficient — avoid unnecessary LLM calls or tool usage.`

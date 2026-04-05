@@ -30,6 +30,7 @@ import {
   deliverTaskNotification,
   createYoloTools,
   createBuiltinWebTools,
+  createReadChatHistoryTool,
   logToolCall,
 } from '@openagent/core'
 import type { ProviderConfig, LoopDetectionConfig, BuiltinToolsConfig } from '@openagent/core'
@@ -203,7 +204,7 @@ const taskRunner = new TaskRunner({
   db,
   buildModel,
   getApiKey: getApiKeyForProvider,
-  tools: [...createYoloTools(), ...createBuiltinWebTools(builtinToolsConfig)],
+  tools: [...createYoloTools(), ...createBuiltinWebTools(builtinToolsConfig), createReadChatHistoryTool({ db })],
   onTaskComplete: (taskId: string, injection: string) => {
     handleTaskNotification(taskId, injection, taskStore)
   },
@@ -417,6 +418,7 @@ const agentTools = [
   removeCronjobTool(cronjobToolsOptions),
   listCronjobsTool(cronjobToolsOptions),
   createReminderTool(cronjobToolsOptions),
+  createReadChatHistoryTool({ db }),
 ]
 
 // Start the task scheduler to pick up existing cronjobs

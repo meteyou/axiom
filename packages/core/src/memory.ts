@@ -90,7 +90,7 @@ Be efficient — if nothing needs attention, complete silently.
 
 ## Daily Memory Update
 
-- Read recent chat messages from the database (use the chat history tools)
+- Use the read_chat_history tool to read recent chat messages (filter by start datetime to only get messages since last heartbeat)
 - Extract important facts, decisions, preferences, and context that aren't yet captured
 - Write new observations to today's daily memory file (/data/memory/daily/YYYY-MM-DD.md)
 - Focus on: user preferences learned, project decisions made, technical facts discovered, open action items
