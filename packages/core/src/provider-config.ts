@@ -659,6 +659,15 @@ export function getActiveProvider(): ProviderConfig | null {
 export async function getApiKeyForProvider(provider: ProviderConfig): Promise<string> {
   // API key providers: return the key directly
   if (provider.authMethod !== 'oauth' || !provider.oauthCredentials) {
+    // For providers that don't require an API key (e.g., local Ollama),
+    // return a dummy key to satisfy downstream libraries (like the OpenAI SDK)
+    // that require a non-empty API key string.
+    if (!provider.apiKey) {
+      const preset = PROVIDER_TYPE_PRESETS[provider.providerType]
+      if (preset && !preset.requiresApiKey) {
+        return 'no-key'
+      }
+    }
     return provider.apiKey
   }
 
