@@ -319,4 +319,57 @@ describe('SessionManager', () => {
       manager.setTimeoutMinutes(30)
     })
   })
+
+  describe('skipSessionSummary', () => {
+    it('skips summary when skipSessionSummary is true', async () => {
+      const onSummarize = vi.fn().mockResolvedValue('Summary text')
+      const manager = new SessionManager({
+        db,
+        memoryDir,
+        timeoutMinutes: 15,
+        onSummarize,
+      })
+
+      manager.setSkipSessionSummary(true)
+      manager.getOrCreateSession('user1')
+      manager.recordMessage('user1')
+
+      const summary = await manager.handleNewCommand('user1')
+
+      expect(onSummarize).not.toHaveBeenCalled()
+      expect(summary).toBeNull()
+
+      // Daily file should not have been written
+      const today = new Date().toISOString().split('T')[0]
+      const dailyPath = path.join(memoryDir, 'daily', `${today}.md`)
+      if (fs.existsSync(dailyPath)) {
+        const content = fs.readFileSync(dailyPath, 'utf-8')
+        expect(content).not.toContain('Summary text')
+      }
+    })
+
+    it('generates summary when skipSessionSummary is false', async () => {
+      const onSummarize = vi.fn().mockResolvedValue('Summary text')
+      const manager = new SessionManager({
+        db,
+        memoryDir,
+        timeoutMinutes: 15,
+        onSummarize,
+      })
+
+      manager.setSkipSessionSummary(false)
+      manager.getOrCreateSession('user1')
+      manager.recordMessage('user1')
+
+      const summary = await manager.handleNewCommand('user1')
+
+      expect(onSummarize).toHaveBeenCalled()
+      expect(summary).toBe('Summary text')
+    })
+
+    it('defaults to false', () => {
+      const manager = new SessionManager({ db, memoryDir })
+      expect(manager.skipSessionSummary).toBe(false)
+    })
+  })
 })

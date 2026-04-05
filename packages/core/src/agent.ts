@@ -10,18 +10,19 @@ import { logTokenUsage, logToolCall } from './token-logger.js'
 import { estimateCost, getApiKeyForProvider, buildModel } from './provider-config.js'
 import type { ProviderConfig } from './provider-config.js'
 import type { ProviderManager } from './provider-manager.js'
-import { assembleSystemPrompt, ensureMemoryStructure } from './memory.js'
+import { assembleSystemPrompt, ensureMemoryStructure, getMemoryDir } from './memory.js'
 import type { SkillPromptEntry } from './memory.js'
+import { getWorkspaceDir } from './workspace.js'
 import { loadConfig, ensureConfigTemplates } from './config.js'
 import { loadSkills, getSkillDecrypted } from './skill-config.js'
 import { getUploadsDir } from './uploads.js'
 import type { UploadDescriptor } from './uploads.js'
-import { createMemoryTools } from './memory-tools.js'
 import { createBuiltinWebTools } from './web-tools.js'
 import type { BuiltinToolsConfig } from './web-tools.js'
 import { SessionManager } from './session-manager.js'
 import type { SessionInfo } from './session-manager.js'
 import { MessageQueue } from './message-queue.js'
+import { createAgentSkillTools, getAgentSkillsForPrompt, getAgentSkillsCount, trackAgentSkillUsage } from './agent-skills.js'
 
 /**
  * A chunk yielded from the agent's response stream
@@ -43,7 +44,6 @@ export interface AgentCoreOptions {
   db: Database
   systemPrompt?: string
   tools?: AgentTool[]
-  yoloMode?: boolean
   memoryDir?: string
   sessionTimeoutMinutes?: number
   baseInstructions?: string
@@ -53,19 +53,8 @@ export interface AgentCoreOptions {
   onSessionEnd?: (userId: string, summary: string | null) => void
 }
 
-/**
- * Get the workspace directory for agent file operations.
- * Falls back to DATA_DIR/workspace, then /workspace (Docker default).
- */
-export function getWorkspaceDir(): string {
-  if (process.env.WORKSPACE_DIR) return process.env.WORKSPACE_DIR
-  if (process.env.DATA_DIR) {
-    const wsDir = nodePath.join(process.env.DATA_DIR, 'workspace')
-    if (!fs.existsSync(wsDir)) fs.mkdirSync(wsDir, { recursive: true })
-    return wsDir
-  }
-  return '/workspace'
-}
+// Re-export for backward compatibility
+export { getWorkspaceDir } from './workspace.js'
 
 /**
  * Resolve a path relative to WORKSPACE_DIR (consistent across all tools)
@@ -123,6 +112,26 @@ export function createYoloTools(): AgentTool[] {
       try {
         const resolved = resolveWorkspacePath(filePath)
         let content = fs.readFileSync(resolved, 'utf-8')
+
+        // Detect SKILL.md loads under /data/skills_agent/<name>/
+        const agentSkillMdMatch = resolved.match(/\/data\/skills_agent\/([^/]+)\/SKILL\.md$/)
+        if (agentSkillMdMatch) {
+          const skillDir = nodePath.dirname(resolved)
+          content = content.replaceAll('{baseDir}', skillDir)
+          const skillName = agentSkillMdMatch[1]
+          trackAgentSkillUsage(skillName)
+          const header = `Skill directory: ${skillDir}\n\n`
+          return {
+            content: [{ type: 'text' as const, text: header + content }],
+            details: {
+              path: resolved,
+              size: content.length,
+              skillLoad: true,
+              skillName,
+              agentSkill: true,
+            },
+          }
+        }
 
         // Detect SKILL.md loads under /data/skills/
         const skillMdMatch = resolved.match(/\/data\/skills\/(.+)\/SKILL\.md$/)
@@ -195,14 +204,116 @@ export function createYoloTools(): AgentTool[] {
         if (!fs.existsSync(dir)) {
           fs.mkdirSync(dir, { recursive: true })
         }
+
+        // Capture before-content for memory files (enables diff view in UI)
+        let memoryDiff: { before: string; after: string } | undefined
+        const memoryDir = getMemoryDir()
+        if (resolved.startsWith(memoryDir)) {
+          const before = fs.existsSync(resolved) ? fs.readFileSync(resolved, 'utf-8') : ''
+          memoryDiff = { before, after: content }
+        }
+
         fs.writeFileSync(resolved, content, 'utf-8')
         return {
           content: [{ type: 'text' as const, text: `Successfully wrote ${content.length} bytes to ${resolved}` }],
-          details: { path: resolved, size: content.length },
+          details: { path: resolved, size: content.length, memoryDiff },
         }
       } catch (err: unknown) {
         return {
           content: [{ type: 'text' as const, text: `Error writing file: ${(err as Error).message}` }],
+          details: { error: true },
+        }
+      }
+    },
+  }
+
+  const editFileTool: AgentTool = {
+    name: 'edit_file',
+    label: 'Edit File',
+    description: 'Edit a file using exact text replacements. Each edit specifies an oldText to find and a newText to replace it with. The oldText must match exactly and be unique in the file. Use this instead of write_file when you only need to change specific parts of a file.',
+    parameters: Type.Object({
+      path: Type.String({ description: 'Path to the file to edit' }),
+      edits: Type.Array(
+        Type.Object({
+          oldText: Type.String({ description: 'Exact text to find and replace. Must be unique in the file.' }),
+          newText: Type.String({ description: 'Replacement text.' }),
+        }),
+        { description: 'One or more targeted replacements. Each oldText is matched against the original file.' },
+      ),
+    }),
+    execute: async (_toolCallId, params) => {
+      const { path: filePath, edits } = params as { path: string; edits: Array<{ oldText: string; newText: string }> }
+      try {
+        const resolved = resolveWorkspacePath(filePath)
+
+        if (!fs.existsSync(resolved)) {
+          return {
+            content: [{ type: 'text' as const, text: `File not found: ${resolved}` }],
+            details: { error: true },
+          }
+        }
+
+        if (!Array.isArray(edits) || edits.length === 0) {
+          return {
+            content: [{ type: 'text' as const, text: 'edits must contain at least one replacement.' }],
+            details: { error: true },
+          }
+        }
+
+        const originalContent = fs.readFileSync(resolved, 'utf-8')
+        let content = originalContent
+
+        // Validate all edits first (against original content)
+        for (let i = 0; i < edits.length; i++) {
+          const { oldText } = edits[i]
+          if (!oldText) {
+            return {
+              content: [{ type: 'text' as const, text: `edits[${i}].oldText must not be empty.` }],
+              details: { error: true },
+            }
+          }
+          const occurrences = content.split(oldText).length - 1
+          if (occurrences === 0) {
+            return {
+              content: [{ type: 'text' as const, text: `Could not find edits[${i}].oldText in ${filePath}. The text must match exactly.` }],
+              details: { error: true },
+            }
+          }
+          if (occurrences > 1) {
+            return {
+              content: [{ type: 'text' as const, text: `Found ${occurrences} occurrences of edits[${i}].oldText in ${filePath}. The text must be unique.` }],
+              details: { error: true },
+            }
+          }
+        }
+
+        // Apply all edits
+        for (const { oldText, newText } of edits) {
+          content = content.replace(oldText, newText)
+        }
+
+        if (content === originalContent) {
+          return {
+            content: [{ type: 'text' as const, text: `No changes made to ${filePath}. The replacements produced identical content.` }],
+            details: { error: true },
+          }
+        }
+
+        // Capture before/after for memory files (enables diff view in UI)
+        let memoryDiff: { before: string; after: string } | undefined
+        const memoryDir = getMemoryDir()
+        if (resolved.startsWith(memoryDir)) {
+          memoryDiff = { before: originalContent, after: content }
+        }
+
+        fs.writeFileSync(resolved, content, 'utf-8')
+        return {
+          content: [{ type: 'text' as const, text: `Successfully replaced ${edits.length} block(s) in ${filePath}.` }],
+          details: { path: resolved, editsApplied: edits.length, memoryDiff },
+        }
+      } catch (err: unknown) {
+        return {
+          content: [{ type: 'text' as const, text: `Error editing file: ${(err as Error).message}` }],
           details: { error: true },
         }
       }
@@ -237,7 +348,7 @@ export function createYoloTools(): AgentTool[] {
     },
   }
 
-  return [shellTool, readFileTool, writeFileTool, listFilesTool]
+  return [shellTool, readFileTool, writeFileTool, editFileTool, listFilesTool]
 }
 
 /**
@@ -307,20 +418,26 @@ export class AgentCore {
     // Load active skills for system prompt
     const activeSkills = getActiveSkillEntries()
 
+    // Load recent agent-managed skills for system prompt
+    const agentSkillEntries = getAgentSkillsForPrompt()
+    const totalAgentSkills = getAgentSkillsCount()
+    const allSkills = [...activeSkills, ...agentSkillEntries]
+
     // Build system prompt from memory
     const systemPrompt = options.systemPrompt ?? assembleSystemPrompt({
       memoryDir: options.memoryDir,
       baseInstructions: options.baseInstructions,
       language,
       timezone,
-      skills: activeSkills,
+      skills: allSkills,
+      agentSkillsOverflowCount: totalAgentSkills > 10 ? totalAgentSkills : undefined,
     })
 
     const tools: AgentTool[] = [
       ...(options.tools ?? []),
-      ...createMemoryTools(options.memoryDir),
       ...createBuiltinWebTools(builtinToolsConfig),
-      ...(options.yoloMode !== false ? createYoloTools() : []),
+      ...createAgentSkillTools(),
+      ...createYoloTools(),
     ]
 
     this.agent = new PiAgent({
@@ -448,7 +565,22 @@ export class AgentCore {
     const session = this.sessionManager.getOrCreateSession(userId, source)
     const sessionId = session.id
 
-    this.refreshSystemPrompt(source)
+    // Resolve username for user profile injection (skip for group chats)
+    let currentUser: { username: string } | undefined
+    if (source !== 'telegram-group') {
+      try {
+        const row = this.db.prepare('SELECT username FROM users WHERE id = ?').get(userId) as { username: string } | undefined
+        if (row?.username) {
+          currentUser = { username: row.username }
+        }
+      } catch {
+        // userId might not be a numeric ID (e.g. telegram-12345), skip
+      }
+    }
+
+    // Pass channel as 'telegram' for both DM and group sources
+    const channel = source.startsWith('telegram') ? 'telegram' : source
+    this.refreshSystemPrompt(channel, currentUser)
     this.sessionManager.recordMessage(userId)
 
     // Build image content and file context from attachments
@@ -810,7 +942,7 @@ export class AgentCore {
   /**
    * Refresh the system prompt from current memory state
    */
-  refreshSystemPrompt(channel?: string): void {
+  refreshSystemPrompt(channel?: string, currentUser?: { username: string }): void {
     let language: string | undefined
     let timezone: string | undefined
     try {
@@ -823,6 +955,9 @@ export class AgentCore {
     }
 
     const activeSkills = getActiveSkillEntries()
+    const agentSkillEntries = getAgentSkillsForPrompt()
+    const totalAgentSkills = getAgentSkillsCount()
+    const allSkills = [...activeSkills, ...agentSkillEntries]
 
     const prompt = assembleSystemPrompt({
       memoryDir: this.memoryDir,
@@ -830,7 +965,9 @@ export class AgentCore {
       language,
       timezone,
       channel,
-      skills: activeSkills,
+      skills: allSkills,
+      agentSkillsOverflowCount: totalAgentSkills > 10 ? totalAgentSkills : undefined,
+      currentUser,
     })
     this.agent.setSystemPrompt(prompt)
   }

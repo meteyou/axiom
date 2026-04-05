@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { initDatabase } from './database.js'
+import { initDatabase, isValidUsername, validateUsername } from './database.js'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
@@ -64,6 +64,45 @@ describe('database', () => {
     expect(user.role).toBe('admin')
 
     db.close()
+  })
+
+  describe('username validation', () => {
+    it('accepts valid alphanumeric usernames', () => {
+      expect(isValidUsername('stefan')).toBe(true)
+      expect(isValidUsername('Stefan')).toBe(true)
+      expect(isValidUsername('admin123')).toBe(true)
+      expect(isValidUsername('ABC')).toBe(true)
+      expect(isValidUsername('user42')).toBe(true)
+    })
+
+    it('rejects usernames with spaces', () => {
+      expect(isValidUsername('stefan müller')).toBe(false)
+      expect(isValidUsername('john doe')).toBe(false)
+    })
+
+    it('rejects usernames with umlauts', () => {
+      expect(isValidUsername('müller')).toBe(false)
+      expect(isValidUsername('schön')).toBe(false)
+      expect(isValidUsername('über')).toBe(false)
+    })
+
+    it('rejects usernames with special characters', () => {
+      expect(isValidUsername('user@name')).toBe(false)
+      expect(isValidUsername('user-name')).toBe(false)
+      expect(isValidUsername('user_name')).toBe(false)
+      expect(isValidUsername('user.name')).toBe(false)
+      expect(isValidUsername('user!')).toBe(false)
+    })
+
+    it('rejects empty usernames', () => {
+      expect(isValidUsername('')).toBe(false)
+    })
+
+    it('validateUsername throws for invalid usernames', () => {
+      expect(() => validateUsername('stefan')).not.toThrow()
+      expect(() => validateUsername('invalid user')).toThrow(/only alphanumeric/)
+      expect(() => validateUsername('müller')).toThrow(/only alphanumeric/)
+    })
   })
 
   it('enforces foreign key on sessions', () => {

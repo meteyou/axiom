@@ -7,6 +7,12 @@ import {
   readSoulFile,
   readMemoryFile,
   writeMemoryFile,
+  readAgentsRulesFile,
+  writeAgentsRulesFile,
+  readHeartbeatFile,
+  writeHeartbeatFile,
+  readUserProfile,
+  ensureUserProfile,
 } from '@openagent/core'
 import type { AgentCore } from '@openagent/core'
 import { jwtMiddleware } from '../auth.js'
@@ -91,13 +97,13 @@ export function createMemoryRouter(getAgentCore: () => AgentCore | null = () => 
     }
   })
 
-  // Legacy /agents endpoints for backward compatibility
+  // Agent rules endpoints (AGENTS.md)
   router.get('/agents', (_req, res) => {
     try {
-      const content = readMemoryFile()
+      const content = readAgentsRulesFile()
       res.json({ content })
     } catch (err) {
-      res.status(500).json({ error: `Failed to read MEMORY.md: ${(err as Error).message}` })
+      res.status(500).json({ error: `Failed to read AGENTS.md: ${(err as Error).message}` })
     }
   })
 
@@ -109,11 +115,11 @@ export function createMemoryRouter(getAgentCore: () => AgentCore | null = () => 
     }
 
     try {
-      writeMemoryFile(content)
+      writeAgentsRulesFile(content)
       refreshAgentPrompt()
-      res.json({ message: 'MEMORY.md updated', content })
+      res.json({ message: 'AGENTS.md updated', content })
     } catch (err) {
-      res.status(500).json({ error: `Failed to write MEMORY.md: ${(err as Error).message}` })
+      res.status(500).json({ error: `Failed to write AGENTS.md: ${(err as Error).message}` })
     }
   })
 
@@ -203,6 +209,70 @@ export function createMemoryRouter(getAgentCore: () => AgentCore | null = () => 
       res.json({ message: `Daily file for ${date} updated`, date, content })
     } catch (err) {
       res.status(500).json({ error: `Failed to write daily file: ${(err as Error).message}` })
+    }
+  })
+
+  // Heartbeat endpoints (HEARTBEAT.md — agent heartbeat task list)
+  router.get('/heartbeat', (_req, res) => {
+    try {
+      const content = readHeartbeatFile()
+      res.json({ content })
+    } catch (err) {
+      res.status(500).json({ error: `Failed to read HEARTBEAT.md: ${(err as Error).message}` })
+    }
+  })
+
+  router.put('/heartbeat', (req: AuthenticatedRequest, res) => {
+    const { content } = req.body as { content?: string }
+    if (content === undefined || content === null) {
+      res.status(400).json({ error: 'Content is required' })
+      return
+    }
+
+    try {
+      writeHeartbeatFile(content)
+      refreshAgentPrompt()
+      res.json({ message: 'HEARTBEAT.md updated', content })
+    } catch (err) {
+      res.status(500).json({ error: `Failed to write HEARTBEAT.md: ${(err as Error).message}` })
+    }
+  })
+
+  // User profile endpoints
+  router.get('/profile', (req: AuthenticatedRequest, res) => {
+    try {
+      const username = req.user?.username
+      if (!username) {
+        res.status(400).json({ error: 'Username not available from auth' })
+        return
+      }
+      const content = readUserProfile(username)
+      res.json({ username, content })
+    } catch (err) {
+      res.status(500).json({ error: `Failed to read user profile: ${(err as Error).message}` })
+    }
+  })
+
+  router.put('/profile', (req: AuthenticatedRequest, res) => {
+    const username = req.user?.username
+    if (!username) {
+      res.status(400).json({ error: 'Username not available from auth' })
+      return
+    }
+
+    const { content } = req.body as { content?: string }
+    if (content === undefined || content === null) {
+      res.status(400).json({ error: 'Content is required' })
+      return
+    }
+
+    try {
+      const profilePath = ensureUserProfile(username)
+      fs.writeFileSync(profilePath, content, 'utf-8')
+      refreshAgentPrompt()
+      res.json({ message: `Profile for ${username} updated`, username, content })
+    } catch (err) {
+      res.status(500).json({ error: `Failed to write user profile: ${(err as Error).message}` })
     }
   })
 

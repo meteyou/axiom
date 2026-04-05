@@ -5,6 +5,7 @@ import { ensureConfigTemplates } from '@openagent/core'
 import { ensureMemoryStructure } from '@openagent/core'
 import {
   AgentCore,
+  AgentHeartbeatService,
   injectSecretsIntoEnv,
   getActiveProvider,
   getFallbackProvider,
@@ -35,7 +36,7 @@ import type { ProviderConfig, LoopDetectionConfig, BuiltinToolsConfig } from '@o
 import { setupWebSocketChat } from './ws-chat.js'
 import { setupWebSocketLogs } from './ws-logs.js'
 import { setupWebSocketTask } from './ws-task.js'
-import { HeartbeatService } from './heartbeat.js'
+import { HealthMonitorService } from './health-monitor.js'
 import { RuntimeMetrics } from './runtime-metrics.js'
 import { MemoryConsolidationScheduler } from './memory-consolidation-scheduler.js'
 import { createTelegramBot } from '@openagent/telegram'
@@ -427,11 +428,29 @@ let providerManager: ProviderManager | null = null
 let telegramBot: TelegramBot | null = null
 
 // Initialize services early (updated via setters when agentCore/providerManager become available)
-const heartbeatService = new HeartbeatService({ db, providerManager: null })
-heartbeatService.start()
+const healthMonitorService = new HealthMonitorService({ db, providerManager: null })
+healthMonitorService.start()
 
 const consolidationScheduler = new MemoryConsolidationScheduler({ db, agentCore: null })
 consolidationScheduler.start()
+
+// Initialize agent heartbeat service (periodic background tasks via HEARTBEAT.md)
+const agentHeartbeatService = new AgentHeartbeatService({
+  taskStore,
+  taskRunner,
+  getDefaultProvider: getTaskDefaultProvider,
+})
+agentHeartbeatService.start()
+
+/**
+ * Sync the session summary skip flag: when Agent Heartbeat is enabled,
+ * session summaries are skipped because the heartbeat handles memory consolidation.
+ */
+function syncSessionSummarySkip(): void {
+  if (!agentCore) return
+  const heartbeatEnabled = agentHeartbeatService.getSettings().enabled
+  agentCore.getSessionManager().setSkipSessionSummary(heartbeatEnabled)
+}
 
 // Wire Telegram chat events into the cross-channel event bus
 const onTelegramChatEvent = (event: import('@openagent/telegram').TelegramChatEvent) => {
@@ -583,7 +602,6 @@ async function initOrUpdateAgentCore(): Promise<void> {
       model,
       apiKey,
       db,
-      yoloMode: true,
       tools: agentTools,
       providerConfig: provider,
       providerManager,
@@ -618,8 +636,11 @@ async function initOrUpdateAgentCore(): Promise<void> {
     })
 
     // Update dependent services with new references
-    heartbeatService.setProviderManager(providerManager)
+    healthMonitorService.setProviderManager(providerManager)
     consolidationScheduler.setAgentCore(agentCore)
+
+    // Sync session summary skip flag with agent heartbeat state
+    syncSessionSummarySkip()
 
     // Wire agent core events (session end, task injection)
     wireAgentCoreEvents()
@@ -643,9 +664,11 @@ await initOrUpdateAgentCore()
 const app = createApp({
   db,
   getAgentCore: () => agentCore,
-  heartbeatService,
+  healthMonitorService,
   runtimeMetrics,
   consolidationScheduler,
+  agentHeartbeatService,
+  onAgentHeartbeatSettingsChanged: () => syncSessionSummarySkip(),
   getTaskRunner: () => taskRunner,
   getTaskScheduler: () => taskScheduler,
   getTelegramBot: () => telegramBot,
@@ -691,8 +714,9 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
     shuttingDown = true
 
     console.log(`\n[openagent] Received ${signal}, shutting down...`)
-    heartbeatService.stop()
+    healthMonitorService.stop()
     consolidationScheduler.stop()
+    agentHeartbeatService.stop()
 
     const cleanup = async () => {
       try {

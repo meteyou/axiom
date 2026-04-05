@@ -12,7 +12,7 @@ import { setupWebSocketChat } from './ws-chat.js'
 import { setupWebSocketLogs } from './ws-logs.js'
 import { generateAccessToken } from './auth.js'
 import { RuntimeMetrics } from './runtime-metrics.js'
-import type { HeartbeatService, HeartbeatSnapshot } from './heartbeat.js'
+import type { HealthMonitorService, HealthMonitorSnapshot } from './health-monitor.js'
 
 let db: Database
 let server: http.Server
@@ -25,8 +25,8 @@ let tempDataDir: string
 let previousDataDir: string | undefined
 const setTimeoutMinutes = vi.fn()
 const refreshSystemPrompt = vi.fn()
-const restartHeartbeat = vi.fn()
-const heartbeatSnapshot: HeartbeatSnapshot = {
+const restartHealthMonitor = vi.fn()
+const healthMonitorSnapshot: HealthMonitorSnapshot = {
   agentStatus: 'running',
   intervalMinutes: 5,
   operatingMode: 'normal',
@@ -46,12 +46,12 @@ beforeAll(async () => {
     getSessionManager: () => ({ setTimeoutMinutes }),
     refreshSystemPrompt,
   } as unknown as AgentCore
-  const mockHeartbeatService = {
-    restart: restartHeartbeat,
-    getSnapshot: () => heartbeatSnapshot,
-  } as unknown as HeartbeatService
+  const mockHealthMonitorService = {
+    restart: restartHealthMonitor,
+    getSnapshot: () => healthMonitorSnapshot,
+  } as unknown as HealthMonitorService
   const runtimeMetrics = new RuntimeMetrics()
-  const app = createApp({ db, getAgentCore: () => mockAgentCore, heartbeatService: mockHeartbeatService, runtimeMetrics })
+  const app = createApp({ db, getAgentCore: () => mockAgentCore, healthMonitorService: mockHealthMonitorService, runtimeMetrics })
   server = http.createServer(app)
   wss = setupWebSocketChat(server, db, null, runtimeMetrics)
   const logsSetup = setupWebSocketLogs(server)
@@ -109,14 +109,14 @@ describe('API health monitoring', () => {
   })
 
   it('GET /api/health returns runtime snapshot and activity summary', async () => {
-    heartbeatSnapshot.activeProvider = {
+    healthMonitorSnapshot.activeProvider = {
       id: 'provider-1',
       name: 'Primary OpenAI',
       type: 'openai',
       model: 'gpt-4o-mini',
       status: 'degraded',
     }
-    heartbeatSnapshot.lastCheck = {
+    healthMonitorSnapshot.lastCheck = {
       checkedAt: '2026-03-27T12:00:00.000Z',
       providerId: 'provider-1',
       providerName: 'Primary OpenAI',
@@ -747,6 +747,63 @@ describe('memory API', () => {
     expect(getRes.status).toBe(200)
     expect(getBody.content).toContain('Note')
   })
+
+  it('reads and updates HEARTBEAT.md', async () => {
+    const getRes = await fetch(`${baseUrl}/api/memory/heartbeat`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    })
+    const getBody = (await getRes.json()) as { content: string }
+    expect(getRes.status).toBe(200)
+    expect(getBody.content).toContain('Heartbeat')
+
+    const putRes = await fetch(`${baseUrl}/api/memory/heartbeat`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ content: '# Heartbeat Tasks\n\nUpdated from test\n' }),
+    })
+    const putBody = (await putRes.json()) as { content: string }
+    expect(putRes.status).toBe(200)
+    expect(putBody.content).toContain('Updated from test')
+    expect(refreshSystemPrompt).toHaveBeenCalled()
+  })
+
+  it('reads and updates user profile', async () => {
+    const getRes = await fetch(`${baseUrl}/api/memory/profile`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    })
+    const getBody = (await getRes.json()) as { username: string; content: string }
+    expect(getRes.status).toBe(200)
+    expect(getBody.username).toBe('admin')
+    expect(getBody.content).toContain('admin')
+
+    const putRes = await fetch(`${baseUrl}/api/memory/profile`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ content: '# User Profile — admin\n\nUpdated from test\n' }),
+    })
+    const putBody = (await putRes.json()) as { username: string; content: string }
+    expect(putRes.status).toBe(200)
+    expect(putBody.username).toBe('admin')
+    expect(putBody.content).toContain('Updated from test')
+    expect(refreshSystemPrompt).toHaveBeenCalled()
+  })
+
+  it('requires authentication for memory routes', async () => {
+    const soulRes = await fetch(`${baseUrl}/api/memory/soul`)
+    expect(soulRes.status).toBe(401)
+
+    const heartbeatRes = await fetch(`${baseUrl}/api/memory/heartbeat`)
+    expect(heartbeatRes.status).toBe(401)
+
+    const profileRes = await fetch(`${baseUrl}/api/memory/profile`)
+    expect(profileRes.status).toBe(401)
+  })
 })
 
 describe('settings API', () => {
@@ -774,7 +831,7 @@ describe('settings API', () => {
   it('updates settings and applies live changes', async () => {
     setTimeoutMinutes.mockClear()
     refreshSystemPrompt.mockClear()
-    restartHeartbeat.mockClear()
+    restartHealthMonitor.mockClear()
 
     const res = await fetch(`${baseUrl}/api/settings`, {
       method: 'PUT',
@@ -785,7 +842,7 @@ describe('settings API', () => {
       body: JSON.stringify({
         sessionTimeoutMinutes: 30,
         language: 'German',
-        heartbeatIntervalMinutes: 7,
+        healthMonitorIntervalMinutes: 7,
         batchingDelayMs: 4000,
         telegramBotToken: 'telegram-secret',
       }),
@@ -793,7 +850,7 @@ describe('settings API', () => {
     const body = (await res.json()) as {
       sessionTimeoutMinutes: number
       language: string
-      heartbeatIntervalMinutes: number
+      healthMonitorIntervalMinutes: number
       batchingDelayMs: number
       telegramBotToken: string
     }
@@ -801,12 +858,12 @@ describe('settings API', () => {
     expect(res.status).toBe(200)
     expect(body.sessionTimeoutMinutes).toBe(30)
     expect(body.language).toBe('German')
-    expect(body.heartbeatIntervalMinutes).toBe(7)
+    expect(body.healthMonitorIntervalMinutes).toBe(7)
     expect(body.batchingDelayMs).toBe(4000)
     expect(body.telegramBotToken).toBe('telegram-secret')
     expect(setTimeoutMinutes).toHaveBeenCalledWith(30)
     expect(refreshSystemPrompt).toHaveBeenCalled()
-    expect(restartHeartbeat).toHaveBeenCalled()
+    expect(restartHealthMonitor).toHaveBeenCalled()
 
     const settingsPath = path.join(tempDataDir, 'config', 'settings.json')
     const telegramPath = path.join(tempDataDir, 'config', 'telegram.json')
@@ -831,8 +888,8 @@ describe('providers API', () => {
     adminToken = body.accessToken
   })
 
-  it('restarts heartbeat monitoring when the active provider changes', async () => {
-    restartHeartbeat.mockClear()
+  it('restarts health monitor when the active provider changes', async () => {
+    restartHealthMonitor.mockClear()
 
     const firstRes = await fetch(`${baseUrl}/api/providers`, {
       method: 'POST',
@@ -849,7 +906,7 @@ describe('providers API', () => {
     })
     const firstBody = (await firstRes.json()) as { provider: { id: string } }
     expect(firstRes.status).toBe(201)
-    expect(restartHeartbeat).toHaveBeenCalledTimes(1)
+    expect(restartHealthMonitor).toHaveBeenCalledTimes(1)
 
     const secondRes = await fetch(`${baseUrl}/api/providers`, {
       method: 'POST',
@@ -867,14 +924,14 @@ describe('providers API', () => {
     const secondBody = (await secondRes.json()) as { provider: { id: string } }
     expect(secondRes.status).toBe(201)
 
-    restartHeartbeat.mockClear()
+    restartHealthMonitor.mockClear()
     const activateRes = await fetch(`${baseUrl}/api/providers/${secondBody.provider.id}/activate`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${adminToken}` },
     })
 
     expect(activateRes.status).toBe(200)
-    expect(restartHeartbeat).toHaveBeenCalledTimes(1)
+    expect(restartHealthMonitor).toHaveBeenCalledTimes(1)
     expect(firstBody.provider.id).not.toBe(secondBody.provider.id)
   })
 })
@@ -959,8 +1016,7 @@ describe('stats API', () => {
       JSON.stringify({
         sessionTimeoutMinutes: 15,
         language: 'en',
-        heartbeatIntervalMinutes: 5,
-        yoloMode: true,
+        healthMonitorIntervalMinutes: 5,
         tokenPriceTable: {
           'custom-model': { input: 1.25, output: 2.5 },
           'gpt-4o': { input: 2.5, output: 10 },

@@ -1,4 +1,6 @@
-export { initDatabase, getDatabase } from './database.js'
+export { AgentHeartbeatService, DEFAULT_AGENT_HEARTBEAT_SETTINGS } from './agent-heartbeat.js'
+export type { AgentHeartbeatSettings, AgentHeartbeatNightMode, AgentHeartbeatServiceOptions } from './agent-heartbeat.js'
+export { initDatabase, getDatabase, isValidUsername, validateUsername } from './database.js'
 export type { Database } from './database.js'
 export {
   getDataDir,
@@ -20,6 +22,10 @@ export {
   writeMemoryFile,
   readAgentsFile,
   writeAgentsFile,
+  readAgentsRulesFile,
+  writeAgentsRulesFile,
+  readHeartbeatFile,
+  writeHeartbeatFile,
   getDailyFilePath,
   ensureDailyFile,
   readDailyFile,
@@ -27,8 +33,8 @@ export {
   readRecentDailyFiles,
   assembleSystemPrompt,
 } from './memory.js'
+export { getUserProfileDir, ensureUserProfile, readUserProfile } from './memory.js'
 export type { SkillPromptEntry } from './memory.js'
-export { createMemoryTools } from './memory-tools.js'
 export { consolidateMemory, readDailyFilesForConsolidation, buildConsolidationPrompt } from './memory-consolidation.js'
 export type { MemoryConsolidationOptions, ConsolidationResult } from './memory-consolidation.js'
 export { SessionManager } from './session-manager.js'
@@ -142,6 +148,16 @@ export {
   BraveSearchError,
 } from './web-tools.js'
 export type { WebSearchResult, WebSearchConfig, WebFetchConfig, BuiltinToolsConfig, SearchProvider, ResolvedSearchProvider, BraveErrorCategory, RetryOptions } from './web-tools.js'
+export {
+  listAgentSkills,
+  trackAgentSkillUsage,
+  getRecentAgentSkills,
+  getAgentSkillsForPrompt,
+  getAgentSkillsCount,
+  getAgentSkillsDir,
+  createAgentSkillTools,
+} from './agent-skills.js'
+export type { AgentSkillEntry, AgentSkillUsage } from './agent-skills.js'
 export { AgentCore, createYoloTools, getWorkspaceDir } from './agent.js'
 export type { ResponseChunk, AgentCoreOptions } from './agent.js'
 export { ProviderManager } from './provider-manager.js'

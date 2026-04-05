@@ -178,6 +178,12 @@
                     <span class="text-sm text-muted-foreground">{{ $t('settings.minutes') }}</span>
                   </div>
                   <p class="text-xs text-muted-foreground">{{ $t('settings.sessionTimeoutHint') }}</p>
+                  <Alert v-if="form.agentHeartbeat?.enabled" variant="info" class="mt-2">
+                    <AlertDescription class="text-xs">
+                      <AppIcon name="activity" size="sm" class="mr-1 inline-block align-text-bottom" />
+                      {{ $t('settings.sessionSummarySkippedByHeartbeat') }}
+                    </AlertDescription>
+                  </Alert>
                 </div>
 
                 <div class="flex flex-col gap-2">
@@ -285,25 +291,138 @@
               </div>
             </div>
 
-            <!-- ═══ Heartbeat ═══ -->
-            <div v-else-if="activeTab === 'heartbeat'">
+            <!-- ═══ Agent Heartbeat ═══ -->
+            <div v-else-if="activeTab === 'agentHeartbeat'">
               <div class="mb-8">
                 <h2 class="text-lg font-semibold tracking-tight text-foreground">
-                  {{ $t('settings.tabs.heartbeat') }}
+                  {{ $t('settings.tabs.agentHeartbeat') }}
                 </h2>
                 <p class="mt-1 text-sm text-muted-foreground">
-                  {{ $t('settings.tabs.heartbeatDescription') }}
+                  {{ $t('settings.tabs.agentHeartbeatDescription') }}
                 </p>
               </div>
 
               <div class="flex flex-col gap-8">
-                <!-- Heartbeat interval -->
+                <!-- Enable toggle -->
+                <div class="flex items-center justify-between rounded-lg border border-border px-4 py-3">
+                  <div class="flex flex-col gap-0.5 pr-4">
+                    <Label for="heartbeat-enabled" class="cursor-pointer">
+                      {{ $t('settings.agentHeartbeatEnabled') }}
+                    </Label>
+                    <p class="text-xs text-muted-foreground">
+                      {{ $t('settings.agentHeartbeatEnabledHint') }}
+                    </p>
+                  </div>
+                  <Switch
+                    id="heartbeat-enabled"
+                    v-model="form.agentHeartbeat.enabled"
+                  />
+                </div>
+
+                <!-- Configuration — progressive disclosure -->
+                <template v-if="form.agentHeartbeat.enabled">
+                  <!-- Interval -->
+                  <div class="flex flex-col gap-2">
+                    <Label for="heartbeat-interval">{{ $t('settings.agentHeartbeatInterval') }}</Label>
+                    <div class="flex items-center gap-2">
+                      <Input
+                        id="heartbeat-interval"
+                        v-model.number="form.agentHeartbeat.intervalMinutes"
+                        type="number"
+                        min="1"
+                        max="1440"
+                        class="w-full"
+                      />
+                      <span class="text-sm text-muted-foreground">{{ $t('settings.minutes') }}</span>
+                    </div>
+                    <p class="text-xs text-muted-foreground">{{ $t('settings.agentHeartbeatIntervalHint') }}</p>
+                  </div>
+
+                  <Separator />
+
+                  <!-- Night mode section -->
+                  <div>
+                    <h3 class="text-base font-semibold tracking-tight text-foreground">
+                      {{ $t('settings.agentHeartbeatNightMode') }}
+                    </h3>
+                    <p class="mt-1 text-sm text-muted-foreground">
+                      {{ $t('settings.agentHeartbeatNightModeDescription') }}
+                    </p>
+                  </div>
+
+                  <!-- Night mode enable -->
+                  <div class="flex items-center justify-between rounded-lg border border-border px-4 py-3">
+                    <div class="flex flex-col gap-0.5 pr-4">
+                      <Label for="heartbeat-night-enabled" class="cursor-pointer">
+                        {{ $t('settings.agentHeartbeatNightModeEnabled') }}
+                      </Label>
+                      <p class="text-xs text-muted-foreground">
+                        {{ $t('settings.agentHeartbeatNightModeEnabledHint') }}
+                      </p>
+                    </div>
+                    <Switch
+                      id="heartbeat-night-enabled"
+                      v-model="form.agentHeartbeat.nightMode.enabled"
+                    />
+                  </div>
+
+                  <template v-if="form.agentHeartbeat.nightMode.enabled">
+                    <!-- Night start hour -->
+                    <div class="flex flex-col gap-2">
+                      <Label for="heartbeat-night-start">{{ $t('settings.agentHeartbeatNightModeStart') }}</Label>
+                      <div class="flex items-center gap-2">
+                        <Input
+                          id="heartbeat-night-start"
+                          v-model.number="form.agentHeartbeat.nightMode.startHour"
+                          type="number"
+                          min="0"
+                          max="23"
+                          class="w-full"
+                        />
+                        <span class="text-sm text-muted-foreground">{{ $t('settings.oClock') }}</span>
+                      </div>
+                    </div>
+
+                    <!-- Night end hour -->
+                    <div class="flex flex-col gap-2">
+                      <Label for="heartbeat-night-end">{{ $t('settings.agentHeartbeatNightModeEnd') }}</Label>
+                      <div class="flex items-center gap-2">
+                        <Input
+                          id="heartbeat-night-end"
+                          v-model.number="form.agentHeartbeat.nightMode.endHour"
+                          type="number"
+                          min="0"
+                          max="23"
+                          class="w-full"
+                        />
+                        <span class="text-sm text-muted-foreground">{{ $t('settings.oClock') }}</span>
+                      </div>
+                      <p class="text-xs text-muted-foreground">{{ $t('settings.agentHeartbeatNightModeHoursHint') }}</p>
+                    </div>
+                  </template>
+                </template>
+              </div>
+            </div>
+
+            <!-- ═══ Health Monitor ═══ -->
+            <div v-else-if="activeTab === 'healthMonitor'">
+              <div class="mb-8">
+                <h2 class="text-lg font-semibold tracking-tight text-foreground">
+                  {{ $t('settings.tabs.healthMonitor') }}
+                </h2>
+                <p class="mt-1 text-sm text-muted-foreground">
+                  {{ $t('settings.tabs.healthMonitorDescription') }}
+                </p>
+              </div>
+
+              <div class="flex flex-col gap-8">
+                <!-- Health check interval -->
                 <div class="flex flex-col gap-2">
-                  <Label for="heartbeat-interval">{{ $t('settings.heartbeatInterval') }}</Label>
+                  <Label for="health-monitor-interval">{{ $t('settings.healthMonitorInterval') }}</Label>
                   <div class="flex items-center gap-2">
                     <Input
-                      id="heartbeat-interval"
-                      v-model.number="form.heartbeatIntervalMinutes"
+                      id="health-monitor-interval"
+                      v-model.number="form.healthMonitorIntervalMinutes"
                       type="number"
                       min="1"
                       max="60"
@@ -311,59 +430,59 @@
                     />
                     <span class="text-sm text-muted-foreground">{{ $t('settings.minutes') }}</span>
                   </div>
-                  <p class="text-xs text-muted-foreground">{{ $t('settings.heartbeatHint') }}</p>
+                  <p class="text-xs text-muted-foreground">{{ $t('settings.healthMonitorHint') }}</p>
                 </div>
 
                 <!-- Fallback trigger -->
                 <div class="flex flex-col gap-2">
-                  <Label for="fallback-trigger">{{ $t('settings.heartbeatFallbackTrigger') }}</Label>
-                  <Select id="fallback-trigger" v-model="form.heartbeat.fallbackTrigger">
-                    <option value="down">{{ $t('settings.heartbeatFallbackTriggerDown') }}</option>
-                    <option value="degraded">{{ $t('settings.heartbeatFallbackTriggerDegraded') }}</option>
+                  <Label for="fallback-trigger">{{ $t('settings.healthMonitorFallbackTrigger') }}</Label>
+                  <Select id="fallback-trigger" v-model="form.healthMonitor.fallbackTrigger">
+                    <option value="down">{{ $t('settings.healthMonitorFallbackTriggerDown') }}</option>
+                    <option value="degraded">{{ $t('settings.healthMonitorFallbackTriggerDegraded') }}</option>
                   </Select>
-                  <p class="text-xs text-muted-foreground">{{ $t('settings.heartbeatFallbackTriggerHint') }}</p>
+                  <p class="text-xs text-muted-foreground">{{ $t('settings.healthMonitorFallbackTriggerHint') }}</p>
                 </div>
 
                 <!-- Failures before fallback -->
                 <div class="flex flex-col gap-2">
-                  <Label for="failures-before-fallback">{{ $t('settings.heartbeatFailuresBeforeFallback') }}</Label>
+                  <Label for="failures-before-fallback">{{ $t('settings.healthMonitorFailuresBeforeFallback') }}</Label>
                   <Input
                     id="failures-before-fallback"
-                    v-model.number="form.heartbeat.failuresBeforeFallback"
+                    v-model.number="form.healthMonitor.failuresBeforeFallback"
                     type="number"
                     min="1"
                     class="w-full"
                   />
-                  <p class="text-xs text-muted-foreground">{{ $t('settings.heartbeatFailuresBeforeFallbackHint') }}</p>
+                  <p class="text-xs text-muted-foreground">{{ $t('settings.healthMonitorFailuresBeforeFallbackHint') }}</p>
                 </div>
 
                 <!-- Recovery check interval -->
                 <div class="flex flex-col gap-2">
-                  <Label for="recovery-check-interval">{{ $t('settings.heartbeatRecoveryCheckInterval') }}</Label>
+                  <Label for="recovery-check-interval">{{ $t('settings.healthMonitorRecoveryCheckInterval') }}</Label>
                   <div class="flex items-center gap-2">
                     <Input
                       id="recovery-check-interval"
-                      v-model.number="form.heartbeat.recoveryCheckIntervalMinutes"
+                      v-model.number="form.healthMonitor.recoveryCheckIntervalMinutes"
                       type="number"
                       min="1"
                       class="w-full"
                     />
                     <span class="text-sm text-muted-foreground">{{ $t('settings.minutes') }}</span>
                   </div>
-                  <p class="text-xs text-muted-foreground">{{ $t('settings.heartbeatRecoveryCheckIntervalHint') }}</p>
+                  <p class="text-xs text-muted-foreground">{{ $t('settings.healthMonitorRecoveryCheckIntervalHint') }}</p>
                 </div>
 
                 <!-- Successes before recovery -->
                 <div class="flex flex-col gap-2">
-                  <Label for="successes-before-recovery">{{ $t('settings.heartbeatSuccessesBeforeRecovery') }}</Label>
+                  <Label for="successes-before-recovery">{{ $t('settings.healthMonitorSuccessesBeforeRecovery') }}</Label>
                   <Input
                     id="successes-before-recovery"
-                    v-model.number="form.heartbeat.successesBeforeRecovery"
+                    v-model.number="form.healthMonitor.successesBeforeRecovery"
                     type="number"
                     min="1"
                     class="w-full"
                   />
-                  <p class="text-xs text-muted-foreground">{{ $t('settings.heartbeatSuccessesBeforeRecoveryHint') }}</p>
+                  <p class="text-xs text-muted-foreground">{{ $t('settings.healthMonitorSuccessesBeforeRecoveryHint') }}</p>
                 </div>
 
                 <Separator />
@@ -371,10 +490,10 @@
                 <!-- Notification toggles -->
                 <div>
                   <h3 class="text-base font-semibold tracking-tight text-foreground">
-                    {{ $t('settings.heartbeatNotifications') }}
+                    {{ $t('settings.healthMonitorNotifications') }}
                   </h3>
                   <p class="mt-1 text-sm text-muted-foreground">
-                    {{ $t('settings.heartbeatNotificationsDescription') }}
+                    {{ $t('settings.healthMonitorNotificationsDescription') }}
                   </p>
                 </div>
 
@@ -391,7 +510,7 @@
                     </div>
                     <Switch
                       :id="`notify-${toggle.key}`"
-                      v-model="form.heartbeat.notifications[toggle.key]"
+                      v-model="form.healthMonitor.notifications[toggle.key]"
                     />
                   </div>
                 </div>
@@ -991,7 +1110,7 @@
 </template>
 
 <script setup lang="ts">
-import type { MemoryConsolidationSettings, HeartbeatNotificationToggles, HeartbeatSettings, TasksSettings } from '~/composables/useSettings'
+import type { MemoryConsolidationSettings, HealthMonitorNotificationToggles, HealthMonitorSettings, AgentHeartbeatSettings, TasksSettings } from '~/composables/useSettings'
 import type { TelegramUser } from '~/composables/useTelegramUsers'
 
 /* ── Auth ── */
@@ -1035,7 +1154,7 @@ const timezones = [
   'America/Argentina/Buenos_Aires',
 ]
 
-const VALID_TABS = ['agent', 'memory', 'heartbeat', 'telegram', 'tasks', 'secrets'] as const
+const VALID_TABS = ['agent', 'memory', 'agentHeartbeat', 'healthMonitor', 'telegram', 'tasks', 'secrets'] as const
 type TabId = (typeof VALID_TABS)[number]
 
 const activeTab = computed<TabId>({
@@ -1050,8 +1169,9 @@ const activeTab = computed<TabId>({
 
 const tabs = computed(() => [
   { id: 'agent' as TabId, icon: 'bot', label: t('settings.tabs.agent') },
-  { id: 'heartbeat' as TabId, icon: 'activity', label: t('settings.tabs.heartbeat') },
+  { id: 'healthMonitor' as TabId, icon: 'activity', label: t('settings.tabs.healthMonitor') },
   { id: 'memory' as TabId, icon: 'brain', label: t('settings.tabs.memory') },
+  { id: 'agentHeartbeat' as TabId, icon: 'activity', label: t('settings.tabs.agentHeartbeat') },
   { id: 'secrets' as TabId, icon: 'key', label: t('settings.tabs.secrets') },
   { id: 'tasks' as TabId, icon: 'bot', label: t('settings.tabs.tasks') },
   { id: 'telegram' as TabId, icon: 'send', label: t('settings.tabs.telegram') },
@@ -1259,13 +1379,14 @@ interface SettingsForm {
   sessionTimeoutMinutes: number
   language: string
   timezone: string
-  heartbeatIntervalMinutes: number
+  healthMonitorIntervalMinutes: number
   batchingDelayMs: number
   uploadRetentionDays: number
   telegramEnabled: boolean
   telegramBotToken: string
-  heartbeat: HeartbeatSettings
+  healthMonitor: HealthMonitorSettings
   memoryConsolidation: MemoryConsolidationSettings
+  agentHeartbeat: AgentHeartbeatSettings
   tasks: TasksSettings
 }
 
@@ -1278,19 +1399,20 @@ function hydrateForm() {
     sessionTimeoutMinutes: s.sessionTimeoutMinutes,
     language: s.language,
     timezone: s.timezone,
-    heartbeatIntervalMinutes: s.heartbeatIntervalMinutes,
+    healthMonitorIntervalMinutes: s.healthMonitorIntervalMinutes,
     batchingDelayMs: s.batchingDelayMs,
     uploadRetentionDays: s.uploadRetentionDays,
     telegramEnabled: s.telegramEnabled,
     telegramBotToken: s.telegramBotToken,
-    heartbeat: {
-      fallbackTrigger: s.heartbeat.fallbackTrigger,
-      failuresBeforeFallback: s.heartbeat.failuresBeforeFallback,
-      recoveryCheckIntervalMinutes: s.heartbeat.recoveryCheckIntervalMinutes,
-      successesBeforeRecovery: s.heartbeat.successesBeforeRecovery,
-      notifications: { ...s.heartbeat.notifications },
+    healthMonitor: {
+      fallbackTrigger: s.healthMonitor.fallbackTrigger,
+      failuresBeforeFallback: s.healthMonitor.failuresBeforeFallback,
+      recoveryCheckIntervalMinutes: s.healthMonitor.recoveryCheckIntervalMinutes,
+      successesBeforeRecovery: s.healthMonitor.successesBeforeRecovery,
+      notifications: { ...s.healthMonitor.notifications },
     },
     memoryConsolidation: { ...s.memoryConsolidation },
+    agentHeartbeat: { ...s.agentHeartbeat, nightMode: { ...s.agentHeartbeat.nightMode } },
     tasks: { ...s.tasks, loopDetection: { ...s.tasks.loopDetection } },
   }
 }
@@ -1299,12 +1421,12 @@ watch(settings, hydrateForm)
 
 /* ── Notification toggles ── */
 const notificationToggles = computed(() => [
-  { key: 'healthyToDegraded' as keyof HeartbeatNotificationToggles, label: t('settings.heartbeatNotifyHealthyToDegraded') },
-  { key: 'degradedToHealthy' as keyof HeartbeatNotificationToggles, label: t('settings.heartbeatNotifyDegradedToHealthy') },
-  { key: 'degradedToDown' as keyof HeartbeatNotificationToggles, label: t('settings.heartbeatNotifyDegradedToDown') },
-  { key: 'healthyToDown' as keyof HeartbeatNotificationToggles, label: t('settings.heartbeatNotifyHealthyToDown') },
-  { key: 'downToFallback' as keyof HeartbeatNotificationToggles, label: t('settings.heartbeatNotifyDownToFallback') },
-  { key: 'fallbackToHealthy' as keyof HeartbeatNotificationToggles, label: t('settings.heartbeatNotifyFallbackToHealthy') },
+  { key: 'healthyToDegraded' as keyof HealthMonitorNotificationToggles, label: t('settings.healthMonitorNotifyHealthyToDegraded') },
+  { key: 'degradedToHealthy' as keyof HealthMonitorNotificationToggles, label: t('settings.healthMonitorNotifyDegradedToHealthy') },
+  { key: 'degradedToDown' as keyof HealthMonitorNotificationToggles, label: t('settings.healthMonitorNotifyDegradedToDown') },
+  { key: 'healthyToDown' as keyof HealthMonitorNotificationToggles, label: t('settings.healthMonitorNotifyHealthyToDown') },
+  { key: 'downToFallback' as keyof HealthMonitorNotificationToggles, label: t('settings.healthMonitorNotifyDownToFallback') },
+  { key: 'fallbackToHealthy' as keyof HealthMonitorNotificationToggles, label: t('settings.healthMonitorNotifyFallbackToHealthy') },
 ])
 
 /* ── Save ── */
