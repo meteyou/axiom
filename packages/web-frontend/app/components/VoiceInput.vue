@@ -33,6 +33,28 @@
       </div>
     </Transition>
 
+    <!-- Inline toast notification -->
+    <Transition
+      enter-active-class="transition duration-200 ease-out"
+      enter-from-class="translate-y-1 opacity-0"
+      enter-to-class="translate-y-0 opacity-100"
+      leave-active-class="transition duration-150 ease-in"
+      leave-from-class="translate-y-0 opacity-100"
+      leave-to-class="translate-y-1 opacity-0"
+    >
+      <div
+        v-if="toast"
+        class="absolute bottom-full mb-10 right-0 z-50 max-w-[280px] rounded-lg border px-3 py-2 text-xs shadow-md"
+        :class="{
+          'border-destructive/40 bg-destructive/10 text-destructive': toast.type === 'error',
+          'border-warning/40 bg-warning/10 text-warning-foreground': toast.type === 'warning',
+          'border-border bg-popover text-popover-foreground': toast.type === 'info',
+        }"
+      >
+        {{ toast.message }}
+      </div>
+    </Transition>
+
     <!-- Record button -->
     <button
       type="button"
@@ -53,7 +75,7 @@
 </template>
 
 <script setup lang="ts">
-import { Mic, MicOff, Square, Loader2 } from 'lucide-vue-next'
+import { Mic, Square, Loader2 } from 'lucide-vue-next'
 import { onClickOutside } from '@vueuse/core'
 
 // ── Props / Emits ─────────────────────────────────────────────────────────────
