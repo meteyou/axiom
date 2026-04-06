@@ -1,5 +1,6 @@
 import http from 'node:http'
 import { createApp } from './app.js'
+import { loadPlugins } from './plugins/loader.js'
 import { initDatabase } from '@openagent/core'
 import { ensureConfigTemplates } from '@openagent/core'
 import { ensureMemoryStructure } from '@openagent/core'
@@ -686,6 +687,10 @@ const app = createApp({
   },
   taskEventBus,
 })
+
+// Load plugins (registers plugin routes onto the app)
+await loadPlugins(app)
+
 const server = http.createServer(app)
 
 // Set up WebSocket chat (with cross-channel event bus and dynamic agentCore getter)

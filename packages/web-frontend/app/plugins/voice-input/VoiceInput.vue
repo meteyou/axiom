@@ -1,7 +1,7 @@
 <template>
   <!-- Wrapper: record button + variants popover -->
   <div class="relative flex items-end">
-    <!-- Variants popover (shown above the button after processing) -->
+    <!-- Variants popover (shown above the button after processing, only when rewrite is enabled) -->
     <Transition
       enter-active-class="transition duration-150 ease-out"
       enter-from-class="translate-y-1 opacity-0"
@@ -78,17 +78,11 @@
 import { Mic, Square, Loader2 } from 'lucide-vue-next'
 import { onClickOutside } from '@vueuse/core'
 
-// ── Props / Emits ─────────────────────────────────────────────────────────────
-
-const emit = defineEmits<{
-  /** Emitted when the user selects a variant (or raw transcript). */
-  select: [text: string]
-}>()
-
-// ── i18n ──────────────────────────────────────────────────────────────────────
+// ── i18n & shared state ───────────────────────────────────────────────────────
 
 const { t } = useI18n()
 const { apiFetch } = useApi()
+const { setText } = useChatInput()
 
 // ── State machine ─────────────────────────────────────────────────────────────
 
@@ -103,6 +97,7 @@ const showVariants = computed(() => state.value === 'done')
 // ── Variants data ─────────────────────────────────────────────────────────────
 
 const rawTranscript = ref('')
+const rewriteEnabled = ref(false)
 const variants = ref<{ corrected: string; rewritten: string; formal: string; short: string } | null>(null)
 
 const allVariants = computed(() => {
@@ -113,7 +108,7 @@ const allVariants = computed(() => {
     items.push({ key: 'formal', label: t('voice.variants.formal'), text: variants.value.formal })
     items.push({ key: 'short', label: t('voice.variants.short'), text: variants.value.short })
   }
-  // Raw transcript is always shown as last option
+  // Raw transcript is always shown as last option in the popover
   if (rawTranscript.value) {
     items.push({ key: 'raw', label: t('voice.variants.raw'), text: rawTranscript.value })
   }
@@ -125,7 +120,6 @@ const allVariants = computed(() => {
 const buttonIcon = computed(() => {
   if (isRecording.value) return Square
   if (isProcessing.value) return Loader2
-  if (showVariants.value) return Mic
   return Mic
 })
 
@@ -211,11 +205,12 @@ async function processAudio(blob: Blob, mimeType: string) {
     const extension = mimeType.includes('ogg') ? 'ogg' : 'webm'
     formData.append('audio', blob, `recording.${extension}`)
 
-    const result = await apiFetch<{ transcript: string }>('/api/voice/transcribe', {
+    const result = await apiFetch<{ transcript: string; rewriteEnabled: boolean }>('/api/plugins/voice/transcribe', {
       method: 'POST',
       body: formData,
     })
     transcript = result.transcript
+    rewriteEnabled.value = result.rewriteEnabled ?? false
   } catch (err) {
     console.error('[VoiceInput] Transcription error:', err)
     showToast(t('voice.errorWhisper'), 'error')
@@ -225,10 +220,18 @@ async function processAudio(blob: Blob, mimeType: string) {
 
   rawTranscript.value = transcript
 
+  // Standard flow: write "[Diktat] <transcript>" directly into the chat input
+  if (!rewriteEnabled.value) {
+    setText(`[Diktat] ${transcript}`)
+    state.value = 'idle'
+    return
+  }
+
+  // Optional rewrite flow (only when VOICE_REWRITE_ENABLED=true on the server)
   // Step 2: Rewrite (Ollama) — graceful fallback to raw transcript only
   try {
     const result = await apiFetch<{ corrected: string; rewritten: string; formal: string; short: string }>(
-      '/api/voice/rewrite',
+      '/api/plugins/voice/rewrite',
       {
         method: 'POST',
         body: JSON.stringify({ transcript }),
@@ -236,7 +239,7 @@ async function processAudio(blob: Blob, mimeType: string) {
     )
     variants.value = result
   } catch (err) {
-    // Ollama not reachable — just show raw transcript
+    // Ollama not reachable — just show raw transcript in popover
     console.warn('[VoiceInput] Ollama rewrite failed, falling back to raw transcript:', err)
     variants.value = null
     showToast(t('voice.errorOllamaFallback'), 'warning')
@@ -248,7 +251,7 @@ async function processAudio(blob: Blob, mimeType: string) {
 // ── Variant selection ─────────────────────────────────────────────────────────
 
 function selectVariant(text: string) {
-  emit('select', text)
+  setText(text)
   closeVariants()
 }
 
@@ -292,10 +295,6 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
 // ── Toast helper ──────────────────────────────────────────────────────────────
 
-// TODO: Replace with a proper toast system if one is introduced to the project.
-//       For now we use a simple alert-style notification via the browser console
-//       and a transient status ref that the parent or a future Toast component
-//       can display.
 type ToastType = 'error' | 'warning' | 'info'
 const toast = ref<{ message: string; type: ToastType } | null>(null)
 let toastTimer: ReturnType<typeof setTimeout> | null = null
@@ -307,7 +306,4 @@ function showToast(message: string, type: ToastType = 'info') {
     toast.value = null
   }, 4000)
 }
-
-// Expose toast so the parent (index.vue) can render it, or use the inline one below.
-defineExpose({ toast })
 </script>

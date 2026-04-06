@@ -1,12 +1,13 @@
 import { Router } from 'express'
-import { jwtMiddleware } from '../auth.js'
-import type { AuthenticatedRequest } from '../auth.js'
-import { uploadMiddleware } from '../uploads.js'
+import { jwtMiddleware } from '../../auth.js'
+import type { AuthenticatedRequest } from '../../auth.js'
+import { uploadMiddleware } from '../../uploads.js'
 
 // ── Config (can be overridden via environment variables) ───────────────────────
 const WHISPER_URL = process.env.WHISPER_URL ?? 'https://whisper.jansohn.xyz/inference'
 const OLLAMA_URL = process.env.OLLAMA_URL ?? 'http://192.168.10.222:11434/api/generate'
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? 'qwen3:32b'
+const VOICE_REWRITE_ENABLED = process.env.VOICE_REWRITE_ENABLED === 'true'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -144,7 +145,7 @@ export function createVoiceRouter(): Router {
 
       try {
         const transcript = await transcribeAudio(file.buffer, file.originalname, file.mimetype)
-        res.json({ transcript })
+        res.json({ transcript, rewriteEnabled: VOICE_REWRITE_ENABLED })
       } catch (err) {
         const message = (err as Error).message
         console.error('[voice/transcribe] Error:', message)
