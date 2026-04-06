@@ -701,6 +701,22 @@
       "customPrompt": "eigener Prompt"
     }
   },
+  "voice": {
+    "startRecording": "Spracheingabe starten",
+    "stopRecording": "Aufnahme stoppen",
+    "processing": "Wird verarbeitet…",
+    "selectVariant": "Variante auswählen",
+    "errorMicNotAvailable": "Mikrofon nicht verfügbar. Bitte Mikrofonzugriff erlauben.",
+    "errorWhisper": "Spracheingabe nicht verfügbar. Transkriptionsdienst nicht erreichbar.",
+    "errorOllamaFallback": "Umschreib-Dienst nicht verfügbar — zeige nur Roh-Transkript.",
+    "variants": {
+      "corrected": "Korrigiert",
+      "rewritten": "Umformuliert",
+      "formal": "Formal",
+      "short": "Kurz",
+      "raw": "Roh-Transkript"
+    }
+  },
   "taskViewer": {
     "back": "Zurück zu Tasks",
     "live": "Live",

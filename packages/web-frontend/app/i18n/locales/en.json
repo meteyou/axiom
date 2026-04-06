@@ -701,6 +701,22 @@
       "customPrompt": "custom prompt"
     }
   },
+  "voice": {
+    "startRecording": "Start voice input",
+    "stopRecording": "Stop recording",
+    "processing": "Processing…",
+    "selectVariant": "Select a variant",
+    "errorMicNotAvailable": "Microphone not available. Please grant microphone permission.",
+    "errorWhisper": "Voice input unavailable. Could not reach transcription service.",
+    "errorOllamaFallback": "Rewrite service unavailable — showing raw transcript only.",
+    "variants": {
+      "corrected": "Corrected",
+      "rewritten": "Rewritten",
+      "formal": "Formal",
+      "short": "Short",
+      "raw": "Raw transcript"
+    }
+  },
   "taskViewer": {
     "back": "Back to tasks",
     "live": "Live",

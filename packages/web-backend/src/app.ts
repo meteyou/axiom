@@ -25,6 +25,7 @@ import type { HealthMonitorService } from './health-monitor.js'
 import type { RuntimeMetrics } from './runtime-metrics.js'
 import type { MemoryConsolidationScheduler } from './memory-consolidation-scheduler.js'
 import { createUploadsRouter } from './routes/uploads.js'
+import { createVoiceRouter } from './routes/voice.js'
 
 const startTime = Date.now()
 
@@ -84,6 +85,7 @@ export function createApp(options?: AppOptions): express.Express {
   if (options?.db) {
     ensureAdminUser(options.db)
     app.use('/api/uploads', createUploadsRouter())
+    app.use('/api/voice', createVoiceRouter())
     app.use('/api/auth', createAuthRouter(options.db))
     app.use('/api/chat', createChatRouter(options.db))
     app.use('/api/logs', createLogsRouter(options.db))

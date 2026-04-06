@@ -170,6 +170,7 @@
             <AppIcon name="paperclip" class="h-4 w-4" />
           </label>
           <textarea ref="inputRef" v-model="inputText" class="min-h-[42px] max-h-[150px] flex-1 resize-none rounded-xl border border-input bg-background px-3.5 py-2.5 text-sm" :placeholder="$t('chat.placeholder')" rows="1" @keydown.enter.exact.prevent="handleSend" @input="autoResize" />
+          <VoiceInput @select="handleVoiceSelect" />
           <Button type="submit" size="sm" :disabled="(!inputText.trim() && pendingFiles.length === 0) || connectionStatus !== 'connected'" class="h-[42px] shrink-0 px-4">{{ $t('chat.send') }}</Button>
         </div>
       </form>
@@ -283,6 +284,7 @@ function scrollToBottom() { if (messagesContainer.value) messagesContainer.value
 function autoResize() { const el = inputRef.value; if (!el) return; el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 150) + 'px' }
 function handleFileSelection(event: Event) { const target = event.target as HTMLInputElement; const files = Array.from(target.files || []); pendingFiles.value = [...pendingFiles.value, ...files]; target.value = '' }
 function removePendingFile(index: number) { pendingFiles.value.splice(index, 1) }
+function handleVoiceSelect(text: string) { inputText.value = text; nextTick(() => { autoResize(); inputRef.value?.focus() }) }
 function formatMessageTime(timestamp: string): string { const d = new Date(timestamp); if (isNaN(d.getTime())) return ''; return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) }
 
 </script>
