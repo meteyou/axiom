@@ -7,14 +7,11 @@
 </template>
 
 <script setup lang="ts">
-import { initPlugins } from '~/plugins/index'
-
 // Initialize color mode on mount — ensures .dark / .light class is applied
 // before first paint based on localStorage preference or system preference.
 const { mode } = useTheme()
 
-// Initialize frontend plugins
-initPlugins()
+// Note: Frontend plugins are initialized automatically via ~/plugins/index.ts (Nuxt plugin)
 
 // Apply class on the HTML element immediately (SSR-safe no-op since ssr: false)
 if (import.meta.client) {

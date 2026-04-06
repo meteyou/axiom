@@ -8,3 +8,8 @@ import voiceInputPlugin from './voice-input/index'
 export function initPlugins(): void {
   registerPlugin(voiceInputPlugin)
 }
+
+// Nuxt requires a default export for files in the plugins/ directory
+export default defineNuxtPlugin(() => {
+  initPlugins()
+})
