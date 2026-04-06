@@ -1,15 +1,15 @@
 services:
-  openagent:
+  openagent-canary:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: openagent
+    container_name: openagent-canary
     restart: unless-stopped
     ports:
-      - "${HOST_PORT:-3000}:3000"
+      - "${HOST_PORT:-3001}:3000"
     volumes:
-      - openagent-data:/data
-      - openagent-workspace:/workspace
+      - openagent-canary-data:/data
+      - openagent-canary-workspace:/workspace
     environment:
       - NODE_ENV=production
       - PORT=3000
@@ -23,5 +23,5 @@ services:
       - VOICE_REWRITE_ENABLED=${VOICE_REWRITE_ENABLED:-false}
 
 volumes:
-  openagent-data:
-  openagent-workspace:
+  openagent-canary-data:
+  openagent-canary-workspace:
