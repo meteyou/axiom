@@ -2,6 +2,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { Bot, GrammyError, HttpError, InputFile } from 'grammy'
 import type { Context } from 'grammy'
+
+const WHISPER_URL = process.env.WHISPER_URL ?? 'https://whisper.jansohn.xyz/inference'
 import type { AgentCore, Database } from '@openagent/core'
 import { loadConfig, saveUpload, serializeUploadsMetadata, parseUploadsMetadata } from '@openagent/core'
 import type { UploadDescriptor } from '@openagent/core'
@@ -385,6 +387,10 @@ export class TelegramBot {
     this.bot.on('message:photo', async (ctx) => {
       await this.handleIncomingAttachment(ctx, 'photo')
     })
+
+    this.bot.on('message:voice', async (ctx) => {
+      await this.handleVoiceMessage(ctx)
+    })
   }
 
   /**
@@ -572,6 +578,27 @@ export class TelegramBot {
     const response = await fetch(url)
     if (!response.ok) throw new Error('Failed to download Telegram file')
     return { buffer: Buffer.from(await response.arrayBuffer()) }
+  }
+
+  private async handleVoiceMessage(ctx: Context): Promise<void> {
+    if (!await this.checkAuthorized(ctx)) return
+
+    const voice = ctx.message?.voice
+    if (!voice) return
+
+    try {
+      const { buffer } = await this.downloadTelegramFile(voice.file_id)
+      const transcript = await transcribeVoiceMessage(buffer)
+      if (!transcript) {
+        await this.safeSendMessage(ctx, '⚠️ Konnte die Sprachnachricht nicht transkribieren.')
+        return
+      }
+      const text = `[Diktat] ${transcript}`
+      this.bufferMessage(ctx, text)
+    } catch (err) {
+      console.error('[telegram] Voice transcription error:', err)
+      await this.safeSendMessage(ctx, '⚠️ Fehler beim Transkribieren der Sprachnachricht.')
+    }
   }
 
   private async handleIncomingAttachment(ctx: Context, kind: 'document' | 'photo'): Promise<void> {
@@ -1226,4 +1253,23 @@ export function createTelegramBot(
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+async function transcribeVoiceMessage(buffer: Buffer): Promise<string> {
+  const formData = new FormData()
+  const blob = new Blob([buffer], { type: 'audio/ogg' })
+  formData.append('file', blob, 'voice.ogg')
+  formData.append('response_format', 'text')
+
+  const response = await fetch(WHISPER_URL, {
+    method: 'POST',
+    body: formData,
+  })
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '')
+    throw new Error(`Whisper returned ${response.status}: ${text}`)
+  }
+
+  return (await response.text()).trim()
 }

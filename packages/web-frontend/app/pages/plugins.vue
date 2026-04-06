@@ -40,11 +40,11 @@
                 <!-- Status badge -->
                 <span
                   class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset"
-                  :class="plugin.enabled
+                  :class="pluginEnabled(plugin.id)
                     ? 'bg-success/10 text-success ring-success/20'
                     : 'bg-muted text-muted-foreground ring-border'"
                 >
-                  {{ plugin.enabled ? $t('plugins.enabled') : $t('plugins.disabled') }}
+                  {{ pluginEnabled(plugin.id) ? $t('plugins.enabled') : $t('plugins.disabled') }}
                 </span>
               </div>
               <p v-if="plugin.description" class="mt-0.5 text-sm text-muted-foreground line-clamp-2">
@@ -53,11 +53,10 @@
             </div>
 
             <!-- Toggle switch -->
-            <!-- TODO: wire up to backend /api/plugins/:id/toggle once the API route is available -->
             <Switch
-              :checked="plugin.enabled"
-              :aria-label="plugin.enabled ? $t('plugins.enabled') : $t('plugins.disabled')"
-              @update:checked="(val: boolean) => { plugin.enabled = val }"
+              :checked="pluginEnabled(plugin.id)"
+              :aria-label="pluginEnabled(plugin.id) ? $t('plugins.enabled') : $t('plugins.disabled')"
+              @update:checked="(val: boolean) => togglePlugin(plugin.id, val)"
             />
           </div>
         </Card>
@@ -67,17 +66,31 @@
 </template>
 
 <script setup lang="ts">
+import { pluginEnabledStates, setPluginEnabled } from '~/utils/pluginRegistry'
+
 const { user } = useAuth()
 const isAdmin = computed(() => user.value?.role === 'admin')
 
-// TODO: Replace hardcoded data with a real API call to /api/plugins once the backend route is implemented.
-const plugins = ref([
+// Static plugin metadata list (UI metadata only; enabled state comes from the registry)
+const plugins = [
   {
     id: 'voice-input',
     name: 'Voice Input',
     version: '1.0.0',
     description: 'Record audio and transcribe it via Whisper. Inserts transcription with [Diktat] prefix into the chat input.',
-    enabled: true,
   },
-])
+]
+
+/** Read the current enabled state for a plugin from the reactive registry */
+function pluginEnabled(id: string): boolean {
+  return pluginEnabledStates.value[id] !== false
+}
+
+/** Toggle a plugin and persist the choice to localStorage */
+function togglePlugin(id: string, val: boolean): void {
+  setPluginEnabled(id, val)
+  if (import.meta.client) {
+    localStorage.setItem(`plugin:${id}`, JSON.stringify(val))
+  }
+}
 </script>

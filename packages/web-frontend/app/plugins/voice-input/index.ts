@@ -1,9 +1,12 @@
 import type { OpenAgentFrontendPlugin } from '~/utils/pluginTypes'
 import VoiceInput from './VoiceInput.vue'
 
-export default {
+const voiceInputPlugin: OpenAgentFrontendPlugin = {
+  id: 'voice-input',
   name: 'voice-input',
   slots: {
     'chat-input-actions': VoiceInput,
   },
-} satisfies OpenAgentFrontendPlugin
+}
+
+export default voiceInputPlugin
