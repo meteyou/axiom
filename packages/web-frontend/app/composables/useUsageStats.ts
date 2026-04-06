@@ -95,6 +95,14 @@ export function useUsageStats() {
     availableModels: [],
   })
 
+  const dailyHeartbeat = ref<UsageStatsResponse>({
+    groupBy: ['day'],
+    rows: [],
+    totals: emptyTotals(),
+    availableProviders: [],
+    availableModels: [],
+  })
+
   const availableProviders = ref<string[]>([])
   const availableModels = ref<string[]>([])
 
@@ -135,12 +143,13 @@ export function useUsageStats() {
     error.value = null
 
     try {
-      const [summaryData, dailyData, breakdownData, mainAgentData, taskAgentData] = await Promise.all([
+      const [summaryData, dailyData, breakdownData, mainAgentData, taskAgentData, heartbeatData] = await Promise.all([
         apiFetch<UsageSummaryResponse>('/api/stats/summary'),
         apiFetch<UsageStatsResponse>(`/api/stats/usage?${buildQuery(['day'])}`),
         apiFetch<UsageStatsResponse>(`/api/stats/usage?${buildQuery(['provider', 'model'])}`),
         apiFetch<UsageStatsResponse>(`/api/stats/usage?${buildQuery(['day'], 'main')}`),
         apiFetch<UsageStatsResponse>(`/api/stats/usage?${buildQuery(['day'], 'task')}`),
+        apiFetch<UsageStatsResponse>(`/api/stats/usage?${buildQuery(['day'], 'heartbeat')}`),
       ])
 
       allTimeTokens.value = summaryData.allTime.totalTokens
@@ -148,6 +157,7 @@ export function useUsageStats() {
       breakdown.value = breakdownData
       dailyMainAgent.value = mainAgentData
       dailyTaskAgent.value = taskAgentData
+      dailyHeartbeat.value = heartbeatData
       availableProviders.value = dailyData.availableProviders
       availableModels.value = dailyData.availableModels
     } catch (err) {
@@ -172,6 +182,7 @@ export function useUsageStats() {
     daily,
     dailyMainAgent,
     dailyTaskAgent,
+    dailyHeartbeat,
     breakdown,
     availableProviders,
     availableModels,

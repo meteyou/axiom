@@ -587,10 +587,11 @@
       "empty": "Für die aktuellen Filter gibt es keine tägliche Nutzung."
     },
     "sourceChart": {
-      "title": "Haupt-Agent vs. Aufgaben-Agent",
-      "description": "Token-Verbrauch aufgeteilt zwischen Haupt-Agent und Hintergrundaufgaben-Agenten pro Tag.",
+      "title": "Haupt-Agent vs. Aufgaben-Agent vs. Heartbeat",
+      "description": "Token-Verbrauch aufgeteilt zwischen Haupt-Agent, Hintergrundaufgaben-Agenten und Heartbeat pro Tag.",
       "mainAgent": "Haupt-Agent",
-      "taskAgent": "Aufgaben-Agent"
+      "taskAgent": "Aufgaben-Agent",
+      "heartbeat": "Heartbeat"
     },
     "table": {
       "title": "Anbieter- & Modell-Aufschlüsselung",

@@ -82,7 +82,7 @@ export function createStatsRouter(db: Database): Router {
       }
 
       const sessionTypeParam = normalizeFilter(req.query.session_type)
-      const sessionType = sessionTypeParam === 'main' || sessionTypeParam === 'task'
+      const sessionType = sessionTypeParam === 'main' || sessionTypeParam === 'task' || sessionTypeParam === 'heartbeat'
         ? sessionTypeParam
         : undefined
 

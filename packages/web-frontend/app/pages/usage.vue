@@ -236,6 +236,10 @@
                       <span class="h-2.5 w-2.5 rounded-sm bg-amber-500" />
                       {{ $t('usage.sourceChart.taskAgent') }}
                     </span>
+                    <span class="flex items-center gap-1.5">
+                      <span class="h-2.5 w-2.5 rounded-sm bg-emerald-500" />
+                      {{ $t('usage.sourceChart.heartbeat') }}
+                    </span>
                   </div>
                 </div>
 
@@ -286,7 +290,13 @@
                           class="flex w-full max-w-[26px] flex-col justify-end overflow-hidden rounded-t-sm transition-opacity group-hover:opacity-80"
                           :style="{ height: `${point.height}%` }"
                         >
-                          <!-- Task (top) -->
+                          <!-- Heartbeat (top) -->
+                          <div
+                            v-if="point.heartbeatShare > 0"
+                            class="w-full bg-emerald-500"
+                            :style="{ height: `${point.heartbeatShare}%` }"
+                          />
+                          <!-- Task (middle) -->
                           <div
                             v-if="point.taskShare > 0"
                             class="w-full bg-amber-500"
@@ -417,6 +427,7 @@ const {
   daily,
   dailyMainAgent,
   dailyTaskAgent,
+  dailyHeartbeat,
   breakdown,
   availableProviders,
   availableModels,
@@ -554,7 +565,7 @@ function chartTooltip(point: ChartPoint): string {
 
 // ── Source breakdown chart (Main Agent vs. Task Agent) ──────
 const hasTaskUsage = computed(() => {
-  return dailyTaskAgent.value.totals.totalTokens > 0
+  return dailyTaskAgent.value.totals.totalTokens > 0 || dailyHeartbeat.value.totals.totalTokens > 0
 })
 
 interface SourceChartPoint {
@@ -562,10 +573,12 @@ interface SourceChartPoint {
   label: string
   mainTokens: number
   taskTokens: number
+  heartbeatTokens: number
   totalTokens: number
   height: number
   mainShare: number
   taskShare: number
+  heartbeatShare: number
 }
 
 const sourceChartSeries = computed<SourceChartPoint[]>(() => {
@@ -585,20 +598,27 @@ const sourceChartSeries = computed<SourceChartPoint[]>(() => {
       .filter((row) => row.day)
       .map((row) => [row.day as string, row.totalTokens]),
   )
+  const heartbeatMap = new Map(
+    dailyHeartbeat.value.rows
+      .filter((row) => row.day)
+      .map((row) => [row.day as string, row.totalTokens]),
+  )
 
-  const points: Array<{ day: string; label: string; mainTokens: number; taskTokens: number; totalTokens: number }> = []
+  const points: Array<{ day: string; label: string; mainTokens: number; taskTokens: number; heartbeatTokens: number; totalTokens: number }> = []
   const cursor = new Date(start)
 
   while (cursor <= end) {
     const day = fmtDateKey(cursor)
     const mainTokens = mainMap.get(day) ?? 0
     const taskTokens = taskMap.get(day) ?? 0
+    const heartbeatTokens = heartbeatMap.get(day) ?? 0
     points.push({
       day,
       label: formatShortDate(day),
       mainTokens,
       taskTokens,
-      totalTokens: mainTokens + taskTokens,
+      heartbeatTokens,
+      totalTokens: mainTokens + taskTokens + heartbeatTokens,
     })
     cursor.setDate(cursor.getDate() + 1)
   }
@@ -612,6 +632,7 @@ const sourceChartSeries = computed<SourceChartPoint[]>(() => {
       height: max > 0 ? Math.max((total / max) * 100, total > 0 ? 8 : 0) : 0,
       mainShare: total > 0 ? (point.mainTokens / total) * 100 : 0,
       taskShare: total > 0 ? (point.taskTokens / total) * 100 : 0,
+      heartbeatShare: total > 0 ? (point.heartbeatTokens / total) * 100 : 0,
     }
   })
 })
@@ -629,7 +650,7 @@ const sourceChartXAxisLabels = computed(() => {
 })
 
 function sourceChartTooltip(point: SourceChartPoint): string {
-  return `${formatFullDate(point.day)} · Main: ${formatNumber(point.mainTokens)} · Tasks: ${formatNumber(point.taskTokens)}`
+  return `${formatFullDate(point.day)} · Main: ${formatNumber(point.mainTokens)} · Tasks: ${formatNumber(point.taskTokens)} · Heartbeat: ${formatNumber(point.heartbeatTokens)}`
 }
 
 // ── Table helpers ───────────────────────────────────────────

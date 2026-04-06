@@ -587,10 +587,11 @@
       "empty": "No daily usage to chart for the current filters."
     },
     "sourceChart": {
-      "title": "Main Agent vs. Task Agent",
-      "description": "Token usage split between main agent and background task agents per day.",
+      "title": "Main Agent vs. Task Agent vs. Heartbeat",
+      "description": "Token usage split between main agent, background task agents, and heartbeat per day.",
       "mainAgent": "Main Agent",
-      "taskAgent": "Task Agent"
+      "taskAgent": "Task Agent",
+      "heartbeat": "Heartbeat"
     },
     "table": {
       "title": "Provider & model breakdown",

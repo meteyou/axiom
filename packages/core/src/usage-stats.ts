@@ -11,8 +11,8 @@ export interface UsageStatsQueryOptions {
   provider?: string
   model?: string
   priceTable?: TokenPriceTable
-  /** Filter by session type: 'main' (non-task sessions), 'task' (task-* sessions), or undefined (all) */
-  sessionType?: 'main' | 'task'
+  /** Filter by session type: 'main' (non-task/non-heartbeat sessions), 'task' (task-* sessions), 'heartbeat' (agent-heartbeat-* sessions), or undefined (all) */
+  sessionType?: 'main' | 'task' | 'heartbeat'
 }
 
 export interface UsageTotals {
@@ -123,9 +123,11 @@ function buildWhereClause(options: UsageStatsQueryOptions, whereOptions: WhereOp
   }
 
   if (options.sessionType === 'task') {
-    clauses.push("session_id LIKE 'task-%'")
+    clauses.push("session_id LIKE 'task-%' AND session_id NOT LIKE 'agent-heartbeat-%'")
+  } else if (options.sessionType === 'heartbeat') {
+    clauses.push("session_id LIKE 'agent-heartbeat-%'")
   } else if (options.sessionType === 'main') {
-    clauses.push("(session_id IS NULL OR session_id NOT LIKE 'task-%')")
+    clauses.push("(session_id IS NULL OR (session_id NOT LIKE 'task-%' AND session_id NOT LIKE 'agent-heartbeat-%'))")
   }
 
   return {
