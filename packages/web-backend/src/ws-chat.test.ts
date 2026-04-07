@@ -56,6 +56,9 @@ describe('setupWebSocketChat kill switch', () => {
       releaseTask = resolve
     })
 
+    const mockSessionManager = {
+      getOrCreateSession: vi.fn(() => ({ id: 'session-1-mock', userId: '1', source: 'web', startedAt: Date.now(), lastActivity: Date.now(), messageCount: 0, summaryWritten: false, restored: false })),
+    }
     const agentCore = {
       sendMessage: vi.fn(async function* (): AsyncGenerator<ResponseChunk> {
         yield { type: 'text', text: 'Working...' }
@@ -64,6 +67,7 @@ describe('setupWebSocketChat kill switch', () => {
       }),
       abort: vi.fn(),
       resetSession: vi.fn(),
+      getSessionManager: vi.fn(() => mockSessionManager),
     } as unknown as AgentCore
 
     const app = createApp({ db })
@@ -105,10 +109,14 @@ describe('setupWebSocketChat kill switch', () => {
 
   it('treats /kill as an alias for /stop over web chat', async () => {
     const db = initDatabase(':memory:')
+    const mockSessionManager2 = {
+      getOrCreateSession: vi.fn(() => ({ id: 'session-1-mock', userId: '1', source: 'web', startedAt: Date.now(), lastActivity: Date.now(), messageCount: 0, summaryWritten: false, restored: false })),
+    }
     const agentCore = {
       sendMessage: vi.fn(),
       abort: vi.fn(),
       resetSession: vi.fn(),
+      getSessionManager: vi.fn(() => mockSessionManager2),
     } as unknown as AgentCore
 
     const app = createApp({ db })
