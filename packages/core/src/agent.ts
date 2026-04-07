@@ -616,6 +616,9 @@ export class AgentCore {
 
     const enrichedText = fileHints.length > 0 ? `${text}\n\n${fileHints.join('\n')}` : text
     yield* this.executePromptWithRetry(enrichedText, sessionId, false, images.length > 0 ? images : undefined)
+
+    // Count the agent response as a message too
+    this.sessionManager.recordMessage(userId)
   }
 
   /**
@@ -628,6 +631,9 @@ export class AgentCore {
     this.sessionManager.recordMessage('system')
 
     yield* this.executePromptWithRetry(injection, sessionId)
+
+    // Count the agent response as a message too
+    this.sessionManager.recordMessage('system')
   }
 
   /**
