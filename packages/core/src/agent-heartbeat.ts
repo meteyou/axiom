@@ -1,3 +1,5 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import { ensureConfigTemplates, loadConfig } from './config.js'
 import type { TaskStore, Task } from './task-store.js'
 import type { TaskRunner } from './task-runner.js'
@@ -48,6 +50,23 @@ export interface AgentHeartbeatServiceOptions {
   now?: () => Date
   /** Override for testing — returns the configured timezone */
   getTimezone?: () => string
+}
+
+/**
+ * Returns true if the HEARTBEAT.md content contains only blank lines,
+ * ATX headings (`# ...`), and empty checkbox list items (`- [ ]`).
+ * Any other content is considered "actionable".
+ */
+export function isHeartbeatContentEffectivelyEmpty(content: string): boolean {
+  const lines = content.split('\n')
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (trimmed === '') continue
+    if (/^#{1,6}\s/.test(trimmed) || /^#{1,6}$/.test(trimmed)) continue
+    if (/^-\s*\[\s*\]\s*$/.test(trimmed)) continue
+    return false
+  }
+  return true
 }
 
 export class AgentHeartbeatService {
@@ -147,6 +166,20 @@ export class AgentHeartbeatService {
     // Check night mode
     if (this.isNightMode()) {
       console.log('[openagent] Agent heartbeat skipped: night mode active')
+      return null
+    }
+
+    // Pre-flight: read HEARTBEAT.md and skip if no actionable content
+    const heartbeatPath = path.join(process.env.DATA_DIR ?? '/data', 'memory', 'HEARTBEAT.md')
+    try {
+      const content = fs.readFileSync(heartbeatPath, 'utf-8')
+      if (isHeartbeatContentEffectivelyEmpty(content)) {
+        console.log('[openagent] Agent heartbeat skipped: HEARTBEAT.md has no actionable content')
+        return null
+      }
+    } catch {
+      // File doesn't exist or can't be read — skip heartbeat
+      console.log('[openagent] Agent heartbeat skipped: HEARTBEAT.md not found or unreadable')
       return null
     }
 
