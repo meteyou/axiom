@@ -50,6 +50,17 @@ export interface AgentHeartbeatSettings {
   nightMode: AgentHeartbeatNightMode
 }
 
+export interface TtsSettings {
+  enabled: boolean
+  provider: 'openai' | 'mistral'
+  providerId: string
+  openaiModel: string
+  openaiVoice: string
+  openaiInstructions: string
+  mistralVoice: string
+  responseFormat: string
+}
+
 export interface Settings {
   sessionTimeoutMinutes: number
   language: string
@@ -63,6 +74,7 @@ export interface Settings {
   memoryConsolidation: MemoryConsolidationSettings
   agentHeartbeat: AgentHeartbeatSettings
   tasks: TasksSettings
+  tts: TtsSettings
 }
 
 export function useSettings() {
@@ -146,6 +158,16 @@ export function useSettings() {
             smartCheckInterval: 5,
           },
           statusUpdateIntervalMinutes: 10,
+        },
+        tts: result.tts ?? {
+          enabled: false,
+          provider: 'openai',
+          providerId: '',
+          openaiModel: 'gpt-4o-mini-tts',
+          openaiVoice: 'nova',
+          openaiInstructions: '',
+          mistralVoice: '',
+          responseFormat: 'mp3',
         },
       }
       successMessage.value = 'saved'

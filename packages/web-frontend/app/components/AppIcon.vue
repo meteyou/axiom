@@ -59,6 +59,8 @@ import {
   ExternalLink,
   Image,
   Zap,
+  Volume2,
+  Loader,
 } from 'lucide-vue-next'
 
 const iconMap = {
@@ -112,6 +114,8 @@ const iconMap = {
   externalLink: ExternalLink,
   image: Image,
   zap: Zap,
+  volume: Volume2,
+  loader: Loader,
 } as const
 
 const props = withDefaults(defineProps<{
