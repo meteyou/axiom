@@ -675,7 +675,8 @@
       "user": "Benutzer",
       "agent": "Agent",
       "cronjob": "Cronjob",
-      "heartbeat": "Heartbeat"
+      "heartbeat": "Heartbeat",
+      "consolidation": "Konsolidierung"
     }
   },
   "cronjobs": {
