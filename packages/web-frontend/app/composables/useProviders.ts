@@ -174,12 +174,8 @@ export function useProviders() {
   }
 
   async function fetchModels(providerType: string): Promise<AvailableModel[]> {
-    try {
-      const data = await apiFetch<{ models: AvailableModel[] }>(`/api/providers/models/${providerType}`)
-      return data.models
-    } catch {
-      return []
-    }
+    const data = await apiFetch<{ models: AvailableModel[] }>(`/api/providers/models/${providerType}`)
+    return data.models
   }
 
   async function startOAuthLogin(input: {
