@@ -219,6 +219,51 @@ describe('TaskStore', () => {
     })
   })
 
+  describe('consolidation trigger type', () => {
+    it('creates a task with consolidation trigger type', () => {
+      const task = store.create({
+        name: 'Nightly Consolidation',
+        prompt: 'Consolidate memory',
+        triggerType: 'consolidation',
+        triggerSourceId: 'memory-consolidation',
+      })
+
+      expect(task.id).toBeTruthy()
+      expect(task.triggerType).toBe('consolidation')
+      expect(task.triggerSourceId).toBe('memory-consolidation')
+      expect(task.status).toBe('running')
+    })
+
+    it('filters by consolidation trigger type', () => {
+      store.create({ name: 'Agent Task', prompt: 'p1', triggerType: 'agent' })
+      store.create({ name: 'Consolidation Task', prompt: 'p2', triggerType: 'consolidation' })
+      store.create({ name: 'User Task', prompt: 'p3', triggerType: 'user' })
+
+      const consolidationTasks = store.list({ triggerType: 'consolidation' })
+      expect(consolidationTasks).toHaveLength(1)
+      expect(consolidationTasks[0].name).toBe('Consolidation Task')
+    })
+
+    it('does not affect other trigger types', () => {
+      store.create({ name: 'Agent', prompt: 'p1', triggerType: 'agent' })
+      store.create({ name: 'User', prompt: 'p2', triggerType: 'user' })
+      store.create({ name: 'Cronjob', prompt: 'p3', triggerType: 'cronjob' })
+      store.create({ name: 'Heartbeat', prompt: 'p4', triggerType: 'heartbeat' })
+      store.create({ name: 'Consolidation', prompt: 'p5', triggerType: 'consolidation' })
+
+      const all = store.list()
+      expect(all).toHaveLength(5)
+
+      const agentTasks = store.list({ triggerType: 'agent' })
+      expect(agentTasks).toHaveLength(1)
+      expect(agentTasks[0].name).toBe('Agent')
+
+      const heartbeatTasks = store.list({ triggerType: 'heartbeat' })
+      expect(heartbeatTasks).toHaveLength(1)
+      expect(heartbeatTasks[0].name).toBe('Heartbeat')
+    })
+  })
+
   describe('tasks table schema', () => {
     it('has all required columns', () => {
       const cols = db.prepare("PRAGMA table_info(tasks)").all() as { name: string }[]

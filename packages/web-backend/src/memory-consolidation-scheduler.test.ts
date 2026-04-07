@@ -186,7 +186,7 @@ describe('MemoryConsolidationScheduler', () => {
       expect(mockRunner.startTask).toHaveBeenCalledOnce()
       const startedTask = mockRunner.startedTasks[0]
       expect(startedTask.task.name).toBe('Nightly Memory Consolidation')
-      expect(startedTask.task.triggerType).toBe('heartbeat')
+      expect(startedTask.task.triggerType).toBe('consolidation')
       expect(startedTask.task.triggerSourceId).toBe('memory-consolidation')
       expect(startedTask.task.sessionId).toMatch(/^nightly-consolidation-\d+$/)
       expect(startedTask.provider).toBe(provider)
