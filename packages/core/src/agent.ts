@@ -783,7 +783,7 @@ export class AgentCore {
           const text = 'content' in msg && Array.isArray(msg.content)
             ? msg.content.filter((c: { type: string }) => c.type === 'text').map((c: { type: string; text?: string }) => c.text ?? '').join('')
             : ''
-          if (text) conversationLines.push(`Assistant: ${text.slice(0, 500)}`)
+          if (text) conversationLines.push(`Assistant: ${text.slice(0, 2000)}`)
         }
       }
     }
@@ -791,11 +791,11 @@ export class AgentCore {
     if (conversationLines.length === 0) return 'Empty session.'
 
     // Truncate to avoid excessive token usage
-    const conversationText = conversationLines.join('\n').slice(0, 4000)
+    const conversationText = conversationLines.join('\n').slice(0, 12000)
 
     try {
       const response = await completeSimple(this.model, {
-        systemPrompt: 'You are a concise summarizer. Summarize the following conversation in 2-4 bullet points. Focus on key topics discussed, decisions made, and any action items. Respond only with the bullet points, no preamble.',
+        systemPrompt: 'Write a compact paragraph per session capturing topics, decisions, key facts, and anything needed for session continuation. The agent in the next session will see this. Write what they need to know. If nothing noteworthy happened, write \'No significant content.\'',
         messages: [{
           role: 'user' as const,
           content: conversationText,
