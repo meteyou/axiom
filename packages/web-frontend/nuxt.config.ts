@@ -4,6 +4,9 @@ import tailwindcss from '@tailwindcss/vite'
 
 const rootPkg = JSON.parse(readFileSync(resolve(__dirname, '../../package.json'), 'utf-8'))
 
+const backendUrl = process.env.NUXT_PUBLIC_API_BASE || 'http://localhost:3000'
+const backendWsUrl = backendUrl.replace(/^http/, 'ws')
+
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
   compatibilityDate: '2026-04-05',
@@ -41,6 +44,12 @@ export default defineNuxtConfig({
         // Allow serving files from the workspace root (monorepo hoisted node_modules)
         allow: ['../..'],
       },
+      proxy: {
+        '/ws': {
+          target: backendWsUrl,
+          ws: true,
+        },
+      },
     },
     optimizeDeps: {
       exclude: ['nuxt/dist/app/composables/manifest'],
@@ -56,6 +65,15 @@ export default defineNuxtConfig({
 
   devServer: {
     port: 3001,
+  },
+
+  nitro: {
+    devProxy: {
+      '/api/': {
+        target: `${backendUrl}/api/`,
+        changeOrigin: true,
+      },
+    },
   },
 
   app: {
