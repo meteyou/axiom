@@ -954,6 +954,209 @@
               </div>
             </div>
 
+            <!-- ═══ Text-to-Speech ═══ -->
+            <div v-else-if="activeTab === 'tts'">
+              <div class="mb-8">
+                <h2 class="text-lg font-semibold tracking-tight text-foreground">
+                  {{ $t('settings.ttsTitle') }}
+                </h2>
+                <p class="mt-1 text-sm text-muted-foreground">
+                  {{ $t('settings.ttsSubtitle') }}
+                </p>
+              </div>
+
+              <div class="flex flex-col gap-8">
+                <!-- Enable toggle -->
+                <div class="flex items-center justify-between rounded-lg border border-border px-4 py-3">
+                  <div class="flex flex-col gap-0.5 pr-4">
+                    <Label for="tts-enabled" class="cursor-pointer">
+                      {{ $t('settings.ttsEnabled') }}
+                    </Label>
+                    <p class="text-xs text-muted-foreground">
+                      {{ $t('settings.ttsEnabledHint') }}
+                    </p>
+                  </div>
+                  <Switch
+                    id="tts-enabled"
+                    v-model:checked="form.tts.enabled"
+                  />
+                </div>
+
+                <!-- Configuration — progressive disclosure -->
+                <template v-if="form.tts.enabled">
+                  <!-- Provider -->
+                  <div class="flex flex-col gap-2">
+                    <Label for="tts-provider">{{ $t('settings.ttsProvider') }}</Label>
+                    <Select v-model="ttsProviderComposite">
+                      <SelectTrigger id="tts-provider">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <template v-for="opt in ttsProviderOptions" :key="opt.value">
+                          <SelectItem :value="opt.value" :disabled="opt.disabled">
+                            {{ opt.label }}
+                          </SelectItem>
+                        </template>
+                      </SelectContent>
+                    </Select>
+                    <p class="text-xs text-muted-foreground">{{ $t('settings.ttsProviderHint') }}</p>
+                  </div>
+
+                  <Separator />
+
+                  <!-- OpenAI Settings -->
+                  <template v-if="form.tts.provider === 'openai'">
+                    <div>
+                      <h3 class="text-base font-semibold tracking-tight text-foreground">OpenAI</h3>
+                    </div>
+
+                    <!-- Model -->
+                    <div class="flex flex-col gap-2">
+                      <Label for="tts-openai-model">{{ $t('settings.ttsOpenaiModel') }}</Label>
+                      <Select v-model="form.tts.openaiModel">
+                        <SelectTrigger id="tts-openai-model">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="gpt-4o-mini-tts">gpt-4o-mini-tts</SelectItem>
+                          <SelectItem value="tts-1">tts-1</SelectItem>
+                          <SelectItem value="tts-1-hd">tts-1-hd</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p class="text-xs text-muted-foreground">{{ $t('settings.ttsOpenaiModelHint') }}</p>
+                    </div>
+
+                    <!-- Voice -->
+                    <div class="flex flex-col gap-2">
+                      <Label for="tts-openai-voice">{{ $t('settings.ttsOpenaiVoice') }}</Label>
+                      <Select v-model="form.tts.openaiVoice">
+                        <SelectTrigger id="tts-openai-voice">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem v-for="v in openaiVoiceOptions" :key="v.value" :value="v.value">
+                            {{ v.label }}
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p class="text-xs text-muted-foreground">{{ $t('settings.ttsOpenaiVoiceHint') }}</p>
+                    </div>
+
+                    <!-- Instructions (only for gpt-4o-mini-tts) -->
+                    <div v-if="form.tts.openaiModel === 'gpt-4o-mini-tts'" class="flex flex-col gap-2">
+                      <Label for="tts-openai-instructions">{{ $t('settings.ttsOpenaiInstructions') }}</Label>
+                      <Input
+                        id="tts-openai-instructions"
+                        v-model="form.tts.openaiInstructions"
+                        :placeholder="$t('settings.ttsOpenaiInstructionsPlaceholder')"
+                      />
+                      <p class="text-xs text-muted-foreground">{{ $t('settings.ttsOpenaiInstructionsHint') }}</p>
+                    </div>
+                  </template>
+
+                  <!-- Mistral Settings -->
+                  <template v-if="form.tts.provider === 'mistral'">
+                    <div>
+                      <h3 class="text-base font-semibold tracking-tight text-foreground">Mistral (Voxtral)</h3>
+                    </div>
+
+                    <!-- Voice + Mood (two 50:50 dropdowns) -->
+                    <div class="flex flex-col gap-2">
+                      <Label>{{ $t('settings.ttsMistralVoice') }}</Label>
+                      <div class="grid grid-cols-2 gap-3">
+                        <!-- Speaker -->
+                        <Select v-model="mistralSpeaker">
+                          <SelectTrigger>
+                            <SelectValue :placeholder="$t('settings.ttsMistralSpeakerPlaceholder')" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <template v-if="mistralSpeakerOptions.length > 0">
+                              <SelectItem v-for="s in mistralSpeakerOptions" :key="s.name" :value="s.name">
+                                {{ s.name }} ({{ s.languageLabel }})
+                              </SelectItem>
+                            </template>
+                            <template v-else>
+                              <SelectItem value="" disabled>
+                                {{ voicesLoading ? $t('settings.ttsVoicesLoading') : $t('settings.ttsVoicesEmpty') }}
+                              </SelectItem>
+                            </template>
+                          </SelectContent>
+                        </Select>
+                        <!-- Mood -->
+                        <Select v-model="mistralMood">
+                          <SelectTrigger>
+                            <SelectValue :placeholder="$t('settings.ttsMistralMoodPlaceholder')" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem v-for="m in mistralMoodOptions" :key="m" :value="m">
+                              {{ m }}
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <p class="text-xs text-muted-foreground">{{ $t('settings.ttsMistralVoiceHint') }}</p>
+                    </div>
+                  </template>
+
+                  <!-- Voice Preview -->
+                  <div class="flex flex-col gap-2">
+                    <Label for="tts-preview-text">{{ $t('settings.ttsPreview') }}</Label>
+                    <div class="flex items-end gap-2">
+                      <Input
+                        id="tts-preview-text"
+                        v-model="ttsPreviewText"
+                        :placeholder="$t('settings.ttsPreviewPlaceholder')"
+                        class="flex-1"
+                        @keydown.enter.prevent="handleTtsPreview"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="default"
+                        class="shrink-0 gap-2"
+                        :disabled="ttsPreviewPlaying || ttsPreviewLoading || !ttsPreviewText.trim()"
+                        @click="handleTtsPreview"
+                      >
+                        <AppIcon
+                          v-if="ttsPreviewLoading"
+                          name="loader"
+                          size="sm"
+                          class="animate-spin"
+                        />
+                        <AppIcon
+                          v-else-if="ttsPreviewPlaying"
+                          name="square"
+                          size="sm"
+                        />
+                        <AppIcon v-else name="volume" size="sm" />
+                        {{ ttsPreviewPlaying ? $t('settings.ttsPreviewStop') : $t('settings.ttsPreviewPlay') }}
+                      </Button>
+                    </div>
+                    <p class="text-xs text-muted-foreground">{{ $t('settings.ttsPreviewHint') }}</p>
+                  </div>
+
+                  <Separator />
+
+                  <!-- Audio Format -->
+                  <div class="flex flex-col gap-2">
+                    <Label for="tts-format">{{ $t('settings.ttsResponseFormat') }}</Label>
+                    <Select v-model="form.tts.responseFormat">
+                      <SelectTrigger id="tts-format">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="mp3">MP3</SelectItem>
+                        <SelectItem value="wav">WAV</SelectItem>
+                        <SelectItem value="opus">Opus</SelectItem>
+                        <SelectItem value="flac">FLAC</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p class="text-xs text-muted-foreground">{{ $t('settings.ttsResponseFormatHint') }}</p>
+                  </div>
+                </template>
+              </div>
+            </div>
+
             <!-- ═══ Secrets ═══ -->
             <div v-else-if="activeTab === 'secrets'">
               <div class="mb-8">
@@ -1150,7 +1353,7 @@
 </template>
 
 <script setup lang="ts">
-import type { MemoryConsolidationSettings, HealthMonitorNotificationToggles, HealthMonitorSettings, AgentHeartbeatSettings, TasksSettings } from '~/composables/useSettings'
+import type { MemoryConsolidationSettings, HealthMonitorNotificationToggles, HealthMonitorSettings, AgentHeartbeatSettings, TasksSettings, TtsSettings } from '~/composables/useSettings'
 import type { TelegramUser } from '~/composables/useTelegramUsers'
 
 /* ── Auth ── */
@@ -1194,7 +1397,7 @@ const timezones = [
   'America/Argentina/Buenos_Aires',
 ]
 
-const VALID_TABS = ['agent', 'memory', 'agentHeartbeat', 'healthMonitor', 'telegram', 'tasks', 'secrets'] as const
+const VALID_TABS = ['agent', 'memory', 'agentHeartbeat', 'healthMonitor', 'telegram', 'tasks', 'tts', 'secrets'] as const
 type TabId = (typeof VALID_TABS)[number]
 
 const activeTab = computed<TabId>({
@@ -1214,6 +1417,7 @@ const tabs = computed(() => [
   { id: 'agentHeartbeat' as TabId, icon: 'activity', label: t('settings.tabs.agentHeartbeat') },
   { id: 'secrets' as TabId, icon: 'key', label: t('settings.tabs.secrets') },
   { id: 'tasks' as TabId, icon: 'bot', label: t('settings.tabs.tasks') },
+  { id: 'tts' as TabId, icon: 'volume', label: t('settings.ttsTitle') },
   { id: 'telegram' as TabId, icon: 'send', label: t('settings.tabs.telegram') },
 ])
 
@@ -1428,6 +1632,7 @@ interface SettingsForm {
   memoryConsolidation: MemoryConsolidationSettings
   agentHeartbeat: AgentHeartbeatSettings
   tasks: TasksSettings
+  tts: TtsSettings
 }
 
 const form = ref<SettingsForm | null>(null)
@@ -1454,10 +1659,258 @@ function hydrateForm() {
     memoryConsolidation: { ...s.memoryConsolidation },
     agentHeartbeat: { ...s.agentHeartbeat, nightMode: { ...s.agentHeartbeat.nightMode } },
     tasks: { ...s.tasks, loopDetection: { ...s.tasks.loopDetection } },
+    tts: { ...s.tts },
   }
 }
 
 watch(settings, hydrateForm)
+
+/* ── OpenAI voice options (filtered by model) ── */
+const OPENAI_VOICES_ALL = [
+  { value: 'alloy', label: 'Alloy' },
+  { value: 'ash', label: 'Ash' },
+  { value: 'ballad', label: 'Ballad', gpt4oOnly: true },
+  { value: 'coral', label: 'Coral' },
+  { value: 'echo', label: 'Echo' },
+  { value: 'fable', label: 'Fable' },
+  { value: 'nova', label: 'Nova' },
+  { value: 'onyx', label: 'Onyx' },
+  { value: 'sage', label: 'Sage' },
+  { value: 'shimmer', label: 'Shimmer' },
+  { value: 'verse', label: 'Verse', gpt4oOnly: true },
+  { value: 'marin', label: 'Marin', gpt4oOnly: true },
+  { value: 'cedar', label: 'Cedar', gpt4oOnly: true },
+]
+
+const openaiVoiceOptions = computed(() => {
+  const isGpt4o = form.value?.tts.openaiModel === 'gpt-4o-mini-tts'
+  return OPENAI_VOICES_ALL.filter(v => isGpt4o || !v.gpt4oOnly)
+})
+
+// Reset voice when switching to a model that doesn't support it
+watch(() => form.value?.tts.openaiModel, (model) => {
+  if (!form.value || model === 'gpt-4o-mini-tts') return
+  const current = form.value.tts.openaiVoice
+  const available = OPENAI_VOICES_ALL.filter(v => !v.gpt4oOnly)
+  if (!available.some(v => v.value === current)) {
+    form.value.tts.openaiVoice = 'nova'
+  }
+})
+
+/* ── TTS voices & preview ── */
+const { mistralVoices, voicesLoading, fetchMistralVoices } = useTts()
+const ttsPreviewText = ref('Hello! This is a preview of the selected voice.')
+const ttsPreviewLoading = ref(false)
+const ttsPreviewPlaying = ref(false)
+let previewAudio: HTMLAudioElement | null = null
+let previewBlobUrl: string | null = null
+
+function stopTtsPreview() {
+  if (previewAudio) {
+    previewAudio.pause()
+    previewAudio.removeAttribute('src')
+    previewAudio.load()
+    previewAudio = null
+  }
+  if (previewBlobUrl) {
+    URL.revokeObjectURL(previewBlobUrl)
+    previewBlobUrl = null
+  }
+  ttsPreviewPlaying.value = false
+  ttsPreviewLoading.value = false
+}
+
+const { getAccessToken: getTtsPreviewToken } = useAuth()
+const ttsPreviewApiBase = (useRuntimeConfig().public.apiBase ?? '') as string
+
+async function handleTtsPreview() {
+  if (ttsPreviewPlaying.value || ttsPreviewLoading.value) {
+    stopTtsPreview()
+    return
+  }
+  if (!form.value || !ttsPreviewText.value.trim()) return
+
+  const token = getTtsPreviewToken()
+  const apiBase = ttsPreviewApiBase
+
+  // Send full unsaved TTS settings so the backend uses them for preview
+  const tts = form.value.tts
+  const body: Record<string, unknown> = {
+    text: ttsPreviewText.value,
+    settings: {
+      provider: tts.provider,
+      providerId: tts.providerId,
+      openaiModel: tts.openaiModel,
+      openaiVoice: tts.openaiVoice,
+      openaiInstructions: tts.openaiInstructions,
+      mistralVoice: tts.mistralVoice,
+      responseFormat: tts.responseFormat,
+    },
+  }
+
+  ttsPreviewLoading.value = true
+  try {
+    const response = await fetch(`${apiBase}/api/tts/preview`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(body),
+    })
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ error: 'Unknown error' })) as { error?: string }
+      throw new Error(err.error ?? `HTTP ${response.status}`)
+    }
+    const blob = await response.blob()
+    previewBlobUrl = URL.createObjectURL(blob)
+    previewAudio = new Audio(previewBlobUrl)
+    previewAudio.onended = () => stopTtsPreview()
+    previewAudio.onerror = () => stopTtsPreview()
+    await previewAudio.play()
+    ttsPreviewLoading.value = false
+    ttsPreviewPlaying.value = true
+  } catch (err) {
+    console.error('TTS preview failed:', err)
+    stopTtsPreview()
+  }
+}
+
+onUnmounted(() => stopTtsPreview())
+
+interface MistralSpeakerOption {
+  name: string
+  languageLabel: string
+  moods: Array<{ mood: string; id: string }>
+}
+
+/** Parse voices into grouped speaker options */
+const mistralSpeakerOptions = computed<MistralSpeakerOption[]>(() => {
+  const langLabels: Record<string, string> = {
+    en_us: 'English US',
+    en_gb: 'English UK',
+    fr_fr: 'Français',
+    de_de: 'Deutsch',
+    es_es: 'Español',
+    it_it: 'Italiano',
+    pt_pt: 'Português',
+    nl_nl: 'Nederlands',
+    hi_in: 'Hindi',
+    ar_sa: 'Arabic',
+  }
+  const speakers = new Map<string, MistralSpeakerOption>()
+  for (const v of mistralVoices.value) {
+    const parts = v.name.split(' - ')
+    const name = parts[0]?.trim() ?? v.name
+    const mood = parts[1]?.trim() ?? 'Default'
+    if (!speakers.has(name)) {
+      const langCode = v.languages[0] ?? ''
+      speakers.set(name, {
+        name,
+        languageLabel: langLabels[langCode] ?? langCode,
+        moods: [],
+      })
+    }
+    speakers.get(name)!.moods.push({ mood, id: v.id })
+  }
+  return Array.from(speakers.values())
+})
+
+/** Available moods for the currently selected speaker */
+const mistralMoodOptions = computed<string[]>(() => {
+  const speaker = mistralSpeakerOptions.value.find(s => s.name === mistralSpeaker.value)
+  return speaker?.moods.map(m => m.mood) ?? []
+})
+
+/** Resolve current voice UUID to speaker name */
+function resolveVoiceToSpeakerMood(voiceId: string): { speaker: string; mood: string } {
+  for (const s of mistralSpeakerOptions.value) {
+    const found = s.moods.find(m => m.id === voiceId)
+    if (found) return { speaker: s.name, mood: found.mood }
+  }
+  // Fallback: pick first speaker + first mood
+  const first = mistralSpeakerOptions.value[0]
+  return { speaker: first?.name ?? '', mood: first?.moods[0]?.mood ?? '' }
+}
+
+/** Selected speaker name (synced with form.tts.mistralVoice) */
+const mistralSpeaker = computed({
+  get(): string {
+    if (!form.value) return ''
+    return resolveVoiceToSpeakerMood(form.value.tts.mistralVoice).speaker
+  },
+  set(name: string) {
+    if (!form.value) return
+    const speaker = mistralSpeakerOptions.value.find(s => s.name === name)
+    if (!speaker) return
+    // Try to keep the same mood, otherwise pick Neutral or first
+    const currentMood = resolveVoiceToSpeakerMood(form.value.tts.mistralVoice).mood
+    const sameMood = speaker.moods.find(m => m.mood === currentMood)
+    const neutral = speaker.moods.find(m => m.mood === 'Neutral')
+    const target = sameMood ?? neutral ?? speaker.moods[0]
+    if (target) form.value.tts.mistralVoice = target.id
+  },
+})
+
+/** Selected mood (synced with form.tts.mistralVoice) */
+const mistralMood = computed({
+  get(): string {
+    if (!form.value) return ''
+    return resolveVoiceToSpeakerMood(form.value.tts.mistralVoice).mood
+  },
+  set(mood: string) {
+    if (!form.value) return
+    const speaker = mistralSpeakerOptions.value.find(s => s.name === mistralSpeaker.value)
+    const target = speaker?.moods.find(m => m.mood === mood)
+    if (target) form.value.tts.mistralVoice = target.id
+  },
+})
+
+/* ── TTS provider composite select ── */
+const ttsProviderOptions = computed(() => {
+  const options: Array<{ value: string; label: string; disabled?: boolean }> = []
+
+  // OpenAI-compatible providers
+  const openaiProviders = providers.value.filter(p =>
+    p.providerType === 'openai' || p.provider === 'openai' || p.baseUrl?.includes('api.openai.com')
+  )
+  if (openaiProviders.length > 0) {
+    for (const p of openaiProviders) {
+      options.push({ value: `openai::${p.id}`, label: `OpenAI (${p.name})` })
+    }
+  } else {
+    options.push({ value: 'openai::', label: t('settings.ttsProviderOpenaiNone'), disabled: true })
+  }
+
+  // Mistral-compatible providers
+  const mistralProviders = providers.value.filter(p =>
+    p.providerType === 'mistral' || p.provider === 'mistral' || p.baseUrl?.includes('api.mistral.ai')
+  )
+  if (mistralProviders.length > 0) {
+    for (const p of mistralProviders) {
+      options.push({ value: `mistral::${p.id}`, label: `Mistral Voxtral (${p.name})` })
+    }
+  } else {
+    options.push({ value: 'mistral::', label: t('settings.ttsProviderMistralNone'), disabled: true })
+  }
+
+  return options
+})
+
+const ttsProviderComposite = computed({
+  get(): string {
+    if (!form.value) return 'openai::'
+    const { provider, providerId } = form.value.tts
+    return `${provider}::${providerId}`
+  },
+  set(value: string) {
+    if (!form.value) return
+    const [type, ...rest] = value.split('::')
+    const id = rest.join('::')
+    form.value.tts.provider = type as 'openai' | 'mistral'
+    form.value.tts.providerId = id
+  },
+})
 
 /* ── Notification toggles ── */
 const notificationToggles = computed(() => [
@@ -1491,6 +1944,7 @@ onMounted(async () => {
     fetchTelegramUsers(),
     fetchConsolidationStatus(),
     fetchSecrets(),
+    fetchMistralVoices(),
   ])
   hydrateForm()
 })
