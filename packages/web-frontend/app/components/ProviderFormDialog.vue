@@ -55,11 +55,11 @@
           <Label for="provider-model">{{ $t('providers.model') }}</Label>
           <Select
             v-model="form.defaultModel"
-            :disabled="loadingModels || oauthInProgress"
+            :disabled="loadingModels || oauthInProgress || modelsError !== null"
             :required="true"
           >
             <SelectTrigger id="provider-model">
-              <SelectValue :placeholder="loadingModels ? $t('providers.loadingModels') : $t('providers.selectModel')" />
+              <SelectValue :placeholder="loadingModels ? $t('providers.loadingModels') : modelsError ? $t('providers.modelsLoadError') : $t('providers.selectModel')" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem v-for="model in availableModels" :key="model.id" :value="model.id">
@@ -67,6 +67,14 @@
               </SelectItem>
             </SelectContent>
           </Select>
+          <button
+            v-if="modelsError"
+            type="button"
+            class="self-start text-xs text-destructive hover:underline"
+            @click="loadModelsForType(form.providerType)"
+          >
+            {{ $t('providers.modelsRetry') }}
+          </button>
         </div>
 
         <!-- Model (free text for Ollama / unknown providers) -->
@@ -243,6 +251,7 @@ const form = reactive({
 
 const availableModels = ref<AvailableModel[]>([])
 const loadingModels = ref(false)
+const modelsError = ref<string | null>(null)
 const oauthInProgress = ref(false)
 const oauthError = ref<string | null>(null)
 const oauthLoginId = ref<string | null>(null)
@@ -298,6 +307,7 @@ watch(() => [props.open, props.provider] as const, ([isOpen, entry]) => {
     form.defaultModel = ''
     form.degradedThresholdMs = 5000
     availableModels.value = []
+    modelsError.value = null
     oauthInProgress.value = false
     oauthError.value = null
     oauthLoginId.value = null
@@ -309,12 +319,22 @@ async function loadModelsForType(providerType: string) {
   const preset = props.presets[providerType]
   if (!preset?.piAiProvider) {
     availableModels.value = []
+    modelsError.value = null
     return
   }
 
   loadingModels.value = true
+  modelsError.value = null
   try {
-    availableModels.value = await fetchModels(providerType)
+    const models = await fetchModels(providerType)
+    if (models.length === 0) {
+      modelsError.value = 'no_models'
+    } else {
+      availableModels.value = models
+    }
+  } catch {
+    modelsError.value = 'fetch_failed'
+    availableModels.value = []
   } finally {
     loadingModels.value = false
   }
