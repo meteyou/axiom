@@ -27,7 +27,7 @@
             <AppIcon name="settings" class="h-4 w-4" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent class="w-56">
+        <PopoverContent class="w-64">
           <div class="flex flex-col gap-3">
             <p class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{{ $t('chat.displayFilters') }}</p>
             <div class="flex items-center justify-between gap-3">
@@ -37,6 +37,10 @@
             <div class="flex items-center justify-between gap-3">
               <Label class="cursor-pointer text-sm" for="filter-injections">{{ $t('chat.filterInjections') }}</Label>
               <Switch id="filter-injections" v-model:checked="showInjections" />
+            </div>
+            <div class="flex items-center justify-between gap-3">
+              <Label class="cursor-pointer text-sm" for="filter-summaries">{{ $t('chat.filterSessionSummaries') }}</Label>
+              <Switch id="filter-summaries" v-model:checked="showSessionSummaries" />
             </div>
           </div>
         </PopoverContent>
@@ -66,10 +70,34 @@
         >
           <!-- Session divider -->
           <template v-if="msg.role === 'divider'">
+            <!-- Collapsible summary card -->
+            <div v-if="msg.content && showSessionSummaries" class="w-full max-w-none px-2 mb-1">
+              <div class="mx-auto max-w-lg">
+                <button
+                  class="group flex w-full items-center gap-2 rounded-t-lg border border-border/60 bg-muted/30 px-3 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-muted/50"
+                  :class="{ 'rounded-b-lg': !expandedSummaries.has(String(msg.id ?? i)) }"
+                  @click="toggleSummary(String(msg.id ?? i))"
+                >
+                  <svg
+                    class="h-3 w-3 shrink-0 transition-transform duration-200"
+                    :class="{ 'rotate-90': expandedSummaries.has(String(msg.id ?? i)) }"
+                    viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  ><polyline points="9 18 15 12 9 6" /></svg>
+                  <AppIcon name="file" size="sm" class="h-3 w-3 shrink-0 opacity-50" />
+                  <span class="font-medium">{{ $t('chat.sessionSummary') }}</span>
+                </button>
+                <div
+                  v-if="expandedSummaries.has(String(msg.id ?? i))"
+                  class="rounded-b-lg border border-t-0 border-border/60 bg-muted/10 px-4 py-3"
+                >
+                  <p class="text-xs leading-relaxed text-muted-foreground/80">
+                    {{ msg.content }}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <!-- New Session divider line (always visible) -->
             <div class="w-full max-w-none px-2">
-              <p v-if="msg.content" class="mx-auto mb-2 max-w-md text-center text-xs leading-relaxed text-muted-foreground/70">
-                {{ msg.content }}
-              </p>
               <div class="relative flex items-center py-2">
                 <div class="grow border-t border-border" />
                 <div class="mx-4 flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
@@ -273,8 +301,32 @@ function toolIconName(toolData: ToolCallData): string {
   return 'settings'
 }
 const filterOpen = ref(false)
-const showToolCalls = ref(true)
-const showInjections = ref(false)
+const FILTER_STORAGE_KEY = 'openagent-chat-filters'
+
+function loadFilters() {
+  try {
+    const stored = localStorage.getItem(FILTER_STORAGE_KEY)
+    if (stored) return JSON.parse(stored)
+  } catch { /* ignore */ }
+  return null
+}
+
+function saveFilters() {
+  localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify({
+    showToolCalls: showToolCalls.value,
+    showInjections: showInjections.value,
+    showSessionSummaries: showSessionSummaries.value,
+  }))
+}
+
+const savedFilters = loadFilters()
+const showToolCalls = ref(savedFilters?.showToolCalls ?? true)
+const showInjections = ref(savedFilters?.showInjections ?? false)
+const showSessionSummaries = ref(savedFilters?.showSessionSummaries ?? false)
+
+watch([showToolCalls, showInjections, showSessionSummaries], () => saveFilters())
+const expandedSummaries = ref<Set<string>>(new Set())
+function toggleSummary(id: string) { const updated = new Set(expandedSummaries.value); updated.has(id) ? updated.delete(id) : updated.add(id); expandedSummaries.value = updated }
 
 const filteredMessages = computed(() => {
   return messages.value.filter((msg) => {

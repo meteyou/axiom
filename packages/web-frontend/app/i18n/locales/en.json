@@ -58,6 +58,8 @@
     "displayFilters": "Display Filters",
     "filterToolCalls": "Tool Calls",
     "filterInjections": "Injections",
+    "filterSessionSummaries": "Session Summaries",
+    "sessionSummary": "Session Summary",
     "scrollToBottom": "Scroll to bottom",
     "attachments": {
       "openOriginal": "Open original",
