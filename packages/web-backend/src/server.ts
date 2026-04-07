@@ -648,8 +648,12 @@ async function initOrUpdateAgentCore(): Promise<void> {
     // Wire agent core events (session end, task injection)
     wireAgentCoreEvents()
 
-    // Initialize async components (handle orphaned sessions from previous run)
-    await agentCore.init()
+    // Initialize async components (handle orphaned sessions from previous run).
+    // Fire-and-forget: do NOT await — summarizing orphaned sessions uses the LLM
+    // which may be slow/down, and blocking here prevents the server from starting.
+    agentCore.init().catch(err => {
+      console.error('[openagent] Error during agentCore.init():', err)
+    })
 
     // Try to start Telegram bot if configured
     await restartTelegramBot()
