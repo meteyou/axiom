@@ -85,29 +85,9 @@ const USER_PROFILE_TEMPLATE = `# User Profile — {username}
 
 const HEARTBEAT_TEMPLATE = `# Heartbeat Tasks
 
-This file defines periodic tasks the agent runs during heartbeat cycles.
-Both the user and the agent can edit this file.
-Be efficient — if nothing needs attention, complete silently.
-
-## Daily Memory Update
-
-- Use the read_chat_history tool to read recent chat messages (filter by start datetime to only get messages since last heartbeat)
-- Extract important facts, decisions, preferences, and context that aren't yet captured
-- Write new observations to today's daily memory file (/data/memory/daily/YYYY-MM-DD.md)
-- Focus on: user preferences learned, project decisions made, technical facts discovered, open action items
-- Skip ephemeral chatter — only persist information with lasting value
-- Don't duplicate what session summaries already captured
-
-## Memory Hygiene
-
-- Check MEMORY.md for outdated or contradictory entries
-- If daily memory has important insights not yet in MEMORY.md, promote them
-- Keep MEMORY.md well-organized and scannable
-- Skip if nothing meaningful changed since last heartbeat
-
-## Open Tasks
-
-(Add periodic checks, reminders, or monitoring tasks here)
+<!-- Define periodic tasks here. The agent will execute them during each heartbeat cycle. -->
+<!-- Both the user and the agent can edit this file. -->
+<!-- If this file has no actionable content, the heartbeat will skip automatically. -->
 `
 
 
