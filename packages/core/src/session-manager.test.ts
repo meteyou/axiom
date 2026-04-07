@@ -182,7 +182,7 @@ describe('SessionManager', () => {
       const dailyPath = path.join(memoryDir, 'daily', `${today}.md`)
       expect(fs.existsSync(dailyPath)).toBe(true)
       const dailyContent = fs.readFileSync(dailyPath, 'utf-8')
-      expect(dailyContent).toContain('Session Summary')
+      expect(dailyContent).toMatch(/## \d{2}:\d{2}/)
       expect(dailyContent).toContain('This session discussed testing.')
     })
 

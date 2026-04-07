@@ -200,8 +200,10 @@ export class SessionManager {
         summary = await this.onSummarize(session.id, userId)
         if (summary) {
           // Append summary to today's daily file
-          const timestamp = new Date().toISOString().split('T')[1].split('.')[0]
-          const formattedSummary = `\n## Session Summary (${timestamp})\n\n${summary}\n`
+          const now = new Date()
+          const hh = String(now.getHours()).padStart(2, '0')
+          const mm = String(now.getMinutes()).padStart(2, '0')
+          const formattedSummary = `\n## ${hh}:${mm}\n\n${summary}\n`
           appendToDailyFile(formattedSummary, undefined, this.memoryDir)
           session.summaryWritten = true
           console.log(`[session] Summary written to daily log for session ${session.id}`)
