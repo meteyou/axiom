@@ -258,8 +258,8 @@ function mergeTts(
     existing.openaiInstructions = tts.openaiInstructions
   }
   if (tts.mistralVoice !== undefined) {
-    if (typeof tts.mistralVoice !== 'string' || !tts.mistralVoice) {
-      return { error: 'tts.mistralVoice must be a non-empty string' }
+    if (typeof tts.mistralVoice !== 'string') {
+      return { error: 'tts.mistralVoice must be a string' }
     }
     existing.mistralVoice = tts.mistralVoice
   }
