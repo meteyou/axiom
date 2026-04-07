@@ -19,17 +19,17 @@ const emit = defineEmits<{
 
 <template>
   <div class="flex-shrink-0 border-b border-border px-5 py-4">
-    <div class="flex flex-wrap gap-2">
+    <div class="flex flex-wrap gap-2 [&>*]:w-full [&>*]:sm:w-auto">
       <Input
         v-model="searchQuery"
         type="text"
         :placeholder="t('logs.searchPlaceholder')"
-        class="min-w-[180px] flex-1 sm:flex-none"
+        class="w-full sm:min-w-[180px] sm:flex-1 sm:flex-none"
         @input="emit('search')"
       />
 
       <Select v-model="selectedSourceFilter" @update:model-value="emit('apply')">
-        <SelectTrigger class="w-[150px]">
+        <SelectTrigger class="w-full sm:w-[150px]">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -40,7 +40,7 @@ const emit = defineEmits<{
       </Select>
 
       <Select v-model="selectedToolName" @update:model-value="emit('apply')">
-        <SelectTrigger class="w-[150px]">
+        <SelectTrigger class="w-full sm:w-[150px]">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
