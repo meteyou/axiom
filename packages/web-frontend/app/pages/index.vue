@@ -114,6 +114,16 @@
               </template>
               <AppIcon v-else-if="msg.role === 'assistant'" name="bot" class="h-4 w-4" />
               <AppIcon v-else name="info" class="h-4 w-4" />
+              <!-- Telegram badge (source or delivered) -->
+              <span
+                v-if="msg.source === 'telegram' || msg.telegramDelivered"
+                class="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#2AABEE] text-white shadow-sm"
+                :title="msg.source === 'telegram' ? (msg.senderName ? `via Telegram (${msg.senderName})` : 'via Telegram') : 'Also sent via Telegram'"
+              >
+                <svg class="h-2 w-2" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 0C5.37 0 0 5.37 0 12s5.37 12 12 12 12-5.37 12-12S18.63 0 12 0zm5.53 7.18l-1.97 9.3c-.15.67-.54.83-1.09.52l-3.01-2.22-1.45 1.4c-.16.16-.3.3-.61.3l.22-3.05 5.55-5.02c.24-.22-.05-.34-.38-.13l-6.87 4.33-2.96-.93c-.64-.2-.66-.64.13-.95l11.57-4.46c.54-.19 1.01.13.87.91z"/>
+                </svg>
+              </span>
             </div>
             <div class="min-w-0 rounded-2xl px-4 py-2.5 text-sm leading-relaxed" :class="{
               'rounded-br-sm border border-primary/[0.22] bg-primary/[0.12] text-foreground': msg.role === 'user' && msg.source !== 'telegram',
@@ -122,6 +132,13 @@
               'rounded-bl-sm border border-[#2AABEE]/30 bg-[#2AABEE]/10 text-foreground': msg.role === 'assistant' && msg.telegramDelivered,
               'rounded-lg border border-border bg-muted/50 text-muted-foreground text-xs': msg.role === 'system',
             }">
+              <!-- Telegram label (source or delivered) -->
+              <p v-if="msg.source === 'telegram'" class="mb-1 text-xs font-medium text-[#2AABEE]">
+                via Telegram{{ msg.senderName ? ` (${msg.senderName})` : '' }}
+              </p>
+              <p v-else-if="msg.telegramDelivered" class="mb-1 text-xs font-medium text-[#2AABEE]">
+                via Telegram
+              </p>
               <div v-if="msg.role === 'assistant'" class="prose-chat break-words" v-html="renderMarkdown(msg.content ?? '')" />
               <p v-else class="whitespace-pre-wrap break-words">{{ msg.content }}</p>
               <ChatAttachments v-if="msg.attachments?.length" :attachments="msg.attachments" />
@@ -238,7 +255,15 @@ async function loadHistory() {
           } as ChatMessage
         }
 
-        return { id: m.id, role: m.role, content: m.content, timestamp: m.timestamp, source, attachments } as ChatMessage
+        // Parse telegramDelivered and isTaskInjection from metadata
+        const base: ChatMessage = { id: m.id, role: m.role, content: m.content, timestamp: m.timestamp, source, attachments }
+        if (m.role === 'assistant' && meta.telegramDelivered) {
+          base.telegramDelivered = true
+        }
+        if (meta.type === 'task_injection_response') {
+          base.isTaskInjection = true
+        }
+        return base
       })
     }
   } finally { loadingHistory.value = false; nextTick(() => scrollToBottom()) }
