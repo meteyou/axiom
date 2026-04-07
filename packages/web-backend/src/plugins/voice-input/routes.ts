@@ -8,18 +8,15 @@ const DEFAULT_WHISPER_URL = process.env.WHISPER_URL ?? 'https://whisper.jansohn.
 const DEFAULT_OLLAMA_URL = process.env.OLLAMA_URL ?? 'http://192.168.10.222:11434/api/generate'
 const DEFAULT_OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? 'qwen3:32b'
 const DEFAULT_VOICE_REWRITE_ENABLED = process.env.VOICE_REWRITE_ENABLED === 'true'
-const DEFAULT_REWRITE_PROMPT = `Du bearbeitest diktierten Text in mehrere Varianten. Antworte NUR mit validem JSON, keine Erklärung, kein Markdown.
+const DEFAULT_REWRITE_PROMPT = `You are a prompt architect. The user has dictated a voice message that should become a prompt for an AI assistant.
 
-Regeln pro Variante:
-- corrected: Nur Rechtschreibung, Grammatik, Satzzeichen korrigieren. Füllwörter entfernen. Stil EXAKT beibehalten.
-- rewritten: Natürlich und flüssig umformulieren. Gleiche Bedeutung, gleiche Tonalität.
-- formal: Professioneller Ton. Siezen statt Duzen. Geschäftstauglich.
-- short: Auf das Wesentliche kürzen. So knapp wie möglich.
+Your task:
+- Convert the transcribed speech into a single, clean, optimized prompt
+- Remove filler words, repetitions, and spoken artifacts
+- Preserve the full intent and all relevant details
+- Output ONLY the optimized prompt — no explanations, no alternatives, no labels
 
-Input: {{transcript}}
-
-Antwort als JSON:
-{"corrected": "...", "rewritten": "...", "formal": "...", "short": "..."}`
+Transcript: {{transcript}}`
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
