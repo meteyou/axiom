@@ -50,7 +50,7 @@ export interface AgentCoreOptions {
   providerConfig?: ProviderConfig // For OAuth token refresh
   providerManager?: ProviderManager // For fallback retry support
   /** Called when a session ends (timeout or /new command) with the summary text */
-  onSessionEnd?: (userId: string, summary: string | null) => void
+  onSessionEnd?: (userId: string, sessionId: string, summary: string | null) => void
 }
 
 // Re-export for backward compatibility
@@ -384,7 +384,7 @@ export class AgentCore {
   private baseInstructions?: string
   private providerConfig?: ProviderConfig
   private providerManager?: ProviderManager
-  private onSessionEndCallback?: (userId: string, summary: string | null) => void
+  private onSessionEndCallback?: (userId: string, sessionId: string, summary: string | null) => void
   private onTaskInjectionChunkCallback?: (chunk: ResponseChunk) => void
   private messageQueue: MessageQueue
 
@@ -490,7 +490,7 @@ export class AgentCore {
 
         // Notify external listener (e.g. ws-chat)
         if (this.onSessionEndCallback) {
-          this.onSessionEndCallback(session.userId, summary)
+          this.onSessionEndCallback(session.userId, session.id, summary)
         }
       },
     })
@@ -819,7 +819,7 @@ Rules:
   /**
    * Set the callback for session end events
    */
-  setOnSessionEnd(callback: (userId: string, summary: string | null) => void): void {
+  setOnSessionEnd(callback: (userId: string, sessionId: string, summary: string | null) => void): void {
     this.onSessionEndCallback = callback
   }
 

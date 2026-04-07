@@ -477,7 +477,13 @@ const onTelegramChatEvent = (event: import('@openagent/telegram').TelegramChatEv
 function wireAgentCoreEvents(): void {
   if (!agentCore) return
 
-  agentCore.setOnSessionEnd((userId: string, summary: string | null) => {
+  agentCore.setOnSessionEnd((userId: string, sessionId: string, summary: string | null) => {
+    // Persist session divider to chat_messages so it survives page reloads
+    const dividerMetadata = JSON.stringify({ type: 'session_divider', summary: summary ?? null })
+    db.prepare(
+      'INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)'
+    ).run(sessionId, parseInt(userId, 10), 'system', summary ?? '', dividerMetadata)
+
     chatEventBus.broadcast({
       type: 'session_end',
       userId: parseInt(userId, 10),

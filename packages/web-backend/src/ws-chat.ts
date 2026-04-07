@@ -203,9 +203,7 @@ export function setupWebSocketChat(
             }
           }
 
-          // Save divider to DB (using old session ID, before switching)
-          const dividerMetadata = JSON.stringify({ type: 'session_divider', summary: summary ?? null })
-          saveChatMessage(db, sessionId, currentUser.userId, 'system', summary ?? '', dividerMetadata)
+          // Divider is persisted to chat_messages centrally in server.ts onSessionEnd callback.
 
           // The next getOrCreateSession call will create a fresh session in the SessionManager.
           // Use a temporary ID until then; it'll be resolved on the next message.
