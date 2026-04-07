@@ -93,30 +93,68 @@ const HEARTBEAT_TEMPLATE = `# Heartbeat Tasks
 
 const CONSOLIDATION_TEMPLATE = `# Memory Consolidation Rules
 
-<!-- Define what the nightly memory consolidation should focus on. -->
-<!-- The consolidation agent reads this file to understand your priorities. -->
+<!-- These rules guide the nightly memory consolidation process. -->
+<!-- The consolidation agent reads this file to decide what to promote, update, or ignore. -->
+<!-- You can customize these rules to match your preferences. -->
+
+## Memory Architecture
+
+The memory system has several tiers. Each piece of information should live in exactly one place.
+
+| File / Directory | Purpose |
+|---|---|
+| MEMORY.md | Long-term core memory: learned lessons, recurring patterns, technical notes |
+| users/*.md | Per-user profiles: name, preferences, communication style, work context |
+| projects/*.md | Per-project notes: architecture, key decisions, dependencies, status |
+| daily/*.md | Ephemeral daily logs (source for consolidation, never modified) |
 
 ## What to promote to MEMORY.md
-- Recurring patterns and lessons learned
+
+- Recurring patterns and lessons learned across multiple sessions
 - Technical decisions and their rationale
-- Project architecture insights
+- General preferences that apply across all projects
 - Important facts that should persist across sessions
+- Corrections to previously stored information
 
-## What to update in user profiles
+## What to update in user profiles (users/*.md)
+
 - Discovered preferences and communication style
-- Work context changes
-- Personal details the user has shared
+- Work context changes (role, current focus areas)
+- Personal details the user has shared (name, location, timezone)
+- Skills and expertise areas
+- Do NOT store language or timezone if they are already in the central settings
 
-## What to update in project notes
-- New project discoveries
-- Architecture changes
-- Key dependencies or integration points
+## What to update in project notes (projects/*.md)
+
+- New project discoveries and context
+- Architecture changes and design decisions
+- Key dependencies, integration points, and tech stack
+- Project status changes and milestones
+- Create a new project note when a previously unknown project is discussed repeatedly
+- Project notes support YAML frontmatter with aliases, e.g.:
+  \`\`\`
+  ---
+  aliases: [short-name, abbreviation]
+  ---
+  \`\`\`
 
 ## What to ignore
+
 - One-off questions with no lasting value
-- Casual small talk
-- Temporary debugging sessions
-- Information that is already captured elsewhere
+- Casual small talk without personal details
+- Temporary debugging sessions (unless a reusable lesson was learned)
+- Information that is already captured in the correct file
+- Redundant or duplicate information
+
+## General Principles
+
+- **Be selective**: Only promote information with clear long-term value.
+- **No duplication**: Each fact lives in exactly one place. Move, don't copy.
+- **Merge & refine**: If similar information exists, update it rather than adding a duplicate.
+- **Remove outdated info**: If daily entries contradict existing memory, update or remove the old entry.
+- **Preserve structure**: Keep existing markdown structure. Add new sections if needed.
+- **Be concise**: Use bullet points and short descriptions. Core memory should be scannable.
+- **Daily files are read-only**: Never modify daily log files — they are append-only source material.
 `
 
 
@@ -562,7 +600,11 @@ export function assembleSystemPrompt(options?: {
   // 5. Recent daily context
   const dailyContext = readRecentDailyFiles(recentDays, memoryDir)
   if (dailyContext) {
-    sections.push(`<recent_memory>\n${dailyContext}\n</recent_memory>`)
+    sections.push(`<recent_memory>
+These are summarized session notes from recent days. They are condensed — for full conversation details, use the read_chat_history tool.
+
+${dailyContext}
+</recent_memory>`)
   }
 
   // 6. User profile injection

@@ -103,6 +103,32 @@ describe('memory-consolidation', () => {
       expect(userContent).toContain('NO_UPDATE')
     })
 
+    it('embeds consolidation rules in the system prompt when provided', () => {
+      const currentMemory = '# Agent Memory\n'
+      const dailyEntries = [
+        { date: '2025-03-25', content: 'Some entry' },
+      ]
+      const rules = '## Custom Rules\n- Always promote project names\n- Ignore small talk'
+
+      const context = buildConsolidationPrompt(currentMemory, dailyEntries, rules)
+
+      expect(context.systemPrompt).toContain('Custom Rules')
+      expect(context.systemPrompt).toContain('Always promote project names')
+      expect(context.systemPrompt).toContain('Ignore small talk')
+    })
+
+    it('uses fallback rules when no consolidation rules are provided', () => {
+      const currentMemory = '# Agent Memory\n'
+      const dailyEntries = [
+        { date: '2025-03-25', content: 'Some entry' },
+      ]
+
+      const context = buildConsolidationPrompt(currentMemory, dailyEntries)
+
+      expect(context.systemPrompt).toContain('Be selective')
+      expect(context.systemPrompt).toContain('Consolidation Rules')
+    })
+
     it('includes all daily entries in chronological order', () => {
       const dailyEntries = [
         { date: '2025-03-24', content: 'Entry 1' },

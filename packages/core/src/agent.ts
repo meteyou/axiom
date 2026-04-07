@@ -781,7 +781,15 @@ export class AgentCore {
 
     try {
       const response = await completeSimple(this.model, {
-        systemPrompt: 'Write a compact paragraph per session capturing topics, decisions, key facts, and anything needed for session continuation. The agent in the next session will see this. Write what they need to know. If nothing noteworthy happened, write \'No significant content.\'',
+        systemPrompt: `Summarize this conversation for the agent's daily memory log.
+
+Rules:
+- Write 1–3 short bullet points (not paragraphs). Max 150 words total.
+- Focus on: decisions made, action items, key facts learned, and open questions.
+- Omit greetings, small talk, and anything the agent already knows from its core memory.
+- Use neutral, factual tone. No filler words.
+- If nothing noteworthy happened, write "No significant content."
+- Do NOT repeat the full conversation — extract only what matters for future sessions.`,
         messages: [{
           role: 'user' as const,
           content: conversationHistory,

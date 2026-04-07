@@ -10,6 +10,7 @@ import {
   ensureConfigTemplates,
   loadConfig,
   logToolCall,
+  readConsolidationFile,
 } from '@openagent/core'
 
 export interface ConsolidationSettings {
@@ -31,32 +32,35 @@ export const DEFAULT_CONSOLIDATION_SETTINGS: ConsolidationSettings = {
 
 /**
  * Build the consolidation prompt that instructs the task agent what to do.
+ * Embeds the user-defined consolidation rules from CONSOLIDATION.md directly.
  */
-function buildConsolidationTaskPrompt(lookbackDays: number): string {
+function buildConsolidationTaskPrompt(lookbackDays: number, consolidationRules: string): string {
   return `You are a nightly memory consolidation agent. Your job is to review recent daily memory files and decide what knowledge should be promoted to long-term memory, project notes, or user profiles.
+
+## Consolidation Rules
+
+${consolidationRules.trim()}
 
 ## Steps
 
-1. **Read consolidation rules**: Use \`read_file\` to read /data/config/CONSOLIDATION.md. This file contains user-defined rules for what to promote, update, or ignore. Follow these rules throughout the process.
+1. **Read recent daily files**: Use \`list_files\` on the \`daily/\` directory, then \`read_file\` to read the last ${lookbackDays} days of daily files (files named YYYY-MM-DD.md, sorted by date). Skip files that only contain a header and no content.
 
-2. **Read recent daily files**: Use \`list_files\` on the \`daily/\` directory, then \`read_file\` to read the last ${lookbackDays} days of daily files (files named YYYY-MM-DD.md, sorted by date). Skip files that only contain a header and no content.
+2. **Read MEMORY.md**: Use \`read_file\` to read the current MEMORY.md. This is the long-term memory file.
 
-3. **Read MEMORY.md**: Use \`read_file\` to read the current MEMORY.md. This is the long-term memory file.
+3. **Read project notes**: Use \`list_files\` on the \`projects/\` directory, then \`read_file\` to read each project note. These contain per-project context.
 
-4. **Read project notes**: Use \`list_files\` on the \`projects/\` directory, then \`read_file\` to read each project note. These contain per-project context.
+4. **Read user profiles**: Use \`list_files\` on the \`users/\` directory, then \`read_file\` to read each user profile.
 
-5. **Read user profiles**: Use \`list_files\` on the \`users/\` directory, then \`read_file\` to read each user profile.
+5. **Optionally read chat history**: If daily files reference conversations that need more detail, use \`read_chat_history\` to get the full context.
 
-6. **Optionally read chat history**: If daily files reference conversations that need more detail, use \`read_chat_history\` to get the full context.
-
-7. **Decide what to promote/update** (guided by CONSOLIDATION.md rules):
+6. **Decide what to promote/update** (guided by the consolidation rules above):
    - If you find recurring patterns, learned lessons, or important facts in daily files, add them to MEMORY.md using \`edit_file\` or \`write_file\`.
    - If you find project-specific information, update the relevant project note in \`projects/\` or create a new one if a new project is detected.
    - If you find user-specific information (preferences, context), update the relevant user profile in \`users/\`.
    - Remove outdated or superseded information from MEMORY.md.
    - Do NOT duplicate information across files — each fact should live in exactly one place.
 
-8. **Complete silently**: When done, finish with STATUS: silent. Only use STATUS: completed if you made significant changes that the user should know about.
+7. **Complete silently**: When done, finish with STATUS: silent. Only use STATUS: completed if you made significant changes that the user should know about.
 
 ## Important Rules
 
@@ -270,8 +274,11 @@ export class MemoryConsolidationScheduler {
         return result
       }
 
+      // Read user-defined consolidation rules
+      const consolidationRules = readConsolidationFile()
+
       // Create a task via TaskStore
-      const prompt = buildConsolidationTaskPrompt(this.settings.lookbackDays)
+      const prompt = buildConsolidationTaskPrompt(this.settings.lookbackDays, consolidationRules)
       const task: Task = this.taskStore.create({
         name: 'Nightly Memory Consolidation',
         prompt,

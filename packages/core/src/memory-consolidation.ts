@@ -2,11 +2,13 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { completeSimple } from '@mariozechner/pi-ai'
 import type { Api, Model, Context } from '@mariozechner/pi-ai'
-import { getMemoryDir, ensureMemoryStructure, readMemoryFile, writeMemoryFile } from './memory.js'
+import { getMemoryDir, ensureMemoryStructure, readMemoryFile, writeMemoryFile, readConsolidationFile } from './memory.js'
 
 export interface MemoryConsolidationOptions {
   /** Directory containing memory files */
   memoryDir?: string
+  /** Config directory (where CONSOLIDATION.md lives) */
+  configDir?: string
   /** Number of past days of daily files to review (default: 3) */
   lookbackDays?: number
   /** pi-ai model to use for the consolidation LLM call */
@@ -69,14 +71,20 @@ export function readDailyFilesForConsolidation(
 
 /**
  * Build the prompt for the consolidation LLM call.
+ * Uses the user-defined consolidation rules from CONSOLIDATION.md.
  */
 export function buildConsolidationPrompt(
   currentMemory: string,
   dailyEntries: Array<{ date: string; content: string }>,
+  consolidationRules?: string,
 ): Context {
   const dailyBlock = dailyEntries
     .map(e => `--- ${e.date} ---\n${e.content}`)
     .join('\n\n')
+
+  const rulesBlock = consolidationRules?.trim()
+    ? consolidationRules.trim()
+    : 'Be selective. Only promote information with lasting value. Merge, don\'t duplicate. Remove outdated info.'
 
   const systemPrompt = `You are a memory consolidation assistant. Your job is to review recent daily memory entries and decide whether the core memory file (MEMORY.md) needs to be updated.
 
@@ -84,13 +92,11 @@ The core memory file contains important, long-term information: learned lessons,
 
 Daily memory files contain session-specific notes, observations, and events from individual days. Most daily entries are ephemeral and don't need to be preserved. But some contain valuable insights, preferences, or lessons that should be promoted to core memory.
 
-## Rules
+## Consolidation Rules
 
-1. **Be selective**: Only promote information that has lasting value. Don't add ephemeral details.
-2. **Merge, don't duplicate**: If the core memory already contains similar information, update/refine it rather than adding duplicates.
-3. **Preserve structure**: Keep the existing markdown structure of MEMORY.md. Add new sections if needed, but keep it organized.
-4. **Remove outdated info**: If daily entries contradict or update existing core memory, update the core memory accordingly.
-5. **Be concise**: Core memory should be scannable. Use bullet points and short descriptions.
+Follow these user-defined rules when deciding what to promote or ignore:
+
+${rulesBlock}
 
 ## Response format
 
@@ -150,8 +156,11 @@ export async function consolidateMemory(
   // Read current core memory
   const currentMemory = readMemoryFile(memoryDir)
 
+  // Read consolidation rules from CONSOLIDATION.md
+  const consolidationRules = readConsolidationFile(options.configDir)
+
   // Build the prompt
-  const context = buildConsolidationPrompt(currentMemory, dailyEntries)
+  const context = buildConsolidationPrompt(currentMemory, dailyEntries, consolidationRules)
 
   // Call the LLM
   const response = await completeSimple(options.model, context, {

@@ -198,6 +198,9 @@ describe('MemoryConsolidationScheduler', () => {
       expect(startedTask.task.prompt).toContain('project notes')
       expect(startedTask.task.prompt).toContain('user profiles')
       expect(startedTask.task.prompt).toContain('read_chat_history')
+      // Verify it embeds the consolidation rules from CONSOLIDATION.md
+      expect(startedTask.task.prompt).toContain('Consolidation Rules')
+      expect(startedTask.task.prompt).toContain('Memory Consolidation Rules')
 
       // Verify result
       expect(result.updated).toBe(false) // silent completion = not updated
