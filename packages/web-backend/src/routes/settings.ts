@@ -219,6 +219,60 @@ function mergeAgentHeartbeat(
   return { error: null, changed: true }
 }
 
+function mergeTts(
+  body: Record<string, unknown>,
+  settingsRaw: Record<string, unknown>,
+): { error: string | null } {
+  const tts = body.tts as Record<string, unknown> | undefined
+  if (!tts) return { error: null }
+
+  const existing = (settingsRaw.tts ?? {}) as Record<string, unknown>
+
+  if (tts.enabled !== undefined) existing.enabled = !!tts.enabled
+  if (tts.provider !== undefined) {
+    const err = validateEnum(tts.provider, ['openai', 'mistral'], 'tts.provider')
+    if (err) return { error: err }
+    existing.provider = tts.provider
+  }
+  if (tts.providerId !== undefined) {
+    if (typeof tts.providerId !== 'string') {
+      return { error: 'tts.providerId must be a string' }
+    }
+    existing.providerId = tts.providerId
+  }
+  if (tts.openaiModel !== undefined) {
+    const err = validateEnum(tts.openaiModel, ['gpt-4o-mini-tts', 'tts-1', 'tts-1-hd'], 'tts.openaiModel')
+    if (err) return { error: err }
+    existing.openaiModel = tts.openaiModel
+  }
+  if (tts.openaiVoice !== undefined) {
+    if (typeof tts.openaiVoice !== 'string' || !tts.openaiVoice) {
+      return { error: 'tts.openaiVoice must be a non-empty string' }
+    }
+    existing.openaiVoice = tts.openaiVoice
+  }
+  if (tts.openaiInstructions !== undefined) {
+    if (typeof tts.openaiInstructions !== 'string') {
+      return { error: 'tts.openaiInstructions must be a string' }
+    }
+    existing.openaiInstructions = tts.openaiInstructions
+  }
+  if (tts.mistralVoice !== undefined) {
+    if (typeof tts.mistralVoice !== 'string' || !tts.mistralVoice) {
+      return { error: 'tts.mistralVoice must be a non-empty string' }
+    }
+    existing.mistralVoice = tts.mistralVoice
+  }
+  if (tts.responseFormat !== undefined) {
+    const err = validateEnum(tts.responseFormat, ['mp3', 'wav', 'opus', 'flac'], 'tts.responseFormat')
+    if (err) return { error: err }
+    existing.responseFormat = tts.responseFormat
+  }
+
+  settingsRaw.tts = existing
+  return { error: null }
+}
+
 function mergeTasks(
   body: Record<string, unknown>,
   settingsRaw: Record<string, unknown>,
@@ -333,6 +387,20 @@ function buildAgentHeartbeatResponse(settingsRaw: Record<string, unknown>) {
   }
 }
 
+function buildTtsResponse(settingsRaw: Record<string, unknown>) {
+  const tts = (settingsRaw.tts ?? {}) as Record<string, unknown>
+  return {
+    enabled: tts.enabled ?? false,
+    provider: tts.provider ?? 'openai',
+    providerId: tts.providerId ?? '',
+    openaiModel: tts.openaiModel ?? 'gpt-4o-mini-tts',
+    openaiVoice: tts.openaiVoice ?? 'nova',
+    openaiInstructions: tts.openaiInstructions ?? '',
+    mistralVoice: tts.mistralVoice ?? '',
+    responseFormat: tts.responseFormat ?? 'mp3',
+  }
+}
+
 function buildTasksResponse(settingsRaw: Record<string, unknown>) {
   const tasks = (settingsRaw.tasks ?? {}) as Record<string, unknown>
   const ld = (tasks.loopDetection ?? {}) as Record<string, unknown>
@@ -386,6 +454,7 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
         memoryConsolidation: buildConsolidationResponse(settingsRaw),
         agentHeartbeat: buildAgentHeartbeatResponse(settingsRaw),
         tasks: buildTasksResponse(settingsRaw),
+        tts: buildTtsResponse(settingsRaw),
       })
     } catch (err) {
       res.status(500).json({ error: `Failed to read settings: ${(err as Error).message}` })
@@ -455,6 +524,9 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
       const tk = mergeTasks(body, settingsRaw)
       if (tk.error) { res.status(400).json({ error: tk.error }); return }
 
+      const ttsResult = mergeTts(body, settingsRaw)
+      if (ttsResult.error) { res.status(400).json({ error: ttsResult.error }); return }
+
       // ── Telegram ──
       if (body.telegramEnabled !== undefined) {
         telegram.enabled = !!body.telegramEnabled
@@ -515,6 +587,7 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
         memoryConsolidation: buildConsolidationResponse(settingsRaw),
         agentHeartbeat: buildAgentHeartbeatResponse(settingsRaw),
         tasks: buildTasksResponse(settingsRaw),
+        tts: buildTtsResponse(settingsRaw),
       })
     } catch (err) {
       res.status(500).json({ error: `Failed to update settings: ${(err as Error).message}` })

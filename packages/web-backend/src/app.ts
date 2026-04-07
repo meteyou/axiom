@@ -19,6 +19,7 @@ import { createHealthRouter } from './routes/health.js'
 import { createTasksRouter } from './routes/tasks.js'
 import { createCronjobsRouter } from './routes/cronjobs.js'
 import { createSecretsRouter } from './routes/secrets.js'
+import { createTtsRouter } from './routes/tts.js'
 import type { TaskRunner, TaskScheduler, TaskEventBus, AgentHeartbeatService } from '@openagent/core'
 import { ensureAdminUser } from './auth.js'
 import type { HealthMonitorService } from './health-monitor.js'
@@ -128,6 +129,7 @@ export function createApp(options?: AppOptions): express.Express {
       getTaskScheduler: options.getTaskScheduler,
     }))
     app.use('/api/secrets', createSecretsRouter())
+    app.use('/api/tts', createTtsRouter())
 
     if (options.healthMonitorService && options.runtimeMetrics) {
       app.use('/api/health', createHealthRouter({
