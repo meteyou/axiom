@@ -122,6 +122,8 @@
     "oauthManualCode": "Oder fügen Sie die Redirect-URL hier ein (für Remote-Server):",
     "oauthManualCodePlaceholder": "Redirect-URL oder Code einfügen...",
     "oauthSubmitCode": "Absenden",
+    "oauthRenewToken": "Token erneuern",
+    "oauthRenewing": "Erneuere...",
     "statusConnected": "Verbunden",
     "statusError": "Fehler",
     "statusUntested": "Ungetestet",

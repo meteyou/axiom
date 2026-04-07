@@ -17,10 +17,11 @@ import {
   getFallbackProvider,
   setFallbackProvider,
   clearFallbackProvider,
+  updateOAuthCredentials,
 } from '@openagent/core'
 import { getModels as getPiAiModels } from '@mariozechner/pi-ai'
 import type { KnownProvider as PiAiKnownProvider } from '@mariozechner/pi-ai'
-import type { ProviderType } from '@openagent/core'
+import type { ProviderConfig, ProviderType } from '@openagent/core'
 import { getOAuthProvider } from '@mariozechner/pi-ai/oauth'
 import type { OAuthCredentials } from '@mariozechner/pi-ai/oauth'
 import { jwtMiddleware } from '../auth.js'
@@ -47,6 +48,8 @@ interface PendingOAuthLogin {
   error?: string
   resolveManualCode?: (code: string) => void
   createdAt: number
+  /** When set, this is a token renewal for an existing provider */
+  existingProviderId?: string
 }
 
 const pendingOAuthLogins = new Map<string, PendingOAuthLogin>()
@@ -178,10 +181,11 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
    * Start an OAuth login flow for a subscription provider
    */
   router.post('/oauth/login', async (req: AuthenticatedRequest, res) => {
-    const { providerType, name, defaultModel } = req.body as {
+    const { providerType, name, defaultModel, providerId } = req.body as {
       providerType?: string
       name?: string
       defaultModel?: string
+      providerId?: string
     }
 
     if (!providerType || !VALID_PROVIDER_TYPES.includes(providerType)) {
@@ -216,6 +220,7 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
       name: name.trim(),
       defaultModel: defaultModel.trim(),
       createdAt: Date.now(),
+      existingProviderId: providerId,
     }
     pendingOAuthLogins.set(loginId, loginState)
 
@@ -284,17 +289,27 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
 
     if (loginState.status === 'completed' && loginState.credentials) {
       try {
-        const beforeActiveProvider = loadProviders().activeProvider ?? null
-        const provider = addOAuthProvider({
-          name: loginState.name,
-          providerType: loginState.providerType as ProviderType,
-          defaultModel: loginState.defaultModel,
-          oauthCredentials: loginState.credentials,
-        })
-        const afterActiveProvider = loadProviders().activeProvider ?? null
+        let provider: ProviderConfig
 
-        if (beforeActiveProvider !== afterActiveProvider) {
-          options.onActiveProviderChanged?.()
+        if (loginState.existingProviderId) {
+          // Token renewal: update credentials on existing provider
+          updateOAuthCredentials(loginState.existingProviderId, loginState.credentials)
+          const file = loadProviders()
+          provider = file.providers.find(p => p.id === loginState.existingProviderId)!
+        } else {
+          // New provider creation
+          const beforeActiveProvider = loadProviders().activeProvider ?? null
+          provider = addOAuthProvider({
+            name: loginState.name,
+            providerType: loginState.providerType as ProviderType,
+            defaultModel: loginState.defaultModel,
+            oauthCredentials: loginState.credentials,
+          })
+          const afterActiveProvider = loadProviders().activeProvider ?? null
+
+          if (beforeActiveProvider !== afterActiveProvider) {
+            options.onActiveProviderChanged?.()
+          }
         }
 
         pendingOAuthLogins.delete(loginId)
