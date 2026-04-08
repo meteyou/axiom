@@ -942,6 +942,13 @@ Rules:
   }
 
   /**
+   * End all active sessions and emit session_end events.
+   */
+  async endAllSessions(): Promise<void> {
+    await this.sessionManager.endAllSessions('provider_change')
+  }
+
+  /**
    * Refresh the system prompt from current memory state
    */
   refreshSystemPrompt(channel?: string, currentUser?: { username: string }): void {

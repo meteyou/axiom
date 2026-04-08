@@ -597,7 +597,23 @@ async function initOrUpdateAgentCore(): Promise<void> {
     return
   }
 
+  const previousAgentCore = agentCore
+
   try {
+    if (previousAgentCore) {
+      try {
+        await previousAgentCore.endAllSessions()
+      } catch (err) {
+        console.error('[openagent] Failed to end sessions before provider change:', err)
+      }
+
+      try {
+        await previousAgentCore.dispose()
+      } catch (err) {
+        console.error('[openagent] Failed to dispose previous agent core:', err)
+      }
+    }
+
     const model = buildModel(provider)
     const apiKey = await getApiKeyForProvider(provider)
     const fallbackProvider = getFallbackProvider()

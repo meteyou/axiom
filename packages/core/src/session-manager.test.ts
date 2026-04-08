@@ -340,6 +340,32 @@ describe('SessionManager', () => {
     })
   })
 
+  describe('endAllSessions', () => {
+    it('ends active sessions and emits session end callbacks', async () => {
+      const onSummarize = vi.fn().mockResolvedValue('Provider switched.')
+      const onSessionEnd = vi.fn()
+      const manager = new SessionManager({
+        db,
+        memoryDir,
+        onSummarize,
+        onSessionEnd,
+      })
+      await manager.init()
+
+      manager.getOrCreateSession('user1')
+      manager.recordMessage('user1')
+      manager.getOrCreateSession('user2')
+      manager.recordMessage('user2')
+
+      await manager.endAllSessions('provider_change')
+
+      expect(manager.hasActiveSession('user1')).toBe(false)
+      expect(manager.hasActiveSession('user2')).toBe(false)
+      expect(onSummarize).toHaveBeenCalledTimes(2)
+      expect(onSessionEnd).toHaveBeenCalledTimes(2)
+    })
+  })
+
   describe('dispose', () => {
     it('clears all sessions and updates SQLite', async () => {
       const manager = new SessionManager({ db, memoryDir })

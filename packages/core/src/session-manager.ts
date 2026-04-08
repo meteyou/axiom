@@ -27,6 +27,8 @@ export interface SessionManagerOptions {
   onSessionEnd?: (session: SessionInfo, summary: string | null) => void
 }
 
+export type SessionEndReason = 'timeout' | 'manual' | 'provider_change'
+
 /**
  * Manages active sessions per user with timeout and auto-summarization.
  *
@@ -351,7 +353,7 @@ export class SessionManager {
    * End a session: summarize and dispose.
    * Always uses session.lastActivity as the timestamp for the daily file entry.
    */
-  private async endSession(userId: string, reason: 'timeout' | 'manual' = 'timeout'): Promise<string | null> {
+  private async endSession(userId: string, reason: SessionEndReason = 'timeout'): Promise<string | null> {
     const session = this.sessions.get(userId)
     if (!session) {
       console.log(`[session] endSession called for user ${userId} but no active session found`)
@@ -418,6 +420,16 @@ export class SessionManager {
     this.sessions.delete(userId)
 
     return summary
+  }
+
+  /**
+   * End all active sessions.
+   */
+  async endAllSessions(reason: Exclude<SessionEndReason, 'timeout'> = 'manual'): Promise<void> {
+    const userIds = Array.from(this.sessions.keys())
+    for (const userId of userIds) {
+      await this.endSession(userId, reason)
+    }
   }
 
   /**
