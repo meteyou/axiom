@@ -83,7 +83,8 @@
     "micRecording": "Aufnahme...",
     "micTranscribing": "Transkribiere...",
     "micError": "Mikrofonfehler",
-    "micPermissionDenied": "Mikrofonzugriff verweigert"
+    "micPermissionDenied": "Mikrofonzugriff verweigert",
+    "micTooShort": "Aufnahme zu kurz — länger halten"
   },
   "status": {
     "online": "Online",
@@ -474,6 +475,8 @@
     "sttWhisperUrlPlaceholder": "http://localhost:8000/v1/audio/transcriptions",
     "sttWhisperUrlHint": "Vollständige URL eines Whisper-kompatiblen Transkriptionsendpunkts (z.B. faster-whisper-server).",
     "sttOpenaiNone": "OpenAI Whisper (kein Anbieter konfiguriert)",
+    "sttOpenaiModel": "Whisper-Modell",
+    "sttOpenaiModelHint": "OpenAI-Modell für die Audio-Transkription.",
     "sttOllamaNone": "Ollama (kein Anbieter konfiguriert)",
     "sttOllamaModel": "Ollama-Modell",
     "sttOllamaModelHint": "Name des Ollama-Modells für die Transkription.",
