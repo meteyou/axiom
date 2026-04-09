@@ -659,7 +659,8 @@ export class TelegramBot {
         : settingsLanguage
 
       // Transcribe via core STT module
-      const transcript = await transcribeAudio(buffer, { language })
+      const result = await transcribeAudio(buffer, { language })
+      const transcript = result.rewritten ?? result.transcript
 
       if (!transcript.trim()) {
         console.warn('[telegram] Voice transcription returned empty result')

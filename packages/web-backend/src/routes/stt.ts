@@ -33,8 +33,12 @@ export function createSttRouter(): Router {
           ? undefined
           : settingsLanguage
 
-        const transcript = await transcribeAudio(file.buffer, { language })
-        res.json({ transcript })
+        const result = await transcribeAudio(file.buffer, { language })
+        const body: { transcript: string; rewritten?: string } = { transcript: result.transcript }
+        if (result.rewritten !== undefined) {
+          body.rewritten = result.rewritten
+        }
+        res.json(body)
       } catch (err) {
         const message = (err as Error).message
         const status = message.includes('not enabled') ? 403 : 500

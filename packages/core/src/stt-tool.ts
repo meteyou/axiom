@@ -116,7 +116,7 @@ export function createTranscribeAudioTool(): AgentTool {
         const buffer = fs.readFileSync(resolved)
 
         // Transcribe
-        const transcript = await transcribeAudio(buffer, { language })
+        const result = await transcribeAudio(buffer, { language })
 
         // If rewrite requested and rewrite is enabled in settings, apply rewrite
         if (rewrite && settings.rewrite.enabled && settings.rewrite.providerId) {
@@ -125,7 +125,7 @@ export function createTranscribeAudioTool(): AgentTool {
           return {
             content: [{
               type: 'text' as const,
-              text: transcript,
+              text: result.rewritten ?? result.transcript,
             }],
             details: {
               path: resolved,
@@ -133,7 +133,9 @@ export function createTranscribeAudioTool(): AgentTool {
               mimeType,
               language: language ?? 'auto',
               rewrite: true,
-              rewriteNote: 'Rewrite was requested. Please clean up the transcript by removing filler words, false starts, and repetitions while preserving the meaning.',
+              rewriteNote: result.rewritten
+                ? undefined
+                : 'Rewrite was requested. Please clean up the transcript by removing filler words, false starts, and repetitions while preserving the meaning.',
             },
           }
         }
@@ -141,7 +143,7 @@ export function createTranscribeAudioTool(): AgentTool {
         return {
           content: [{
             type: 'text' as const,
-            text: transcript,
+            text: result.transcript,
           }],
           details: {
             path: resolved,
