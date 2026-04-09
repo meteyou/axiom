@@ -794,6 +794,7 @@ Rules:
 - Focus on: decisions made, action items, key facts learned, and open questions.
 - Omit greetings, small talk, and anything the agent already knows from its core memory.
 - Use neutral, factual tone. No filler words.
+- If the transcript contains background-task updates or task results, treat them as part of the session and summarize their actual outcome.
 - If nothing noteworthy happened, write "No significant content."
 - Do NOT repeat the full conversation — extract only what matters for future sessions.`,
         messages: [{
@@ -801,7 +802,10 @@ Rules:
           content: conversationHistory,
           timestamp: Date.now(),
         }],
-      }, { apiKey: this.apiKey })
+      }, {
+        apiKey: this.apiKey,
+        temperature: 0,
+      })
 
       const summary = response.content
         .filter(c => c.type === 'text')
@@ -809,7 +813,7 @@ Rules:
         .join('')
         .trim()
 
-      return summary || 'Session ended.'
+      return summary || 'No significant content.'
     } catch (err) {
       console.error('Failed to generate session summary:', err)
       return 'Session ended (summary generation failed).'

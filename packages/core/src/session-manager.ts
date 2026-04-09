@@ -125,7 +125,7 @@ export class SessionManager {
    * Uses the lastActivity timestamp to write to the correct daily file.
    */
   private async summarizeAndCloseOrphanedSession(
-    row: { id: string; message_count: number; summary_written: number; source: string },
+    row: { id: string; started_at: string; message_count: number; summary_written: number; source: string },
     userId: string,
     lastActivity: number,
   ): Promise<void> {
@@ -134,7 +134,11 @@ export class SessionManager {
 
     if (row.message_count > 0 && !summaryWritten && this.onSummarize) {
       try {
-        const history = this.buildConversationHistory(row.id)
+        const history = this.buildConversationHistory(row.id, {
+          userId,
+          startedAt: this.parseSqliteTimestamp(row.started_at),
+          endAt: lastActivity,
+        })
         if (history) {
           summary = await this.onSummarize(row.id, userId, history)
           if (summary) {
@@ -235,20 +239,87 @@ export class SessionManager {
 
   /**
    * Build a conversation history string from chat_messages in the DB.
+   * Includes main-session user/assistant messages plus related background-task
+   * notifications that the user saw during the same session window.
    */
-  private buildConversationHistory(sessionId: string): string | null {
-    const messages = this.db.prepare(
-      `SELECT role, content FROM chat_messages WHERE session_id = ? ORDER BY timestamp ASC`
-    ).all(sessionId) as Array<{ role: string; content: string }>
+  private buildConversationHistory(
+    sessionId: string,
+    options?: { userId?: string; startedAt?: number; endAt?: number },
+  ): string | null {
+    type ChatMessageRow = {
+      session_id: string
+      role: string
+      content: string
+      metadata: string | null
+      timestamp: string
+    }
+
+    const mainMessages = this.db.prepare(
+      `SELECT session_id, role, content, metadata, timestamp
+       FROM chat_messages
+       WHERE session_id = ?
+       ORDER BY timestamp ASC`
+    ).all(sessionId) as ChatMessageRow[]
+
+    const extraMessages: ChatMessageRow[] = []
+    const numericUserId = options?.userId ? Number.parseInt(options.userId, 10) : Number.NaN
+
+    if (Number.isFinite(numericUserId) && options?.startedAt !== undefined && options?.endAt !== undefined) {
+      const candidates = this.db.prepare(
+        `SELECT session_id, role, content, metadata, timestamp
+         FROM chat_messages
+         WHERE user_id = ?
+           AND session_id != ?
+           AND timestamp >= datetime(? / 1000, 'unixepoch')
+           AND timestamp <= datetime(? / 1000, 'unixepoch')
+         ORDER BY timestamp ASC`
+      ).all(numericUserId, sessionId, options.startedAt, options.endAt) as ChatMessageRow[]
+
+      for (const msg of candidates) {
+        let metadata: Record<string, unknown> | null = null
+        try {
+          metadata = msg.metadata ? JSON.parse(msg.metadata) as Record<string, unknown> : null
+        } catch {
+          metadata = null
+        }
+
+        if (metadata?.type === 'task_result' || metadata?.type === 'task_injection_response') {
+          extraMessages.push(msg)
+        }
+      }
+    }
+
+    const messages = [...mainMessages, ...extraMessages]
+      .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
 
     if (messages.length === 0) return null
 
     const lines: string[] = []
     for (const msg of messages) {
+      let metadata: Record<string, unknown> | null = null
+      try {
+        metadata = msg.metadata ? JSON.parse(msg.metadata) as Record<string, unknown> : null
+      } catch {
+        metadata = null
+      }
+
       if (msg.role === 'user') {
         lines.push(`User: ${msg.content}`)
       } else if (msg.role === 'assistant') {
-        lines.push(`Assistant: ${msg.content.slice(0, 2000)}`)
+        if (metadata?.type === 'task_injection_response') {
+          lines.push(`Assistant (task update): ${msg.content.slice(0, 2000)}`)
+        } else {
+          lines.push(`Assistant: ${msg.content.slice(0, 2000)}`)
+        }
+      } else if (msg.role === 'system' && metadata?.type === 'task_result') {
+        const taskStatus = typeof metadata.taskResultStatus === 'string'
+          ? metadata.taskResultStatus
+          : typeof metadata.taskStatus === 'string'
+            ? metadata.taskStatus
+            : 'completed'
+        const taskName = typeof metadata.taskName === 'string' ? metadata.taskName.trim() : ''
+        const taskLabel = taskName ? `: ${taskName}` : ''
+        lines.push(`Background task (${taskStatus}${taskLabel}): ${msg.content.slice(0, 2000)}`)
       }
     }
 
@@ -372,7 +443,11 @@ export class SessionManager {
       try {
         // Build conversation history from DB (single source of truth).
         // In-memory agent messages are unreliable (lost on provider change, restart, etc.)
-        const history = this.buildConversationHistory(session.id) ?? undefined
+        const history = this.buildConversationHistory(session.id, {
+          userId,
+          startedAt: session.startedAt,
+          endAt: Date.now(),
+        }) ?? undefined
 
         summary = await this.onSummarize(session.id, userId, history)
         if (summary) {
