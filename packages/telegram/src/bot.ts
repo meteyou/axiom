@@ -659,7 +659,7 @@ export class TelegramBot {
         : settingsLanguage
 
       // Transcribe via core STT module
-      const result = await transcribeAudio(buffer, { language })
+      const result = await transcribeAudio(buffer, { language, filename: 'audio.ogg' })
       const transcript = result.rewritten ?? result.transcript
 
       if (!transcript.trim()) {
