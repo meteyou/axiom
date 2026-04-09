@@ -61,6 +61,20 @@ export interface TtsSettings {
   responseFormat: string
 }
 
+export interface SttRewriteSettings {
+  enabled: boolean
+  providerId: string
+}
+
+export interface SttSettings {
+  enabled: boolean
+  provider: 'whisper-url' | 'openai' | 'ollama'
+  whisperUrl: string
+  providerId: string
+  ollamaModel: string
+  rewrite: SttRewriteSettings
+}
+
 export interface Settings {
   sessionTimeoutMinutes: number
   language: string
@@ -75,6 +89,7 @@ export interface Settings {
   agentHeartbeat: AgentHeartbeatSettings
   tasks: TasksSettings
   tts: TtsSettings
+  stt: SttSettings
 }
 
 export function useSettings() {
@@ -168,6 +183,17 @@ export function useSettings() {
           openaiInstructions: '',
           mistralVoice: '',
           responseFormat: 'mp3',
+        },
+        stt: result.stt ?? {
+          enabled: false,
+          provider: 'whisper-url',
+          whisperUrl: '',
+          providerId: '',
+          ollamaModel: '',
+          rewrite: {
+            enabled: false,
+            providerId: '',
+          },
         },
       }
       successMessage.value = 'saved'

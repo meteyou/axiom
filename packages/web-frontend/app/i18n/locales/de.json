@@ -455,7 +455,16 @@
     "ttsPreviewPlaceholder": "Text eingeben um die Stimme zu testen...",
     "ttsPreviewPlay": "Abspielen",
     "ttsPreviewStop": "Stopp",
-    "ttsPreviewHint": "Teste die gewählte Stimme und Stimmung vor dem Speichern."
+    "ttsPreviewHint": "Teste die gewählte Stimme und Stimmung vor dem Speichern.",
+    "sttTitle": "Speech-to-Text",
+    "sttSubtitle": "Transkribiere Audio zu Text mit KI-basierter Spracherkennung.",
+    "sttEnabled": "Speech-to-Text aktivieren",
+    "sttEnabledHint": "Ermöglicht Audio-Transkription über den konfigurierten STT-Anbieter.",
+    "sttProvider": "STT-Anbieter",
+    "sttProviderHint": "Wähle, welcher Dienst Audio zu Text transkribiert.",
+    "sttWhisperUrl": "Whisper-URL",
+    "sttWhisperUrlPlaceholder": "http://localhost:8000/v1/audio/transcriptions",
+    "sttWhisperUrlHint": "Vollständige URL eines Whisper-kompatiblen Transkriptionsendpunkts (z.B. faster-whisper-server)."
   },
   "users": {
     "kicker": "Zugriffssteuerung",

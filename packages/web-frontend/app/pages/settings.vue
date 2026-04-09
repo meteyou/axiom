@@ -1238,6 +1238,65 @@
               </div>
             </div>
 
+            <!-- ═══ Speech-to-Text ═══ -->
+            <div v-else-if="activeTab === 'stt'">
+              <div class="mb-8">
+                <h2 class="text-lg font-semibold tracking-tight text-foreground">
+                  {{ $t('settings.sttTitle') }}
+                </h2>
+                <p class="mt-1 text-sm text-muted-foreground">
+                  {{ $t('settings.sttSubtitle') }}
+                </p>
+              </div>
+
+              <div class="flex flex-col gap-8">
+                <!-- Enable toggle -->
+                <div class="flex items-center justify-between rounded-lg border border-border px-4 py-3">
+                  <div class="flex flex-col gap-0.5 pr-4">
+                    <Label for="stt-enabled" class="cursor-pointer">
+                      {{ $t('settings.sttEnabled') }}
+                    </Label>
+                    <p class="text-xs text-muted-foreground">
+                      {{ $t('settings.sttEnabledHint') }}
+                    </p>
+                  </div>
+                  <Switch
+                    id="stt-enabled"
+                    v-model:checked="form.stt.enabled"
+                  />
+                </div>
+
+                <!-- Configuration — progressive disclosure -->
+                <template v-if="form.stt.enabled">
+                  <!-- Provider -->
+                  <div class="flex flex-col gap-2">
+                    <Label for="stt-provider">{{ $t('settings.sttProvider') }}</Label>
+                    <Select v-model="form.stt.provider">
+                      <SelectTrigger id="stt-provider">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="whisper-url">Whisper (URL)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p class="text-xs text-muted-foreground">{{ $t('settings.sttProviderHint') }}</p>
+                  </div>
+
+                  <!-- Whisper URL field (only visible when provider is whisper-url) -->
+                  <div v-if="form.stt.provider === 'whisper-url'" class="flex flex-col gap-2">
+                    <Label for="stt-whisper-url">{{ $t('settings.sttWhisperUrl') }}</Label>
+                    <Input
+                      id="stt-whisper-url"
+                      v-model="form.stt.whisperUrl"
+                      type="url"
+                      :placeholder="$t('settings.sttWhisperUrlPlaceholder')"
+                    />
+                    <p class="text-xs text-muted-foreground">{{ $t('settings.sttWhisperUrlHint') }}</p>
+                  </div>
+                </template>
+              </div>
+            </div>
+
             <!-- ═══ Secrets ═══ -->
             <div v-else-if="activeTab === 'secrets'">
               <div class="mb-8">
@@ -1434,7 +1493,7 @@
 </template>
 
 <script setup lang="ts">
-import type { MemoryConsolidationSettings, HealthMonitorNotificationToggles, HealthMonitorSettings, AgentHeartbeatSettings, TasksSettings, TtsSettings } from '~/composables/useSettings'
+import type { MemoryConsolidationSettings, HealthMonitorNotificationToggles, HealthMonitorSettings, AgentHeartbeatSettings, TasksSettings, TtsSettings, SttSettings } from '~/composables/useSettings'
 import type { TelegramUser } from '~/composables/useTelegramUsers'
 
 /* ── Auth ── */
@@ -1478,7 +1537,7 @@ const timezones = [
   'America/Argentina/Buenos_Aires',
 ]
 
-const VALID_TABS = ['agent', 'memory', 'agentHeartbeat', 'healthMonitor', 'telegram', 'tasks', 'tts', 'secrets'] as const
+const VALID_TABS = ['agent', 'memory', 'agentHeartbeat', 'healthMonitor', 'telegram', 'tasks', 'tts', 'stt', 'secrets'] as const
 type TabId = (typeof VALID_TABS)[number]
 
 const activeTab = computed<TabId>({
@@ -1499,6 +1558,7 @@ const tabs = computed(() => [
   { id: 'secrets' as TabId, icon: 'key', label: t('settings.tabs.secrets') },
   { id: 'tasks' as TabId, icon: 'bot', label: t('settings.tabs.tasks') },
   { id: 'tts' as TabId, icon: 'volume', label: t('settings.ttsTitle') },
+  { id: 'stt' as TabId, icon: 'mic', label: t('settings.sttTitle') },
   { id: 'telegram' as TabId, icon: 'send', label: t('settings.tabs.telegram') },
 ])
 
@@ -1714,6 +1774,7 @@ interface SettingsForm {
   agentHeartbeat: AgentHeartbeatSettings
   tasks: TasksSettings
   tts: TtsSettings
+  stt: SttSettings
 }
 
 const form = ref<SettingsForm | null>(null)
@@ -1741,6 +1802,7 @@ function hydrateForm() {
     agentHeartbeat: { ...s.agentHeartbeat, nightMode: { ...s.agentHeartbeat.nightMode } },
     tasks: { ...s.tasks, loopDetection: { ...s.tasks.loopDetection } },
     tts: { ...s.tts },
+    stt: { ...s.stt, rewrite: { ...s.stt.rewrite } },
   }
 }
 
