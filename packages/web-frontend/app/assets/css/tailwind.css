@@ -71,6 +71,7 @@
   --animate-slide-in-from-top: slide-in-from-top 0.2s ease-out;
   --animate-slide-in-from-bottom: slide-in-from-bottom 0.2s ease-out;
   --animate-shimmer: shimmer 2s infinite;
+  --animate-pulse-recording: pulse-recording 1.2s ease-in-out infinite;
 
   @keyframes accordion-down {
     from { height: 0; }
@@ -104,6 +105,11 @@
 
   @keyframes shimmer {
     100% { transform: translateX(100%); }
+  }
+
+  @keyframes pulse-recording {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 hsl(var(--destructive) / 0.4); }
+    50% { opacity: 0.8; box-shadow: 0 0 0 6px hsl(var(--destructive) / 0); }
   }
 
   @keyframes typingDot {
