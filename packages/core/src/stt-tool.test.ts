@@ -87,7 +87,7 @@ describe('transcribe_audio execute', () => {
     mockExistsSync.mockReturnValue(true)
     mockAccessSync.mockReturnValue(undefined)
     mockReadFileSync.mockReturnValue(Buffer.from('fake-audio'))
-    mockTranscribeAudio.mockResolvedValue('Hello world, this is a transcription.')
+    mockTranscribeAudio.mockResolvedValue({ transcript: 'Hello world, this is a transcription.' })
 
     const tool = createTranscribeAudioTool()
     const result = await tool.execute('test-id', { path: 'audio/recording.mp3' })
@@ -115,7 +115,7 @@ describe('transcribe_audio execute', () => {
     mockExistsSync.mockReturnValue(true)
     mockAccessSync.mockReturnValue(undefined)
     mockReadFileSync.mockReturnValue(Buffer.from('fake-wav'))
-    mockTranscribeAudio.mockResolvedValue('Hallo Welt')
+    mockTranscribeAudio.mockResolvedValue({ transcript: 'Hallo Welt' })
 
     const tool = createTranscribeAudioTool()
     const result = await tool.execute('test-id', { path: 'audio.wav', language: 'de' })
@@ -139,15 +139,14 @@ describe('transcribe_audio execute', () => {
     mockExistsSync.mockReturnValue(true)
     mockAccessSync.mockReturnValue(undefined)
     mockReadFileSync.mockReturnValue(Buffer.from('fake-audio'))
-    mockTranscribeAudio.mockResolvedValue('um so like hello world')
+    mockTranscribeAudio.mockResolvedValue({ transcript: 'um so like hello world', rewritten: 'hello world' })
 
     const tool = createTranscribeAudioTool()
     const result = await tool.execute('test-id', { path: 'test.ogg', rewrite: true })
 
     const text = (result.content[0] as { type: 'text'; text: string }).text
-    expect(text).toBe('um so like hello world')
+    expect(text).toBe('hello world')
     expect(result.details.rewrite).toBe(true)
-    expect(result.details.rewriteNote).toBeTruthy()
   })
 
   it('does not set rewrite details when rewrite=false', async () => {
@@ -162,7 +161,7 @@ describe('transcribe_audio execute', () => {
     mockExistsSync.mockReturnValue(true)
     mockAccessSync.mockReturnValue(undefined)
     mockReadFileSync.mockReturnValue(Buffer.from('fake-audio'))
-    mockTranscribeAudio.mockResolvedValue('clean transcript')
+    mockTranscribeAudio.mockResolvedValue({ transcript: 'clean transcript' })
 
     const tool = createTranscribeAudioTool()
     const result = await tool.execute('test-id', { path: 'test.m4a', rewrite: false })
@@ -183,7 +182,7 @@ describe('transcribe_audio execute', () => {
     mockExistsSync.mockReturnValue(true)
     mockAccessSync.mockReturnValue(undefined)
     mockReadFileSync.mockReturnValue(Buffer.from('fake-audio'))
-    mockTranscribeAudio.mockResolvedValue('transcript text')
+    mockTranscribeAudio.mockResolvedValue({ transcript: 'transcript text' })
 
     const tool = createTranscribeAudioTool()
     const result = await tool.execute('test-id', { path: 'test.flac' })
@@ -208,7 +207,7 @@ describe('transcribe_audio execute', () => {
       mockExistsSync.mockReturnValue(true)
       mockAccessSync.mockReturnValue(undefined)
       mockReadFileSync.mockReturnValue(Buffer.from('audio'))
-      mockTranscribeAudio.mockResolvedValue('text')
+      mockTranscribeAudio.mockResolvedValue({ transcript: 'text' })
 
       const tool = createTranscribeAudioTool()
       const result = await tool.execute('test-id', { path: `file${extensions[i]}` })
@@ -340,7 +339,7 @@ describe('transcribe_audio error handling', () => {
     mockExistsSync.mockReturnValue(true)
     mockAccessSync.mockReturnValue(undefined)
     mockReadFileSync.mockReturnValue(Buffer.from('audio'))
-    mockTranscribeAudio.mockResolvedValue('transcript')
+    mockTranscribeAudio.mockResolvedValue({ transcript: 'transcript' })
 
     const tool = createTranscribeAudioTool()
     const result = await tool.execute('test-id', { path: '/tmp/audio.mp3' })
@@ -361,7 +360,7 @@ describe('transcribe_audio error handling', () => {
     mockExistsSync.mockReturnValue(true)
     mockAccessSync.mockReturnValue(undefined)
     mockReadFileSync.mockReturnValue(Buffer.from('audio'))
-    mockTranscribeAudio.mockResolvedValue('raw transcript')
+    mockTranscribeAudio.mockResolvedValue({ transcript: 'raw transcript' })
 
     const tool = createTranscribeAudioTool()
     const result = await tool.execute('test-id', { path: 'test.webm', rewrite: true })
