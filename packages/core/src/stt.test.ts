@@ -13,16 +13,25 @@ vi.mock('./provider-config.js', async (importOriginal) => {
     ...original,
     loadProvidersDecrypted: vi.fn(),
     getApiKeyForProvider: vi.fn(),
+    buildModel: vi.fn().mockReturnValue({ id: 'mock-model' }),
   }
 })
 
+// Mock pi-ai completeSimple
+vi.mock('@mariozechner/pi-ai', () => ({
+  completeSimple: vi.fn(),
+}))
+
 import { loadSttSettings, transcribeAudio, transcribeWhisperUrl, transcribeOpenAi, transcribeOllama, rewriteTranscript } from './stt.js'
 import { loadConfig } from './config.js'
-import { loadProvidersDecrypted, getApiKeyForProvider } from './provider-config.js'
+import { loadProvidersDecrypted, getApiKeyForProvider, buildModel } from './provider-config.js'
+import { completeSimple } from '@mariozechner/pi-ai'
 
 const mockLoadConfig = vi.mocked(loadConfig)
 const mockLoadProvidersDecrypted = vi.mocked(loadProvidersDecrypted)
 const mockGetApiKeyForProvider = vi.mocked(getApiKeyForProvider)
+const mockBuildModel = vi.mocked(buildModel)
+const mockCompleteSimple = vi.mocked(completeSimple)
 
 // ── loadSttSettings ──────────────────────────────────────────────────
 
@@ -35,6 +44,7 @@ describe('loadSttSettings', () => {
       provider: 'whisper-url',
       whisperUrl: '',
       providerId: '',
+      openaiModel: 'whisper-1',
       ollamaModel: '',
       rewrite: {
         enabled: false,
@@ -216,7 +226,7 @@ describe('transcribeOpenAi', () => {
     globalThis.fetch = mockFetch
 
     const buffer = Buffer.from('fake-audio')
-    const result = await transcribeOpenAi(buffer, 'oai-1')
+    const result = await transcribeOpenAi(buffer, 'oai-1', 'whisper-1')
 
     expect(result).toBe('Hello world')
     expect(mockFetch).toHaveBeenCalledTimes(1)
@@ -240,7 +250,7 @@ describe('transcribeOpenAi', () => {
     globalThis.fetch = mockFetch
 
     const buffer = Buffer.from('audio-data')
-    await transcribeOpenAi(buffer, 'oai-1', 'English')
+    await transcribeOpenAi(buffer, 'oai-1', 'whisper-1', 'English')
 
     const formData = mockFetch.mock.calls[0][1].body as FormData
     expect(formData.get('model')).toBe('whisper-1')
@@ -261,7 +271,7 @@ describe('transcribeOpenAi', () => {
     })
     globalThis.fetch = mockFetch
 
-    await transcribeOpenAi(Buffer.from('audio'), 'oai-1')
+    await transcribeOpenAi(Buffer.from('audio'), 'oai-1', 'whisper-1')
 
     const formData = mockFetch.mock.calls[0][1].body as FormData
     expect(formData.get('language')).toBeNull()
@@ -279,7 +289,7 @@ describe('transcribeOpenAi', () => {
     })
     globalThis.fetch = mockFetch
 
-    await transcribeOpenAi(Buffer.from('audio'), 'oai-1')
+    await transcribeOpenAi(Buffer.from('audio'), 'oai-1', 'whisper-1')
 
     const [url] = mockFetch.mock.calls[0]
     expect(url).toBe('https://api.openai.com/v1/audio/transcriptions')
@@ -297,7 +307,7 @@ describe('transcribeOpenAi', () => {
     })
     globalThis.fetch = mockFetch
 
-    const result = await transcribeOpenAi(Buffer.from('audio'), 'oai-1')
+    const result = await transcribeOpenAi(Buffer.from('audio'), 'oai-1', 'whisper-1')
     expect(result).toBe('Hello world')
   })
 
@@ -307,7 +317,7 @@ describe('transcribeOpenAi', () => {
     } as unknown as ReturnType<typeof loadProvidersDecrypted>)
 
     await expect(
-      transcribeOpenAi(Buffer.from('audio'), 'nonexistent'),
+      transcribeOpenAi(Buffer.from('audio'), 'nonexistent', 'whisper-1'),
     ).rejects.toThrow('OpenAI STT provider not found: nonexistent')
   })
 
@@ -325,7 +335,7 @@ describe('transcribeOpenAi', () => {
     globalThis.fetch = mockFetch
 
     await expect(
-      transcribeOpenAi(Buffer.from('audio'), 'oai-1'),
+      transcribeOpenAi(Buffer.from('audio'), 'oai-1', 'whisper-1'),
     ).rejects.toThrow('OpenAI STT returned HTTP 401: Unauthorized')
   })
 
@@ -339,7 +349,7 @@ describe('transcribeOpenAi', () => {
     globalThis.fetch = mockFetch
 
     await expect(
-      transcribeOpenAi(Buffer.from('audio'), 'oai-1'),
+      transcribeOpenAi(Buffer.from('audio'), 'oai-1', 'whisper-1'),
     ).rejects.toThrow('OpenAI STT request failed: ECONNREFUSED')
   })
 })
@@ -547,80 +557,27 @@ describe('transcribeOllama', () => {
 // ── rewriteTranscript ──────────────────────────────────────────
 
 describe('rewriteTranscript', () => {
-  let originalFetch: typeof globalThis.fetch
-
-  beforeEach(() => {
-    originalFetch = globalThis.fetch
-  })
-
-  afterEach(() => {
-    globalThis.fetch = originalFetch
-  })
-
-  it('sends correct OpenAI-compatible request', async () => {
+  it('calls completeSimple with correct context and returns cleaned text', async () => {
     mockLoadProvidersDecrypted.mockReturnValue({
       providers: [{ id: 'oai-1', baseUrl: 'https://api.openai.com/v1', providerType: 'openai', defaultModel: 'gpt-4o' }],
     } as ReturnType<typeof loadProvidersDecrypted>)
     mockGetApiKeyForProvider.mockResolvedValue('sk-test')
-
-    const mockFetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({
-        choices: [{ message: { content: 'Cleaned text.' } }],
-      }),
-    })
-    globalThis.fetch = mockFetch
+    mockBuildModel.mockReturnValue({ id: 'gpt-4o' } as ReturnType<typeof buildModel>)
+    mockCompleteSimple.mockResolvedValue({
+      content: [{ type: 'text', text: 'Cleaned text.' }],
+    } as unknown as Awaited<ReturnType<typeof completeSimple>>)
 
     const result = await rewriteTranscript('um so like hello world', 'oai-1')
 
     expect(result).toBe('Cleaned text.')
-    expect(mockFetch).toHaveBeenCalledTimes(1)
+    expect(mockBuildModel).toHaveBeenCalled()
+    expect(mockCompleteSimple).toHaveBeenCalledTimes(1)
 
-    const [url, options] = mockFetch.mock.calls[0]
-    expect(url).toBe('https://api.openai.com/v1/chat/completions')
-    expect(options.method).toBe('POST')
-    expect(options.headers.Authorization).toBe('Bearer sk-test')
-    expect(options.headers['Content-Type']).toBe('application/json')
-
-    const body = JSON.parse(options.body)
-    expect(body.model).toBe('gpt-4o')
-    expect(body.messages).toHaveLength(2)
-    expect(body.messages[0].role).toBe('system')
-    expect(body.messages[0].content).toContain('filler words')
-    expect(body.messages[1].role).toBe('user')
-    expect(body.messages[1].content).toBe('um so like hello world')
-    expect(body.temperature).toBe(0)
-  })
-
-  it('sends correct Anthropic request', async () => {
-    mockLoadProvidersDecrypted.mockReturnValue({
-      providers: [{ id: 'ant-1', baseUrl: 'https://api.anthropic.com', providerType: 'anthropic', defaultModel: 'claude-sonnet-4-20250514' }],
-    } as ReturnType<typeof loadProvidersDecrypted>)
-    mockGetApiKeyForProvider.mockResolvedValue('sk-ant-test')
-
-    const mockFetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({
-        content: [{ type: 'text', text: 'Cleaned Anthropic text.' }],
-      }),
-    })
-    globalThis.fetch = mockFetch
-
-    const result = await rewriteTranscript('uh basically hello', 'ant-1')
-
-    expect(result).toBe('Cleaned Anthropic text.')
-
-    const [url, options] = mockFetch.mock.calls[0]
-    expect(url).toBe('https://api.anthropic.com/v1/messages')
-    expect(options.headers['x-api-key']).toBe('sk-ant-test')
-    expect(options.headers['anthropic-version']).toBe('2023-06-01')
-
-    const body = JSON.parse(options.body)
-    expect(body.model).toBe('claude-sonnet-4-20250514')
-    expect(body.system).toContain('filler words')
-    expect(body.messages).toHaveLength(1)
-    expect(body.messages[0].role).toBe('user')
-    expect(body.messages[0].content).toBe('uh basically hello')
+    const [, context] = mockCompleteSimple.mock.calls[0]
+    expect(context.systemPrompt).toContain('filler words')
+    expect(context.messages).toHaveLength(1)
+    expect(context.messages[0].role).toBe('user')
+    expect(context.messages[0].content).toBe('um so like hello world')
   })
 
   it('trims whitespace from rewritten response', async () => {
@@ -628,14 +585,10 @@ describe('rewriteTranscript', () => {
       providers: [{ id: 'oai-1', baseUrl: 'https://api.openai.com/v1', providerType: 'openai', defaultModel: 'gpt-4o' }],
     } as ReturnType<typeof loadProvidersDecrypted>)
     mockGetApiKeyForProvider.mockResolvedValue('sk-test')
-
-    const mockFetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({
-        choices: [{ message: { content: '  Cleaned text.  \n' } }],
-      }),
-    })
-    globalThis.fetch = mockFetch
+    mockBuildModel.mockReturnValue({ id: 'gpt-4o' } as ReturnType<typeof buildModel>)
+    mockCompleteSimple.mockResolvedValue({
+      content: [{ type: 'text', text: '  Cleaned text.  \n' }],
+    } as unknown as Awaited<ReturnType<typeof completeSimple>>)
 
     const result = await rewriteTranscript('input', 'oai-1')
     expect(result).toBe('Cleaned text.')
@@ -651,69 +604,31 @@ describe('rewriteTranscript', () => {
     ).rejects.toThrow('Rewrite provider not found: nonexistent')
   })
 
-  it('throws on HTTP error', async () => {
+  it('throws when completeSimple fails', async () => {
     mockLoadProvidersDecrypted.mockReturnValue({
       providers: [{ id: 'oai-1', baseUrl: 'https://api.openai.com/v1', providerType: 'openai', defaultModel: 'gpt-4o' }],
     } as ReturnType<typeof loadProvidersDecrypted>)
     mockGetApiKeyForProvider.mockResolvedValue('sk-test')
-
-    const mockFetch = vi.fn().mockResolvedValue({
-      ok: false,
-      status: 401,
-      text: () => Promise.resolve('Unauthorized'),
-    })
-    globalThis.fetch = mockFetch
+    mockBuildModel.mockReturnValue({ id: 'gpt-4o' } as ReturnType<typeof buildModel>)
+    mockCompleteSimple.mockRejectedValue(new Error('API error'))
 
     await expect(
       rewriteTranscript('text', 'oai-1'),
-    ).rejects.toThrow('Rewrite returned HTTP 401: Unauthorized')
+    ).rejects.toThrow('API error')
   })
 
-  it('throws on network error', async () => {
+  it('throws when response has no text content', async () => {
     mockLoadProvidersDecrypted.mockReturnValue({
       providers: [{ id: 'oai-1', baseUrl: 'https://api.openai.com/v1', providerType: 'openai', defaultModel: 'gpt-4o' }],
     } as ReturnType<typeof loadProvidersDecrypted>)
     mockGetApiKeyForProvider.mockResolvedValue('sk-test')
-
-    const mockFetch = vi.fn().mockRejectedValue(new Error('ECONNREFUSED'))
-    globalThis.fetch = mockFetch
-
-    await expect(
-      rewriteTranscript('text', 'oai-1'),
-    ).rejects.toThrow('Rewrite request failed: ECONNREFUSED')
-  })
-
-  it('throws when OpenAI response has no content', async () => {
-    mockLoadProvidersDecrypted.mockReturnValue({
-      providers: [{ id: 'oai-1', baseUrl: 'https://api.openai.com/v1', providerType: 'openai', defaultModel: 'gpt-4o' }],
-    } as ReturnType<typeof loadProvidersDecrypted>)
-    mockGetApiKeyForProvider.mockResolvedValue('sk-test')
-
-    const mockFetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ choices: [] }),
-    })
-    globalThis.fetch = mockFetch
+    mockBuildModel.mockReturnValue({ id: 'gpt-4o' } as ReturnType<typeof buildModel>)
+    mockCompleteSimple.mockResolvedValue({
+      content: [],
+    } as unknown as Awaited<ReturnType<typeof completeSimple>>)
 
     await expect(
       rewriteTranscript('text', 'oai-1'),
-    ).rejects.toThrow('Rewrite returned no content.')
-  })
-
-  it('throws when Anthropic response has no content', async () => {
-    mockLoadProvidersDecrypted.mockReturnValue({
-      providers: [{ id: 'ant-1', baseUrl: 'https://api.anthropic.com', providerType: 'anthropic', defaultModel: 'claude-sonnet-4-20250514' }],
-    } as ReturnType<typeof loadProvidersDecrypted>)
-    mockGetApiKeyForProvider.mockResolvedValue('sk-ant-test')
-
-    const mockFetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ content: [] }),
-    })
-    globalThis.fetch = mockFetch
-
-    await expect(
-      rewriteTranscript('text', 'ant-1'),
     ).rejects.toThrow('Rewrite returned no content.')
   })
 })
@@ -725,6 +640,8 @@ describe('transcribeAudio', () => {
 
   beforeEach(() => {
     originalFetch = globalThis.fetch
+    mockCompleteSimple.mockReset()
+    mockBuildModel.mockReset()
   })
 
   afterEach(() => {
@@ -870,19 +787,10 @@ describe('transcribeAudio', () => {
   })
 
   it('calls rewriteTranscript when rewrite is enabled and returns both fields', async () => {
-    // First call: transcription fetch (whisper-url)
-    // Second call: rewrite fetch (openai chat completions)
-    const mockFetch = vi.fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        text: () => Promise.resolve('um like raw transcript'),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({
-          choices: [{ message: { content: 'cleaned transcript' } }],
-        }),
-      })
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      text: () => Promise.resolve('um like raw transcript'),
+    })
     globalThis.fetch = mockFetch
 
     mockLoadConfig.mockReturnValue({
@@ -897,11 +805,16 @@ describe('transcribeAudio', () => {
       providers: [{ id: 'oai-1', baseUrl: 'https://api.openai.com/v1', providerType: 'openai', defaultModel: 'gpt-4o' }],
     } as ReturnType<typeof loadProvidersDecrypted>)
     mockGetApiKeyForProvider.mockResolvedValue('sk-test')
+    mockBuildModel.mockReturnValue({ id: 'gpt-4o' } as ReturnType<typeof buildModel>)
+    mockCompleteSimple.mockResolvedValue({
+      content: [{ type: 'text', text: 'cleaned transcript' }],
+    } as unknown as Awaited<ReturnType<typeof completeSimple>>)
 
     const result = await transcribeAudio(Buffer.from('audio'))
     expect(result.transcript).toBe('um like raw transcript')
     expect(result.rewritten).toBe('cleaned transcript')
-    expect(mockFetch).toHaveBeenCalledTimes(2)
+    expect(mockFetch).toHaveBeenCalledTimes(1) // only transcription fetch
+    expect(mockCompleteSimple).toHaveBeenCalledTimes(1) // rewrite via completeSimple
   })
 
   it('does not call rewrite when rewrite is disabled', async () => {
@@ -927,16 +840,10 @@ describe('transcribeAudio', () => {
   })
 
   it('returns raw transcript without rewritten when rewrite fails', async () => {
-    const mockFetch = vi.fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        text: () => Promise.resolve('raw transcript'),
-      })
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-        text: () => Promise.resolve('Internal Server Error'),
-      })
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      text: () => Promise.resolve('raw transcript'),
+    })
     globalThis.fetch = mockFetch
 
     mockLoadConfig.mockReturnValue({
@@ -951,6 +858,8 @@ describe('transcribeAudio', () => {
       providers: [{ id: 'oai-1', baseUrl: 'https://api.openai.com/v1', providerType: 'openai', defaultModel: 'gpt-4o' }],
     } as ReturnType<typeof loadProvidersDecrypted>)
     mockGetApiKeyForProvider.mockResolvedValue('sk-test')
+    mockBuildModel.mockReturnValue({ id: 'gpt-4o' } as ReturnType<typeof buildModel>)
+    mockCompleteSimple.mockRejectedValue(new Error('Internal Server Error'))
 
     const result = await transcribeAudio(Buffer.from('audio'))
     expect(result.transcript).toBe('raw transcript')

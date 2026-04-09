@@ -81,6 +81,7 @@ describe('transcribe_audio execute', () => {
       provider: 'whisper-url',
       whisperUrl: 'http://localhost:8000/v1/audio/transcriptions',
       providerId: '',
+      openaiModel: 'whisper-1',
       ollamaModel: '',
       rewrite: { enabled: false, providerId: '' },
     })
@@ -109,6 +110,7 @@ describe('transcribe_audio execute', () => {
       provider: 'whisper-url',
       whisperUrl: 'http://localhost:8000/v1/audio/transcriptions',
       providerId: '',
+      openaiModel: 'whisper-1',
       ollamaModel: '',
       rewrite: { enabled: false, providerId: '' },
     })
@@ -133,6 +135,7 @@ describe('transcribe_audio execute', () => {
       provider: 'whisper-url',
       whisperUrl: 'http://localhost:8000/v1/audio/transcriptions',
       providerId: '',
+      openaiModel: 'whisper-1',
       ollamaModel: '',
       rewrite: { enabled: true, providerId: 'prov-1' },
     })
@@ -155,6 +158,7 @@ describe('transcribe_audio execute', () => {
       provider: 'whisper-url',
       whisperUrl: 'http://localhost:8000/v1/audio/transcriptions',
       providerId: '',
+      openaiModel: 'whisper-1',
       ollamaModel: '',
       rewrite: { enabled: true, providerId: 'prov-1' },
     })
@@ -176,6 +180,7 @@ describe('transcribe_audio execute', () => {
       provider: 'whisper-url',
       whisperUrl: 'http://localhost:8000/v1/audio/transcriptions',
       providerId: '',
+      openaiModel: 'whisper-1',
       ollamaModel: '',
       rewrite: { enabled: false, providerId: '' },
     })
@@ -201,7 +206,8 @@ describe('transcribe_audio execute', () => {
         provider: 'whisper-url',
         whisperUrl: 'http://localhost:8000/v1/audio/transcriptions',
         providerId: '',
-        ollamaModel: '',
+        openaiModel: 'whisper-1',
+      ollamaModel: '',
         rewrite: { enabled: false, providerId: '' },
       })
       mockExistsSync.mockReturnValue(true)
@@ -231,6 +237,7 @@ describe('transcribe_audio error handling', () => {
       provider: 'whisper-url',
       whisperUrl: '',
       providerId: '',
+      openaiModel: 'whisper-1',
       ollamaModel: '',
       rewrite: { enabled: false, providerId: '' },
     })
@@ -249,6 +256,7 @@ describe('transcribe_audio error handling', () => {
       provider: 'whisper-url',
       whisperUrl: 'http://localhost:8000/v1/audio/transcriptions',
       providerId: '',
+      openaiModel: 'whisper-1',
       ollamaModel: '',
       rewrite: { enabled: false, providerId: '' },
     })
@@ -268,6 +276,7 @@ describe('transcribe_audio error handling', () => {
       provider: 'whisper-url',
       whisperUrl: 'http://localhost:8000/v1/audio/transcriptions',
       providerId: '',
+      openaiModel: 'whisper-1',
       ollamaModel: '',
       rewrite: { enabled: false, providerId: '' },
     })
@@ -288,6 +297,7 @@ describe('transcribe_audio error handling', () => {
       provider: 'whisper-url',
       whisperUrl: 'http://localhost:8000/v1/audio/transcriptions',
       providerId: '',
+      openaiModel: 'whisper-1',
       ollamaModel: '',
       rewrite: { enabled: false, providerId: '' },
     })
@@ -310,6 +320,7 @@ describe('transcribe_audio error handling', () => {
       provider: 'whisper-url',
       whisperUrl: 'http://localhost:8000/v1/audio/transcriptions',
       providerId: '',
+      openaiModel: 'whisper-1',
       ollamaModel: '',
       rewrite: { enabled: false, providerId: '' },
     })
@@ -333,6 +344,7 @@ describe('transcribe_audio error handling', () => {
       provider: 'whisper-url',
       whisperUrl: 'http://localhost:8000/v1/audio/transcriptions',
       providerId: '',
+      openaiModel: 'whisper-1',
       ollamaModel: '',
       rewrite: { enabled: false, providerId: '' },
     })
@@ -354,6 +366,7 @@ describe('transcribe_audio error handling', () => {
       provider: 'whisper-url',
       whisperUrl: 'http://localhost:8000/v1/audio/transcriptions',
       providerId: '',
+      openaiModel: 'whisper-1',
       ollamaModel: '',
       rewrite: { enabled: false, providerId: '' },
     })

@@ -1,6 +1,7 @@
 import { loadConfig, ensureConfigTemplates } from './config.js'
-import { loadProvidersDecrypted, getApiKeyForProvider, PROVIDER_TYPE_PRESETS } from './provider-config.js'
+import { loadProvidersDecrypted, getApiKeyForProvider, buildModel } from './provider-config.js'
 import type { ProviderConfig } from './provider-config.js'
+import { completeSimple } from '@mariozechner/pi-ai'
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -16,6 +17,7 @@ export interface SttSettings {
   provider: SttProvider
   whisperUrl: string
   providerId: string
+  openaiModel: string
   ollamaModel: string
   rewrite: SttRewriteSettings
 }
@@ -27,6 +29,8 @@ export interface TranscribeResult {
 
 export interface TranscribeOptions {
   language?: string
+  /** Original filename hint (e.g. 'audio.ogg'). Helps APIs detect the format. */
+  filename?: string
 }
 
 // ── Load settings ─────────────────────────────────────────────────────
@@ -41,6 +45,7 @@ export function loadSttSettings(): SttSettings {
     provider: stt.provider ?? 'whisper-url',
     whisperUrl: stt.whisperUrl ?? '',
     providerId: stt.providerId ?? '',
+    openaiModel: stt.openaiModel ?? 'whisper-1',
     ollamaModel: stt.ollamaModel ?? '',
     rewrite: {
       enabled: rewrite.enabled ?? false,
@@ -55,9 +60,10 @@ export async function transcribeWhisperUrl(
   buffer: Buffer,
   url: string,
   language?: string,
+  filename?: string,
 ): Promise<string> {
   const formData = new FormData()
-  formData.append('file', new Blob([buffer]), 'audio.webm')
+  formData.append('file', new Blob([buffer]), filename ?? 'audio.webm')
   formData.append('response_format', 'text')
   if (language) {
     formData.append('language', language)
@@ -95,7 +101,9 @@ function findSttProvider(providerId: string): ProviderConfig | null {
 export async function transcribeOpenAi(
   buffer: Buffer,
   providerId: string,
+  model: string,
   language?: string,
+  filename?: string,
 ): Promise<string> {
   const provider = findSttProvider(providerId)
   if (!provider) {
@@ -103,12 +111,14 @@ export async function transcribeOpenAi(
   }
 
   const apiKey = await getApiKeyForProvider(provider)
-  const baseUrl = (provider.baseUrl || 'https://api.openai.com').replace(/\/+$/, '')
-  const url = `${baseUrl}/v1/audio/transcriptions`
+  const rawBaseUrl = (provider.baseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '')
+  // Strip /v1 suffix to avoid double /v1/v1/ path
+  const cleanBase = rawBaseUrl.replace(/\/v1$/, '')
+  const url = `${cleanBase}/v1/audio/transcriptions`
 
   const formData = new FormData()
-  formData.append('file', new Blob([buffer]), 'audio.webm')
-  formData.append('model', 'whisper-1')
+  formData.append('file', new Blob([buffer]), filename ?? 'audio.webm')
+  formData.append('model', model)
   formData.append('response_format', 'text')
   if (language) {
     formData.append('language', language)
@@ -220,110 +230,58 @@ export async function rewriteTranscript(
   }
 
   const apiKey = await getApiKeyForProvider(provider)
-  const preset = PROVIDER_TYPE_PRESETS[provider.providerType]
-  const isAnthropic = preset?.apiType === 'anthropic-messages'
+  const model = buildModel(provider)
 
-  if (isAnthropic) {
-    return rewriteViaAnthropic(provider, apiKey, transcript)
-  }
-  return rewriteViaOpenAi(provider, apiKey, transcript)
-}
-
-async function rewriteViaOpenAi(
-  provider: ProviderConfig,
-  apiKey: string,
-  transcript: string,
-): Promise<string> {
-  const baseUrl = (provider.baseUrl || 'https://api.openai.com').replace(/\/+$/, '')
-  // Strip /v1 suffix for Ollama-type providers, then always append /v1/chat/completions
-  const cleanBase = baseUrl.replace(/\/v1$/, '')
-  const url = `${cleanBase}/v1/chat/completions`
-
-  const body = {
-    model: provider.defaultModel,
+  const response = await completeSimple(model, {
+    systemPrompt: REWRITE_SYSTEM_PROMPT,
     messages: [
-      { role: 'system', content: REWRITE_SYSTEM_PROMPT },
-      { role: 'user', content: transcript },
+      { role: 'user' as const, content: transcript, timestamp: Date.now() },
     ],
-    temperature: 0,
-  }
+  }, { apiKey })
 
-  let response: Response
-  try {
-    response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify(body),
-    })
-  } catch (err) {
-    throw new Error(`Rewrite request failed: ${(err as Error).message}`)
-  }
+  const text = response.content
+    .filter(c => c.type === 'text')
+    .map(c => (c as { type: 'text'; text: string }).text)
+    .join('')
+    .trim()
 
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => 'Unknown error')
-    throw new Error(`Rewrite returned HTTP ${response.status}: ${errorText}`)
-  }
-
-  const data = await response.json() as {
-    choices?: Array<{ message?: { content?: string } }>
-  }
-  const content = data?.choices?.[0]?.message?.content
-  if (!content) {
+  if (!text) {
     throw new Error('Rewrite returned no content.')
   }
 
-  return content.trim()
+  return text
 }
 
-async function rewriteViaAnthropic(
-  provider: ProviderConfig,
-  apiKey: string,
-  transcript: string,
-): Promise<string> {
-  const baseUrl = (provider.baseUrl || 'https://api.anthropic.com').replace(/\/+$/, '')
-  const url = `${baseUrl}/v1/messages`
+// ── Language code resolution ──────────────────────────────────────────
 
-  const body = {
-    model: provider.defaultModel,
-    max_tokens: 4096,
-    system: REWRITE_SYSTEM_PROMPT,
-    messages: [
-      { role: 'user', content: transcript },
-    ],
-  }
+/**
+ * Map full language names (as stored in settings.json) to ISO-639-1 codes
+ * expected by the Whisper API.
+ */
+const LANGUAGE_TO_ISO: Record<string, string> = {
+  english: 'en',
+  german: 'de',
+  french: 'fr',
+  spanish: 'es',
+  italian: 'it',
+  portuguese: 'pt',
+  dutch: 'nl',
+  russian: 'ru',
+  chinese: 'zh',
+  japanese: 'ja',
+  korean: 'ko',
+}
 
-  let response: Response
-  try {
-    response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify(body),
-    })
-  } catch (err) {
-    throw new Error(`Rewrite request failed: ${(err as Error).message}`)
-  }
-
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => 'Unknown error')
-    throw new Error(`Rewrite returned HTTP ${response.status}: ${errorText}`)
-  }
-
-  const data = await response.json() as {
-    content?: Array<{ type: string; text?: string }>
-  }
-  const textBlock = data?.content?.find(b => b.type === 'text')
-  if (!textBlock?.text) {
-    throw new Error('Rewrite returned no content.')
-  }
-
-  return textBlock.text.trim()
+/**
+ * Resolve a language setting value to a Whisper-compatible ISO-639-1 code.
+ * If the value is already a 2-3 letter code, return it as-is.
+ * If it's a full name (e.g. "German"), map it to the code (e.g. "de").
+ */
+export function resolveLanguageCode(lang: string | undefined): string | undefined {
+  if (!lang) return undefined
+  // Already an ISO code (2-3 chars)?
+  if (lang.length <= 3) return lang.toLowerCase()
+  return LANGUAGE_TO_ISO[lang.toLowerCase()]
 }
 
 // ── Dispatcher ────────────────────────────────────────────────────────
@@ -338,27 +296,30 @@ export async function transcribeAudio(
     throw new Error('STT is not enabled. Enable it in Settings → Speech-to-Text.')
   }
 
+  // Resolve full language names (e.g. "German") to ISO codes (e.g. "de")
+  const language = resolveLanguageCode(options.language)
+
   let transcript: string
   switch (settings.provider) {
     case 'whisper-url': {
       if (!settings.whisperUrl) {
         throw new Error('Whisper URL is not configured. Set it in Settings → Speech-to-Text.')
       }
-      transcript = await transcribeWhisperUrl(buffer, settings.whisperUrl, options.language)
+      transcript = await transcribeWhisperUrl(buffer, settings.whisperUrl, language, options.filename)
       break
     }
     case 'openai': {
       if (!settings.providerId) {
         throw new Error('OpenAI STT provider is not configured. Select a provider in Settings → Speech-to-Text.')
       }
-      transcript = await transcribeOpenAi(buffer, settings.providerId, options.language)
+      transcript = await transcribeOpenAi(buffer, settings.providerId, settings.openaiModel, language, options.filename)
       break
     }
     case 'ollama': {
       if (!settings.providerId) {
         throw new Error('Ollama STT provider is not configured. Select a provider in Settings → Speech-to-Text.')
       }
-      transcript = await transcribeOllama(buffer, settings.providerId, settings.ollamaModel, options.language)
+      transcript = await transcribeOllama(buffer, settings.providerId, settings.ollamaModel, language)
       break
     }
     default:
