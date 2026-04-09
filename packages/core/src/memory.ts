@@ -679,7 +679,7 @@ ${dailyContext}
     }
 
     // Chat history
-    toolLines.push('- **read_chat_history**: Read past chat messages from the database with datetime/source/role filters.')
+    toolLines.push('- **read_chat_history**: Read past chat messages from the database with datetime/source/role filters. Supports a query parameter for full-text search on message content and tool call inputs/outputs.')
 
     // Agent skills tool (only useful when there are more skills than shown in the prompt)
     if (options?.agentSkillsOverflowCount && options.agentSkillsOverflowCount > 10) {

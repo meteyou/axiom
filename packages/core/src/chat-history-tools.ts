@@ -32,7 +32,8 @@ export function createReadChatHistoryTool(options: ChatHistoryToolsOptions): Age
     description:
       'Read chat messages from the database. Supports filtering by datetime range, source (web/telegram/task), ' +
       'role (user/assistant/tool/system), and session. Returns messages in chronological order. ' +
-      'Use this to review past conversations, extract facts for memory, or answer questions about chat history.',
+      'Use this to review past conversations, extract facts for memory, or answer questions about chat history. ' +
+      'Optionally search message content and related tool call inputs/outputs with the query parameter.',
     parameters: Type.Object({
       start: Type.Optional(
         Type.String({
@@ -76,6 +77,14 @@ export function createReadChatHistoryTool(options: ChatHistoryToolsOptions): Age
           description: 'Number of messages to skip for pagination (default: 0).',
         }),
       ),
+      query: Type.Optional(
+        Type.String({
+          description:
+            'Full-text search query. Filters messages where content contains this string (case-insensitive). ' +
+            'Also searches tool call inputs and outputs associated with the same session. ' +
+            'Omit to return all messages.',
+        }),
+      ),
     }),
     execute: async (_toolCallId, params) => {
       const {
@@ -86,6 +95,7 @@ export function createReadChatHistoryTool(options: ChatHistoryToolsOptions): Age
         session_id,
         limit: rawLimit,
         offset: rawOffset,
+        query,
       } = params as {
         start?: string
         end?: string
@@ -94,6 +104,7 @@ export function createReadChatHistoryTool(options: ChatHistoryToolsOptions): Age
         session_id?: string
         limit?: number
         offset?: number
+        query?: string
       }
 
       try {
@@ -168,6 +179,19 @@ export function createReadChatHistoryTool(options: ChatHistoryToolsOptions): Age
           queryParams.push(session_id)
         }
 
+        // Full-text query filter: match content OR tool call input/output in same session
+        if (query) {
+          const pattern = `%${query}%`
+          conditions.push(
+            '(content LIKE ? OR id IN (' +
+            '  SELECT cm.id FROM chat_messages cm' +
+            '  INNER JOIN tool_calls tc ON tc.session_id = cm.session_id' +
+            '  WHERE tc.input LIKE ? OR tc.output LIKE ?' +
+            '))'
+          )
+          queryParams.push(pattern, pattern, pattern)
+        }
+
         const whereClause = conditions.length > 0
           ? `WHERE ${conditions.join(' AND ')}`
           : ''
@@ -177,10 +201,10 @@ export function createReadChatHistoryTool(options: ChatHistoryToolsOptions): Age
         const { count: total } = options.db.prepare(countSql).get(...queryParams) as { count: number }
 
         if (total === 0) {
-          const filterDesc = buildFilterDescription({ start, end, source, role, session_id })
+          const filterDesc = buildFilterDescription({ start, end, source, role, session_id, query })
           return {
             content: [{ type: 'text' as const, text: `No chat messages found${filterDesc}.` }],
-            details: { count: 0, total: 0, filters: { start, end, source, role, session_id } },
+            details: { count: 0, total: 0, filters: { start, end, source, role, session_id, query } },
           }
         }
 
@@ -229,7 +253,7 @@ export function createReadChatHistoryTool(options: ChatHistoryToolsOptions): Age
             total,
             offset,
             limit,
-            filters: { start, end, source, role, session_id },
+            filters: { start, end, source, role, session_id, query },
           },
         }
       } catch (err) {
@@ -306,6 +330,7 @@ function buildFilterDescription(filters: {
   source?: string
   role?: string
   session_id?: string
+  query?: string
 }): string {
   const parts: string[] = []
   if (filters.start) parts.push(`from ${filters.start}`)
@@ -313,5 +338,6 @@ function buildFilterDescription(filters: {
   if (filters.source) parts.push(`source: ${filters.source}`)
   if (filters.role) parts.push(`role: ${filters.role}`)
   if (filters.session_id) parts.push(`session: ${filters.session_id}`)
+  if (filters.query) parts.push(`query: "${filters.query}"`)
   return parts.length > 0 ? ` (filters: ${parts.join(', ')})` : ''
 }
