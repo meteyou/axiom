@@ -3,7 +3,7 @@ import path from 'node:path'
 import { Bot, GrammyError, HttpError, InputFile } from 'grammy'
 import type { Context } from 'grammy'
 import type { AgentCore, Database } from '@openagent/core'
-import { loadConfig, saveUpload, serializeUploadsMetadata, parseUploadsMetadata } from '@openagent/core'
+import { loadConfig, saveUpload, serializeUploadsMetadata, parseUploadsMetadata, loadSttSettings, transcribeAudio } from '@openagent/core'
 import type { UploadDescriptor } from '@openagent/core'
 
 /**
@@ -385,6 +385,10 @@ export class TelegramBot {
     this.bot.on('message:photo', async (ctx) => {
       await this.handleIncomingAttachment(ctx, 'photo')
     })
+
+    this.bot.on('message:voice', async (ctx) => {
+      await this.handleVoiceMessage(ctx)
+    })
   }
 
   /**
@@ -629,6 +633,45 @@ export class TelegramBot {
     } catch (err) {
       console.error('Error handling Telegram attachment:', err)
       await this.safeSendMessage(ctx, '⚠️ Datei konnte nicht gespeichert werden.')
+    }
+  }
+
+  private async handleVoiceMessage(ctx: Context): Promise<void> {
+    if (!await this.checkAuthorized(ctx)) return
+
+    // Check if STT is enabled — silently ignore voice messages when disabled
+    const sttSettings = loadSttSettings()
+    if (!sttSettings.enabled) return
+
+    try {
+      const voice = ctx.message?.voice
+      if (!voice) return
+
+      // Download OGG audio from Telegram
+      const { buffer } = await this.downloadTelegramFile(voice.file_id)
+
+      // Resolve language from settings: if "match", "auto", or empty, omit language param
+      const settings = loadConfig<Record<string, unknown>>('settings.json')
+      const settingsLanguage = (settings.language as string) ?? ''
+      const autoLanguages = ['match', 'auto', '']
+      const language = autoLanguages.includes(settingsLanguage.toLowerCase())
+        ? undefined
+        : settingsLanguage
+
+      // Transcribe via core STT module
+      const transcript = await transcribeAudio(buffer, { language })
+
+      if (!transcript.trim()) {
+        console.warn('[telegram] Voice transcription returned empty result')
+        return
+      }
+
+      // Prefix with voice indicator and process as normal message
+      const text = `🎤 Voice: ${transcript.trim()}`
+      this.bufferMessage(ctx, text)
+    } catch (err) {
+      console.error('[telegram] Voice transcription error:', err)
+      await this.safeSendMessage(ctx, '⚠️ Could not transcribe voice message. Please try again or send a text message.')
     }
   }
 
