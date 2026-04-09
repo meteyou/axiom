@@ -19,6 +19,8 @@ import { getUploadsDir } from './uploads.js'
 import type { UploadDescriptor } from './uploads.js'
 import { createBuiltinWebTools } from './web-tools.js'
 import type { BuiltinToolsConfig } from './web-tools.js'
+import { createTranscribeAudioTool } from './stt-tool.js'
+import { loadSttSettings } from './stt.js'
 import { SessionManager } from './session-manager.js'
 import type { SessionInfo } from './session-manager.js'
 import { MessageQueue } from './message-queue.js'
@@ -424,6 +426,20 @@ export class AgentCore {
     const totalAgentSkills = getAgentSkillsCount()
     const allSkills = [...activeSkills, ...agentSkillEntries]
 
+    // Check if STT is enabled for transcribe_audio tool and system prompt
+    let sttEnabled = false
+    try {
+      sttEnabled = loadSttSettings().enabled
+    } catch {
+      // STT settings not available
+    }
+
+    // Merge STT enabled state into builtinTools config for system prompt
+    const builtinToolsPromptConfig = {
+      ...builtinToolsConfig,
+      stt: { enabled: sttEnabled },
+    }
+
     // Build system prompt from memory
     const systemPrompt = options.systemPrompt ?? assembleSystemPrompt({
       memoryDir: options.memoryDir,
@@ -432,13 +448,14 @@ export class AgentCore {
       timezone,
       skills: allSkills,
       agentSkillsOverflowCount: totalAgentSkills > 10 ? totalAgentSkills : undefined,
-      builtinTools: builtinToolsConfig,
+      builtinTools: builtinToolsPromptConfig,
       agentSkillsDir: getAgentSkillsDir(),
     })
 
     const tools: AgentTool[] = [
       ...(options.tools ?? []),
       ...createBuiltinWebTools(builtinToolsConfig),
+      ...(sttEnabled ? [createTranscribeAudioTool()] : []),
       ...createAgentSkillTools(),
       ...createYoloTools(),
     ]
@@ -974,6 +991,19 @@ Rules:
     const totalAgentSkills = getAgentSkillsCount()
     const allSkills = [...activeSkills, ...agentSkillEntries]
 
+    // Check STT enabled for system prompt
+    let sttEnabled = false
+    try {
+      sttEnabled = loadSttSettings().enabled
+    } catch {
+      // STT settings not available
+    }
+
+    const builtinToolsPromptConfig = {
+      ...builtinToolsConfig,
+      stt: { enabled: sttEnabled },
+    }
+
     const prompt = assembleSystemPrompt({
       memoryDir: this.memoryDir,
       baseInstructions: this.baseInstructions,
@@ -983,7 +1013,7 @@ Rules:
       skills: allSkills,
       agentSkillsOverflowCount: totalAgentSkills > 10 ? totalAgentSkills : undefined,
       currentUser,
-      builtinTools: builtinToolsConfig,
+      builtinTools: builtinToolsPromptConfig,
       agentSkillsDir: getAgentSkillsDir(),
     })
     this.agent.setSystemPrompt(prompt)

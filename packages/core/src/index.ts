@@ -222,3 +222,4 @@ export type {
   SttRewriteSettings,
   TranscribeOptions,
 } from './stt.js'
+export { createTranscribeAudioTool } from './stt-tool.js'

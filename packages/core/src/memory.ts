@@ -582,6 +582,7 @@ export interface SkillPromptEntry {
 export interface BuiltinToolsPromptConfig {
   webSearch?: { enabled?: boolean }
   webFetch?: { enabled?: boolean }
+  stt?: { enabled?: boolean }
 }
 
 export function assembleSystemPrompt(options?: {
@@ -671,6 +672,11 @@ ${dailyContext}
       '- **list_cronjobs**: List all cronjobs.',
       '- **create_reminder**: Create a one-time reminder delivered at a specific time.',
     )
+
+    // STT tool (only when enabled)
+    if (options?.builtinTools?.stt?.enabled) {
+      toolLines.push('- **transcribe_audio**: Transcribe an audio file from the workspace to text. Supports mp3, wav, ogg, webm, m4a, flac. Use after downloading audio (e.g., with yt-dlp via shell).')
+    }
 
     // Chat history
     toolLines.push('- **read_chat_history**: Read past chat messages from the database with datetime/source/role filters.')
