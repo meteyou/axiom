@@ -215,6 +215,8 @@ export {
   loadSttSettings,
   transcribeAudio,
   transcribeWhisperUrl,
+  transcribeOpenAi,
+  transcribeOllama,
 } from './stt.js'
 export type {
   SttProvider,

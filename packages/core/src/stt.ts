@@ -1,4 +1,6 @@
 import { loadConfig, ensureConfigTemplates } from './config.js'
+import { loadProvidersDecrypted, getApiKeyForProvider } from './provider-config.js'
+import type { ProviderConfig } from './provider-config.js'
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -75,6 +77,122 @@ export async function transcribeWhisperUrl(
   return text.trim()
 }
 
+// ── OpenAI Whisper provider ───────────────────────────────────────────
+
+/**
+ * Find the configured provider for STT by providerId.
+ */
+function findSttProvider(providerId: string): ProviderConfig | null {
+  const file = loadProvidersDecrypted()
+  return file.providers.find(p => p.id === providerId) ?? null
+}
+
+export async function transcribeOpenAi(
+  buffer: Buffer,
+  providerId: string,
+  language?: string,
+): Promise<string> {
+  const provider = findSttProvider(providerId)
+  if (!provider) {
+    throw new Error(`OpenAI STT provider not found: ${providerId}. Check Settings → Speech-to-Text.`)
+  }
+
+  const apiKey = await getApiKeyForProvider(provider)
+  const baseUrl = (provider.baseUrl || 'https://api.openai.com').replace(/\/+$/, '')
+  const url = `${baseUrl}/v1/audio/transcriptions`
+
+  const formData = new FormData()
+  formData.append('file', new Blob([buffer]), 'audio.webm')
+  formData.append('model', 'whisper-1')
+  formData.append('response_format', 'text')
+  if (language) {
+    formData.append('language', language)
+  }
+
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: formData,
+    })
+  } catch (err) {
+    throw new Error(`OpenAI STT request failed: ${(err as Error).message}`)
+  }
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => 'Unknown error')
+    throw new Error(`OpenAI STT returned HTTP ${response.status}: ${errorText}`)
+  }
+
+  const text = await response.text()
+  return text.trim()
+}
+
+// ── Ollama provider ───────────────────────────────────────────────────
+
+export async function transcribeOllama(
+  buffer: Buffer,
+  providerId: string,
+  model: string,
+  language?: string,
+): Promise<string> {
+  const provider = findSttProvider(providerId)
+  if (!provider) {
+    throw new Error(`Ollama STT provider not found: ${providerId}. Check Settings → Speech-to-Text.`)
+  }
+
+  // Strip /v1 suffix to get Ollama's native base URL
+  const rawBaseUrl = (provider.baseUrl || 'http://localhost:11434').replace(/\/+$/, '')
+  const ollamaBase = rawBaseUrl.replace(/\/v1$/, '')
+  const url = `${ollamaBase}/api/chat`
+
+  const base64Audio = buffer.toString('base64')
+  const effectiveModel = model || 'whisper'
+
+  const prompt = language
+    ? `Transcribe this audio. The language is ${language}. Return only the transcribed text, nothing else.`
+    : 'Transcribe this audio. Return only the transcribed text, nothing else.'
+
+  const body = {
+    model: effectiveModel,
+    messages: [
+      {
+        role: 'user',
+        content: prompt,
+        images: [base64Audio],
+      },
+    ],
+    stream: false,
+  }
+
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  } catch (err) {
+    throw new Error(`Ollama STT request failed: ${(err as Error).message}`)
+  }
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => 'Unknown error')
+    throw new Error(`Ollama STT returned HTTP ${response.status}: ${errorText}`)
+  }
+
+  const data = await response.json() as { message?: { content?: string } }
+  const transcript = data?.message?.content
+  if (!transcript) {
+    throw new Error('Ollama STT returned no transcript content.')
+  }
+
+  return transcript.trim()
+}
+
 // ── Dispatcher ────────────────────────────────────────────────────────
 
 export async function transcribeAudio(
@@ -94,10 +212,18 @@ export async function transcribeAudio(
       }
       return transcribeWhisperUrl(buffer, settings.whisperUrl, options.language)
     }
-    case 'openai':
-      throw new Error('OpenAI STT provider is not yet implemented.')
-    case 'ollama':
-      throw new Error('Ollama STT provider is not yet implemented.')
+    case 'openai': {
+      if (!settings.providerId) {
+        throw new Error('OpenAI STT provider is not configured. Select a provider in Settings → Speech-to-Text.')
+      }
+      return transcribeOpenAi(buffer, settings.providerId, options.language)
+    }
+    case 'ollama': {
+      if (!settings.providerId) {
+        throw new Error('Ollama STT provider is not configured. Select a provider in Settings → Speech-to-Text.')
+      }
+      return transcribeOllama(buffer, settings.providerId, settings.ollamaModel, options.language)
+    }
     default:
       throw new Error(`Unknown STT provider: ${settings.provider}`)
   }
