@@ -101,7 +101,7 @@ describe('transcribe_audio execute', () => {
     expect(result.details.mimeType).toBe('audio/mpeg')
     expect(result.details.rewrite).toBe(false)
 
-    expect(mockTranscribeAudio).toHaveBeenCalledWith(Buffer.from('fake-audio'), { language: undefined })
+    expect(mockTranscribeAudio).toHaveBeenCalledWith(Buffer.from('fake-audio'), { language: undefined, filename: 'recording.mp3' })
   })
 
   it('transcribes a wav file with language parameter', async () => {
@@ -126,7 +126,7 @@ describe('transcribe_audio execute', () => {
     expect(text).toBe('Hallo Welt')
     expect(result.details.language).toBe('de')
     expect(result.details.mimeType).toBe('audio/wav')
-    expect(mockTranscribeAudio).toHaveBeenCalledWith(Buffer.from('fake-wav'), { language: 'de' })
+    expect(mockTranscribeAudio).toHaveBeenCalledWith(Buffer.from('fake-wav'), { language: 'de', filename: 'audio.wav' })
   })
 
   it('passes rewrite flag in details when rewrite is requested and enabled', async () => {

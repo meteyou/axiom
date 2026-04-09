@@ -116,7 +116,7 @@ export function createTranscribeAudioTool(): AgentTool {
         const buffer = fs.readFileSync(resolved)
 
         // Transcribe
-        const result = await transcribeAudio(buffer, { language })
+        const result = await transcribeAudio(buffer, { language, filename })
 
         // If rewrite requested and rewrite is enabled in settings, apply rewrite
         if (rewrite && settings.rewrite.enabled && settings.rewrite.providerId) {
