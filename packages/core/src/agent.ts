@@ -236,8 +236,12 @@ export class AgentCore {
             fileHints.push(`[Image upload failed to read: ${att.originalName}]`)
           }
         } else {
-          const absPath = nodePath.resolve(getUploadsDir(), att.relativePath)
-          fileHints.push(`[Uploaded file: ${att.originalName} (${att.mimeType}, ${att.size} bytes) at ${absPath}]`)
+          if (att.extractedText) {
+            fileHints.push(`[Uploaded file: ${att.originalName} (${att.mimeType})\n\nContent:\n${att.extractedText}]`)
+          } else {
+            const absPath = nodePath.resolve(getUploadsDir(), att.relativePath)
+            fileHints.push(`[Uploaded file: ${att.originalName} (${att.mimeType}, ${att.size} bytes) at ${absPath}]`)
+          }
         }
       }
     }
