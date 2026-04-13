@@ -794,7 +794,9 @@ export class AgentCore {
   }
 
   /**
-   * Generate a summary of the current conversation using the LLM
+   * Generate a summary of the current conversation using the LLM.
+   * Returns a combined activity log entry that may include an optional
+   * "### Offene Fäden" (open threads) section when unresolved items exist.
    */
   private async generateSessionSummary(_userId: string, conversationHistory?: string): Promise<string> {
     // Always use DB conversation history (single source of truth).
@@ -806,13 +808,25 @@ export class AgentCore {
       const response = await completeSimple(this.model, {
         systemPrompt: `You are writing a chronological activity log entry for this session. Your output will be stored in a daily file so the agent can recall what happened in past sessions (e.g. "yesterday at 14:30 we discussed X and you asked me to do Y").
 
-Rules:
-- Write 2–5 sentences or bullet points. Max 200 words total.
-- Always describe what actually happened: topics discussed, questions answered, decisions made, tasks started or completed, PRs or files created, and anything left open.
+Your output has two parts:
+
+**Part 1 — Activity Log (always required)**
+- Write 2–5 sentences or bullet points. Max 200 words.
+- Describe what actually happened: topics discussed, questions answered, decisions made, tasks started or completed, PRs or files created.
 - If a background task completed or a task result was injected, mention its outcome (e.g. "PR #15 created for X", "wiki page updated").
 - Use neutral, factual tone. No filler words. No meta-commentary about the summary itself.
 - Do NOT filter for "memory-worthiness" — this is an activity log, not a memory promotion filter. Even a single answered question is worth one sentence.
-- Write "Empty session." ONLY if the transcript contains nothing but greetings or a bare connection with zero substantive content.`,
+- Write "Empty session." ONLY if the transcript contains nothing but greetings or a bare connection with zero substantive content.
+
+**Part 2 — Open Threads (optional)**
+If and only if there are genuinely unresolved items, append the following section after the activity log (separated by a blank line):
+
+### Offene Fäden
+- <concrete open item>
+- <concrete open item>
+
+Open items are: explicitly mentioned but unfinished tasks, background tasks started without a confirmed result, decisions that were deferred, or questions that were not answered.
+Do NOT add this section if everything discussed was resolved or if there is nothing left open. Never add an empty "### Offene Fäden" section.`,
         messages: [{
           role: 'user' as const,
           content: conversationHistory,
