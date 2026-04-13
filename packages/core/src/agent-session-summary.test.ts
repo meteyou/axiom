@@ -111,11 +111,14 @@ function makeModel() {
 
 function makeCompleteSimpleResponse(text: string) {
   return {
+    role: 'assistant' as const,
     content: [{ type: 'text' as const, text }],
-    usage: { input: 100, output: 50, cacheRead: 0, cacheWrite: 0, cost: { total: 0 } },
+    usage: { input: 100, output: 50, cacheRead: 0, cacheWrite: 0, totalTokens: 150, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
     model: 'gpt-4o',
+    api: 'openai-completions' as const,
     provider: 'openai',
-    stopReason: 'end_turn' as const,
+    stopReason: 'stop' as const,
+    timestamp: Date.now(),
   }
 }
 
