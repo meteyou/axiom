@@ -8,7 +8,6 @@
     "chat": "Chat",
     "dashboard": "Dashboard",
     "memory": "Memory",
-    "wiki": "Wiki",
     "settings": "Settings",
     "providers": "Providers",
     "usage": "Token Usage",
@@ -249,7 +248,8 @@
     "projectsTab": "Projects",
     "noProjectFiles": "No project files yet.",
     "projectColumnName": "Project",
-    "projectEditorDescription": "Project notes are used by the agent for project-specific context."
+    "projectEditorDescription": "Project notes are used by the agent for project-specific context.",
+    "wikiTab": "Wiki"
   },
   "settings": {
     "kicker": "Runtime configuration",
