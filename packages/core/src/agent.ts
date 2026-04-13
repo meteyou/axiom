@@ -804,16 +804,15 @@ export class AgentCore {
 
     try {
       const response = await completeSimple(this.model, {
-        systemPrompt: `Summarize this conversation for the agent's daily memory log.
+        systemPrompt: `You are writing a chronological activity log entry for this session. Your output will be stored in a daily file so the agent can recall what happened in past sessions (e.g. "yesterday at 14:30 we discussed X and you asked me to do Y").
 
 Rules:
-- Write 1–3 short bullet points (not paragraphs). Max 150 words total.
-- Focus on: decisions made, action items, key facts learned, and open questions.
-- Omit greetings, small talk, and anything the agent already knows from its core memory.
-- Use neutral, factual tone. No filler words.
-- If the transcript contains background-task updates or task results, treat them as part of the session and summarize their actual outcome.
-- If nothing noteworthy happened, write "No significant content."
-- Do NOT repeat the full conversation — extract only what matters for future sessions.`,
+- Write 2–5 sentences or bullet points. Max 200 words total.
+- Always describe what actually happened: topics discussed, questions answered, decisions made, tasks started or completed, PRs or files created, and anything left open.
+- If a background task completed or a task result was injected, mention its outcome (e.g. "PR #15 created for X", "wiki page updated").
+- Use neutral, factual tone. No filler words. No meta-commentary about the summary itself.
+- Do NOT filter for "memory-worthiness" — this is an activity log, not a memory promotion filter. Even a single answered question is worth one sentence.
+- Write "Empty session." ONLY if the transcript contains nothing but greetings or a bare connection with zero substantive content.`,
         messages: [{
           role: 'user' as const,
           content: conversationHistory,
@@ -830,7 +829,7 @@ Rules:
         .join('')
         .trim()
 
-      return summary || 'No significant content.'
+      return summary || 'Empty session.'
     } catch (err) {
       console.error('Failed to generate session summary:', err)
       return 'Session ended (summary generation failed).'
