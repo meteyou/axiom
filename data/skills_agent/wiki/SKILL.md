@@ -1,166 +1,166 @@
 ---
 name: wiki
-description: Pflege und durchsuche das persönliche LLM-Wiki (Wissensbase aus Markdown-Seiten). Verwende diesen Skill für Ingest neuer Quellen, Queries gegen das Wiki, und Wiki-Pflege/Linting.
+description: Maintain and search the personal LLM-Wiki (knowledge base of Markdown pages). Use this skill for ingesting new sources, querying the wiki, and wiki maintenance/linting.
 ---
 
 # Wiki Skill
 
-Das Wiki liegt unter `/data/memory/wiki/`. Es ist eine Sammlung von LLM-gepflegten Markdown-Dateien – eine persönliche Wissensbasis nach dem Karpathy-Konzept.
+The wiki lives at `/data/memory/wiki/`. It is a collection of LLM-maintained Markdown files — a personal knowledge base following the Karpathy pattern.
 
-## Wiki-Struktur
+## Wiki Structure
 
-Jede Wiki-Seite ist eine `.md`-Datei unter `/data/memory/wiki/`. Seiten können optionalen YAML-Frontmatter mit Aliases enthalten:
+Each wiki page is a `.md` file under `/data/memory/wiki/`. Pages can have optional YAML frontmatter with aliases:
 
 ```markdown
 ---
-aliases: [kurzname, abkürzung]
+aliases: [short-name, abbreviation]
 ---
 
-# Seitentitel
+# Page Title
 
-Inhalt der Seite...
+Page content...
 ```
 
-## Operationen
+## Operations
 
-### Ingest — Neue Quellen einpflegen
+### Ingest — Add a new source
 
-Ziel: Wissen aus einer externen Quelle (URL, Datei, Chat-Kontext) in das Wiki aufnehmen.
+Goal: extract knowledge from an external source (URL, file, conversation context) and store it in the wiki.
 
-**Vorgehen:**
+**Steps:**
 
-1. Lies zunächst alle bestehenden Wiki-Seiten via `list_files /data/memory/wiki/`:
-   - Welche Seiten existieren bereits?
-   - Gibt es eine passende Seite, die erweitert werden sollte?
+1. List all existing wiki pages via `list_files /data/memory/wiki/`:
+   - Which pages already exist?
+   - Is there an existing page that should be extended?
 
-2. Extrahiere das wesentliche Wissen aus der Quelle:
-   - Fakten, Konzepte, Entscheidungen, Abhängigkeiten
-   - Keine Duplikation von bereits vorhandenem Wissen
-   - Fokus auf Evergreen-Wissen (dauerhaft nützlich, nicht ephemer)
+2. Extract the essential knowledge from the source:
+   - Facts, concepts, decisions, dependencies
+   - No duplication of existing knowledge
+   - Focus on evergreen knowledge (durably useful, not ephemeral)
 
-3. Entscheide: Neue Seite erstellen oder bestehende ergänzen?
-   - Neue Seite: wenn es ein neues Thema/Projekt/Konzept ist
-   - Bestehende Seite: wenn das Wissen zu einer vorhandenen Seite gehört
+3. Decide: create a new page or extend an existing one?
+   - New page: when it covers a new topic, project, or concept
+   - Existing page: when the knowledge belongs to an existing page
 
-4. Schreibe die Seite:
-   - Dateiname: `thema-name.md` (Kleinbuchstaben, Bindestriche statt Leerzeichen)
-   - Erster Heading `# Titel` (klar und präzise)
-   - Struktur: Überschriften, Aufzählungen, Codeblöcke wo sinnvoll
-   - Cross-Links: Verweise auf verwandte Wiki-Seiten (`[Seitenname](seitenname.md)`)
+4. Write the page:
+   - Filename: `topic-name.md` (lowercase, hyphens instead of spaces)
+   - First heading `# Title` (clear and precise)
+   - Structure: headings, bullet lists, code blocks where appropriate
+   - Cross-links: reference related wiki pages (`[Page Name](page-name.md)`)
 
-**Beispiel — Web-Artikel einpflegen:**
+**Example — ingest a web article:**
 ```
-1. web_fetch die URL
+1. web_fetch the URL
 2. list_files /data/memory/wiki/
-3. Relevantes extrahieren, Duplikate erkennen
-4. write_file /data/memory/wiki/thema.md mit dem destillierten Wissen
+3. Extract relevant knowledge, identify duplicates
+4. write_file /data/memory/wiki/topic.md with the distilled knowledge
 ```
 
-**Beispiel — Kontext aus Gespräch einpflegen:**
+**Example — ingest context from a conversation:**
 ```
 1. list_files /data/memory/wiki/
-2. Prüfen ob passende Seite existiert
-3. Falls ja: edit_file um Abschnitt hinzuzufügen
-4. Falls nein: write_file neue Seite anlegen
+2. Check whether a matching page exists
+3. If yes: edit_file to add a section
+4. If no: write_file to create a new page
 ```
 
 ---
 
-### Query — Wiki abfragen
+### Query — Search the wiki
 
-Ziel: Das Wiki nach relevantem Wissen für eine aktuelle Aufgabe durchsuchen.
+Goal: search the wiki for knowledge relevant to a current task.
 
-**Vorgehen:**
+**Steps:**
 
-1. `list_files /data/memory/wiki/` — alle Seiten auflisten
-2. Dateinamen scannen: Welche Seiten könnten relevant sein?
-3. Relevante Seiten mit `read_file` lesen
-4. Falls eine Seite auf andere verlinkt (`[Name](datei.md)`): auch diese lesen
+1. `list_files /data/memory/wiki/` — list all pages
+2. Scan filenames: which pages might be relevant?
+3. Read relevant pages with `read_file`
+4. If a page links to others (`[Name](file.md)`): read those too
 
-**Tipps:**
-- Bei breiten Themen: mehrere Seiten lesen, dann synthetisieren
-- Bei spezifischen Fragen: gezielt eine/zwei Seiten lesen
-- Wenn keine passende Seite existiert: das dem Nutzer mitteilen und ggf. eine neue Seite anlegen
+**Tips:**
+- Broad topics: read multiple pages, then synthesize
+- Specific questions: read one or two targeted pages
+- If no matching page exists: inform the user and offer to create one
 
-**Wann das Wiki nutzen:**
-- Vor technischen Fragen zu bekannten Projekten/Systemen
-- Bei wiederkehrenden Themen (Tools, Workflows, Konfigurationen)
-- Wenn der Nutzer fragt "wie machen wir X normalerweise?"
+**When to use the wiki:**
+- Before answering technical questions about known projects or systems
+- For recurring topics (tools, workflows, configurations)
+- When the user asks "how do we normally do X?"
 
 ---
 
-### Lint — Wiki-Pflege und Health-Check
+### Lint — Wiki health check
 
-Ziel: Das Wiki auf Qualität prüfen – Widersprüche, verwaiste Seiten, fehlende Links finden.
+Goal: audit the wiki for quality — find contradictions, orphaned pages, missing links.
 
-**Vorgehen:**
+**Steps:**
 
-1. **Alle Seiten lesen:**
+1. **Read all pages:**
    ```
    list_files /data/memory/wiki/
-   read_file jede Seite
+   read_file each page
    ```
 
-2. **Widersprüche suchen:**
-   - Gleiche Fakten unterschiedlich beschrieben?
-   - Veraltete Informationen die korrigiert werden sollten?
-   - Duplikate (gleiches Wissen auf mehreren Seiten)?
+2. **Find contradictions:**
+   - Same facts described differently across pages?
+   - Outdated information that should be corrected?
+   - Duplicates (same knowledge on multiple pages)?
 
-3. **Verwaiste Seiten identifizieren:**
-   - Welche Seiten werden von keiner anderen Seite verlinkt?
-   - Sind diese Seiten trotzdem wertvoll (standalone-Dokumente)?
+3. **Identify orphaned pages:**
+   - Which pages are not linked from any other page?
+   - Are they still valuable as standalone documents?
 
-4. **Fehlende Cross-Links erkennen:**
-   - Konzepte die auf Seite A erwähnt werden, für die es Seite B gibt – aber kein Link?
-   - Cross-Links hinzufügen mit `edit_file`
+4. **Find missing cross-links:**
+   - Concepts mentioned on page A for which page B exists — but no link?
+   - Add cross-links with `edit_file`
 
-5. **Lint-Report schreiben:**
-   - Befunde in die heutige Daily-Datei schreiben:
+5. **Write a lint report:**
+   - Append findings to today's daily file:
      ```
-     read_file /data/memory/daily/YYYY-MM-DD.md (oder ensureDailyFile)
-     edit_file: ## Wiki Lint Report — YYYY-MM-DD\n\n### Befunde\n- ...
+     append to /data/memory/daily/YYYY-MM-DD.md
+     ## Wiki Lint Report — YYYY-MM-DD\n\n### Findings\n- ...
      ```
 
-6. **Fixes anwenden:**
-   - Offensichtliche Korrekturen direkt vornehmen (edit_file)
-   - Nur wenn sicher – keine spekulativen Änderungen
+6. **Apply fixes:**
+   - Apply obvious corrections directly (edit_file)
+   - Only when certain — no speculative changes
 
-**Lint-Report Format:**
+**Lint report format:**
 ```markdown
 ## Wiki Lint Report — 2025-01-15
 
-### Widersprüche
-- `projekt-x.md` und `architektur.md` beschreiben die Datenbankstruktur unterschiedlich
+### Contradictions
+- `project-x.md` and `architecture.md` describe the database structure differently
 
-### Verwaiste Seiten
-- `alter-service.md` — wird nirgends verlinkt, evtl. löschen?
+### Orphaned pages
+- `old-service.md` — not linked from anywhere, consider deleting?
 
-### Fehlende Cross-Links
-- `deployment.md` erwähnt Docker aber kein Link zu `docker.md`
+### Missing cross-links
+- `deployment.md` mentions Docker but no link to `docker.md`
 
-### Veraltete Informationen
-- `setup.md` referenziert noch Node 16, aktuell ist Node 20
+### Outdated information
+- `setup.md` still references Node 16, current version is Node 20
 ```
 
 ---
 
-## Dateinamen-Konventionen
+## Filename conventions
 
-- Kleinbuchstaben: `mein-projekt.md` nicht `MeinProjekt.md`
-- Bindestriche statt Leerzeichen: `api-design.md`
-- Beschreibend und eindeutig: `openagent-deployment.md` statt `deployment.md` wenn mehrere Projekte
-- Keine Sonderzeichen außer `-` und `_`
+- Lowercase: `my-project.md` not `MyProject.md`
+- Hyphens instead of spaces: `api-design.md`
+- Descriptive and unambiguous: `openagent-deployment.md` rather than `deployment.md` when multiple projects exist
+- No special characters except `-` and `_`
 
-## Qualitätsprinzipien (nach Karpathy)
+## Quality principles (after Karpathy)
 
-1. **Jedes Wissen lebt an genau einem Ort** — kein Copy-Paste zwischen Seiten, stattdessen Cross-Links
-2. **Kurz und präzise** — Wiki-Seiten sind Referenz, kein Prosa-Text
-3. **Immer aktuell** — veraltete Infos korrigieren, nicht nur neue hinzufügen
-4. **Verlinkt** — Wiki-Seiten sollten aufeinander verweisen, um ein Netz zu bilden
-5. **Evergreen** — ephemere Infos gehören in daily-Dateien, nicht ins Wiki
+1. **Each piece of knowledge lives in exactly one place** — no copy-paste between pages, use cross-links instead
+2. **Short and precise** — wiki pages are reference material, not prose
+3. **Always current** — correct outdated info, don't just add new info on top
+4. **Interlinked** — wiki pages should reference each other to form a network
+5. **Evergreen** — ephemeral info belongs in daily files, not the wiki
 
-## Pfade
+## Paths
 
-- Wiki-Verzeichnis: `/data/memory/wiki/`
-- Heutiges Daily (für Lint-Reports): `/data/memory/daily/YYYY-MM-DD.md`
-- Alle Pfade sind absolut anzugeben
+- Wiki directory: `/data/memory/wiki/`
+- Today's daily file (for lint reports): `/data/memory/daily/YYYY-MM-DD.md`
+- Always use absolute paths
