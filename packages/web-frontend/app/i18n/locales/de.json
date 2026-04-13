@@ -8,7 +8,6 @@
     "chat": "Chat",
     "dashboard": "Dashboard",
     "memory": "Gedächtnis",
-    "wiki": "Wiki",
     "settings": "Einstellungen",
     "providers": "Anbieter",
     "usage": "Token-Verbrauch",
@@ -249,7 +248,8 @@
     "projectsTab": "Projekte",
     "noProjectFiles": "Noch keine Projektdateien vorhanden.",
     "projectColumnName": "Projekt",
-    "projectEditorDescription": "Projektnotizen werden vom Agenten für projektspezifischen Kontext genutzt."
+    "projectEditorDescription": "Projektnotizen werden vom Agenten für projektspezifischen Kontext genutzt.",
+    "wikiTab": "Wiki"
   },
   "settings": {
     "kicker": "Laufzeit-Konfiguration",
