@@ -17,6 +17,7 @@ import {
   loadConfig,
   getConfigDir,
   saveUpload,
+  saveUploadWithExtraction,
   serializeUploadsMetadata,
   parseUploadsMetadata,
   loadSttSettings,
@@ -728,7 +729,7 @@ export class TelegramBot {
       let upload
       if (kind === 'document' && ctx.message?.document) {
         const payload = await this.downloadTelegramFile(ctx.message.document.file_id)
-        upload = saveUpload({
+        upload = await saveUploadWithExtraction({
           buffer: payload.buffer,
           originalName: ctx.message.document.file_name ?? 'document',
           mimeType: ctx.message.document.mime_type ?? 'application/octet-stream',
