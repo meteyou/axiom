@@ -4,6 +4,8 @@ import crypto from 'node:crypto'
 import type { Database } from './database.js'
 import { loadConfig } from './config.js'
 
+let PDFParseClass: (new (opts: { data: Uint8Array }) => { getText(): Promise<{ text: string }> }) | null | undefined = undefined
+
 export interface UploadSettings {
   uploads?: { retentionDays?: number }
   /**
@@ -26,6 +28,7 @@ export interface UploadDescriptor {
   previewUrl?: string
   width?: number
   height?: number
+  extractedText?: string
 }
 
 export interface SaveUploadInput {
@@ -92,6 +95,43 @@ function buildDatePath(date = new Date()): string {
 
 function detectKind(mimeType: string): 'image' | 'file' {
   return mimeType.startsWith(IMAGE_MIME_PREFIX) ? 'image' : 'file'
+}
+
+export function isExtractableType(mimeType: string): boolean {
+  if (mimeType === 'application/pdf') return true
+  if (mimeType.startsWith('text/')) return true
+  if (mimeType === 'application/json') return true
+  return false
+}
+
+export async function extractTextContent(buffer: Buffer, mimeType: string): Promise<string | null> {
+  try {
+    if (mimeType === 'application/pdf') {
+      if (PDFParseClass === undefined) {
+        try {
+          const mod = await import('pdf-parse')
+          PDFParseClass = mod.PDFParse as unknown as typeof PDFParseClass
+        } catch {
+          PDFParseClass = null
+        }
+      }
+      if (!PDFParseClass) return null
+
+      const parser = new PDFParseClass({ data: new Uint8Array(buffer) })
+      const result = await parser.getText()
+      const text = result.text?.trim()
+      return text || null
+    }
+
+    if (mimeType.startsWith('text/') || mimeType === 'application/json') {
+      const text = buffer.toString('utf-8').trim()
+      return text || null
+    }
+
+    return null
+  } catch {
+    return null
+  }
 }
 
 function parsePngDimensions(buffer: Buffer): { width: number; height: number } | null {
@@ -181,6 +221,17 @@ export function saveUpload(input: SaveUploadInput): UploadDescriptor {
   }
 
   return result
+}
+
+export async function saveUploadWithExtraction(input: SaveUploadInput): Promise<UploadDescriptor> {
+  const descriptor = saveUpload(input)
+  if (isExtractableType(descriptor.mimeType)) {
+    const extracted = await extractTextContent(input.buffer, descriptor.mimeType)
+    if (extracted !== null) {
+      descriptor.extractedText = extracted
+    }
+  }
+  return descriptor
 }
 
 export function serializeUploadsMetadata(files: UploadDescriptor[]): string {

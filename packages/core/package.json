@@ -22,9 +22,11 @@
   "dependencies": {
     "@mariozechner/pi-agent-core": "0.72.0",
     "@mariozechner/pi-ai": "0.72.0",
+    "@types/pdf-parse": "^1.1.5",
     "adm-zip": "^0.5.16",
     "better-sqlite3": "^11.0.0",
-    "js-yaml": "^4.1.1"
+    "js-yaml": "^4.1.1",
+    "pdf-parse": "^2.4.5"
   },
   "devDependencies": {
     "@types/adm-zip": "^0.5.8",
