@@ -119,7 +119,7 @@ The memory system has several tiers. Each piece of information should live in ex
 |---|---|
 | MEMORY.md | Long-term core memory: learned lessons, recurring patterns, technical notes |
 | users/*.md | Per-user profiles: name, preferences, communication style, work context |
-| projects/*.md | Per-project notes: architecture, key decisions, dependencies, status |
+| wiki/*.md | Wiki pages: project notes, concepts, architecture, key decisions, references |
 | daily/*.md | Ephemeral daily logs (source for consolidation, never modified) |
 
 ## What to promote to MEMORY.md
@@ -138,14 +138,15 @@ The memory system has several tiers. Each piece of information should live in ex
 - Skills and expertise areas
 - Do NOT store language or timezone if they are already in the central settings
 
-## What to update in project notes (projects/*.md)
+## What to update in wiki pages (wiki/*.md)
 
 - New project discoveries and context
 - Architecture changes and design decisions
 - Key dependencies, integration points, and tech stack
 - Project status changes and milestones
-- Create a new project note when a previously unknown project is discussed repeatedly
-- Project notes support YAML frontmatter with aliases, e.g.:
+- Concepts, references, and evergreen knowledge worth preserving
+- Create a new wiki page when a previously unknown project or concept is discussed repeatedly
+- Wiki pages support YAML frontmatter with aliases, e.g.:
   \`\`\`
   ---
   aliases: [short-name, abbreviation]
@@ -230,7 +231,8 @@ export function ensureMemoryStructure(memoryDir?: string): void {
   const dir = memoryDir ?? getMemoryDir()
   const dailyDir = path.join(dir, 'daily')
   const usersDir = path.join(dir, 'users')
-  const projectsDir = path.join(dir, 'projects')
+  const wikiDir = path.join(dir, 'wiki')
+  const legacyProjectsDir = path.join(dir, 'projects')
 
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true })
@@ -244,8 +246,12 @@ export function ensureMemoryStructure(memoryDir?: string): void {
     fs.mkdirSync(usersDir, { recursive: true })
   }
 
-  if (!fs.existsSync(projectsDir)) {
-    fs.mkdirSync(projectsDir, { recursive: true })
+  // Migrate projects/ → wiki/ if projects/ exists and wiki/ does not
+  if (fs.existsSync(legacyProjectsDir) && !fs.existsSync(wikiDir)) {
+    fs.renameSync(legacyProjectsDir, wikiDir)
+    console.log('[openagent] Migrated memory/projects/ to memory/wiki/')
+  } else if (!fs.existsSync(wikiDir)) {
+    fs.mkdirSync(wikiDir, { recursive: true })
   }
 
   const soulPath = path.join(dir, 'SOUL.md')
@@ -308,15 +314,30 @@ export function ensureConfigStructure(configDir?: string): void {
 }
 
 /**
- * Ensure the projects directory exists, creating it if needed.
+ * Ensure the wiki directory exists, creating it if needed.
+ * Also handles migration from legacy projects/ directory.
+ */
+export function ensureWikiDir(memoryDir?: string): string {
+  const dir = memoryDir ?? getMemoryDir()
+  const wikiDir = path.join(dir, 'wiki')
+  const legacyProjectsDir = path.join(dir, 'projects')
+
+  // Migrate projects/ → wiki/ if projects/ exists and wiki/ does not
+  if (fs.existsSync(legacyProjectsDir) && !fs.existsSync(wikiDir)) {
+    fs.renameSync(legacyProjectsDir, wikiDir)
+    console.log('[openagent] Migrated memory/projects/ to memory/wiki/')
+  } else if (!fs.existsSync(wikiDir)) {
+    fs.mkdirSync(wikiDir, { recursive: true })
+  }
+
+  return wikiDir
+}
+
+/**
+ * @deprecated Use ensureWikiDir instead. Kept for backward compatibility.
  */
 export function ensureProjectsDir(memoryDir?: string): string {
-  const dir = memoryDir ?? getMemoryDir()
-  const projectsDir = path.join(dir, 'projects')
-  if (!fs.existsSync(projectsDir)) {
-    fs.mkdirSync(projectsDir, { recursive: true })
-  }
-  return projectsDir
+  return ensureWikiDir(memoryDir)
 }
 
 /**
@@ -353,18 +374,25 @@ export function parseProjectAliases(content: string): string[] {
 }
 
 /**
- * List all project notes in the projects/ directory with their aliases.
+ * List all wiki pages in the wiki/ directory with their aliases.
  */
-export function listProjectNotes(memoryDir?: string): Array<{ filename: string; aliases: string[] }> {
-  const projectsDir = ensureProjectsDir(memoryDir)
+export function listWikiPages(memoryDir?: string): Array<{ filename: string; aliases: string[] }> {
+  const wikiDir = ensureWikiDir(memoryDir)
 
-  if (!fs.existsSync(projectsDir)) return []
+  if (!fs.existsSync(wikiDir)) return []
 
-  const files = fs.readdirSync(projectsDir).filter(f => f.endsWith('.md')).sort()
+  const files = fs.readdirSync(wikiDir).filter(f => f.endsWith('.md')).sort()
   return files.map(filename => {
-    const content = fs.readFileSync(path.join(projectsDir, filename), 'utf-8')
+    const content = fs.readFileSync(path.join(wikiDir, filename), 'utf-8')
     return { filename, aliases: parseProjectAliases(content) }
   })
+}
+
+/**
+ * @deprecated Use listWikiPages instead. Kept for backward compatibility.
+ */
+export function listProjectNotes(memoryDir?: string): Array<{ filename: string; aliases: string[] }> {
+  return listWikiPages(memoryDir)
 }
 
 /**
@@ -690,18 +718,18 @@ ${dailyContext}
     sections.push(`<available_tools>\nYou have the following tools available. Use the right tool for the job.\n\n${toolLines.join('\n')}\n</available_tools>`)
   }
 
-  // 8. Project notes (Zettelkasten)
-  const projectNotes = listProjectNotes(memoryDir)
-  if (projectNotes.length > 0) {
-    const noteLines = projectNotes.map(n => {
+  // 8. Wiki pages (LLM-maintained knowledge base)
+  const wikiPages = listWikiPages(memoryDir)
+  if (wikiPages.length > 0) {
+    const pageLines = wikiPages.map(n => {
       const aliasStr = n.aliases.length > 0 ? ` (aliases: ${n.aliases.join(', ')})` : ''
       return `- ${n.filename}${aliasStr}`
     }).join('\n')
-    sections.push(`<project_notes>
-The following project notes are available. When discussing a project, check if a relevant project note exists and load it with read_file.
+    sections.push(`<wiki_pages>
+The following wiki pages are available in the personal knowledge base. When discussing a topic covered by a wiki page, load it with read_file for context. Use write_file or edit_file to create or update wiki pages when you learn something worth preserving.
 
-${noteLines}
-</project_notes>`)
+${pageLines}
+</wiki_pages>`)
   }
 
   // 9. Memory and config file paths for agent self-access
@@ -718,7 +746,7 @@ Memory files:
 - Daily memory directory: ${path.join(dir, 'daily/')}
 - Today's daily file: ${path.join(dir, 'daily', `${today}.md`)}
 - User profiles directory: ${path.join(dir, 'users/')}
-- Project notes directory: ${path.join(dir, 'projects/')}
+- Wiki pages directory: ${path.join(dir, 'wiki/')}
 
 Config files:
 - AGENTS.md (agent rules): ${path.join(cfgDir, 'AGENTS.md')}

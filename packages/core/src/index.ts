@@ -39,7 +39,7 @@ export {
   readRecentDailyFiles,
   assembleSystemPrompt,
 } from './memory.js'
-export { getUserProfileDir, ensureUserProfile, readUserProfile, ensureProjectsDir, parseProjectAliases, listProjectNotes } from './memory.js'
+export { getUserProfileDir, ensureUserProfile, readUserProfile, ensureWikiDir, ensureProjectsDir, parseProjectAliases, listWikiPages, listProjectNotes } from './memory.js'
 export type { SkillPromptEntry } from './memory.js'
 export { consolidateMemory, readDailyFilesForConsolidation, buildConsolidationPrompt } from './memory-consolidation.js'
 export type { MemoryConsolidationOptions, ConsolidationResult } from './memory-consolidation.js'
