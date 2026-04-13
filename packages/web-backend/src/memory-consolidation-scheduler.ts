@@ -58,8 +58,7 @@ All file paths below are ABSOLUTE paths. You MUST use the full absolute paths wh
 
 - \`${memoryDir}/MEMORY.md\` — long-term learned facts, lessons, patterns
 - \`${memoryDir}/users/*.md\` — user-specific information (preferences, context, personal details)
-- \`${memoryDir}/projects/*.md\` — project-specific notes and context
-- \`${memoryDir}/zettelkasten/*.md\` — knowledge notes
+- \`${memoryDir}/wiki/*.md\` — wiki pages: project notes, concepts, architecture, references
 
 You must NOT write to any other file. No config files, no code files, no files outside the memory directory.
 
@@ -69,7 +68,7 @@ You must NOT write to any other file. No config files, no code files, no files o
 
 2. **Read MEMORY.md**: Use \`read_file\` to read \`${memoryDir}/MEMORY.md\`. This is the long-term memory file.
 
-3. **Read project notes**: Use \`list_files\` on \`${memoryDir}/projects\`, then \`read_file\` to read each project note. These contain per-project context.
+3. **Read wiki pages**: Use \`list_files\` on \`${memoryDir}/wiki\`, then \`read_file\` to read each wiki page. These contain project notes, concepts, and knowledge base entries.
 
 4. **Read user profiles**: Use \`list_files\` on \`${memoryDir}/users\`, then \`read_file\` to read each user profile.
 
@@ -77,12 +76,20 @@ You must NOT write to any other file. No config files, no code files, no files o
 
 6. **Decide what to promote/update** (guided by the consolidation rules above):
    - If you find recurring patterns, learned lessons, or important facts in daily files, add them to \`${memoryDir}/MEMORY.md\` using \`edit_file\` or \`write_file\`.
-   - If you find project-specific information, update the relevant project note in \`${memoryDir}/projects/\` or create a new one if a new project is detected.
+   - If you find project-specific information or concepts worth preserving, update the relevant wiki page in \`${memoryDir}/wiki/\` or create a new one if a new project or concept is detected.
    - If you find user-specific information (preferences, context), update the relevant user profile in \`${memoryDir}/users/\`.
    - Remove outdated or superseded information from MEMORY.md.
    - Do NOT duplicate information across files — each fact should live in exactly one place.
 
-7. **Always complete with STATUS: silent.** Memory consolidation is a background maintenance task. The user does not need to be notified about it.
+7. **Wiki Health Check (Lint)**:
+   - Search for contradictions between wiki pages (facts stated differently in different pages)
+   - Identify orphaned pages (no inbound links from other wiki pages)
+   - Suggest missing cross-links (concepts mentioned in pages but without their own page)
+   - Note outdated information that should be refreshed
+   - If any issues are found, append a brief Lint Report section to today's daily file at \`${memoryDir}/daily/\` using \`edit_file\` or \`shell\` with \`echo\`
+   - Keep the lint report concise — a bullet list of findings is sufficient
+
+8. **Always complete with STATUS: silent.** Memory consolidation is a background maintenance task. The user does not need to be notified about it.
 
 ## Important Rules
 
