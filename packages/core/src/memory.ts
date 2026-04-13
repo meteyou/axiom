@@ -146,12 +146,7 @@ The memory system has several tiers. Each piece of information should live in ex
 - Project status changes and milestones
 - Concepts, references, and evergreen knowledge worth preserving
 - Create a new wiki page when a previously unknown project or concept is discussed repeatedly
-- Wiki pages support YAML frontmatter with aliases, e.g.:
-  \`\`\`
-  ---
-  aliases: [short-name, abbreviation]
-  ---
-  \`\`\`
+- For wiki page conventions (frontmatter, filenames, cross-links), load the wiki skill
 
 ## What to ignore
 
