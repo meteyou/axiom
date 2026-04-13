@@ -94,6 +94,15 @@
             </NuxtLink>
 
             <NuxtLink
+              to="/wiki"
+              :class="navItemClass('/wiki')"
+              @click="closeSidebarOnMobile"
+            >
+              <AppIcon name="compass" class="shrink-0" />
+              <span>{{ $t('nav.wiki') }}</span>
+            </NuxtLink>
+
+            <NuxtLink
               to="/logs"
               :class="navItemClass('/logs')"
               @click="closeSidebarOnMobile"
