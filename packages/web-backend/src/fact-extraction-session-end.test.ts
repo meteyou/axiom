@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import type { Api, Model } from '@mariozechner/pi-ai'
 import { initDatabase } from '@openagent/core'
 import type { Database, ProviderConfig } from '@openagent/core'
 import {
@@ -28,11 +29,31 @@ function makeProvider(id: string, name: string): ProviderConfig {
   }
 }
 
+function makeModel(id = 'gpt-4o-mini'): Model<Api> {
+  return {
+    id,
+    name: id,
+    api: 'openai-completions',
+    provider: 'openai',
+    baseUrl: 'https://api.openai.com/v1',
+    reasoning: false,
+    input: ['text'],
+    cost: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+    },
+    contextWindow: 128000,
+    maxTokens: 16384,
+  }
+}
+
 describe('fact-extraction session-end trigger', () => {
   it('resolves a dedicated provider first and falls back to the active provider', async () => {
     const dedicatedProvider = makeProvider('dedicated', 'Dedicated')
     const activeProvider = makeProvider('active', 'Active')
-    const buildModel = vi.fn((provider: ProviderConfig) => ({ id: provider.defaultModel }))
+    const buildModel = vi.fn((provider: ProviderConfig) => makeModel(provider.defaultModel))
     const getApiKeyForProvider = vi.fn().mockResolvedValue('resolved-key')
 
     const dedicatedContext = await resolveFactExtractionExecutionContext(
@@ -128,7 +149,7 @@ describe('fact-extraction session-end trigger', () => {
       deps: {
         loadSettings: () => ({ factExtraction: { enabled: true, providerId: '', minSessionMessages: 3 } }),
         getActiveProvider: () => makeProvider('active', 'Active'),
-        buildModel: vi.fn(() => ({ id: 'gpt-4o-mini' })),
+        buildModel: vi.fn(() => makeModel('gpt-4o-mini')),
         getApiKeyForProvider: vi.fn().mockResolvedValue('key'),
         extractAndStoreFacts,
         console: { log, warn: vi.fn(), error },
@@ -145,7 +166,7 @@ describe('fact-extraction session-end trigger', () => {
         1,
         'session-2',
         'User: remember that I use dark mode',
-        { id: 'gpt-4o-mini' },
+        expect.objectContaining({ id: 'gpt-4o-mini' }),
         'key',
       )
       expect(error).toHaveBeenCalled()

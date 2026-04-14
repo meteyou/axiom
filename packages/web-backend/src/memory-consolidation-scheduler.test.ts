@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { initDatabase, TaskStore, initTasksTable } from '@openagent/core'
-import type { Database, Task, ProviderConfig } from '@openagent/core'
+import type { AgentCore, Database, Task, TaskRunner, ProviderConfig } from '@openagent/core'
 import { MemoryConsolidationScheduler, DEFAULT_CONSOLIDATION_SETTINGS } from './memory-consolidation-scheduler.js'
 
 let tempDataDir: string
@@ -147,7 +147,7 @@ describe('MemoryConsolidationScheduler', () => {
       const scheduler = new MemoryConsolidationScheduler({
         db,
         taskStore,
-        taskRunner: mockRunner as any,
+        taskRunner: mockRunner as unknown as TaskRunner,
         getDefaultProvider: () => null,
       })
 
@@ -176,7 +176,7 @@ describe('MemoryConsolidationScheduler', () => {
       const scheduler = new MemoryConsolidationScheduler({
         db,
         taskStore,
-        taskRunner: mockRunner as any,
+        taskRunner: mockRunner as unknown as TaskRunner,
         getDefaultProvider: () => provider,
       })
 
@@ -198,6 +198,10 @@ describe('MemoryConsolidationScheduler', () => {
       expect(startedTask.task.prompt).toContain('project notes')
       expect(startedTask.task.prompt).toContain('user profiles')
       expect(startedTask.task.prompt).toContain('read_chat_history')
+      expect(startedTask.task.prompt).toContain('Additional input: Extracted Facts')
+      expect(startedTask.task.prompt).toContain('search_memories')
+      expect(startedTask.task.prompt).toContain('Do NOT write to the memories table')
+      expect(startedTask.task.prompt).toContain('if no relevant facts are found, continue with the daily files alone as before')
       // Verify it embeds the consolidation rules from CONSOLIDATION.md
       expect(startedTask.task.prompt).toContain('Consolidation Rules')
       expect(startedTask.task.prompt).toContain('Memory Consolidation Rules')
@@ -225,7 +229,7 @@ describe('MemoryConsolidationScheduler', () => {
       const scheduler = new MemoryConsolidationScheduler({
         db,
         taskStore,
-        taskRunner: mockRunner as any,
+        taskRunner: mockRunner as unknown as TaskRunner,
         getDefaultProvider: () => provider,
       })
 
@@ -252,9 +256,9 @@ describe('MemoryConsolidationScheduler', () => {
 
       const scheduler = new MemoryConsolidationScheduler({
         db,
-        agentCore: mockAgentCore as any,
+        agentCore: mockAgentCore as unknown as AgentCore,
         taskStore,
-        taskRunner: mockRunner as any,
+        taskRunner: mockRunner as unknown as TaskRunner,
         getDefaultProvider: () => provider,
       })
 
@@ -280,7 +284,7 @@ describe('MemoryConsolidationScheduler', () => {
       const scheduler = new MemoryConsolidationScheduler({
         db,
         taskStore,
-        taskRunner: mockRunner as any,
+        taskRunner: mockRunner as unknown as TaskRunner,
         getDefaultProvider: () => provider,
       })
 
@@ -311,7 +315,7 @@ describe('MemoryConsolidationScheduler', () => {
       const scheduler = new MemoryConsolidationScheduler({
         db,
         taskStore,
-        taskRunner: mockRunner as any,
+        taskRunner: mockRunner as unknown as TaskRunner,
         getDefaultProvider: () => provider,
       })
 
@@ -340,7 +344,7 @@ describe('MemoryConsolidationScheduler', () => {
       const scheduler = new MemoryConsolidationScheduler({
         db,
         taskStore,
-        taskRunner: mockRunner as any,
+        taskRunner: mockRunner as unknown as TaskRunner,
         getDefaultProvider: () => provider,
       })
 
@@ -349,7 +353,7 @@ describe('MemoryConsolidationScheduler', () => {
       // Check that a tool_call was logged
       const rows = db.prepare(
         "SELECT * FROM tool_calls WHERE tool_name = 'memory_consolidation'"
-      ).all() as any[]
+      ).all() as Array<{ session_id: string }>
       expect(rows.length).toBeGreaterThanOrEqual(1)
       expect(rows[0].session_id).toMatch(/^nightly-consolidation-/)
     })
@@ -359,7 +363,7 @@ describe('MemoryConsolidationScheduler', () => {
     it('setAgentCore updates the agentCore reference', () => {
       const scheduler = new MemoryConsolidationScheduler({ db })
       const mockAgentCore = { refreshSystemPrompt: vi.fn() }
-      scheduler.setAgentCore(mockAgentCore as any)
+      scheduler.setAgentCore(mockAgentCore as unknown as AgentCore)
       // No error thrown
     })
 
@@ -373,7 +377,7 @@ describe('MemoryConsolidationScheduler', () => {
     it('setTaskRunner updates the taskRunner reference', () => {
       const scheduler = new MemoryConsolidationScheduler({ db })
       const mockRunner = createMockTaskRunner()
-      scheduler.setTaskRunner(mockRunner as any)
+      scheduler.setTaskRunner(mockRunner as unknown as TaskRunner)
       // No error thrown
     })
   })
