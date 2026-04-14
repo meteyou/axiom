@@ -186,6 +186,17 @@ export { createTaskTool, createResumeTaskTool, listTasksTool } from './task-tool
 export type { TaskToolsOptions } from './task-tools.js'
 export { createReadChatHistoryTool } from './chat-history-tools.js'
 export type { ChatHistoryToolsOptions } from './chat-history-tools.js'
+export {
+  searchMemories,
+  listMemories,
+  getMemoryById,
+  createMemory,
+  updateMemory,
+  deleteMemory,
+} from './memories-store.js'
+export type { MemoryFact, SearchMemoriesOptions, ListMemoriesOptions } from './memories-store.js'
+export { createSearchMemoriesTool } from './memories-tool.js'
+export type { SearchMemoriesToolOptions } from './memories-tool.js'
 export { MessageQueue } from './message-queue.js'
 export type { QueuedMessage } from './message-queue.js'
 export {

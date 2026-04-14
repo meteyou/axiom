@@ -702,8 +702,9 @@ ${dailyContext}
       toolLines.push('- **transcribe_audio**: Transcribe an audio file from the workspace to text. Supports mp3, wav, ogg, webm, m4a, flac. Use after downloading audio (e.g., with yt-dlp via shell).')
     }
 
-    // Chat history
+    // Chat history and fact memory
     toolLines.push('- **read_chat_history**: Read past chat messages from the database with datetime/source/role filters. Supports a query parameter for full-text search on message content and tool call inputs/outputs.')
+    toolLines.push('- **search_memories**: Search the agent\'s fact memory for previously learned information from past conversations. Use when the user asks about past decisions, preferences, or details.')
 
     // Agent skills tool (only useful when there are more skills than shown in the prompt)
     if (options?.agentSkillsOverflowCount && options.agentSkillsOverflowCount > 10) {
