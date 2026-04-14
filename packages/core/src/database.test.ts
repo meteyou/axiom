@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import BetterSqlite3 from 'better-sqlite3'
 import { initDatabase, isValidUsername, validateUsername } from './database.js'
 import fs from 'node:fs'
@@ -9,6 +9,7 @@ describe('database', () => {
   const tmpFiles: string[] = []
 
   afterEach(() => {
+    vi.restoreAllMocks()
     for (const f of tmpFiles) {
       for (const suffix of ['', '-wal', '-shm']) {
         try { fs.unlinkSync(`${f}${suffix}`) } catch { /* ignore */ }
@@ -166,6 +167,54 @@ describe('database', () => {
     expect(legacyMatches.map(row => row.rowid)).toEqual([1])
 
     db.close()
+  })
+
+  it('rebuilds FTS indexes only when the virtual tables are first created', () => {
+    const execSpy = vi.spyOn(BetterSqlite3.prototype, 'exec')
+    const dbPath = tmpDbPath()
+
+    let db = initDatabase(dbPath)
+    db.prepare(
+      'INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)'
+    ).run('session-fts', 'user', 'hello world')
+    db.prepare(
+      'INSERT INTO memories (session_id, content) VALUES (?, ?)'
+    ).run('session-fts', 'remember this')
+    db.close()
+
+    const firstMemoriesRebuildCount = execSpy.mock.calls.filter(([sql]) =>
+      typeof sql === 'string' && sql.includes("INSERT INTO memories_fts(memories_fts) VALUES('rebuild')")
+    ).length
+    const firstChatMessagesRebuildCount = execSpy.mock.calls.filter(([sql]) =>
+      typeof sql === 'string' && sql.includes("INSERT INTO chat_messages_fts(chat_messages_fts) VALUES('rebuild')")
+    ).length
+
+    db = initDatabase(dbPath)
+
+    const totalMemoriesRebuildCount = execSpy.mock.calls.filter(([sql]) =>
+      typeof sql === 'string' && sql.includes("INSERT INTO memories_fts(memories_fts) VALUES('rebuild')")
+    ).length
+    const totalChatMessagesRebuildCount = execSpy.mock.calls.filter(([sql]) =>
+      typeof sql === 'string' && sql.includes("INSERT INTO chat_messages_fts(chat_messages_fts) VALUES('rebuild')")
+    ).length
+
+    expect(firstMemoriesRebuildCount).toBe(1)
+    expect(firstChatMessagesRebuildCount).toBe(1)
+    expect(totalMemoriesRebuildCount).toBe(1)
+    expect(totalChatMessagesRebuildCount).toBe(1)
+
+    const chatMatch = db.prepare(
+      "SELECT rowid FROM chat_messages_fts WHERE chat_messages_fts MATCH 'hello'"
+    ).all() as { rowid: number }[]
+    expect(chatMatch).toHaveLength(1)
+
+    const memoryMatch = db.prepare(
+      "SELECT rowid FROM memories_fts WHERE memories_fts MATCH 'remember'"
+    ).all() as { rowid: number }[]
+    expect(memoryMatch).toHaveLength(1)
+
+    db.close()
+    execSpy.mockRestore()
   })
 
   it('backfills session token counters from existing token_usage rows', () => {

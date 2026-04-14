@@ -115,6 +115,13 @@ CREATE INDEX IF NOT EXISTS idx_telegram_users_telegram_id ON telegram_users(tele
 CREATE INDEX IF NOT EXISTS idx_telegram_users_status ON telegram_users(status);
 `
 
+function tableExists(db: Database, tableName: string): boolean {
+  const row = db.prepare(
+    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?"
+  ).get(tableName)
+  return !!row
+}
+
 export function initDatabase(dbPath?: string): Database {
   const resolvedPath = dbPath ?? path.join(
     process.env.DATA_DIR ?? '/data',
@@ -175,6 +182,9 @@ export function initDatabase(dbPath?: string): Database {
     CREATE INDEX IF NOT EXISTS idx_chat_messages_timestamp ON chat_messages(timestamp);
   `)
 
+  const memoriesFtsExists = tableExists(db, 'memories_fts')
+  const chatMessagesFtsExists = tableExists(db, 'chat_messages_fts')
+
   db.exec(`
     CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
       content,
@@ -219,11 +229,15 @@ export function initDatabase(dbPath?: string): Database {
     END;
   `)
 
-  // Backfill / repair external-content FTS indexes from existing rows.
-  // FTS5 external-content tables can expose content-table rowids even when the
-  // inverted index itself is empty, so rebuild is the safest idempotent option.
-  db.exec("INSERT INTO memories_fts(memories_fts) VALUES('rebuild')")
-  db.exec("INSERT INTO chat_messages_fts(chat_messages_fts) VALUES('rebuild')")
+  // Backfill external-content FTS indexes only when the virtual table is first
+  // created during migration. Rebuilding on every boot rescans the full dataset
+  // and can significantly slow startup on larger installations.
+  if (!memoriesFtsExists) {
+    db.exec("INSERT INTO memories_fts(memories_fts) VALUES('rebuild')")
+  }
+  if (!chatMessagesFtsExists) {
+    db.exec("INSERT INTO chat_messages_fts(chat_messages_fts) VALUES('rebuild')")
+  }
 
   // Create tasks table
   db.exec(`
