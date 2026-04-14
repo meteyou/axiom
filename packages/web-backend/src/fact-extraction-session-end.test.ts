@@ -129,6 +129,40 @@ describe('fact-extraction session-end trigger', () => {
     db.close()
   })
 
+  it('skips fact extraction when the session has no numeric user scope', async () => {
+    const db = initDatabase(':memory:')
+    db.prepare('INSERT INTO users (id, username, password_hash, role) VALUES (1, ?, ?, ?)').run('alice', 'hash', 'user')
+    insertSession(db, { id: 'session-guest', userId: 1, messageCount: 4 })
+    db.prepare(
+      'UPDATE sessions SET user_id = NULL, session_user = ? WHERE id = ?'
+    ).run('telegram-123', 'session-guest')
+
+    const extractAndStoreFacts = vi.fn().mockResolvedValue({ extracted: 1, stored: 1, duplicates: 0 })
+    const buildConversationHistory = vi.fn(() => 'User: remember this')
+    const warn = vi.fn()
+
+    const triggered = triggerFactExtractionForSessionEnd({
+      db,
+      agentCore: {
+        getSessionManager: () => ({ buildConversationHistory }),
+      },
+      userId: 'telegram-123',
+      sessionId: 'session-guest',
+      deps: {
+        loadSettings: () => ({ factExtraction: { enabled: true, providerId: '', minSessionMessages: 3 } }),
+        extractAndStoreFacts,
+        console: { log: vi.fn(), warn, error: vi.fn() },
+      },
+    })
+
+    expect(triggered).toBe(false)
+    expect(buildConversationHistory).not.toHaveBeenCalled()
+    expect(extractAndStoreFacts).not.toHaveBeenCalled()
+    expect(warn).toHaveBeenCalledWith('[fact-extraction] Skipping session session-guest: no numeric user ID available')
+
+    db.close()
+  })
+
   it('fires-and-forgets extraction after session end and catches failures', async () => {
     const db = initDatabase(':memory:')
     db.prepare('INSERT INTO users (id, username, password_hash, role) VALUES (1, ?, ?, ?)').run('alice', 'hash', 'user')

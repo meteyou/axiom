@@ -24,6 +24,8 @@ export interface SessionHistoryProvider {
 }
 
 interface SessionRow {
+  user_id: number | null
+  session_user: string | null
   started_at: string
   ended_at: string | null
   message_count: number
@@ -67,6 +69,15 @@ function parseSqliteTimestamp(value: string | null): number | null {
   if (!value) return null
   const parsed = Date.parse(value.replace(' ', 'T') + 'Z')
   return Number.isFinite(parsed) ? parsed : null
+}
+
+function parseStrictNumericUserId(value: string | null | undefined): number | null {
+  if (!value) return null
+  const trimmed = value.trim()
+  if (!/^\d+$/.test(trimmed)) return null
+
+  const numericUserId = Number.parseInt(trimmed, 10)
+  return Number.isSafeInteger(numericUserId) ? numericUserId : null
 }
 
 function getFactExtractionSettings(
@@ -120,18 +131,25 @@ export function triggerFactExtractionForSessionEnd(options: TriggerFactExtractio
   }
 
   const sessionRow = db.prepare(
-    'SELECT started_at, ended_at, message_count FROM sessions WHERE id = ?'
+    'SELECT user_id, session_user, started_at, ended_at, message_count FROM sessions WHERE id = ?'
   ).get(sessionId) as SessionRow | undefined
 
   if (!sessionRow || sessionRow.message_count < settings.minSessionMessages) {
     return false
   }
 
+  const numericUserId = sessionRow.user_id
+    ?? parseStrictNumericUserId(sessionRow.session_user)
+    ?? parseStrictNumericUserId(userId)
+  if (numericUserId === null) {
+    deps.console.warn(`[fact-extraction] Skipping session ${sessionId}: no numeric user ID available`)
+    return false
+  }
+
   const startedAt = parseSqliteTimestamp(sessionRow.started_at) ?? Date.now()
   const endAt = parseSqliteTimestamp(sessionRow.ended_at) ?? Date.now()
-  const numericUserId = Number.parseInt(userId, 10)
   const conversationHistory = agentCore.getSessionManager().buildConversationHistory(sessionId, {
-    userId,
+    userId: String(numericUserId),
     startedAt,
     endAt,
   })
@@ -150,7 +168,7 @@ export function triggerFactExtractionForSessionEnd(options: TriggerFactExtractio
 
       const result = await deps.extractAndStoreFacts(
         db,
-        Number.isFinite(numericUserId) ? numericUserId : null,
+        numericUserId,
         sessionId,
         conversationHistory,
         executionContext.model,
