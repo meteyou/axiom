@@ -193,15 +193,42 @@ export function setupWebSocketChat(
             activeStreams.delete(ws)
           }
 
+          const agentCore = resolveAgentCore()
+
           // Reset session (generates summary + writes daily log).
-          // The resulting session_end event is emitted centrally via onSessionEnd
-          // and broadcast through the chat event bus to avoid duplicate dividers.
-          if (resolveAgentCore()) {
+          // When a chat event bus is available, the resulting session_end event is
+          // emitted centrally via onSessionEnd and broadcast from there to avoid
+          // duplicate dividers. Otherwise, emit the divider directly here.
+          if (agentCore) {
             try {
-              await resolveAgentCore()!.resetSession(String(currentUser.userId))
+              const summary = await agentCore.resetSession(String(currentUser.userId))
+              if (!chatEventBus) {
+                const newSessionId = `web-${currentUser.userId}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`
+                clientSessions.set(ws, newSessionId)
+                sendMessage(ws, {
+                  type: 'session_end',
+                  text: summary ?? undefined,
+                  sessionId: newSessionId,
+                })
+              }
             } catch (err) {
               console.error('Failed to reset session:', err)
+              if (!chatEventBus) {
+                const newSessionId = `web-${currentUser.userId}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`
+                clientSessions.set(ws, newSessionId)
+                sendMessage(ws, {
+                  type: 'session_end',
+                  sessionId: newSessionId,
+                })
+              }
             }
+          } else {
+            const newSessionId = `web-${currentUser.userId}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`
+            clientSessions.set(ws, newSessionId)
+            sendMessage(ws, {
+              type: 'session_end',
+              sessionId: newSessionId,
+            })
           }
 
           return
