@@ -1,5 +1,5 @@
 import { loadConfig, ensureConfigTemplates } from './config.js'
-import { loadProvidersDecrypted, getApiKeyForProvider, buildModel } from './provider-config.js'
+import { loadProvidersDecrypted, getApiKeyForProvider, buildModel, parseProviderModelId } from './provider-config.js'
 import type { ProviderConfig } from './provider-config.js'
 import { completeSimple } from '@mariozechner/pi-ai'
 
@@ -222,15 +222,16 @@ const REWRITE_SYSTEM_PROMPT = [
 
 export async function rewriteTranscript(
   transcript: string,
-  providerId: string,
+  rawProviderId: string,
 ): Promise<string> {
+  const { providerId, modelId } = parseProviderModelId(rawProviderId)
   const provider = findSttProvider(providerId)
   if (!provider) {
     throw new Error(`Rewrite provider not found: ${providerId}. Check Settings → Speech-to-Text.`)
   }
 
   const apiKey = await getApiKeyForProvider(provider)
-  const model = buildModel(provider)
+  const model = buildModel(provider, modelId ?? provider.defaultModel)
 
   const response = await completeSimple(model, {
     systemPrompt: REWRITE_SYSTEM_PROMPT,
