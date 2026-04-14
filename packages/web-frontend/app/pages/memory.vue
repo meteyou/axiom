@@ -36,6 +36,7 @@
         <TabsList class="self-start">
           <TabsTrigger value="wiki" @click="switchTab('wiki')">{{ $t('memory.wikiTab') }}</TabsTrigger>
           <TabsTrigger value="core" @click="switchTab('core')">{{ $t('memory.coreMemoryTab') }}</TabsTrigger>
+          <TabsTrigger value="facts" @click="switchTab('facts')">{{ $t('memory.factsTab') }}</TabsTrigger>
           <TabsTrigger value="projects" @click="switchTab('projects')">{{ $t('memory.projectsTab') }}</TabsTrigger>
           <TabsTrigger value="profile" @click="switchTab('profile')">{{ $t('memory.profileTab') }}</TabsTrigger>
           <TabsTrigger value="soul" @click="switchTab('soul')">{{ $t('memory.soulTab') }}</TabsTrigger>
@@ -220,6 +221,11 @@
             @save="handleSaveProfile"
           />
         </div>
+      </TabsContent>
+
+      <!-- Facts tab -->
+      <TabsContent value="facts" class="flex flex-1 flex-col overflow-hidden min-h-0 mt-0">
+        <MemoryFactsTab />
       </TabsContent>
 
       <!-- Daily tab -->
@@ -461,7 +467,7 @@ const {
   deleteWikiPage,
 } = useWiki()
 
-const activeTab = ref<'soul' | 'core' | 'profile' | 'daily' | 'projects' | 'wiki'>('wiki')
+const activeTab = ref<'soul' | 'core' | 'facts' | 'profile' | 'daily' | 'projects' | 'wiki'>('wiki')
 
 // Wiki state
 interface WikiFile {
@@ -659,6 +665,8 @@ async function switchTab(tab: typeof activeTab.value) {
     const profile = await loadProfile()
     profileContent.value = profile.content
     profileUsername.value = profile.username
+  } else if (tab === 'facts') {
+    return
   } else if (tab === 'daily') {
     await refreshDailyFiles()
   } else if (tab === 'projects') {
