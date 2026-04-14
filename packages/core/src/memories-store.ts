@@ -1,4 +1,6 @@
 import type { Database } from './database.js'
+import { normalizeFtsQuery } from './fts-utils.js'
+import { NotFoundError, InvalidInputError } from './errors.js'
 
 export interface MemoryFact {
   id: number
@@ -45,28 +47,6 @@ function rowToMemoryFact(row: MemoryRow): MemoryFact {
   }
 }
 
-function normalizePlainFtsQuery(query: string): string {
-  const sanitized = query.replace(/[^\p{L}\p{N}_]+/gu, ' ').trim()
-  return sanitized || '""'
-}
-
-function normalizeFtsQuery(query: string): string {
-  const trimmed = query.trim()
-  if (trimmed.length === 0) return '""'
-
-  const hasBooleanOperators = /(^|\s)(AND|OR|NOT)(?=\s|$)/.test(trimmed)
-  const hasWildcard = /\*/.test(trimmed)
-  const quoteCount = (trimmed.match(/"/g) ?? []).length
-  const hasBalancedQuotes = quoteCount > 0 && quoteCount % 2 === 0
-  const hasGrouping = /[()]/.test(trimmed) && (hasBooleanOperators || hasWildcard || hasBalancedQuotes)
-
-  if (hasBooleanOperators || hasWildcard || hasBalancedQuotes || hasGrouping) {
-    return trimmed
-  }
-
-  return normalizePlainFtsQuery(trimmed)
-}
-
 function normalizeDateFrom(input: string): string {
   if (/^\d{4}-\d{2}-\d{2}$/.test(input)) {
     return `${input} 00:00:00`
@@ -79,7 +59,7 @@ function normalizeDateFrom(input: string): string {
 
   const date = new Date(input)
   if (isNaN(date.getTime())) {
-    throw new Error(`Invalid dateFrom value: ${input}`)
+    throw new InvalidInputError(`Invalid dateFrom value: ${input}`)
   }
 
   return date.toISOString().replace('T', ' ').slice(0, 19)
@@ -103,7 +83,7 @@ function normalizeDateTo(input: string): string {
 
   const date = new Date(input)
   if (isNaN(date.getTime())) {
-    throw new Error(`Invalid dateTo value: ${input}`)
+    throw new InvalidInputError(`Invalid dateTo value: ${input}`)
   }
 
   return date.toISOString().replace('T', ' ').slice(0, 19)
@@ -232,13 +212,13 @@ export function createMemory(
 export function updateMemory(db: Database, id: number, content: string): void {
   const result = db.prepare('UPDATE memories SET content = ? WHERE id = ?').run(content, id)
   if (result.changes === 0) {
-    throw new Error(`Memory not found: ${id}`)
+    throw new NotFoundError(`Memory not found: ${id}`)
   }
 }
 
 export function deleteMemory(db: Database, id: number): void {
   const result = db.prepare('DELETE FROM memories WHERE id = ?').run(id)
   if (result.changes === 0) {
-    throw new Error(`Memory not found: ${id}`)
+    throw new NotFoundError(`Memory not found: ${id}`)
   }
 }
