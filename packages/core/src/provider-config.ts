@@ -224,9 +224,11 @@ export interface ProviderConfig {
   baseUrl: string
   apiKey: string // encrypted at rest
   defaultModel: string
+  enabledModels?: string[] // list of model IDs enabled for this provider
   degradedThresholdMs?: number
   models?: ProviderModelConfig[]
   status?: 'connected' | 'error' | 'untested'
+  modelStatuses?: Record<string, 'connected' | 'error' | 'untested'>
   authMethod?: AuthMethod
   oauthCredentials?: OAuthCredentialsStored // encrypted at rest
 }
@@ -258,7 +260,9 @@ export interface ProviderModelConfig {
 export interface ProvidersFile {
   providers: ProviderConfig[]
   activeProvider?: string
+  activeModel?: string // model ID within the active provider
   fallbackProvider?: string
+  fallbackModel?: string // model ID within the fallback provider
   _comment?: string
 }
 
@@ -405,6 +409,7 @@ export function addProvider(input: {
   baseUrl?: string
   apiKey?: string
   defaultModel: string
+  enabledModels?: string[]
   degradedThresholdMs?: number
 }): ProviderConfig {
   const preset = PROVIDER_TYPE_PRESETS[input.providerType]
@@ -419,6 +424,13 @@ export function addProvider(input: {
     throw new Error(`Provider with name "${input.name}" already exists`)
   }
 
+  // Ensure defaultModel is included in enabledModels
+  const enabledModels = input.enabledModels && input.enabledModels.length > 0
+    ? (input.enabledModels.includes(input.defaultModel)
+        ? input.enabledModels
+        : [input.defaultModel, ...input.enabledModels])
+    : [input.defaultModel]
+
   const provider: ProviderConfig = {
     id: generateProviderId(),
     name: input.name,
@@ -428,6 +440,7 @@ export function addProvider(input: {
     baseUrl: input.baseUrl || preset.baseUrl,
     apiKey: input.apiKey ? encrypt(input.apiKey) : '',
     defaultModel: input.defaultModel,
+    enabledModels,
     degradedThresholdMs: input.degradedThresholdMs ?? 5000,
     status: 'untested',
     authMethod: preset.authMethod,
@@ -438,6 +451,7 @@ export function addProvider(input: {
   // If this is the first provider, make it active
   if (file.providers.length === 1) {
     file.activeProvider = provider.id
+    file.activeModel = input.defaultModel
   }
 
   saveProviders(file)
@@ -451,6 +465,7 @@ export function addOAuthProvider(input: {
   name: string
   providerType: ProviderType
   defaultModel: string
+  enabledModels?: string[]
   degradedThresholdMs?: number
   oauthCredentials: OAuthCredentials
 }): ProviderConfig {
@@ -469,6 +484,13 @@ export function addOAuthProvider(input: {
     throw new Error(`Provider with name "${input.name}" already exists`)
   }
 
+  // Ensure defaultModel is included in enabledModels
+  const enabledModels = input.enabledModels && input.enabledModels.length > 0
+    ? (input.enabledModels.includes(input.defaultModel)
+        ? input.enabledModels
+        : [input.defaultModel, ...input.enabledModels])
+    : [input.defaultModel]
+
   const provider: ProviderConfig = {
     id: generateProviderId(),
     name: input.name,
@@ -478,6 +500,7 @@ export function addOAuthProvider(input: {
     baseUrl: preset.baseUrl,
     apiKey: '',
     defaultModel: input.defaultModel,
+    enabledModels,
     degradedThresholdMs: input.degradedThresholdMs ?? 5000,
     status: 'untested',
     authMethod: 'oauth',
@@ -488,6 +511,7 @@ export function addOAuthProvider(input: {
 
   if (file.providers.length === 1) {
     file.activeProvider = provider.id
+    file.activeModel = input.defaultModel
   }
 
   saveProviders(file)
@@ -503,6 +527,7 @@ export function updateProvider(id: string, input: {
   baseUrl?: string
   apiKey?: string
   defaultModel?: string
+  enabledModels?: string[]
   degradedThresholdMs?: number
 }): ProviderConfig {
   const file = loadProviders()
@@ -537,6 +562,13 @@ export function updateProvider(id: string, input: {
   if (input.baseUrl !== undefined) existing.baseUrl = input.baseUrl
   if (input.apiKey !== undefined) existing.apiKey = input.apiKey ? encrypt(input.apiKey) : ''
   if (input.defaultModel !== undefined) existing.defaultModel = input.defaultModel
+  if (input.enabledModels !== undefined) {
+    // Ensure defaultModel is always in enabledModels
+    const dm = input.defaultModel ?? existing.defaultModel
+    existing.enabledModels = input.enabledModels.includes(dm)
+      ? input.enabledModels
+      : [dm, ...input.enabledModels]
+  }
   if (input.degradedThresholdMs !== undefined) existing.degradedThresholdMs = input.degradedThresholdMs
 
   // For providers with fixed URLs, always sync from preset
@@ -579,6 +611,12 @@ export function deleteProvider(id: string): void {
     throw new Error('Cannot delete the active provider. Set another provider as active first.')
   }
 
+  // Clean up fallback if it points to this provider
+  if (file.fallbackProvider === id) {
+    delete file.fallbackProvider
+    delete file.fallbackModel
+  }
+
   file.providers.splice(index, 1)
   saveProviders(file)
 }
@@ -586,24 +624,74 @@ export function deleteProvider(id: string): void {
 /**
  * Set the active provider
  */
-export function setActiveProvider(id: string): void {
+export function setActiveProvider(id: string, modelId?: string): void {
   const file = loadProviders()
   const provider = file.providers.find(p => p.id === id)
   if (!provider) {
     throw new Error(`Provider not found: ${id}`)
   }
   file.activeProvider = id
+  if (modelId !== undefined) {
+    file.activeModel = modelId
+  } else {
+    file.activeModel = provider.defaultModel
+  }
   saveProviders(file)
+}
+
+/**
+ * Set the active model ID (within the current active provider).
+ */
+export function setActiveModel(modelId: string): void {
+  const file = loadProviders()
+  if (!file.activeProvider) {
+    throw new Error('No active provider set')
+  }
+  const provider = file.providers.find(p => p.id === file.activeProvider)
+  if (!provider) {
+    throw new Error('Active provider not found')
+  }
+  const enabled = provider.enabledModels ?? [provider.defaultModel]
+  if (!enabled.includes(modelId)) {
+    throw new Error(`Model "${modelId}" is not enabled for provider "${provider.name}"`)
+  }
+  file.activeModel = modelId
+  saveProviders(file)
+}
+
+/**
+ * Get the active model ID.
+ */
+export function getActiveModelId(): string | null {
+  const file = loadProviders()
+  if (!file.activeProvider) return null
+  const provider = file.providers.find(p => p.id === file.activeProvider)
+  if (!provider) return null
+  return file.activeModel ?? provider.defaultModel
 }
 
 /**
  * Update a provider's status
  */
-export function updateProviderStatus(id: string, status: 'connected' | 'error' | 'untested'): void {
+export function updateProviderStatus(id: string, status: 'connected' | 'error' | 'untested', modelId?: string): void {
   const file = loadProviders()
   const provider = file.providers.find(p => p.id === id)
   if (!provider) return
-  provider.status = status
+
+  if (modelId) {
+    // Update per-model status
+    if (!provider.modelStatuses) provider.modelStatuses = {}
+    provider.modelStatuses[modelId] = status
+    // Also derive overall provider status from model statuses
+    const enabled = provider.enabledModels ?? [provider.defaultModel]
+    const statuses = enabled.map(m => provider.modelStatuses?.[m] ?? 'untested')
+    if (statuses.every(s => s === 'connected')) provider.status = 'connected'
+    else if (statuses.some(s => s === 'error')) provider.status = 'error'
+    else provider.status = 'untested'
+  } else {
+    provider.status = status
+  }
+
   saveProviders(file)
 }
 
@@ -621,16 +709,26 @@ export function getFallbackProvider(): ProviderConfig | null {
 /**
  * Set the fallback provider by ID. Validates that the ID exists and is not the active provider.
  */
-export function setFallbackProvider(id: string): void {
+export function setFallbackProvider(id: string, modelId?: string): void {
   const file = loadProviders()
   const provider = file.providers.find(p => p.id === id)
   if (!provider) {
     throw new Error(`Provider not found: ${id}`)
   }
   if (file.activeProvider === id) {
-    throw new Error('Fallback provider cannot be the same as the active provider')
+    // Only reject if both provider AND model match the active selection
+    const activeModel = file.activeModel ?? file.providers.find(p => p.id === file.activeProvider)?.defaultModel
+    const fbModel = modelId ?? provider.defaultModel
+    if (activeModel === fbModel) {
+      throw new Error('Fallback cannot be the same provider and model as the active selection')
+    }
   }
   file.fallbackProvider = id
+  if (modelId !== undefined) {
+    file.fallbackModel = modelId
+  } else {
+    file.fallbackModel = provider.defaultModel
+  }
   saveProviders(file)
 }
 
@@ -640,7 +738,19 @@ export function setFallbackProvider(id: string): void {
 export function clearFallbackProvider(): void {
   const file = loadProviders()
   delete file.fallbackProvider
+  delete file.fallbackModel
   saveProviders(file)
+}
+
+/**
+ * Get the fallback model ID.
+ */
+export function getFallbackModelId(): string | null {
+  const file = loadProviders()
+  if (!file.fallbackProvider) return null
+  const provider = file.providers.find(p => p.id === file.fallbackProvider)
+  if (!provider) return null
+  return file.fallbackModel ?? provider.defaultModel
 }
 
 /**
