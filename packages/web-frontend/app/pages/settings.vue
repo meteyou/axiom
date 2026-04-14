@@ -232,8 +232,8 @@
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="">{{ $t('settings.sessionSummaryProviderDefault') }}</SelectItem>
-                      <SelectItem v-for="p in providers" :key="p.id" :value="p.id">
-                        {{ p.name }} ({{ p.defaultModel }})
+                      <SelectItem v-for="opt in providerModelOptions" :key="opt.value" :value="opt.value">
+                        {{ opt.label }}
                       </SelectItem>
                     </SelectContent>
                   </Select>
@@ -310,8 +310,8 @@
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="">{{ $t('settings.consolidationProviderDefault') }}</SelectItem>
-                          <SelectItem v-for="p in providers" :key="p.id" :value="p.id">
-                            {{ p.name }} ({{ p.defaultModel }})
+                          <SelectItem v-for="opt in providerModelOptions" :key="opt.value" :value="opt.value">
+                            {{ opt.label }}
                           </SelectItem>
                         </SelectContent>
                       </Select>
@@ -376,8 +376,8 @@
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="">{{ $t('settings.factExtractionProviderDefault') }}</SelectItem>
-                          <SelectItem v-for="p in providers" :key="p.id" :value="p.id">
-                            {{ p.name }} ({{ p.defaultModel }})
+                          <SelectItem v-for="opt in providerModelOptions" :key="opt.value" :value="opt.value">
+                            {{ opt.label }}
                           </SelectItem>
                         </SelectContent>
                       </Select>
@@ -939,8 +939,8 @@
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="">{{ $t('settings.tasksDefaultProviderActive') }}</SelectItem>
-                      <SelectItem v-for="p in providers" :key="p.id" :value="p.id">
-                        {{ p.name }} ({{ p.defaultModel }})
+                      <SelectItem v-for="opt in providerModelOptions" :key="opt.value" :value="opt.value">
+                        {{ opt.label }}
                       </SelectItem>
                     </SelectContent>
                   </Select>
@@ -1048,8 +1048,8 @@
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="">{{ $t('settings.tasksLoopDetectionSmartProviderDefault') }}</SelectItem>
-                          <SelectItem v-for="p in providers" :key="p.id" :value="p.id">
-                            {{ p.name }} ({{ p.defaultModel }})
+                          <SelectItem v-for="opt in providerModelOptions" :key="opt.value" :value="opt.value">
+                            {{ opt.label }}
                           </SelectItem>
                         </SelectContent>
                       </Select>
@@ -1420,12 +1420,12 @@
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <template v-for="p in providers" :key="p.id">
-                          <SelectItem :value="p.id">
-                            {{ p.name }}
+                        <template v-for="opt in providerModelOptions" :key="opt.value">
+                          <SelectItem :value="opt.value">
+                            {{ opt.label }}
                           </SelectItem>
                         </template>
-                        <SelectItem v-if="providers.length === 0" value="" disabled>
+                        <SelectItem v-if="providerModelOptions.length === 0" value="" disabled>
                           {{ $t('settings.sttRewriteProviderNone') }}
                         </SelectItem>
                       </SelectContent>
@@ -1716,6 +1716,23 @@ const {
 /* ── Providers (consolidation dropdown) ── */
 const { providers, fetchProviders } = useProviders()
 
+/** Flattened list of provider+model combinations for all provider select dropdowns */
+const providerModelOptions = computed(() => {
+  const options: { value: string; label: string }[] = []
+  for (const p of providers.value) {
+    const models = p.enabledModels && p.enabledModels.length > 0
+      ? p.enabledModels
+      : [p.defaultModel]
+    for (const modelId of models) {
+      options.push({
+        value: `${p.id}:${modelId}`,
+        label: `${p.name} (${modelId})`,
+      })
+    }
+  }
+  return options
+})
+
 /* ── Users (for telegram user assignment) ── */
 const { users, fetchUsers } = useUsers()
 const { refreshAvatar } = useUserAvatar()
@@ -1920,12 +1937,24 @@ interface SettingsForm {
 
 const form = ref<SettingsForm | null>(null)
 
+/**
+ * Migrate a legacy provider-only ID to the composite "providerId:modelId" format.
+ * If the value already contains ':', it is returned as-is.
+ * If it matches a known provider, it is expanded to "providerId:defaultModel".
+ */
+function migrateProviderValue(value: string): string {
+  if (!value || value.includes(':')) return value
+  const provider = providers.value.find(p => p.id === value)
+  if (provider) return `${provider.id}:${provider.defaultModel}`
+  return value
+}
+
 function hydrateForm() {
   if (!settings.value) return
   const s = settings.value
   form.value = {
     sessionTimeoutMinutes: s.sessionTimeoutMinutes,
-    sessionSummaryProviderId: s.sessionSummaryProviderId ?? '',
+    sessionSummaryProviderId: migrateProviderValue(s.sessionSummaryProviderId ?? ''),
     language: s.language,
     timezone: s.timezone,
     healthMonitorIntervalMinutes: s.healthMonitorIntervalMinutes,
@@ -1940,12 +1969,31 @@ function hydrateForm() {
       successesBeforeRecovery: s.healthMonitor.successesBeforeRecovery,
       notifications: { ...s.healthMonitor.notifications },
     },
-    memoryConsolidation: { ...s.memoryConsolidation },
-    factExtraction: { ...s.factExtraction },
+    memoryConsolidation: {
+      ...s.memoryConsolidation,
+      providerId: migrateProviderValue(s.memoryConsolidation.providerId ?? ''),
+    },
+    factExtraction: {
+      ...s.factExtraction,
+      providerId: migrateProviderValue(s.factExtraction.providerId ?? ''),
+    },
     agentHeartbeat: { ...s.agentHeartbeat, nightMode: { ...s.agentHeartbeat.nightMode } },
-    tasks: { ...s.tasks, loopDetection: { ...s.tasks.loopDetection } },
+    tasks: {
+      ...s.tasks,
+      defaultProvider: migrateProviderValue(s.tasks.defaultProvider ?? ''),
+      loopDetection: {
+        ...s.tasks.loopDetection,
+        smartProvider: migrateProviderValue(s.tasks.loopDetection.smartProvider ?? ''),
+      },
+    },
     tts: { ...s.tts },
-    stt: { ...s.stt, rewrite: { ...s.stt.rewrite } },
+    stt: {
+      ...s.stt,
+      rewrite: {
+        ...s.stt.rewrite,
+        providerId: migrateProviderValue(s.stt.rewrite?.providerId ?? ''),
+      },
+    },
   }
 }
 
