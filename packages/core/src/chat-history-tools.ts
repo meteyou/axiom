@@ -80,9 +80,10 @@ export function createReadChatHistoryTool(options: ChatHistoryToolsOptions): Age
       query: Type.Optional(
         Type.String({
           description:
-            'Full-text search query. Filters messages where content contains this string (case-insensitive). ' +
-            'Also searches tool call inputs and outputs associated with the same session. ' +
-            'Omit to return all messages.',
+            'Full-text search query. Supports word matching, prefix queries (e.g. "config*"), ' +
+            'phrase matching (e.g. "memory system"), and boolean operators (e.g. "docker OR container"). ' +
+            'Results are ranked by relevance when a query is provided. ' +
+            'Also searches tool call inputs and outputs.',
         }),
       ),
     }),
@@ -112,8 +113,14 @@ export function createReadChatHistoryTool(options: ChatHistoryToolsOptions): Age
         const offset = Math.max(rawOffset ?? 0, 0)
 
         // Build query dynamically
-        const conditions: string[] = []
-        const queryParams: unknown[] = []
+        const baseConditions: string[] = []
+        const baseParams: unknown[] = []
+        const toolCallQueryCondition =
+          'cm.id IN (' +
+          '  SELECT cm2.id FROM chat_messages cm2' +
+          '  INNER JOIN tool_calls tc ON tc.session_id = cm2.session_id' +
+          '  WHERE tc.input LIKE ? OR tc.output LIKE ?' +
+          ')'
 
         // Datetime filters — normalize to SQLite-compatible format
         if (start) {
@@ -124,8 +131,8 @@ export function createReadChatHistoryTool(options: ChatHistoryToolsOptions): Age
               details: { error: true },
             }
           }
-          conditions.push('timestamp >= ?')
-          queryParams.push(normalized)
+          baseConditions.push('cm.timestamp >= ?')
+          baseParams.push(normalized)
         }
 
         if (end) {
@@ -136,8 +143,8 @@ export function createReadChatHistoryTool(options: ChatHistoryToolsOptions): Age
               details: { error: true },
             }
           }
-          conditions.push('timestamp < ?')
-          queryParams.push(normalized)
+          baseConditions.push('cm.timestamp < ?')
+          baseParams.push(normalized)
         }
 
         // Source filter — matches session_id prefix pattern
@@ -151,12 +158,12 @@ export function createReadChatHistoryTool(options: ChatHistoryToolsOptions): Age
           }
           if (source === 'task') {
             // Task sessions use various prefixes: "task-", "agent-heartbeat-", "task-injection-"
-            conditions.push("(session_id LIKE 'task-%' OR session_id LIKE 'agent-heartbeat-%' OR session_id LIKE 'task-injection-%')")
+            baseConditions.push("(cm.session_id LIKE 'task-%' OR cm.session_id LIKE 'agent-heartbeat-%' OR cm.session_id LIKE 'task-injection-%')")
           } else if (source === 'telegram') {
-            conditions.push("session_id LIKE 'telegram-%'")
+            baseConditions.push("cm.session_id LIKE 'telegram-%'")
           } else {
             // Web sessions: "web-" prefix or "session-" (from SessionManager)
-            conditions.push("(session_id LIKE 'web-%' OR session_id LIKE 'session-%')")
+            baseConditions.push("(cm.session_id LIKE 'web-%' OR cm.session_id LIKE 'session-%')")
           }
         }
 
@@ -169,36 +176,60 @@ export function createReadChatHistoryTool(options: ChatHistoryToolsOptions): Age
               details: { error: true },
             }
           }
-          conditions.push('role = ?')
-          queryParams.push(role)
+          baseConditions.push('cm.role = ?')
+          baseParams.push(role)
         }
 
         // Session ID filter
         if (session_id) {
-          conditions.push('session_id = ?')
-          queryParams.push(session_id)
+          baseConditions.push('cm.session_id = ?')
+          baseParams.push(session_id)
         }
 
-        // Full-text query filter: match content OR tool call input/output in same session
+        let countConditions = [...baseConditions]
+        let countParams = [...baseParams]
+        let selectConditions = [...baseConditions]
+        let selectParams = [...baseParams]
+        let joinClause = ''
+        let orderByClause = 'cm.timestamp ASC'
+
+        // Full-text query filter: match message content via FTS5 MATCH, with LIKE fallback for tool calls
         if (query) {
+          const ftsQuery = normalizeFtsQuery(query)
           const pattern = `%${query}%`
-          conditions.push(
-            '(content LIKE ? OR id IN (' +
-            '  SELECT cm.id FROM chat_messages cm' +
-            '  INNER JOIN tool_calls tc ON tc.session_id = cm.session_id' +
-            '  WHERE tc.input LIKE ? OR tc.output LIKE ?' +
-            '))'
-          )
-          queryParams.push(pattern, pattern, pattern)
+
+          countConditions = [
+            ...baseConditions,
+            `(cm.id IN (SELECT rowid FROM chat_messages_fts WHERE chat_messages_fts MATCH ?) OR ${toolCallQueryCondition})`,
+          ]
+          countParams = [...baseParams, ftsQuery, pattern, pattern]
+
+          joinClause = `
+          LEFT JOIN (
+            SELECT rowid, bm25(chat_messages_fts) AS rank
+            FROM chat_messages_fts
+            WHERE chat_messages_fts MATCH ?
+          ) ranked_matches ON ranked_matches.rowid = cm.id`
+          selectConditions = [
+            ...baseConditions,
+            `(ranked_matches.rowid IS NOT NULL OR ${toolCallQueryCondition})`,
+          ]
+          selectParams = [ftsQuery, ...baseParams, pattern, pattern]
+          orderByClause =
+            'CASE WHEN ranked_matches.rank IS NULL THEN 1 ELSE 0 END ASC, ' +
+            'ranked_matches.rank ASC, cm.timestamp ASC'
         }
 
-        const whereClause = conditions.length > 0
-          ? `WHERE ${conditions.join(' AND ')}`
+        const countWhereClause = countConditions.length > 0
+          ? `WHERE ${countConditions.join(' AND ')}`
+          : ''
+        const selectWhereClause = selectConditions.length > 0
+          ? `WHERE ${selectConditions.join(' AND ')}`
           : ''
 
         // Get total count
-        const countSql = `SELECT COUNT(*) as count FROM chat_messages ${whereClause}`
-        const { count: total } = options.db.prepare(countSql).get(...queryParams) as { count: number }
+        const countSql = `SELECT COUNT(*) as count FROM chat_messages cm ${countWhereClause}`
+        const { count: total } = options.db.prepare(countSql).get(...countParams) as { count: number }
 
         if (total === 0) {
           const filterDesc = buildFilterDescription({ start, end, source, role, session_id, query })
@@ -208,14 +239,15 @@ export function createReadChatHistoryTool(options: ChatHistoryToolsOptions): Age
           }
         }
 
-        // Fetch messages in chronological order
-        const selectSql = `SELECT id, session_id, user_id, role, content, metadata, timestamp
-          FROM chat_messages ${whereClause}
-          ORDER BY timestamp ASC
+        // Fetch messages, ranked by FTS relevance when a query is provided
+        const selectSql = `SELECT cm.id, cm.session_id, cm.user_id, cm.role, cm.content, cm.metadata, cm.timestamp
+          FROM chat_messages cm
+          ${joinClause}
+          ${selectWhereClause}
+          ORDER BY ${orderByClause}
           LIMIT ? OFFSET ?`
-        queryParams.push(limit, offset)
 
-        const rows = options.db.prepare(selectSql).all(...queryParams) as ChatMessageRow[]
+        const rows = options.db.prepare(selectSql).all(...selectParams, limit, offset) as ChatMessageRow[]
 
         // Format messages for readability
         const formatted = rows.map(row => {
@@ -308,6 +340,22 @@ function parseMetadata(metadata: string | null): Record<string, unknown> | null 
   } catch {
     return null
   }
+}
+
+/**
+ * Normalize plain-text queries into valid FTS5 syntax while preserving advanced FTS operators.
+ */
+function normalizeFtsQuery(query: string): string {
+  const trimmed = query.trim()
+  if (trimmed.length === 0) return '""'
+
+  const hasAdvancedSyntax = /["()*]/.test(trimmed) || /(^|\s)(AND|OR|NOT)(?=\s|$)/.test(trimmed)
+  if (hasAdvancedSyntax) {
+    return trimmed
+  }
+
+  const sanitized = trimmed.replace(/[^\p{L}\p{N}_]+/gu, ' ').trim()
+  return sanitized || `"${trimmed.replaceAll('"', '""')}"`
 }
 
 /**
