@@ -241,12 +241,12 @@
                 </div>
 
                 <div class="flex flex-col gap-2">
-                  <Label for="upload-retention">Upload retention</Label>
+                  <Label for="upload-retention">{{ $t('settings.uploadRetention') }}</Label>
                   <div class="flex items-center gap-2">
                     <Input id="upload-retention" v-model.number="form.uploadRetentionDays" type="number" min="0" class="w-full" />
                     <span class="text-sm text-muted-foreground">{{ $t('settings.days') }}</span>
                   </div>
-                  <p class="text-xs text-muted-foreground">Delete uploaded files automatically after this many days. Set to 0 to remove them immediately on cleanup.</p>
+                  <p class="text-xs text-muted-foreground">{{ $t('settings.uploadRetentionHint') }}</p>
                 </div>
 
                 <Separator />
@@ -347,6 +347,59 @@
                     </div>
                   </div>
 
+                </template>
+
+                <Separator />
+
+                <div class="flex items-center justify-between rounded-lg border border-border px-4 py-3">
+                  <div class="flex flex-col gap-0.5 pr-4">
+                    <Label for="fact-extraction-enabled" class="cursor-pointer">
+                      {{ $t('settings.factExtractionEnabled') }}
+                    </Label>
+                    <p class="text-xs text-muted-foreground">
+                      {{ $t('settings.factExtractionEnabledHint') }}
+                    </p>
+                  </div>
+                  <Switch
+                    id="fact-extraction-enabled"
+                    v-model:checked="form.factExtraction.enabled"
+                  />
+                </div>
+
+                <template v-if="form.factExtraction.enabled">
+                  <div class="flex flex-col gap-8">
+                    <div class="flex flex-col gap-2">
+                      <Label for="fact-extraction-provider">{{ $t('settings.factExtractionProvider') }}</Label>
+                      <Select v-model="form.factExtraction.providerId">
+                        <SelectTrigger id="fact-extraction-provider">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="">{{ $t('settings.factExtractionProviderDefault') }}</SelectItem>
+                          <SelectItem v-for="p in providers" :key="p.id" :value="p.id">
+                            {{ p.name }} ({{ p.defaultModel }})
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p class="text-xs text-muted-foreground">{{ $t('settings.factExtractionProviderHint') }}</p>
+                    </div>
+
+                    <div class="flex flex-col gap-2">
+                      <Label for="fact-extraction-min-messages">{{ $t('settings.factExtractionMinSessionMessages') }}</Label>
+                      <div class="flex items-center gap-2">
+                        <Input
+                          id="fact-extraction-min-messages"
+                          v-model.number="form.factExtraction.minSessionMessages"
+                          type="number"
+                          min="1"
+                          max="100"
+                          class="w-full"
+                        />
+                        <span class="text-sm text-muted-foreground">{{ $t('settings.messagesUnit') }}</span>
+                      </div>
+                      <p class="text-xs text-muted-foreground">{{ $t('settings.factExtractionMinSessionMessagesHint') }}</p>
+                    </div>
+                  </div>
                 </template>
 
                 <div class="rounded-xl border border-border bg-card px-4 py-4">
@@ -1579,7 +1632,7 @@
 </template>
 
 <script setup lang="ts">
-import type { MemoryConsolidationSettings, HealthMonitorNotificationToggles, HealthMonitorSettings, AgentHeartbeatSettings, TasksSettings, TtsSettings, SttSettings } from '~/composables/useSettings'
+import type { MemoryConsolidationSettings, FactExtractionSettings, HealthMonitorNotificationToggles, HealthMonitorSettings, AgentHeartbeatSettings, TasksSettings, TtsSettings, SttSettings } from '~/composables/useSettings'
 import type { TelegramUser } from '~/composables/useTelegramUsers'
 
 /* ── Auth ── */
@@ -1858,6 +1911,7 @@ interface SettingsForm {
   telegramBotToken: string
   healthMonitor: HealthMonitorSettings
   memoryConsolidation: MemoryConsolidationSettings
+  factExtraction: FactExtractionSettings
   agentHeartbeat: AgentHeartbeatSettings
   tasks: TasksSettings
   tts: TtsSettings
@@ -1887,6 +1941,7 @@ function hydrateForm() {
       notifications: { ...s.healthMonitor.notifications },
     },
     memoryConsolidation: { ...s.memoryConsolidation },
+    factExtraction: { ...s.factExtraction },
     agentHeartbeat: { ...s.agentHeartbeat, nightMode: { ...s.agentHeartbeat.nightMode } },
     tasks: { ...s.tasks, loopDetection: { ...s.tasks.loopDetection } },
     tts: { ...s.tts },

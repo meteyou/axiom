@@ -5,6 +5,12 @@ export interface MemoryConsolidationSettings {
   providerId: string
 }
 
+export interface FactExtractionSettings {
+  enabled: boolean
+  providerId: string
+  minSessionMessages: number
+}
+
 export interface HealthMonitorNotificationToggles {
   healthyToDegraded: boolean
   degradedToHealthy: boolean
@@ -88,6 +94,7 @@ export interface Settings {
   telegramBotToken: string
   healthMonitor: HealthMonitorSettings
   memoryConsolidation: MemoryConsolidationSettings
+  factExtraction: FactExtractionSettings
   agentHeartbeat: AgentHeartbeatSettings
   tasks: TasksSettings
   tts: TtsSettings
@@ -111,6 +118,11 @@ export function useSettings() {
       settings.value = {
         ...result,
         sessionSummaryProviderId: result.sessionSummaryProviderId ?? '',
+        factExtraction: result.factExtraction ?? {
+          enabled: false,
+          providerId: '',
+          minSessionMessages: 3,
+        },
         stt: {
           enabled: result.stt?.enabled ?? false,
           provider: result.stt?.provider ?? 'whisper-url',
@@ -170,6 +182,11 @@ export function useSettings() {
           runAtHour: 3,
           lookbackDays: 3,
           providerId: '',
+        },
+        factExtraction: result.factExtraction ?? {
+          enabled: false,
+          providerId: '',
+          minSessionMessages: 3,
         },
         agentHeartbeat: result.agentHeartbeat ?? {
           enabled: false,
