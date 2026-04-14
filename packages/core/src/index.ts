@@ -203,6 +203,8 @@ export {
 } from './fact-extraction.js'
 export { createSearchMemoriesTool } from './memories-tool.js'
 export type { SearchMemoriesToolOptions } from './memories-tool.js'
+export { normalizeFtsQuery, normalizePlainFtsQuery } from './fts-utils.js'
+export { NotFoundError, InvalidInputError } from './errors.js'
 export { MessageQueue } from './message-queue.js'
 export type { QueuedMessage } from './message-queue.js'
 export {
