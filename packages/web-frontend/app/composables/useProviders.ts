@@ -49,6 +49,22 @@ export interface AvailableModel {
   name: string
 }
 
+export interface OllamaModel {
+  name: string
+  size: number
+  parameterSize: string
+  quantization: string
+  family: string
+}
+
+export interface OllamaPullEvent {
+  status?: string
+  total?: number
+  completed?: number
+  error?: string
+  done?: boolean
+}
+
 interface ProvidersResponse {
   providers: Provider[]
   activeProvider: string | null
@@ -194,6 +210,109 @@ export function useProviders() {
     return data.models
   }
 
+  async function fetchOllamaModels(providerId: string): Promise<OllamaModel[]> {
+    const data = await apiFetch<{ models: OllamaModel[] }>(`/api/providers/${providerId}/ollama-models`)
+    return data.models
+  }
+
+  /** Probe an Ollama instance by base URL (for create-mode before a provider exists). */
+  async function probeOllamaModels(baseUrl: string, providerType: string): Promise<OllamaModel[]> {
+    const data = await apiFetch<{ models: OllamaModel[] }>('/api/providers/ollama-probe', {
+      method: 'POST',
+      body: JSON.stringify({ baseUrl, providerType }),
+    })
+    return data.models
+  }
+
+  async function pullOllamaModel(
+    providerId: string,
+    modelName: string,
+    onProgress: (event: OllamaPullEvent) => void,
+  ): Promise<void> {
+    const { getAuthHeaders } = useApi()
+    const config = useRuntimeConfig()
+    const baseUrl = config.public.apiBase || ''
+    const url = `${baseUrl}/api/providers/${providerId}/ollama-pull`
+    const headers = getAuthHeaders()
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ modelName }),
+    })
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ error: 'Pull failed' }))
+      throw new Error((err as { error?: string }).error || `HTTP ${response.status}`)
+    }
+
+    await readSSEStream(response, onProgress)
+  }
+
+  /** Pull a model via probe endpoint (for create-mode before a provider exists). */
+  async function probeOllamaPull(
+    baseUrl: string,
+    providerType: string,
+    modelName: string,
+    onProgress: (event: OllamaPullEvent) => void,
+  ): Promise<void> {
+    const { getAuthHeaders } = useApi()
+    const config = useRuntimeConfig()
+    const apiBase = config.public.apiBase || ''
+    const url = `${apiBase}/api/providers/ollama-probe/pull`
+    const headers = getAuthHeaders()
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ baseUrl, providerType, modelName }),
+    })
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ error: 'Pull failed' }))
+      throw new Error((err as { error?: string }).error || `HTTP ${response.status}`)
+    }
+
+    await readSSEStream(response, onProgress)
+  }
+
+  /** Shared helper to consume an SSE stream from Ollama pull endpoints. */
+  async function readSSEStream(
+    response: Response,
+    onProgress: (event: OllamaPullEvent) => void,
+  ): Promise<void> {
+    const reader = response.body?.getReader()
+    if (!reader) throw new Error('No response body')
+
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() ?? ''
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        try {
+          const event = JSON.parse(line.slice(6)) as OllamaPullEvent
+          onProgress(event)
+        } catch (e) {
+          console.warn('[ollama-pull] Skipping malformed SSE data:', line.substring(0, 200))
+        }
+      }
+    }
+  }
+
+  async function deleteOllamaModel(providerId: string, modelName: string): Promise<void> {
+    await apiFetch(`/api/providers/${providerId}/ollama-models/${encodeURIComponent(modelName)}`, {
+      method: 'DELETE',
+    })
+  }
+
   async function startOAuthLogin(input: {
     providerType: string
     name: string
@@ -245,6 +364,11 @@ export function useProviders() {
     testingId,
     fetchProviders,
     fetchModels,
+    fetchOllamaModels,
+    probeOllamaModels,
+    pullOllamaModel,
+    probeOllamaPull,
+    deleteOllamaModel,
     addProvider,
     updateProvider,
     deleteProvider,
