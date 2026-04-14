@@ -68,6 +68,18 @@ describe('AgentCore.swapProvider', () => {
     db = initDatabase(':memory:')
   })
 
+  it('registers search_memories by default', () => {
+    const agentCore = new AgentCore({
+      model: makeModel(),
+      apiKey: 'sk-primary',
+      db,
+      tools: [],
+    })
+
+    const toolNames = agentCore.getAgent().state.tools.map(tool => tool.name)
+    expect(toolNames).toContain('search_memories')
+  })
+
   it('swapProvider() exists and updates model, apiKey, providerConfig', () => {
     const primary = makeProvider()
     const agentCore = new AgentCore({

@@ -1,13 +1,11 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import {
   ensureMemoryStructure,
-  ensureConfigStructure,
   readSoulFile,
   readMemoryFile,
   writeMemoryFile,
   readAgentsRulesFile,
   readHeartbeatFile,
-  readConsolidationFile,
   ensureDailyFile,
   readDailyFile,
   appendToDailyFile,
@@ -331,6 +329,17 @@ describe('memory', () => {
       expect(prompt).toContain('<agent_rules>')
       expect(prompt).toContain('# Agent Contract')
       expect(prompt).toContain('</agent_rules>')
+    })
+
+    it('includes search_memories in the available tools section', () => {
+      const dir = makeTmpDir()
+      ensureMemoryStructure(dir)
+
+      const prompt = assembleSystemPrompt({ memoryDir: dir })
+
+      expect(prompt).toContain('<available_tools>')
+      expect(prompt).toContain('search_memories')
+      expect(prompt).toContain('fact memory')
     })
 
     it('includes memory_paths section with all file paths including wiki/', () => {
