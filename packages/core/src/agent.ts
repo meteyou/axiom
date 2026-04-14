@@ -802,7 +802,12 @@ export class AgentCore {
     // Always use DB conversation history (single source of truth).
     // In-memory agent messages can disappear on provider change or restart,
     // but chat_messages in the DB are always reliable.
-    if (!conversationHistory) return 'Empty session.'
+    if (!conversationHistory) {
+      console.warn('[session-summary] No conversation history available, returning Empty session.')
+      return 'Empty session.'
+    }
+
+    console.log(`[session-summary] Generating summary for ${conversationHistory.length} chars of history`)
 
     try {
       const response = await completeSimple(this.model, {
@@ -837,11 +842,20 @@ Do NOT add this section if everything discussed was resolved or if there is noth
         temperature: 0,
       })
 
-      const summary = response.content
-        .filter(c => c.type === 'text')
+      const textContent = response.content.filter(c => c.type === 'text')
+
+      if (textContent.length === 0) {
+        console.warn('[session-summary] API response contained no text content. Full response.content:', JSON.stringify(response.content))
+      }
+
+      const summary = textContent
         .map(c => (c as { type: 'text'; text: string }).text)
         .join('')
         .trim()
+
+      if (!summary) {
+        console.warn('[session-summary] Summary was empty after filtering, falling back to "Empty session."')
+      }
 
       return summary || 'Empty session.'
     } catch (err) {
