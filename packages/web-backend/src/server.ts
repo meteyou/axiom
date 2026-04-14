@@ -32,6 +32,7 @@ import {
   createYoloTools,
   createBuiltinWebTools,
   createReadChatHistoryTool,
+  createSearchMemoriesTool,
   logToolCall,
 } from '@openagent/core'
 import type { ProviderConfig, LoopDetectionConfig, BuiltinToolsConfig } from '@openagent/core'
@@ -207,7 +208,12 @@ const taskRunner = new TaskRunner({
   db,
   buildModel,
   getApiKey: getApiKeyForProvider,
-  tools: [...createYoloTools(), ...createBuiltinWebTools(builtinToolsConfig), createReadChatHistoryTool({ db })],
+  tools: [
+    ...createYoloTools(),
+    ...createBuiltinWebTools(builtinToolsConfig),
+    createReadChatHistoryTool({ db }),
+    createSearchMemoriesTool({ db }),
+  ],
   onTaskComplete: (taskId: string, injection: string) => {
     handleTaskNotification(taskId, injection, taskStore)
   },

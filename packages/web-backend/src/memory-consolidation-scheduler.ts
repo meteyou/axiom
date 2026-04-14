@@ -91,6 +91,19 @@ You must NOT write to any other file. No config files, no code files, no files o
 
 8. **Always complete with STATUS: silent.** Memory consolidation is a background maintenance task. The user does not need to be notified about it.
 
+## Additional input: Extracted Facts
+
+The system automatically extracts atomic facts from conversations and stores them in a database table called "memories".
+You can search these facts using the **search_memories** tool with a query string.
+
+Use this as an additional signal when deciding what to promote:
+- Search for key topics from daily files to see if related facts were extracted
+- Facts are already deduplicated — if a fact exists, it was considered significant enough to store
+- Do NOT copy facts verbatim into MEMORY.md — synthesize and integrate them into the existing structure
+- Do NOT write to the memories table — it is managed automatically by the fact extraction system
+
+This is optional: if no relevant facts are found, continue with the daily files alone as before.
+
 ## Important Rules
 
 - Always use ABSOLUTE paths starting with \`${memoryDir}/\` — never use relative paths.
@@ -325,7 +338,7 @@ export class MemoryConsolidationScheduler {
       console.log(`[openagent] Memory consolidation task started: ${task.id}`)
 
       // Wait for the task to complete by polling
-      const result = await this.waitForTaskCompletion(task.id, startTime, sessionId)
+      const result = await this.waitForTaskCompletion(task.id, startTime)
 
       this.lastRun = new Date().toISOString()
       this.lastResult = result
@@ -400,7 +413,6 @@ export class MemoryConsolidationScheduler {
   private async waitForTaskCompletion(
     taskId: string,
     startTime: number,
-    sessionId: string,
   ): Promise<ConsolidationResult> {
     const POLL_INTERVAL_MS = 2000
     const MAX_WAIT_MS = 30 * 60 * 1000 // 30 minutes max
