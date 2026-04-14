@@ -30,6 +30,7 @@ import {
   createReminderTool,
   listTasksTool,
   loadProvidersDecrypted,
+  parseProviderModelId,
   deliverTaskNotification,
   createYoloTools,
   createBuiltinWebTools,
@@ -123,11 +124,17 @@ function resolveProvider(nameOrId: string): ProviderConfig | null {
   }
 }
 
-// Helper: get the default provider for tasks
+// Helper: get the default provider for tasks (supports "providerId:modelId" format)
 function getTaskDefaultProvider(): ProviderConfig {
   if (taskSettings.defaultProvider) {
-    const resolved = resolveProvider(taskSettings.defaultProvider)
-    if (resolved) return resolved
+    const { providerId, modelId } = parseProviderModelId(taskSettings.defaultProvider)
+    if (providerId) {
+      let resolved = resolveProvider(providerId)
+      if (resolved && modelId) {
+        resolved = { ...resolved, defaultModel: modelId }
+      }
+      if (resolved) return resolved
+    }
   }
   // Fall back to active provider
   return getActiveProvider()!
