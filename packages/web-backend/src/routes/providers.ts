@@ -25,7 +25,16 @@ import {
 } from '@openagent/core'
 import { getModels as getPiAiModels } from '@mariozechner/pi-ai'
 import type { KnownProvider as PiAiKnownProvider } from '@mariozechner/pi-ai'
-import type { ProviderConfig, ProviderType } from '@openagent/core'
+import type {
+  ProviderConfig,
+  ProviderType,
+  ProviderFallbackUpdatePayloadContract,
+  ProviderOAuthLoginStartPayloadContract,
+  ProviderCreatePayloadContract,
+  ProviderUpdatePayloadContract,
+  ProviderModelSelectionPayloadContract,
+  ProviderOAuthCodePayloadContract,
+} from '@openagent/core'
 import { getOAuthProvider } from '@mariozechner/pi-ai/oauth'
 import type { OAuthCredentials } from '@mariozechner/pi-ai/oauth'
 import { jwtMiddleware } from '../auth.js'
@@ -106,7 +115,7 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
    * Set or clear the fallback provider
    */
   router.put('/fallback', (req: AuthenticatedRequest, res) => {
-    const { providerId, modelId } = req.body as { providerId?: string | null; modelId?: string | null }
+    const { providerId, modelId } = req.body as ProviderFallbackUpdatePayloadContract
 
     try {
       if (providerId === null || providerId === undefined) {
@@ -225,12 +234,7 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
    * Start an OAuth login flow for a subscription provider
    */
   router.post('/oauth/login', async (req: AuthenticatedRequest, res) => {
-    const { providerType, name, defaultModel, providerId } = req.body as {
-      providerType?: string
-      name?: string
-      defaultModel?: string
-      providerId?: string
-    }
+    const { providerType, name, defaultModel, providerId } = req.body as Partial<ProviderOAuthLoginStartPayloadContract>
 
     if (!providerType || !VALID_PROVIDER_TYPES.includes(providerType)) {
       res.status(400).json({ error: 'Invalid provider type' })
@@ -388,7 +392,7 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
       return
     }
 
-    const { code } = req.body as { code?: string }
+    const { code } = req.body as Partial<ProviderOAuthCodePayloadContract>
     if (!code?.trim()) {
       res.status(400).json({ error: 'Code is required' })
       return
@@ -407,15 +411,7 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
    * Add a new provider
    */
   router.post('/', (req: AuthenticatedRequest, res) => {
-    const { name, providerType, baseUrl, apiKey, defaultModel, enabledModels, degradedThresholdMs } = req.body as {
-      name?: string
-      providerType?: string
-      baseUrl?: string
-      apiKey?: string
-      defaultModel?: string
-      enabledModels?: string[]
-      degradedThresholdMs?: number
-    }
+    const { name, providerType, baseUrl, apiKey, defaultModel, enabledModels, degradedThresholdMs } = req.body as Partial<ProviderCreatePayloadContract>
 
     if (!name?.trim()) {
       res.status(400).json({ error: 'Provider name is required' })
@@ -855,15 +851,7 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
    */
   router.put('/:id', (req: AuthenticatedRequest, res) => {
     const id = req.params.id as string
-    const { name, providerType, baseUrl, apiKey, defaultModel, enabledModels, degradedThresholdMs } = req.body as {
-      name?: string
-      providerType?: string
-      baseUrl?: string
-      apiKey?: string
-      defaultModel?: string
-      enabledModels?: string[]
-      degradedThresholdMs?: number
-    }
+    const { name, providerType, baseUrl, apiKey, defaultModel, enabledModels, degradedThresholdMs } = req.body as ProviderUpdatePayloadContract
 
     if (providerType && !VALID_PROVIDER_TYPES.includes(providerType)) {
       res.status(400).json({ error: `Invalid provider type. Must be one of: ${VALID_PROVIDER_TYPES.join(', ')}` })
@@ -929,7 +917,7 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
    */
   router.post('/:id/test', async (req: AuthenticatedRequest, res) => {
     const id = req.params.id as string
-    const { modelId } = (req.body ?? {}) as { modelId?: string }
+    const { modelId } = (req.body ?? {}) as ProviderModelSelectionPayloadContract
 
     try {
       const data = loadProvidersDecrypted()
@@ -972,7 +960,7 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
    */
   router.post('/:id/activate', (req: AuthenticatedRequest, res) => {
     const id = req.params.id as string
-    const { modelId } = (req.body ?? {}) as { modelId?: string }
+    const { modelId } = (req.body ?? {}) as ProviderModelSelectionPayloadContract
 
     try {
       const before = loadProviders()
