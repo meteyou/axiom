@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { AgentCore } from './agent.js'
+import { AgentCore, isRetryablePreStreamError } from './agent.js'
 import { ProviderManager } from './provider-manager.js'
 import type { ProviderConfig } from './provider-config.js'
 import { initDatabase } from './database.js'
@@ -17,7 +17,6 @@ vi.mock('./config.js', () => ({
   loadConfig: vi.fn(() => ({})),
   getConfigDir: vi.fn(() => '/tmp/test-config'),
 }))
-
 
 function makeProvider(overrides: Partial<ProviderConfig> = {}): ProviderConfig {
   return {
@@ -61,7 +60,7 @@ function makeModel() {
   }
 }
 
-describe('AgentCore.swapProvider', () => {
+describe('AgentCore runtime boundary', () => {
   let db: Database
 
   beforeEach(() => {
@@ -76,11 +75,11 @@ describe('AgentCore.swapProvider', () => {
       tools: [],
     })
 
-    const toolNames = agentCore.getAgent().state.tools.map(tool => tool.name)
+    const toolNames = agentCore.getRuntimeStateSnapshot().toolNames
     expect(toolNames).toContain('search_memories')
   })
 
-  it('swapProvider() exists and updates model, apiKey, providerConfig', () => {
+  it('swapProvider() updates runtime model id through the boundary', () => {
     const primary = makeProvider()
     const agentCore = new AgentCore({
       model: makeModel(),
@@ -93,14 +92,10 @@ describe('AgentCore.swapProvider', () => {
     const fallback = makeFallbackProvider()
     agentCore.swapProvider(fallback, 'sk-fallback')
 
-    // Verify the agent is still functional (no crash)
-    const piAgent = agentCore.getAgent()
-    expect(piAgent).toBeDefined()
-    // The model should have been updated via setModel
-    expect(piAgent.state.model.id).toBe('claude-sonnet-4-20250514')
+    expect(agentCore.getRuntimeStateSnapshot().modelId).toBe('claude-sonnet-4-20250514')
   })
 
-  it('swapProvider() updates agent.state.model with the new model', () => {
+  it('conversation context remains intact across swapProvider calls', () => {
     const agentCore = new AgentCore({
       model: makeModel(),
       apiKey: 'sk-primary',
@@ -108,33 +103,12 @@ describe('AgentCore.swapProvider', () => {
       tools: [],
     })
 
-    const piAgent = agentCore.getAgent()
-
+    const snapshotBefore = agentCore.getRuntimeStateSnapshot()
     const fallback = makeFallbackProvider()
     agentCore.swapProvider(fallback, 'sk-fallback')
+    const snapshotAfter = agentCore.getRuntimeStateSnapshot()
 
-    expect(piAgent.state.model.id).toBe('claude-sonnet-4-20250514')
-  })
-
-  it('conversation context (messages) is preserved after swap', () => {
-    const agentCore = new AgentCore({
-      model: makeModel(),
-      apiKey: 'sk-primary',
-      db,
-      tools: [],
-    })
-
-    const piAgent = agentCore.getAgent()
-    // Verify messages array reference is the same before and after swap
-    const messagesBefore = piAgent.state.messages
-    const countBefore = messagesBefore.length
-
-    const fallback = makeFallbackProvider()
-    agentCore.swapProvider(fallback, 'sk-fallback')
-
-    const messagesAfter = piAgent.state.messages
-    // Messages should not be cleared
-    expect(messagesAfter.length).toBe(countBefore)
+    expect(snapshotAfter.messageCount).toBe(snapshotBefore.messageCount)
   })
 
   it('accepts a ProviderManager in constructor options', () => {
@@ -159,59 +133,39 @@ describe('AgentCore.swapProvider', () => {
     })
 
     expect(agentCore.getProviderManager()).toBeUndefined()
-    // Should not throw
-    const piAgent = agentCore.getAgent()
-    expect(piAgent).toBeDefined()
+    expect(agentCore.getRuntimeStateSnapshot().modelId).toBe('gpt-4o')
   })
 })
 
-describe('AgentCore.isRetryablePreStreamError', () => {
-  let db: Database
-  let agentCore: AgentCore
-
-  beforeEach(() => {
-    db = initDatabase(':memory:')
-    agentCore = new AgentCore({
-      model: makeModel(),
-      apiKey: 'sk-primary',
-      db,
-      tools: [],
-    })
-  })
-
-  // Access the private method via bracket notation for testing
-  function isRetryable(err: unknown): boolean {
-    return (agentCore as unknown as { isRetryablePreStreamError: (err: unknown) => boolean }).isRetryablePreStreamError(err)
-  }
-
+describe('isRetryablePreStreamError', () => {
   it('detects HTTP 429 errors', () => {
-    expect(isRetryable(new Error('HTTP 429 Too Many Requests'))).toBe(true)
-    expect(isRetryable(new Error('Rate limit exceeded'))).toBe(true)
-    expect(isRetryable(new Error('too many requests'))).toBe(true)
+    expect(isRetryablePreStreamError(new Error('HTTP 429 Too Many Requests'))).toBe(true)
+    expect(isRetryablePreStreamError(new Error('Rate limit exceeded'))).toBe(true)
+    expect(isRetryablePreStreamError(new Error('too many requests'))).toBe(true)
   })
 
   it('detects HTTP 5xx errors', () => {
-    expect(isRetryable(new Error('HTTP 500 Internal Server Error'))).toBe(true)
-    expect(isRetryable(new Error('HTTP 502 Bad Gateway'))).toBe(true)
-    expect(isRetryable(new Error('HTTP 503 Service Unavailable'))).toBe(true)
-    expect(isRetryable(new Error('HTTP 504 Gateway Timeout'))).toBe(true)
-    expect(isRetryable(new Error('internal server error'))).toBe(true)
-    expect(isRetryable(new Error('bad gateway'))).toBe(true)
-    expect(isRetryable(new Error('service unavailable'))).toBe(true)
+    expect(isRetryablePreStreamError(new Error('HTTP 500 Internal Server Error'))).toBe(true)
+    expect(isRetryablePreStreamError(new Error('HTTP 502 Bad Gateway'))).toBe(true)
+    expect(isRetryablePreStreamError(new Error('HTTP 503 Service Unavailable'))).toBe(true)
+    expect(isRetryablePreStreamError(new Error('HTTP 504 Gateway Timeout'))).toBe(true)
+    expect(isRetryablePreStreamError(new Error('internal server error'))).toBe(true)
+    expect(isRetryablePreStreamError(new Error('bad gateway'))).toBe(true)
+    expect(isRetryablePreStreamError(new Error('service unavailable'))).toBe(true)
   })
 
   it('detects connection errors', () => {
-    expect(isRetryable(new Error('connect ECONNREFUSED 127.0.0.1:443'))).toBe(true)
-    expect(isRetryable(new Error('ECONNRESET'))).toBe(true)
-    expect(isRetryable(new Error('getaddrinfo ENOTFOUND api.example.com'))).toBe(true)
-    expect(isRetryable(new Error('fetch failed'))).toBe(true)
-    expect(isRetryable(new Error('Connection refused'))).toBe(true)
+    expect(isRetryablePreStreamError(new Error('connect ECONNREFUSED 127.0.0.1:443'))).toBe(true)
+    expect(isRetryablePreStreamError(new Error('ECONNRESET'))).toBe(true)
+    expect(isRetryablePreStreamError(new Error('getaddrinfo ENOTFOUND api.example.com'))).toBe(true)
+    expect(isRetryablePreStreamError(new Error('fetch failed'))).toBe(true)
+    expect(isRetryablePreStreamError(new Error('Connection refused'))).toBe(true)
   })
 
   it('does not retry on other errors', () => {
-    expect(isRetryable(new Error('Invalid API key'))).toBe(false)
-    expect(isRetryable(new Error('HTTP 401 Unauthorized'))).toBe(false)
-    expect(isRetryable(new Error('HTTP 403 Forbidden'))).toBe(false)
-    expect(isRetryable(new Error('Model not found'))).toBe(false)
+    expect(isRetryablePreStreamError(new Error('Invalid API key'))).toBe(false)
+    expect(isRetryablePreStreamError(new Error('HTTP 401 Unauthorized'))).toBe(false)
+    expect(isRetryablePreStreamError(new Error('HTTP 403 Forbidden'))).toBe(false)
+    expect(isRetryablePreStreamError(new Error('Model not found'))).toBe(false)
   })
 })
