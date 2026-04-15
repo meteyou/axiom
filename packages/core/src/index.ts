@@ -169,8 +169,11 @@ export {
   createAgentSkillTools,
 } from './agent-skills.js'
 export type { AgentSkillEntry, AgentSkillUsage } from './agent-skills.js'
-export { AgentCore, createYoloTools, getWorkspaceDir } from './agent.js'
+export { AgentCore, createYoloTools, getWorkspaceDir, isRetryablePreStreamError } from './agent.js'
 export type { ResponseChunk, AgentCoreOptions } from './agent.js'
+export { createAgentRuntime } from './agent-runtime.js'
+export type { AgentRuntimeBoundary, AgentRuntimeOptions } from './agent-runtime.js'
+export type { AgentRuntimeStateSnapshot } from './agent-runtime-types.js'
 export { ProviderManager } from './provider-manager.js'
 export type { OperatingMode, ProviderManagerEvents } from './provider-manager.js'
 export { TaskStore, initTasksTable } from './task-store.js'
