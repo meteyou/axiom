@@ -1,14 +1,10 @@
-interface WikiFile {
-  filename: string
-  name: string
-  title: string
-  aliases: string[]
-  size: number
-  modifiedAt: string
-}
+import type { MemoryWikiFile } from '~/api/memory'
+import { useMemoryApi } from '~/api/memory'
+
+type WikiFile = MemoryWikiFile
 
 export function useWiki() {
-  const { apiFetch } = useApi()
+  const memoryApi = useMemoryApi()
 
   const loading = ref(false)
   const saving = ref(false)
@@ -19,7 +15,7 @@ export function useWiki() {
     loading.value = true
     error.value = null
     try {
-      const data = await apiFetch<{ files: WikiFile[] }>('/api/memory/wiki')
+      const data = await memoryApi.listWikiPages()
       return data.files
     } catch (err) {
       error.value = (err as Error).message
@@ -33,7 +29,7 @@ export function useWiki() {
     loading.value = true
     error.value = null
     try {
-      const data = await apiFetch<{ content: string }>(`/api/memory/wiki/${name}`)
+      const data = await memoryApi.getWikiPage(name)
       return data.content
     } catch (err) {
       error.value = (err as Error).message
@@ -48,10 +44,7 @@ export function useWiki() {
     error.value = null
     successMessage.value = null
     try {
-      await apiFetch(`/api/memory/wiki/${name}`, {
-        method: 'PUT',
-        body: JSON.stringify({ content }),
-      })
+      await memoryApi.updateWikiPage(name, content)
       successMessage.value = 'saved'
       return true
     } catch (err) {
@@ -66,9 +59,7 @@ export function useWiki() {
     loading.value = true
     error.value = null
     try {
-      await apiFetch(`/api/memory/wiki/${name}`, {
-        method: 'DELETE',
-      })
+      await memoryApi.deleteWikiPage(name)
       return true
     } catch (err) {
       error.value = (err as Error).message
