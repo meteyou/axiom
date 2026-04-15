@@ -18,7 +18,9 @@ export const CLAUDE_CODE_VERSION = '2.1.96'
  * Supported provider types with presets
  */
 export type ProviderType =
-  | 'openai' | 'anthropic' | 'mistral' | 'ollama-local' | 'ollama-cloud' | 'openrouter' | 'kimi' | 'zai'
+  | 'openai' | 'anthropic' | 'mistral' | 'ollama' | 'openrouter' | 'kimi' | 'zai'
+  // Legacy aliases kept for migration
+  | 'ollama-local' | 'ollama-cloud'
   | 'openai-codex' | 'github-copilot' | 'google-gemini-cli' | 'google-antigravity' | 'anthropic-oauth'
 
 export type AuthMethod = 'api-key' | 'oauth'
@@ -76,9 +78,21 @@ export const PROVIDER_TYPE_PRESETS: Record<ProviderType, ProviderTypePreset> = {
     piAiProvider: 'mistral',
     authMethod: 'api-key',
   },
+  'ollama': {
+    type: 'ollama',
+    label: 'Ollama',
+    apiType: 'openai-completions',
+    providerName: 'ollama',
+    baseUrl: 'http://localhost:11434/v1',
+    requiresApiKey: false,
+    urlEditable: true,
+    piAiProvider: null,
+    authMethod: 'api-key',
+  },
+  // Legacy aliases — map to 'ollama' so existing configs still load
   'ollama-local': {
-    type: 'ollama-local',
-    label: 'Ollama (Local)',
+    type: 'ollama',
+    label: 'Ollama',
     apiType: 'openai-completions',
     providerName: 'ollama',
     baseUrl: 'http://localhost:11434/v1',
@@ -88,12 +102,12 @@ export const PROVIDER_TYPE_PRESETS: Record<ProviderType, ProviderTypePreset> = {
     authMethod: 'api-key',
   },
   'ollama-cloud': {
-    type: 'ollama-cloud',
-    label: 'Ollama Cloud',
+    type: 'ollama',
+    label: 'Ollama',
     apiType: 'openai-completions',
     providerName: 'ollama',
-    baseUrl: '',
-    requiresApiKey: true,
+    baseUrl: 'http://localhost:11434/v1',
+    requiresApiKey: false,
     urlEditable: true,
     piAiProvider: null,
     authMethod: 'api-key',
@@ -219,7 +233,7 @@ export interface ProviderConfig {
   id: string
   name: string
   type: string // e.g., 'openai-completions', 'anthropic-messages'
-  providerType: ProviderType // e.g., 'openai', 'anthropic', 'ollama-local'
+  providerType: ProviderType // e.g., 'openai', 'anthropic', 'ollama'
   provider: string // e.g., 'openai', 'anthropic', 'xai'
   baseUrl: string
   apiKey: string // encrypted at rest
@@ -295,7 +309,25 @@ export function loadProviders(): ProvidersFile {
   }
 
   const content = fs.readFileSync(filePath, 'utf-8')
-  return JSON.parse(content) as ProvidersFile
+  const data = JSON.parse(content) as ProvidersFile
+
+  // Migrate legacy ollama-local / ollama-cloud → ollama
+  let migrated = false
+  for (const p of data.providers) {
+    if (p.providerType === 'ollama-local' || p.providerType === 'ollama-cloud') {
+      p.providerType = 'ollama' as ProviderType
+      p.type = 'openai-completions'
+      p.provider = 'ollama'
+      migrated = true
+    }
+  }
+  if (migrated) {
+    // Persist the migration so it only runs once
+    const outPath = path.join(configDir, 'providers.json')
+    fs.writeFileSync(outPath, JSON.stringify(data, null, 2) + '\n', 'utf-8')
+  }
+
+  return data
 }
 
 /**
