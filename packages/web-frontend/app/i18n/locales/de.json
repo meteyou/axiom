@@ -182,7 +182,7 @@
     "degradedThresholdPlaceholder": "5000",
     "degradedThresholdHint": "Latenz über diesem Wert (in ms) kennzeichnet den Anbieter im Health-Check als degraded.",
     "enabledModels": "Aktivierte Modelle",
-    "enabledModelsHint": "Wähle Modelle für diesen Anbieter aus. Klicke \"Standard\" um das Standardmodell festzulegen.",
+    "enabledModelsHint": "Wähle Modelle für diesen Anbieter aus.",
     "default": "Standard",
     "setDefault": "Als Standard",
     "isDefault": "Dies ist das Standardmodell",
