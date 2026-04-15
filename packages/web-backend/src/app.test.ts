@@ -968,6 +968,29 @@ describe('settings API', () => {
     expect(telegram.botToken).toBe('telegram-secret')
   })
 
+  it('accepts legacy healthMonitor.intervalMinutes in update payloads', async () => {
+    const res = await fetch(`${baseUrl}/api/settings`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        healthMonitor: {
+          intervalMinutes: 11,
+        },
+      }),
+    })
+
+    const body = (await res.json()) as { healthMonitorIntervalMinutes: number }
+    expect(res.status).toBe(200)
+    expect(body.healthMonitorIntervalMinutes).toBe(11)
+
+    const settingsPath = path.join(tempDataDir, 'config', 'settings.json')
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as { healthMonitorIntervalMinutes: number }
+    expect(settings.healthMonitorIntervalMinutes).toBe(11)
+  })
+
   it('persists factExtraction when saving full form (like the frontend)', async () => {
     const getRes = await fetch(`${baseUrl}/api/settings`, {
       headers: { Authorization: `Bearer ${adminToken}` },
