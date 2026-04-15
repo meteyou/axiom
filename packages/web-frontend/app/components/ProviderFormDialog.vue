@@ -81,20 +81,6 @@
                 @change="toggleModel(model.id)"
               >
               <span class="flex-1 truncate">{{ model.name }}</span>
-              <button
-                v-if="form.enabledModels.includes(model.id)"
-                type="button"
-                :class="[
-                  'shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors',
-                  form.defaultModel === model.id
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted text-muted-foreground hover:bg-muted/80',
-                ]"
-                :title="form.defaultModel === model.id ? $t('providers.isDefault') : $t('providers.setDefault')"
-                @click.prevent="form.defaultModel = model.id"
-              >
-                {{ form.defaultModel === model.id ? $t('providers.default') : $t('providers.setDefault') }}
-              </button>
             </label>
           </div>
           <p class="text-xs text-muted-foreground">{{ $t('providers.enabledModelsHint') }}</p>
@@ -168,20 +154,7 @@
                   · {{ formatSize(model.size) }}
                 </span>
               </div>
-              <button
-                v-if="form.enabledModels.includes(model.name)"
-                type="button"
-                :class="[
-                  'shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors',
-                  form.defaultModel === model.name
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted text-muted-foreground hover:bg-muted/80',
-                ]"
-                :title="form.defaultModel === model.name ? $t('providers.isDefault') : $t('providers.setDefault')"
-                @click.prevent="form.defaultModel = model.name"
-              >
-                {{ form.defaultModel === model.name ? $t('providers.default') : $t('providers.setDefault') }}
-              </button>
+
             </label>
           </div>
           <p v-if="ollamaModels.length > 0" class="text-xs text-muted-foreground">{{ $t('providers.enabledModelsHint') }}</p>
