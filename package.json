@@ -15,6 +15,11 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint packages/",
+    "lint:boundaries": "eslint -c eslint.boundaries.config.js \"packages/**/*.ts\"",
+    "baseline:unit": "vitest run packages/core/src packages/telegram/src packages/web-frontend/app",
+    "baseline:api": "vitest run packages/web-backend/src",
+    "baseline:smoke": "vitest run packages/web-backend/src/app.test.ts --testNamePattern=\"health endpoint|auth flow|chat history API|settings API|providers API\"",
+    "baseline:parity": "npm run lint:boundaries && npm run baseline:unit && npm run baseline:api && npm run baseline:smoke",
     "clean": "rm -rf packages/*/dist"
   },
   "devDependencies": {
