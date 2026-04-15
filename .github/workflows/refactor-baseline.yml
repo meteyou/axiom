@@ -1,0 +1,36 @@
+name: Refactor Baseline Guardrails
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  parity-baseline:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint boundaries
+        run: npm run lint:boundaries
+
+      - name: Baseline unit checks
+        run: npm run baseline:unit
+
+      - name: Baseline API checks
+        run: npm run baseline:api
+
+      - name: Baseline smoke checks
+        run: npm run baseline:smoke
