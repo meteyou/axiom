@@ -1,88 +1,31 @@
-export interface Provider {
-  id: string
-  name: string
-  type: string
-  providerType: string
-  provider: string
-  baseUrl: string
-  apiKey: string
-  apiKeyMasked: string
-  defaultModel: string
-  enabledModels?: string[]
-  degradedThresholdMs?: number
-  status?: 'connected' | 'error' | 'untested'
-  modelStatuses?: Record<string, 'connected' | 'error' | 'untested'>
-  authMethod?: 'api-key' | 'oauth'
-  oauthCredentials?: { expires: number }
-  cost?: { input: number; output: number } | null
-  modelCosts?: Record<string, { input: number; output: number }>
-}
+import type {
+  ProviderContract,
+  OAuthLoginResponseContract,
+  OAuthStatusResponseContract,
+  ProviderTypePresetContract,
+  AvailableModelContract,
+  OllamaModelContract,
+  OllamaPullEventContract,
+  ProvidersListResponseContract,
+  ProviderMutationResponseContract,
+  ProviderTestResultContract,
+  ProviderCreatePayloadContract,
+  ProviderUpdatePayloadContract,
+  ProviderActivationResponseContract,
+  ProviderFallbackResponseContract,
+} from '@openagent/core/contracts'
 
-export interface OAuthLoginResponse {
-  loginId: string
-  authUrl: string
-  instructions?: string
-  usesCallbackServer: boolean
-}
+export type Provider = ProviderContract
+export type OAuthLoginResponse = OAuthLoginResponseContract
+export type OAuthStatusResponse = OAuthStatusResponseContract
+export type ProviderTypePreset = ProviderTypePresetContract
+export type AvailableModel = AvailableModelContract
+export type OllamaModel = OllamaModelContract
+export type OllamaPullEvent = OllamaPullEventContract
 
-export interface OAuthStatusResponse {
-  status: 'pending' | 'completed' | 'error'
-  provider?: Provider
-  error?: string
-}
-
-export interface ProviderTypePreset {
-  type: string
-  label: string
-  apiType: string
-  providerName: string
-  baseUrl: string
-  requiresApiKey: boolean
-  urlEditable: boolean
-  piAiProvider: string | null
-  authMethod: 'api-key' | 'oauth'
-  oauthProviderId?: string
-}
-
-export interface AvailableModel {
-  id: string
-  name: string
-}
-
-export interface OllamaModel {
-  name: string
-  size: number
-  parameterSize: string
-  quantization: string
-  family: string
-}
-
-export interface OllamaPullEvent {
-  status?: string
-  total?: number
-  completed?: number
-  error?: string
-  done?: boolean
-}
-
-interface ProvidersResponse {
-  providers: Provider[]
-  activeProvider: string | null
-  activeModel: string | null
-  fallbackProvider: string | null
-  fallbackModel: string | null
-  presets: Record<string, ProviderTypePreset>
-}
-
-interface ProviderMutationResponse {
-  provider: Provider
-}
-
-interface TestResult {
-  success: boolean
-  message?: string
-  error?: string
-}
+type ProvidersResponse = ProvidersListResponseContract
+type ProviderMutationResponse = ProviderMutationResponseContract
+type TestResult = ProviderTestResultContract
 
 export function useProviders() {
   const { apiFetch } = useApi()
@@ -115,15 +58,7 @@ export function useProviders() {
     }
   }
 
-  async function addProvider(input: {
-    name: string
-    providerType: string
-    baseUrl?: string
-    apiKey?: string
-    defaultModel: string
-    enabledModels?: string[]
-    degradedThresholdMs?: number
-  }): Promise<Provider | null> {
+  async function addProvider(input: ProviderCreatePayloadContract): Promise<Provider | null> {
     error.value = null
     try {
       const data = await apiFetch<ProviderMutationResponse>('/api/providers', {
@@ -138,15 +73,7 @@ export function useProviders() {
     }
   }
 
-  async function updateProvider(id: string, input: {
-    name?: string
-    providerType?: string
-    baseUrl?: string
-    apiKey?: string
-    defaultModel?: string
-    enabledModels?: string[]
-    degradedThresholdMs?: number
-  }): Promise<Provider | null> {
+  async function updateProvider(id: string, input: ProviderUpdatePayloadContract): Promise<Provider | null> {
     error.value = null
     try {
       const data = await apiFetch<ProviderMutationResponse>(`/api/providers/${id}`, {
@@ -192,7 +119,7 @@ export function useProviders() {
   async function activateProvider(id: string, modelId?: string): Promise<boolean> {
     error.value = null
     try {
-      const result = await apiFetch<{ activeProvider: string; activeModel: string | null }>(
+      const result = await apiFetch<ProviderActivationResponseContract>(
         `/api/providers/${id}/activate`,
         { method: 'POST', body: JSON.stringify({ modelId }) },
       )
@@ -300,7 +227,7 @@ export function useProviders() {
         try {
           const event = JSON.parse(line.slice(6)) as OllamaPullEvent
           onProgress(event)
-        } catch (e) {
+        } catch {
           console.warn('[ollama-pull] Skipping malformed SSE data:', line.substring(0, 200))
         }
       }
@@ -339,7 +266,7 @@ export function useProviders() {
   async function setFallbackProvider(providerId: string | null, modelId?: string | null): Promise<boolean> {
     error.value = null
     try {
-      const result = await apiFetch<{ fallbackProvider: string | null; fallbackModel: string | null }>(
+      const result = await apiFetch<ProviderFallbackResponseContract>(
         '/api/providers/fallback',
         { method: 'PUT', body: JSON.stringify({ providerId, modelId }) },
       )
