@@ -1,72 +1,46 @@
 import { Router } from 'express'
 import fs from 'node:fs'
 import path from 'node:path'
-import { getConfigDir, ensureConfigTemplates, loadConfig } from '@openagent/core'
-import type { AgentCore } from '@openagent/core'
+import {
+  getConfigDir,
+  ensureConfigTemplates,
+  loadConfig,
+  DEFAULT_HEALTH_MONITOR_NOTIFICATION_TOGGLES,
+  HEALTH_MONITOR_FALLBACK_TRIGGERS,
+  SETTINGS_TTS_PROVIDERS,
+  SETTINGS_TTS_OPENAI_MODELS,
+  SETTINGS_TTS_RESPONSE_FORMATS,
+  SETTINGS_STT_PROVIDERS,
+  SETTINGS_STT_OPENAI_MODELS,
+  TASK_TELEGRAM_DELIVERY_VALUES,
+  TASK_LOOP_DETECTION_METHODS,
+  withLegacySettingsPayloadCompatibility,
+} from '@openagent/core'
+import type {
+  AgentCore,
+  HealthMonitorNotificationTogglesContract,
+  SettingsStorageContract,
+  TelegramSettingsStorageContract,
+} from '@openagent/core'
 import { jwtMiddleware } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
 
-export interface HealthMonitorNotificationToggles {
-  healthyToDegraded: boolean
-  degradedToHealthy: boolean
-  degradedToDown: boolean
-  healthyToDown: boolean
-  downToFallback: boolean
-  fallbackToHealthy: boolean
-}
-
-export interface HealthMonitorData {
-  intervalMinutes?: number
-  fallbackTrigger?: 'down' | 'degraded'
-  failuresBeforeFallback?: number
-  recoveryCheckIntervalMinutes?: number
-  successesBeforeRecovery?: number
-  notifications?: Partial<HealthMonitorNotificationToggles>
-}
-
-export interface SettingsData {
+type SettingsData = SettingsStorageContract & {
   sessionTimeoutMinutes: number
-  sessionSummaryProviderId?: string
   language: string
   timezone: string
   healthMonitorIntervalMinutes: number
-  healthMonitor?: HealthMonitorData
-  batchingDelayMs?: number
-  uploadRetentionDays?: number
-  factExtraction?: FactExtractionSettingsData
 }
 
-export interface TelegramData {
+type TelegramData = TelegramSettingsStorageContract & {
   enabled: boolean
   botToken: string
   adminUserIds: number[]
   pollingMode: boolean
   webhookUrl: string
-  batchingDelayMs?: number
 }
 
-export interface MemoryConsolidationSettingsData {
-  enabled: boolean
-  runAtHour: number
-  lookbackDays: number
-  providerId: string
-}
-
-export interface FactExtractionSettingsData {
-  enabled: boolean
-  providerId: string
-  minSessionMessages: number
-}
-
-export interface AgentHeartbeatSettingsData {
-  enabled: boolean
-  intervalMinutes: number
-  nightMode: {
-    enabled: boolean
-    startHour: number
-    endHour: number
-  }
-}
+type HealthMonitorNotificationToggles = HealthMonitorNotificationTogglesContract
 
 export interface SettingsRouterOptions {
   getAgentCore?: () => AgentCore | null
@@ -108,7 +82,7 @@ function validateNonEmptyString(value: unknown, name: string): string | null {
   return null
 }
 
-function validateEnum(value: unknown, allowed: string[], name: string): string | null {
+function validateEnum(value: unknown, allowed: readonly string[], name: string): string | null {
   if (!allowed.includes(value as string)) {
     return `${name} must be ${allowed.map(a => `"${a}"`).join(' or ')}`
   }
@@ -130,7 +104,7 @@ function mergeHealthMonitor(
   let changed = false
 
   if (incoming.fallbackTrigger !== undefined) {
-    const err = validateEnum(incoming.fallbackTrigger, ['down', 'degraded'], 'healthMonitor.fallbackTrigger')
+    const err = validateEnum(incoming.fallbackTrigger, HEALTH_MONITOR_FALLBACK_TRIGGERS, 'healthMonitor.fallbackTrigger')
     if (err) return { error: err, changed }
     existing.fallbackTrigger = incoming.fallbackTrigger
     changed = true
@@ -265,7 +239,7 @@ function mergeTts(
 
   if (tts.enabled !== undefined) existing.enabled = !!tts.enabled
   if (tts.provider !== undefined) {
-    const err = validateEnum(tts.provider, ['openai', 'mistral'], 'tts.provider')
+    const err = validateEnum(tts.provider, SETTINGS_TTS_PROVIDERS, 'tts.provider')
     if (err) return { error: err }
     existing.provider = tts.provider
   }
@@ -276,7 +250,7 @@ function mergeTts(
     existing.providerId = tts.providerId
   }
   if (tts.openaiModel !== undefined) {
-    const err = validateEnum(tts.openaiModel, ['gpt-4o-mini-tts', 'tts-1', 'tts-1-hd'], 'tts.openaiModel')
+    const err = validateEnum(tts.openaiModel, SETTINGS_TTS_OPENAI_MODELS, 'tts.openaiModel')
     if (err) return { error: err }
     existing.openaiModel = tts.openaiModel
   }
@@ -299,7 +273,7 @@ function mergeTts(
     existing.mistralVoice = tts.mistralVoice
   }
   if (tts.responseFormat !== undefined) {
-    const err = validateEnum(tts.responseFormat, ['mp3', 'wav', 'opus', 'flac'], 'tts.responseFormat')
+    const err = validateEnum(tts.responseFormat, SETTINGS_TTS_RESPONSE_FORMATS, 'tts.responseFormat')
     if (err) return { error: err }
     existing.responseFormat = tts.responseFormat
   }
@@ -319,7 +293,7 @@ function mergeStt(
 
   if (stt.enabled !== undefined) existing.enabled = !!stt.enabled
   if (stt.provider !== undefined) {
-    const err = validateEnum(stt.provider, ['whisper-url', 'openai', 'ollama'], 'stt.provider')
+    const err = validateEnum(stt.provider, SETTINGS_STT_PROVIDERS, 'stt.provider')
     if (err) return { error: err }
     existing.provider = stt.provider
   }
@@ -336,7 +310,7 @@ function mergeStt(
     existing.providerId = stt.providerId
   }
   if (stt.openaiModel !== undefined) {
-    const err = validateEnum(stt.openaiModel, ['whisper-1', 'gpt-4o-transcribe', 'gpt-4o-mini-transcribe'], 'stt.openaiModel')
+    const err = validateEnum(stt.openaiModel, SETTINGS_STT_OPENAI_MODELS, 'stt.openaiModel')
     if (err) return { error: err }
     existing.openaiModel = stt.openaiModel
   }
@@ -384,7 +358,7 @@ function mergeTasks(
     existing.maxDurationMinutes = tasks.maxDurationMinutes
   }
   if (tasks.telegramDelivery !== undefined) {
-    const err = validateEnum(tasks.telegramDelivery, ['auto', 'always'], 'tasks.telegramDelivery')
+    const err = validateEnum(tasks.telegramDelivery, TASK_TELEGRAM_DELIVERY_VALUES, 'tasks.telegramDelivery')
     if (err) return { error: err }
     existing.telegramDelivery = tasks.telegramDelivery
   }
@@ -395,7 +369,7 @@ function mergeTasks(
 
     if (ld.enabled !== undefined) existingLd.enabled = !!ld.enabled
     if (ld.method !== undefined) {
-      const err = validateEnum(ld.method, ['systematic', 'smart', 'auto'], 'tasks.loopDetection.method')
+      const err = validateEnum(ld.method, TASK_LOOP_DETECTION_METHODS, 'tasks.loopDetection.method')
       if (err) return { error: err }
       existingLd.method = ld.method
     }
@@ -432,12 +406,7 @@ function mergeTasks(
 // ── Default notification toggles ──────────────────────────────────────
 
 const DEFAULT_NOTIFICATIONS: HealthMonitorNotificationToggles = {
-  healthyToDegraded: false,
-  degradedToHealthy: false,
-  degradedToDown: true,
-  healthyToDown: true,
-  downToFallback: true,
-  fallbackToHealthy: true,
+  ...DEFAULT_HEALTH_MONITOR_NOTIFICATION_TOGGLES,
 }
 
 // ── Response builders ─────────────────────────────────────────────────
@@ -581,7 +550,7 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
   })
 
   router.put('/', (req: AuthenticatedRequest, res) => {
-    const body = req.body as Record<string, unknown>
+    const body = withLegacySettingsPayloadCompatibility((req.body ?? {}) as Record<string, unknown>)
 
     try {
       ensureConfigTemplates()
