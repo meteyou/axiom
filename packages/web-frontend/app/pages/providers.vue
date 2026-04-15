@@ -74,67 +74,25 @@
             </TableHeader>
             <TableBody>
               <template v-for="provider in sortedProviders" :key="provider.id">
-                <!-- Provider row -->
+                <!-- Provider header row -->
                 <TableRow
                   class="cursor-pointer"
                   @click="openEdit(provider)"
                 >
-                  <!-- Name + type -->
                   <TableCell>
                     <div class="min-w-0">
-                      <div class="flex items-center gap-2">
-                        <span class="font-semibold text-foreground">{{ provider.name }}</span>
-                        <template v-if="!hasMultipleModels(provider)">
-                          <Badge v-if="provider.id === activeProviderId" variant="default" class="px-1.5 py-0 text-[10px]">
-                            {{ $t('providers.active') }}
-                          </Badge>
-                          <Badge v-if="provider.id === fallbackProviderId" variant="outline" class="px-1.5 py-0 text-[10px]">
-                            {{ $t('providers.fallback') }}
-                          </Badge>
+                      <span class="font-semibold text-foreground">{{ provider.name }}</span>
+                      <div class="text-xs text-muted-foreground">
+                        {{ getTypeLabel(provider.providerType) }}
+                        <template v-if="provider.authMethod === 'oauth' && provider.oauthCredentials">
+                          <span class="opacity-40">·</span>
+                          OAuth
                         </template>
                       </div>
-                      <span class="text-xs text-muted-foreground">
-                        {{ getTypeLabel(provider.providerType) }}
-                        <span v-if="!hasMultipleModels(provider)">
-                          <span class="opacity-40">·</span>
-                          {{ provider.defaultModel }}
-                        </span>
-                      </span>
                     </div>
                   </TableCell>
-
-                  <!-- Cost (show for single-model providers only) -->
-                  <TableCell>
-                    <template v-if="!hasMultipleModels(provider)">
-                      <div v-if="provider.cost" class="text-xs text-muted-foreground">
-                        <div class="flex items-center gap-1">
-                          <span class="text-foreground font-medium">${{ formatCost(provider.cost.input) }}</span>
-                          <span class="opacity-40">/</span>
-                          <span class="text-foreground font-medium">${{ formatCost(provider.cost.output) }}</span>
-                        </div>
-                        <span class="text-[10px]">{{ $t('providers.costPerMillion') }}</span>
-                      </div>
-                      <span v-else class="text-xs text-muted-foreground">{{ $t('providers.costNA') }}</span>
-                    </template>
-                  </TableCell>
-
-                  <!-- Status (show for single-model providers only) -->
-                  <TableCell>
-                    <template v-if="!hasMultipleModels(provider)">
-                      <div v-if="testingId === provider.id" class="flex items-center gap-1.5">
-                        <span
-                          class="h-3.5 w-3.5 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent"
-                          aria-hidden="true"
-                        />
-                        <span class="text-xs text-muted-foreground">{{ $t('providers.testing') }}</span>
-                      </div>
-                      <Badge v-else :variant="getStatusVariant(provider.status)">
-                        {{ getStatusLabel(provider.status) }}
-                      </Badge>
-                    </template>
-                  </TableCell>
-
-                  <!-- Row actions -->
+                  <TableCell />
+                  <TableCell />
                   <TableCell class="text-right" @click.stop>
                     <DropdownMenu>
                       <DropdownMenuTrigger as-child>
@@ -143,34 +101,6 @@
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <!-- Single-model providers: test + active/fallback actions on provider row -->
-                        <template v-if="!hasMultipleModels(provider)">
-                          <DropdownMenuItem @click="handleTest(provider.id)">
-                            <AppIcon name="refresh" class="h-4 w-4" />
-                            {{ $t('providers.testConnection') }}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            v-if="provider.id !== activeProviderId"
-                            @click="handleActivate(provider.id)"
-                          >
-                            <AppIcon name="check" class="h-4 w-4" />
-                            {{ $t('providers.setActive') }}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            v-if="provider.id !== activeProviderId && provider.id !== fallbackProviderId"
-                            @click="handleSetFallback(provider.id)"
-                          >
-                            <AppIcon name="shield" class="h-4 w-4" />
-                            {{ $t('providers.setFallback') }}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            v-if="provider.id === fallbackProviderId"
-                            @click="handleSetFallback(null)"
-                          >
-                            <AppIcon name="close" class="h-4 w-4" />
-                            {{ $t('providers.removeFallback') }}
-                          </DropdownMenuItem>
-                        </template>
                         <DropdownMenuItem @click="openEdit(provider)">
                           <AppIcon name="edit" class="h-4 w-4" />
                           {{ $t('users.edit') }}
@@ -189,15 +119,15 @@
                   </TableCell>
                 </TableRow>
 
-                <!-- Model sub-rows (shown when provider has multiple enabled models) -->
+                <!-- Model sub-rows (always shown for every provider) -->
                 <TableRow
                   v-for="modelId in getDisplayModels(provider)"
                   :key="`${provider.id}-${modelId}`"
                   class="bg-muted/30 hover:bg-muted/50"
                 >
-                  <!-- Model name (indented) -->
-                  <TableCell>
-                    <div class="flex items-center gap-2 pl-5">
+                  <!-- Model name (indented, compact) -->
+                  <TableCell class="py-1.5">
+                    <div class="flex items-center gap-2">
                       <span class="text-xs text-muted-foreground">└</span>
                       <span class="text-sm text-foreground">{{ modelId }}</span>
                       <Badge v-if="isActiveModel(provider.id, modelId)" variant="default" class="px-1.5 py-0 text-[10px]">
@@ -206,41 +136,38 @@
                       <Badge v-if="isFallbackModel(provider.id, modelId)" variant="outline" class="px-1.5 py-0 text-[10px]">
                         {{ $t('providers.fallback') }}
                       </Badge>
-                      <span v-if="modelId === provider.defaultModel" class="text-[10px] text-muted-foreground">
-                        ({{ $t('providers.default') }})
-                      </span>
+
                     </div>
                   </TableCell>
 
-                  <!-- Cost -->
-                  <TableCell>
-                    <div v-if="provider.modelCosts?.[modelId]" class="text-xs text-muted-foreground">
-                      <div class="flex items-center gap-1">
-                        <span class="text-foreground font-medium">${{ formatCost(provider.modelCosts[modelId].input) }}</span>
+                  <!-- Cost (single line, no $/M tokens label) -->
+                  <TableCell class="py-1.5">
+                    <template v-if="getModelCost(provider, modelId)">
+                      <div class="flex items-center gap-1 text-xs">
+                        <span class="text-foreground font-medium">${{ formatCost(getModelCost(provider, modelId)!.input) }}</span>
                         <span class="opacity-40">/</span>
-                        <span class="text-foreground font-medium">${{ formatCost(provider.modelCosts[modelId].output) }}</span>
+                        <span class="text-foreground font-medium">${{ formatCost(getModelCost(provider, modelId)!.output) }}</span>
                       </div>
-                      <span class="text-[10px]">{{ $t('providers.costPerMillion') }}</span>
-                    </div>
+                    </template>
                     <span v-else class="text-xs text-muted-foreground">{{ $t('providers.costNA') }}</span>
                   </TableCell>
 
                   <!-- Status per model -->
-                  <TableCell>
-                    <div v-if="testingId === `${provider.id}:${modelId}`" class="flex items-center gap-1.5">
+                  <TableCell class="py-1.5">
+                    <div v-if="isTestingModel(provider.id, modelId)" class="flex items-center gap-1.5">
                       <span
                         class="h-3.5 w-3.5 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent"
                         aria-hidden="true"
                       />
                       <span class="text-xs text-muted-foreground">{{ $t('providers.testing') }}</span>
                     </div>
-                    <Badge v-else :variant="getStatusVariant(provider.modelStatuses?.[modelId])">
-                      {{ getStatusLabel(provider.modelStatuses?.[modelId]) }}
+                    <Badge v-else :variant="getStatusVariant(getModelStatus(provider, modelId))">
+                      {{ getStatusLabel(getModelStatus(provider, modelId)) }}
                     </Badge>
                   </TableCell>
 
                   <!-- Model actions -->
-                  <TableCell class="text-right">
+                  <TableCell class="py-1.5 text-right">
                     <DropdownMenu>
                       <DropdownMenuTrigger as-child>
                         <Button variant="ghost" size="icon-sm" :aria-label="$t('providers.columns.actions')">
@@ -277,9 +204,6 @@
                     </DropdownMenu>
                   </TableCell>
                 </TableRow>
-
-                <!-- Single model badge row for providers with only one model -->
-                <!-- (badges shown inline on the provider row itself, handled via isActiveModel/isFallbackModel for single models) -->
               </template>
             </TableBody>
           </Table>
@@ -374,24 +298,43 @@ function formatCost(value: number): string {
   return value.toFixed(3)
 }
 
-function hasMultipleModels(provider: Provider): boolean {
-  return (provider.enabledModels?.length ?? 0) > 1
+function getDisplayModels(provider: Provider): string[] {
+  if (provider.enabledModels && provider.enabledModels.length > 0) {
+    return provider.enabledModels
+  }
+  return [provider.defaultModel]
 }
 
-function getDisplayModels(provider: Provider): string[] {
-  if (!hasMultipleModels(provider)) return []
-  return provider.enabledModels ?? [provider.defaultModel]
+function getModelCost(provider: Provider, modelId: string): { input: number; output: number } | null {
+  if (provider.modelCosts?.[modelId]) {
+    return provider.modelCosts[modelId]
+  }
+  if (provider.cost && modelId === provider.defaultModel) {
+    return provider.cost
+  }
+  return null
+}
+
+function getModelStatus(provider: Provider, modelId: string): string | undefined {
+  if (provider.modelStatuses?.[modelId]) {
+    return provider.modelStatuses[modelId]
+  }
+  // Single-model providers store status on the provider itself
+  if ((provider.enabledModels?.length ?? 0) <= 1) {
+    return provider.status
+  }
+  return undefined
+}
+
+function isTestingModel(providerId: string, modelId: string): boolean {
+  return testingId.value === `${providerId}:${modelId}` || testingId.value === providerId
 }
 
 function isActiveModel(providerId: string, modelId: string): boolean {
   if (providerId !== activeProviderId.value) return false
   const aModel = activeModelId.value
-  // For single-model providers: show badge on provider row, not model row
-  const provider = providers.value.find(p => p.id === providerId)
-  if (!hasMultipleModels(provider!)) {
-    return true // badge is on provider row
-  }
   if (!aModel) {
+    const provider = providers.value.find(p => p.id === providerId)
     return modelId === provider?.defaultModel
   }
   return aModel === modelId
@@ -400,11 +343,8 @@ function isActiveModel(providerId: string, modelId: string): boolean {
 function isFallbackModel(providerId: string, modelId: string): boolean {
   if (providerId !== fallbackProviderId.value) return false
   const fbModel = fallbackModelId.value
-  const provider = providers.value.find(p => p.id === providerId)
-  if (!hasMultipleModels(provider!)) {
-    return true
-  }
   if (!fbModel) {
+    const provider = providers.value.find(p => p.id === providerId)
     return modelId === provider?.defaultModel
   }
   return fbModel === modelId
@@ -483,16 +423,6 @@ async function handleDelete() {
 }
 
 /* ── Test / Activate ── */
-async function handleTest(id: string) {
-  const result = await testProvider(id)
-  if (result.success) {
-    successMessage.value = result.message ?? t('providers.testSuccess')
-  } else {
-    error.value = result.error ?? t('providers.testFailed')
-  }
-  autoHideSuccess()
-}
-
 async function handleTestModel(providerId: string, modelId: string) {
   const result = await testProvider(providerId, modelId)
   if (result.success) {
@@ -501,11 +431,6 @@ async function handleTestModel(providerId: string, modelId: string) {
     error.value = result.error ?? t('providers.testFailed')
   }
   autoHideSuccess()
-}
-
-async function handleActivate(id: string) {
-  await activateProvider(id)
-  await fetchProviders()
 }
 
 async function handleActivateModel(providerId: string, modelId: string) {
