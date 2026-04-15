@@ -83,6 +83,18 @@ packages/
 └── telegram/       # Telegram bot integration
 ```
 
+### Refactor Guardrails (PRD #10)
+
+For the monorepo maintainability refactor, structural conventions, boundary rules and behavior-parity baseline are documented in:
+
+- `docs/refactor-guardrails.md`
+
+Run the parity baseline locally:
+
+```bash
+npm run baseline:parity
+```
+
 ## Releasing a New Version
 
 1. Update the version in `package.json`
