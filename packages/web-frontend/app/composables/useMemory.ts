@@ -1,19 +1,11 @@
-interface DailyFile {
-  filename: string
-  date: string
-  size: number
-  modifiedAt: string
-}
+import type { MemoryDailyFile, MemoryProjectFile } from '~/api/memory'
+import { useMemoryApi } from '~/api/memory'
 
-interface ProjectFile {
-  filename: string
-  name: string
-  size: number
-  modifiedAt: string
-}
+type DailyFile = MemoryDailyFile
+type ProjectFile = MemoryProjectFile
 
 export function useMemory() {
-  const { apiFetch } = useApi()
+  const memoryApi = useMemoryApi()
 
   const loading = ref(false)
   const saving = ref(false)
@@ -24,7 +16,7 @@ export function useMemory() {
     loading.value = true
     error.value = null
     try {
-      const data = await apiFetch<{ content: string }>('/api/memory/soul')
+      const data = await memoryApi.getSoul()
       return data.content
     } catch (err) {
       error.value = (err as Error).message
@@ -39,10 +31,7 @@ export function useMemory() {
     error.value = null
     successMessage.value = null
     try {
-      await apiFetch('/api/memory/soul', {
-        method: 'PUT',
-        body: JSON.stringify({ content }),
-      })
+      await memoryApi.updateSoul(content)
       successMessage.value = 'saved'
       return true
     } catch (err) {
@@ -57,7 +46,7 @@ export function useMemory() {
     loading.value = true
     error.value = null
     try {
-      const data = await apiFetch<{ content: string }>('/api/memory/core')
+      const data = await memoryApi.getCoreMemory()
       return data.content
     } catch (err) {
       error.value = (err as Error).message
@@ -72,10 +61,7 @@ export function useMemory() {
     error.value = null
     successMessage.value = null
     try {
-      await apiFetch('/api/memory/core', {
-        method: 'PUT',
-        body: JSON.stringify({ content }),
-      })
+      await memoryApi.updateCoreMemory(content)
       successMessage.value = 'saved'
       return true
     } catch (err) {
@@ -90,7 +76,7 @@ export function useMemory() {
     loading.value = true
     error.value = null
     try {
-      const data = await apiFetch<{ files: DailyFile[] }>('/api/memory/daily')
+      const data = await memoryApi.listDailyFiles()
       return data.files
     } catch (err) {
       error.value = (err as Error).message
@@ -104,7 +90,7 @@ export function useMemory() {
     loading.value = true
     error.value = null
     try {
-      const data = await apiFetch<{ content: string }>(`/api/memory/daily/${date}`)
+      const data = await memoryApi.getDailyFile(date)
       return data.content
     } catch (err) {
       error.value = (err as Error).message
@@ -119,10 +105,7 @@ export function useMemory() {
     error.value = null
     successMessage.value = null
     try {
-      await apiFetch(`/api/memory/daily/${date}`, {
-        method: 'PUT',
-        body: JSON.stringify({ content }),
-      })
+      await memoryApi.updateDailyFile(date, content)
       successMessage.value = 'saved'
       return true
     } catch (err) {
@@ -137,7 +120,7 @@ export function useMemory() {
     loading.value = true
     error.value = null
     try {
-      const data = await apiFetch<{ content: string }>('/api/memory/agents')
+      const data = await memoryApi.getAgentRules()
       return data.content
     } catch (err) {
       error.value = (err as Error).message
@@ -152,10 +135,7 @@ export function useMemory() {
     error.value = null
     successMessage.value = null
     try {
-      await apiFetch('/api/memory/agents', {
-        method: 'PUT',
-        body: JSON.stringify({ content }),
-      })
+      await memoryApi.updateAgentRules(content)
       successMessage.value = 'saved'
       return true
     } catch (err) {
@@ -170,7 +150,7 @@ export function useMemory() {
     loading.value = true
     error.value = null
     try {
-      const data = await apiFetch<{ content: string }>('/api/memory/agents/default')
+      const data = await memoryApi.getDefaultAgentRules()
       return data.content
     } catch (err) {
       error.value = (err as Error).message
@@ -184,7 +164,7 @@ export function useMemory() {
     loading.value = true
     error.value = null
     try {
-      const data = await apiFetch<{ content: string }>('/api/memory/heartbeat')
+      const data = await memoryApi.getHeartbeat()
       return data.content
     } catch (err) {
       error.value = (err as Error).message
@@ -199,10 +179,7 @@ export function useMemory() {
     error.value = null
     successMessage.value = null
     try {
-      await apiFetch('/api/memory/heartbeat', {
-        method: 'PUT',
-        body: JSON.stringify({ content }),
-      })
+      await memoryApi.updateHeartbeat(content)
       successMessage.value = 'saved'
       return true
     } catch (err) {
@@ -217,7 +194,7 @@ export function useMemory() {
     loading.value = true
     error.value = null
     try {
-      const data = await apiFetch<{ content: string }>('/api/memory/heartbeat/default')
+      const data = await memoryApi.getDefaultHeartbeat()
       return data.content
     } catch (err) {
       error.value = (err as Error).message
@@ -231,7 +208,7 @@ export function useMemory() {
     loading.value = true
     error.value = null
     try {
-      const data = await apiFetch<{ content: string }>('/api/memory/consolidation-rules')
+      const data = await memoryApi.getConsolidationRules()
       return data.content
     } catch (err) {
       error.value = (err as Error).message
@@ -246,10 +223,7 @@ export function useMemory() {
     error.value = null
     successMessage.value = null
     try {
-      await apiFetch('/api/memory/consolidation-rules', {
-        method: 'PUT',
-        body: JSON.stringify({ content }),
-      })
+      await memoryApi.updateConsolidationRules(content)
       successMessage.value = 'saved'
       return true
     } catch (err) {
@@ -264,7 +238,7 @@ export function useMemory() {
     loading.value = true
     error.value = null
     try {
-      const data = await apiFetch<{ content: string }>('/api/memory/consolidation-rules/default')
+      const data = await memoryApi.getDefaultConsolidationRules()
       return data.content
     } catch (err) {
       error.value = (err as Error).message
@@ -278,7 +252,7 @@ export function useMemory() {
     loading.value = true
     error.value = null
     try {
-      const data = await apiFetch<{ content: string; username: string }>('/api/memory/profile')
+      const data = await memoryApi.getProfile()
       return { content: data.content, username: data.username }
     } catch (err) {
       error.value = (err as Error).message
@@ -293,10 +267,7 @@ export function useMemory() {
     error.value = null
     successMessage.value = null
     try {
-      await apiFetch('/api/memory/profile', {
-        method: 'PUT',
-        body: JSON.stringify({ content }),
-      })
+      await memoryApi.updateProfile(content)
       successMessage.value = 'saved'
       return true
     } catch (err) {
@@ -311,7 +282,7 @@ export function useMemory() {
     loading.value = true
     error.value = null
     try {
-      const data = await apiFetch<{ files: ProjectFile[] }>('/api/memory/projects')
+      const data = await memoryApi.listProjectFiles()
       return data.files
     } catch (err) {
       error.value = (err as Error).message
@@ -325,7 +296,7 @@ export function useMemory() {
     loading.value = true
     error.value = null
     try {
-      const data = await apiFetch<{ content: string }>(`/api/memory/projects/${name}`)
+      const data = await memoryApi.getProjectFile(name)
       return data.content
     } catch (err) {
       error.value = (err as Error).message
@@ -340,10 +311,7 @@ export function useMemory() {
     error.value = null
     successMessage.value = null
     try {
-      await apiFetch(`/api/memory/projects/${name}`, {
-        method: 'PUT',
-        body: JSON.stringify({ content }),
-      })
+      await memoryApi.updateProjectFile(name, content)
       successMessage.value = 'saved'
       return true
     } catch (err) {
