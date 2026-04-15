@@ -369,7 +369,7 @@ describe('transcribeOllama', () => {
 
   it('strips /v1 from baseUrl and sends to /api/chat', async () => {
     mockLoadProvidersDecrypted.mockReturnValue({
-      providers: [{ id: 'oll-1', baseUrl: 'http://localhost:11434/v1', providerType: 'ollama-local' }],
+      providers: [{ id: 'oll-1', baseUrl: 'http://localhost:11434/v1', providerType: 'ollama' }],
     } as ReturnType<typeof loadProvidersDecrypted>)
 
     const mockFetch = vi.fn().mockResolvedValue({
@@ -390,7 +390,7 @@ describe('transcribeOllama', () => {
 
   it('works when baseUrl has no /v1 suffix', async () => {
     mockLoadProvidersDecrypted.mockReturnValue({
-      providers: [{ id: 'oll-1', baseUrl: 'http://localhost:11434', providerType: 'ollama-local' }],
+      providers: [{ id: 'oll-1', baseUrl: 'http://localhost:11434', providerType: 'ollama' }],
     } as ReturnType<typeof loadProvidersDecrypted>)
 
     const mockFetch = vi.fn().mockResolvedValue({
@@ -407,7 +407,7 @@ describe('transcribeOllama', () => {
 
   it('sends base64 audio in images field with correct JSON body', async () => {
     mockLoadProvidersDecrypted.mockReturnValue({
-      providers: [{ id: 'oll-1', baseUrl: 'http://localhost:11434/v1', providerType: 'ollama-local' }],
+      providers: [{ id: 'oll-1', baseUrl: 'http://localhost:11434/v1', providerType: 'ollama' }],
     } as ReturnType<typeof loadProvidersDecrypted>)
 
     const mockFetch = vi.fn().mockResolvedValue({
@@ -433,7 +433,7 @@ describe('transcribeOllama', () => {
 
   it('uses model name from parameter', async () => {
     mockLoadProvidersDecrypted.mockReturnValue({
-      providers: [{ id: 'oll-1', baseUrl: 'http://localhost:11434/v1', providerType: 'ollama-local' }],
+      providers: [{ id: 'oll-1', baseUrl: 'http://localhost:11434/v1', providerType: 'ollama' }],
     } as ReturnType<typeof loadProvidersDecrypted>)
 
     const mockFetch = vi.fn().mockResolvedValue({
@@ -450,7 +450,7 @@ describe('transcribeOllama', () => {
 
   it('defaults model to whisper when empty', async () => {
     mockLoadProvidersDecrypted.mockReturnValue({
-      providers: [{ id: 'oll-1', baseUrl: 'http://localhost:11434/v1', providerType: 'ollama-local' }],
+      providers: [{ id: 'oll-1', baseUrl: 'http://localhost:11434/v1', providerType: 'ollama' }],
     } as ReturnType<typeof loadProvidersDecrypted>)
 
     const mockFetch = vi.fn().mockResolvedValue({
@@ -467,7 +467,7 @@ describe('transcribeOllama', () => {
 
   it('includes language in prompt when provided', async () => {
     mockLoadProvidersDecrypted.mockReturnValue({
-      providers: [{ id: 'oll-1', baseUrl: 'http://localhost:11434/v1', providerType: 'ollama-local' }],
+      providers: [{ id: 'oll-1', baseUrl: 'http://localhost:11434/v1', providerType: 'ollama' }],
     } as ReturnType<typeof loadProvidersDecrypted>)
 
     const mockFetch = vi.fn().mockResolvedValue({
@@ -484,7 +484,7 @@ describe('transcribeOllama', () => {
 
   it('trims whitespace from response', async () => {
     mockLoadProvidersDecrypted.mockReturnValue({
-      providers: [{ id: 'oll-1', baseUrl: 'http://localhost:11434/v1', providerType: 'ollama-local' }],
+      providers: [{ id: 'oll-1', baseUrl: 'http://localhost:11434/v1', providerType: 'ollama' }],
     } as ReturnType<typeof loadProvidersDecrypted>)
 
     const mockFetch = vi.fn().mockResolvedValue({
@@ -509,7 +509,7 @@ describe('transcribeOllama', () => {
 
   it('throws on HTTP error', async () => {
     mockLoadProvidersDecrypted.mockReturnValue({
-      providers: [{ id: 'oll-1', baseUrl: 'http://localhost:11434/v1', providerType: 'ollama-local' }],
+      providers: [{ id: 'oll-1', baseUrl: 'http://localhost:11434/v1', providerType: 'ollama' }],
     } as ReturnType<typeof loadProvidersDecrypted>)
 
     const mockFetch = vi.fn().mockResolvedValue({
@@ -526,7 +526,7 @@ describe('transcribeOllama', () => {
 
   it('throws on network error', async () => {
     mockLoadProvidersDecrypted.mockReturnValue({
-      providers: [{ id: 'oll-1', baseUrl: 'http://localhost:11434/v1', providerType: 'ollama-local' }],
+      providers: [{ id: 'oll-1', baseUrl: 'http://localhost:11434/v1', providerType: 'ollama' }],
     } as ReturnType<typeof loadProvidersDecrypted>)
 
     const mockFetch = vi.fn().mockRejectedValue(new Error('ECONNREFUSED'))
@@ -539,7 +539,7 @@ describe('transcribeOllama', () => {
 
   it('throws when response has no transcript content', async () => {
     mockLoadProvidersDecrypted.mockReturnValue({
-      providers: [{ id: 'oll-1', baseUrl: 'http://localhost:11434/v1', providerType: 'ollama-local' }],
+      providers: [{ id: 'oll-1', baseUrl: 'http://localhost:11434/v1', providerType: 'ollama' }],
     } as ReturnType<typeof loadProvidersDecrypted>)
 
     const mockFetch = vi.fn().mockResolvedValue({
@@ -742,7 +742,7 @@ describe('transcribeAudio', () => {
       },
     })
     mockLoadProvidersDecrypted.mockReturnValue({
-      providers: [{ id: 'oll-1', baseUrl: 'http://localhost:11434/v1', providerType: 'ollama-local' }],
+      providers: [{ id: 'oll-1', baseUrl: 'http://localhost:11434/v1', providerType: 'ollama' }],
     } as ReturnType<typeof loadProvidersDecrypted>)
 
     const mockFetch = vi.fn().mockResolvedValue({

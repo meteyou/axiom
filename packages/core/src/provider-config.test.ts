@@ -465,6 +465,8 @@ describe('provider CRUD', () => {
   it('PROVIDER_TYPE_PRESETS has all required types', () => {
     expect(PROVIDER_TYPE_PRESETS).toHaveProperty('openai')
     expect(PROVIDER_TYPE_PRESETS).toHaveProperty('anthropic')
+    expect(PROVIDER_TYPE_PRESETS).toHaveProperty('ollama')
+    // Legacy aliases still exist for migration
     expect(PROVIDER_TYPE_PRESETS).toHaveProperty('ollama-local')
     expect(PROVIDER_TYPE_PRESETS).toHaveProperty('ollama-cloud')
     expect(PROVIDER_TYPE_PRESETS).toHaveProperty('openrouter')
@@ -498,13 +500,8 @@ describe('getAvailableModels', () => {
     expect(glm).toBeDefined()
   })
 
-  it('returns empty array for ollama-local (no pi-ai mapping)', () => {
-    const models = getAvailableModels('ollama-local')
-    expect(models).toEqual([])
-  })
-
-  it('returns empty array for ollama-cloud (no pi-ai mapping)', () => {
-    const models = getAvailableModels('ollama-cloud')
+  it('returns empty array for ollama (no pi-ai mapping)', () => {
+    const models = getAvailableModels('ollama')
     expect(models).toEqual([])
   })
 
