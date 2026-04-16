@@ -1,18 +1,19 @@
 import { Router } from 'express'
-import type { Database } from '@openagent/core'
+import type { Database, TaskRuntimeScheduleBoundary } from '@openagent/core'
 import { ScheduledTaskStore, validateCronExpression, cronToHumanReadable } from '@openagent/core'
-import type { TaskScheduler } from '@openagent/core'
 import { jwtMiddleware } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
 
 export interface CronjobsRouterOptions {
   db: Database
-  getTaskScheduler?: () => TaskScheduler | null
+  getTaskRuntime?: () => TaskRuntimeScheduleBoundary | null
 }
 
 export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
   const router = Router()
   const store = new ScheduledTaskStore(options.db)
+
+  const getTaskRuntime = (): TaskRuntimeScheduleBoundary | null => options.getTaskRuntime?.() ?? null
 
   router.use(jwtMiddleware)
 
@@ -22,7 +23,8 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
    */
   router.get('/', (_req: AuthenticatedRequest, res) => {
     try {
-      const cronjobs = store.list()
+      const taskRuntime = getTaskRuntime()
+      const cronjobs = taskRuntime ? taskRuntime.list() : store.list()
 
       // Enrich with human-readable schedule
       const enriched = cronjobs.map(cj => ({
@@ -63,19 +65,28 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
         return
       }
 
-      const cronjob = store.create({
-        name,
-        prompt,
-        schedule,
-        actionType: actionType === 'injection' ? 'injection' : 'task',
-        provider: provider || undefined,
-        enabled: enabled !== undefined ? enabled : true,
-      })
+      const taskRuntime = getTaskRuntime()
+      const cronjob = taskRuntime
+        ? taskRuntime.create({
+            name,
+            prompt,
+            schedule,
+            actionType: actionType === 'injection' ? 'injection' : 'task',
+            provider: provider || undefined,
+            enabled: enabled !== undefined ? enabled : true,
+          })
+        : store.create({
+            name,
+            prompt,
+            schedule,
+            actionType: actionType === 'injection' ? 'injection' : 'task',
+            provider: provider || undefined,
+            enabled: enabled !== undefined ? enabled : true,
+          })
 
-      // Register with scheduler
-      const scheduler = options.getTaskScheduler?.()
-      if (scheduler) {
-        scheduler.registerSchedule(cronjob)
+      // Register with scheduler boundary when available
+      if (taskRuntime) {
+        taskRuntime.register(cronjob)
       }
 
       res.status(201).json({
@@ -96,7 +107,8 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
   router.put('/:id', (req: AuthenticatedRequest, res) => {
     try {
       const id = String(req.params.id)
-      const existing = store.getById(id)
+      const taskRuntime = getTaskRuntime()
+      const existing = taskRuntime ? taskRuntime.getById(id) : store.getById(id)
       if (!existing) {
         res.status(404).json({ error: 'Cronjob not found' })
         return
@@ -155,27 +167,38 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
         return
       }
 
-      const updated = store.update(id, {
-        name,
-        prompt,
-        schedule,
-        actionType: actionType !== undefined ? (actionType === 'injection' ? 'injection' : 'task') : undefined,
-        provider,
-        enabled,
-        toolsOverride: toolsOverride !== undefined ? toolsOverride : undefined,
-        skillsOverride: skillsOverride !== undefined ? skillsOverride : undefined,
-        systemPromptOverride: systemPromptOverride !== undefined ? systemPromptOverride : undefined,
-      })
+      const updated = taskRuntime
+        ? taskRuntime.update(id, {
+            name,
+            prompt,
+            schedule,
+            actionType: actionType !== undefined ? (actionType === 'injection' ? 'injection' : 'task') : undefined,
+            provider,
+            enabled,
+            toolsOverride: toolsOverride !== undefined ? toolsOverride : undefined,
+            skillsOverride: skillsOverride !== undefined ? skillsOverride : undefined,
+            systemPromptOverride: systemPromptOverride !== undefined ? systemPromptOverride : undefined,
+          })
+        : store.update(id, {
+            name,
+            prompt,
+            schedule,
+            actionType: actionType !== undefined ? (actionType === 'injection' ? 'injection' : 'task') : undefined,
+            provider,
+            enabled,
+            toolsOverride: toolsOverride !== undefined ? toolsOverride : undefined,
+            skillsOverride: skillsOverride !== undefined ? skillsOverride : undefined,
+            systemPromptOverride: systemPromptOverride !== undefined ? systemPromptOverride : undefined,
+          })
 
       if (!updated) {
         res.status(500).json({ error: 'Failed to update cronjob' })
         return
       }
 
-      // Re-register with scheduler
-      const scheduler = options.getTaskScheduler?.()
-      if (scheduler) {
-        scheduler.registerSchedule(updated)
+      // Re-register with scheduler boundary when available
+      if (taskRuntime) {
+        taskRuntime.register(updated)
       }
 
       res.json({
@@ -196,19 +219,19 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
   router.delete('/:id', (req: AuthenticatedRequest, res) => {
     try {
       const id = String(req.params.id)
-      const existing = store.getById(id)
+      const taskRuntime = getTaskRuntime()
+      const existing = taskRuntime ? taskRuntime.getById(id) : store.getById(id)
       if (!existing) {
         res.status(404).json({ error: 'Cronjob not found' })
         return
       }
 
-      // Unregister from scheduler
-      const scheduler = options.getTaskScheduler?.()
-      if (scheduler) {
-        scheduler.unregisterSchedule(id)
+      // Unregister from scheduler boundary when available
+      if (taskRuntime) {
+        taskRuntime.unregister(id)
       }
 
-      const deleted = store.delete(id)
+      const deleted = taskRuntime ? taskRuntime.delete(id) : store.delete(id)
       if (!deleted) {
         res.status(500).json({ error: 'Failed to delete cronjob' })
         return
@@ -227,19 +250,19 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
   router.post('/:id/trigger', async (req: AuthenticatedRequest, res) => {
     try {
       const id = String(req.params.id)
-      const existing = store.getById(id)
+      const taskRuntime = getTaskRuntime()
+      const existing = taskRuntime ? taskRuntime.getById(id) : store.getById(id)
       if (!existing) {
         res.status(404).json({ error: 'Cronjob not found' })
         return
       }
 
-      const scheduler = options.getTaskScheduler?.()
-      if (!scheduler) {
+      if (!taskRuntime) {
         res.status(503).json({ error: 'Task scheduler not available' })
         return
       }
 
-      const taskId = await scheduler.triggerNow(id)
+      const taskId = await taskRuntime.triggerNow(id)
       if (!taskId) {
         res.status(500).json({ error: 'Failed to trigger cronjob' })
         return
