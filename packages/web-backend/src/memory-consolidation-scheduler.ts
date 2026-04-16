@@ -3,6 +3,7 @@ import type { ConsolidationResult } from '@openagent/core'
 import type { AgentCore } from '@openagent/core'
 import type { TaskStore, Task } from '@openagent/core'
 import type { TaskRunner } from '@openagent/core'
+import type { TaskRuntimeTaskBoundary } from '@openagent/core'
 import type { ProviderConfig } from '@openagent/core'
 import {
   getActiveProvider,
@@ -115,10 +116,15 @@ This is optional: if no relevant facts are found, continue with the daily files 
 - You are a knowledge extractor. You store facts. You do NOT execute tasks, fix problems, apply changes, or modify configuration discussed in conversations.`
 }
 
+type ConsolidationTaskRuntime = Pick<TaskRuntimeTaskBoundary, 'create' | 'getById' | 'start'>
+
 export interface ConsolidationSchedulerOptions {
   db: Database
   agentCore?: AgentCore | null
+  taskRuntime?: ConsolidationTaskRuntime | null
+  /** @deprecated legacy input kept for compatibility */
   taskStore?: TaskStore | null
+  /** @deprecated legacy input kept for compatibility */
   taskRunner?: TaskRunner | null
   getDefaultProvider?: () => ProviderConfig | null
 }
@@ -136,8 +142,9 @@ export interface ConsolidationSnapshot {
 export class MemoryConsolidationScheduler {
   private db: Database
   private agentCore: AgentCore | null
-  private taskStore: TaskStore | null
-  private taskRunner: TaskRunner | null
+  private taskRuntime: ConsolidationTaskRuntime | null
+  private legacyTaskStore: TaskStore | null
+  private legacyTaskRunner: TaskRunner | null
   private getDefaultProviderFn: (() => ProviderConfig | null) | null
   private timer: ReturnType<typeof setTimeout> | null = null
   private running = false
@@ -149,8 +156,9 @@ export class MemoryConsolidationScheduler {
   constructor(options: ConsolidationSchedulerOptions) {
     this.db = options.db
     this.agentCore = options.agentCore ?? null
-    this.taskStore = options.taskStore ?? null
-    this.taskRunner = options.taskRunner ?? null
+    this.taskRuntime = options.taskRuntime ?? null
+    this.legacyTaskStore = options.taskStore ?? null
+    this.legacyTaskRunner = options.taskRunner ?? null
     this.getDefaultProviderFn = options.getDefaultProvider ?? null
   }
 
@@ -218,17 +226,36 @@ export class MemoryConsolidationScheduler {
   }
 
   /**
-   * Update the task store reference
+   * Update the task runtime boundary reference
    */
-  setTaskStore(taskStore: TaskStore | null): void {
-    this.taskStore = taskStore
+  setTaskRuntime(taskRuntime: ConsolidationTaskRuntime | null): void {
+    this.taskRuntime = taskRuntime
   }
 
   /**
-   * Update the task runner reference
+   * @deprecated Use setTaskRuntime instead.
+   */
+  setTaskStore(taskStore: TaskStore | null): void {
+    this.legacyTaskStore = taskStore
+  }
+
+  /**
+   * @deprecated Use setTaskRuntime instead.
    */
   setTaskRunner(taskRunner: TaskRunner | null): void {
-    this.taskRunner = taskRunner
+    this.legacyTaskRunner = taskRunner
+  }
+
+  private resolveTaskRuntime(): ConsolidationTaskRuntime | null {
+    if (this.taskRuntime) return this.taskRuntime
+    if (this.legacyTaskStore && this.legacyTaskRunner) {
+      return {
+        create: (input) => this.legacyTaskStore!.create(input),
+        getById: (taskId) => this.legacyTaskStore!.getById(taskId),
+        start: (task, provider) => this.legacyTaskRunner!.startTask(task, provider),
+      }
+    }
+    return null
   }
 
   private scheduleNext(): void {
@@ -270,8 +297,10 @@ export class MemoryConsolidationScheduler {
     const startTime = Date.now()
     const sessionId = `nightly-consolidation-${Date.now()}`
 
-    // Ensure we have TaskStore and TaskRunner
-    if (!this.taskStore || !this.taskRunner) {
+    const taskRuntime = this.resolveTaskRuntime()
+
+    // Ensure task runtime is available
+    if (!taskRuntime) {
       const result: ConsolidationResult = {
         updated: false,
         dailyFilesReviewed: 0,
@@ -321,9 +350,9 @@ export class MemoryConsolidationScheduler {
       // Read user-defined consolidation rules
       const consolidationRules = readConsolidationFile()
 
-      // Create a task via TaskStore
+      // Create a task via task runtime boundary
       const prompt = buildConsolidationTaskPrompt(this.settings.lookbackDays, consolidationRules)
-      const task: Task = this.taskStore.create({
+      const task: Task = taskRuntime.create({
         name: 'Nightly Memory Consolidation',
         prompt,
         triggerType: 'consolidation',
@@ -333,13 +362,13 @@ export class MemoryConsolidationScheduler {
         sessionId,
       })
 
-      // Start the task via TaskRunner
-      await this.taskRunner.startTask(task, provider)
+      // Start the task via task runtime boundary
+      await taskRuntime.start(task, provider)
 
       console.log(`[openagent] Memory consolidation task started: ${task.id}`)
 
       // Wait for the task to complete by polling
-      const result = await this.waitForTaskCompletion(task.id, startTime)
+      const result = await this.waitForTaskCompletion(task.id, startTime, taskRuntime)
 
       this.lastRun = new Date().toISOString()
       this.lastResult = result
@@ -414,13 +443,14 @@ export class MemoryConsolidationScheduler {
   private async waitForTaskCompletion(
     taskId: string,
     startTime: number,
+    taskRuntime: ConsolidationTaskRuntime,
   ): Promise<ConsolidationResult> {
     const POLL_INTERVAL_MS = 2000
     const MAX_WAIT_MS = 30 * 60 * 1000 // 30 minutes max
 
     return new Promise<ConsolidationResult>((resolve) => {
       const checkTask = () => {
-        const task = this.taskStore!.getById(taskId)
+        const task = taskRuntime.getById(taskId)
         if (!task) {
           resolve({
             updated: false,
