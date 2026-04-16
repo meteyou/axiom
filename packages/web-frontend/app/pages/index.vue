@@ -285,6 +285,50 @@
             <AppIcon v-else name="mic" class="h-4 w-4" />
           </button>
           <textarea ref="inputRef" v-model="inputText" class="min-h-[42px] max-h-[150px] flex-1 resize-none rounded-xl border border-input bg-background px-3.5 py-2.5 text-sm" :placeholder="$t('chat.placeholder')" rows="1" @keydown.enter.exact.prevent="handleSend" @input="autoResize" />
+
+          <!-- Thinking-level quick switch (admin-only; the main agent is single-tenant, so changing this affects everyone's next turn) -->
+          <Popover v-if="isAdmin" v-model:open="thinkingLevelPickerOpen">
+            <PopoverTrigger as-child>
+              <button
+                type="button"
+                class="inline-flex h-[42px] shrink-0 select-none items-center gap-1.5 rounded-xl border border-input px-3 text-sm text-muted-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="thinkingLevelSaving"
+                :title="$t('chat.thinkingLevelTooltip')"
+                :aria-label="$t('chat.thinkingLevelTooltip')"
+              >
+                <AppIcon
+                  :name="thinkingLevelSaving ? 'loader' : 'brain'"
+                  class="h-4 w-4"
+                  :class="[
+                    thinkingLevelSaving ? 'animate-spin' : '',
+                    currentThinkingLevel !== 'off' && !thinkingLevelSaving ? 'text-foreground' : '',
+                  ]"
+                />
+                <span
+                  class="text-xs font-medium uppercase tracking-wide"
+                  :class="currentThinkingLevel !== 'off' ? 'text-foreground' : ''"
+                >{{ thinkingLevelShortLabel(currentThinkingLevel) }}</span>
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" class="w-56 p-1">
+              <p class="px-2 pb-1 pt-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                {{ $t('settings.thinkingLevel') }}
+              </p>
+              <button
+                v-for="lvl in THINKING_LEVELS"
+                :key="lvl"
+                type="button"
+                class="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+                :class="currentThinkingLevel === lvl ? 'bg-accent/60 text-accent-foreground' : 'text-foreground'"
+                :disabled="thinkingLevelSaving"
+                @click="handleThinkingLevelChange(lvl)"
+              >
+                <span>{{ $t(`chat.thinkingLevelMenu.${lvl}`) }}</span>
+                <AppIcon v-if="currentThinkingLevel === lvl" name="check" class="h-4 w-4 text-primary" />
+              </button>
+            </PopoverContent>
+          </Popover>
+
           <Button type="submit" size="sm" :disabled="(!inputText.trim() && pendingFiles.length === 0) || connectionStatus !== 'connected'" class="h-[42px] shrink-0 px-4">{{ $t('chat.send') }}</Button>
         </div>
       </form>
@@ -294,9 +338,67 @@
 
 <script setup lang="ts">
 import type { ChatMessage, ToolCallData } from '~/composables/useChat'
+import { SETTINGS_THINKING_LEVELS, type SettingsThinkingLevel } from '@openagent/core/contracts'
+import { useSettingsApi } from '~/api/settings'
 const { t } = useI18n()
 const { apiFetch } = useApi()
 const { user } = useAuth()
+const isAdmin = computed(() => user.value?.role === 'admin')
+const settingsApi = useSettingsApi()
+
+/* ── Thinking level quick-switch in the composer ──
+   Backed by the same `thinkingLevel` setting as the Settings page; changes are
+   live-applied to the agent (see `AgentCore.setThinkingLevel`). Admin-only
+   because the main agent is single-tenant — flipping this affects everyone's
+   next turn. */
+const THINKING_LEVELS = SETTINGS_THINKING_LEVELS
+const currentThinkingLevel = ref<SettingsThinkingLevel>('off')
+const thinkingLevelPickerOpen = ref(false)
+const thinkingLevelSaving = ref(false)
+
+function thinkingLevelShortLabel(level: SettingsThinkingLevel): string {
+  // Short labels avoid the dropdown trigger growing too wide.
+  const map: Record<SettingsThinkingLevel, string> = {
+    off: 'off',
+    minimal: 'min',
+    low: 'low',
+    medium: 'med',
+    high: 'high',
+    xhigh: 'x-hi',
+  }
+  return map[level]
+}
+
+async function loadThinkingLevel() {
+  if (!isAdmin.value) return
+  try {
+    const settings = await settingsApi.getSettings()
+    if (settings.thinkingLevel && (SETTINGS_THINKING_LEVELS as readonly string[]).includes(settings.thinkingLevel)) {
+      currentThinkingLevel.value = settings.thinkingLevel as SettingsThinkingLevel
+    }
+  } catch {
+    // keep default 'off' if we can't reach the endpoint
+  }
+}
+
+async function handleThinkingLevelChange(level: SettingsThinkingLevel) {
+  if (level === currentThinkingLevel.value) {
+    thinkingLevelPickerOpen.value = false
+    return
+  }
+  const previous = currentThinkingLevel.value
+  currentThinkingLevel.value = level // optimistic
+  thinkingLevelPickerOpen.value = false
+  thinkingLevelSaving.value = true
+  try {
+    await settingsApi.updateSettings({ thinkingLevel: level })
+  } catch {
+    // rollback on failure
+    currentThinkingLevel.value = previous
+  } finally {
+    thinkingLevelSaving.value = false
+  }
+}
 const { userAvatarUrl, avatarFailed, userInitial, onAvatarError } = useUserAvatar()
 const { renderMarkdown, handleCopyAsMarkdown } = useMarkdown()
 const { isSkillLoad, getSkillName } = useSkillDetection()
@@ -386,7 +488,7 @@ const isNearBottom = ref(true)
 const SCROLL_THRESHOLD = 120
 function onMessagesScroll() { const el = messagesContainer.value; if (!el) return; isNearBottom.value = el.scrollHeight - el.scrollTop - el.clientHeight <= SCROLL_THRESHOLD }
 function jumpToBottom() { isNearBottom.value = true; nextTick(() => scrollToBottom()) }
-onMounted(async () => { connect(); await Promise.all([loadHistory(), fetchTtsSettings(), fetchSttSettings()]) })
+onMounted(async () => { connect(); await Promise.all([loadHistory(), fetchTtsSettings(), fetchSttSettings(), loadThinkingLevel()]) })
 onUnmounted(() => { disconnect(); ttsStop(); sttCleanup() })
 watch(() => messages.value.length, () => {
   if (isNearBottom.value) nextTick(() => scrollToBottom())
