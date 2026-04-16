@@ -4,6 +4,7 @@ import { ensureConfigTemplates, loadConfig } from './config.js'
 import type { TaskStore, Task } from './task-store.js'
 import type { TaskRunner } from './task-runner.js'
 import type { ProviderConfig } from './provider-config.js'
+import type { TaskRuntimeTaskBoundary } from './task-runtime.js'
 
 export interface AgentHeartbeatNightMode {
   enabled: boolean
@@ -31,9 +32,15 @@ const HEARTBEAT_PROMPT = `Read /data/config/HEARTBEAT.md. Execute the tasks defi
 If you have something important to report to the user, use task injection.
 If nothing needs attention, complete silently.`
 
+type HeartbeatTaskRuntime = Pick<TaskRuntimeTaskBoundary, 'create' | 'start'>
+
 export interface AgentHeartbeatServiceOptions {
-  taskStore: TaskStore
-  taskRunner: TaskRunner
+  /** Preferred boundary contract */
+  taskRuntime?: HeartbeatTaskRuntime
+  /** @deprecated legacy inputs kept for compatibility */
+  taskStore?: TaskStore
+  /** @deprecated legacy inputs kept for compatibility */
+  taskRunner?: TaskRunner
   getDefaultProvider: () => ProviderConfig
   /** Override for testing — returns the current time */
   now?: () => Date
@@ -60,8 +67,7 @@ export function isHeartbeatContentEffectivelyEmpty(content: string): boolean {
 }
 
 export class AgentHeartbeatService {
-  private taskStore: TaskStore
-  private taskRunner: TaskRunner
+  private taskRuntime: HeartbeatTaskRuntime | null
   private getDefaultProvider: () => ProviderConfig
   private nowFn: () => Date
   private getTimezoneFn: () => string
@@ -70,8 +76,14 @@ export class AgentHeartbeatService {
   private settings: AgentHeartbeatSettings = { ...DEFAULT_AGENT_HEARTBEAT_SETTINGS }
 
   constructor(options: AgentHeartbeatServiceOptions) {
-    this.taskStore = options.taskStore
-    this.taskRunner = options.taskRunner
+    this.taskRuntime = options.taskRuntime ?? (
+      options.taskStore && options.taskRunner
+        ? {
+            create: (input) => options.taskStore!.create(input),
+            start: (task, provider) => options.taskRunner!.startTask(task, provider),
+          }
+        : null
+    )
     this.getDefaultProvider = options.getDefaultProvider
     this.nowFn = options.now ?? (() => new Date())
     this.getTimezoneFn = options.getTimezone ?? (() => this.loadTimezone())
@@ -179,8 +191,13 @@ export class AgentHeartbeatService {
       return null
     }
 
+    if (!this.taskRuntime) {
+      console.warn('[openagent] Agent heartbeat skipped: task runtime not available')
+      return null
+    }
+
     // Create a task
-    const task: Task = this.taskStore.create({
+    const task: Task = this.taskRuntime.create({
       name: 'Agent Heartbeat',
       prompt: HEARTBEAT_PROMPT,
       triggerType: 'heartbeat',
@@ -191,7 +208,7 @@ export class AgentHeartbeatService {
     })
 
     try {
-      await this.taskRunner.startTask(task, provider)
+      await this.taskRuntime.start(task, provider)
       console.log(`[openagent] Agent heartbeat task started: ${task.id}`)
       return task.id
     } catch (err) {

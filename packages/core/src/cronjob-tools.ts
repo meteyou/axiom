@@ -1,12 +1,11 @@
 import type { AgentTool } from '@mariozechner/pi-agent-core'
 import { Type } from '@mariozechner/pi-ai'
-import type { ScheduledTaskStore, ScheduledTaskActionType } from './scheduled-task-store.js'
-import type { TaskScheduler } from './task-scheduler.js'
+import type { ScheduledTaskActionType } from './scheduled-task-store.js'
+import type { TaskRuntimeScheduleBoundary } from './task-runtime.js'
 import { validateCronExpression, cronToHumanReadable, parseCronExpression, getNextRunTime } from './cron-parser.js'
 
 export interface CronjobToolsOptions {
-  scheduledTaskStore: ScheduledTaskStore
-  taskScheduler: TaskScheduler
+  taskRuntime: TaskRuntimeScheduleBoundary
 }
 
 function looksLikeDynamicTaskRequest(name: string, message: string): boolean {
@@ -82,7 +81,7 @@ export function createCronjobTool(options: CronjobToolsOptions): AgentTool {
         const actionType: ScheduledTaskActionType = action_type === 'injection' ? 'injection' : 'task'
 
         // Create in DB
-        const scheduledTask = options.scheduledTaskStore.create({
+        const scheduledTask = options.taskRuntime.create({
           name,
           prompt,
           schedule,
@@ -92,7 +91,7 @@ export function createCronjobTool(options: CronjobToolsOptions): AgentTool {
         })
 
         // Register with scheduler
-        options.taskScheduler.registerSchedule(scheduledTask)
+        options.taskRuntime.register(scheduledTask)
 
         const humanSchedule = cronToHumanReadable(schedule)
 
@@ -181,7 +180,7 @@ export function editCronjobTool(options: CronjobToolsOptions): AgentTool {
 
       try {
         // Check exists
-        const existing = options.scheduledTaskStore.getById(id)
+        const existing = options.taskRuntime.getById(id)
         if (!existing) {
           return {
             content: [{ type: 'text' as const, text: `Error: Cronjob "${id}" not found.` }],
@@ -206,7 +205,7 @@ export function editCronjobTool(options: CronjobToolsOptions): AgentTool {
           : undefined
 
         // Update in DB
-        const updated = options.scheduledTaskStore.update(id, {
+        const updated = options.taskRuntime.update(id, {
           prompt,
           name,
           schedule,
@@ -223,7 +222,7 @@ export function editCronjobTool(options: CronjobToolsOptions): AgentTool {
         }
 
         // Re-register with scheduler
-        options.taskScheduler.registerSchedule(updated)
+        options.taskRuntime.register(updated)
 
         const humanSchedule = cronToHumanReadable(updated.schedule)
 
@@ -273,7 +272,7 @@ export function removeCronjobTool(options: CronjobToolsOptions): AgentTool {
 
       try {
         // Check exists
-        const existing = options.scheduledTaskStore.getById(id)
+        const existing = options.taskRuntime.getById(id)
         if (!existing) {
           return {
             content: [{ type: 'text' as const, text: `Error: Cronjob "${id}" not found.` }],
@@ -282,10 +281,10 @@ export function removeCronjobTool(options: CronjobToolsOptions): AgentTool {
         }
 
         // Unregister from scheduler
-        options.taskScheduler.unregisterSchedule(id)
+        options.taskRuntime.unregister(id)
 
         // Delete from DB
-        const deleted = options.scheduledTaskStore.delete(id)
+        const deleted = options.taskRuntime.delete(id)
         if (!deleted) {
           return {
             content: [{ type: 'text' as const, text: `Error: Failed to delete cronjob "${id}".` }],
@@ -347,8 +346,8 @@ export function listCronjobsTool(options: CronjobToolsOptions): AgentTool {
 
       try {
         const cronjobs = enabled_only
-          ? options.scheduledTaskStore.listEnabled()
-          : options.scheduledTaskStore.list()
+          ? options.taskRuntime.listEnabled()
+          : options.taskRuntime.list()
 
         if (cronjobs.length === 0) {
           return {
@@ -431,7 +430,7 @@ export function getCronjobTool(options: CronjobToolsOptions): AgentTool {
       const { id } = params as { id: string }
 
       try {
-        const cj = options.scheduledTaskStore.getById(id)
+        const cj = options.taskRuntime.getById(id)
         if (!cj) {
           return {
             content: [{ type: 'text' as const, text: `No cronjob found with ID: ${id}` }],
@@ -523,7 +522,7 @@ export function createReminderTool(options: CronjobToolsOptions): AgentTool {
         }
 
         // Create injection-type scheduled task
-        const scheduledTask = options.scheduledTaskStore.create({
+        const scheduledTask = options.taskRuntime.create({
           name,
           prompt: message,
           schedule,
@@ -532,7 +531,7 @@ export function createReminderTool(options: CronjobToolsOptions): AgentTool {
         })
 
         // Register with scheduler
-        options.taskScheduler.registerSchedule(scheduledTask)
+        options.taskRuntime.register(scheduledTask)
 
         const humanSchedule = cronToHumanReadable(schedule)
 
