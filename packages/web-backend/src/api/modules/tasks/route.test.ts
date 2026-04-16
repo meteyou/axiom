@@ -180,6 +180,29 @@ describe('tasks route module', () => {
     expect(body.events[2]?.role).toBe('assistant')
   })
 
+  it('fails fast when task message metadata contains malformed JSON', async () => {
+    const task = createTask({ name: 'Corrupted metadata task', sessionId: 'task-events-corrupt' })
+
+    db.prepare(
+      'INSERT INTO chat_messages (session_id, role, content, metadata, timestamp) VALUES (?, ?, ?, ?, ?)',
+    ).run(
+      'task-events-corrupt',
+      'assistant',
+      'Assistant response',
+      '{"thinking":',
+      '2026-03-27 10:00:02',
+    )
+
+    const res = await fetch(`${baseUrl}/api/tasks/${task.id}/events`, {
+      headers: authHeaders(),
+    })
+
+    const body = await res.json() as { error: string }
+
+    expect(res.status).toBe(500)
+    expect(body.error).toContain('Failed to get task events')
+  })
+
   it('kills running tasks and prevents killing non-running tasks', async () => {
     const store = new TaskStore(db)
     const runningTask = createTask({ name: 'Kill me' })

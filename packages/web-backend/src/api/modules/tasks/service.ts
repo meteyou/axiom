@@ -161,10 +161,5 @@ export function createTasksService(options: TasksServiceOptions): TasksService {
 
 function safeParseJson(rawValue: string | null): unknown {
   if (!rawValue) return null
-
-  try {
-    return JSON.parse(rawValue)
-  } catch {
-    return rawValue
-  }
+  return JSON.parse(rawValue)
 }
