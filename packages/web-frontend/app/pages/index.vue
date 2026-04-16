@@ -42,6 +42,10 @@
               <Label class="cursor-pointer text-sm" for="filter-summaries">{{ $t('chat.filterSessionSummaries') }}</Label>
               <Switch id="filter-summaries" v-model:checked="showSessionSummaries" />
             </div>
+            <div class="flex items-center justify-between gap-3">
+              <Label class="cursor-pointer text-sm" for="filter-thinking">{{ $t('chat.filterThinking') }}</Label>
+              <Switch id="filter-thinking" v-model:checked="showThinking" />
+            </div>
           </div>
         </PopoverContent>
       </Popover>
@@ -60,10 +64,10 @@
           v-for="(msg, i) in filteredMessages"
           :key="i"
           :class="[
-            msg.role === 'divider' ? 'w-full' : (msg.role === 'tool' || (msg.role === 'system' && msg.isTaskResult)) ? 'self-start w-full max-w-[80%] sm:max-w-[75%] pl-11' : 'flex max-w-[80%] gap-3 sm:max-w-[75%]',
+            msg.role === 'divider' ? 'w-full' : (msg.role === 'tool' || (msg.role === 'system' && msg.isTaskResult) || msg.isThinking) ? 'self-start w-full max-w-[80%] sm:max-w-[75%] pl-11' : 'flex max-w-[80%] gap-3 sm:max-w-[75%]',
             {
               'self-end flex-row-reverse': msg.role === 'user',
-              'self-start': msg.role === 'assistant',
+              'self-start': msg.role === 'assistant' && !msg.isThinking,
               'self-center max-w-[90%] !sm:max-w-[85%]': msg.role === 'system' && !msg.isTaskResult,
             },
           ]"
@@ -105,6 +109,31 @@
                   <span>{{ $t('chat.newSessionDivider') }}</span>
                 </div>
                 <div class="grow border-t border-border" />
+              </div>
+            </div>
+          </template>
+
+          <!-- Thinking card (clickable/expandable) -->
+          <template v-else-if="msg.isThinking">
+            <div class="w-full overflow-hidden rounded-lg border border-border">
+              <button
+                class="group flex w-full items-center gap-2 bg-muted/30 px-3 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-muted/60"
+                :class="{ 'border-b border-border': expandedThinking.has(String(msg.id ?? i)) }"
+                @click="toggleThinking(String(msg.id ?? i))"
+              >
+                <svg class="h-3 w-3 shrink-0 transition-transform duration-200" :class="{ 'rotate-90': expandedThinking.has(String(msg.id ?? i)) }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6" /></svg>
+                <AppIcon name="sparkles" class="h-3 w-3 shrink-0 opacity-60" />
+                <span class="font-medium">{{ $t('chat.thinking') }}</span>
+                <span v-if="msg.streaming" class="ml-2 inline-flex items-center gap-1">
+                  <span class="h-1 w-1 animate-pulse rounded-full bg-current opacity-60" />
+                  <span class="h-1 w-1 animate-pulse rounded-full bg-current opacity-60" />
+                  <span class="h-1 w-1 animate-pulse rounded-full bg-current opacity-60" />
+                </span>
+              </button>
+              <div v-if="expandedThinking.has(String(msg.id ?? i))" class="bg-background text-xs">
+                <div class="max-h-80 overflow-y-auto px-3 py-2">
+                  <p class="whitespace-pre-wrap break-words text-muted-foreground">{{ msg.content }}</p>
+                </div>
               </div>
             </div>
           </template>
@@ -442,6 +471,7 @@ function saveFilters() {
     showToolCalls: showToolCalls.value,
     showInjections: showInjections.value,
     showSessionSummaries: showSessionSummaries.value,
+    showThinking: showThinking.value,
   }))
 }
 
@@ -449,8 +479,10 @@ const savedFilters = loadFilters()
 const showToolCalls = ref(savedFilters?.showToolCalls ?? true)
 const showInjections = ref(savedFilters?.showInjections ?? false)
 const showSessionSummaries = ref(savedFilters?.showSessionSummaries ?? false)
+// Thinking blocks default to visible (but collapsed) — mirrors TaskViewer behaviour.
+const showThinking = ref(savedFilters?.showThinking ?? true)
 
-watch([showToolCalls, showInjections, showSessionSummaries], () => saveFilters())
+watch([showToolCalls, showInjections, showSessionSummaries, showThinking], () => saveFilters())
 const expandedSummaries = ref<Set<string>>(new Set())
 function toggleSummary(id: string) { const updated = new Set(expandedSummaries.value); updated.has(id) ? updated.delete(id) : updated.add(id); expandedSummaries.value = updated }
 
@@ -458,6 +490,7 @@ const filteredMessages = computed(() => {
   return messages.value.filter((msg) => {
     if (!showToolCalls.value && msg.role === 'tool' && msg.toolData) return false
     if (!showInjections.value && msg.role === 'system' && msg.isTaskResult) return false
+    if (!showThinking.value && msg.isThinking) return false
     return true
   })
 })
@@ -465,6 +498,11 @@ const expandedTools = ref<Set<string>>(new Set())
 function toggleTool(toolCallId: string) { const updated = new Set(expandedTools.value); updated.has(toolCallId) ? updated.delete(toolCallId) : updated.add(toolCallId); expandedTools.value = updated }
 const expandedInjections = ref<Set<number>>(new Set())
 function toggleInjection(index: number) { const updated = new Set(expandedInjections.value); updated.has(index) ? updated.delete(index) : updated.add(index); expandedInjections.value = updated }
+// Thinking blocks default to collapsed per-message. We keep a Set of expanded IDs
+// (the DB row id when loaded from history, otherwise the array index fallback)
+// mirroring how tool calls/injections/summaries are toggled.
+const expandedThinking = ref<Set<string>>(new Set())
+function toggleThinking(id: string) { const updated = new Set(expandedThinking.value); updated.has(id) ? updated.delete(id) : updated.add(id); expandedThinking.value = updated }
 function taskResultBody(content: string): string {
   const lines = (content ?? '').split('\n')
   const bodyLines = lines.slice(1)
@@ -530,6 +568,15 @@ async function loadHistory() {
             taskResultName: meta.taskName ?? 'Background Task',
             taskResultStatus: meta.taskResultStatus ?? meta.taskStatus ?? 'completed',
             taskResultDuration: meta.durationMinutes,
+          } as ChatMessage
+        }
+
+        // Parse thinking blocks (assistant messages with metadata.kind === 'thinking').
+        // Persisted live by ws-chat so they survive a page reload.
+        if (m.role === 'assistant' && meta.kind === 'thinking') {
+          return {
+            id: m.id, role: 'assistant' as const, content: m.content, timestamp: m.timestamp, source,
+            isThinking: true,
           } as ChatMessage
         }
 

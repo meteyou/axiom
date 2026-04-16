@@ -70,7 +70,9 @@
     "filterToolCalls": "Tool-Aufrufe",
     "filterInjections": "Injektionen",
     "filterSessionSummaries": "Sitzungszusammenfassungen",
+    "filterThinking": "Thinking-Blöcke anzeigen",
     "sessionSummary": "Sitzungszusammenfassung",
+    "thinking": "Überlegung",
     "scrollToBottom": "Nach unten scrollen",
     "attachments": {
       "openOriginal": "Original öffnen",
