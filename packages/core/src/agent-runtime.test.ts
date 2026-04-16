@@ -226,4 +226,40 @@ describe('AgentRuntime boundary', () => {
     expect(chunks.map(c => c.type)).toEqual(['text', 'tool_call_start', 'tool_call_end', 'done'])
     expect(logToolCall).toHaveBeenCalledTimes(1)
   })
+
+  it('forwards thinking_delta events as thinking response chunks', async () => {
+    const db = initDatabase(':memory:')
+    const runtime = createAgentRuntime({
+      model: makeModel(),
+      apiKey: 'sk-primary',
+      db,
+      tools: [],
+    })
+
+    runtimeHarness.promptBehaviors.push(async (agent) => {
+      agent.emit({
+        type: 'message_update',
+        assistantMessageEvent: { type: 'thinking_delta', delta: 'Hmm,' },
+      })
+      agent.emit({
+        type: 'message_update',
+        assistantMessageEvent: { type: 'thinking_delta', delta: ' weighing options.' },
+      })
+      agent.emit({
+        type: 'message_update',
+        assistantMessageEvent: { type: 'text_delta', delta: 'Done.' },
+      })
+      agent.emit({ type: 'agent_end', messages: [] })
+    })
+
+    const chunks = [] as Array<{ type: string; text?: string; thinking?: string }>
+    for await (const chunk of runtime.streamPrompt('hello', 'session-1')) {
+      chunks.push({ type: chunk.type, text: chunk.text, thinking: chunk.thinking })
+    }
+
+    expect(chunks.map(c => c.type)).toEqual(['thinking', 'thinking', 'text', 'done'])
+    expect(chunks[0]!.thinking).toBe('Hmm,')
+    expect(chunks[1]!.thinking).toBe(' weighing options.')
+    expect(chunks[2]!.text).toBe('Done.')
+  })
 })

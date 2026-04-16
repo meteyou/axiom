@@ -711,6 +711,11 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
             type: 'text',
             text: assistantEvent.delta,
           })
+        } else if (assistantEvent.type === 'thinking_delta') {
+          chunks.push({
+            type: 'thinking',
+            thinking: assistantEvent.delta,
+          })
         }
         break
       }

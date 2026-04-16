@@ -1,6 +1,8 @@
 export interface ResponseChunk {
-  type: 'text' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done'
+  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done'
   text?: string
+  /** Streamed thinking/reasoning delta (for `type: 'thinking'`) */
+  thinking?: string
   toolName?: string
   toolCallId?: string
   toolArgs?: unknown
