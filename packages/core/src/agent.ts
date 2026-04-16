@@ -16,6 +16,7 @@ import { MessageQueue } from './message-queue.js'
 import { createAgentRuntime } from './agent-runtime.js'
 import type { AgentRuntimeBoundary, AgentRuntimePiAgentAccess } from './agent-runtime.js'
 import type { AgentRuntimeStateSnapshot, ResponseChunk } from './agent-runtime-types.js'
+import { resolveBackgroundReasoning } from './thinking-level.js'
 
 export type { ResponseChunk } from './agent-runtime-types.js'
 export { createYoloTools, isRetryablePreStreamError } from './agent-runtime.js'
@@ -298,6 +299,7 @@ export class AgentCore {
     }
 
     try {
+      // Session summary is a background job — use the background thinking level.
       const response = await completeSimple(summaryModel, {
         systemPrompt: `You are writing a chronological activity log entry for this session. Your output will be stored in a daily file so the agent can recall what happened in past sessions (e.g. "yesterday at 14:30 we discussed X and you asked me to do Y").
 
@@ -328,6 +330,7 @@ Do NOT add this section if everything discussed was resolved or if there is noth
       }, {
         apiKey: summaryApiKey,
         temperature: 0,
+        reasoning: resolveBackgroundReasoning(),
       })
 
       const textContent = response.content.filter(c => c.type === 'text')
@@ -394,6 +397,14 @@ Do NOT add this section if everything discussed was resolved or if there is noth
    */
   refreshSystemPrompt(channel?: string, currentUser?: { username: string }): void {
     this.runtime.refreshSystemPrompt(channel, currentUser)
+  }
+
+  /**
+   * Update the thinking/reasoning level used for future agent turns.
+   * Accepts any string; invalid values are ignored by the runtime.
+   */
+  setThinkingLevel(level: string): void {
+    this.runtime.setThinkingLevel(level)
   }
 
   /**

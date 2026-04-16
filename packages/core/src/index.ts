@@ -16,6 +16,14 @@ export type { UploadDescriptor, SaveUploadInput, UploadSettings } from './upload
 export { loadConfig, getConfigDir, ensureConfigTemplates } from './config.js'
 export * from './contracts/index.js'
 export {
+  normalizeThinkingLevel,
+  toPiAiReasoning,
+  readChatThinkingLevelFromConfig,
+  readBackgroundThinkingLevelFromConfig,
+  resolveBackgroundReasoning,
+  resolveChatReasoning,
+} from './thinking-level.js'
+export {
   ensureMemoryStructure,
   ensureConfigStructure,
   getMemoryDir,
