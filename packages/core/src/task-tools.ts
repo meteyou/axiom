@@ -1,13 +1,11 @@
 import type { AgentTool } from '@mariozechner/pi-agent-core'
 import { Type } from '@mariozechner/pi-ai'
-import type { TaskStore } from './task-store.js'
 import type { TaskStatus, TaskTriggerType } from './task-store.js'
-import type { TaskRunner } from './task-runner.js'
 import type { ProviderConfig } from './provider-config.js'
+import type { TaskRuntimeTaskBoundary } from './task-runtime.js'
 
 export interface TaskToolsOptions {
-  taskStore: TaskStore
-  taskRunner: TaskRunner
+  taskRuntime: TaskRuntimeTaskBoundary
   /** Get the default provider to use for tasks */
   getDefaultProvider: () => ProviderConfig
   /** Resolve a provider by name/id */
@@ -41,7 +39,7 @@ export function createResumeTaskTool(options: TaskToolsOptions): AgentTool {
 
       try {
         // Check task exists
-        const task = options.taskStore.getById(task_id)
+        const task = options.taskRuntime.getById(task_id)
         if (!task) {
           return {
             content: [{ type: 'text' as const, text: `Error: Task "${task_id}" not found.` }],
@@ -57,7 +55,7 @@ export function createResumeTaskTool(options: TaskToolsOptions): AgentTool {
         }
 
         // Check if the task agent is still in memory
-        if (!options.taskRunner.isPaused(task_id)) {
+        if (!options.taskRuntime.isPaused(task_id)) {
           return {
             content: [{ type: 'text' as const, text: `Error: Task "${task_id}" agent is no longer in memory. The task may have timed out.` }],
             details: { error: true },
@@ -65,7 +63,7 @@ export function createResumeTaskTool(options: TaskToolsOptions): AgentTool {
         }
 
         // Resume the task
-        const resumed = await options.taskRunner.resumeTask(task_id, message)
+        const resumed = await options.taskRuntime.resume(task_id, message)
         if (!resumed) {
           return {
             content: [{ type: 'text' as const, text: `Error: Failed to resume task "${task_id}".` }],
@@ -159,7 +157,7 @@ export function createTaskTool(options: TaskToolsOptions): AgentTool {
         }
 
         // Create the task in the store
-        const task = options.taskStore.create({
+        const task = options.taskRuntime.create({
           name,
           prompt,
           triggerType: 'agent',
@@ -170,7 +168,7 @@ export function createTaskTool(options: TaskToolsOptions): AgentTool {
         })
 
         // Start the task
-        await options.taskRunner.startTask(task, provider)
+        await options.taskRuntime.start(task, provider)
 
         return {
           content: [{
@@ -198,7 +196,7 @@ export function createTaskTool(options: TaskToolsOptions): AgentTool {
 /**
  * Create the `list_tasks` agent tool
  */
-export function listTasksTool(options: Pick<TaskToolsOptions, 'taskStore'>): AgentTool {
+export function listTasksTool(options: Pick<TaskToolsOptions, 'taskRuntime'>): AgentTool {
   return {
     name: 'list_tasks',
     label: 'List Background Tasks',
@@ -230,7 +228,7 @@ export function listTasksTool(options: Pick<TaskToolsOptions, 'taskStore'>): Age
       }
 
       try {
-        const tasks = options.taskStore.list({
+        const tasks = options.taskRuntime.list({
           status: status as TaskStatus | undefined,
           triggerType: trigger_type as TaskTriggerType | undefined,
           limit: Math.min(limit ?? 20, 50),
