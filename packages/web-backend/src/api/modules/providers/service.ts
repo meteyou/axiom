@@ -75,7 +75,6 @@ export interface ProvidersService {
   requestOllamaProbePull: (baseUrl: string, modelName: string, signal: AbortSignal) => Promise<Response>
   requestOllamaPull: (providerId: string, modelName: string, signal: AbortSignal) => Promise<Response>
   deleteOllamaModel: (providerId: string, modelName: string) => Promise<void>
-  dispose: () => void
 }
 
 export function createProvidersService(options: ProvidersRouterOptions = {}): ProvidersService {
@@ -109,11 +108,6 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
     }, 60 * 1000)
 
     oauthCleanupInterval.unref?.()
-  }
-
-  function dispose(): void {
-    pendingOAuthLogins.clear()
-    stopOAuthCleanupTimer()
   }
 
   function listProviders() {
@@ -525,7 +519,6 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
     requestOllamaProbePull,
     requestOllamaPull,
     deleteOllamaModel,
-    dispose,
   }
 }
 
