@@ -1,8 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { ensureConfigTemplates, loadConfig } from './config.js'
-import type { TaskStore, Task } from './task-store.js'
-import type { TaskRunner } from './task-runner.js'
+import type { Task } from './task-store.js'
 import type { ProviderConfig } from './provider-config.js'
 import type { TaskRuntimeTaskBoundary } from './task-runtime.js'
 
@@ -35,12 +34,7 @@ If nothing needs attention, complete silently.`
 type HeartbeatTaskRuntime = Pick<TaskRuntimeTaskBoundary, 'create' | 'start'>
 
 export interface AgentHeartbeatServiceOptions {
-  /** Preferred boundary contract */
   taskRuntime?: HeartbeatTaskRuntime
-  /** @deprecated legacy inputs kept for compatibility */
-  taskStore?: TaskStore
-  /** @deprecated legacy inputs kept for compatibility */
-  taskRunner?: TaskRunner
   getDefaultProvider: () => ProviderConfig
   /** Override for testing — returns the current time */
   now?: () => Date
@@ -76,14 +70,7 @@ export class AgentHeartbeatService {
   private settings: AgentHeartbeatSettings = { ...DEFAULT_AGENT_HEARTBEAT_SETTINGS }
 
   constructor(options: AgentHeartbeatServiceOptions) {
-    this.taskRuntime = options.taskRuntime ?? (
-      options.taskStore && options.taskRunner
-        ? {
-            create: (input) => options.taskStore!.create(input),
-            start: (task, provider) => options.taskRunner!.startTask(task, provider),
-          }
-        : null
-    )
+    this.taskRuntime = options.taskRuntime ?? null
     this.getDefaultProvider = options.getDefaultProvider
     this.nowFn = options.now ?? (() => new Date())
     this.getTimezoneFn = options.getTimezone ?? (() => this.loadTimezone())

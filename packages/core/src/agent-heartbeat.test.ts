@@ -2,8 +2,6 @@ import fs from 'node:fs'
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { AgentHeartbeatService, DEFAULT_AGENT_HEARTBEAT_SETTINGS, isHeartbeatContentEffectivelyEmpty } from './agent-heartbeat.js'
 import type { AgentHeartbeatSettings, AgentHeartbeatServiceOptions } from './agent-heartbeat.js'
-import type { TaskStore } from './task-store.js'
-import type { TaskRunner } from './task-runner.js'
 import type { ProviderConfig } from './provider-config.js'
 
 const mockProvider: ProviderConfig = {
@@ -19,7 +17,7 @@ const mockProvider: ProviderConfig = {
 }
 
 function createMocks() {
-  const mockTaskStore = {
+  const mockTaskRuntime = {
     create: vi.fn().mockImplementation((input) => ({
       id: 'task-123',
       ...input,
@@ -35,13 +33,10 @@ function createMocks() {
       startedAt: null,
       completedAt: null,
     })),
-  } as unknown as TaskStore
+    start: vi.fn().mockResolvedValue('task-123'),
+  }
 
-  const mockTaskRunner = {
-    startTask: vi.fn().mockResolvedValue('task-123'),
-  } as unknown as TaskRunner
-
-  return { mockTaskStore, mockTaskRunner }
+  return { mockTaskRuntime }
 }
 
 describe('isHeartbeatContentEffectivelyEmpty', () => {
@@ -125,8 +120,7 @@ describe('AgentHeartbeatService', () => {
 
   function createService(overrides: Partial<AgentHeartbeatServiceOptions> = {}) {
     return new AgentHeartbeatService({
-      taskStore: mocks.mockTaskStore,
-      taskRunner: mocks.mockTaskRunner,
+      taskRuntime: mocks.mockTaskRuntime,
       getDefaultProvider: () => mockProvider,
       now: () => new Date('2024-06-15T12:00:00Z'),
       getTimezone: () => 'UTC',
@@ -231,7 +225,7 @@ describe('AgentHeartbeatService', () => {
       const taskId = await service.executeHeartbeat()
 
       expect(taskId).toBe('task-123')
-      expect(mocks.mockTaskStore.create).toHaveBeenCalledWith(
+      expect(mocks.mockTaskRuntime.create).toHaveBeenCalledWith(
         expect.objectContaining({
           name: 'Agent Heartbeat',
           prompt: expect.stringContaining('HEARTBEAT.md'),
@@ -241,7 +235,7 @@ describe('AgentHeartbeatService', () => {
           model: 'gpt-4o',
         }),
       )
-      expect(mocks.mockTaskRunner.startTask).toHaveBeenCalledWith(
+      expect(mocks.mockTaskRuntime.start).toHaveBeenCalledWith(
         expect.objectContaining({ id: 'task-123' }),
         mockProvider,
       )
@@ -252,7 +246,7 @@ describe('AgentHeartbeatService', () => {
 
       await service.executeHeartbeat()
 
-      const createCall = (mocks.mockTaskStore.create as ReturnType<typeof vi.fn>).mock.calls[0][0]
+      const createCall = (mocks.mockTaskRuntime.create as ReturnType<typeof vi.fn>).mock.calls[0][0]
       expect(createCall.prompt).toContain('HEARTBEAT.md')
       expect(createCall.prompt).toContain('task injection')
       // Should NOT contain old memory-maintenance instructions
@@ -267,8 +261,8 @@ describe('AgentHeartbeatService', () => {
 
       const taskId = await service.executeHeartbeat()
       expect(taskId).toBeNull()
-      expect(mocks.mockTaskStore.create).not.toHaveBeenCalled()
-      expect(mocks.mockTaskRunner.startTask).not.toHaveBeenCalled()
+      expect(mocks.mockTaskRuntime.create).not.toHaveBeenCalled()
+      expect(mocks.mockTaskRuntime.start).not.toHaveBeenCalled()
     })
 
     it('skips when HEARTBEAT.md does not exist', async () => {
@@ -277,7 +271,7 @@ describe('AgentHeartbeatService', () => {
 
       const taskId = await service.executeHeartbeat()
       expect(taskId).toBeNull()
-      expect(mocks.mockTaskStore.create).not.toHaveBeenCalled()
+      expect(mocks.mockTaskRuntime.create).not.toHaveBeenCalled()
     })
 
     it('proceeds when HEARTBEAT.md has actionable content', async () => {
@@ -286,7 +280,7 @@ describe('AgentHeartbeatService', () => {
 
       const taskId = await service.executeHeartbeat()
       expect(taskId).toBe('task-123')
-      expect(mocks.mockTaskStore.create).toHaveBeenCalled()
+      expect(mocks.mockTaskRuntime.create).toHaveBeenCalled()
     })
 
     it('checks night mode before reading HEARTBEAT.md', async () => {
@@ -340,7 +334,7 @@ describe('AgentHeartbeatService', () => {
 
       const taskId = await service.executeHeartbeat()
       expect(taskId).toBeNull()
-      expect(mocks.mockTaskStore.create).not.toHaveBeenCalled()
+      expect(mocks.mockTaskRuntime.create).not.toHaveBeenCalled()
     })
 
     it('does not skip heartbeat when night mode is disabled', async () => {
@@ -357,7 +351,7 @@ describe('AgentHeartbeatService', () => {
 
       const taskId = await service.executeHeartbeat()
       expect(taskId).toBe('task-123')
-      expect(mocks.mockTaskStore.create).toHaveBeenCalled()
+      expect(mocks.mockTaskRuntime.create).toHaveBeenCalled()
     })
   })
 
@@ -375,12 +369,12 @@ describe('AgentHeartbeatService', () => {
       service.start()
 
       // Initially no task created
-      expect(mocks.mockTaskStore.create).not.toHaveBeenCalled()
+      expect(mocks.mockTaskRuntime.create).not.toHaveBeenCalled()
 
       // Advance 30 minutes
       await vi.advanceTimersByTimeAsync(30 * 60 * 1000)
 
-      expect(mocks.mockTaskStore.create).toHaveBeenCalledTimes(1)
+      expect(mocks.mockTaskRuntime.create).toHaveBeenCalledTimes(1)
     })
 
     it('does not start when disabled', async () => {
@@ -396,7 +390,7 @@ describe('AgentHeartbeatService', () => {
       // Advance far past the interval
       await vi.advanceTimersByTimeAsync(120 * 60 * 1000)
 
-      expect(mocks.mockTaskStore.create).not.toHaveBeenCalled()
+      expect(mocks.mockTaskRuntime.create).not.toHaveBeenCalled()
     })
   })
 
