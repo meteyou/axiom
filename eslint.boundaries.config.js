@@ -116,6 +116,27 @@ export default [
     ],
   }),
 
+  // Lock canonical backend module entrypoints for migrated domains.
+  tsRuleConfig(['packages/web-backend/src/**/*.ts'], {
+    'no-restricted-imports': [
+      'error',
+      {
+        patterns: [
+          {
+            group: [
+              '**/routes/providers.js',
+              '**/routes/settings.js',
+              '**/routes/tasks.js',
+              '**/routes/memory.js',
+            ],
+            message:
+              'Use canonical backend module routes in src/api/modules/<domain>/route.js. Legacy route adapters are not allowed.',
+          },
+        ],
+      },
+    ],
+  }),
+
   // Backend target structure: route -> controller -> service -> schema/mapper.
   tsRuleConfig(
     [
