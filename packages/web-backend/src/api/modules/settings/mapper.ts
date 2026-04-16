@@ -75,6 +75,7 @@ function buildTasksResponse(settingsRaw: Record<string, unknown>) {
       smartCheckInterval: loopDetection.smartCheckInterval ?? 5,
     },
     statusUpdateIntervalMinutes: tasks.statusUpdateIntervalMinutes ?? 10,
+    backgroundThinkingLevel: tasks.backgroundThinkingLevel ?? 'off',
   }
 }
 
@@ -117,6 +118,7 @@ export function mapSettingsResponse(context: SettingsResponseContext) {
     sessionSummaryProviderId: (settingsRaw.sessionSummaryProviderId as string) ?? '',
     language: context.settings.language ?? 'match',
     timezone: context.settings.timezone ?? 'UTC',
+    thinkingLevel: (settingsRaw.thinkingLevel as string) ?? 'off',
     healthMonitorIntervalMinutes:
       context.settings.healthMonitorIntervalMinutes
       ?? (context.settings.healthMonitor as Record<string, unknown> | undefined)?.intervalMinutes

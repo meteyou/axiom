@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { ensureConfigTemplates, getConfigDir, loadConfig } from '@openagent/core'
+import { ensureConfigTemplates, getConfigDir, loadConfig, SETTINGS_THINKING_LEVELS } from '@openagent/core'
 import type { SettingsData, SettingsRouterOptions, TelegramData } from './types.js'
 import {
   mergeAgentHeartbeat,
@@ -11,6 +11,7 @@ import {
   mergeTasks,
   mergeTts,
   normalizeSettingsPayload,
+  validateEnum,
   validateNonEmptyString,
   validateNonNegativeNumber,
   validatePositiveNumber,
@@ -88,6 +89,12 @@ export function createSettingsService(options: SettingsRouterOptions = {}): Sett
       settings.timezone = (body.timezone as string).trim()
     }
 
+    if (body.thinkingLevel !== undefined) {
+      const err = validateEnum(body.thinkingLevel, SETTINGS_THINKING_LEVELS, 'thinkingLevel')
+      if (err) throw new SettingsValidationError(err)
+      ;(settings as unknown as Record<string, unknown>).thinkingLevel = body.thinkingLevel
+    }
+
     if (body.healthMonitorIntervalMinutes !== undefined) {
       const err = validatePositiveNumber(body.healthMonitorIntervalMinutes, 'healthMonitorIntervalMinutes')
       if (err) throw new SettingsValidationError(err)
@@ -151,6 +158,9 @@ export function createSettingsService(options: SettingsRouterOptions = {}): Sett
         }
         if (body.language !== undefined || body.timezone !== undefined) {
           agentCore.refreshSystemPrompt()
+        }
+        if (body.thinkingLevel !== undefined) {
+          agentCore.setThinkingLevel(body.thinkingLevel as string)
         }
       } catch (err) {
         console.error('[openagent] Failed to apply live settings update:', err)
