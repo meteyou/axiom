@@ -34,7 +34,7 @@ If nothing needs attention, complete silently.`
 type HeartbeatTaskRuntime = Pick<TaskRuntimeTaskBoundary, 'create' | 'start'>
 
 export interface AgentHeartbeatServiceOptions {
-  taskRuntime?: HeartbeatTaskRuntime
+  taskRuntime: HeartbeatTaskRuntime
   getDefaultProvider: () => ProviderConfig
   /** Override for testing — returns the current time */
   now?: () => Date
@@ -61,7 +61,7 @@ export function isHeartbeatContentEffectivelyEmpty(content: string): boolean {
 }
 
 export class AgentHeartbeatService {
-  private taskRuntime: HeartbeatTaskRuntime | null
+  private taskRuntime: HeartbeatTaskRuntime
   private getDefaultProvider: () => ProviderConfig
   private nowFn: () => Date
   private getTimezoneFn: () => string
@@ -70,7 +70,11 @@ export class AgentHeartbeatService {
   private settings: AgentHeartbeatSettings = { ...DEFAULT_AGENT_HEARTBEAT_SETTINGS }
 
   constructor(options: AgentHeartbeatServiceOptions) {
-    this.taskRuntime = options.taskRuntime ?? null
+    if (!options.taskRuntime) {
+      throw new Error('AgentHeartbeatService requires taskRuntime')
+    }
+
+    this.taskRuntime = options.taskRuntime
     this.getDefaultProvider = options.getDefaultProvider
     this.nowFn = options.now ?? (() => new Date())
     this.getTimezoneFn = options.getTimezone ?? (() => this.loadTimezone())
@@ -175,11 +179,6 @@ export class AgentHeartbeatService {
     const provider = this.getDefaultProvider()
     if (!provider) {
       console.warn('[openagent] Agent heartbeat skipped: no provider available')
-      return null
-    }
-
-    if (!this.taskRuntime) {
-      console.warn('[openagent] Agent heartbeat skipped: task runtime not available')
       return null
     }
 

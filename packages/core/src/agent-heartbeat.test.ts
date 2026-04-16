@@ -128,6 +128,13 @@ describe('AgentHeartbeatService', () => {
     })
   }
 
+  it('fails fast when task runtime is missing', () => {
+    expect(() => new AgentHeartbeatService({
+      taskRuntime: undefined as unknown as AgentHeartbeatServiceOptions['taskRuntime'],
+      getDefaultProvider: () => mockProvider,
+    })).toThrow('AgentHeartbeatService requires taskRuntime')
+  })
+
   describe('isNightMode', () => {
     it('returns false when night mode is disabled', () => {
       service = createService()
