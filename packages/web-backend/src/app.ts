@@ -7,16 +7,16 @@ import type { AgentCore } from '@openagent/core'
 import { createAuthRouter } from './routes/auth.js'
 import { createChatRouter } from './routes/chat.js'
 import { createLogsRouter } from './routes/logs.js'
-import { createProvidersRouter } from './routes/providers.js'
-import { createMemoryRouter } from './routes/memory.js'
-import { createSettingsRouter } from './routes/settings.js'
+import { createProvidersRouter } from './api/modules/providers/route.js'
+import { createMemoryRouter } from './api/modules/memory/route.js'
+import { createSettingsRouter } from './api/modules/settings/route.js'
 import { createUsersRouter } from './routes/users.js'
 import { createTelegramUsersRouter } from './routes/telegram-users.js'
 import type { TelegramBot } from '@openagent/telegram'
 import { createSkillsRouter } from './routes/skills.js'
 import { createStatsRouter } from './routes/stats.js'
 import { createHealthRouter } from './routes/health.js'
-import { createTasksRouter } from './routes/tasks.js'
+import { createTasksRouter } from './api/modules/tasks/route.js'
 import { createCronjobsRouter } from './routes/cronjobs.js'
 import { createSecretsRouter } from './routes/secrets.js'
 import { createTtsRouter } from './routes/tts.js'
@@ -94,7 +94,11 @@ export function createApp(options?: AppOptions): express.Express {
         options.onActiveProviderChanged?.()
       },
     }))
-    app.use('/api/memory', createMemoryRouter(options.db, getAgentCore, options.consolidationScheduler ?? null))
+    app.use('/api/memory', createMemoryRouter({
+      db: options.db,
+      getAgentCore,
+      consolidationScheduler: options.consolidationScheduler ?? null,
+    }))
     app.use('/api/settings', createSettingsRouter({
       getAgentCore,
       onHealthMonitorSettingsChanged: () => {
