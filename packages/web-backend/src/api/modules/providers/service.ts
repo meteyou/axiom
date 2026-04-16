@@ -44,19 +44,6 @@ export class ProvidersNotFoundError extends Error {}
 export class ProvidersRuntimeError extends Error {}
 export class ProvidersExternalError extends Error {}
 
-const pendingOAuthLogins = new Map<string, PendingOAuthLogin>()
-
-const oauthCleanupInterval = setInterval(() => {
-  const cutoff = Date.now() - 10 * 60 * 1000
-  for (const [id, login] of pendingOAuthLogins) {
-    if (login.createdAt < cutoff) {
-      pendingOAuthLogins.delete(id)
-    }
-  }
-}, 60 * 1000)
-
-oauthCleanupInterval.unref?.()
-
 export interface ProvidersService {
   listProviders: () => { masked: ProvidersFile; decrypted: ProvidersFile }
   getModelsByProviderType: (providerType: string) => AvailableModel[]
@@ -88,9 +75,47 @@ export interface ProvidersService {
   requestOllamaProbePull: (baseUrl: string, modelName: string, signal: AbortSignal) => Promise<Response>
   requestOllamaPull: (providerId: string, modelName: string, signal: AbortSignal) => Promise<Response>
   deleteOllamaModel: (providerId: string, modelName: string) => Promise<void>
+  dispose: () => void
 }
 
 export function createProvidersService(options: ProvidersRouterOptions = {}): ProvidersService {
+  const pendingOAuthLogins = new Map<string, PendingOAuthLogin>()
+  let oauthCleanupInterval: ReturnType<typeof setInterval> | null = null
+
+  function stopOAuthCleanupTimer(): void {
+    if (!oauthCleanupInterval) return
+    clearInterval(oauthCleanupInterval)
+    oauthCleanupInterval = null
+  }
+
+  function maybeStopOAuthCleanupTimer(): void {
+    if (pendingOAuthLogins.size === 0) {
+      stopOAuthCleanupTimer()
+    }
+  }
+
+  function ensureOAuthCleanupTimer(): void {
+    if (oauthCleanupInterval) return
+
+    oauthCleanupInterval = setInterval(() => {
+      const cutoff = Date.now() - 10 * 60 * 1000
+      for (const [id, login] of pendingOAuthLogins) {
+        if (login.createdAt < cutoff) {
+          pendingOAuthLogins.delete(id)
+        }
+      }
+
+      maybeStopOAuthCleanupTimer()
+    }, 60 * 1000)
+
+    oauthCleanupInterval.unref?.()
+  }
+
+  function dispose(): void {
+    pendingOAuthLogins.clear()
+    stopOAuthCleanupTimer()
+  }
+
   function listProviders() {
     return {
       masked: loadProvidersMasked(),
@@ -154,6 +179,7 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
       existingProviderId: payload.providerId,
     }
     pendingOAuthLogins.set(loginId, loginState)
+    ensureOAuthCleanupTimer()
 
     let resolveAuthInfo!: (info: { url: string; instructions?: string }) => void
     const authInfoPromise = new Promise<{ url: string; instructions?: string }>((resolve) => {
@@ -193,6 +219,7 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
 
     if (loginState.status === 'error') {
       pendingOAuthLogins.delete(loginId)
+      maybeStopOAuthCleanupTimer()
       throw new ProvidersRuntimeError(loginState.error ?? 'OAuth login failed')
     }
 
@@ -242,6 +269,7 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
         }
 
         pendingOAuthLogins.delete(loginId)
+        maybeStopOAuthCleanupTimer()
 
         return {
           status: 'completed',
@@ -254,6 +282,7 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
 
     if (loginState.status === 'error') {
       pendingOAuthLogins.delete(loginId)
+      maybeStopOAuthCleanupTimer()
       return {
         status: 'error',
         error: loginState.error,
@@ -496,6 +525,7 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
     requestOllamaProbePull,
     requestOllamaPull,
     deleteOllamaModel,
+    dispose,
   }
 }
 
