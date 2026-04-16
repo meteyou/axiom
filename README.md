@@ -83,18 +83,21 @@ packages/
 └── telegram/       # Telegram bot integration
 ```
 
-### Refactor Guardrails (PRD #10)
+### Architecture Guardrails
 
-For the monorepo maintainability refactor, structural conventions, boundary rules and behavior-parity baseline are documented in:
+Structural conventions, boundary rules and the verification baseline are documented in:
 
-- `docs/refactor-guardrails.md`
-- `docs/architecture-conventions.md` (final architecture conventions)
+- `docs/architecture-conventions.md`
 
-Run the parity baseline locally:
+Run the full guardrail baseline locally:
 
 ```bash
 npm run baseline:parity
 ```
+
+The same checks run in CI for pull requests and `main` via:
+
+- `.github/workflows/ci-guardrails.yml`
 
 ## Releasing a New Version
 

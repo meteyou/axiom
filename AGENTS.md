@@ -12,6 +12,13 @@
 - `packages/web-frontend` — Nuxt 3 frontend (see `packages/web-frontend/AGENTS.md` for frontend-specific guidelines)
 - `packages/telegram` — Telegram bot integration
 
+## Architecture Guardrails
+
+- For package boundaries, backend/frontend layering rules, and verification commands, read:
+  - `docs/architecture-conventions.md`
+- When changing module structure or refactoring boundaries, align with this document and run:
+  - `npm run baseline:parity`
+
 ## Memory System Architecture
 
 The agent has a file-based memory system under `/data/memory/`. There are two separate "AGENTS.md" concepts — do not confuse them:
