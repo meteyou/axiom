@@ -1,10 +1,10 @@
 import { TaskStore, getToolCalls } from '@openagent/core'
-import type { Database, Task, TaskRunner, TaskStatus, TaskTriggerType } from '@openagent/core'
+import type { Database, Task, TaskRuntimeTaskBoundary, TaskStatus, TaskTriggerType } from '@openagent/core'
 import type { TaskTimelineEvent, TaskToolCallTimelineEvent } from './types.js'
 
 export interface TasksServiceOptions {
   db: Database
-  getTaskRunner?: () => TaskRunner | null
+  getTaskRuntime?: () => TaskRuntimeTaskBoundary | null
 }
 
 export interface ListTasksInput {
@@ -40,13 +40,25 @@ export class TasksService {
     this.store = new TaskStore(options.db)
   }
 
+  private getRuntime(): TaskRuntimeTaskBoundary | null {
+    return this.options.getTaskRuntime?.() ?? null
+  }
+
   listTasks(input: ListTasksInput): { tasks: Task[]; total: number } {
-    const tasks = this.store.list({
-      status: input.status,
-      triggerType: input.triggerType,
-      limit: input.limit,
-      offset: input.offset,
-    })
+    const runtime = this.getRuntime()
+    const tasks = runtime
+      ? runtime.list({
+          status: input.status,
+          triggerType: input.triggerType,
+          limit: input.limit,
+          offset: input.offset,
+        })
+      : this.store.list({
+          status: input.status,
+          triggerType: input.triggerType,
+          limit: input.limit,
+          offset: input.offset,
+        })
 
     let countSql = 'SELECT COUNT(*) as count FROM tasks WHERE 1=1'
     const countParams: unknown[] = []
@@ -67,11 +79,12 @@ export class TasksService {
   }
 
   getTaskById(id: string): Task | null {
-    return this.store.getById(id)
+    const runtime = this.getRuntime()
+    return runtime ? runtime.getById(id) : this.store.getById(id)
   }
 
   getTaskEvents(taskId: string): { task: Task; events: TaskTimelineEvent[] } {
-    const task = this.store.getById(taskId)
+    const task = this.getTaskById(taskId)
     if (!task) {
       throw new TaskNotFoundError()
     }
@@ -110,7 +123,7 @@ export class TasksService {
   }
 
   killTask(taskId: string): Task {
-    const task = this.store.getById(taskId)
+    const task = this.getTaskById(taskId)
     if (!task) {
       throw new TaskNotFoundError()
     }
@@ -119,9 +132,9 @@ export class TasksService {
       throw new TaskCannotBeKilledError(task.status)
     }
 
-    const taskRunner = this.options.getTaskRunner?.()
-    if (taskRunner) {
-      taskRunner.abortTask(task.id, 'Killed by user from web UI')
+    const runtime = this.getRuntime()
+    if (runtime) {
+      runtime.abort(task.id, 'Killed by user from web UI')
     } else {
       const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
       this.store.update(task.id, {
@@ -133,7 +146,7 @@ export class TasksService {
       })
     }
 
-    const updatedTask = this.store.getById(task.id)
+    const updatedTask = this.getTaskById(task.id)
     if (!updatedTask) {
       throw new TaskNotFoundError()
     }

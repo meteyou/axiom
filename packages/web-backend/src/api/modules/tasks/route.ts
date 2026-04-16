@@ -1,12 +1,12 @@
 import { Router } from 'express'
-import type { Database, TaskRunner } from '@openagent/core'
+import type { Database, TaskRuntimeTaskBoundary } from '@openagent/core'
 import { jwtMiddleware } from '../../../auth.js'
 import { createTasksController } from './controller.js'
 import { createTasksService } from './service.js'
 
 export interface TasksRouterOptions {
   db: Database
-  getTaskRunner?: () => TaskRunner | null
+  getTaskRuntime?: () => TaskRuntimeTaskBoundary | null
 }
 
 export function createTasksRouter(options: TasksRouterOptions): Router {
@@ -14,7 +14,7 @@ export function createTasksRouter(options: TasksRouterOptions): Router {
 
   const service = createTasksService({
     db: options.db,
-    getTaskRunner: options.getTaskRunner,
+    getTaskRuntime: options.getTaskRuntime,
   })
   const controller = createTasksController(service)
 
