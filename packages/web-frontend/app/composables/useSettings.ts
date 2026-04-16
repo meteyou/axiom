@@ -12,6 +12,7 @@ import {
   type SttSettingsContract,
   type AgentHeartbeatNightModeContract,
 } from '@openagent/core/contracts'
+import { useSettingsApi } from '~/api/settings'
 
 export type MemoryConsolidationSettings = MemoryConsolidationSettingsContract
 export type FactExtractionSettings = FactExtractionSettingsContract
@@ -25,7 +26,7 @@ export type SttSettings = SttSettingsContract
 export type Settings = SettingsContract
 
 export function useSettings() {
-  const { apiFetch } = useApi()
+  const settingsApi = useSettingsApi()
 
   const settings = ref<Settings | null>(null)
   const loading = ref(false)
@@ -37,7 +38,7 @@ export function useSettings() {
     loading.value = true
     error.value = null
     try {
-      const result = await apiFetch<Partial<Settings>>('/api/settings')
+      const result = await settingsApi.getSettings()
       settings.value = normalizeSettingsContract(result)
     } catch (err) {
       error.value = (err as Error).message
@@ -51,10 +52,7 @@ export function useSettings() {
     error.value = null
     successMessage.value = null
     try {
-      const result = await apiFetch<Partial<Settings> & { message: string }>('/api/settings', {
-        method: 'PUT',
-        body: JSON.stringify(updates),
-      })
+      const result = await settingsApi.updateSettings(updates)
 
       settings.value = normalizeSettingsContract(result)
       successMessage.value = 'saved'
