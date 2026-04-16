@@ -11,6 +11,7 @@ const TEMPLATES: Record<string, object> = {
     sessionSummaryProviderId: '',
     language: 'en',
     timezone: 'UTC',
+    thinkingLevel: 'off',
     heartbeat: {
       intervalMinutes: 5,
       fallbackTrigger: 'down',
@@ -72,6 +73,7 @@ const TEMPLATES: Record<string, object> = {
         smartCheckInterval: 5,
       },
       statusUpdateIntervalMinutes: 10,
+      backgroundThinkingLevel: 'off',
     },
   },
   'skills.json': {
