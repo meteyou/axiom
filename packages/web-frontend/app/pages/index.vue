@@ -31,6 +31,10 @@
           <div class="flex flex-col gap-3">
             <p class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{{ $t('chat.displayFilters') }}</p>
             <div class="flex items-center justify-between gap-3">
+              <Label class="cursor-pointer text-sm" for="filter-thinking">{{ $t('chat.filterThinking') }}</Label>
+              <Switch id="filter-thinking" v-model:checked="showThinking" />
+            </div>
+            <div class="flex items-center justify-between gap-3">
               <Label class="cursor-pointer text-sm" for="filter-tools">{{ $t('chat.filterToolCalls') }}</Label>
               <Switch id="filter-tools" v-model:checked="showToolCalls" />
             </div>
@@ -41,10 +45,6 @@
             <div class="flex items-center justify-between gap-3">
               <Label class="cursor-pointer text-sm" for="filter-summaries">{{ $t('chat.filterSessionSummaries') }}</Label>
               <Switch id="filter-summaries" v-model:checked="showSessionSummaries" />
-            </div>
-            <div class="flex items-center justify-between gap-3">
-              <Label class="cursor-pointer text-sm" for="filter-thinking">{{ $t('chat.filterThinking') }}</Label>
-              <Switch id="filter-thinking" v-model:checked="showThinking" />
             </div>
           </div>
         </PopoverContent>
