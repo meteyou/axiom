@@ -25,6 +25,7 @@ let tempDataDir: string
 let previousDataDir: string | undefined
 const setTimeoutMinutes = vi.fn()
 const refreshSystemPrompt = vi.fn()
+const setThinkingLevel = vi.fn()
 const restartHealthMonitor = vi.fn()
 const healthMonitorSnapshot: HealthMonitorSnapshot = {
   agentStatus: 'running',
@@ -45,6 +46,7 @@ beforeAll(async () => {
   const mockAgentCore = {
     getSessionManager: () => ({ setTimeoutMinutes }),
     refreshSystemPrompt,
+    setThinkingLevel,
   } as unknown as AgentCore
   const mockHealthMonitorService = {
     restart: restartHealthMonitor,
@@ -1113,6 +1115,52 @@ describe('settings API', () => {
     })
     const reloaded = (await reloadRes.json()) as { telegramEnabled: boolean }
     expect(reloaded.telegramEnabled).toBe(true)
+  })
+
+  it('applies live settings updates to agentCore without failures (thinkingLevel, session, prompt)', async () => {
+    // Regression: a full-form PUT from the frontend includes every live-updatable
+    // setting (thinkingLevel, language, timezone, sessionTimeoutMinutes). Every
+    // corresponding agentCore.* hook must exist and must not throw — otherwise
+    // the service would silently log "Failed to apply live settings update" and
+    // subsequent live updates in the same try-block would be skipped.
+    setTimeoutMinutes.mockClear()
+    refreshSystemPrompt.mockClear()
+    setThinkingLevel.mockClear()
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    try {
+      const getRes = await fetch(`${baseUrl}/api/settings`, {
+        headers: { Authorization: `Bearer ${adminToken}` },
+      })
+      const defaults = (await getRes.json()) as Record<string, unknown>
+
+      const fullForm = { ...defaults, thinkingLevel: 'medium', language: 'en', timezone: 'UTC' }
+      delete (fullForm as Record<string, unknown>).message
+
+      const putRes = await fetch(`${baseUrl}/api/settings`, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${adminToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(fullForm),
+      })
+      expect(putRes.status).toBe(200)
+
+      // All live hooks must have been called — proves none of them silently threw
+      // and caused the catch-block to swallow the rest.
+      expect(setThinkingLevel).toHaveBeenCalledWith('medium')
+      expect(refreshSystemPrompt).toHaveBeenCalled()
+      expect(setTimeoutMinutes).toHaveBeenCalled()
+
+      // And the service must not have logged any live-update failure.
+      const liveUpdateErrors = errorSpy.mock.calls.filter(
+        (args) => typeof args[0] === 'string' && args[0].includes('Failed to apply live settings update')
+      )
+      expect(liveUpdateErrors).toEqual([])
+    } finally {
+      errorSpy.mockRestore()
+    }
   })
 })
 
