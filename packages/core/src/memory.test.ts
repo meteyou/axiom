@@ -15,6 +15,7 @@ import {
   ensureUserProfile,
   readUserProfile,
   ensureWikiDir,
+  ensureSourcesDir,
   ensureProjectsDir,
   parseProjectAliases,
   listWikiPages,
@@ -54,6 +55,24 @@ describe('memory', () => {
       expect(fs.existsSync(path.join(dir, 'HEARTBEAT.md'))).toBe(false)
     })
 
+    it('creates sources/ directory with README on first run', () => {
+      const dir = makeTmpDir()
+      ensureMemoryStructure(dir)
+
+      const sourcesDir = path.join(dir, 'sources')
+      expect(fs.existsSync(sourcesDir)).toBe(true)
+
+      const readmePath = path.join(sourcesDir, 'README.md')
+      expect(fs.existsSync(readmePath)).toBe(true)
+      const readme = fs.readFileSync(readmePath, 'utf-8')
+      expect(readme).toContain('# Sources')
+      expect(readme).toContain('Immutable')
+
+      // Subfolders (articles/, youtube/, ...) should NOT be auto-created
+      expect(fs.existsSync(path.join(sourcesDir, 'articles'))).toBe(false)
+      expect(fs.existsSync(path.join(sourcesDir, 'youtube'))).toBe(false)
+    })
+
     it('migrates projects/ to wiki/ on first run', () => {
       const dir = makeTmpDir()
       fs.mkdirSync(dir, { recursive: true })
@@ -79,6 +98,25 @@ describe('memory', () => {
 
       const content = fs.readFileSync(path.join(dir, 'SOUL.md'), 'utf-8')
       expect(content).toBe('# Custom Soul')
+    })
+  })
+
+  describe('ensureSourcesDir', () => {
+    it('is idempotent and does not overwrite an existing README', () => {
+      const dir = makeTmpDir()
+      fs.mkdirSync(dir, { recursive: true })
+
+      const sourcesDir = ensureSourcesDir(dir)
+      expect(sourcesDir).toBe(path.join(dir, 'sources'))
+
+      // User edits the README
+      const readmePath = path.join(sourcesDir, 'README.md')
+      fs.writeFileSync(readmePath, '# My Custom Sources Index\n', 'utf-8')
+
+      // Second call must not overwrite user edits
+      ensureSourcesDir(dir)
+      const content = fs.readFileSync(readmePath, 'utf-8')
+      expect(content).toBe('# My Custom Sources Index\n')
     })
   })
 
@@ -357,6 +395,17 @@ describe('memory', () => {
       expect(prompt).toContain('wiki/')
       expect(prompt).toContain('read_file, write_file, and edit_file')
       expect(prompt).toContain('</memory_paths>')
+    })
+
+    it('includes Sources directory reference in memory_paths', () => {
+      const dir = makeTmpDir()
+      ensureMemoryStructure(dir)
+
+      const prompt = assembleSystemPrompt({ memoryDir: dir })
+
+      expect(prompt).toContain('<memory_paths>')
+      expect(prompt).toContain('Sources directory')
+      expect(prompt).toContain(path.join(dir, 'sources'))
     })
 
     it('includes wiki_pages section when wiki pages exist', () => {

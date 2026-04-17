@@ -98,6 +98,52 @@ const USER_PROFILE_TEMPLATE = `# User Profile — {username}
 (none yet)
 `
 
+export const SOURCES_README_TEMPLATE = `# Sources
+
+<!-- This directory holds the immutable raw material the wiki is built on. -->
+<!-- Sources are what you read. The wiki is what you learned. -->
+<!-- Never edit existing source files. Only add new ones. -->
+
+This is the **sources layer** of the memory system. Unlike \`wiki/\`, files here
+are treated as archival raw material: articles, transcripts, papers, podcast
+notes. Wiki pages cite these files so factual claims remain verifiable.
+
+## Subfolders (create on first use)
+
+- \`articles/\` — web articles, blog posts, documentation snapshots
+- \`youtube/\` — YouTube transcripts
+- \`podcasts/\` — podcast notes and transcripts
+- \`papers/\` — research papers, PDFs converted to markdown
+- \`notes/\` — longer conversation snippets or hand-captured notes
+
+## Filename pattern
+
+\`<yyyy-mm-dd>-<slug>.md\` — lowercase, hyphens instead of spaces.
+
+## Frontmatter
+
+Each source file should start with YAML frontmatter:
+
+\`\`\`markdown
+---
+source_type: article | youtube | podcast | paper | note
+url: https://...
+author: ...
+captured: YYYY-MM-DD
+---
+
+# Title
+
+<raw body — do not edit later>
+\`\`\`
+
+## Rules
+
+- **Immutable**: never rewrite an existing file. If the source itself changes, add a new dated entry.
+- **Cite from the wiki**: wiki pages that rely on a source should link to it in a \`## Sources\` / \`## Quellen\` section.
+- **Orphaned sources are a lint signal**, not an error — they just flag material that has not been distilled yet.
+`
+
 const HEARTBEAT_TEMPLATE = `# Heartbeat Tasks
 
 <!-- Define periodic tasks here. The agent will execute them during each heartbeat cycle. -->
@@ -249,6 +295,9 @@ export function ensureMemoryStructure(memoryDir?: string): void {
     fs.mkdirSync(wikiDir, { recursive: true })
   }
 
+  // Seed immutable sources/ layer (raw material for the wiki)
+  ensureSourcesDir(dir)
+
   const soulPath = path.join(dir, 'SOUL.md')
   if (!fs.existsSync(soulPath)) {
     fs.writeFileSync(soulPath, SOUL_TEMPLATE, 'utf-8')
@@ -306,6 +355,27 @@ export function ensureConfigStructure(configDir?: string): void {
   if (!fs.existsSync(consolidationPath)) {
     fs.writeFileSync(consolidationPath, CONSOLIDATION_TEMPLATE, 'utf-8')
   }
+}
+
+/**
+ * Ensure the sources/ directory exists with a README explaining the layer.
+ * Idempotent: does NOT overwrite an existing README (so user edits are preserved).
+ * Subfolders (articles/, youtube/, ...) are NOT auto-created — they are added on first use.
+ */
+export function ensureSourcesDir(memoryDir?: string): string {
+  const dir = memoryDir ?? getMemoryDir()
+  const sourcesDir = path.join(dir, 'sources')
+
+  if (!fs.existsSync(sourcesDir)) {
+    fs.mkdirSync(sourcesDir, { recursive: true })
+  }
+
+  const readmePath = path.join(sourcesDir, 'README.md')
+  if (!fs.existsSync(readmePath)) {
+    fs.writeFileSync(readmePath, SOURCES_README_TEMPLATE, 'utf-8')
+  }
+
+  return sourcesDir
 }
 
 /**
@@ -722,7 +792,7 @@ ${dailyContext}
       return `- ${n.filename}${aliasStr}`
     }).join('\n')
     sections.push(`<wiki_pages>
-The following wiki pages are available in the personal knowledge base. When discussing a topic covered by a wiki page, load it with read_file for context. Use write_file or edit_file to create or update wiki pages when you learn something worth preserving.
+The following wiki pages are available in the personal knowledge base. When discussing a topic covered by a wiki page, load it with read_file for context. Use write_file or edit_file to create or update wiki pages when you learn something worth preserving. Raw source material for the wiki lives under sources/ — wiki pages can cite it in a ## Sources section.
 
 ${pageLines}
 </wiki_pages>`)
@@ -743,6 +813,7 @@ Memory files:
 - Today's daily file: ${path.join(dir, 'daily', `${today}.md`)}
 - User profiles directory: ${path.join(dir, 'users/')}
 - Wiki pages directory: ${path.join(dir, 'wiki/')}
+- Sources directory (immutable raw material): ${path.join(dir, 'sources/')}
 
 Config files:
 - AGENTS.md (agent rules): ${path.join(cfgDir, 'AGENTS.md')}
