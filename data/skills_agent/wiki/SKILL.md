@@ -7,6 +7,16 @@ description: Maintain and search the personal LLM-Wiki (knowledge base of Markdo
 
 The wiki lives at `/data/memory/wiki/`. It is a collection of LLM-maintained Markdown files — a personal knowledge base following the Karpathy pattern.
 
+## Three-Layer Architecture
+
+| Layer | Path | Mutability | Purpose |
+|---|---|---|---|
+| Sources (raw) | `/data/memory/sources/` | Immutable — add only | Archived raw material: articles, transcripts, papers |
+| Wiki (distilled) | `/data/memory/wiki/` | LLM-maintained | Summary pages, concepts, cross-references |
+| Schema / rules | `/data/config/CONSOLIDATION.md` + this skill | Editable | How the wiki operates |
+
+Rule of thumb: **Sources are what you read. Wiki is what you learned.** Never edit sources; always cite them from wiki pages.
+
 ## Wiki Structure
 
 Each wiki page is a `.md` file under `/data/memory/wiki/`. Pages can have optional YAML frontmatter with aliases:
@@ -25,35 +35,46 @@ Page content...
 
 ### Ingest — Add a new source
 
-Goal: extract knowledge from an external source (URL, file, conversation context) and store it in the wiki.
+Goal: extract knowledge from an external source (URL, file, conversation context), **archive the raw material** under `sources/`, and distill the knowledge into the wiki.
 
 **Steps:**
 
-1. List all existing wiki pages via `list_files /data/memory/wiki/`:
+1. **Fetch the raw source.** `web_fetch` the URL, read the transcript, or capture the conversation snippet.
+
+2. **Archive the raw source under `sources/`** (skip only if the content is trivial or already archived):
+   - Choose subfolder: `articles/`, `youtube/`, `podcasts/`, `papers/`, `notes/`
+   - Filename: `<yyyy-mm-dd>-<slug>.md` (lowercase, hyphens)
+   - First block: YAML frontmatter with `source_type`, `url`, `author`, `captured`
+   - Body: the raw text as received — no interpretation, no editing
+   - **Never modify an existing source file.** If the source itself changes, add a new dated file.
+
+3. **List existing wiki pages** via `list_files /data/memory/wiki/`:
    - Which pages already exist?
    - Is there an existing page that should be extended?
 
-2. Extract the essential knowledge from the source:
+4. **Extract the essential knowledge** from the source:
    - Facts, concepts, decisions, dependencies
    - No duplication of existing knowledge
    - Focus on evergreen knowledge (durably useful, not ephemeral)
 
-3. Decide: create a new page or extend an existing one?
+5. **Decide: create a new page or extend an existing one?**
    - New page: when it covers a new topic, project, or concept
    - Existing page: when the knowledge belongs to an existing page
 
-4. Write the page:
+6. **Write the page:**
    - Filename: `topic-name.md` (lowercase, hyphens instead of spaces)
    - First heading `# Title` (clear and precise)
    - Structure: headings, bullet lists, code blocks where appropriate
    - Cross-links: reference related wiki pages (`[Page Name](page-name.md)`)
+   - **Add a `## Quellen` / `## Sources` section** citing the `sources/...` file you just archived, so the page remains verifiable.
 
 **Example — ingest a web article:**
 ```
 1. web_fetch the URL
-2. list_files /data/memory/wiki/
-3. Extract relevant knowledge, identify duplicates
-4. write_file /data/memory/wiki/topic.md with the distilled knowledge
+2. write_file /data/memory/sources/articles/2026-04-17-<slug>.md (raw text, with frontmatter)
+3. list_files /data/memory/wiki/
+4. Extract relevant knowledge, identify duplicates
+5. write_file or edit_file /data/memory/wiki/topic.md with distilled knowledge + ## Quellen pointing to the archived source
 ```
 
 **Example — ingest context from a conversation:**
@@ -62,6 +83,7 @@ Goal: extract knowledge from an external source (URL, file, conversation context
 2. Check whether a matching page exists
 3. If yes: edit_file to add a section
 4. If no: write_file to create a new page
+(No sources/ archive needed when the "source" is just conversational context.)
 ```
 
 ---
@@ -91,7 +113,7 @@ Goal: search the wiki for knowledge relevant to a current task.
 
 ### Lint — Wiki health check
 
-Goal: audit the wiki for quality — find contradictions, orphaned pages, missing links.
+Goal: audit the wiki for quality — find contradictions, orphaned pages, missing links, **and surface content gaps the wiki implies but does not cover**.
 
 **Steps:**
 
@@ -114,16 +136,27 @@ Goal: audit the wiki for quality — find contradictions, orphaned pages, missin
    - Concepts mentioned on page A for which page B exists — but no link?
    - Add cross-links with `edit_file`
 
-5. **Write a lint report:**
+5. **Surface content gaps** (Karpathy/AI-Maker-Lab pattern):
+   - Which concepts, people, projects, or tools are **referenced repeatedly across pages but have no dedicated page**?
+   - Which pages contain TODO markers, "unclear", "to verify", or open questions?
+   - Which topics are discussed in daily files across multiple sessions but never promoted to a wiki page?
+   - List these as **suggested next research directions** — do not auto-create pages, just propose.
+
+6. **Check source coverage:**
+   - Wiki pages that make factual claims but have no `## Quellen` / `## Sources` section — flag them.
+   - `sources/` files with no inbound wiki reference — either unused raw material or candidate for ingest.
+
+7. **Write a lint report:**
    - Append findings to today's daily file:
      ```
      append to /data/memory/daily/YYYY-MM-DD.md
      ## Wiki Lint Report — YYYY-MM-DD\n\n### Findings\n- ...
      ```
 
-6. **Apply fixes:**
+8. **Apply fixes:**
    - Apply obvious corrections directly (edit_file)
    - Only when certain — no speculative changes
+   - Gap suggestions are reported only, not auto-resolved
 
 **Lint report format:**
 ```markdown
@@ -140,6 +173,14 @@ Goal: audit the wiki for quality — find contradictions, orphaned pages, missin
 
 ### Outdated information
 - `setup.md` still references Node 16, current version is Node 20
+
+### Content gaps (suggested next research)
+- `llm-oekosystem.md` mentions Qwen3.6 repeatedly but no dedicated `qwen.md`
+- Multiple daily entries reference "news crawler" but no wiki page exists
+
+### Source coverage
+- `project-x.md` makes release-date claims but has no ## Quellen section
+- `sources/articles/2026-04-17-foo.md` archived but not cited from any wiki page
 ```
 
 ---
@@ -162,5 +203,6 @@ Goal: audit the wiki for quality — find contradictions, orphaned pages, missin
 ## Paths
 
 - Wiki directory: `/data/memory/wiki/`
+- Sources directory (immutable raw material): `/data/memory/sources/`
 - Today's daily file (for lint reports): `/data/memory/daily/YYYY-MM-DD.md`
 - Always use absolute paths
