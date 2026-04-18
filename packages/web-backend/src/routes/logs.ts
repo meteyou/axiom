@@ -30,10 +30,12 @@ export function createLogsRouter(db: Database): Router {
     const page = Math.max(1, parseInt(req.query.page as string) || 1)
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 50))
 
-    const sourceFilter = req.query.source as string | undefined
-    const validSourceFilters = ['main', 'task'] as const
-    const parsedSourceFilter = sourceFilter && validSourceFilters.includes(sourceFilter as 'main' | 'task')
-      ? (sourceFilter as 'main' | 'task')
+    // Accept both `session_type` (canonical) and the legacy `source` param
+    // name used by older clients. Both resolve to the same filter contract.
+    const rawSessionType = (req.query.session_type ?? req.query.source) as string | undefined
+    const validTypes = ['main', 'task'] as const
+    const sessionType = rawSessionType && validTypes.includes(rawSessionType as 'main' | 'task')
+      ? (rawSessionType as 'main' | 'task')
       : undefined
 
     const result = queryToolCalls(db, {
@@ -42,7 +44,7 @@ export function createLogsRouter(db: Database): Router {
       search: req.query.search as string | undefined,
       dateFrom: req.query.date_from as string | undefined,
       dateTo: req.query.date_to as string | undefined,
-      sourceFilter: parsedSourceFilter,
+      sessionType,
       page,
       limit,
     })
