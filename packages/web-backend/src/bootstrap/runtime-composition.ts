@@ -12,6 +12,7 @@ import {
   createTaskTool,
   createYoloTools,
   deliverTaskNotification,
+  resolveTaskNotificationSessionId,
   editCronjobTool,
   ensureConfigStructure,
   ensureConfigTemplates,
@@ -54,6 +55,8 @@ import { RuntimeMetrics } from '../runtime-metrics.js'
 interface PendingTaskInjectionMeta {
   taskId: string
   userId: number
+  /** Resolved interactive session ID to persist the agent's response under */
+  targetSessionId: string
 }
 
 interface TaskSettings {
@@ -279,6 +282,47 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
 
   const pendingTaskInjections: PendingTaskInjectionMeta[] = []
 
+  /**
+   * Resolve the target user for a task result notification by walking the
+   * task's session lineage back to the triggering interactive session.
+   * Returns null when the task has no interactive parent (cronjob,
+   * heartbeat, consolidation) — callers fall back to a default user.
+   */
+  function resolveTargetUserIdForTask(taskSessionId: string | null | undefined): number | null {
+    if (!taskSessionId) return null
+    // Walk up parent_session_id chain until we find a row whose own
+    // parent_session_id is NULL. The top-most session is the triggering
+    // interactive session.
+    let currentId: string | null = taskSessionId
+    let safety = 10
+    while (currentId && safety-- > 0) {
+      const row = db.prepare(
+        'SELECT parent_session_id, session_user FROM sessions WHERE id = ?'
+      ).get(currentId) as { parent_session_id: string | null; session_user: string | null } | undefined
+      if (!row) return null
+      if (!row.parent_session_id) {
+        const uid = row.session_user ? Number.parseInt(row.session_user, 10) : NaN
+        return Number.isSafeInteger(uid) ? uid : null
+      }
+      currentId = row.parent_session_id
+    }
+    return null
+  }
+
+  /**
+   * Fallback user when a task has no interactive lineage (cronjob,
+   * heartbeat). Uses the lowest-id user in the users table.
+   */
+  function getFallbackUserId(): number {
+    try {
+      const row = db.prepare('SELECT id FROM users ORDER BY id ASC LIMIT 1').get() as { id: number } | undefined
+      if (row && Number.isSafeInteger(row.id)) return row.id
+    } catch {
+      // ignore
+    }
+    return 1
+  }
+
   function handleTaskNotification(taskId: string, injection: string, taskRuntime: TaskRuntimeTaskBoundary): void {
     const task = taskRuntime.getById(taskId)
     if (!task) return
@@ -287,10 +331,20 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
     const endMs = task.completedAt ? new Date(task.completedAt.replace(' ', 'T') + 'Z').getTime() : Date.now()
     const durationMinutes = Math.round((endMs - startMs) / 60000)
 
-    const userId = 1
+    // Resolve target user from the task's session lineage; fall back to
+    // the default user when the task has no interactive parent (e.g.
+    // cronjob/heartbeat triggered).
+    const resolvedUserId = resolveTargetUserIdForTask(task.sessionId)
+    const userId = resolvedUserId ?? getFallbackUserId()
+
+    // Resolve the chat session ID for persistence/merging: parent
+    // interactive session (preferred) or the task's own session as
+    // fallback for background tasks.
+    const targetSessionId = resolveTaskNotificationSessionId(db, task)
+
     if (agentCore) {
-      pendingTaskInjections.push({ taskId: task.id, userId })
-      agentCore.injectTaskResult(injection).catch(err => {
+      pendingTaskInjections.push({ taskId: task.id, userId, targetSessionId })
+      agentCore.injectTaskResult(injection, String(userId)).catch(err => {
         logger.error(`[openagent] Failed to inject task result for ${taskId}:`, err)
         const idx = pendingTaskInjections.findIndex(p => p.taskId === task.id)
         if (idx >= 0) pendingTaskInjections.splice(idx, 1)
@@ -302,6 +356,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
       userId,
       task,
       durationMinutes,
+      targetSessionId,
       telegramDeliveryMode: (taskSettings.telegramDelivery as 'auto' | 'always') ?? 'auto',
       hasActiveWebSocket: (uid: number) => wsChatPresenceChecker?.(uid) ?? false,
       broadcastEvent: (event) => {
@@ -606,9 +661,18 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
         if (responseText) {
           try {
             const metadata = JSON.stringify({ type: 'task_injection_response', telegramDelivered: lastTelegramDelivered })
-            db.prepare(
-              'INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)'
-            ).run(`task-injection-${Date.now()}`, 1, 'assistant', responseText, metadata)
+            // Persist the agent's injection response under the resolved
+            // interactive session (preferred) or the task session as
+            // fallback — never under a synthetic `task-injection-*` ID.
+            const persistSessionId = pendingMeta?.targetSessionId
+            const persistUserId = pendingMeta?.userId ?? getFallbackUserId()
+            if (persistSessionId) {
+              db.prepare(
+                'INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)'
+              ).run(persistSessionId, persistUserId, 'assistant', responseText, metadata)
+            } else {
+              logger.warn('[openagent] No target session resolved for task injection response; skipping persist')
+            }
           } catch (err) {
             logger.error('[openagent] Failed to persist task injection response:', err)
           }
