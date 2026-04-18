@@ -31,6 +31,7 @@ import {
   logToolCall,
   parseProviderModelId,
   ProviderManager,
+  SessionManager,
   removeCronjobTool,
   TaskEventBus,
 } from '@openagent/core'
@@ -264,6 +265,12 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
   const chatEventBus = new ChatEventBus()
   const taskEventBus = new TaskEventBus()
 
+  // Shared SessionManager dedicated to background producers (tasks,
+  // heartbeat, consolidation, scheduled jobs, reminders). It only uses
+  // `createSession()` to register UUID-based session rows; the per-user
+  // interactive session lifecycle is owned by AgentCore's own SessionManager.
+  const backgroundSessions = new SessionManager({ db })
+
   let wsChatPresenceChecker: ((userId: number) => boolean) | null = null
 
   let agentCore: AgentCore | null = null
@@ -320,6 +327,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
     runner: {
       buildModel,
       getApiKey: getApiKeyForProvider,
+      sessionManager: backgroundSessions,
       tools: [
         ...createYoloTools(),
         ...createBuiltinWebTools(builtinToolsConfig),
@@ -352,6 +360,15 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
         const userId = 1
         const deliveryResults: string[] = []
 
+        // Register a UUID session for this reminder fire so all log entries
+        // for this delivery share a single session row in `sessions`
+        // (type='task' — reminders are background actions without an
+        // executing LLM, but stored under the task type per Task 4 spec).
+        const reminderSessionId = backgroundSessions.createSession({
+          type: 'task',
+          source: 'system',
+        }).id
+
         chatEventBus.broadcast({
           type: 'reminder',
           userId,
@@ -369,7 +386,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
             telegramBot.sendTaskNotification(chatId, telegramHtml).then(ok => {
               const status = ok ? 'sent' : 'failed'
               logToolCall(db, {
-                sessionId: `cronjob-${scheduledTask.id}`,
+                sessionId: reminderSessionId,
                 toolName: 'reminder_delivery',
                 input: JSON.stringify({
                   cronjobId: scheduledTask.id,
@@ -388,7 +405,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
             }).catch(err => {
               logger.error(`[openagent] Failed to send Telegram reminder for ${scheduledTask.id}:`, err)
               logToolCall(db, {
-                sessionId: `cronjob-${scheduledTask.id}`,
+                sessionId: reminderSessionId,
                 toolName: 'reminder_delivery',
                 input: JSON.stringify({
                   cronjobId: scheduledTask.id,
@@ -417,7 +434,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
             })
 
             logToolCall(db, {
-              sessionId: `cronjob-${scheduledTask.id}`,
+              sessionId: reminderSessionId,
               toolName: 'reminder_delivery',
               input: JSON.stringify({
                 cronjobId: scheduledTask.id,
@@ -442,7 +459,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
           })
 
           logToolCall(db, {
-            sessionId: `cronjob-${scheduledTask.id}`,
+            sessionId: reminderSessionId,
             toolName: 'reminder_delivery',
             input: JSON.stringify({
               cronjobId: scheduledTask.id,
@@ -467,6 +484,10 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
     resolveProvider,
     defaultMaxDurationMinutes: taskSettings.maxDurationMinutes,
     maxDurationMinutesCap: taskSettings.maxDurationMinutes * 2,
+    // Link new task sessions to the user's current interactive session via
+    // sessions.parent_session_id. Returns null when no interactive session
+    // is active (e.g. tool invoked from a background context).
+    getParentSessionId: () => agentCore?.getCurrentInteractiveSessionId() ?? null,
   }
 
   const cronjobToolsOptions = {
@@ -496,6 +517,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
     agentCore: null,
     taskRuntime: taskRuntime.tasks,
     getDefaultProvider: getTaskDefaultProvider,
+    sessionManager: backgroundSessions,
   })
   consolidationScheduler.start()
 
