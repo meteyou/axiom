@@ -45,10 +45,10 @@ const skillLoad = computed(() => isEntrySkillLoad(props.entry))
 
     <!-- Source badge (only for task sessions) -->
     <Badge
-      v-if="isTaskSession(entry.sessionId)"
+      v-if="isTaskSession(entry)"
       class="hidden h-[22px] shrink-0 border-transparent bg-amber-500/15 px-2 py-0 text-[11px] leading-none text-amber-600 sm:inline-flex dark:text-amber-400"
     >
-      {{ getSourceLabel(entry.sessionId) }}
+      {{ getSourceLabel(entry) }}
     </Badge>
 
     <!-- Input preview as badges (hidden on small screens) -->
