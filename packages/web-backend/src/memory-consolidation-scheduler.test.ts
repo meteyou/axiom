@@ -166,7 +166,7 @@ describe('MemoryConsolidationScheduler', () => {
       expect(startedTask.task.name).toBe('Nightly Memory Consolidation')
       expect(startedTask.task.triggerType).toBe('consolidation')
       expect(startedTask.task.triggerSourceId).toBe('memory-consolidation')
-      expect(startedTask.task.sessionId).toMatch(/^nightly-consolidation-\d+$/)
+      expect(startedTask.task.sessionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)
       expect(startedTask.provider).toBe(provider)
 
       expect(startedTask.task.prompt).toContain('nightly memory consolidation')
@@ -322,7 +322,7 @@ describe('MemoryConsolidationScheduler', () => {
         "SELECT * FROM tool_calls WHERE tool_name = 'memory_consolidation'"
       ).all() as Array<{ session_id: string }>
       expect(rows.length).toBeGreaterThanOrEqual(1)
-      expect(rows[0].session_id).toMatch(/^nightly-consolidation-/)
+      expect(rows[0].session_id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)
     })
   })
 
