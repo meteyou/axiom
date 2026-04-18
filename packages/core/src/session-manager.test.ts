@@ -475,10 +475,21 @@ describe('SessionManager', () => {
         `INSERT INTO chat_messages (session_id, user_id, role, content) VALUES (?, ?, 'user', ?)`
       ).run(session.id, 1, 'Implementiere Punkt 1 vollständig und erstelle einen PR.')
 
+      // Create a child task session linked to the interactive session via
+      // parent_session_id. Task result + injection response messages live
+      // under this child session and are pulled in by buildConversationHistory
+      // via the recursive parent_session_id join.
+      const childSession = manager.createSession({
+        type: 'task',
+        source: 'task',
+        userId: '1',
+        parentSessionId: session.id,
+      })
+
       db.prepare(
         `INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, 'system', ?, ?)`
       ).run(
-        `task-result-${Date.now()}`,
+        childSession.id,
         1,
         '✅ Task completed: Build feature\n\nPR erstellt und Tests ergänzt.',
         JSON.stringify({
@@ -488,10 +499,12 @@ describe('SessionManager', () => {
         })
       )
 
+      // Task injection response is logged under the interactive session
+      // directly (the new merged behavior from processTaskInjection).
       db.prepare(
         `INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, 'assistant', ?, ?)`
       ).run(
-        `task-injection-${Date.now()}`,
+        session.id,
         1,
         'Der Task ist fertig. PR ist offen und die Tests sind ergänzt.',
         JSON.stringify({ type: 'task_injection_response' })
