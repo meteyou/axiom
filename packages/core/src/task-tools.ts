@@ -14,6 +14,13 @@ export interface TaskToolsOptions {
   defaultMaxDurationMinutes: number
   /** Hard cap on max duration from settings */
   maxDurationMinutesCap: number
+  /**
+   * Returns the current interactive session ID that triggered the tool call,
+   * so that the new task's session can be linked via `parent_session_id`.
+   * Returns null when no interactive session is active (e.g. tool invoked
+   * from a background context).
+   */
+  getParentSessionId?: () => string | null
 }
 
 /**
@@ -156,7 +163,8 @@ export function createTaskTool(options: TaskToolsOptions): AgentTool {
           maxDuration = options.defaultMaxDurationMinutes
         }
 
-        // Create the task in the store
+        // Create the task in the store — sessionId is created by the
+        // TaskRunner via SessionManager when the task starts.
         const task = options.taskRuntime.create({
           name,
           prompt,
@@ -164,11 +172,11 @@ export function createTaskTool(options: TaskToolsOptions): AgentTool {
           provider: provider.name,
           model: provider.defaultModel,
           maxDurationMinutes: maxDuration,
-          sessionId: `task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         })
 
-        // Start the task
-        await options.taskRuntime.start(task, provider)
+        // Start the task, linking its session to the current interactive session
+        const parentSessionId = options.getParentSessionId?.() ?? null
+        await options.taskRuntime.start(task, provider, undefined, parentSessionId)
 
         return {
           content: [{
