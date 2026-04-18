@@ -12,7 +12,7 @@ export interface TaskRuntimeTaskBoundary {
   getById(id: string): Task | null
   list(filters?: TaskListFilters): Task[]
   update(id: string, updates: UpdateTaskInput): Task | null
-  start(task: Task, provider: ProviderConfig, overrides?: TaskOverrides): Promise<string>
+  start(task: Task, provider: ProviderConfig, overrides?: TaskOverrides, parentSessionId?: string | null): Promise<string>
   resume(taskId: string, message: string): Promise<boolean>
   abort(taskId: string, reason?: string): void
   isRunning(taskId: string): boolean
@@ -82,7 +82,7 @@ class PiTaskRuntime implements TaskRuntimeBoundary {
       getById: (id) => taskStore.getById(id),
       list: (filters) => taskStore.list(filters),
       update: (id, updates) => taskStore.update(id, updates),
-      start: (task, provider, overrides) => this.runner.startTask(task, provider, overrides),
+      start: (task, provider, overrides, parentSessionId) => this.runner.startTask(task, provider, overrides, parentSessionId),
       resume: (taskId, message) => this.runner.resumeTask(taskId, message),
       abort: (taskId, reason) => this.runner.abortTask(taskId, reason),
       isRunning: (taskId) => this.runner.isRunning(taskId),

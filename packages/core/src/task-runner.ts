@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto'
 import { Agent as PiAgent } from '@mariozechner/pi-agent-core'
 import type { AgentEvent, AgentTool } from '@mariozechner/pi-agent-core'
 import type { AssistantMessage, Message, Model, Api } from '@mariozechner/pi-ai'
@@ -6,7 +5,9 @@ import type { Database } from './database.js'
 import type { SettingsThinkingLevel } from './contracts/settings.js'
 import { readBackgroundThinkingLevelFromConfig } from './thinking-level.js'
 import { TaskStore } from './task-store.js'
-import type { Task, TaskResultStatus } from './task-store.js'
+import type { Task, TaskResultStatus, TaskTriggerType } from './task-store.js'
+import type { SessionManager, SessionType } from './session-manager.js'
+import { generateSessionId } from './session-manager.js'
 import { logTokenUsage, logToolCall } from './token-logger.js'
 import { estimateCost, parseProviderModelId } from './provider-config.js'
 import type { ProviderConfig } from './provider-config.js'
@@ -60,6 +61,25 @@ export interface TaskRunnerOptions {
    * `off` if unavailable.
    */
   backgroundThinkingLevel?: SettingsThinkingLevel
+  /**
+   * SessionManager used to register every background session in the
+   * `sessions` table with the correct `type` and `parent_session_id`.
+   * If omitted, a UUID is still generated but no session row is created
+   * (used for some unit tests). Production code MUST provide one.
+   */
+  sessionManager?: SessionManager
+}
+
+/**
+ * Map a task trigger type to the session type stored in `sessions.type`.
+ * - `triggerType='heartbeat'` -> `type='heartbeat'`
+ * - `triggerType='consolidation'` -> `type='consolidation'`
+ * - all other triggers (`user`, `agent`, `cronjob`) -> `type='task'`
+ */
+export function triggerTypeToSessionType(triggerType: TaskTriggerType): SessionType {
+  if (triggerType === 'heartbeat') return 'heartbeat'
+  if (triggerType === 'consolidation') return 'consolidation'
+  return 'task'
 }
 
 interface RunningTask {
@@ -226,15 +246,48 @@ export class TaskRunner {
   }
 
   /**
-   * Start a new task
+   * Ensure the task has a session ID registered in the `sessions` table.
+   * If the task already has a sessionId, it's used as-is. Otherwise a new
+   * session is created via SessionManager (if available) with the correct
+   * `type` derived from `task.triggerType` and the provided `parentSessionId`.
+   * The resulting sessionId is persisted on the task row.
+   */
+  private ensureTaskSession(task: Task, parentSessionId?: string | null): string {
+    if (task.sessionId) return task.sessionId
+
+    const sessionType = triggerTypeToSessionType(task.triggerType)
+    let sessionId: string
+    if (this.options.sessionManager) {
+      const session = this.options.sessionManager.createSession({
+        type: sessionType,
+        source: 'system',
+        parentSessionId: parentSessionId ?? undefined,
+      })
+      sessionId = session.id
+    } else {
+      // Fallback for tests / setups that don't wire a SessionManager.
+      // Production paths always provide one (per Task 4 requirements).
+      sessionId = generateSessionId()
+    }
+
+    this.store.update(task.id, { sessionId })
+    task.sessionId = sessionId
+    return sessionId
+  }
+
+  /**
+   * Start a new task. `parentSessionId`, if provided, links the task's
+   * session to the user's interactive session (or another parent session)
+   * via `sessions.parent_session_id`.
    */
   async startTask(
     task: Task,
     provider: ProviderConfig,
     overrides?: TaskOverrides,
+    parentSessionId?: string | null,
   ): Promise<string> {
     const taskId = task.id
-    const sessionId = task.sessionId ?? `task-${taskId}`
+    const sessionId = this.ensureTaskSession(task, parentSessionId)
 
     // Build model and get API key
     const model = this.options.buildModel(provider)
@@ -663,8 +716,15 @@ export class TaskRunner {
         getApiKey: () => apiKey,
       })
 
-      // Track token usage from detection
-      const sessionId = `loop-detection-${runningTask.taskId}`
+      // Track token usage from detection — register a child session of the task
+      const taskSessionId = this.store.getById(runningTask.taskId)?.sessionId ?? null
+      const sessionId = this.options.sessionManager
+        ? this.options.sessionManager.createSession({
+            type: 'loop_detection',
+            source: 'system',
+            parentSessionId: taskSessionId ?? undefined,
+          }).id
+        : generateSessionId()
       detectionAgent.subscribe((event: AgentEvent) => {
         if (event.type === 'message_end') {
           const msg = event.message as Message
@@ -897,7 +957,11 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
     })
 
     const { agent } = pausedTask
-    const sessionId = this.store.getById(taskId)?.sessionId ?? `task-${taskId}`
+    const sessionId = this.store.getById(taskId)?.sessionId
+    if (!sessionId) {
+      console.error(`[task-runner] Cannot resume task ${taskId}: no sessionId on task`)
+      return false
+    }
     const model = {} as Model<Api> // model info is in the agent already
 
     // Create a new RunningTask entry
@@ -1148,7 +1212,7 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
       // Build a progress summary from stored tool calls
       const toolCalls = this.db.prepare(
         'SELECT tool_name, output FROM tool_calls WHERE session_id = ? ORDER BY timestamp ASC'
-      ).all(task.sessionId ?? `task-${task.id}`) as { tool_name: string; output: string }[]
+      ).all(task.sessionId ?? '') as { tool_name: string; output: string }[]
 
       let progressSummary = ''
       if (toolCalls.length > 0) {
