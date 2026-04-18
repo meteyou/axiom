@@ -274,12 +274,24 @@ export class SessionManager {
 
   /**
    * Build a conversation history string from chat_messages in the DB.
-   * Includes main-session user/assistant messages plus related background-task
-   * notifications that the user saw during the same session window.
+   *
+   * Includes:
+   * - All messages in the given session
+   * - All messages in descendant sessions (children, grandchildren, ...)
+   *   linked via `sessions.parent_session_id`
+   *
+   * This subsumes the previous time-window heuristic for pulling in task
+   * result notifications and task injection responses: those messages now
+   * live in child/task sessions (or — when merged — in this session
+   * directly via `processTaskInjection`).
+   *
+   * The `options` parameter is retained for backward compatibility but is
+   * no longer used for message resolution.
    */
   buildConversationHistory(
     sessionId: string,
-    options?: { userId?: string; startedAt?: number; endAt?: number },
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _options?: { userId?: string; startedAt?: number; endAt?: number },
   ): string | null {
     type ChatMessageRow = {
       session_id: string
@@ -289,43 +301,20 @@ export class SessionManager {
       timestamp: string
     }
 
-    const mainMessages = this.db.prepare(
-      `SELECT session_id, role, content, metadata, timestamp
+    // Recursive CTE: include the session itself + all descendants via
+    // parent_session_id (task, loop_detection, etc.).
+    const messages = this.db.prepare(
+      `WITH RECURSIVE session_tree(id) AS (
+         SELECT ?
+         UNION ALL
+         SELECT s.id FROM sessions s
+         JOIN session_tree st ON s.parent_session_id = st.id
+       )
+       SELECT session_id, role, content, metadata, timestamp
        FROM chat_messages
-       WHERE session_id = ?
+       WHERE session_id IN (SELECT id FROM session_tree)
        ORDER BY timestamp ASC`
     ).all(sessionId) as ChatMessageRow[]
-
-    const extraMessages: ChatMessageRow[] = []
-    const numericUserId = options?.userId ? Number.parseInt(options.userId, 10) : Number.NaN
-
-    if (Number.isFinite(numericUserId) && options?.startedAt !== undefined && options?.endAt !== undefined) {
-      const candidates = this.db.prepare(
-        `SELECT session_id, role, content, metadata, timestamp
-         FROM chat_messages
-         WHERE user_id = ?
-           AND session_id != ?
-           AND timestamp >= datetime(? / 1000, 'unixepoch')
-           AND timestamp <= datetime(? / 1000, 'unixepoch')
-         ORDER BY timestamp ASC`
-      ).all(numericUserId, sessionId, options.startedAt, options.endAt) as ChatMessageRow[]
-
-      for (const msg of candidates) {
-        let metadata: Record<string, unknown> | null = null
-        try {
-          metadata = msg.metadata ? JSON.parse(msg.metadata) as Record<string, unknown> : null
-        } catch {
-          metadata = null
-        }
-
-        if (metadata?.type === 'task_result' || metadata?.type === 'task_injection_response') {
-          extraMessages.push(msg)
-        }
-      }
-    }
-
-    const messages = [...mainMessages, ...extraMessages]
-      .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
 
     if (messages.length === 0) return null
 
