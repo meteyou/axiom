@@ -130,10 +130,9 @@ export function setupWebSocketChat(
       authenticatedClients.set(ws, user)
       const connId = crypto.randomBytes(8).toString('hex')
       connectionIds.set(ws, connId)
-      // Session ID will be resolved from the SessionManager on first message.
-      // For the initial auth response, generate a temporary ID that gets replaced.
-      const tempSessionId = `web-${user.userId}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`
-      clientSessions.set(ws, tempSessionId)
+      // Session ID is resolved lazily from SessionManager on the first message.
+      // We deliberately do NOT generate a temporary placeholder here — every
+      // session ID must come from SessionManager (UUID, registered in `sessions`).
 
       // Track by userId
       if (!userClients.has(user.userId)) {
@@ -141,7 +140,7 @@ export function setupWebSocketChat(
       }
       userClients.get(user.userId)!.add(ws)
 
-      sendMessage(ws, { type: 'system', text: 'Authenticated', sessionId: tempSessionId })
+      sendMessage(ws, { type: 'system', text: 'Authenticated' })
     }
 
     ws.on('message', async (data) => {
@@ -163,8 +162,7 @@ export function setupWebSocketChat(
             authenticatedClients.set(ws, tokenUser)
             const connId = crypto.randomBytes(8).toString('hex')
             connectionIds.set(ws, connId)
-            const tempSessionId = `web-${tokenUser.userId}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`
-            clientSessions.set(ws, tempSessionId)
+            // Session ID resolved lazily from SessionManager on first message.
 
             // Track by userId
             if (!userClients.has(tokenUser.userId)) {
@@ -172,7 +170,7 @@ export function setupWebSocketChat(
             }
             userClients.get(tokenUser.userId)!.add(ws)
 
-            sendMessage(ws, { type: 'system', text: 'Authenticated', sessionId: tempSessionId })
+            sendMessage(ws, { type: 'system', text: 'Authenticated' })
             return
           }
         }
@@ -181,7 +179,6 @@ export function setupWebSocketChat(
       }
 
       const currentUser = authenticatedClients.get(ws)!
-      const sessionId = clientSessions.get(ws)!
 
       // Handle commands
       if (parsed.type === 'command' || parsed.content.startsWith('/')) {
@@ -205,31 +202,31 @@ export function setupWebSocketChat(
             try {
               const summary = await agentCore.resetSession(String(currentUser.userId))
               if (!chatEventBus) {
-                const newSessionId = `web-${currentUser.userId}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`
-                clientSessions.set(ws, newSessionId)
+                // After resetSession, the next getOrCreateSession() returns a fresh UUID.
+                const newSession = agentCore.getSessionManager().getOrCreateSession(String(currentUser.userId), 'web')
+                clientSessions.set(ws, newSession.id)
                 sendMessage(ws, {
                   type: 'session_end',
                   text: summary ?? undefined,
-                  sessionId: newSessionId,
+                  sessionId: newSession.id,
                 })
               }
             } catch (err) {
               console.error('Failed to reset session:', err)
               if (!chatEventBus) {
-                const newSessionId = `web-${currentUser.userId}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`
-                clientSessions.set(ws, newSessionId)
+                const newSession = agentCore.getSessionManager().getOrCreateSession(String(currentUser.userId), 'web')
+                clientSessions.set(ws, newSession.id)
                 sendMessage(ws, {
                   type: 'session_end',
-                  sessionId: newSessionId,
+                  sessionId: newSession.id,
                 })
               }
             }
           } else {
-            const newSessionId = `web-${currentUser.userId}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`
-            clientSessions.set(ws, newSessionId)
+            // No agent core: clear any cached session ID; next message will resolve a new one.
+            clientSessions.delete(ws)
             sendMessage(ws, {
               type: 'session_end',
-              sessionId: newSessionId,
             })
           }
 
@@ -256,16 +253,19 @@ export function setupWebSocketChat(
       }
 
       // Regular message — route to agent
-      // Resolve session ID from SessionManager (aligns chat_messages with session tracking)
+      // Resolve session ID from SessionManager (aligns chat_messages with session tracking).
+      // SessionManager is the single source of truth: every session ID is a UUID and
+      // registered in the `sessions` table.
       const agentCore = resolveAgentCore()
       if (agentCore) {
         const smSession = agentCore.getSessionManager().getOrCreateSession(String(currentUser.userId), 'web')
-        if (smSession.id !== sessionId) {
-          clientSessions.set(ws, smSession.id)
-        }
+        clientSessions.set(ws, smSession.id)
       }
-      // Re-read sessionId after potential update
-      const resolvedSessionId = clientSessions.get(ws)!
+      const resolvedSessionId = clientSessions.get(ws)
+      if (!resolvedSessionId) {
+        sendMessage(ws, { type: 'error', error: 'Agent core not available' })
+        return
+      }
 
       if (!parsed.skipSave) {
         saveChatMessage(db, resolvedSessionId, currentUser.userId, 'user', parsed.content)
@@ -453,9 +453,17 @@ export function setupWebSocketChat(
             senderName: event.senderName,
           })
         } else if (event.type === 'session_end') {
-          // Session timed out — assign new session ID and notify client
-          const newSessionId = `web-${event.userId}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`
-          clientSessions.set(client, newSessionId)
+          // Session timed out — resolve the next session ID via SessionManager (UUID).
+          const ac = resolveAgentCore()
+          let newSessionId: string | undefined
+          if (ac) {
+            const smSession = ac.getSessionManager().getOrCreateSession(String(event.userId), 'web')
+            newSessionId = smSession.id
+            clientSessions.set(client, newSessionId)
+          } else {
+            // No agent core: clear cached session, next message will resolve.
+            clientSessions.delete(client)
+          }
           sendMessage(client, {
             type: 'session_end',
             text: event.text,
