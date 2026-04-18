@@ -52,6 +52,7 @@ export class AgentCore {
   private onTaskInjectionChunkCallback?: (chunk: ResponseChunk) => void
   private messageQueue: MessageQueue
   private currentToolUserId?: number
+  private currentInteractiveSessionId?: string
   private runtime: AgentRuntimeBoundary
 
   constructor(options: AgentCoreOptions) {
@@ -175,6 +176,7 @@ export class AgentCore {
   private async *processUserMessage(userId: string, text: string, source: string, attachments?: UploadDescriptor[]): AsyncIterable<ResponseChunk> {
     const session = this.sessionManager.getOrCreateSession(userId, source)
     const sessionId = session.id
+    this.currentInteractiveSessionId = sessionId
 
     // Resolve username for user profile injection (skip for group chats)
     let currentUser: { username: string } | undefined
@@ -222,10 +224,20 @@ export class AgentCore {
       yield* this.runtime.streamPrompt(enrichedText, sessionId, images.length > 0 ? images : undefined)
     } finally {
       this.currentToolUserId = undefined
+      this.currentInteractiveSessionId = undefined
     }
 
     // Count the agent response as a message too
     this.sessionManager.recordMessage(userId)
+  }
+
+  /**
+   * Returns the active interactive session ID for the user currently being
+   * served (set during processUserMessage). Used by tools (e.g. create_task)
+   * to link background sessions back to the triggering interactive session.
+   */
+  getCurrentInteractiveSessionId(): string | null {
+    return this.currentInteractiveSessionId ?? null
   }
 
   /**
