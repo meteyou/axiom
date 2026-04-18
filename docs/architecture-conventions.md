@@ -98,7 +98,56 @@ The workflow runs on `pull_request` (against `main`) and `push` to `main` and ex
 3. `npm run baseline:api`
 4. `npm run verify:critical-flows`
 
-## 8) PR Checklist (Definition of Done)
+## 8) Session Architecture
+
+All sessions in OpenAgent share a **single UUID-based model**. Session kind, origin,
+and lineage are expressed as columns on the `sessions` table — **never** encoded
+into the session ID itself.
+
+### Canonical model
+
+- `sessions.id` is always a UUID (`crypto.randomUUID()`).
+- `sessions.type` classifies the session kind:
+  - `interactive` — user chat (web, telegram, REST)
+  - `task` — background task execution (including cronjob-triggered tasks)
+  - `heartbeat` — agent heartbeat
+  - `consolidation` — nightly memory consolidation
+  - `loop_detection` — loop-detection LLM call within a task
+- `sessions.source` tracks the originating channel for interactive sessions:
+  `web`, `telegram`, `telegram-group`, `rest`, `task`, `system`.
+- `sessions.parent_session_id` links child sessions (task, heartbeat,
+  loop_detection) back to the interactive session that triggered them,
+  enabling lineage queries without prefix parsing.
+
+System-originated messages (task-injection responses, task-result
+notifications) are logged under the **target user's interactive session**.
+There is no separate `system` or `notification` session type.
+
+### ID generation
+
+There is exactly one session-ID generator: `generateSessionId()` in
+`packages/core/src/session-manager.ts`, which returns `crypto.randomUUID()`.
+No code constructs session IDs inline. Legacy prefix forms (`session-*`,
+`web-*`, `task-*`, `agent-heartbeat-*`, `nightly-consolidation-*`,
+`loop-detection-*`, `task-result-*`, `task-injection-*`, `cronjob-*`) only
+survive in migration code, tests, and historical comments.
+
+### Query rule
+
+Consumers (usage stats, token logger, chat-history tools, logs API, frontend
+log filters) filter by `sessions.type` / `sessions.source` via JOIN —
+**never** via `LIKE 'task-%'` or session-ID prefix inspection. Log/session
+filters in the frontend are metadata/type driven and operate on the canonical
+`sessionType` parameter.
+
+### Migration
+
+The migration in `packages/core/src/database.ts` backfills `type` from
+legacy prefixes, remaps legacy IDs to UUIDs (keeping existing UUIDs
+unchanged), rewrites all FK references across `chat_messages`, `token_usage`,
+`tool_calls`, `tasks`, and `memories`, and is idempotent + transactional.
+
+## 9) PR Checklist (Definition of Done)
 
 - Structural changes follow the conventions in this document.
 - Boundary linting is passing.
