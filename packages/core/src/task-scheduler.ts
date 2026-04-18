@@ -349,7 +349,8 @@ export class TaskScheduler {
       provider = this.options.getDefaultProvider()
     }
 
-    // Create task in the task store
+    // Create task in the task store — sessionId is created by the
+    // TaskRunner via SessionManager when the task starts.
     const task = this.taskStore.create({
       name: scheduledTask.name,
       prompt: scheduledTask.prompt,
@@ -357,7 +358,6 @@ export class TaskScheduler {
       triggerSourceId: scheduledTask.id,
       provider: provider.name,
       model: provider.defaultModel,
-      sessionId: `cronjob-${scheduledTask.id}-${Date.now()}`,
     })
 
     // Update last_run_at on the scheduled task
