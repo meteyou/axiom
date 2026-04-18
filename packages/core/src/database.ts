@@ -1,4 +1,5 @@
 import BetterSqlite3 from 'better-sqlite3'
+import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 import fs from 'node:fs'
 
@@ -522,6 +523,11 @@ export function initDatabase(dbPath?: string): Database {
     CREATE INDEX IF NOT EXISTS idx_sessions_parent ON sessions(parent_session_id);
   `)
 
+  // Migration (PRD #11 Task 2): Legacy prefix-based session IDs -> UUIDs + type backfill
+  // + orphan recovery. Idempotent: only acts on rows whose session_id is not already
+  // in UUID form. Wrapped in a single transaction for atomicity.
+  migrateLegacySessionIds(db)
+
   // Backfill token counts from token_usage only when the columns are first added
   if (needsTokenBackfill) {
     db.exec(`
@@ -537,6 +543,200 @@ export function initDatabase(dbPath?: string): Database {
   }
 
   return db
+}
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+function isLegacySessionId(id: string | null | undefined): boolean {
+  if (!id) return false
+  return !UUID_REGEX.test(id)
+}
+
+function inferSessionTypeFromLegacyId(id: string): string {
+  // Order matters: check longer/more specific prefixes first
+  if (id.startsWith('agent-heartbeat-')) return 'heartbeat'
+  if (id.startsWith('nightly-consolidation-')) return 'consolidation'
+  if (id.startsWith('loop-detection-')) return 'loop_detection'
+  if (id.startsWith('task-result-')) return 'interactive'
+  if (id.startsWith('task-injection-')) return 'interactive'
+  if (id.startsWith('cronjob-')) return 'task'
+  if (id.startsWith('task-')) return 'task'
+  if (id.startsWith('session-')) return 'interactive'
+  if (id.startsWith('web-')) return 'interactive'
+  if (id.startsWith('telegram-')) return 'interactive'
+  // Safe default for any other legacy format
+  return 'interactive'
+}
+
+function inferSessionSourceFromLegacyId(id: string): string {
+  if (id.startsWith('web-')) return 'web'
+  if (id.startsWith('telegram-group-')) return 'telegram-group'
+  if (id.startsWith('telegram-')) return 'telegram'
+  if (id.startsWith('session-')) return 'web'
+  if (id.startsWith('task-injection-')) return 'system'
+  if (id.startsWith('task-result-')) return 'system'
+  if (id.startsWith('cronjob-')) return 'task'
+  if (id.startsWith('task-')) return 'task'
+  if (id.startsWith('agent-heartbeat-')) return 'system'
+  if (id.startsWith('nightly-consolidation-')) return 'system'
+  if (id.startsWith('loop-detection-')) return 'system'
+  return 'web'
+}
+
+/**
+ * One-time migration: convert prefix-based legacy session IDs to UUIDs,
+ * backfill `sessions.type`, remap FK references across child tables, and
+ * recover orphaned session IDs (IDs referenced by child rows but missing
+ * from the `sessions` table).
+ *
+ * Safe to run repeatedly: rows whose IDs are already UUIDs are untouched.
+ */
+function migrateLegacySessionIds(db: Database): void {
+  // Collect every legacy session ID still present anywhere in the DB.
+  const childTables: Array<{ table: string, userCol?: string, timeCol?: string }> = [
+    { table: 'chat_messages', userCol: 'user_id', timeCol: 'timestamp' },
+    { table: 'token_usage', timeCol: 'timestamp' },
+    { table: 'tool_calls', timeCol: 'timestamp' },
+    { table: 'tasks', timeCol: 'created_at' },
+    { table: 'memories', userCol: 'user_id', timeCol: 'timestamp' }
+  ]
+
+  // Step 1: Find all legacy session IDs in sessions table.
+  const legacySessionRows = db.prepare(
+    "SELECT id, source, user_id, session_user, started_at, parent_session_id FROM sessions"
+  ).all() as Array<{
+    id: string
+    source: string | null
+    user_id: number | null
+    session_user: string | null
+    started_at: string | null
+    parent_session_id: string | null
+  }>
+
+  const legacyInSessions = legacySessionRows.filter(r => isLegacySessionId(r.id))
+
+  // Step 2: Find legacy IDs orphaned in child tables.
+  // Build the union of session_ids across child tables, excluding UUIDs and
+  // excluding ones already present in sessions.
+  const knownSessionIds = new Set(legacySessionRows.map(r => r.id))
+  const orphanIds = new Set<string>()
+
+  for (const { table } of childTables) {
+    const rows = db.prepare(
+      `SELECT DISTINCT session_id FROM ${table} WHERE session_id IS NOT NULL`
+    ).all() as Array<{ session_id: string }>
+    for (const row of rows) {
+      if (!row.session_id) continue
+      if (knownSessionIds.has(row.session_id)) continue
+      if (!isLegacySessionId(row.session_id)) continue
+      orphanIds.add(row.session_id)
+    }
+  }
+
+  // Early exit: nothing to migrate.
+  if (legacyInSessions.length === 0 && orphanIds.size === 0) {
+    return
+  }
+
+  const runMigration = db.transaction(() => {
+    // Defer FK checks so we can rewrite sessions.id without tripping the
+    // parent_session_id self-FK (which has no ON UPDATE CASCADE).
+    db.pragma('defer_foreign_keys = ON')
+
+    // Build old->new UUID mapping for all legacy IDs (both existing sessions
+    // and orphans). Already-UUID IDs are never remapped.
+    const idMap = new Map<string, string>()
+    for (const row of legacyInSessions) {
+      idMap.set(row.id, randomUUID())
+    }
+    for (const orphanId of orphanIds) {
+      idMap.set(orphanId, randomUUID())
+    }
+
+    // Step A: Backfill type + remap id for existing legacy sessions.
+    const updateSessionStmt = db.prepare(
+      "UPDATE sessions SET id = ?, type = ? WHERE id = ?"
+    )
+    for (const row of legacyInSessions) {
+      const newId = idMap.get(row.id)!
+      const newType = inferSessionTypeFromLegacyId(row.id)
+      updateSessionStmt.run(newId, newType, row.id)
+    }
+
+    // Step B: Remap parent_session_id references through the map. Do this
+    // AFTER id remap so every possible target UUID already exists.
+    const parentRows = db.prepare(
+      "SELECT id, parent_session_id FROM sessions WHERE parent_session_id IS NOT NULL"
+    ).all() as Array<{ id: string, parent_session_id: string }>
+    const updateParentStmt = db.prepare(
+      "UPDATE sessions SET parent_session_id = ? WHERE id = ?"
+    )
+    for (const row of parentRows) {
+      const mapped = idMap.get(row.parent_session_id)
+      if (mapped) {
+        updateParentStmt.run(mapped, row.id)
+      }
+    }
+
+    // Step C: Recover orphaned sessions. For each orphan ID, gather earliest
+    // timestamp and any available user_id from child tables, then insert.
+    const insertOrphanStmt = db.prepare(
+      `INSERT INTO sessions (id, user_id, session_user, source, type, started_at, message_count, summary_written)
+       VALUES (?, ?, ?, ?, ?, ?, 0, 0)`
+    )
+    for (const orphanId of orphanIds) {
+      const newId = idMap.get(orphanId)!
+      const type = inferSessionTypeFromLegacyId(orphanId)
+      const source = inferSessionSourceFromLegacyId(orphanId)
+
+      // Earliest timestamp across all child tables for this session_id.
+      let earliest: string | null = null
+      let userId: number | null = null
+      let sessionUser: string | null = null
+      for (const { table, userCol, timeCol } of childTables) {
+        const timeExpr = timeCol ? `MIN(${timeCol})` : 'NULL'
+        const userExpr = userCol ? userCol : 'NULL'
+        const row = db.prepare(
+          `SELECT ${timeExpr} AS t, ${userExpr} AS u FROM ${table} WHERE session_id = ? LIMIT 1`
+        ).get(orphanId) as { t: string | null, u: number | null } | undefined
+        if (!row) continue
+        if (row.t && (!earliest || row.t < earliest)) earliest = row.t
+        if (row.u != null && userId == null) userId = row.u
+      }
+      // Try to resolve session_user from the users table if we got a user_id.
+      if (userId != null) {
+        const userRow = db.prepare(
+          "SELECT username FROM users WHERE id = ?"
+        ).get(userId) as { username: string } | undefined
+        sessionUser = userRow?.username ?? null
+      }
+
+      insertOrphanStmt.run(
+        newId,
+        userId,
+        sessionUser,
+        source,
+        type,
+        earliest ?? new Date().toISOString()
+      )
+    }
+
+    // Step D: Remap FK columns in child tables. One prepared UPDATE per
+    // (table, oldId) pair — simple and correct. For large DBs this is O(N)
+    // in the number of distinct legacy IDs, not in the number of child rows.
+    for (const { table } of childTables) {
+      const stmt = db.prepare(
+        `UPDATE ${table} SET session_id = ? WHERE session_id = ?`
+      )
+      for (const [oldId, newId] of idMap) {
+        stmt.run(newId, oldId)
+      }
+    }
+  })
+
+  runMigration()
+  // Re-assert default FK behavior outside the transaction.
+  db.pragma('defer_foreign_keys = OFF')
 }
 
 /**
