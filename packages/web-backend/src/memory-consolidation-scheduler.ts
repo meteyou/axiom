@@ -4,6 +4,8 @@ import type { AgentCore } from '@openagent/core'
 import type { Task } from '@openagent/core'
 import type { TaskRuntimeTaskBoundary } from '@openagent/core'
 import type { ProviderConfig } from '@openagent/core'
+import type { SessionManager } from '@openagent/core'
+import { generateSessionId } from '@openagent/core'
 import {
   getActiveProvider,
   loadProvidersDecrypted,
@@ -122,6 +124,13 @@ export interface ConsolidationSchedulerOptions {
   agentCore?: AgentCore | null
   taskRuntime?: ConsolidationTaskRuntime | null
   getDefaultProvider?: () => ProviderConfig | null
+  /**
+   * SessionManager used to create the consolidation session in the
+   * `sessions` table (with `type='consolidation'`). When omitted a UUID
+   * is still generated, but no session row is registered — production
+   * code MUST provide one.
+   */
+  sessionManager?: SessionManager
 }
 
 export interface ConsolidationSnapshot {
@@ -139,6 +148,7 @@ export class MemoryConsolidationScheduler {
   private agentCore: AgentCore | null
   private taskRuntime: ConsolidationTaskRuntime | null
   private getDefaultProviderFn: (() => ProviderConfig | null) | null
+  private sessionManager: SessionManager | null
   private timer: ReturnType<typeof setTimeout> | null = null
   private running = false
   private settings: ConsolidationSettings = { ...DEFAULT_CONSOLIDATION_SETTINGS }
@@ -151,6 +161,7 @@ export class MemoryConsolidationScheduler {
     this.agentCore = options.agentCore ?? null
     this.taskRuntime = options.taskRuntime ?? null
     this.getDefaultProviderFn = options.getDefaultProvider ?? null
+    this.sessionManager = options.sessionManager ?? null
   }
 
   start(): void {
@@ -264,7 +275,15 @@ export class MemoryConsolidationScheduler {
   private async executeConsolidation(): Promise<ConsolidationResult> {
     console.log('[openagent] Starting memory consolidation...')
     const startTime = Date.now()
-    const sessionId = `nightly-consolidation-${Date.now()}`
+    // Create the consolidation session up-front so both the task and the
+    // scheduler's tool-call logging share the same session ID (registered
+    // in the `sessions` table with type='consolidation').
+    const sessionId = this.sessionManager
+      ? this.sessionManager.createSession({
+          type: 'consolidation',
+          source: 'system',
+        }).id
+      : generateSessionId()
 
     const taskRuntime = this.resolveTaskRuntime()
 
@@ -328,6 +347,8 @@ export class MemoryConsolidationScheduler {
         triggerSourceId: 'memory-consolidation',
         provider: provider.name,
         model: provider.defaultModel,
+        // Pre-allocated session ID so the TaskRunner re-uses this session
+        // (it only creates a new session when sessionId is null).
         sessionId,
       })
 
