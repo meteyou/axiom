@@ -538,12 +538,14 @@ watch(() => messages.value[messages.value.length - 1]?.content?.length ?? 0, () 
 async function loadHistory() {
   loadingHistory.value = true
   try {
-    const data = await apiFetch<{ messages: Array<{ id: number; role: 'user' | 'assistant' | 'tool' | 'system'; content: string; metadata?: string; timestamp: string; session_id: string }> }>('/api/chat/history?limit=50')
+    const data = await apiFetch<{ messages: Array<{ id: number; role: 'user' | 'assistant' | 'tool' | 'system'; content: string; metadata?: string; timestamp: string; session_id: string; source?: string | null; session_type?: string | null }> }>('/api/chat/history?limit=50')
     if (data.messages?.length) {
       messages.value = data.messages.reverse().map((m) => {
         const meta = (() => { try { return JSON.parse(m.metadata || '{}') } catch { return {} } })()
         const attachments = (Array.isArray(meta.files) ? meta.files : []) as ChatMessage['attachments']
-        const source = m.session_id.startsWith('telegram-') ? 'telegram' as const : undefined
+        // Source comes from the joined `sessions.source` column (web/telegram/telegram-group/rest/...).
+        // Telegram messages render with a Telegram badge; everything else has no badge.
+        const source = (m.source === 'telegram' || m.source === 'telegram-group') ? 'telegram' as const : undefined
 
         // Reconstruct tool messages with toolData from metadata
         if (m.role === 'tool' && meta.toolName) {
