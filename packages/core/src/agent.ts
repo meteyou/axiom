@@ -86,9 +86,6 @@ export class AgentCore {
         return this.generateSessionSummary(userId, conversationHistory)
       },
       onSessionEnd: (session: SessionInfo, summary: string | null) => {
-        // Task injections now run under the real target user's interactive
-        // session (not a synthetic 'system' session), so the previous
-        // userId !== 'system' guard is no longer needed.
         this.runtime.clearMessages()
         this.refreshSystemPrompt()
 
