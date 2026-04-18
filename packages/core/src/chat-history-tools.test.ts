@@ -18,6 +18,22 @@ function insertMessage(
   ).run(sessionId, userId, role, content, metadata, timestamp)
 }
 
+/**
+ * Seed a session row so the `read_chat_history` source filter (which joins
+ * the `sessions` table) can resolve its type/source metadata. Safe to call
+ * multiple times for the same id — subsequent calls are ignored.
+ */
+function ensureSession(
+  db: Database,
+  sessionId: string,
+  type: 'interactive' | 'task' | 'heartbeat' | 'consolidation' | 'loop_detection',
+  source: string,
+) {
+  db.prepare(
+    'INSERT OR IGNORE INTO sessions (id, user_id, source, type) VALUES (?, ?, ?, ?)',
+  ).run(sessionId, 1, source, type)
+}
+
 function getTextContent(result: Awaited<ReturnType<AgentTool['execute']>>): string {
   if (!result || !('content' in result)) return ''
   const content = (result as { content: { type: string; text?: string }[] }).content
@@ -41,6 +57,15 @@ describe('read_chat_history tool', () => {
     db.prepare(
       "INSERT INTO users (id, username, password_hash, role) VALUES (1, 'testuser', 'hash', 'admin')",
     ).run()
+
+    // Seed test sessions with explicit type/source metadata. After PRD #11
+    // the source filter resolves via JOIN on `sessions.type`/`sessions.source`
+    // rather than session_id string prefixes.
+    ensureSession(db, 'session-1-abc', 'interactive', 'web')
+    ensureSession(db, 'web-1-xyz', 'interactive', 'web')
+    ensureSession(db, 'telegram-42-abc', 'interactive', 'telegram')
+    ensureSession(db, 'task-heartbeat-123', 'heartbeat', 'system')
+    ensureSession(db, 'session-1-def', 'interactive', 'web')
 
     // Seed test data
     insertMessage(db, 'session-1-abc', 'user', 'Hello, how are you?', '2025-04-04 10:00:00')
@@ -293,6 +318,8 @@ describe('read_chat_history tool', () => {
     })
 
     it('combines FTS queries with other filters', async () => {
+      ensureSession(db, 'telegram-99-filter', 'interactive', 'telegram')
+      ensureSession(db, 'web-99-filter', 'interactive', 'web')
       insertMessage(db, 'telegram-99-filter', 'assistant', 'Docker container deployed', '2025-04-06 12:00:00')
       insertMessage(db, 'telegram-99-filter', 'user', 'Docker container deployed', '2025-04-06 12:00:05')
       insertMessage(db, 'web-99-filter', 'assistant', 'Docker container deployed', '2025-04-06 12:00:10')
