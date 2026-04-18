@@ -15,6 +15,8 @@ interface ChatMessageRow {
   content: string
   metadata: string | null
   timestamp: string
+  session_type: string | null
+  session_source: string | null
 }
 
 /**
@@ -148,7 +150,8 @@ export function createReadChatHistoryTool(options: ChatHistoryToolsOptions): Age
           baseParams.push(normalized)
         }
 
-        // Source filter — matches session_id prefix pattern
+        // Source filter — resolved via JOIN on `sessions.type` / `sessions.source`
+        // instead of fragile session_id prefix matching.
         if (source) {
           const validSources = ['web', 'telegram', 'task']
           if (!validSources.includes(source)) {
@@ -158,13 +161,20 @@ export function createReadChatHistoryTool(options: ChatHistoryToolsOptions): Age
             }
           }
           if (source === 'task') {
-            // Task sessions use various prefixes: "task-", "agent-heartbeat-", "task-injection-"
-            baseConditions.push("(cm.session_id LIKE 'task-%' OR cm.session_id LIKE 'agent-heartbeat-%' OR cm.session_id LIKE 'task-injection-%')")
+            // Background agent-initiated work: task runs, heartbeats, memory
+            // consolidation, and loop-detection sub-sessions.
+            baseConditions.push(
+              "EXISTS (SELECT 1 FROM sessions s WHERE s.id = cm.session_id AND s.type IN ('task', 'heartbeat', 'consolidation', 'loop_detection'))"
+            )
           } else if (source === 'telegram') {
-            baseConditions.push("cm.session_id LIKE 'telegram-%'")
+            baseConditions.push(
+              "EXISTS (SELECT 1 FROM sessions s WHERE s.id = cm.session_id AND s.source IN ('telegram', 'telegram-group'))"
+            )
           } else {
-            // Web sessions: "web-" prefix or "session-" (from SessionManager)
-            baseConditions.push("(cm.session_id LIKE 'web-%' OR cm.session_id LIKE 'session-%')")
+            // Web-originated interactive sessions (WebSocket + REST upload).
+            baseConditions.push(
+              "EXISTS (SELECT 1 FROM sessions s WHERE s.id = cm.session_id AND s.source IN ('web', 'rest'))"
+            )
           }
         }
 
@@ -240,9 +250,13 @@ export function createReadChatHistoryTool(options: ChatHistoryToolsOptions): Age
           }
         }
 
-        // Fetch messages, ranked by FTS relevance when a query is provided
-        const selectSql = `SELECT cm.id, cm.session_id, cm.user_id, cm.role, cm.content, cm.metadata, cm.timestamp
+        // Fetch messages, ranked by FTS relevance when a query is provided.
+        // LEFT JOIN sessions so the session source/type is available for
+        // metadata-driven source labeling (replaces ID-prefix parsing).
+        const selectSql = `SELECT cm.id, cm.session_id, cm.user_id, cm.role, cm.content, cm.metadata, cm.timestamp,
+            s.type as session_type, s.source as session_source
           FROM chat_messages cm
+          LEFT JOIN sessions s ON s.id = cm.session_id
           ${joinClause}
           ${selectWhereClause}
           ORDER BY ${orderByClause}
@@ -253,7 +267,7 @@ export function createReadChatHistoryTool(options: ChatHistoryToolsOptions): Age
         // Format messages for readability
         const formatted = rows.map(row => {
           const meta = parseMetadata(row.metadata)
-          const sourceLabel = detectSource(row.session_id)
+          const sourceLabel = deriveSourceLabel(row.session_type, row.session_source)
           const parts: string[] = [
             `[${row.timestamp}] [${sourceLabel}] [${row.role}]`,
           ]
@@ -344,14 +358,15 @@ function parseMetadata(metadata: string | null): Record<string, unknown> | null 
 }
 
 /**
- * Detect the source of a message from its session_id prefix
+ * Derive a human-readable source label from the joined `sessions.type` and
+ * `sessions.source` columns. This replaces the legacy ID-prefix parser.
  */
-function detectSource(sessionId: string): string {
-  if (sessionId.startsWith('web-') || sessionId.startsWith('session-')) return 'web'
-  if (sessionId.startsWith('telegram-')) return 'telegram'
-  if (sessionId.startsWith('task-') || sessionId.startsWith('agent-heartbeat-')) return 'task'
-  if (sessionId.startsWith('task-injection-')) return 'task-injection'
-  return 'unknown'
+function deriveSourceLabel(sessionType: string | null, sessionSource: string | null): string {
+  // Background agent-initiated sessions are grouped under 'task'.
+  if (sessionType && sessionType !== 'interactive') return 'task'
+  if (sessionSource === 'telegram' || sessionSource === 'telegram-group') return 'telegram'
+  if (sessionSource === 'web' || sessionSource === 'rest') return 'web'
+  return sessionSource ?? 'unknown'
 }
 
 /**
