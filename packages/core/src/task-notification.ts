@@ -74,13 +74,18 @@ function escapeHtml(text: string): string {
  * - Otherwise fall back to the task's own session (cronjob, heartbeat,
  *   consolidation — background tasks without an interactive trigger).
  *
- * This replaces the legacy `task-result-<taskId>` pseudo-session ID.
+ * Replaces the legacy `task-result-<taskId>` pseudo-session IDs — the
+ * function always returns a real session UUID (either the task's own
+ * session or the linked interactive parent session).
  */
 export function resolveTaskNotificationSessionId(db: Database, task: Task): string {
   if (!task.sessionId) {
-    // Should not happen for tasks created via TaskRunner, but degrade
-    // gracefully rather than throwing.
-    return `task-result-${task.id}`
+    // Every task created via TaskRunner has a session_id. If this invariant
+    // is ever violated we want to fail loudly rather than silently invent a
+    // new legacy-style pseudo ID.
+    throw new Error(
+      `Cannot resolve notification session: task ${task.id} has no session_id`,
+    )
   }
 
   const row = db.prepare(
