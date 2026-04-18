@@ -86,14 +86,11 @@ export class AgentCore {
         return this.generateSessionSummary(userId, conversationHistory)
       },
       onSessionEnd: (session: SessionInfo, summary: string | null) => {
-        // Only clear agent messages for non-system sessions.
-        // System sessions (from task injections) share the same agent instance,
-        // and clearing messages here would wipe the user's conversation history
-        // before their session has a chance to generate a summary.
-        if (session.userId !== 'system') {
-          this.runtime.clearMessages()
-          this.refreshSystemPrompt()
-        }
+        // Task injections now run under the real target user's interactive
+        // session (not a synthetic 'system' session), so the previous
+        // userId !== 'system' guard is no longer needed.
+        this.runtime.clearMessages()
+        this.refreshSystemPrompt()
 
         // Notify external listener (e.g. ws-chat)
         if (this.onSessionEndCallback) {
@@ -153,15 +150,20 @@ export class AgentCore {
   /**
    * Inject a task result into the main agent via the message queue.
    * The injection is queued and processed sequentially like any other message.
+   *
+   * `targetUserId` identifies which user should see the task result. The
+   * injection is logged under that user's active interactive session (or a
+   * new one is created if none is active). This replaces the legacy
+   * synthetic `system` session.
    */
-  async injectTaskResult(injection: string): Promise<void> {
+  async injectTaskResult(injection: string, targetUserId: string): Promise<void> {
     const iterable = await this.messageQueue.enqueue<ResponseChunk>(
       'task_injection',
-      'system',
+      targetUserId,
       injection,
       'task',
       (msg) => {
-        return this.processTaskInjection(msg.payload.text)
+        return this.processTaskInjection(msg.payload.userId, msg.payload.text)
       },
     )
     // Stream response chunks via callback (if set), otherwise drain silently
@@ -242,22 +244,32 @@ export class AgentCore {
 
   /**
    * Process a task injection by sending it through the runtime boundary.
+   *
+   * The injection is logged under the target user's active interactive
+   * session (or a new interactive session is created if none is active).
+   * The response therefore appears inline in the user's conversation and
+   * is naturally included in session summaries via
+   * `buildConversationHistory()`.
    */
-  private async *processTaskInjection(injection: string): AsyncIterable<ResponseChunk> {
-    const session = this.sessionManager.getOrCreateSession('system', 'task')
+  private async *processTaskInjection(targetUserId: string, injection: string): AsyncIterable<ResponseChunk> {
+    const session = this.sessionManager.getOrCreateSession(targetUserId, 'task', 'interactive')
     const sessionId = session.id
+    this.currentInteractiveSessionId = sessionId
 
-    this.sessionManager.recordMessage('system')
-    this.currentToolUserId = undefined
+    this.sessionManager.recordMessage(targetUserId)
+
+    const parsedUserId = Number.parseInt(targetUserId, 10)
+    this.currentToolUserId = Number.isFinite(parsedUserId) ? parsedUserId : undefined
 
     try {
       yield* this.runtime.streamPrompt(injection, sessionId)
     } finally {
       this.currentToolUserId = undefined
+      this.currentInteractiveSessionId = undefined
     }
 
     // Count the agent response as a message too
-    this.sessionManager.recordMessage('system')
+    this.sessionManager.recordMessage(targetUserId)
   }
 
   /**
