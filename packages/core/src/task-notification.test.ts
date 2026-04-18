@@ -120,7 +120,10 @@ describe('persistTaskResultMessage', () => {
     expect(rows[0].role).toBe('system')
     expect(rows[0].content).toContain('✅')
     expect(rows[0].content).toContain('Build React App')
-    expect(rows[0].session_id).toBe('task-result-task-123')
+    // With no sessions row for the task, the persist path falls back to
+    // the task's own sessionId (interactive parent would be preferred
+    // when present — see resolveTaskNotificationSessionId tests).
+    expect(rows[0].session_id).toBe(task.sessionId)
 
     const metadata = JSON.parse(rows[0].metadata)
     expect(metadata.type).toBe('task_result')
@@ -129,6 +132,31 @@ describe('persistTaskResultMessage', () => {
     expect(metadata.durationMinutes).toBe(15)
     expect(metadata.promptTokens).toBe(5000)
     expect(metadata.completionTokens).toBe(3000)
+  })
+})
+
+describe('resolveTaskNotificationSessionId', () => {
+  it('returns the parent interactive session id when the task session has a parent', async () => {
+    const { resolveTaskNotificationSessionId } = await import('./task-notification.js')
+    const db = createTestDb()
+    db.prepare(
+      "INSERT INTO sessions (id, user_id, source, type, parent_session_id, started_at, message_count, summary_written) VALUES ('interactive-1', 1, 'web', 'interactive', NULL, datetime('now'), 0, 0)"
+    ).run()
+    db.prepare(
+      "INSERT INTO sessions (id, user_id, source, type, parent_session_id, started_at, message_count, summary_written) VALUES ('task-sess-1', 1, 'task', 'task', 'interactive-1', datetime('now'), 0, 0)"
+    ).run()
+    const task = makeTask({ sessionId: 'task-sess-1' })
+    expect(resolveTaskNotificationSessionId(db, task)).toBe('interactive-1')
+  })
+
+  it('falls back to the task session id when there is no parent', async () => {
+    const { resolveTaskNotificationSessionId } = await import('./task-notification.js')
+    const db = createTestDb()
+    db.prepare(
+      "INSERT INTO sessions (id, user_id, source, type, parent_session_id, started_at, message_count, summary_written) VALUES ('task-sess-2', 1, 'task', 'task', NULL, datetime('now'), 0, 0)"
+    ).run()
+    const task = makeTask({ sessionId: 'task-sess-2' })
+    expect(resolveTaskNotificationSessionId(db, task)).toBe('task-sess-2')
   })
 })
 
