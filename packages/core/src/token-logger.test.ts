@@ -326,6 +326,35 @@ describe('token-logger', () => {
       expect(result2.records).toHaveLength(1)
     })
 
+    it('treats all background session types as task filter matches', () => {
+      const testDb = createDb()
+
+      testDb.prepare("INSERT INTO sessions (id, source, type) VALUES ('sess-main', 'web', 'interactive')").run()
+      testDb.prepare("INSERT INTO sessions (id, source, type) VALUES ('sess-task', 'system', 'task')").run()
+      testDb.prepare("INSERT INTO sessions (id, source, type) VALUES ('sess-hb', 'system', 'heartbeat')").run()
+      testDb.prepare("INSERT INTO sessions (id, source, type) VALUES ('sess-cons', 'system', 'consolidation')").run()
+      testDb.prepare("INSERT INTO sessions (id, source, type) VALUES ('sess-loop', 'system', 'loop_detection')").run()
+
+      logToolCall(testDb, { sessionId: 'sess-main', toolName: 'main_call', input: '{}', output: '{}', durationMs: 10 })
+      logToolCall(testDb, { sessionId: 'sess-task', toolName: 'task_call', input: '{}', output: '{}', durationMs: 10 })
+      logToolCall(testDb, { sessionId: 'sess-hb', toolName: 'hb_call', input: '{}', output: '{}', durationMs: 10 })
+      logToolCall(testDb, { sessionId: 'sess-cons', toolName: 'cons_call', input: '{}', output: '{}', durationMs: 10 })
+      logToolCall(testDb, { sessionId: 'sess-loop', toolName: 'loop_call', input: '{}', output: '{}', durationMs: 10 })
+
+      const taskOnly = queryToolCalls(testDb, { sessionType: 'task' })
+      expect(taskOnly.total).toBe(4)
+      expect(taskOnly.records.every(r =>
+        r.sessionType === 'task'
+        || r.sessionType === 'heartbeat'
+        || r.sessionType === 'consolidation'
+        || r.sessionType === 'loop_detection'
+      )).toBe(true)
+
+      const mainOnly = queryToolCalls(testDb, { sessionType: 'main' })
+      expect(mainOnly.total).toBe(1)
+      expect(mainOnly.records[0].sessionId).toBe('sess-main')
+    })
+
     it('filters by session and tool name', () => {
       const testDb = createDb()
 
