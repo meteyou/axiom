@@ -105,8 +105,15 @@ export function setupWebSocketTask(options: WebSocketTaskOptions): WebSocketServ
         unsubscribe()
       })
     } else {
-      // Task is completed/failed — send historical data from DB
-      sendHistoricalEvents(ws, task.id, task.sessionId ?? `task-${task.id}`)
+      // Task is completed/failed — send historical data from DB.
+      // If the task has no sessionId (legacy / pre-migration data), there is
+      // nothing to load — just send an empty history block.
+      if (!task.sessionId) {
+        sendMessage(ws, { type: 'history_start', count: 0 })
+        sendMessage(ws, { type: 'history_end' })
+        return
+      }
+      sendHistoricalEvents(ws, task.id, task.sessionId)
     }
   }
 
