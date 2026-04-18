@@ -66,13 +66,43 @@ function escapeHtml(text: string): string {
 }
 
 /**
+ * Resolve the session ID under which a task result notification should be
+ * persisted. Walks the task's session lineage:
+ *
+ * - If the task's session has a `parent_session_id`, use the parent
+ *   (typically the user's interactive session that triggered the task).
+ * - Otherwise fall back to the task's own session (cronjob, heartbeat,
+ *   consolidation — background tasks without an interactive trigger).
+ *
+ * This replaces the legacy `task-result-<taskId>` pseudo-session ID.
+ */
+export function resolveTaskNotificationSessionId(db: Database, task: Task): string {
+  if (!task.sessionId) {
+    // Should not happen for tasks created via TaskRunner, but degrade
+    // gracefully rather than throwing.
+    return `task-result-${task.id}`
+  }
+
+  const row = db.prepare(
+    'SELECT parent_session_id FROM sessions WHERE id = ?'
+  ).get(task.sessionId) as { parent_session_id: string | null } | undefined
+
+  return row?.parent_session_id ?? task.sessionId
+}
+
+/**
  * Persist a task result to the chat_messages table so it appears in web chat history.
+ *
+ * When `sessionId` is not provided, the target session is resolved via
+ * `resolveTaskNotificationSessionId` (parent interactive session, or the
+ * task's own session as fallback).
  */
 export function persistTaskResultMessage(
   db: Database,
   userId: number,
   task: Task,
   durationMinutes: number,
+  sessionId?: string,
 ): void {
   const emoji = statusEmoji(task.resultStatus ?? task.status)
   const statusLabel = task.resultStatus ?? task.status
@@ -92,12 +122,11 @@ export function persistTaskResultMessage(
     toolCallCount: task.toolCallCount,
   })
 
-  // Use a generic session ID for task results so they always show up
-  const sessionId = `task-result-${task.id}`
+  const resolvedSessionId = sessionId ?? resolveTaskNotificationSessionId(db, task)
 
   db.prepare(
     'INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)'
-  ).run(sessionId, userId, 'system', content, metadata)
+  ).run(resolvedSessionId, userId, 'system', content, metadata)
 }
 
 export type TelegramDeliveryMode = 'auto' | 'always'
@@ -118,6 +147,11 @@ export interface TaskNotificationOptions {
   sendTelegram?: (message: string) => Promise<boolean>
   /** Broadcast a task event to all connected web clients */
   broadcastEvent?: (event: TaskNotificationEvent) => void
+  /**
+   * Optional pre-resolved target session ID for the persisted chat_messages
+   * row. When omitted, it is resolved via `resolveTaskNotificationSessionId`.
+   */
+  targetSessionId?: string
 }
 
 export interface TaskNotificationEvent {
@@ -153,10 +187,11 @@ export async function deliverTaskNotification(options: TaskNotificationOptions):
     broadcastEvent,
   } = options
 
-  // 1. Always persist to chat_messages
+  // 1. Always persist to chat_messages (under the resolved interactive
+  // session via parent_session_id, or the task session as fallback).
   let persisted = false
   try {
-    persistTaskResultMessage(db, userId, task, durationMinutes)
+    persistTaskResultMessage(db, userId, task, durationMinutes, options.targetSessionId)
     persisted = true
   } catch (err) {
     console.error(`[task-notification] Failed to persist task result for task ${task.id}:`, err)
