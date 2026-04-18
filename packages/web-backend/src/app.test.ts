@@ -44,7 +44,22 @@ beforeAll(async () => {
 
   db = initDatabase(':memory:')
   const mockAgentCore = {
-    getSessionManager: () => ({ setTimeoutMinutes }),
+    getSessionManager: () => ({
+      setTimeoutMinutes,
+      // Stub used by REST upload endpoint and ws-chat session resolution.
+      // Returns a synthetic UUID-shaped session ID so tests don't require a
+      // full SessionManager.
+      getOrCreateSession: (userId: string, source: string = 'web') => ({
+        id: `00000000-0000-0000-0000-${userId.padStart(12, '0')}`,
+        userId,
+        source,
+        startedAt: Date.now(),
+        lastActivity: Date.now(),
+        messageCount: 0,
+        summaryWritten: false,
+        restored: false,
+      }),
+    }),
     refreshSystemPrompt,
     setThinkingLevel,
   } as unknown as AgentCore
@@ -388,7 +403,9 @@ describe('WebSocket chat', () => {
     const msg = await waitForMessage()
     expect(msg.type).toBe('system')
     expect(msg.text).toBe('Authenticated')
-    expect(msg.sessionId).toBeDefined()
+    // Session ID is no longer assigned at auth time — it's resolved lazily
+    // from SessionManager on the first user message.
+    expect(msg.sessionId).toBeUndefined()
     ws.close()
   })
 
@@ -426,14 +443,14 @@ describe('WebSocket chat', () => {
   it('/new command resets session', async () => {
     const token = generateAccessToken({ userId: 1, username: 'admin', role: 'admin' })
     const { ws, waitForMessage } = await connectWs(token)
-    const authMsg = await waitForMessage() as { sessionId: string }
-    const oldSessionId = authMsg.sessionId
+    await waitForMessage() // auth confirmation (no sessionId)
 
     ws.send(JSON.stringify({ type: 'command', content: '/new' }))
     const msg = await waitForMessage()
     expect(msg.type).toBe('session_end')
-    expect(msg.sessionId).toBeDefined()
-    expect(msg.sessionId).not.toBe(oldSessionId)
+    // ws-chat in this test is set up with a `null` agent core, so /new emits
+    // a session_end without a sessionId (no SessionManager available to mint one).
+    expect(msg.sessionId).toBeUndefined()
     ws.close()
   })
 
