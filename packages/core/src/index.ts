@@ -247,6 +247,7 @@ export type { CronjobToolsOptions } from './cronjob-tools.js'
 export {
   formatTaskTelegramMessage,
   persistTaskResultMessage,
+  resolveTaskNotificationSessionId,
   deliverTaskNotification,
 } from './task-notification.js'
 export type {
