@@ -630,8 +630,17 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
 
     let taskInjectionResponseBuffer = ''
     let lastTelegramDelivered = false
+    let activeTaskInjectionMeta: PendingTaskInjectionMeta | null = null
 
     agentCore.setOnTaskInjectionChunk((chunk) => {
+      // A task injection emits multiple chunks (text/thinking/tool/done).
+      // Bind the whole chunk stream to one pending metadata entry so each
+      // chunk is broadcast/persisted for the correct target user.
+      if (!activeTaskInjectionMeta && pendingTaskInjections.length > 0) {
+        activeTaskInjectionMeta = pendingTaskInjections.shift() ?? null
+      }
+      const pendingMeta = activeTaskInjectionMeta
+
       if (chunk.type === 'text' && chunk.text) {
         taskInjectionResponseBuffer += chunk.text
       }
@@ -641,7 +650,6 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
         taskInjectionResponseBuffer = ''
         lastTelegramDelivered = false
 
-        const pendingMeta = pendingTaskInjections.shift()
         if (pendingMeta && telegramBot && responseText) {
           const shouldSend =
             taskSettings.telegramDelivery === 'always' ||
@@ -679,20 +687,29 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
         }
       }
 
-      chatEventBus.broadcast({
-        type: chunk.type === 'done' ? 'done' : chunk.type,
-        userId: 1,
-        source: 'task',
-        text: chunk.text,
-        toolName: chunk.toolName,
-        toolCallId: chunk.toolCallId,
-        toolArgs: chunk.toolArgs,
-        toolResult: chunk.toolResult,
-        toolIsError: chunk.toolIsError,
-        error: chunk.error,
-        telegramDelivered: chunk.type === 'done' ? lastTelegramDelivered : undefined,
-        isTaskInjection: true,
-      })
+      if (pendingMeta) {
+        chatEventBus.broadcast({
+          type: chunk.type === 'done' ? 'done' : chunk.type,
+          userId: pendingMeta.userId,
+          source: 'task',
+          text: chunk.text,
+          toolName: chunk.toolName,
+          toolCallId: chunk.toolCallId,
+          toolArgs: chunk.toolArgs,
+          toolResult: chunk.toolResult,
+          toolIsError: chunk.toolIsError,
+          error: chunk.error,
+          telegramDelivered: chunk.type === 'done' ? lastTelegramDelivered : undefined,
+          isTaskInjection: true,
+        })
+      } else {
+        logger.warn('[openagent] Missing task injection metadata; dropping streamed chunk broadcast')
+      }
+
+      if (chunk.type === 'done') {
+        activeTaskInjectionMeta = null
+        lastTelegramDelivered = false
+      }
     })
   }
 
