@@ -18,6 +18,10 @@ export interface ToolCallRecord {
   output: string
   durationMs: number
   status?: 'success' | 'error'
+  /** Joined from `sessions.type` (populated by queries that JOIN sessions) */
+  sessionType?: string | null
+  /** Joined from `sessions.source` (populated by queries that JOIN sessions) */
+  sessionSource?: string | null
 }
 
 /**
@@ -104,7 +108,13 @@ export interface ToolCallQueryOptions {
   dateTo?: string
   page?: number
   limit?: number
-  /** Filter by source: 'main' (non-task sessions), 'task' (task-* sessions), or undefined (all) */
+  /**
+   * Filter by session type (resolved via JOIN on `sessions.type`):
+   * - 'main' — interactive sessions (or NULL/orphan session_ids)
+   * - 'task' — background task sessions (`sessions.type = 'task'`)
+   */
+  sessionType?: 'main' | 'task'
+  /** @deprecated use `sessionType`. Kept for backward compatibility. */
   sourceFilter?: 'main' | 'task'
 }
 
@@ -162,10 +172,11 @@ export function queryToolCalls(db: Database, options: ToolCallQueryOptions = {})
     where += ' AND tool_name = ?'
     params.push(options.toolName)
   }
-  if (options.sourceFilter === 'task') {
-    where += " AND session_id LIKE 'task-%'"
-  } else if (options.sourceFilter === 'main') {
-    where += " AND (session_id IS NULL OR session_id NOT LIKE 'task-%')"
+  const sessionType = options.sessionType ?? options.sourceFilter
+  if (sessionType === 'task') {
+    where += " AND EXISTS (SELECT 1 FROM sessions s WHERE s.id = tool_calls.session_id AND s.type = 'task')"
+  } else if (sessionType === 'main') {
+    where += " AND (tool_calls.session_id IS NULL OR NOT EXISTS (SELECT 1 FROM sessions s WHERE s.id = tool_calls.session_id AND s.type IN ('task', 'heartbeat', 'consolidation', 'loop_detection')))"
   }
   if (options.search) {
     where += ' AND (tool_name LIKE ? OR input LIKE ? OR output LIKE ?)'
@@ -187,7 +198,21 @@ export function queryToolCalls(db: Database, options: ToolCallQueryOptions = {})
   const total = (db.prepare(`SELECT COUNT(*) as count FROM tool_calls ${where}`).get(...params) as { count: number }).count
 
   const records = db.prepare(
-    `SELECT id, timestamp, session_id as sessionId, tool_name as toolName, input, output, duration_ms as durationMs, status FROM tool_calls ${where} ORDER BY timestamp DESC LIMIT ? OFFSET ?`
+    `SELECT
+       tool_calls.id,
+       tool_calls.timestamp,
+       tool_calls.session_id as sessionId,
+       tool_calls.tool_name as toolName,
+       tool_calls.input,
+       tool_calls.output,
+       tool_calls.duration_ms as durationMs,
+       tool_calls.status,
+       s.type as sessionType,
+       s.source as sessionSource
+     FROM tool_calls
+     LEFT JOIN sessions s ON s.id = tool_calls.session_id
+     ${where}
+     ORDER BY tool_calls.timestamp DESC LIMIT ? OFFSET ?`
   ).all(...params, limit, offset) as ToolCallRecord[]
 
   return {
