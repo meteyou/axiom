@@ -111,7 +111,8 @@ export interface ToolCallQueryOptions {
   /**
    * Filter by session type (resolved via JOIN on `sessions.type`):
    * - 'main' — interactive sessions (or NULL/orphan session_ids)
-   * - 'task' — background task sessions (`sessions.type = 'task'`)
+   * - 'task' — background sessions (`sessions.type` in
+   *   'task' | 'heartbeat' | 'consolidation' | 'loop_detection')
    */
   sessionType?: 'main' | 'task'
   /** @deprecated use `sessionType`. Kept for backward compatibility. */
@@ -174,7 +175,7 @@ export function queryToolCalls(db: Database, options: ToolCallQueryOptions = {})
   }
   const sessionType = options.sessionType ?? options.sourceFilter
   if (sessionType === 'task') {
-    where += " AND EXISTS (SELECT 1 FROM sessions s WHERE s.id = tool_calls.session_id AND s.type = 'task')"
+    where += " AND EXISTS (SELECT 1 FROM sessions s WHERE s.id = tool_calls.session_id AND s.type IN ('task', 'heartbeat', 'consolidation', 'loop_detection'))"
   } else if (sessionType === 'main') {
     where += " AND (tool_calls.session_id IS NULL OR NOT EXISTS (SELECT 1 FROM sessions s WHERE s.id = tool_calls.session_id AND s.type IN ('task', 'heartbeat', 'consolidation', 'loop_detection')))"
   }
