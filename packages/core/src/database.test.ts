@@ -617,9 +617,9 @@ describe('database', () => {
       // Earliest timestamp of orphan chat_messages should be used.
       const webSession = sessions.find(s => s.type === 'interactive' && s.started_at.startsWith('2024-01-01'))
       expect(webSession).toBeDefined()
-      // user_id + session_user should be populated from child rows / users table when available.
+      // user_id + session_user should be populated from child rows when available.
       expect(webSession!.user_id).toBe(1)
-      expect(webSession!.session_user).toBe('bob')
+      expect(webSession!.session_user).toBe('1')
 
       db.close()
     })

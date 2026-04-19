@@ -703,12 +703,10 @@ function migrateLegacySessionIds(db: Database): void {
         if (row.t && (!earliest || row.t < earliest)) earliest = row.t
         if (row.u != null && userId == null) userId = row.u
       }
-      // Try to resolve session_user from the users table if we got a user_id.
+      // Keep session_user semantics aligned with runtime SessionManager:
+      // it stores the canonical string user key (for web users: numeric ID).
       if (userId != null) {
-        const userRow = db.prepare(
-          "SELECT username FROM users WHERE id = ?"
-        ).get(userId) as { username: string } | undefined
-        sessionUser = userRow?.username ?? null
+        sessionUser = String(userId)
       }
 
       insertOrphanStmt.run(
