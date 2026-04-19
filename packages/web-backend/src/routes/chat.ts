@@ -14,10 +14,11 @@ export interface ChatRouterOptions {
 }
 
 export function createChatRouter(options: ChatRouterOptions | Database): Router {
-  // Backwards-compat: allow `createChatRouter(db)` (used by older callers/tests)
-  const opts: ChatRouterOptions = ('db' in (options as ChatRouterOptions)
-    ? (options as ChatRouterOptions)
-    : { db: options as Database })
+  // Backwards-compat: allow `createChatRouter(db)` (used by older callers/tests).
+  // Detect raw Database objects by their `prepare()` method.
+  const opts: ChatRouterOptions = (typeof (options as Database).prepare === 'function'
+    ? { db: options as Database }
+    : (options as ChatRouterOptions))
   const { db } = opts
   const getAgentCore = opts.getAgentCore ?? (() => null)
   const router = Router()
@@ -34,14 +35,18 @@ export function createChatRouter(options: ChatRouterOptions | Database): Router 
       return
     }
 
-    // Resolve a tracked interactive session via SessionManager. Source = 'rest'
-    // so the originating channel is preserved on the `sessions` row.
+    // Resolve a tracked interactive session via SessionManager. Source is
+    // 'web' — this REST endpoint is the upload prelude for a WebSocket chat
+    // message, so the session belongs to the web channel. Using 'rest' here
+    // would leak into the cached session and mistag subsequent WS messages
+    // (the cache keeps the initial source), corrupting source-based filters
+    // in chat history, logs, and usage stats.
     const agentCore = getAgentCore()
     if (!agentCore) {
       res.status(503).json({ error: 'Agent core not available' })
       return
     }
-    const session = agentCore.getSessionManager().getOrCreateSession(String(userId), 'rest')
+    const session = agentCore.getSessionManager().getOrCreateSession(String(userId), 'web')
     const sessionId = session.id
 
     const uploads = files.map(file => saveUpload({
