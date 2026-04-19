@@ -161,11 +161,7 @@ export class SessionManager {
 
     if (row.message_count > 0 && !summaryWritten && this.onSummarize) {
       try {
-        const history = this.buildConversationHistory(row.id, {
-          userId,
-          startedAt,
-          endAt: lastActivity,
-        })
+        const history = this.buildConversationHistory(row.id)
         if (history) {
           summary = await this.onSummarize(row.id, userId, history)
           if (summary) {
@@ -289,15 +285,8 @@ export class SessionManager {
    * result notifications and task injection responses: those messages now
    * live in child/task sessions (or — when merged — in this session
    * directly via `processTaskInjection`).
-   *
-   * The `options` parameter is retained for backward compatibility but is
-   * no longer used for message resolution.
    */
-  buildConversationHistory(
-    sessionId: string,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _options?: { userId?: string; startedAt?: number; endAt?: number },
-  ): string | null {
+  buildConversationHistory(sessionId: string): string | null {
     type ChatMessageRow = {
       session_id: string
       role: string
@@ -509,11 +498,7 @@ export class SessionManager {
       try {
         // Build conversation history from DB (single source of truth).
         // In-memory agent messages are unreliable (lost on provider change, restart, etc.)
-        const history = this.buildConversationHistory(session.id, {
-          userId,
-          startedAt: session.startedAt,
-          endAt: Date.now(),
-        }) ?? undefined
+        const history = this.buildConversationHistory(session.id) ?? undefined
 
         summary = await this.onSummarize(session.id, userId, history)
         if (summary) {

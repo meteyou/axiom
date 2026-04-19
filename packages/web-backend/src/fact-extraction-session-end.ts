@@ -17,18 +17,13 @@ export interface FactExtractionSettings {
 
 export interface SessionHistoryProvider {
   getSessionManager(): {
-    buildConversationHistory(
-      sessionId: string,
-      options?: { userId?: string; startedAt?: number; endAt?: number },
-    ): string | null
+    buildConversationHistory(sessionId: string): string | null
   }
 }
 
 interface SessionRow {
   user_id: number | null
   session_user: string | null
-  started_at: string
-  ended_at: string | null
   message_count: number
 }
 
@@ -64,12 +59,6 @@ const defaultDeps: FactExtractionDeps = {
   getApiKeyForProvider,
   extractAndStoreFacts,
   console,
-}
-
-function parseSqliteTimestamp(value: string | null): number | null {
-  if (!value) return null
-  const parsed = Date.parse(value.replace(' ', 'T') + 'Z')
-  return Number.isFinite(parsed) ? parsed : null
 }
 
 function parseStrictNumericUserId(value: string | null | undefined): number | null {
@@ -140,7 +129,7 @@ export function triggerFactExtractionForSessionEnd(options: TriggerFactExtractio
   }
 
   const sessionRow = db.prepare(
-    'SELECT user_id, session_user, started_at, ended_at, message_count FROM sessions WHERE id = ?'
+    'SELECT user_id, session_user, message_count FROM sessions WHERE id = ?'
   ).get(sessionId) as SessionRow | undefined
 
   if (!sessionRow || sessionRow.message_count < settings.minSessionMessages) {
@@ -155,13 +144,7 @@ export function triggerFactExtractionForSessionEnd(options: TriggerFactExtractio
     return false
   }
 
-  const startedAt = parseSqliteTimestamp(sessionRow.started_at) ?? Date.now()
-  const endAt = parseSqliteTimestamp(sessionRow.ended_at) ?? Date.now()
-  const conversationHistory = agentCore.getSessionManager().buildConversationHistory(sessionId, {
-    userId: String(numericUserId),
-    startedAt,
-    endAt,
-  })
+  const conversationHistory = agentCore.getSessionManager().buildConversationHistory(sessionId)
 
   if (!conversationHistory) {
     return false
