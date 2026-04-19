@@ -735,8 +735,6 @@ function migrateLegacySessionIds(db: Database): void {
   })
 
   runMigration()
-  // Re-assert default FK behavior outside the transaction.
-  db.pragma('defer_foreign_keys = OFF')
 }
 
 /**
