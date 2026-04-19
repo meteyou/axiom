@@ -3,6 +3,7 @@ import { initDatabase } from './database.js'
 import { createTaskRuntime } from './task-runtime.js'
 import type { Database } from './database.js'
 import type { ProviderConfig } from './provider-config.js'
+import { SessionManager } from './session-manager.js'
 
 vi.mock('./provider-config.js', async (importOriginal) => {
   const original = await importOriginal() as Record<string, unknown>
@@ -86,6 +87,7 @@ describe('TaskRuntime boundary', () => {
     const db = initDatabase(':memory:')
     const onTaskComplete = vi.fn()
     const onInjection = vi.fn()
+    const sessionManager = new SessionManager({ db })
 
     const runtime = createTaskRuntime({
       db,
@@ -94,6 +96,7 @@ describe('TaskRuntime boundary', () => {
         getApiKey: async () => 'test-key',
         tools: [],
         onTaskComplete,
+        sessionManager,
       },
       scheduler: {
         getDefaultProvider: () => mockProvider,
