@@ -453,21 +453,13 @@ export function setupWebSocketChat(
             senderName: event.senderName,
           })
         } else if (event.type === 'session_end') {
-          // Session timed out — resolve the next session ID via SessionManager (UUID).
-          const ac = resolveAgentCore()
-          let newSessionId: string | undefined
-          if (ac) {
-            const smSession = ac.getSessionManager().getOrCreateSession(String(event.userId), 'web')
-            newSessionId = smSession.id
-            clientSessions.set(client, newSessionId)
-          } else {
-            // No agent core: clear cached session, next message will resolve.
-            clientSessions.delete(client)
-          }
+          // Session ended (timeout or explicit /new). Clear the cached ID and
+          // let the next actual message mint a fresh session lazily, so idle
+          // users don't accumulate empty `sessions` rows on every timeout.
+          clientSessions.delete(client)
           sendMessage(client, {
             type: 'session_end',
             text: event.text,
-            sessionId: newSessionId,
           })
         } else if (event.type === 'task_completed' || event.type === 'task_failed' || event.type === 'task_question') {
           sendMessage(client, {
