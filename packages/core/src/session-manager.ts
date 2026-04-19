@@ -307,11 +307,12 @@ export class SessionManager {
     }
 
     // Recursive CTE: include the session itself + all descendants via
-    // parent_session_id (task, loop_detection, etc.).
+    // parent_session_id (task, loop_detection, etc.). Use UNION (distinct)
+    // so accidental cycles in parent_session_id cannot recurse forever.
     const messages = this.db.prepare(
       `WITH RECURSIVE session_tree(id) AS (
          SELECT ?
-         UNION ALL
+         UNION
          SELECT s.id FROM sessions s
          JOIN session_tree st ON s.parent_session_id = st.id
        )
