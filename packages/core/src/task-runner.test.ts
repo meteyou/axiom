@@ -5,6 +5,7 @@ import { TaskRunner, formatTaskInjection } from './task-runner.js'
 import type { TaskRunnerOptions, TaskOverrides } from './task-runner.js'
 import type { Database } from './database.js'
 import type { ProviderConfig } from './provider-config.js'
+import { SessionManager } from './session-manager.js'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
@@ -87,6 +88,7 @@ describe('TaskRunner', () => {
   let db: Database
   let store: TaskStore
   let runner: TaskRunner
+  let sessionManager: SessionManager
   const tmpFiles: string[] = []
   let onTaskCompleteCalls: { taskId: string; injection: string }[] = []
   let onTaskPausedCalls: { taskId: string; injection: string }[] = []
@@ -100,6 +102,7 @@ describe('TaskRunner', () => {
   beforeEach(() => {
     db = initDatabase(tmpDbPath())
     store = new TaskStore(db)
+    sessionManager = new SessionManager({ db })
     onTaskCompleteCalls = []
     onTaskPausedCalls = []
 
@@ -115,6 +118,7 @@ describe('TaskRunner', () => {
       onTaskPaused: (taskId: string, injection: string) => {
         onTaskPausedCalls.push({ taskId, injection })
       },
+      sessionManager,
     }
 
     runner = new TaskRunner(options)
@@ -758,6 +762,7 @@ describe('TaskRunner', () => {
         getApiKey: async () => 'test-key',
         tools: [toolA, toolB, toolC] as any,
         onTaskComplete: () => {},
+        sessionManager,
       })
 
       const task = store.create({

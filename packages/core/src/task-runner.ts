@@ -7,7 +7,6 @@ import { readBackgroundThinkingLevelFromConfig } from './thinking-level.js'
 import { TaskStore } from './task-store.js'
 import type { Task, TaskResultStatus, TaskTriggerType } from './task-store.js'
 import type { SessionManager, SessionType } from './session-manager.js'
-import { generateSessionId } from './session-manager.js'
 import { logTokenUsage, logToolCall } from './token-logger.js'
 import { estimateCost, parseProviderModelId } from './provider-config.js'
 import type { ProviderConfig } from './provider-config.js'
@@ -64,10 +63,8 @@ export interface TaskRunnerOptions {
   /**
    * SessionManager used to register every background session in the
    * `sessions` table with the correct `type` and `parent_session_id`.
-   * If omitted, a UUID is still generated but no session row is created
-   * (used for some unit tests). Production code MUST provide one.
    */
-  sessionManager?: SessionManager
+  sessionManager: SessionManager
 }
 
 /**
@@ -248,27 +245,20 @@ export class TaskRunner {
   /**
    * Ensure the task has a session ID registered in the `sessions` table.
    * If the task already has a sessionId, it's used as-is. Otherwise a new
-   * session is created via SessionManager (if available) with the correct
-   * `type` derived from `task.triggerType` and the provided `parentSessionId`.
+   * session is created via SessionManager with the correct `type` derived
+   * from `task.triggerType` and the provided `parentSessionId`.
    * The resulting sessionId is persisted on the task row.
    */
   private ensureTaskSession(task: Task, parentSessionId?: string | null): string {
     if (task.sessionId) return task.sessionId
 
     const sessionType = triggerTypeToSessionType(task.triggerType)
-    let sessionId: string
-    if (this.options.sessionManager) {
-      const session = this.options.sessionManager.createSession({
-        type: sessionType,
-        source: 'system',
-        parentSessionId: parentSessionId ?? undefined,
-      })
-      sessionId = session.id
-    } else {
-      // Fallback for tests / setups that don't wire a SessionManager.
-      // Production paths always provide one (per Task 4 requirements).
-      sessionId = generateSessionId()
-    }
+    const session = this.options.sessionManager.createSession({
+      type: sessionType,
+      source: 'system',
+      parentSessionId: parentSessionId ?? undefined,
+    })
+    const sessionId = session.id
 
     this.store.update(task.id, { sessionId })
     task.sessionId = sessionId
@@ -718,13 +708,11 @@ export class TaskRunner {
 
       // Track token usage from detection — register a child session of the task
       const taskSessionId = this.store.getById(runningTask.taskId)?.sessionId ?? null
-      const sessionId = this.options.sessionManager
-        ? this.options.sessionManager.createSession({
-            type: 'loop_detection',
-            source: 'system',
-            parentSessionId: taskSessionId ?? undefined,
-          }).id
-        : generateSessionId()
+      const sessionId = this.options.sessionManager.createSession({
+        type: 'loop_detection',
+        source: 'system',
+        parentSessionId: taskSessionId ?? undefined,
+      }).id
       detectionAgent.subscribe((event: AgentEvent) => {
         if (event.type === 'message_end') {
           const msg = event.message as Message
