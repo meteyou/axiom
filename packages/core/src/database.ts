@@ -482,40 +482,64 @@ export function initDatabase(dbPath?: string): Database {
     db.exec("ALTER TABLE sessions ADD COLUMN parent_session_id TEXT")
   }
 
-  // Ensure CHECK constraint on sessions.type exists. Test by attempting to insert
-  // an invalid type — if it succeeds (older table without CHECK), recreate the table.
+  // Ensure CHECK constraint on sessions.type exists. Detect by probing the
+  // table with an invalid type value inside a SAVEPOINT that is ALWAYS
+  // rolled back — this guarantees no probe row survives a crash or an
+  // unexpected error between INSERT and cleanup, which would otherwise
+  // wedge the next boot with a spurious PRIMARY KEY violation.
+  db.exec("SAVEPOINT sessions_type_probe")
+  let needsCheckRecreation = false
   try {
-    db.exec("INSERT INTO sessions (id, type) VALUES ('__migration_test_type__', '__invalid__')")
-    // CHECK is missing → cleanup and recreate the table to add the constraint + FK
-    db.exec("DELETE FROM sessions WHERE id = '__migration_test_type__'")
-    db.exec(`
-      ALTER TABLE sessions RENAME TO sessions_old;
-      CREATE TABLE sessions (
-        id TEXT PRIMARY KEY,
-        user_id INTEGER,
-        source TEXT NOT NULL DEFAULT 'web',
-        type TEXT NOT NULL DEFAULT 'interactive' CHECK(type IN ('interactive', 'task', 'heartbeat', 'consolidation', 'loop_detection')),
-        parent_session_id TEXT,
-        started_at TEXT NOT NULL DEFAULT (datetime('now')),
-        ended_at TEXT,
-        message_count INTEGER NOT NULL DEFAULT 0,
-        summary_written INTEGER NOT NULL DEFAULT 0,
-        last_activity TEXT,
-        session_user TEXT,
-        prompt_tokens INTEGER NOT NULL DEFAULT 0,
-        completion_tokens INTEGER NOT NULL DEFAULT 0,
-        FOREIGN KEY (user_id) REFERENCES users(id),
-        FOREIGN KEY (parent_session_id) REFERENCES sessions(id)
-      );
-      INSERT INTO sessions (id, user_id, source, type, parent_session_id, started_at, ended_at, message_count, summary_written, last_activity, session_user, prompt_tokens, completion_tokens)
-        SELECT id, user_id, source, type, parent_session_id, started_at, ended_at, message_count, summary_written, last_activity, session_user, prompt_tokens, completion_tokens FROM sessions_old;
-      DROP TABLE sessions_old;
-      CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
-      CREATE INDEX IF NOT EXISTS idx_sessions_type ON sessions(type);
-      CREATE INDEX IF NOT EXISTS idx_sessions_parent ON sessions(parent_session_id);
-    `)
-  } catch {
-    // CHECK already enforced — nothing to do
+    try {
+      db.exec("INSERT INTO sessions (id, type) VALUES ('__migration_test_type__', '__invalid__')")
+      // INSERT succeeded → CHECK constraint is missing.
+      needsCheckRecreation = true
+    } catch (err: unknown) {
+      // Only a CHECK-constraint violation means "CHECK is already enforced".
+      // Any other error (disk I/O, etc.) indicates a real problem and must
+      // not be silently swallowed.
+      const code = (err as { code?: string }).code
+      if (code !== 'SQLITE_CONSTRAINT_CHECK') throw err
+    }
+  } finally {
+    // Always discard whatever the probe did — success or failure.
+    db.exec("ROLLBACK TO sessions_type_probe")
+    db.exec("RELEASE sessions_type_probe")
+  }
+
+  if (needsCheckRecreation) {
+    // Wrap the recreation in a single transaction so a mid-step failure
+    // (disk full, FK violation during copy, etc.) rolls back to a consistent
+    // state instead of leaving `sessions_old` orphaned without `sessions`.
+    const localDb = db
+    localDb.transaction(() => {
+      localDb.exec(`
+        ALTER TABLE sessions RENAME TO sessions_old;
+        CREATE TABLE sessions (
+          id TEXT PRIMARY KEY,
+          user_id INTEGER,
+          source TEXT NOT NULL DEFAULT 'web',
+          type TEXT NOT NULL DEFAULT 'interactive' CHECK(type IN ('interactive', 'task', 'heartbeat', 'consolidation', 'loop_detection')),
+          parent_session_id TEXT,
+          started_at TEXT NOT NULL DEFAULT (datetime('now')),
+          ended_at TEXT,
+          message_count INTEGER NOT NULL DEFAULT 0,
+          summary_written INTEGER NOT NULL DEFAULT 0,
+          last_activity TEXT,
+          session_user TEXT,
+          prompt_tokens INTEGER NOT NULL DEFAULT 0,
+          completion_tokens INTEGER NOT NULL DEFAULT 0,
+          FOREIGN KEY (user_id) REFERENCES users(id),
+          FOREIGN KEY (parent_session_id) REFERENCES sessions(id)
+        );
+        INSERT INTO sessions (id, user_id, source, type, parent_session_id, started_at, ended_at, message_count, summary_written, last_activity, session_user, prompt_tokens, completion_tokens)
+          SELECT id, user_id, source, type, parent_session_id, started_at, ended_at, message_count, summary_written, last_activity, session_user, prompt_tokens, completion_tokens FROM sessions_old;
+        DROP TABLE sessions_old;
+        CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+        CREATE INDEX IF NOT EXISTS idx_sessions_type ON sessions(type);
+        CREATE INDEX IF NOT EXISTS idx_sessions_parent ON sessions(parent_session_id);
+      `)
+    })()
   }
 
   db.exec(`
