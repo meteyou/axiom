@@ -119,11 +119,12 @@ export class SessionManager {
       const lastActivity = this.parseSqliteTimestamp(lastActivityStr)
       const elapsed = Date.now() - lastActivity
 
-      // Prefer session_user; fall back to user_id for legacy rows where
-      // session_user was never backfilled. Final fallback keeps sessions
-      // distinct to avoid timer collisions.
-      const userId = row.session_user
-        ?? (row.user_id != null ? String(row.user_id) : `orphan:${row.id}`)
+      // Prefer numeric user_id when present (stable canonical key), then
+      // fall back to session_user for rows without user_id (e.g. legacy /
+      // non-numeric identities). Final fallback keeps sessions distinct.
+      const userId = row.user_id != null
+        ? String(row.user_id)
+        : (row.session_user ?? `orphan:${row.id}`)
 
       if (elapsed >= this.timeoutMs) {
         // Timeout already elapsed → summarize and close

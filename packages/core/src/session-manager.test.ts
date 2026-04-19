@@ -965,6 +965,31 @@ describe('SessionManager', () => {
       await manager.dispose()
     })
 
+    it('prefers user_id over legacy non-numeric session_user when restoring orphans', async () => {
+      db.prepare(
+        `INSERT INTO users (id, username, password_hash, role) VALUES (43, 'alice', 'hash', 'user')`
+      ).run()
+
+      const sessionId = generateSessionId()
+      db.prepare(
+        `INSERT INTO sessions (id, user_id, source, type, session_user, started_at, last_activity, message_count, summary_written)
+         VALUES (?, 43, 'web', 'interactive', 'alice', datetime('now'), datetime('now'), 1, 0)`
+      ).run(sessionId)
+
+      const manager = new SessionManager({
+        db,
+        memoryDir,
+        timeoutMinutes: 15,
+      })
+      await manager.init()
+
+      expect(manager.hasActiveSession('43')).toBe(true)
+      expect(manager.hasActiveSession('alice')).toBe(false)
+      expect(manager.getSession('43')?.id).toBe(sessionId)
+
+      await manager.dispose()
+    })
+
     it('handles pre-migration sessions without last_activity (falls back to started_at)', async () => {
       // Manually insert a session without last_activity (simulating pre-migration data)
       const sessionId = generateSessionId()
