@@ -14,9 +14,15 @@ export interface UsageStatsQueryOptions {
   /**
    * Filter by session type (resolved via JOIN on `sessions.type`):
    * - 'main' — interactive sessions (or NULL/orphan session_ids)
-   * - 'task' — background task sessions (`sessions.type = 'task'`)
+   * - 'task' — background agent-initiated sessions: `sessions.type` in
+   *   ('task', 'consolidation', 'loop_detection'). Heartbeat is excluded
+   *   because it has its own bucket.
    * - 'heartbeat' — agent heartbeat sessions (`sessions.type = 'heartbeat'`)
    * - undefined — all
+   *
+   * Invariant: `main + task + heartbeat == all` (every session row maps
+   * to exactly one of the three buckets; NULL/orphan session_ids count
+   * as 'main').
    */
   sessionType?: 'main' | 'task' | 'heartbeat'
 }
@@ -128,10 +134,14 @@ function buildWhereClause(options: UsageStatsQueryOptions, whereOptions: WhereOp
     params.push(options.model)
   }
 
-  // Session type filter: JOIN on sessions.type (NULL session_ids / orphan
-  // FKs are treated as 'interactive' for backward compatibility with 'main').
+  // Session type filter: JOIN on sessions.type. NULL session_ids / orphan
+  // FKs map to 'main'. The three buckets partition every row exactly once
+  // so totals are additive: main + task + heartbeat == all.
+  //   'task'      -> sessions.type IN ('task', 'consolidation', 'loop_detection')
+  //   'heartbeat' -> sessions.type = 'heartbeat'
+  //   'main'      -> sessions.type = 'interactive' OR session_id orphaned/NULL
   if (options.sessionType === 'task') {
-    clauses.push("EXISTS (SELECT 1 FROM sessions s WHERE s.id = token_usage.session_id AND s.type = 'task')")
+    clauses.push("EXISTS (SELECT 1 FROM sessions s WHERE s.id = token_usage.session_id AND s.type IN ('task', 'consolidation', 'loop_detection'))")
   } else if (options.sessionType === 'heartbeat') {
     clauses.push("EXISTS (SELECT 1 FROM sessions s WHERE s.id = token_usage.session_id AND s.type = 'heartbeat')")
   } else if (options.sessionType === 'main') {
