@@ -132,6 +132,7 @@ describe('usage-stats', () => {
     testDb.prepare("INSERT INTO sessions (id, source, type) VALUES ('sess-task', 'system', 'task')").run()
     testDb.prepare("INSERT INTO sessions (id, source, type) VALUES ('sess-hb',   'system', 'heartbeat')").run()
     testDb.prepare("INSERT INTO sessions (id, source, type) VALUES ('sess-cons', 'system', 'consolidation')").run()
+    testDb.prepare("INSERT INTO sessions (id, source, type) VALUES ('sess-loop', 'system', 'loop_detection')").run()
 
     const ts = createTimestamp(new Date('2026-03-22T10:00:00Z'))
     const insert = testDb.prepare(
@@ -141,6 +142,7 @@ describe('usage-stats', () => {
     insert.run(ts, 'openai', 'gpt-4o', 200, 100, 0.002, 'sess-task')
     insert.run(ts, 'openai', 'gpt-4o', 300, 150, 0.003, 'sess-hb')
     insert.run(ts, 'openai', 'gpt-4o', 400, 200, 0.004, 'sess-cons')
+    insert.run(ts, 'openai', 'gpt-4o', 500, 250, 0.005, 'sess-loop')
     // NULL session_id — should be treated as 'main' for backward compat.
     testDb.prepare(
       'INSERT INTO token_usage (timestamp, provider, model, prompt_tokens, completion_tokens, estimated_cost) VALUES (?, ?, ?, ?, ?, ?)',
@@ -150,16 +152,21 @@ describe('usage-stats', () => {
     expect(main.totals.requests).toBe(2) // sess-main + NULL
     expect(main.totals.totalTokens).toBe(100 + 50 + 10 + 5)
 
+    // 'task' bucket includes task + consolidation + loop_detection.
     const task = queryUsageStats(testDb, { sessionType: 'task' })
-    expect(task.totals.requests).toBe(1)
-    expect(task.totals.totalTokens).toBe(200 + 100)
+    expect(task.totals.requests).toBe(3)
+    expect(task.totals.totalTokens).toBe((200 + 100) + (400 + 200) + (500 + 250))
 
     const hb = queryUsageStats(testDb, { sessionType: 'heartbeat' })
     expect(hb.totals.requests).toBe(1)
     expect(hb.totals.totalTokens).toBe(300 + 150)
 
     const all = queryUsageStats(testDb)
-    expect(all.totals.requests).toBe(5)
+    expect(all.totals.requests).toBe(6)
+
+    // Invariant: the three buckets partition the data — main + task + heartbeat == all.
+    expect(main.totals.requests + task.totals.requests + hb.totals.requests).toBe(all.totals.requests)
+    expect(main.totals.totalTokens + task.totals.totalTokens + hb.totals.totalTokens).toBe(all.totals.totalTokens)
   })
 
   it('returns today/week/month/all-time totals', () => {
