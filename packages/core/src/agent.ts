@@ -401,9 +401,21 @@ export class AgentCore {
           "SELECT 1 AS present FROM telegram_users WHERE user_id = ? AND status = 'approved' LIMIT 1",
         ).get(numericUserId) as { present: number } | undefined
         if (row) return 'telegram'
-      } catch {
-        // telegram_users table should always exist, but a missing/broken
-        // schema must not block the injection — fall through to 'web'.
+      } catch (err) {
+        // Narrowly tolerate a missing `telegram_users` table (old DB that
+        // never ran the Telegram migration) — that is the only scenario
+        // where we would want to silently fall back to 'web'. Any other
+        // error (I/O, corruption, locked DB, unexpected schema change)
+        // is a real problem and must surface via a log rather than be
+        // swallowed — otherwise a Telegram-only user's session gets
+        // permanently mistagged as 'web'.
+        const message = err instanceof Error ? err.message : String(err)
+        if (!/no such table:\s*telegram_users/i.test(message)) {
+          console.warn(
+            `[agent] resolveDefaultInjectionSource: telegram_users lookup failed for user ${userId}; defaulting to 'web'`,
+            err,
+          )
+        }
       }
     }
     return 'web'
