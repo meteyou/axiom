@@ -44,6 +44,7 @@ import type {
   TaskRuntimeBoundary,
   TaskRuntimeTaskBoundary,
 } from '@openagent/core'
+import type { AgentTool } from '@mariozechner/pi-agent-core'
 import { randomUUID } from 'node:crypto'
 import { createTelegramBot } from '@openagent/telegram'
 import type { TelegramBot, TelegramChatEvent } from '@openagent/telegram'
@@ -499,18 +500,23 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
     })
   }
 
+  // Background task tools are built as a mutable array so that
+  // create_task / list_tasks can be pushed in after taskRuntime is
+  // available (they need taskRuntime.tasks — resolved below).
+  const backgroundTaskTools: AgentTool[] = [
+    ...createYoloTools(),
+    ...createBuiltinWebTools(builtinToolsConfig),
+    createReadChatHistoryTool({ db }),
+    createSearchMemoriesTool({ db }),
+  ]
+
   const taskRuntime = createTaskRuntime({
     db,
     runner: {
       buildModel,
       getApiKey: getApiKeyForProvider,
       sessionManager: backgroundSessions,
-      tools: [
-        ...createYoloTools(),
-        ...createBuiltinWebTools(builtinToolsConfig),
-        createReadChatHistoryTool({ db }),
-        createSearchMemoriesTool({ db }),
-      ],
+      tools: backgroundTaskTools,
       onTaskComplete: (taskId: string, injection: string) => {
         handleTaskNotification(taskId, injection, taskRuntime.tasks)
       },
@@ -664,6 +670,22 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
     // is active (e.g. tool invoked from a background context).
     getParentSessionId: () => agentCore?.getCurrentInteractiveSessionId() ?? null,
   }
+
+  // Now that taskRuntime exists, push create_task / list_tasks into the
+  // background-task tool set. The task runner holds a reference to the
+  // backgroundTaskTools array, so all subsequently started tasks
+  // (heartbeat, cronjob, user-spawned) will see these tools.
+  // Background tasks never have an active interactive session, so
+  // getParentSessionId always returns null here.
+  const backgroundTaskToolsOptions = {
+    ...taskToolsOptions,
+    getParentSessionId: () => null as string | null,
+  }
+  backgroundTaskTools.push(
+    createTaskTool(backgroundTaskToolsOptions),
+    createResumeTaskTool(backgroundTaskToolsOptions),
+    listTasksTool({ taskRuntime: taskRuntime.tasks }),
+  )
 
   // Wrap the schedule boundary so deleting a cronjob also evicts its
   // cached reminder session id. Without this, a cronjob deleted mid-
