@@ -167,5 +167,12 @@ export function createTasksService(options: TasksServiceOptions): TasksService {
 
 function safeParseJson(rawValue: string | null): unknown {
   if (!rawValue) return null
-  return JSON.parse(rawValue)
+  try {
+    return JSON.parse(rawValue)
+  } catch {
+    // Historical rows may contain non-JSON metadata (legacy data, truncation,
+    // etc.). Fall back to the raw string so a single bad row doesn't break
+    // the whole timeline request.
+    return rawValue
+  }
 }
