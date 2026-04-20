@@ -52,8 +52,10 @@ export interface ChatMessage {
 }
 
 interface WsMessage {
-  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'reminder' | 'task_completed' | 'task_failed' | 'task_question' | 'pong'
+  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'reminder' | 'task_completed' | 'task_failed' | 'task_question' | 'pong' | 'attachment'
   text?: string
+  /** Uploaded file the agent sent for the current turn (for type='attachment') */
+  attachment?: ChatAttachment
   /** Thinking delta (for type='thinking') */
   thinking?: string
   toolName?: string
@@ -460,6 +462,44 @@ export function useChat() {
       case 'pong':
         // Clear the pong-timeout so the heartbeat knows the connection is alive
         if (pongTimeout) { clearTimeout(pongTimeout); pongTimeout = null }
+        break
+
+      case 'attachment':
+        // A file sent by the agent for the current assistant turn (e.g. via
+        // the `send_file_to_user` tool). We attach it to the in-progress
+        // assistant message so the download card renders inside the bubble
+        // — same visual treatment as user-side attachments, just on the
+        // opposite side.
+        //
+        // If no assistant message is currently streaming (rare: the tool
+        // fired mid-thinking, or the model hasn't emitted text yet) we
+        // synthesize a minimal assistant bubble so the attachment still
+        // appears in the flow.
+        if (msg.attachment) {
+          const attachment = msg.attachment
+          const updated = [...messages.value]
+          const lastIdx = updated.length - 1
+          const last = lastIdx >= 0 ? updated[lastIdx]! : null
+          if (last && last.role === 'assistant' && !last.isThinking) {
+            const existing = last.attachments ?? []
+            // Guard against duplicates (e.g. if the same upload is
+            // broadcast twice by ws-chat + chatEventBus echo).
+            if (!existing.some(a => a.relativePath === attachment.relativePath)) {
+              updated[lastIdx] = { ...last, attachments: [...existing, attachment] }
+              messages.value = updated
+            }
+          } else {
+            // Close any open thinking block before inserting the new bubble.
+            const closed = closeStreamingThinking(messages.value)
+            messages.value = [...closed, {
+              role: 'assistant',
+              content: '',
+              timestamp: new Date().toISOString(),
+              streaming: true,
+              attachments: [attachment],
+            }]
+          }
+        }
         break
 
       case 'tool_call_end':
