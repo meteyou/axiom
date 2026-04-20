@@ -1,5 +1,30 @@
 <template>
-  <div class="relative flex h-full flex-col overflow-hidden">
+  <div
+    class="relative flex h-full flex-col overflow-hidden"
+    @dragenter.prevent="handleDragEnter"
+    @dragover.prevent="handleDragOver"
+    @dragleave.prevent="handleDragLeave"
+    @drop.prevent="handleDrop"
+  >
+    <!-- Drag & drop overlay -->
+    <Transition
+      enter-active-class="transition duration-150 ease-out"
+      enter-from-class="opacity-0"
+      enter-to-class="opacity-100"
+      leave-active-class="transition duration-100 ease-in"
+      leave-from-class="opacity-100"
+      leave-to-class="opacity-0"
+    >
+      <div
+        v-if="isDraggingFiles"
+        class="pointer-events-none absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm"
+      >
+        <div class="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-primary/60 bg-primary/[0.06] px-10 py-8 text-primary shadow-lg">
+          <AppIcon name="paperclip" class="h-10 w-10" />
+          <p class="text-sm font-medium">{{ $t('chat.dropFilesHere') }}</p>
+        </div>
+      </div>
+    </Transition>
     <div class="flex shrink-0 items-center gap-2 border-b border-border bg-background px-6 py-2">
       <div class="flex items-center gap-2 text-sm text-muted-foreground">
         <span
@@ -615,6 +640,47 @@ function scrollToBottom() { if (messagesContainer.value) messagesContainer.value
 function autoResize() { const el = inputRef.value; if (!el) return; el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 150) + 'px' }
 function handleFileSelection(event: Event) { const target = event.target as HTMLInputElement; const files = Array.from(target.files || []); pendingFiles.value = [...pendingFiles.value, ...files]; target.value = '' }
 function removePendingFile(index: number) { pendingFiles.value.splice(index, 1) }
+
+// ── Drag & drop file upload ─────────────────────────────────────────
+// We use a counter for dragenter/dragleave because those events bubble
+// up through every child element, which would otherwise cause the overlay
+// to flicker on/off whenever the cursor crosses a nested boundary.
+const isDraggingFiles = ref(false)
+const dragCounter = ref(0)
+
+function dragHasFiles(event: DragEvent): boolean {
+  const types = event.dataTransfer?.types
+  if (!types) return false
+  // Different browsers report 'Files' in slightly different ways; a plain
+  // includes check works for all of Chromium, Firefox and Safari.
+  return Array.from(types).includes('Files')
+}
+
+function handleDragEnter(event: DragEvent) {
+  if (!dragHasFiles(event)) return
+  dragCounter.value++
+  isDraggingFiles.value = true
+}
+
+function handleDragOver(event: DragEvent) {
+  if (!dragHasFiles(event)) return
+  // Signal to the browser that we accept this drop (shows the "copy" cursor).
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
+}
+
+function handleDragLeave(event: DragEvent) {
+  if (!dragHasFiles(event)) return
+  dragCounter.value = Math.max(0, dragCounter.value - 1)
+  if (dragCounter.value === 0) isDraggingFiles.value = false
+}
+
+function handleDrop(event: DragEvent) {
+  dragCounter.value = 0
+  isDraggingFiles.value = false
+  const files = Array.from(event.dataTransfer?.files ?? [])
+  if (files.length === 0) return
+  pendingFiles.value = [...pendingFiles.value, ...files]
+}
 
 // ── STT push-to-talk ──────────────────────────────────────────────────
 const sttErrorTimeout = ref<ReturnType<typeof setTimeout> | null>(null)
