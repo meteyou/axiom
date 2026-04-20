@@ -2,6 +2,7 @@ import {
   AgentCore,
   AgentHeartbeatService,
   buildModel,
+  createAgentSkillTools,
   createBuiltinWebTools,
   createCronjobTool,
   createReadChatHistoryTool,
@@ -10,6 +11,8 @@ import {
   createSearchMemoriesTool,
   createTaskRuntime,
   createTaskTool,
+  createTranscribeAudioTool,
+  loadSttSettings,
   createYoloTools,
   deliverTaskNotification,
   resolveTaskNotificationSessionId,
@@ -503,11 +506,14 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
   // Background task tools are built as a mutable array so that
   // create_task / list_tasks can be pushed in after taskRuntime is
   // available (they need taskRuntime.tasks — resolved below).
+  const backgroundSttEnabled = (() => { try { return loadSttSettings().enabled } catch { return false } })()
   const backgroundTaskTools: AgentTool[] = [
     ...createYoloTools(),
     ...createBuiltinWebTools(builtinToolsConfig),
     createReadChatHistoryTool({ db }),
     createSearchMemoriesTool({ db }),
+    ...createAgentSkillTools(),
+    ...(backgroundSttEnabled ? [createTranscribeAudioTool()] : []),
   ]
 
   const taskRuntime = createTaskRuntime({
