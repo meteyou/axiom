@@ -23,7 +23,40 @@ import { createTranscribeAudioTool } from './stt-tool.js'
 import { loadSttSettings } from './stt.js'
 import { createAgentSkillTools, getAgentSkillsForPrompt, getAgentSkillsCount, getAgentSkillsDir, trackAgentSkillUsage } from './agent-skills.js'
 import { createSearchMemoriesTool } from './memories-tool.js'
+import { createReadChatHistoryTool } from './chat-history-tools.js'
 import type { AgentRuntimeStateSnapshot, ResponseChunk } from './agent-runtime-types.js'
+
+/**
+ * Options for the shared base agent tool factory.
+ * Both the interactive AgentCore and background task agents use this to
+ * build the common tool set — keeping the two paths in sync automatically.
+ */
+export interface BaseAgentToolsOptions {
+  db: Database
+  builtinToolsConfig?: BuiltinToolsConfig
+  sttEnabled?: boolean
+  /** Called by search_memories to scope results to the current user. */
+  getCurrentUserId?: () => number | undefined
+}
+
+/**
+ * Build the base tool set shared by the interactive agent and all background
+ * task agents (heartbeat, cronjob, user-spawned tasks).
+ *
+ * Callers add their exclusive tools on top:
+ * - Interactive agent: create_task, resume_task, list_tasks, cronjob tools
+ * - Background tasks: create_task, resume_task, list_tasks
+ */
+export function createBaseAgentTools(options: BaseAgentToolsOptions): AgentTool[] {
+  return [
+    ...createYoloTools(),
+    ...createBuiltinWebTools(options.builtinToolsConfig),
+    createReadChatHistoryTool({ db: options.db }),
+    createSearchMemoriesTool({ db: options.db, getCurrentUserId: options.getCurrentUserId }),
+    ...createAgentSkillTools(),
+    ...(options.sttEnabled ? [createTranscribeAudioTool()] : []),
+  ]
+}
 
 export interface AgentRuntimeOptions {
   model: Model<Api>
@@ -436,14 +469,12 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
 
     const tools: AgentTool[] = [
       ...(options.tools ?? []),
-      createSearchMemoriesTool({
+      ...createBaseAgentTools({
         db: this.db,
+        builtinToolsConfig,
+        sttEnabled,
         getCurrentUserId: () => this.getCurrentToolUserId(),
       }),
-      ...createBuiltinWebTools(builtinToolsConfig),
-      ...(sttEnabled ? [createTranscribeAudioTool()] : []),
-      ...createAgentSkillTools(),
-      ...createYoloTools(),
     ]
 
     this.agent = new PiAgent({

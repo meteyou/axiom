@@ -2,18 +2,13 @@ import {
   AgentCore,
   AgentHeartbeatService,
   buildModel,
-  createAgentSkillTools,
-  createBuiltinWebTools,
+  createBaseAgentTools,
   createCronjobTool,
-  createReadChatHistoryTool,
   createReminderTool,
   createResumeTaskTool,
-  createSearchMemoriesTool,
   createTaskRuntime,
   createTaskTool,
-  createTranscribeAudioTool,
   loadSttSettings,
-  createYoloTools,
   deliverTaskNotification,
   resolveTaskNotificationSessionId,
   editCronjobTool,
@@ -507,14 +502,17 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
   // create_task / list_tasks can be pushed in after taskRuntime is
   // available (they need taskRuntime.tasks — resolved below).
   const backgroundSttEnabled = (() => { try { return loadSttSettings().enabled } catch { return false } })()
-  const backgroundTaskTools: AgentTool[] = [
-    ...createYoloTools(),
-    ...createBuiltinWebTools(builtinToolsConfig),
-    createReadChatHistoryTool({ db }),
-    createSearchMemoriesTool({ db }),
-    ...createAgentSkillTools(),
-    ...(backgroundSttEnabled ? [createTranscribeAudioTool()] : []),
-  ]
+  // createBaseAgentTools builds the shared tool set (yolo, web, chat-history,
+  // search-memories, agent-skills, transcribe-audio). Both the interactive
+  // AgentCore (via agent-runtime.ts) and background tasks use the same factory,
+  // so adding a new base tool in one place automatically covers both paths.
+  const backgroundTaskTools: AgentTool[] = createBaseAgentTools({
+    db,
+    builtinToolsConfig,
+    sttEnabled: backgroundSttEnabled,
+    // Background tasks have no interactive session; search_memories will fall
+    // back to the lowest-id user when getCurrentUserId is undefined.
+  })
 
   const taskRuntime = createTaskRuntime({
     db,
@@ -715,6 +713,10 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
     taskRuntime: cronjobSchedulesForTools,
   }
 
+  // Exclusive tools for the interactive agent only.
+  // The base tool set (shell, web, chat-history, memories, skills, stt) is
+  // assembled inside agent-runtime.ts via createBaseAgentTools() and does NOT
+  // need to be listed here — that keeps both paths in sync automatically.
   const agentTools = [
     createTaskTool(taskToolsOptions),
     createResumeTaskTool(taskToolsOptions),
@@ -725,7 +727,6 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
     listCronjobsTool(cronjobToolsOptions),
     getCronjobTool(cronjobToolsOptions),
     createReminderTool(cronjobToolsOptions),
-    createReadChatHistoryTool({ db }),
   ]
 
   taskRuntime.schedules.start()
