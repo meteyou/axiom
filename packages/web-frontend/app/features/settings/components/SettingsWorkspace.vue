@@ -11,7 +11,7 @@
     <!-- Header with save action (hidden on secrets tab which has its own save flow) -->
     <PageHeader :title="$t('settings.title')" :subtitle="$t('settings.subtitle')">
       <template v-if="activeTab !== 'secrets'" #actions>
-        <Button :disabled="saving || !form" @click="handleSave">
+        <Button size="sm" :disabled="saving || !form" @click="handleSave">
           <span
             v-if="saving"
             class="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground"
