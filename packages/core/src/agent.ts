@@ -229,7 +229,8 @@ export class AgentCore {
             const absPath = nodePath.resolve(getUploadsDir(), att.relativePath)
             const buf = fs.readFileSync(absPath)
             images.push({ type: 'image', data: buf.toString('base64'), mimeType: att.mimeType })
-          } catch {
+          } catch (err) {
+            console.error(`[agent] Failed to read uploaded image ${att.originalName} from ${nodePath.resolve(getUploadsDir(), att.relativePath)}:`, err)
             fileHints.push(`[Image upload failed to read: ${att.originalName}]`)
           }
         } else {
