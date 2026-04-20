@@ -7,16 +7,83 @@ echo "[openagent] Starting entrypoint..."
 mkdir -p /data/db /data/config /data/memory/daily /data/skills /data/skills_agent /data/npm-global /workspace
 
 # ---------------------------------------------------------------------------
-# Seed built-in agent skills (only if not already present — never overwrite)
+# Seed / auto-update built-in agent skills
+#   - If a skill is not installed yet → seed from image defaults.
+#   - If an installed skill has a lower `version:` (frontmatter) than the
+#     shipped default → back up the installed copy and update in place.
+#   - If the installed SKILL.md has `managed: false` → never touch, the user
+#     has taken ownership of it.
 # Skills ship with the image under /app/skills_agent_defaults/
 # ---------------------------------------------------------------------------
+
+# Extract a frontmatter value (e.g. version, managed) from a SKILL.md file.
+# Only reads the leading YAML block between the first two `---` lines.
+# Prints the value (trimmed, unquoted) or nothing if key/file is absent.
+read_skill_frontmatter() {
+    local file="$1"
+    local key="$2"
+    [ -f "$file" ] || return 0
+    awk -v key="$key" '
+        NR == 1 && $0 != "---" { exit }
+        NR == 1 { in_fm = 1; next }
+        in_fm && $0 == "---" { exit }
+        in_fm {
+            # match "key: value" at start of line, case-sensitive
+            if (match($0, "^[[:space:]]*" key "[[:space:]]*:[[:space:]]*")) {
+                val = substr($0, RSTART + RLENGTH)
+                # strip surrounding quotes and trailing whitespace/comments
+                sub(/[[:space:]]*(#.*)?$/, "", val)
+                sub(/^"/, "", val); sub(/"$/, "", val)
+                sub(/^'\''/, "", val); sub(/'\''$/, "", val)
+                print val
+                exit
+            }
+        }
+    ' "$file"
+}
+
+# Returns 0 if $1 is strictly newer than $2 in semver-ish sort order.
+# Missing/empty version is treated as 0.0.0 so any real version wins over it.
+skill_version_newer() {
+    local a="${1:-0.0.0}"
+    local b="${2:-0.0.0}"
+    [ "$a" = "$b" ] && return 1
+    local top
+    top=$(printf '%s\n%s\n' "$a" "$b" | sort -V | tail -n1)
+    [ "$top" = "$a" ]
+}
+
 if [ -d /app/skills_agent_defaults ]; then
+    backup_root="/data/skills_agent/.backups"
     for skill_dir in /app/skills_agent_defaults/*/; do
         skill_name=$(basename "$skill_dir")
         target="/data/skills_agent/$skill_name"
+        default_skill_md="$skill_dir/SKILL.md"
+
         if [ ! -d "$target" ]; then
             cp -r "$skill_dir" "$target"
             echo "[openagent] Seeded agent skill: $skill_name"
+            continue
+        fi
+
+        installed_skill_md="$target/SKILL.md"
+        managed=$(read_skill_frontmatter "$installed_skill_md" managed)
+        if [ "$managed" = "false" ]; then
+            echo "[openagent] Skill '$skill_name' is user-managed (managed: false) — skipping auto-update."
+            continue
+        fi
+
+        default_version=$(read_skill_frontmatter "$default_skill_md" version)
+        installed_version=$(read_skill_frontmatter "$installed_skill_md" version)
+
+        if skill_version_newer "$default_version" "$installed_version"; then
+            mkdir -p "$backup_root"
+            ts=$(date +%Y%m%d-%H%M%S)
+            backup_path="$backup_root/${skill_name}-v${installed_version:-unknown}-${ts}"
+            cp -r "$target" "$backup_path"
+            rm -rf "$target"
+            cp -r "$skill_dir" "$target"
+            echo "[openagent] Updated agent skill: $skill_name ${installed_version:-<none>} → $default_version (backup: $backup_path)"
         fi
     done
 fi

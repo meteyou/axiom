@@ -1,5 +1,6 @@
 ---
 name: wiki
+version: 1.0.0
 description: Maintain and search the personal LLM-Wiki (knowledge base of Markdown pages). Use this skill for ingesting new sources, querying the wiki, and wiki maintenance/linting.
 ---
 
