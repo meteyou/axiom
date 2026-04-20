@@ -158,6 +158,28 @@ describe('resolveTaskNotificationSessionId', () => {
     const task = makeTask({ sessionId: 'task-sess-2' })
     expect(resolveTaskNotificationSessionId(db, task)).toBe('task-sess-2')
   })
+
+  it('returns null for legacy tasks without sessionId instead of throwing', async () => {
+    // Regression guard: a previous implementation threw here, which corrupted
+    // task state because the throw propagated through TaskRunner's
+    // onTaskComplete → catch path and re-marked completed tasks as failed.
+    const { resolveTaskNotificationSessionId } = await import('./task-notification.js')
+    const db = createTestDb()
+    const task = makeTask({ sessionId: null })
+    expect(resolveTaskNotificationSessionId(db, task)).toBeNull()
+  })
+
+  it('persistTaskResultMessage skips (does not throw) when no session resolvable', async () => {
+    // Same regression guard from the persistence side: without a session
+    // to attach the row to we log and return; previously this threw and
+    // bubbled up through deliverTaskNotification.
+    const db = createTestDb()
+    const task = makeTask({ sessionId: null })
+    // Should not throw.
+    persistTaskResultMessage(db, 1, task, 15)
+    const rows = db.prepare('SELECT * FROM chat_messages WHERE user_id = 1').all()
+    expect(rows).toHaveLength(0)
+  })
 })
 
 describe('deliverTaskNotification', () => {
