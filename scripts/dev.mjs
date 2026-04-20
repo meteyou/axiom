@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import process from 'node:process'
 
 const rootDir = process.cwd()
@@ -27,7 +27,6 @@ console.log('[openagent] Starting local dev environment...')
 console.log(`[openagent] DATA_DIR=${process.env.DATA_DIR}`)
 console.log(`[openagent] Backend:  http://localhost:${process.env.PORT}`)
 console.log('[openagent] Frontend: http://localhost:3001')
-console.log('[openagent] Core:     watching for changes (tsc --watch)')
 
 const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm'
 const baseOpts = {
@@ -39,6 +38,39 @@ const baseOpts = {
 const backendSrc = path.join(rootDir, 'packages', 'web-backend', 'src')
 const coreDist = path.join(rootDir, 'packages', 'core', 'dist')
 const telegramDist = path.join(rootDir, 'packages', 'telegram', 'dist')
+
+// Ensure dist directories exist before anything tries to watch them.
+// node --watch --watch-path=<dir> crashes with ENOENT if the directory is missing
+// (e.g. after `npm run clean` or a fresh checkout).
+fs.mkdirSync(coreDist, { recursive: true })
+fs.mkdirSync(telegramDist, { recursive: true })
+
+// Initial build of core + telegram so the backend has something to import on first start.
+// Subsequent changes are handled by tsc --watch below.
+const distHasJs = (dir) => {
+  try {
+    return fs.readdirSync(dir).some((f) => f.endsWith('.js'))
+  } catch {
+    return false
+  }
+}
+
+for (const pkg of ['packages/core', 'packages/telegram']) {
+  const pkgDist = path.join(rootDir, pkg, 'dist')
+  if (distHasJs(pkgDist)) continue
+  console.log(`[openagent] Initial build: ${pkg}`)
+  const res = spawnSync(npmCmd, ['run', 'build', `--workspace=${pkg}`], {
+    cwd: rootDir,
+    env: process.env,
+    stdio: 'inherit',
+  })
+  if (res.status !== 0) {
+    console.error(`[openagent] Initial build failed for ${pkg}`)
+    process.exit(res.status ?? 1)
+  }
+}
+
+console.log('[openagent] Core:     watching for changes (tsc --watch)')
 
 const children = [
   // 1. Core: tsc --watch recompiles on source changes → outputs to dist/
