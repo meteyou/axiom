@@ -229,7 +229,10 @@ export class SessionManager {
       status: 'success',
     })
 
-    if (this.onSessionEnd) {
+    // Only fire onSessionEnd for sessions that actually had messages.
+    // Empty orphaned sessions (message_count = 0) produce no useful divider
+    // and would spam the chat history with blank "New Session" entries.
+    if (row.message_count > 0 && this.onSessionEnd) {
       this.onSessionEnd({
         id: row.id,
         userId,
