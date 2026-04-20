@@ -13,14 +13,9 @@ export interface ChatRouterOptions {
   getAgentCore?: () => AgentCore | null
 }
 
-export function createChatRouter(options: ChatRouterOptions | Database): Router {
-  // Backwards-compat: allow `createChatRouter(db)` (used by older callers/tests).
-  // Detect raw Database objects by their `prepare()` method.
-  const opts: ChatRouterOptions = (typeof (options as Database).prepare === 'function'
-    ? { db: options as Database }
-    : (options as ChatRouterOptions))
-  const { db } = opts
-  const getAgentCore = opts.getAgentCore ?? (() => null)
+export function createChatRouter(options: ChatRouterOptions): Router {
+  const { db } = options
+  const getAgentCore = options.getAgentCore ?? (() => null)
   const router = Router()
 
   router.use(jwtMiddleware)
