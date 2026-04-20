@@ -111,6 +111,36 @@ export class SessionManager {
 
     if (orphaned.length === 0) return
 
+    // Guard: a SessionManager without `onSummarize` is not configured to
+    // manage the interactive-session lifecycle. If an orphan would hit the
+    // summarize-and-close path and we proceeded without an onSummarize
+    // handler, we would silently close it and lose the daily-file summary
+    // — the exact failure mode that makes a mis-routed init() call
+    // invisible (see runtime-composition.ts's background-only
+    // SessionManager). Fail fast so misuse surfaces immediately.
+    //
+    // Only orphans whose timeout has already elapsed AND still carry
+    // unsummarized messages are at risk. Orphans within the timeout window
+    // are restored, and empty/already-summarized ones are closed
+    // losslessly, so neither requires onSummarize.
+    if (!this.onSummarize) {
+      const now = Date.now()
+      const needsSummary = orphaned.filter(r => {
+        if (r.summary_written || r.message_count === 0) return false
+        const lastActivityStr = r.last_activity ?? r.started_at
+        const lastActivity = this.parseSqliteTimestamp(lastActivityStr)
+        return (now - lastActivity) >= this.timeoutMs
+      })
+      if (needsSummary.length > 0) {
+        throw new Error(
+          `[session] ${needsSummary.length} orphaned interactive session(s) need summarization `
+          + `but SessionManager was constructed without an onSummarize handler. `
+          + `This instance is not configured to manage the interactive-session lifecycle; `
+          + `do not call init() on it.`,
+        )
+      }
+    }
+
     console.log(`[session] Found ${orphaned.length} orphaned session(s) from previous run`)
 
     for (const row of orphaned) {
@@ -354,9 +384,13 @@ export class SessionManager {
   }
 
   /**
-   * Get or create a session for a user. Resets the inactivity timer.
+   * Get or create an interactive session for a user. Resets the inactivity
+   * timer. Always creates sessions with `type='interactive'` — background
+   * session types (task, heartbeat, consolidation, loop_detection) must use
+   * `createSession()` instead so they are not cached per-user and do not
+   * occupy the interactive-session lifecycle slot.
    */
-  getOrCreateSession(userId: string, source: string = 'web', type: SessionType = 'interactive'): SessionInfo {
+  getOrCreateSession(userId: string, source: string = 'web'): SessionInfo {
     let session = this.sessions.get(userId)
 
     if (!session) {
@@ -373,11 +407,12 @@ export class SessionManager {
       }
       this.sessions.set(userId, session)
 
-      // Insert into SQLite (including last_activity, session_user, type)
+      // Insert into SQLite (type is hardcoded to 'interactive'; see method
+      // docstring for rationale).
       this.db.prepare(
         `INSERT INTO sessions (id, user_id, source, type, parent_session_id, started_at, last_activity, session_user, message_count, summary_written)
-         VALUES (?, ?, ?, ?, NULL, datetime(? / 1000, 'unixepoch'), datetime(? / 1000, 'unixepoch'), ?, 0, 0)`
-      ).run(session.id, null, source, type, session.startedAt, session.lastActivity, userId)
+         VALUES (?, ?, ?, 'interactive', NULL, datetime(? / 1000, 'unixepoch'), datetime(? / 1000, 'unixepoch'), ?, 0, 0)`
+      ).run(session.id, null, source, session.startedAt, session.lastActivity, userId)
 
       // Log session start to tool_calls for activity log visibility
       logToolCall(this.db, {
