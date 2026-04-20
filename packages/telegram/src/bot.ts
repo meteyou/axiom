@@ -3,7 +3,7 @@ import path from 'node:path'
 import { Bot, GrammyError, HttpError, InputFile } from 'grammy'
 import type { Context } from 'grammy'
 import type { AgentCore, Database } from '@openagent/core'
-import { loadConfig, saveUpload, serializeUploadsMetadata, parseUploadsMetadata, loadSttSettings, transcribeAudio } from '@openagent/core'
+import { loadConfig, saveUpload, serializeUploadsMetadata, parseUploadsMetadata, loadSttSettings, transcribeAudio, extractUploadsFromToolResult } from '@openagent/core'
 import type { UploadDescriptor } from '@openagent/core'
 
 /**
@@ -22,7 +22,7 @@ export interface TelegramConfig {
  * Chat event emitted by the Telegram bot for cross-channel sync.
  */
 export interface TelegramChatEvent {
-  type: 'user_message' | 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'done' | 'error'
+  type: 'user_message' | 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'done' | 'error' | 'attachment'
   /** OpenAgent user ID (integer) — only set for linked users */
   userId: number | null
   /** Session ID used for chat_messages */
@@ -43,6 +43,8 @@ export interface TelegramChatEvent {
   toolIsError?: boolean
   /** Display name of the sender */
   senderName?: string
+  /** Uploaded file attached to the current assistant turn (for type='attachment') */
+  attachment?: UploadDescriptor
 }
 
 export interface TelegramBotOptions {
@@ -850,7 +852,15 @@ export class TelegramBot {
 
       // Collect the full response from agent
       let fullResponse = ''
-      let assistantUploads = [] as ReturnType<typeof parseUploadsMetadata>
+      // Uploads produced by tools during this turn (e.g. `send_file_to_user`).
+      // These are:
+      //   1. delivered to the Telegram chat as documents/photos right after
+      //      the text response (see sendAssistantResponseToTelegram),
+      //   2. merged into the saved assistant message's metadata so history
+      //      rehydration surfaces them alongside the text,
+      //   3. broadcast as `attachment` chat events so concurrently connected
+      //      web tabs render the same download card.
+      const assistantUploads: UploadDescriptor[] = []
       // Track pending tool calls to save input+output together
       const pendingToolCalls = new Map<string, { toolName: string; toolArgs: unknown }>()
 
@@ -881,20 +891,36 @@ export class TelegramBot {
           }
 
           // Save completed tool call to DB
-          if (chunk.type === 'tool_call_end' && chunk.toolCallId && this.db && numericUserId) {
+          if (chunk.type === 'tool_call_end' && chunk.toolCallId) {
             const pending = pendingToolCalls.get(chunk.toolCallId)
             const toolName = pending?.toolName ?? chunk.toolName ?? 'unknown'
-            const metadata = JSON.stringify({
-              toolName,
-              toolCallId: chunk.toolCallId,
-              toolArgs: pending?.toolArgs ?? null,
-              toolResult: chunk.toolResult ?? null,
-              toolIsError: chunk.toolIsError ?? false,
-            })
-            this.db.prepare(
-              'INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)'
-            ).run(sessionId, numericUserId, 'tool', `Tool: ${toolName}`, metadata)
+            if (this.db && numericUserId) {
+              const metadata = JSON.stringify({
+                toolName,
+                toolCallId: chunk.toolCallId,
+                toolArgs: pending?.toolArgs ?? null,
+                toolResult: chunk.toolResult ?? null,
+                toolIsError: chunk.toolIsError ?? false,
+              })
+              this.db.prepare(
+                'INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)'
+              ).run(sessionId, numericUserId, 'tool', `Tool: ${toolName}`, metadata)
+            }
             pendingToolCalls.delete(chunk.toolCallId)
+
+            // Harvest uploads produced by the tool (generic, not tool-name
+            // specific) and fan them out to cross-channel listeners so
+            // any concurrently-connected web tab also shows the card.
+            const newUploads = extractUploadsFromToolResult(chunk.toolResult)
+            for (const upload of newUploads) {
+              assistantUploads.push(upload)
+              this.onChatEvent?.({
+                type: 'attachment',
+                userId: numericUserId,
+                sessionId,
+                attachment: upload,
+              })
+            }
           }
 
           // Broadcast response chunks for cross-channel sync
@@ -915,29 +941,21 @@ export class TelegramBot {
         clearInterval(typingInterval)
       }
 
-      if (this.db && numericUserId) {
-        const latestAssistant = this.db.prepare(
-          `SELECT content, metadata
-           FROM chat_messages
-           WHERE user_id = ? AND role = 'assistant'
-           ORDER BY id DESC
-           LIMIT 1`
-        ).get(numericUserId) as { content: string; metadata: string | null } | undefined
-
-        if (latestAssistant && latestAssistant.content === fullResponse.trim()) {
-          assistantUploads = parseUploadsMetadata(latestAssistant.metadata)
-        }
-      }
-
       if (!state.abortRequested && (fullResponse.trim() || assistantUploads.length > 0)) {
         await this.sendAssistantResponseToTelegram(ctx.chat!.id, fullResponse, assistantUploads)
       }
 
-      // Save assistant response to chat_messages (if linked to a web user)
-      if (this.db && numericUserId && fullResponse.trim()) {
+      // Save assistant response to chat_messages (if linked to a web user).
+      // Text-only responses get a plain row; if the turn also produced
+      // attachments we persist them in metadata so history rehydration
+      // surfaces the download card alongside the text.
+      if (this.db && numericUserId && (fullResponse.trim() || assistantUploads.length > 0)) {
+        const metadata = assistantUploads.length > 0
+          ? serializeUploadsMetadata(assistantUploads)
+          : null
         this.db.prepare(
-          'INSERT INTO chat_messages (session_id, user_id, role, content) VALUES (?, ?, ?, ?)'
-        ).run(sessionId, numericUserId, 'assistant', fullResponse.trim())
+          'INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)'
+        ).run(sessionId, numericUserId, 'assistant', fullResponse.trim(), metadata)
       }
     } catch (err) {
       if (state.abortRequested) {
