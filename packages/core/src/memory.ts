@@ -825,6 +825,8 @@ ${dailyContext}
     sections.push(`<wiki_pages>
 The wiki is the agent's structured knowledge base. Maintain and organize it autonomously: add new pages, extend existing ones, merge duplicates, fix stale entries, and keep cross-links healthy without asking for permission. When discussing a topic covered by a wiki page, load it with read_file for context. Use write_file or edit_file to create or update wiki pages when you learn something worth preserving. Raw source material for the wiki lives under sources/ — wiki pages can cite it in a ## Sources section.
 
+For non-trivial wiki work (ingesting a new source, creating a new page, running a lint pass, or auditing structure), load the built-in \`wiki\` agent skill first by reading ${options?.agentSkillsDir ?? '/data/skills_agent'}/wiki/SKILL.md — it contains the canonical conventions (frontmatter, filenames, cross-links, ## Sources/Quellen) and the ingest/query/lint workflows.
+
 Only ask the user when you hit a genuine contradiction (new information conflicts with an existing page) that you cannot resolve on your own — then present the options (A vs. B) and let the user decide. Routine edits, additions, and reorganization do not require confirmation.
 
 ${pageLines}
