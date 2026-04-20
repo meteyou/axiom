@@ -44,6 +44,7 @@ import type {
   TaskRuntimeBoundary,
   TaskRuntimeTaskBoundary,
 } from '@openagent/core'
+import { randomUUID } from 'node:crypto'
 import { createTelegramBot } from '@openagent/telegram'
 import type { TelegramBot, TelegramChatEvent } from '@openagent/telegram'
 import { ChatEventBus } from '../chat-event-bus.js'
@@ -55,8 +56,23 @@ import { RuntimeMetrics } from '../runtime-metrics.js'
 interface PendingTaskInjectionMeta {
   taskId: string
   userId: number
-  /** Resolved interactive session ID to persist the agent's response under */
-  targetSessionId: string
+  /**
+   * The interactive session id that will receive the streamed injection
+   * response AND the persisted `task_result` chat_messages row. Pre-resolved
+   * by `AgentCore.resolveInjectionSessionId` and forced into the injection
+   * stream via `injectTaskResult(..., forcedSessionId)` so both the caller's
+   * persistence path and the streamed chunks agree on the same session
+   * without relying on FIFO ordering.
+   */
+  sessionId: string
+  /**
+   * Unique per-injection correlation token. Used as the map key so
+   * multiple concurrent task completions targeting the same user's
+   * cached session (which share a `sessionId`) do not collide. The same
+   * token is threaded through `injectTaskResult(..., injectionId)` and
+   * tagged onto every emitted chunk as `chunk.injectionId`.
+   */
+  injectionId: string
 }
 
 interface TaskSettings {
@@ -280,7 +296,56 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
   let providerManager: ProviderManager | null = null
   let telegramBot: TelegramBot | null = null
 
-  const pendingTaskInjections: PendingTaskInjectionMeta[] = []
+  // Pending task injections keyed by a per-injection UUID. The key is
+  // minted here, passed into AgentCore.injectTaskResult as the
+  // `injectionId`, and tagged onto every emitted chunk
+  // (`chunk.injectionId`) so the handler can correlate chunks with
+  // metadata.
+  //
+  // We MUST key by a per-call token — not by session id — because
+  // multiple concurrent task completions for the same user resolve to
+  // the same cached interactive session id, and a shared key would
+  // collide: the second handleTaskNotification would overwrite the
+  // first's metadata before either had streamed.
+  const pendingInjections = new Map<string, PendingTaskInjectionMeta>()
+
+  // Reuse one session row per scheduled-reminder id instead of creating a
+  // fresh session on every fire. Keeps `sessions` growth O(number of
+  // reminders) instead of O(fires). The cache is per-process; after a
+  // restart a new session row is created for the reminder's first post-
+  // restart fire.
+  const reminderSessionByCronjobId = new Map<string, string>()
+  function resolveReminderSessionId(cronjobId: string): string {
+    const existing = reminderSessionByCronjobId.get(cronjobId)
+    if (existing) return existing
+    const newId = backgroundSessions.createSession({
+      type: 'task',
+      source: 'system',
+    }).id
+    reminderSessionByCronjobId.set(cronjobId, newId)
+    return newId
+  }
+  function evictReminderSession(cronjobId: string): void {
+    reminderSessionByCronjobId.delete(cronjobId)
+  }
+
+  /**
+   * Strictly parse a numeric user id. `Number.parseInt` is too lax
+   * (`parseInt('3abc', 10) === 3`) and would silently route task results
+   * to the wrong user when `session_user` is a non-numeric username or a
+   * malformed string that happens to start with digits. Reject anything
+   * that isn't a pure integer literal.
+   */
+  function parseStrictUserId(value: string | number | null | undefined): number | null {
+    if (value == null) return null
+    if (typeof value === 'number') {
+      return Number.isSafeInteger(value) ? value : null
+    }
+    const trimmed = value.trim()
+    if (!/^-?\d+$/.test(trimmed)) return null
+    const parsed = Number(trimmed)
+    return Number.isSafeInteger(parsed) ? parsed : null
+  }
 
   /**
    * Resolve the target user for a task result notification by walking the
@@ -316,9 +381,12 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
       if (!row) return null
       if (!row.parent_session_id) {
         // Prefer session_user (canonical identity) over user_id (backfill).
-        const parsedSessionUser = row.session_user ? Number.parseInt(row.session_user, 10) : NaN
-        if (Number.isSafeInteger(parsedSessionUser)) return parsedSessionUser
-        if (Number.isSafeInteger(row.user_id)) return row.user_id
+        // Use a strict integer match — `parseInt('3abc', 10) === 3` would
+        // otherwise silently route results to the wrong user.
+        const parsedSessionUser = parseStrictUserId(row.session_user)
+        if (parsedSessionUser !== null) return parsedSessionUser
+        const parsedUserId = parseStrictUserId(row.user_id)
+        if (parsedUserId !== null) return parsedUserId
         return null
       }
       currentId = row.parent_session_id
@@ -352,23 +420,58 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
 
     // Resolve target user from the task's session lineage; fall back to
     // the default user when the task has no interactive parent (e.g.
-    // cronjob/heartbeat triggered).
+    // cronjob/heartbeat triggered). A non-null task.sessionId with an
+    // unresolvable lineage (deleted parent row, chain > depth cap, or
+    // malformed linkage) is not an intended fallback — log it so the
+    // mis-routed delivery is diagnosable instead of silently reaching the
+    // fallback user.
     const resolvedUserId = resolveTargetUserIdForTask(task.sessionId)
+    if (resolvedUserId == null && task.sessionId) {
+      logger.warn(
+        `[openagent] Task ${task.id}: could not resolve target user from session lineage (sessionId=${task.sessionId}); falling back to default user`,
+      )
+    }
     const userId = resolvedUserId ?? getFallbackUserId()
 
-    // Resolve the chat session ID for persistence/merging: parent
-    // interactive session (preferred) or the task's own session as
-    // fallback for background tasks.
-    const targetSessionId = resolveTaskNotificationSessionId(db, task)
+    // Lineage session (parent interactive, or the task's own session as a
+    // last resort). May be null for legacy tasks without sessionId — the
+    // helper now returns null instead of throwing so a bad legacy row
+    // cannot corrupt task-completion state via the onTaskComplete callback
+    // chain.
+    const lineageSessionId = resolveTaskNotificationSessionId(db, task)
 
+    // Pre-resolve the single session id that both the persisted `task_result`
+    // row AND the streamed injection response will use. This guarantees
+    // both writes land in the same session (no split between the old
+    // lineage parent and a newly minted interactive session).
+    //
+    // Correlation between streamed chunks and the pending metadata uses
+    // a separate per-injection UUID — NOT the session id — because
+    // multiple concurrent task completions for the same user share the
+    // same cached session id and would otherwise collide in the map.
+    let injectionSessionId: string | null = null
     if (agentCore) {
-      pendingTaskInjections.push({ taskId: task.id, userId, targetSessionId })
-      agentCore.injectTaskResult(injection, String(userId)).catch(err => {
+      injectionSessionId = agentCore.resolveInjectionSessionId(String(userId), lineageSessionId)
+      const injectionId = randomUUID()
+      pendingInjections.set(injectionId, {
+        taskId: task.id,
+        userId,
+        sessionId: injectionSessionId,
+        injectionId,
+      })
+      const forcedSessionId = injectionSessionId
+      agentCore.injectTaskResult(injection, String(userId), forcedSessionId, injectionId).catch(err => {
         logger.error(`[openagent] Failed to inject task result for ${taskId}:`, err)
-        const idx = pendingTaskInjections.findIndex(p => p.taskId === task.id)
-        if (idx >= 0) pendingTaskInjections.splice(idx, 1)
+        pendingInjections.delete(injectionId)
       })
     }
+
+    // Prefer the pre-resolved injection session for persistence so the
+    // task-result row and the streamed response share a session. Fall back
+    // to the lineage session when no agent core is available (background
+    // delivery path). `targetSessionId` may still be undefined — in that
+    // case `persistTaskResultMessage` logs and skips rather than throwing.
+    const targetSessionId = injectionSessionId ?? lineageSessionId ?? undefined
 
     deliverTaskNotification({
       db,
@@ -434,14 +537,12 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
         const userId = 1
         const deliveryResults: string[] = []
 
-        // Register a UUID session for this reminder fire so all log entries
-        // for this delivery share a single session row in `sessions`
-        // (type='task' — reminders are background actions without an
-        // executing LLM, but stored under the task type per Task 4 spec).
-        const reminderSessionId = backgroundSessions.createSession({
-          type: 'task',
-          source: 'system',
-        }).id
+        // Reuse one `sessions` row per scheduled reminder (keyed by cronjob
+        // id) so `sessions` growth is bounded by the number of reminders
+        // rather than the number of fires. A reminder firing hourly would
+        // otherwise add 8760 session rows per year; with the cache each fire
+        // appends a new `tool_calls` row under the same session.
+        const reminderSessionId = resolveReminderSessionId(scheduledTask.id)
 
         chatEventBus.broadcast({
           type: 'reminder',
@@ -564,8 +665,26 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
     getParentSessionId: () => agentCore?.getCurrentInteractiveSessionId() ?? null,
   }
 
+  // Wrap the schedule boundary so deleting a cronjob also evicts its
+  // cached reminder session id. Without this, a cronjob deleted mid-
+  // process leaves a dangling entry in `reminderSessionByCronjobId`
+  // (and an abandoned `sessions` row) that lives for the lifetime of
+  // the process.
+  const cronjobSchedulesForTools = new Proxy(taskRuntime.schedules, {
+    get(target, prop, receiver) {
+      if (prop === 'delete') {
+        return (id: string) => {
+          const deleted = target.delete(id)
+          if (deleted) evictReminderSession(id)
+          return deleted
+        }
+      }
+      return Reflect.get(target, prop, receiver)
+    },
+  })
+
   const cronjobToolsOptions = {
-    taskRuntime: taskRuntime.schedules,
+    taskRuntime: cronjobSchedulesForTools,
   }
 
   const agentTools = [
@@ -647,87 +766,107 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
       })
     })
 
-    let taskInjectionResponseBuffer = ''
-    let lastTelegramDelivered = false
-    let activeTaskInjectionMeta: PendingTaskInjectionMeta | null = null
+    // Per-injection streaming state, keyed by the unique `injectionId`
+    // (NOT the session id). Concurrent injections for the same user
+    // share a session id, so keying by session id would cross-contaminate
+    // their buffers. `telegramDelivered` is per-injection too so the
+    // broadcast on `done` reflects the right delivery state.
+    interface InjectionStreamState {
+      responseBuffer: string
+      telegramDelivered: boolean
+    }
+    const streamStateByInjection = new Map<string, InjectionStreamState>()
 
     agentCore.setOnTaskInjectionChunk((chunk) => {
-      // A task injection emits multiple chunks (text/thinking/tool/done).
-      // Bind the whole chunk stream to one pending metadata entry so each
-      // chunk is broadcast/persisted for the correct target user.
-      if (!activeTaskInjectionMeta && pendingTaskInjections.length > 0) {
-        activeTaskInjectionMeta = pendingTaskInjections.shift() ?? null
+      // Correlate the chunk with its pending metadata via `chunk.injectionId`,
+      // which AgentCore guarantees to equal the per-injection UUID we
+      // registered in `pendingInjections`. Keying by session id would
+      // collide across concurrent injections targeting the same user's
+      // cached session — the whole point of the injectionId token.
+      const injectionId = chunk.injectionId
+      if (!injectionId) {
+        logger.warn('[openagent] Task injection chunk has no injectionId; dropping')
+        return
       }
-      const pendingMeta = activeTaskInjectionMeta
+      const pendingMeta = pendingInjections.get(injectionId)
+      if (!pendingMeta) {
+        logger.warn(`[openagent] No pending injection for injectionId ${injectionId}; dropping chunk`)
+        return
+      }
+      const persistSessionId = pendingMeta.sessionId
 
-      if (chunk.type === 'text' && chunk.text) {
-        taskInjectionResponseBuffer += chunk.text
+      let streamState = streamStateByInjection.get(injectionId)
+      if (!streamState) {
+        streamState = { responseBuffer: '', telegramDelivered: false }
+        streamStateByInjection.set(injectionId, streamState)
       }
 
-      if (chunk.type === 'done') {
-        const responseText = taskInjectionResponseBuffer
-        taskInjectionResponseBuffer = ''
-        lastTelegramDelivered = false
-
-        if (pendingMeta && telegramBot && responseText) {
-          const shouldSend =
-            taskSettings.telegramDelivery === 'always' ||
-            (taskSettings.telegramDelivery === 'auto' && !(wsChatPresenceChecker?.(pendingMeta.userId) ?? false))
-
-          if (shouldSend) {
-            const chatId = telegramBot.getTelegramChatIdForUser(pendingMeta.userId)
-            if (chatId) {
-              lastTelegramDelivered = true
-              telegramBot.sendFormattedMessage(chatId, responseText).catch(err => {
-                logger.error(`[openagent] Failed to send Telegram for task ${pendingMeta.taskId}:`, err)
-              })
-            }
-          }
+      try {
+        if (chunk.type === 'text' && chunk.text) {
+          streamState.responseBuffer += chunk.text
         }
 
-        if (responseText) {
-          try {
-            const metadata = JSON.stringify({ type: 'task_injection_response', telegramDelivered: lastTelegramDelivered })
-            // Persist the agent's injection response under the resolved
-            // interactive session (preferred) or the task session as
-            // fallback — never under a synthetic `task-injection-*` ID.
-            const persistSessionId = pendingMeta?.targetSessionId
-            const persistUserId = pendingMeta?.userId ?? getFallbackUserId()
-            if (persistSessionId) {
+        if (chunk.type === 'done') {
+          const responseText = streamState.responseBuffer
+
+          if (telegramBot && responseText) {
+            const shouldSend =
+              taskSettings.telegramDelivery === 'always' ||
+              (taskSettings.telegramDelivery === 'auto' && !(wsChatPresenceChecker?.(pendingMeta.userId) ?? false))
+
+            if (shouldSend) {
+              const chatId = telegramBot.getTelegramChatIdForUser(pendingMeta.userId)
+              if (chatId) {
+                streamState.telegramDelivered = true
+                telegramBot.sendFormattedMessage(chatId, responseText).catch(err => {
+                  logger.error(`[openagent] Failed to send Telegram for task ${pendingMeta.taskId}:`, err)
+                })
+              }
+            }
+          }
+
+          if (responseText) {
+            try {
+              const metadata = JSON.stringify({ type: 'task_injection_response', telegramDelivered: streamState.telegramDelivered })
+              // Persist under the injection session — same id the task-result
+              // row was written under in `deliverTaskNotification`, so both
+              // rows live together and are reachable via
+              // `buildConversationHistory`.
               db.prepare(
                 'INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)'
-              ).run(persistSessionId, persistUserId, 'assistant', responseText, metadata)
-            } else {
-              logger.warn('[openagent] No target session resolved for task injection response; skipping persist')
+              ).run(persistSessionId, pendingMeta.userId, 'assistant', responseText, metadata)
+            } catch (err) {
+              logger.error('[openagent] Failed to persist task injection response:', err)
             }
-          } catch (err) {
-            logger.error('[openagent] Failed to persist task injection response:', err)
           }
         }
-      }
 
-      if (pendingMeta) {
-        chatEventBus.broadcast({
-          type: chunk.type === 'done' ? 'done' : chunk.type,
-          userId: pendingMeta.userId,
-          source: 'task',
-          text: chunk.text,
-          toolName: chunk.toolName,
-          toolCallId: chunk.toolCallId,
-          toolArgs: chunk.toolArgs,
-          toolResult: chunk.toolResult,
-          toolIsError: chunk.toolIsError,
-          error: chunk.error,
-          telegramDelivered: chunk.type === 'done' ? lastTelegramDelivered : undefined,
-          isTaskInjection: true,
-        })
-      } else {
-        logger.warn('[openagent] Missing task injection metadata; dropping streamed chunk broadcast')
-      }
-
-      if (chunk.type === 'done') {
-        activeTaskInjectionMeta = null
-        lastTelegramDelivered = false
+        try {
+          chatEventBus.broadcast({
+            type: chunk.type === 'done' ? 'done' : chunk.type,
+            userId: pendingMeta.userId,
+            source: 'task',
+            sessionId: persistSessionId,
+            text: chunk.text,
+            toolName: chunk.toolName,
+            toolCallId: chunk.toolCallId,
+            toolArgs: chunk.toolArgs,
+            toolResult: chunk.toolResult,
+            toolIsError: chunk.toolIsError,
+            error: chunk.error,
+            telegramDelivered: chunk.type === 'done' ? streamState.telegramDelivered : undefined,
+            isTaskInjection: true,
+          })
+        } catch (err) {
+          logger.error('[openagent] Failed to broadcast task injection chunk:', err)
+        }
+      } finally {
+        if (chunk.type === 'done') {
+          // Clear per-injection state regardless of success/failure so
+          // stale buffers can't leak into a subsequent injection.
+          streamStateByInjection.delete(injectionId)
+          pendingInjections.delete(injectionId)
+        }
       }
     })
   }
