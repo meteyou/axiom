@@ -610,7 +610,13 @@ async function pullModel() {
       })
     }
 
-    if (!ollamaPullResult.value || ollamaPullResult.value.success !== false) {
+    // vue-tsc's CFA narrows `ollamaPullResult.value` to `null` after the
+    // `= null` assignment above and can't see the reassignments inside the
+    // progress callback. We cast back to the ref's declared type so the
+    // runtime check (which *does* observe the callback writes) compiles.
+    type PullResult = { success: boolean; message: string } | null
+    const pullResult = ollamaPullResult.value as PullResult
+    if (pullResult?.success !== false) {
       ollamaPullResult.value = { success: true, message: t('providers.ollamaPullSuccess') }
       ollamaPullName.value = ''
       // Refresh model list
