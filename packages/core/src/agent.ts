@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import nodePath from 'node:path'
 import type { Agent as PiAgent } from '@mariozechner/pi-agent-core'
@@ -148,19 +149,42 @@ export class AgentCore {
    * Inject a task result into the main agent via the message queue.
    * The injection is queued and processed sequentially like any other message.
    *
-   * `targetUserId` identifies which user should see the task result. The
-   * injection is logged under that user's active interactive session (or a
-   * new one is created if none is active). This replaces the legacy
-   * synthetic `system` session.
+   * `targetUserId` identifies which user should see the task result.
+   *
+   * `forcedSessionId`, if provided, pins the injection to a specific session
+   * ID regardless of SessionManager state. Callers use this to guarantee the
+   * chunk stream's `sessionId` matches a pre-resolved id they can correlate
+   * against — necessary because /new on another channel could otherwise
+   * close the cached session between pre-resolution and the queued injection
+   * actually running, producing a different sessionId in the chunk stream.
+   * When omitted, the agent resolves a session the usual way (cached, last
+   * known, or fresh interactive session).
+   *
+   * `injectionId`, if provided, is propagated onto every streamed chunk
+   * (`chunk.injectionId`) so the caller can correlate chunks against a
+   * per-injection metadata map without colliding with other injections
+   * that happen to share the same target session id. When omitted a fresh
+   * UUID is generated so every call still has a unique token.
    */
-  async injectTaskResult(injection: string, targetUserId: string): Promise<void> {
+  async injectTaskResult(
+    injection: string,
+    targetUserId: string,
+    forcedSessionId?: string,
+    injectionId?: string,
+  ): Promise<void> {
+    const resolvedInjectionId = injectionId ?? randomUUID()
     const iterable = await this.messageQueue.enqueue<ResponseChunk>(
       'task_injection',
       targetUserId,
       injection,
       'task',
       (msg) => {
-        return this.processTaskInjection(msg.payload.userId, msg.payload.text)
+        return this.processTaskInjection(
+          msg.payload.userId,
+          msg.payload.text,
+          forcedSessionId,
+          resolvedInjectionId,
+        )
       },
     )
     // Stream response chunks via callback (if set), otherwise drain silently
@@ -247,36 +271,103 @@ export class AgentCore {
    * The response therefore appears inline in the user's conversation and
    * is naturally included in session summaries via
    * `buildConversationHistory()`.
+   *
+   * When `forcedSessionId` is provided, it is used unconditionally — this
+   * lets callers correlate the chunk stream against a pre-resolved session
+   * they have already recorded under a pending-injection map. The cached
+   * SessionManager session (if any) still has its activity counter bumped
+   * so the inactivity timer doesn't fire mid-injection.
    */
-  private async *processTaskInjection(targetUserId: string, injection: string): AsyncIterable<ResponseChunk> {
-    // Never create interactive sessions with source='task' — this breaks
-    // source-based history/usage filters. Resolution order:
+  private async *processTaskInjection(
+    targetUserId: string,
+    injection: string,
+    forcedSessionId?: string,
+    injectionId?: string,
+  ): AsyncIterable<ResponseChunk> {
+    // Resolve the session for this injection. Never create interactive
+    // sessions with source='task' — this breaks source-based history /
+    // usage filters. Resolution order:
+    //   0. If a forced sessionId is provided (by the runtime composition
+    //      after pre-resolution), use it verbatim.
     //   1. Active in-memory session (covers the common case).
     //   2. Most recent interactive session row for this user in the DB
-    //      (covers users whose session cache expired — e.g. a Telegram-only
-    //      user receiving a delayed task result).
-    //   3. 'web' fallback only if the user has never had a session.
-    const source = this.sessionManager.getSession(targetUserId)?.source
-      ?? this.resolveLastInteractiveSource(targetUserId)
-      ?? 'web'
-    const session = this.sessionManager.getOrCreateSession(targetUserId, source, 'interactive')
-    const sessionId = session.id
+    //      (covers users whose session cache expired).
+    //   3. Smart default: 'telegram' if the user is linked to an approved
+    //      Telegram account, otherwise 'web'. Prevents permanent source
+    //      mistagging for Telegram-only users who had never started a
+    //      session before the first task injection.
+    let sessionId: string
+    if (forcedSessionId) {
+      sessionId = forcedSessionId
+      // Still bump the cached session's activity counter if it matches,
+      // so the inactivity timer doesn't fire while the injection runs.
+      const cached = this.sessionManager.getSession(targetUserId)
+      if (cached && cached.id === forcedSessionId) {
+        this.sessionManager.recordMessage(targetUserId)
+      }
+    } else {
+      const source = this.sessionManager.getSession(targetUserId)?.source
+        ?? this.resolveLastInteractiveSource(targetUserId)
+        ?? this.resolveDefaultInjectionSource(targetUserId)
+      const session = this.sessionManager.getOrCreateSession(targetUserId, source)
+      sessionId = session.id
+      this.sessionManager.recordMessage(targetUserId)
+    }
     this.currentInteractiveSessionId = sessionId
-
-    this.sessionManager.recordMessage(targetUserId)
 
     const parsedUserId = Number.parseInt(targetUserId, 10)
     this.currentToolUserId = Number.isFinite(parsedUserId) ? parsedUserId : undefined
 
     try {
-      yield* this.runtime.streamPrompt(injection, sessionId)
+      for await (const chunk of this.runtime.streamPrompt(injection, sessionId)) {
+        // Tag task-injection chunks with the actual session used AND the
+        // per-injection correlation token. Downstream correlation MUST
+        // key off `chunk.injectionId` (unique per call) and not
+        // `chunk.sessionId` (shared across concurrent injections targeting
+        // the same cached user session).
+        yield { ...chunk, sessionId, injectionId }
+      }
     } finally {
       this.currentToolUserId = undefined
       this.currentInteractiveSessionId = undefined
     }
 
-    // Count the agent response as a message too
+    // Count the agent response as a message too (only when we're driving
+    // the cached session — otherwise recordMessage is a no-op for users
+    // without a cached session anyway).
     this.sessionManager.recordMessage(targetUserId)
+  }
+
+  /**
+   * Pre-resolve the interactive session ID that a task-result injection for
+   * `userId` will run under. Used by the runtime composition before calling
+   * `injectTaskResult` so both the task-result `chat_messages` row and the
+   * streamed injection response land in the same session.
+   *
+   * Resolution order (mirrors `processTaskInjection`):
+   *   1. Active cached interactive session (hot user). Takes precedence
+   *      UNCONDITIONALLY — a user actively chatting in a new session sees
+   *      task results in that conversation, even if `fallbackSessionId`
+   *      points at a different (older) session that triggered the task.
+   *      This is intentional: surfacing results in the user's current
+   *      conversation is more useful than threading them back into a
+   *      session the user may have left behind.
+   *   2. `fallbackSessionId` (e.g. the task's lineage parent from
+   *      `resolveTaskNotificationSessionId`) — used only when no session
+   *      is cached, so continuity with the triggering session is
+   *      preserved without minting a new one.
+   *   3. Create a fresh interactive session with a smart default source.
+   *
+   * The returned id is guaranteed to match the session AgentCore will use
+   * when `injectTaskResult(..., forcedSessionId)` is invoked with it.
+   */
+  resolveInjectionSessionId(userId: string, fallbackSessionId?: string | null): string {
+    const cached = this.sessionManager.getSession(userId)
+    if (cached) return cached.id
+    if (fallbackSessionId) return fallbackSessionId
+    const source = this.resolveLastInteractiveSource(userId)
+      ?? this.resolveDefaultInjectionSource(userId)
+    return this.sessionManager.getOrCreateSession(userId, source).id
   }
 
   /**
@@ -293,6 +384,29 @@ export class AgentCore {
        ORDER BY started_at DESC LIMIT 1`
     ).get(userId) as { source: string } | undefined
     return row?.source ?? null
+  }
+
+  /**
+   * Default source for a brand-new interactive session when the user has
+   * never had one before. Prefers 'telegram' when the user is linked to an
+   * approved Telegram account so a task injection doesn't mint a 'web'
+   * session for a Telegram-only user (which would otherwise mistag every
+   * subsequent message on that channel).
+   */
+  private resolveDefaultInjectionSource(userId: string): string {
+    const numericUserId = Number.parseInt(userId, 10)
+    if (Number.isSafeInteger(numericUserId)) {
+      try {
+        const row = this.db.prepare(
+          "SELECT 1 AS present FROM telegram_users WHERE user_id = ? AND status = 'approved' LIMIT 1",
+        ).get(numericUserId) as { present: number } | undefined
+        if (row) return 'telegram'
+      } catch {
+        // telegram_users table should always exist, but a missing/broken
+        // schema must not block the injection — fall through to 'web'.
+      }
+    }
+    return 'web'
   }
 
   /**
