@@ -210,6 +210,8 @@ export { createTaskTool, createResumeTaskTool, listTasksTool } from './task-tool
 export type { TaskToolsOptions } from './task-tools.js'
 export { createReadChatHistoryTool } from './chat-history-tools.js'
 export type { ChatHistoryToolsOptions } from './chat-history-tools.js'
+export { createSendFileTool, extractUploadsFromToolResult } from './send-file-tool.js'
+export type { SendFileToolOptions, SendFileToolDetails } from './send-file-tool.js'
 export {
   searchMemories,
   listMemories,
