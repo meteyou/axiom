@@ -152,8 +152,17 @@ export function createReadChatHistoryTool(options: ChatHistoryToolsOptions): Age
 
         // Source filter — resolved via JOIN on `sessions.type` / `sessions.source`
         // instead of fragile session_id prefix matching.
+        //
+        // Accepted filter values (aligned with the canonical session model
+        // in docs/architecture-conventions.md):
+        //   'web'      — WebSocket + REST upload (source IN ('web','rest'))
+        //   'rest'     — alias for 'web' (REST uploads are logged under the
+        //                user's web session; exposed so callers who reason
+        //                from the documented source list don't get rejected)
+        //   'telegram' — Telegram DM + group (source IN ('telegram','telegram-group'))
+        //   'task'     — all background agent-initiated session types
         if (source) {
-          const validSources = ['web', 'telegram', 'task']
+          const validSources = ['web', 'rest', 'telegram', 'task']
           if (!validSources.includes(source)) {
             return {
               content: [{ type: 'text' as const, text: `Error: Invalid source "${source}". Valid sources: ${validSources.join(', ')}.` }],
@@ -171,7 +180,8 @@ export function createReadChatHistoryTool(options: ChatHistoryToolsOptions): Age
               "EXISTS (SELECT 1 FROM sessions s WHERE s.id = cm.session_id AND s.source IN ('telegram', 'telegram-group'))"
             )
           } else {
-            // Web-originated interactive sessions (WebSocket + REST upload).
+            // 'web' and 'rest' collapse into the same query — REST uploads
+            // land under the user's web session (see chat.ts).
             baseConditions.push(
               "EXISTS (SELECT 1 FROM sessions s WHERE s.id = cm.session_id AND s.source IN ('web', 'rest'))"
             )
