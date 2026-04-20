@@ -265,6 +265,18 @@ export class AgentCore {
   }
 
   /**
+   * Returns the numeric user id of the user currently being served (set
+   * during `processUserMessage`/`processTaskInjection`). Tools that need to
+   * attribute side-effects (uploads, notifications, ...) to a concrete user
+   * consume this via the same indirection used by AgentRuntime.
+   *
+   * Returns `undefined` outside an active turn.
+   */
+  getCurrentToolUserId(): number | undefined {
+    return this.currentToolUserId
+  }
+
+  /**
    * Process a task injection by sending it through the runtime boundary.
    *
    * The injection is logged under the target user's active interactive
