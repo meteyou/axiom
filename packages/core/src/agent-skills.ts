@@ -143,7 +143,6 @@ export function trackAgentSkillUsage(skillName: string): void {
  */
 export function getRecentAgentSkills(limit: number = 10): AgentSkillEntry[] {
   const allSkills = listAgentSkills()
-  const usage = readUsageFile()
 
   // Separate skills with usage data from those without
   const withUsage = allSkills.filter(s => s.lastUsed)

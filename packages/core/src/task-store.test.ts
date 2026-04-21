@@ -103,7 +103,7 @@ describe('TaskStore', () => {
     })
 
     it('filters by status', () => {
-      const t1 = store.create({ name: 'Running', prompt: 'p1', triggerType: 'agent' })
+      store.create({ name: 'Running', prompt: 'p1', triggerType: 'agent' })
       const t2 = store.create({ name: 'Completed', prompt: 'p2', triggerType: 'agent' })
       store.update(t2.id, { status: 'completed' })
 

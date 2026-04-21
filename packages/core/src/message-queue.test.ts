@@ -166,6 +166,7 @@ describe('MessageQueue', () => {
       const queue = new MessageQueue()
 
       const failingProcessor = () => {
+        // eslint-disable-next-line require-yield -- intentionally throws before yielding to test error path
         return (async function* () {
           throw new Error('processor error')
         })()

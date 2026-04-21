@@ -410,7 +410,7 @@ describe('provider CRUD', () => {
 
   it('setFallbackProvider sets the fallback provider', () => {
     setupEmpty()
-    const p1 = addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-1', defaultModel: 'gpt-4o' })
+    addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-1', defaultModel: 'gpt-4o' })
     const p2 = addProvider({ name: 'fallback', providerType: 'anthropic', apiKey: 'sk-2', defaultModel: 'claude-3-5-sonnet-20241022' })
 
     setFallbackProvider(p2.id)
@@ -420,7 +420,7 @@ describe('provider CRUD', () => {
 
   it('getFallbackProvider returns the decrypted fallback provider config', () => {
     setupEmpty()
-    const p1 = addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-1', defaultModel: 'gpt-4o' })
+    addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-1', defaultModel: 'gpt-4o' })
     const p2 = addProvider({ name: 'fallback', providerType: 'anthropic', apiKey: 'sk-fb-key', defaultModel: 'claude-3-5-sonnet-20241022' })
 
     setFallbackProvider(p2.id)
@@ -451,7 +451,7 @@ describe('provider CRUD', () => {
 
   it('clearFallbackProvider removes the fallback provider setting', () => {
     setupEmpty()
-    const p1 = addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-1', defaultModel: 'gpt-4o' })
+    addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-1', defaultModel: 'gpt-4o' })
     const p2 = addProvider({ name: 'fallback', providerType: 'anthropic', apiKey: 'sk-2', defaultModel: 'claude-3-5-sonnet-20241022' })
 
     setFallbackProvider(p2.id)

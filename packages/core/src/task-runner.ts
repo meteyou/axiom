@@ -372,7 +372,7 @@ export class TaskRunner {
   private async runTaskAsync(
     runningTask: RunningTask,
     unsubscribe: () => void,
-    sessionId: string,
+    _sessionId: string,
   ): Promise<void> {
     const { taskId, agent } = runningTask
 
@@ -1261,7 +1261,7 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
     }
 
     // Abort running tasks
-    for (const [taskId, runningTask] of this.runningTasks) {
+    for (const [, runningTask] of this.runningTasks) {
       runningTask.agent.abort()
       if (runningTask.timeoutTimer) {
         clearTimeout(runningTask.timeoutTimer)
@@ -1273,7 +1273,7 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
     this.runningTasks.clear()
 
     // Free paused tasks
-    for (const [taskId, pausedTask] of this.pausedTasks) {
+    for (const [, pausedTask] of this.pausedTasks) {
       pausedTask.agent.abort()
     }
     this.pausedTasks.clear()

@@ -125,7 +125,7 @@ function extractEmoji(metadata: Record<string, unknown> | undefined): string | u
  * Parse a SKILL.md file content and extract structured skill metadata.
  */
 export function parseSkillMd(content: string): ParsedSkill {
-  const { frontmatter, body } = extractFrontmatter(content)
+  const { frontmatter } = extractFrontmatter(content)
 
   if (!frontmatter) {
     throw new Error('SKILL.md has no valid YAML frontmatter')

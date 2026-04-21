@@ -108,7 +108,7 @@ describe('TaskRunner', () => {
 
     const options: TaskRunnerOptions = {
       db,
-      buildModel: () => ({} as any),
+      buildModel: () => ({} as ReturnType<TaskRunnerOptions['buildModel']>),
       getApiKey: async () => 'test-key',
       tools: [],
       memoryDir: undefined,
@@ -191,7 +191,7 @@ describe('TaskRunner', () => {
       expect(updated.estimatedCost).toBeGreaterThan(0)
 
       // Check that token usage was logged to the token_usage table
-      const tokenRows = db.prepare('SELECT * FROM token_usage WHERE session_id = ?').all('task-token-session') as any[]
+      const tokenRows = db.prepare('SELECT * FROM token_usage WHERE session_id = ?').all('task-token-session') as Array<Record<string, unknown>>
       expect(tokenRows.length).toBeGreaterThan(0)
       expect(tokenRows[0].prompt_tokens).toBe(100)
       expect(tokenRows[0].completion_tokens).toBe(50)
@@ -565,7 +565,7 @@ describe('TaskRunner', () => {
       expect(runner.isPaused(task.id)).toBe(true)
 
       // Manually set pausedAt to >24h ago by accessing private field
-      const pausedTasks = (runner as any).pausedTasks as Map<string, any>
+      const pausedTasks = (runner as unknown as { pausedTasks: Map<string, { pausedAt: number }> }).pausedTasks
       const pausedTask = pausedTasks.get(task.id)!
       pausedTask.pausedAt = Date.now() - (25 * 60 * 60 * 1000) // 25 hours ago
 
@@ -714,7 +714,7 @@ describe('TaskRunner', () => {
       })
       store.update(task.id, { status: 'running', provider: 'unknown-provider', model: 'model' })
 
-      const result = await runner.recoverTasks(
+      await runner.recoverTasks(
         () => null,
         mockProvider,
       )
@@ -734,10 +734,10 @@ describe('TaskRunner', () => {
       const { Agent } = await import('@mariozechner/pi-agent-core')
       const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
 
-      let capturedOptions: any = null
+      let capturedOptions: { initialState: { tools: Array<{ name: string }>; systemPrompt: string } } | null = null
       const messages: unknown[] = []
-      MockAgent.mockImplementationOnce((options: any) => {
-        capturedOptions = options
+      MockAgent.mockImplementationOnce((options: unknown) => {
+        capturedOptions = options as typeof capturedOptions
         return {
           subscribe: vi.fn(() => () => {}),
           prompt: vi.fn(async () => {
@@ -758,9 +758,9 @@ describe('TaskRunner', () => {
 
       const runnerWithTools = new TaskRunner({
         db,
-        buildModel: () => ({} as any),
+        buildModel: () => ({} as ReturnType<TaskRunnerOptions['buildModel']>),
         getApiKey: async () => 'test-key',
-        tools: [toolA, toolB, toolC] as any,
+        tools: [toolA, toolB, toolC] as unknown as TaskRunnerOptions['tools'],
         onTaskComplete: () => {},
         sessionManager,
       })
@@ -812,10 +812,10 @@ describe('TaskRunner', () => {
       const { Agent } = await import('@mariozechner/pi-agent-core')
       const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
 
-      let capturedOptions: any = null
+      let capturedOptions: { initialState: { tools: Array<{ name: string }>; systemPrompt: string } } | null = null
       const messages: unknown[] = []
-      MockAgent.mockImplementationOnce((options: any) => {
-        capturedOptions = options
+      MockAgent.mockImplementationOnce((options: unknown) => {
+        capturedOptions = options as typeof capturedOptions
         return {
           subscribe: vi.fn(() => () => {}),
           prompt: vi.fn(async () => {
@@ -856,10 +856,10 @@ describe('TaskRunner', () => {
       const { Agent } = await import('@mariozechner/pi-agent-core')
       const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
 
-      let capturedOptions: any = null
+      let capturedOptions: { initialState: { tools: Array<{ name: string }>; systemPrompt: string } } | null = null
       const messages: unknown[] = []
-      MockAgent.mockImplementationOnce((options: any) => {
-        capturedOptions = options
+      MockAgent.mockImplementationOnce((options: unknown) => {
+        capturedOptions = options as typeof capturedOptions
         return {
           subscribe: vi.fn(() => () => {}),
           prompt: vi.fn(async () => {

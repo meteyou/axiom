@@ -56,7 +56,6 @@ export async function startHttpBoundary(
     taskEventBus: runtimeComposition.taskEventBus,
   })
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { wss: _logsWss, broadcast: broadcastLog } = setupWebSocketLogs(server)
   void broadcastLog
 

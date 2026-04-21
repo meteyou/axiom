@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
+import { describe, it, expect, afterEach, beforeEach } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
@@ -134,7 +134,7 @@ describe('agent-skills', () => {
       trackAgentSkillUsage('skill-a')
 
       // Wait a tiny bit so timestamps differ
-      const first = JSON.parse(fs.readFileSync(path.join(tmpDir, 'skills_agent', '.usage.json'), 'utf-8'))
+      JSON.parse(fs.readFileSync(path.join(tmpDir, 'skills_agent', '.usage.json'), 'utf-8'))
 
       trackAgentSkillUsage('skill-b')
       const second = JSON.parse(fs.readFileSync(path.join(tmpDir, 'skills_agent', '.usage.json'), 'utf-8'))
@@ -146,8 +146,7 @@ describe('agent-skills', () => {
     it('updates timestamp for already tracked skill', () => {
       fs.mkdirSync(path.join(tmpDir, 'skills_agent'), { recursive: true })
       trackAgentSkillUsage('my-skill')
-      const firstUsage = JSON.parse(fs.readFileSync(path.join(tmpDir, 'skills_agent', '.usage.json'), 'utf-8'))
-      const firstTimestamp = firstUsage['my-skill']
+      JSON.parse(fs.readFileSync(path.join(tmpDir, 'skills_agent', '.usage.json'), 'utf-8'))
 
       // Small delay to ensure different timestamp
       const later = new Date(Date.now() + 1000).toISOString()

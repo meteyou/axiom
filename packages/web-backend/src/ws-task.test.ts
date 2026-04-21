@@ -305,7 +305,7 @@ describe('WebSocket /ws/task/:id', () => {
     const token = getToken()
     const messages: Record<string, unknown>[] = []
 
-    await new Promise<void>((resolve, reject) => {
+    await new Promise<void>((resolve, _reject) => {
       const ws = new WebSocket(`${wsBaseUrl}/ws/task/nonexistent?token=${token}`)
       const timeout = setTimeout(() => {
         ws.close()

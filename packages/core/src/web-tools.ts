@@ -23,9 +23,8 @@ export interface WebSearchConfig {
   }
 }
 
-export interface WebFetchConfig {
-  // Currently no provider-specific config needed
-}
+// Currently no provider-specific config needed, but reserved for future options.
+export type WebFetchConfig = Record<string, never>
 
 export interface BuiltinToolsConfig {
   webSearch?: {

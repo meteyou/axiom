@@ -211,8 +211,12 @@ function markdownToTelegramHtml(text: string): string {
   // Links: [text](url)
   result = result.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
 
-  // Step 4: Restore code blocks and inline code
+  // Step 4: Restore code blocks and inline code.
+  // NUL bytes (\x00) are used as placeholder sentinels because they cannot
+  // appear in normal Telegram text, so the control characters are intentional.
+  // eslint-disable-next-line no-control-regex
   result = result.replace(/\x00CODEBLOCK(\d+)\x00/g, (_match, idx) => codeBlocks[Number(idx)])
+  // eslint-disable-next-line no-control-regex
   result = result.replace(/\x00INLINECODE(\d+)\x00/g, (_match, idx) => inlineCodes[Number(idx)])
 
   return result
@@ -882,9 +886,7 @@ export class TelegramBot {
     const messageForAgent = buildAgentMessage(text, replyContext)
     const senderName = this.getSenderName(ctx)
 
-    // Resolve username for DM chats to enable user profile injection
     const isDM = this.isDMChat(ctx)
-    const username = isDM ? this.resolveUsername(ctx) : null
 
     // Resolve session ID from SessionManager (aligns chat_messages with session tracking)
     const smSession = this.agentCore.getSessionManager().getOrCreateSession(userId, 'telegram')

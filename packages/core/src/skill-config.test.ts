@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
-import { loadSkills, saveSkills, addSkill, updateSkill, deleteSkill, getSkill, getSkillDecrypted, loadSkillsDecrypted } from './skill-config.js'
+import { loadSkills, addSkill, updateSkill, deleteSkill, getSkill, getSkillDecrypted, loadSkillsDecrypted } from './skill-config.js'
 import { ensureConfigTemplates } from './config.js'
 import { decrypt } from './encryption.js'
 
