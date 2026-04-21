@@ -16,6 +16,14 @@ export interface AgentSkill {
   description: string
   location: string
   lastUsed?: string
+  /** Env vars declared as required in the skill's SKILL.md frontmatter. */
+  requiredEnvVars?: string[]
+  /** Platforms the skill targets (e.g. ["linux", "macos"]). */
+  platforms?: string[]
+  /** Toolsets the skill needs (e.g. ["web_fetch", "shell"]). */
+  requiresToolsets?: string[]
+  /** Subset of requiredEnvVars that are not currently set on the server. */
+  missingEnvVars?: string[]
 }
 
 export interface BuiltinToolsConfig {

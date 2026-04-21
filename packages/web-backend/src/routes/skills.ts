@@ -163,11 +163,18 @@ export function createSkillsRouter(options: SkillsRouterOptions = {}): Router {
   // ─── Agent Skills (self-created, read-only listing) ─────────────────────────
 
   /**
-   * GET /api/skills/agent — List all agent-created skills
+   * GET /api/skills/agent — List all agent-created skills.
+   *
+   * Annotates each entry with `missingEnvVars` (subset of `requiredEnvVars`
+   * that is not currently set in the server's environment) so the frontend
+   * can surface a warning badge without needing access to process.env.
    */
   router.get('/agent', (_req, res) => {
     try {
-      const skills = listAgentSkills()
+      const skills = listAgentSkills().map(s => {
+        const missingEnvVars = (s.requiredEnvVars ?? []).filter(v => !process.env[v])
+        return { ...s, missingEnvVars }
+      })
       res.json({ skills })
     } catch (err) {
       res.status(500).json({ error: `Failed to list agent skills: ${(err as Error).message}` })

@@ -724,7 +724,13 @@
     "agentTab": "Agent Skills",
     "agentEmpty": "Noch keine Agent-Skills vorhanden",
     "agentEmptyDescription": "Der Agent kann während Unterhaltungen eigene Skills erstellen. Sie werden hier angezeigt.",
-    "agentLoading": "Lade Agent-Skills..."
+    "agentLoading": "Lade Agent-Skills...",
+    "metadata": {
+      "needsPrefix": "benötigt:",
+      "platformTooltip": "Unterstützte Plattform",
+      "toolsetTooltip": "Benötigtes Toolset",
+      "missingEnvTooltip": "Benötigte Umgebungsvariable ist nicht gesetzt"
+    }
   },
   "wiki": {
     "title": "Wiki",

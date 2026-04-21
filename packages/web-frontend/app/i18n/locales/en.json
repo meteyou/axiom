@@ -724,7 +724,13 @@
     "agentTab": "Agent Skills",
     "agentEmpty": "No agent-created skills yet",
     "agentEmptyDescription": "The agent can create its own skills during conversations. They will appear here.",
-    "agentLoading": "Loading agent skills..."
+    "agentLoading": "Loading agent skills...",
+    "metadata": {
+      "needsPrefix": "needs:",
+      "platformTooltip": "Supported platform",
+      "toolsetTooltip": "Required toolset",
+      "missingEnvTooltip": "Required environment variable is not set"
+    }
   },
   "wiki": {
     "title": "Wiki",

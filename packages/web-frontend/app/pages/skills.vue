@@ -140,7 +140,7 @@
           <!-- Agent skills list -->
           <div v-else class="flex-1 space-y-3 overflow-y-auto min-h-0">
             <Card v-for="skill in agentSkills" :key="skill.name" class="transition-colors">
-              <div class="flex items-center gap-4 p-4">
+              <div class="flex items-start gap-4 p-4">
                 <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
                   <AppIcon name="sparkles" class="h-5 w-5 text-muted-foreground" />
                 </div>
@@ -149,6 +149,38 @@
                   <p v-if="skill.description" class="mt-0.5 text-sm text-muted-foreground line-clamp-1">
                     {{ skill.description }}
                   </p>
+                  <div
+                    v-if="hasMetadataBadges(skill)"
+                    class="mt-2 flex flex-wrap items-center gap-1.5"
+                  >
+                    <!-- Missing env vars (warning) -->
+                    <Badge
+                      v-for="envVar in skill.missingEnvVars"
+                      :key="`env-${envVar}`"
+                      variant="warning"
+                      :title="$t('skills.metadata.missingEnvTooltip')"
+                    >
+                      ⚠ {{ envVar }}
+                    </Badge>
+                    <!-- Platforms -->
+                    <Badge
+                      v-for="platform in skill.platforms"
+                      :key="`platform-${platform}`"
+                      variant="secondary"
+                      :title="$t('skills.metadata.platformTooltip')"
+                    >
+                      {{ platform }}
+                    </Badge>
+                    <!-- Required toolsets -->
+                    <Badge
+                      v-for="toolset in skill.requiresToolsets"
+                      :key="`toolset-${toolset}`"
+                      variant="muted"
+                      :title="$t('skills.metadata.toolsetTooltip')"
+                    >
+                      {{ $t('skills.metadata.needsPrefix') }} {{ toolset }}
+                    </Badge>
+                  </div>
                 </div>
               </div>
             </Card>
@@ -458,7 +490,7 @@
 </template>
 
 <script setup lang="ts">
-import type { Skill } from '~/composables/useSkills'
+import type { Skill, AgentSkill } from '~/composables/useSkills'
 
 const { user } = useAuth()
 const isAdmin = computed(() => user.value?.role === 'admin')
@@ -751,6 +783,14 @@ async function handleToggleWebFetch() {
 }
 
 const { t } = useI18n()
+
+function hasMetadataBadges(skill: AgentSkill): boolean {
+  return (
+    (skill.missingEnvVars?.length ?? 0) > 0 ||
+    (skill.platforms?.length ?? 0) > 0 ||
+    (skill.requiresToolsets?.length ?? 0) > 0
+  )
+}
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
