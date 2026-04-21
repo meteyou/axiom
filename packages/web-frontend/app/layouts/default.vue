@@ -247,7 +247,7 @@
         </button>
 
         <!-- Connection status (desktop only) -->
-        <div class="hidden items-center gap-2 md:flex">
+        <div v-if="globalHealthMonitorEnabled" class="hidden items-center gap-2 md:flex">
           <span
             class="h-2 w-2 shrink-0 rounded-full"
             :class="statusDotClass"
@@ -257,7 +257,7 @@
         </div>
 
         <!-- Fallback mode indicator (desktop only) -->
-        <Tooltip v-if="isInFallbackMode">
+        <Tooltip v-if="globalHealthMonitorEnabled && isInFallbackMode">
           <TooltipTrigger as-child>
             <div class="hidden items-center gap-1.5 rounded-md bg-warning/10 px-2.5 py-1 ring-1 ring-warning/30 md:flex">
               <span class="h-2 w-2 shrink-0 rounded-full bg-warning shadow-[0_0_6px_hsl(var(--warning))]" />
@@ -318,7 +318,7 @@ const route = useRoute()
 const runtimeConfig = useRuntimeConfig()
 const appVersion = runtimeConfig.public.appVersion as string
 const { user, logout } = useAuth()
-const { status: globalStatus, providerName: globalProviderName, operatingMode: globalOperatingMode, fallbackProviderName: globalFallbackProviderName, start: startStatusPolling, stop: stopStatusPolling } = useConnectionStatus()
+const { status: globalStatus, providerName: globalProviderName, operatingMode: globalOperatingMode, fallbackProviderName: globalFallbackProviderName, healthMonitorEnabled: globalHealthMonitorEnabled, start: startStatusPolling, stop: stopStatusPolling } = useConnectionStatus()
 
 const isInFallbackMode = computed(() => globalOperatingMode.value === 'fallback')
 const { isDark, toggle: toggleTheme, mode: themeMode } = useTheme()
