@@ -150,7 +150,7 @@ export function parseOAuthCodePayload(payload: unknown): ParseResult<ProviderOAu
 
 export function parseProviderCreatePayload(
   payload: unknown,
-  presets: Record<string, ProviderTypePresetContract>,
+  presets: Record<string, Pick<ProviderTypePresetContract, 'requiresApiKey'>>,
 ): ParseResult<ProviderCreatePayloadContract> {
   const body = toRecord(payload)
   const name = asTrimmedString(body.name)

@@ -28,6 +28,7 @@ const refreshSystemPrompt = vi.fn()
 const setThinkingLevel = vi.fn()
 const restartHealthMonitor = vi.fn()
 const healthMonitorSnapshot: HealthMonitorSnapshot = {
+  enabled: true,
   agentStatus: 'running',
   intervalMinutes: 5,
   operatingMode: 'normal',

@@ -80,6 +80,9 @@ describe('loadAttachedSkillContent', () => {
         sourceUrl: '',
         path: installedSkillDir,
         enabled: true,
+        envKeys: [],
+        envValues: {},
+        installedAt: new Date(0).toISOString(),
       },
     ]
     saveSkills(file)

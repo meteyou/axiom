@@ -233,7 +233,11 @@ export class HealthMonitorService {
     }
 
     this.timer = setTimeout(() => {
-      void this.runNow()
+      // Background tick: swallow errors so a closed DB or transient failure
+      // during a scheduled run never surfaces as an unhandled rejection.
+      this.runNow().catch((err) => {
+        console.error('[openagent] Health monitor background check failed:', err)
+      })
     }, Math.max(0, delayMs))
 
     if (typeof this.timer === 'object' && 'unref' in this.timer) {
