@@ -20,7 +20,7 @@
     "dev": "tsc --watch"
   },
   "dependencies": {
-    "@mariozechner/pi-agent-core": "^0.67.4",
+    "@mariozechner/pi-agent-core": "^0.68.0",
     "adm-zip": "^0.5.16",
     "better-sqlite3": "^11.0.0",
     "js-yaml": "^4.1.1"
