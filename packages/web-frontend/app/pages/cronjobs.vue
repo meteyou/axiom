@@ -138,7 +138,7 @@
                 />
               </TableCell>
               <TableCell>
-                <div v-if="cj.lastRunAt" class="flex flex-col">
+                <div v-if="cj.lastRunAt" class="flex flex-col gap-1">
                   <div class="flex items-center gap-1.5">
                     <Badge :variant="lastRunStatusVariant(cj.lastRunStatus)">
                       {{ cj.lastRunStatus ?? '—' }}
