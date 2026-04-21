@@ -14,6 +14,7 @@ import {
   ensureConfigTemplates,
   getConfigDir,
   encrypt,
+  isEncrypted,
   maskApiKey,
   listAgentSkills,
 } from '@openagent/core'
@@ -250,7 +251,8 @@ export function createSkillsRouter(options: SkillsRouterOptions = {}): Router {
       // Encrypt and store braveSearchApiKey — write into builtinTools.webSearch
       // so createBuiltinWebTools() picks it up, plus top-level for API response
       if (body.braveSearchApiKey !== undefined) {
-        const encrypted = body.braveSearchApiKey ? encrypt(body.braveSearchApiKey) : ''
+        const raw = body.braveSearchApiKey
+        const encrypted = raw ? (isEncrypted(raw) ? raw : encrypt(raw)) : ''
         settings.braveSearchApiKey = encrypted
         if (!settings.builtinTools) settings.builtinTools = {}
         if (!settings.builtinTools.webSearch) settings.builtinTools.webSearch = { enabled: true, provider: 'duckduckgo' }

@@ -358,7 +358,8 @@ export async function searchSearXNG(
  * Encrypt a Brave Search API key for storage in settings.json.
  */
 export function encryptBraveApiKey(apiKey: string): string {
-  return encrypt(apiKey)
+  if (!apiKey) return ''
+  return isEncrypted(apiKey) ? apiKey : encrypt(apiKey)
 }
 
 /**
