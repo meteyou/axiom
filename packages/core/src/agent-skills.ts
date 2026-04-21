@@ -20,6 +20,35 @@ export interface AgentSkillEntry {
   description: string
   location: string
   lastUsed?: string // ISO timestamp
+  /** Optional `required_env_vars` from the skill's frontmatter. */
+  requiredEnvVars?: string[]
+  /** Optional `platforms` from the skill's frontmatter. */
+  platforms?: string[]
+  /** Optional `requires_toolsets` from the skill's frontmatter. */
+  requiresToolsets?: string[]
+}
+
+/**
+ * Context for filtering/annotating skills when rendering into the system prompt.
+ */
+export interface SkillPromptContext {
+  /** Current platform name: "linux" | "macos" | "windows" | other. */
+  platform: string
+  /** Names of tools currently registered in the active toolset. */
+  activeTools: Set<string>
+  /** Returns the value of an env var (or undefined if unset). */
+  getEnv?: (name: string) => string | undefined
+}
+
+/**
+ * Map Node's `process.platform` to the canonical names used in skill frontmatter.
+ */
+export function currentPlatform(): string {
+  switch (process.platform) {
+    case 'darwin': return 'macos'
+    case 'win32': return 'windows'
+    default: return process.platform // 'linux', 'freebsd', etc.
+  }
 }
 
 const USAGE_FILENAME = '.usage.json'
@@ -116,6 +145,9 @@ export function listAgentSkills(): AgentSkillEntry[] {
         description: parsed.description,
         location: path.join(dir, entry.name),
         lastUsed: usage[parsed.name] ?? usage[entry.name],
+        requiredEnvVars: parsed.requiredEnvVars,
+        platforms: parsed.platforms,
+        requiresToolsets: parsed.requiresToolsets,
       })
     } catch {
       // Skip skills with invalid SKILL.md
@@ -161,16 +193,72 @@ export function getRecentAgentSkills(limit: number = 10): AgentSkillEntry[] {
 }
 
 /**
+ * Apply platform/toolset/env-var gating rules to agent skills for the system prompt.
+ *
+ * Semantics (backward-compatible — skills without the new fields are unaffected):
+ *   - `platforms`: if set and current platform is not included, the skill is hidden.
+ *   - `requires_toolsets`: if any required tool is missing from the active toolset,
+ *     the skill is hidden (avoids prompt noise for unusable skills).
+ *   - `required_env_vars`: if any required env var is missing, the skill is kept in
+ *     the listing but marked with "⚠ requires: VAR_NAME" so the agent can warn the
+ *     user instead of failing silently.
+ */
+export function filterAndAnnotateAgentSkills(
+  skills: AgentSkillEntry[],
+  ctx: SkillPromptContext,
+): SkillPromptEntry[] {
+  const getEnv = ctx.getEnv ?? ((name: string) => process.env[name])
+  const result: SkillPromptEntry[] = []
+
+  for (const s of skills) {
+    // Platform gate
+    if (s.platforms && s.platforms.length > 0 && !s.platforms.includes(ctx.platform)) {
+      continue
+    }
+
+    // Toolset gate
+    if (s.requiresToolsets && s.requiresToolsets.length > 0) {
+      const missing = s.requiresToolsets.filter(t => !ctx.activeTools.has(t))
+      if (missing.length > 0) continue
+    }
+
+    // Env-var annotation (not a hard filter)
+    let warning: string | undefined
+    if (s.requiredEnvVars && s.requiredEnvVars.length > 0) {
+      const missing = s.requiredEnvVars.filter(v => !getEnv(v))
+      if (missing.length > 0) {
+        warning = `⚠ requires: ${missing.join(', ')}`
+      }
+    }
+
+    result.push({
+      name: s.name,
+      description: s.description,
+      location: s.location,
+      ...(warning ? { warning } : {}),
+    })
+  }
+
+  return result
+}
+
+/**
  * Get agent skills formatted for system prompt injection.
  * Returns the 10 most recently used skills as SkillPromptEntry[].
+ *
+ * Accepts an optional context to filter by platform/toolset and mark skills with
+ * missing required env vars. Without context, no gating is applied (backward compat).
  */
-export function getAgentSkillsForPrompt(): SkillPromptEntry[] {
+export function getAgentSkillsForPrompt(ctx?: SkillPromptContext): SkillPromptEntry[] {
   const recent = getRecentAgentSkills(10)
-  return recent.map(s => ({
-    name: s.name,
-    description: s.description,
-    location: s.location,
-  }))
+  if (!ctx) {
+    return recent.map(s => ({
+      name: s.name,
+      description: s.description,
+      location: s.location,
+    }))
+  }
+  return filterAndAnnotateAgentSkills(recent, ctx)
 }
 
 /**
@@ -217,7 +305,9 @@ export function createAgentSkillTools(): AgentTool[] {
 
         const lines = skills.map(s => {
           const lastUsedStr = s.lastUsed ? ` (last used: ${s.lastUsed})` : ''
-          return `- **${s.name}**: ${s.description}\n  Location: ${s.location}${lastUsedStr}`
+          const missingEnv = (s.requiredEnvVars ?? []).filter(v => !process.env[v])
+          const warnStr = missingEnv.length > 0 ? `\n  ⚠ requires env: ${missingEnv.join(', ')} (not set)` : ''
+          return `- **${s.name}**: ${s.description}\n  Location: ${s.location}${lastUsedStr}${warnStr}`
         })
 
         const dir = getAgentSkillsDir()

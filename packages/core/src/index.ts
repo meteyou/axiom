@@ -176,8 +176,10 @@ export {
   getAgentSkillsCount,
   getAgentSkillsDir,
   createAgentSkillTools,
+  filterAndAnnotateAgentSkills,
+  currentPlatform,
 } from './agent-skills.js'
-export type { AgentSkillEntry, AgentSkillUsage } from './agent-skills.js'
+export type { AgentSkillEntry, AgentSkillUsage, SkillPromptContext } from './agent-skills.js'
 export { AgentCore, createYoloTools, getWorkspaceDir, isRetryablePreStreamError } from './agent.js'
 export type { ResponseChunk, AgentCoreOptions } from './agent.js'
 export { createAgentRuntime, createBaseAgentTools } from './agent-runtime.js'

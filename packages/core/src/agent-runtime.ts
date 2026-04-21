@@ -21,7 +21,7 @@ import { createBuiltinWebTools } from './web-tools.js'
 import type { BuiltinToolsConfig } from './web-tools.js'
 import { createTranscribeAudioTool } from './stt-tool.js'
 import { loadSttSettings } from './stt.js'
-import { createAgentSkillTools, getAgentSkillsForPrompt, getAgentSkillsCount, getAgentSkillsDir, trackAgentSkillUsage } from './agent-skills.js'
+import { createAgentSkillTools, getAgentSkillsForPrompt, getAgentSkillsCount, getAgentSkillsDir, trackAgentSkillUsage, currentPlatform } from './agent-skills.js'
 import { createSearchMemoriesTool } from './memories-tool.js'
 import { createReadChatHistoryTool } from './chat-history-tools.js'
 import type { AgentRuntimeStateSnapshot, ResponseChunk } from './agent-runtime-types.js'
@@ -597,7 +597,23 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
     const { language, timezone, builtinToolsConfig, sttEnabled } = this.readRuntimeSettings()
 
     const activeSkills = getActiveSkillEntries()
-    const agentSkillEntries = getAgentSkillsForPrompt()
+    // Build a skill-prompt context so agent skills can be gated by the current
+    // platform / active toolset and annotated with missing required env vars.
+    const activeTools = new Set<string>([
+      'shell', 'read_file', 'write_file', 'edit_file', 'list_files',
+      'create_task', 'resume_task', 'list_tasks',
+      'create_cronjob', 'edit_cronjob', 'remove_cronjob', 'list_cronjobs', 'get_cronjob',
+      'create_reminder',
+      'read_chat_history', 'search_memories', 'list_agent_skills',
+    ])
+    if (builtinToolsConfig?.webSearch?.enabled !== false) activeTools.add('web_search')
+    if (builtinToolsConfig?.webFetch?.enabled !== false) activeTools.add('web_fetch')
+    if (sttEnabled) activeTools.add('transcribe_audio')
+
+    const agentSkillEntries = getAgentSkillsForPrompt({
+      platform: currentPlatform(),
+      activeTools,
+    })
     const totalAgentSkills = getAgentSkillsCount()
     const allSkills = [...activeSkills, ...agentSkillEntries]
 

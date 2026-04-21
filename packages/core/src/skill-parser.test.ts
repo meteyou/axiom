@@ -242,5 +242,54 @@ name: test-skill
 body`
       expect(() => parseSkillMd(content)).toThrow('missing required "description"')
     })
+
+    it('parses optional required_env_vars / platforms / requires_toolsets', () => {
+      const content = `---
+name: gated-skill
+description: Gated
+required_env_vars:
+  - BRAVE_API_KEY
+  - OTHER_KEY
+platforms:
+  - linux
+  - macos
+requires_toolsets:
+  - web_fetch
+  - shell
+---
+body`
+      const result = parseSkillMd(content)
+      expect(result.requiredEnvVars).toEqual(['BRAVE_API_KEY', 'OTHER_KEY'])
+      expect(result.platforms).toEqual(['linux', 'macos'])
+      expect(result.requiresToolsets).toEqual(['web_fetch', 'shell'])
+    })
+
+    it('leaves gating fields undefined when absent (backward compat)', () => {
+      const content = `---
+name: plain-skill
+description: Plain
+---
+body`
+      const result = parseSkillMd(content)
+      expect(result.requiredEnvVars).toBeUndefined()
+      expect(result.platforms).toBeUndefined()
+      expect(result.requiresToolsets).toBeUndefined()
+    })
+
+    it('ignores non-string entries in gating arrays', () => {
+      const content = `---
+name: mixed-skill
+description: Mixed
+platforms:
+  - linux
+  - 42
+  - null
+required_env_vars: "not-an-array"
+---
+body`
+      const result = parseSkillMd(content)
+      expect(result.platforms).toEqual(['linux'])
+      expect(result.requiredEnvVars).toBeUndefined()
+    })
   })
 })

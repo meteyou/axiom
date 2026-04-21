@@ -10,7 +10,10 @@ import {
   getAgentSkillsCount,
   getAgentSkillsDir,
   createAgentSkillTools,
+  filterAndAnnotateAgentSkills,
+  currentPlatform,
 } from './agent-skills.js'
+import type { AgentSkillEntry } from './agent-skills.js'
 import { assembleSystemPrompt } from './memory.js'
 import type { SkillPromptEntry } from './memory.js'
 
@@ -347,6 +350,126 @@ describe('agent-skills', () => {
       })
 
       expect(prompt).not.toContain('list_agent_skills')
+    })
+  })
+
+  describe('skill frontmatter gating', () => {
+    function createSkillWithFrontmatter(name: string, frontmatter: string): void {
+      const skillDir = path.join(tmpDir, 'skills_agent', name)
+      fs.mkdirSync(skillDir, { recursive: true })
+      fs.writeFileSync(
+        path.join(skillDir, 'SKILL.md'),
+        `---\nname: ${name}\ndescription: Gated skill\n${frontmatter}---\n\nBody.`,
+        'utf-8',
+      )
+    }
+
+    it('listAgentSkills exposes the new gating fields', () => {
+      createSkillWithFrontmatter(
+        'gated',
+        'required_env_vars:\n  - FOO_KEY\nplatforms:\n  - linux\nrequires_toolsets:\n  - web_fetch\n',
+      )
+
+      const skills = listAgentSkills()
+      expect(skills).toHaveLength(1)
+      expect(skills[0].requiredEnvVars).toEqual(['FOO_KEY'])
+      expect(skills[0].platforms).toEqual(['linux'])
+      expect(skills[0].requiresToolsets).toEqual(['web_fetch'])
+    })
+
+    it('hides skills whose platform does not match', () => {
+      const skills: AgentSkillEntry[] = [
+        { name: 'linux-only', description: 'x', location: '/a', platforms: ['linux'] },
+        { name: 'mac-only', description: 'y', location: '/b', platforms: ['macos'] },
+        { name: 'any', description: 'z', location: '/c' },
+      ]
+      const filtered = filterAndAnnotateAgentSkills(skills, {
+        platform: 'linux',
+        activeTools: new Set(),
+      })
+      expect(filtered.map(s => s.name)).toEqual(['linux-only', 'any'])
+    })
+
+    it('hides skills whose requires_toolsets are not all active', () => {
+      const skills: AgentSkillEntry[] = [
+        { name: 'needs-web-fetch', description: 'x', location: '/a', requiresToolsets: ['web_fetch'] },
+        { name: 'needs-both', description: 'y', location: '/b', requiresToolsets: ['web_fetch', 'shell'] },
+        { name: 'no-deps', description: 'z', location: '/c' },
+      ]
+      const filtered = filterAndAnnotateAgentSkills(skills, {
+        platform: 'linux',
+        activeTools: new Set(['web_fetch']),
+      })
+      expect(filtered.map(s => s.name)).toEqual(['needs-web-fetch', 'no-deps'])
+    })
+
+    it('keeps skills with missing required_env_vars but marks them with a warning', () => {
+      const skills: AgentSkillEntry[] = [
+        { name: 'needs-key', description: 'x', location: '/a', requiredEnvVars: ['BRAVE_API_KEY', 'OTHER'] },
+      ]
+      const filtered = filterAndAnnotateAgentSkills(skills, {
+        platform: 'linux',
+        activeTools: new Set(),
+        getEnv: (name) => (name === 'BRAVE_API_KEY' ? 'present' : undefined),
+      })
+      expect(filtered).toHaveLength(1)
+      expect(filtered[0].warning).toBe('⚠ requires: OTHER')
+    })
+
+    it('omits the warning when all required env vars are present', () => {
+      const skills: AgentSkillEntry[] = [
+        { name: 'all-set', description: 'x', location: '/a', requiredEnvVars: ['K1', 'K2'] },
+      ]
+      const filtered = filterAndAnnotateAgentSkills(skills, {
+        platform: 'linux',
+        activeTools: new Set(),
+        getEnv: () => 'present',
+      })
+      expect(filtered[0].warning).toBeUndefined()
+    })
+
+    it('is backward compatible: skills without new fields pass through unchanged', () => {
+      const skills: AgentSkillEntry[] = [
+        { name: 'plain', description: 'x', location: '/a' },
+      ]
+      const filtered = filterAndAnnotateAgentSkills(skills, {
+        platform: 'linux',
+        activeTools: new Set(),
+      })
+      expect(filtered).toEqual([{ name: 'plain', description: 'x', location: '/a' }])
+    })
+
+    it('currentPlatform maps process.platform to canonical names', () => {
+      const p = currentPlatform()
+      // At least make sure it returns a non-empty string and maps darwin/win32 correctly.
+      expect(typeof p).toBe('string')
+      if (process.platform === 'darwin') expect(p).toBe('macos')
+      else if (process.platform === 'win32') expect(p).toBe('windows')
+      else expect(p).toBe(process.platform)
+    })
+
+    it('list_agent_skills tool output marks skills with missing env vars', async () => {
+      createSkillWithFrontmatter('needs-env', 'required_env_vars:\n  - NEVER_SET_VAR_XYZ\n')
+
+      const tools = createAgentSkillTools()
+      const result = await tools[0].execute('test-call-id', {})
+      const text = (result as { content: { text: string }[] }).content[0].text
+      expect(text).toContain('needs-env')
+      expect(text).toContain('NEVER_SET_VAR_XYZ')
+      expect(text).toContain('requires env')
+    })
+  })
+
+  describe('assembleSystemPrompt renders skill warnings', () => {
+    it('emits a <warning> tag when a skill carries a warning', () => {
+      const skills: SkillPromptEntry[] = [
+        { name: 'warn-skill', description: 'd', location: '/a', warning: '⚠ requires: FOO' },
+      ]
+      const prompt = assembleSystemPrompt({
+        memoryDir: path.join(tmpDir, 'memory'),
+        skills,
+      })
+      expect(prompt).toContain('<warning>⚠ requires: FOO</warning>')
     })
   })
 

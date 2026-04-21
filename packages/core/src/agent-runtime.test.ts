@@ -89,6 +89,7 @@ vi.mock('./agent-skills.js', () => ({
   getAgentSkillsCount: vi.fn(() => 1),
   getAgentSkillsDir: vi.fn(() => '/skills-agent'),
   trackAgentSkillUsage: vi.fn(),
+  currentPlatform: vi.fn(() => 'linux'),
 }))
 
 vi.mock('./memories-tool.js', () => ({

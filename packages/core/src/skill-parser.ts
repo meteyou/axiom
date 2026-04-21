@@ -13,6 +13,24 @@ export interface ParsedSkill {
   envDescriptions: Record<string, string>
   emoji?: string
   rawMetadata?: Record<string, unknown>
+  /**
+   * Optional top-level `required_env_vars` frontmatter field.
+   * Env variables that must be set for the skill to function.
+   * When missing, the skill is still listed in the system prompt but marked as
+   * `⚠ requires: VAR_NAME` so the agent can warn the user instead of failing silently.
+   */
+  requiredEnvVars?: string[]
+  /**
+   * Optional top-level `platforms` frontmatter field (e.g. ["linux", "macos"]).
+   * When present, the skill is only surfaced on matching platforms.
+   */
+  platforms?: string[]
+  /**
+   * Optional top-level `requires_toolsets` frontmatter field (e.g. ["web_fetch", "shell"]).
+   * When any required tool is not part of the active toolset, the skill is hidden
+   * from the system prompt listing to avoid noise.
+   */
+  requiresToolsets?: string[]
 }
 
 /**
@@ -165,6 +183,11 @@ export function parseSkillMd(content: string): ParsedSkill {
     allowedTools = at.filter((v: unknown) => typeof v === 'string')
   }
 
+  // Parse optional gating fields (string arrays, top-level frontmatter)
+  const requiredEnvVars = parseStringArray(frontmatter.required_env_vars)
+  const platforms = parseStringArray(frontmatter.platforms)
+  const requiresToolsets = parseStringArray(frontmatter.requires_toolsets)
+
   return {
     name: normalizedName,
     description,
@@ -175,5 +198,14 @@ export function parseSkillMd(content: string): ParsedSkill {
     envDescriptions,
     emoji,
     rawMetadata: metadata,
+    requiredEnvVars,
+    platforms,
+    requiresToolsets,
   }
+}
+
+function parseStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const arr = value.filter((v): v is string => typeof v === 'string' && v.length > 0)
+  return arr.length > 0 ? arr : undefined
 }

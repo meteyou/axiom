@@ -697,6 +697,13 @@ export interface SkillPromptEntry {
   name: string
   description: string
   location: string
+  /**
+   * Optional warning to surface alongside the skill in the system prompt listing.
+   * Used e.g. when a skill declares `required_env_vars` that are not currently set
+   * ("⚠ requires: VAR_NAME"). The skill is still listed so the agent can inform
+   * the user instead of failing silently.
+   */
+  warning?: string
 }
 
 /**
@@ -896,9 +903,10 @@ Created skills automatically appear in <available_skills> for future conversatio
 
   // 12. Available skills (progressive disclosure)
   if (options?.skills && options.skills.length > 0) {
-    const skillEntries = options.skills.map(s =>
-      `  <skill>\n    <name>${s.name}</name>\n    <description>${s.description}</description>\n    <location>${s.location}</location>\n  </skill>`
-    ).join('\n')
+    const skillEntries = options.skills.map(s => {
+      const warningTag = s.warning ? `\n    <warning>${s.warning}</warning>` : ''
+      return `  <skill>\n    <name>${s.name}</name>\n    <description>${s.description}</description>\n    <location>${s.location}</location>${warningTag}\n  </skill>`
+    }).join('\n')
     let overflowNote = ''
     if (options?.agentSkillsOverflowCount && options.agentSkillsOverflowCount > 10) {
       overflowNote = `\n\nYou have ${options.agentSkillsOverflowCount} self-created agent skills in total (only the 10 most recent are shown above). Use \`list_agent_skills\` to browse all of them.`
