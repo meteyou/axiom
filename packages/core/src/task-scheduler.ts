@@ -5,6 +5,7 @@ import type { TaskStore } from './task-store.js'
 import type { TaskRunner } from './task-runner.js'
 import type { TaskOverrides } from './task-runner.js'
 import type { ProviderConfig } from './provider-config.js'
+import { parseProviderModelId } from './provider-config.js'
 import { parseCronExpression, getNextRunTime } from './cron-parser.js'
 
 export interface TaskSchedulerOptions {
@@ -340,13 +341,26 @@ export class TaskScheduler {
    * Fire a scheduled task — create a task via TaskRunner
    */
   private async fireTask(scheduledTask: ScheduledTask): Promise<string | null> {
-    // Resolve provider
+    // Resolve provider — the stored value is either a `providerId:modelId`
+    // composite (same format used everywhere else in settings) or, for legacy
+    // rows, a plain provider name/id. `parseProviderModelId` handles both:
+    // without a colon it returns `{ providerId: <raw> }` and modelId stays undefined.
     let provider: ProviderConfig
+    let modelOverride: string | undefined
     if (scheduledTask.provider) {
-      const resolved = this.options.resolveProvider(scheduledTask.provider)
+      const { providerId, modelId } = parseProviderModelId(scheduledTask.provider)
+      const resolved = providerId ? this.options.resolveProvider(providerId) : null
       provider = resolved ?? this.options.getDefaultProvider()
+      modelOverride = modelId
     } else {
       provider = this.options.getDefaultProvider()
+    }
+
+    // When the cronjob pins a specific model, pass that model through to the
+    // task runner via a cloned provider config (matches the pattern used by
+    // `getTaskDefaultProvider` in runtime-composition).
+    if (modelOverride) {
+      provider = { ...provider, defaultModel: modelOverride }
     }
 
     // Create task in the task store — sessionId is created by the
