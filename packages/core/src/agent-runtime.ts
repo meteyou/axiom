@@ -86,6 +86,8 @@ export interface AgentRuntimeBoundary {
   getStateSnapshot(): AgentRuntimeStateSnapshot
   getCurrentModel(): Model<Api>
   getCurrentApiKey(): string
+  /** The current provider config, if the runtime was initialized with one. */
+  getCurrentProvider(): ProviderConfig | null
   /** Update the thinking level used for future turns. */
   setThinkingLevel(level: SettingsThinkingLevel | string): void
 }
@@ -554,6 +556,10 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
 
   getCurrentApiKey(): string {
     return this.apiKey
+  }
+
+  getCurrentProvider(): ProviderConfig | null {
+    return this.providerConfig ?? null
   }
 
   private readRuntimeSettings(): {

@@ -5,7 +5,7 @@ import type { Agent as PiAgent } from '@mariozechner/pi-agent-core'
 import type { Api, ImageContent, Model } from '@mariozechner/pi-ai'
 import { completeSimple } from '@mariozechner/pi-ai'
 import type { Database } from './database.js'
-import { getApiKeyForProvider, buildModel } from './provider-config.js'
+import { getApiKeyForProvider, buildModel, resolveModelTemperature } from './provider-config.js'
 import type { ProviderConfig } from './provider-config.js'
 import type { ProviderManager } from './provider-manager.js'
 import { loadConfig } from './config.js'
@@ -461,6 +461,11 @@ export class AgentCore {
     // Resolve model + apiKey: use dedicated summary provider if configured, else current model
     let summaryModel = this.runtime.getCurrentModel()
     let summaryApiKey = this.runtime.getCurrentApiKey()
+    // Track the provider config that owns summaryModel so we can honor
+    // per-model temperature constraints (e.g. Kimi K2 thinking models only
+    // accept temperature=1).
+    let summaryProviderForTemp: Pick<ProviderConfig, 'providerType' | 'models'> | null =
+      this.runtime.getCurrentProvider()
     try {
       const summarySettings = loadConfig<{ sessionSummaryProviderId?: string }>('settings.json')
       const summaryProviderId = summarySettings.sessionSummaryProviderId
@@ -474,6 +479,7 @@ export class AgentCore {
             const resolvedModelId = modelId ?? summaryProvider.defaultModel
             summaryModel = buildModel(summaryProvider, resolvedModelId)
             summaryApiKey = await getApiKeyForProvider(summaryProvider)
+            summaryProviderForTemp = summaryProvider
             console.log(`[session-summary] Using dedicated provider: ${summaryProvider.name} (${resolvedModelId})`)
           } else {
             console.warn(`[session-summary] Configured summary provider '${providerId}' not found, using active provider`)
@@ -515,7 +521,9 @@ Do NOT add this section if everything discussed was resolved or if there is noth
         }],
       }, {
         apiKey: summaryApiKey,
-        temperature: 0,
+        temperature: summaryProviderForTemp
+          ? resolveModelTemperature(summaryProviderForTemp, summaryModel.id, 0)
+          : 0,
         reasoning: resolveBackgroundReasoning(),
       })
 
