@@ -1,5 +1,5 @@
 {
-  "name": "@openagent/core",
+  "name": "@axiom/core",
   "version": "0.16.1",
   "private": true,
   "type": "module",
