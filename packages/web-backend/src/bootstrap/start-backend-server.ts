@@ -76,10 +76,10 @@ function installShutdownSignalHandlers(options: InstallShutdownSignalHandlersOpt
       if (shuttingDown) return
       shuttingDown = true
 
-      options.logger.log(`\n[openagent] Received ${signal}, shutting down...`)
+      options.logger.log(`\n[axiom] Received ${signal}, shutting down...`)
 
       options.stop().then(() => {
-        options.logger.log('[openagent] Server closed.')
+        options.logger.log('[axiom] Server closed.')
         options.exitProcess(0)
       }).catch(() => {
         options.exitProcess(1)

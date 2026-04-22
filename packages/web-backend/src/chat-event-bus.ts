@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events'
-import type { UploadDescriptor } from '@openagent/core'
+import type { UploadDescriptor } from '@axiom/core'
 
 /**
  * A chat event emitted when messages flow through any channel (web, telegram).
@@ -8,7 +8,7 @@ import type { UploadDescriptor } from '@openagent/core'
 export interface ChatEvent {
   /** The kind of event being broadcast */
   type: 'user_message' | 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'done' | 'error' | 'system' | 'session_end' | 'task_completed' | 'task_failed' | 'task_question' | 'reminder' | 'attachment'
-  /** The OpenAgent user ID (integer) this event belongs to */
+  /** The Axiom user ID (integer) this event belongs to */
   userId: number
   /** Where the event originated */
   source: 'web' | 'telegram' | 'task'

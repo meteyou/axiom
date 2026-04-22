@@ -5,9 +5,9 @@ import os from 'node:os'
 import path from 'node:path'
 import { WebSocket } from 'ws'
 import { createApp } from './app.js'
-import { createMemory, initDatabase } from '@openagent/core'
-import type { Database } from '@openagent/core'
-import type { AgentCore } from '@openagent/core'
+import { createMemory, initDatabase } from '@axiom/core'
+import type { Database } from '@axiom/core'
+import type { AgentCore } from '@axiom/core'
 import { setupWebSocketChat } from './ws-chat.js'
 import { setupWebSocketLogs } from './ws-logs.js'
 import { generateAccessToken } from './auth.js'
@@ -18,7 +18,7 @@ let db: Database
 let server: http.Server
 let wss: import('./ws-chat.js').WebSocketChatResult
 let logsWss: import('ws').WebSocketServer
-let broadcastLog: (record: import('@openagent/core').ToolCallRecord) => void
+let broadcastLog: (record: import('@axiom/core').ToolCallRecord) => void
 let port: number
 let baseUrl: string
 let tempDataDir: string
@@ -40,7 +40,7 @@ const healthMonitorSnapshot: HealthMonitorSnapshot = {
 
 beforeAll(async () => {
   previousDataDir = process.env.DATA_DIR
-  tempDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openagent-web-backend-'))
+  tempDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'axiom-web-backend-'))
   process.env.DATA_DIR = tempDataDir
 
   db = initDatabase(':memory:')

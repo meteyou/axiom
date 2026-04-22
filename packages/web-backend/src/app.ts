@@ -2,8 +2,8 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import fs from 'node:fs'
 import express from 'express'
-import type { Database } from '@openagent/core'
-import type { AgentCore } from '@openagent/core'
+import type { Database } from '@axiom/core'
+import type { AgentCore } from '@axiom/core'
 import { createAuthRouter } from './routes/auth.js'
 import { createChatRouter } from './routes/chat.js'
 import { createLogsRouter } from './routes/logs.js'
@@ -12,7 +12,7 @@ import { createMemoryRouter } from './api/modules/memory/route.js'
 import { createSettingsRouter } from './api/modules/settings/route.js'
 import { createUsersRouter } from './routes/users.js'
 import { createTelegramUsersRouter } from './routes/telegram-users.js'
-import type { TelegramBot } from '@openagent/telegram'
+import type { TelegramBot } from '@axiom/telegram'
 import { createSkillsRouter } from './routes/skills.js'
 import { createStatsRouter } from './routes/stats.js'
 import { createHealthRouter } from './routes/health.js'
@@ -21,7 +21,7 @@ import { createCronjobsRouter } from './routes/cronjobs.js'
 import { createSecretsRouter } from './routes/secrets.js'
 import { createTtsRouter } from './routes/tts.js'
 import { createSttRouter } from './routes/stt.js'
-import type { ProviderConfig, TaskRuntimeBoundary, TaskEventBus, AgentHeartbeatService } from '@openagent/core'
+import type { ProviderConfig, TaskRuntimeBoundary, TaskEventBus, AgentHeartbeatService } from '@axiom/core'
 import { ensureAdminUser } from './auth.js'
 import type { HealthMonitorService } from './health-monitor.js'
 import type { RuntimeMetrics } from './runtime-metrics.js'
@@ -176,7 +176,7 @@ export function createApp(options?: AppOptions): express.Express {
   const frontendDir = candidatePaths.find(p => fs.existsSync(path.join(p, 'index.html'))) || candidatePaths[0]
 
   if (fs.existsSync(frontendDir)) {
-    console.log(`[openagent] Serving frontend from ${frontendDir}`)
+    console.log(`[axiom] Serving frontend from ${frontendDir}`)
     app.use(express.static(frontendDir))
 
     // SPA fallback: serve index.html for all non-API/non-WS routes
