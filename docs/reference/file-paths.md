@@ -1,7 +1,5 @@
 # File Paths
 
-> **This page is a stub.** Full content will be written together with the agent.
-
 Authoritative layout of the directories Axiom uses. Useful when debugging volumes, planning backups, or asking the agent "where is X stored?".
 
 ## Inside the container
