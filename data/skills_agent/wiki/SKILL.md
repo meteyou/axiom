@@ -190,7 +190,7 @@ Goal: audit the wiki for quality — find contradictions, orphaned pages, missin
 
 - Lowercase: `my-project.md` not `MyProject.md`
 - Hyphens instead of spaces: `api-design.md`
-- Descriptive and unambiguous: `openagent-deployment.md` rather than `deployment.md` when multiple projects exist
+- Descriptive and unambiguous: `axiom-deployment.md` rather than `deployment.md` when multiple projects exist
 - No special characters except `-` and `_`
 
 ## Quality principles (after Karpathy)

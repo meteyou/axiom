@@ -1,11 +1,11 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { getWorkspaceDir } from './workspace.js'
-import { getConfigDir } from './config.js'
+import { getConfigDir, getDocsPath, getReadmePath } from './config.js'
 
 const SOUL_TEMPLATE = `# Soul
 
-You are openagent, a helpful AI assistant.
+You are Axiom, a helpful AI assistant.
 
 ## Personality
 - Friendly and professional
@@ -321,7 +321,7 @@ export function ensureMemoryStructure(memoryDir?: string): void {
   // Migrate projects/ → wiki/ if projects/ exists and wiki/ does not
   if (fs.existsSync(legacyProjectsDir) && !fs.existsSync(wikiDir)) {
     fs.renameSync(legacyProjectsDir, wikiDir)
-    console.log('[openagent] Migrated memory/projects/ to memory/wiki/')
+    console.log('[axiom] Migrated memory/projects/ to memory/wiki/')
   } else if (!fs.existsSync(wikiDir)) {
     fs.mkdirSync(wikiDir, { recursive: true })
   }
@@ -421,7 +421,7 @@ export function ensureWikiDir(memoryDir?: string): string {
   // Migrate projects/ → wiki/ if projects/ exists and wiki/ does not
   if (fs.existsSync(legacyProjectsDir) && !fs.existsSync(wikiDir)) {
     fs.renameSync(legacyProjectsDir, wikiDir)
-    console.log('[openagent] Migrated memory/projects/ to memory/wiki/')
+    console.log('[axiom] Migrated memory/projects/ to memory/wiki/')
   } else if (!fs.existsSync(wikiDir)) {
     fs.mkdirSync(wikiDir, { recursive: true })
   }
@@ -883,6 +883,37 @@ Config files:
 - HEARTBEAT.md (heartbeat tasks): ${path.join(cfgDir, 'HEARTBEAT.md')}
 - CONSOLIDATION.md (consolidation rules): ${path.join(cfgDir, 'CONSOLIDATION.md')}
 </memory_paths>`)
+
+  // 9b. Project documentation (read-only, shipped with the Axiom image).
+  // Lets the agent answer "how do I set up X / where do I configure Y" questions
+  // by reading the user-facing docs on demand instead of bloating every prompt.
+  {
+    const readmePath = getReadmePath()
+    const docsPath = getDocsPath()
+    sections.push(`<project_docs>
+Axiom documentation is shipped with the application. Read these files when the user asks how to set up, configure, or use Axiom — including providers, memory, skills, tasks, tools, web UI, telegram, env vars, or settings.
+
+- Main documentation (start here, has table of contents): ${readmePath}
+- User guide: ${path.join(docsPath, 'guide/')}
+- Reference: ${path.join(docsPath, 'reference/')}
+
+When asked about a topic, read the matching file directly:
+- quickstart / docker setup → docs/guide/quickstart.md
+- configuration / admin / encryption → docs/guide/configuration.md
+- LLM providers / models → docs/guide/providers.md
+- memory system (SOUL, MEMORY, AGENTS, daily, users, wiki) → docs/guide/memory.md
+- skills (built-in & agent-created) → docs/guide/skills.md
+- background tasks / cronjobs / reminders → docs/guide/tasks-and-cronjobs.md
+- built-in tools (web_search, web_fetch, stt, …) → docs/guide/tools.md
+- web frontend pages → docs/guide/web-ui.md
+- telegram bot → docs/guide/telegram.md
+- environment variables → docs/reference/env-vars.md
+- settings.json schema → docs/reference/settings.md
+- container file paths (/data, /workspace, /app) → docs/reference/file-paths.md
+
+Always read the file completely before answering. Follow .md cross-links if a topic spans multiple files. Do not write to these files — they are managed in the source tree, not in user data.
+</project_docs>`)
+  }
 
   // 10. Agent skill creation
   if (options?.agentSkillsDir) {

@@ -35,7 +35,7 @@ describe('memory', () => {
   })
 
   function makeTmpDir(): string {
-    tmpDir = path.join(os.tmpdir(), `openagent-memory-test-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+    tmpDir = path.join(os.tmpdir(), `axiom-memory-test-${Date.now()}-${Math.random().toString(36).slice(2)}`)
     return tmpDir
   }
 
@@ -408,20 +408,38 @@ describe('memory', () => {
       expect(prompt).toContain(path.join(dir, 'sources'))
     })
 
+    it('includes project_docs section pointing at README and docs/', () => {
+      const dir = makeTmpDir()
+      ensureMemoryStructure(dir)
+
+      const prompt = assembleSystemPrompt({ memoryDir: dir })
+
+      // Block markers + topic-routing hints the agent uses to navigate the docs
+      expect(prompt).toContain('<project_docs>')
+      expect(prompt).toContain('README.md')
+      expect(prompt).toContain('docs/guide/')
+      expect(prompt).toContain('docs/reference/')
+      expect(prompt).toContain('docs/guide/quickstart.md')
+      expect(prompt).toContain('docs/guide/memory.md')
+      expect(prompt).toContain('docs/reference/env-vars.md')
+      expect(prompt).toContain('Do not write to these files')
+      expect(prompt).toContain('</project_docs>')
+    })
+
     it('includes wiki_pages section when wiki pages exist', () => {
       const dir = makeTmpDir()
       ensureMemoryStructure(dir)
 
       // Create a wiki page
       const wikiDir = path.join(dir, 'wiki')
-      fs.writeFileSync(path.join(wikiDir, 'openagent.md'), '---\naliases: [OpenAgent, open-agent]\n---\n# Project: OpenAgent\n', 'utf-8')
+      fs.writeFileSync(path.join(wikiDir, 'axiom.md'), '---\naliases: [Axiom, the-axiom]\n---\n# Project: Axiom\n', 'utf-8')
 
       const prompt = assembleSystemPrompt({ memoryDir: dir })
 
       expect(prompt).toContain('<wiki_pages>')
-      expect(prompt).toContain('openagent.md')
-      expect(prompt).toContain('OpenAgent')
-      expect(prompt).toContain('open-agent')
+      expect(prompt).toContain('axiom.md')
+      expect(prompt).toContain('Axiom')
+      expect(prompt).toContain('the-axiom')
       expect(prompt).toContain('load it with read_file')
       expect(prompt).toContain('Maintain and organize it autonomously')
       expect(prompt).toContain('wiki/SKILL.md')
@@ -481,8 +499,8 @@ describe('memory', () => {
 
   describe('parseProjectAliases', () => {
     it('extracts aliases from valid YAML frontmatter', () => {
-      const content = '---\naliases: [OpenAgent, open-agent, openagent]\n---\n# Project\n'
-      expect(parseProjectAliases(content)).toEqual(['OpenAgent', 'open-agent', 'openagent'])
+      const content = '---\naliases: [Axiom, the-axiom, axiom]\n---\n# Project\n'
+      expect(parseProjectAliases(content)).toEqual(['Axiom', 'the-axiom', 'axiom'])
     })
 
     it('returns empty array when no frontmatter', () => {
