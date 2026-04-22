@@ -4,8 +4,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { createApp } from './app.js'
-import { initDatabase, initTasksTable, TaskStore, TaskEventBus } from '@openagent/core'
-import type { Database } from '@openagent/core'
+import { initDatabase, initTasksTable, TaskStore, TaskEventBus } from '@axiom/core'
+import type { Database } from '@axiom/core'
 import { generateAccessToken } from './auth.js'
 import { setupWebSocketTask } from './ws-task.js'
 import { WebSocket } from 'ws'
@@ -21,7 +21,7 @@ let taskEventBus: TaskEventBus
 
 beforeAll(async () => {
   previousDataDir = process.env.DATA_DIR
-  tempDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openagent-ws-task-'))
+  tempDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'axiom-ws-task-'))
   process.env.DATA_DIR = tempDataDir
 
   db = initDatabase(':memory:')

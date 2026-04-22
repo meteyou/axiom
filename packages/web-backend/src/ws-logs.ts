@@ -3,7 +3,7 @@ import type { Server } from 'node:http'
 import { verifyToken } from './auth.js'
 import type { JwtPayload } from './auth.js'
 import { URL } from 'node:url'
-import type { ToolCallRecord } from '@openagent/core'
+import type { ToolCallRecord } from '@axiom/core'
 
 /**
  * Set up WebSocket server for real-time log streaming at /ws/logs
