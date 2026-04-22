@@ -64,6 +64,14 @@ export interface FactExtractionSettingsContract {
   minSessionMessages: number
 }
 
+export interface UploadsSettingsContract {
+  /**
+   * How many days uploaded files in `/data/uploads/` are kept before the cleanup job
+   * removes them. `0` means files are deleted on the next cleanup run.
+   */
+  retentionDays: number
+}
+
 export interface AgentHeartbeatNightModeContract {
   enabled: boolean
   startHour: number
@@ -136,7 +144,7 @@ export interface SettingsContract {
   thinkingLevel: SettingsThinkingLevel
   healthMonitorIntervalMinutes: number
   batchingDelayMs: number
-  uploadRetentionDays: number
+  uploads: UploadsSettingsContract
   telegramEnabled: boolean
   telegramBotToken: string
   healthMonitor: HealthMonitorSettingsContract
@@ -159,7 +167,7 @@ export interface SettingsStorageContract {
   healthMonitorIntervalMinutes?: number
   healthMonitor?: Partial<HealthMonitorSettingsContract> & { intervalMinutes?: number }
   batchingDelayMs?: number
-  uploadRetentionDays?: number
+  uploads?: Partial<UploadsSettingsContract>
   memoryConsolidation?: Partial<MemoryConsolidationSettingsContract>
   factExtraction?: Partial<FactExtractionSettingsContract>
   agentHeartbeat?: Partial<AgentHeartbeatSettingsContract>
@@ -195,14 +203,16 @@ export const DEFAULT_HEALTH_MONITOR_NOTIFICATION_TOGGLES: HealthMonitorNotificat
 }
 
 export const DEFAULT_SETTINGS_CONTRACT: SettingsContract = {
-  sessionTimeoutMinutes: 15,
+  sessionTimeoutMinutes: 30,
   sessionSummaryProviderId: '',
   language: 'match',
   timezone: 'UTC',
   thinkingLevel: 'off',
   healthMonitorIntervalMinutes: 5,
   batchingDelayMs: 2500,
-  uploadRetentionDays: 30,
+  uploads: {
+    retentionDays: 30,
+  },
   telegramEnabled: false,
   telegramBotToken: '',
   healthMonitor: {
@@ -214,13 +224,13 @@ export const DEFAULT_SETTINGS_CONTRACT: SettingsContract = {
     notifications: { ...DEFAULT_HEALTH_MONITOR_NOTIFICATION_TOGGLES },
   },
   memoryConsolidation: {
-    enabled: false,
+    enabled: true,
     runAtHour: 3,
     lookbackDays: 3,
     providerId: '',
   },
   factExtraction: {
-    enabled: false,
+    enabled: true,
     providerId: '',
     minSessionMessages: 3,
   },
@@ -292,7 +302,9 @@ export function normalizeSettingsContract(input: DeepPartial<SettingsContract> |
     thinkingLevel: normalizeThinkingLevel(source.thinkingLevel, DEFAULT_SETTINGS_CONTRACT.thinkingLevel),
     healthMonitorIntervalMinutes: source.healthMonitorIntervalMinutes ?? DEFAULT_SETTINGS_CONTRACT.healthMonitorIntervalMinutes,
     batchingDelayMs: source.batchingDelayMs ?? DEFAULT_SETTINGS_CONTRACT.batchingDelayMs,
-    uploadRetentionDays: source.uploadRetentionDays ?? DEFAULT_SETTINGS_CONTRACT.uploadRetentionDays,
+    uploads: {
+      retentionDays: source.uploads?.retentionDays ?? DEFAULT_SETTINGS_CONTRACT.uploads.retentionDays,
+    },
     telegramEnabled: source.telegramEnabled ?? DEFAULT_SETTINGS_CONTRACT.telegramEnabled,
     telegramBotToken: source.telegramBotToken ?? DEFAULT_SETTINGS_CONTRACT.telegramBotToken,
     healthMonitor: {

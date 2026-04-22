@@ -46,7 +46,7 @@ interface TriggerFactExtractionOptions {
 }
 
 const DEFAULT_FACT_EXTRACTION_SETTINGS: FactExtractionSettings = {
-  enabled: false,
+  enabled: true,
   providerId: '',
   minSessionMessages: 3,
 }

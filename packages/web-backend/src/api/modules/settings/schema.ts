@@ -359,6 +359,25 @@ export function mergeTts(
   return { error: null }
 }
 
+export function mergeUploads(
+  body: Record<string, unknown>,
+  settingsRaw: Record<string, unknown>,
+): MergeGroupResult {
+  const uploads = body.uploads as Record<string, unknown> | undefined
+  if (!uploads) return { error: null, changed: false }
+
+  const existing = (settingsRaw.uploads ?? {}) as Record<string, unknown>
+
+  if (uploads.retentionDays !== undefined) {
+    const err = validateNonNegativeNumber(uploads.retentionDays, 'uploads.retentionDays')
+    if (err) return { error: err, changed: false }
+    existing.retentionDays = uploads.retentionDays
+  }
+
+  settingsRaw.uploads = existing
+  return { error: null, changed: true }
+}
+
 export function mergeStt(
   body: Record<string, unknown>,
   settingsRaw: Record<string, unknown>,

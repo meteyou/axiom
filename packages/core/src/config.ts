@@ -8,7 +8,7 @@ const TEMPLATES: Record<string, object> = {
     _comment: 'Add LLM provider configurations here. Each provider needs: name, type, baseUrl, apiKey, defaultModel',
   },
   'settings.json': {
-    sessionTimeoutMinutes: 15,
+    sessionTimeoutMinutes: 30,
     sessionSummaryProviderId: '',
     language: 'en',
     timezone: 'UTC',
@@ -29,7 +29,9 @@ const TEMPLATES: Record<string, object> = {
       },
     },
     batchingDelayMs: 2500,
-    uploadRetentionDays: 30,
+    uploads: {
+      retentionDays: 30,
+    },
     tokenPriceTable: {
       'gpt-4o': { input: 2.5, output: 10 },
       'gpt-4o-mini': { input: 0.15, output: 0.6 },
@@ -37,13 +39,13 @@ const TEMPLATES: Record<string, object> = {
       'claude-sonnet-4-20250514': { input: 3, output: 15 }
     },
     memoryConsolidation: {
-      enabled: false,
+      enabled: true,
       runAtHour: 3,
       lookbackDays: 3,
       providerId: '',
     },
     factExtraction: {
-      enabled: false,
+      enabled: true,
       providerId: '',
       minSessionMessages: 3,
     },

@@ -10,6 +10,7 @@ import {
   mergeStt,
   mergeTasks,
   mergeTts,
+  mergeUploads,
   normalizeSettingsPayload,
   validateEnum,
   validateNonEmptyString,
@@ -101,12 +102,6 @@ export function createSettingsService(options: SettingsRouterOptions = {}): Sett
       settings.healthMonitorIntervalMinutes = body.healthMonitorIntervalMinutes as number
     }
 
-    if (body.uploadRetentionDays !== undefined) {
-      const err = validateNonNegativeNumber(body.uploadRetentionDays, 'uploadRetentionDays')
-      if (err) throw new SettingsValidationError(err)
-      settings.uploadRetentionDays = body.uploadRetentionDays as number
-    }
-
     if (body.batchingDelayMs !== undefined) {
       const err = validateNonNegativeNumber(body.batchingDelayMs, 'batchingDelayMs')
       if (err) throw new SettingsValidationError(err)
@@ -135,6 +130,9 @@ export function createSettingsService(options: SettingsRouterOptions = {}): Sett
 
     const sttMerge = mergeStt(body, settingsRaw)
     if (sttMerge.error) throw new SettingsValidationError(sttMerge.error)
+
+    const uploadsMerge = mergeUploads(body, settingsRaw)
+    if (uploadsMerge.error) throw new SettingsValidationError(uploadsMerge.error)
 
     if (body.telegramEnabled !== undefined) {
       telegram.enabled = !!body.telegramEnabled

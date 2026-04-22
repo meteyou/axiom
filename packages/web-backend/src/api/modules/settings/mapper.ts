@@ -29,7 +29,7 @@ function buildHealthMonitorResponse(settingsRaw: Record<string, unknown>) {
 function buildConsolidationResponse(settingsRaw: Record<string, unknown>) {
   const memoryConsolidation = (settingsRaw.memoryConsolidation ?? {}) as Record<string, unknown>
   return {
-    enabled: memoryConsolidation.enabled ?? false,
+    enabled: memoryConsolidation.enabled ?? true,
     runAtHour: memoryConsolidation.runAtHour ?? 3,
     lookbackDays: memoryConsolidation.lookbackDays ?? 3,
     providerId: memoryConsolidation.providerId ?? '',
@@ -39,7 +39,7 @@ function buildConsolidationResponse(settingsRaw: Record<string, unknown>) {
 function buildFactExtractionResponse(settingsRaw: Record<string, unknown>) {
   const factExtraction = (settingsRaw.factExtraction ?? {}) as Record<string, unknown>
   return {
-    enabled: factExtraction.enabled ?? false,
+    enabled: factExtraction.enabled ?? true,
     providerId: factExtraction.providerId ?? '',
     minSessionMessages: factExtraction.minSessionMessages ?? 3,
   }
@@ -94,6 +94,12 @@ function buildTtsResponse(settingsRaw: Record<string, unknown>) {
   }
 }
 
+function buildUploadsResponse(settingsRaw: Record<string, unknown>) {
+  const uploads = (settingsRaw.uploads ?? {}) as Record<string, unknown>
+  const retentionDays = typeof uploads.retentionDays === 'number' ? uploads.retentionDays : 30
+  return { retentionDays }
+}
+
 function buildSttResponse(settingsRaw: Record<string, unknown>) {
   const stt = (settingsRaw.stt ?? {}) as Record<string, unknown>
   const rewrite = (stt.rewrite ?? {}) as Record<string, unknown>
@@ -115,7 +121,7 @@ export function mapSettingsResponse(context: SettingsResponseContext) {
   const settingsRaw = context.settings as unknown as Record<string, unknown>
 
   return {
-    sessionTimeoutMinutes: context.settings.sessionTimeoutMinutes ?? 15,
+    sessionTimeoutMinutes: context.settings.sessionTimeoutMinutes ?? 30,
     sessionSummaryProviderId: (settingsRaw.sessionSummaryProviderId as string) ?? '',
     language: context.settings.language ?? 'match',
     timezone: context.settings.timezone ?? 'UTC',
@@ -124,7 +130,7 @@ export function mapSettingsResponse(context: SettingsResponseContext) {
       context.settings.healthMonitorIntervalMinutes
       ?? (context.settings.healthMonitor as Record<string, unknown> | undefined)?.intervalMinutes
       ?? 5,
-    uploadRetentionDays: context.settings.uploadRetentionDays ?? 30,
+    uploads: buildUploadsResponse(settingsRaw),
     batchingDelayMs: context.batchingDelayMs,
     telegramEnabled: context.telegram.enabled ?? false,
     telegramBotToken: context.telegram.botToken ?? '',

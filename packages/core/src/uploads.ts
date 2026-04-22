@@ -5,7 +5,7 @@ import type { Database } from './database.js'
 import { loadConfig } from './config.js'
 
 export interface UploadSettings {
-  uploadRetentionDays?: number
+  uploads?: { retentionDays?: number }
 }
 
 export interface UploadDescriptor {
@@ -193,7 +193,7 @@ export function parseUploadsMetadata(metadata?: string | null): UploadDescriptor
 export function getUploadRetentionDays(): number {
   try {
     const settings = loadConfig<UploadSettings>('settings.json')
-    const days = settings.uploadRetentionDays
+    const days = settings.uploads?.retentionDays
     if (typeof days === 'number' && Number.isFinite(days) && days >= 0) return days
   } catch {
     // ignore
