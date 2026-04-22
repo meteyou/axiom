@@ -1,7 +1,7 @@
 import type { TaskStatus, TaskTriggerType } from '@openagent/core'
 
 const VALID_STATUSES: TaskStatus[] = ['running', 'paused', 'completed', 'failed']
-const VALID_TRIGGER_TYPES: TaskTriggerType[] = ['user', 'agent', 'cronjob', 'heartbeat']
+const VALID_TRIGGER_TYPES: TaskTriggerType[] = ['user', 'agent', 'cronjob', 'heartbeat', 'consolidation']
 
 export interface ListTasksQuery {
   page: number
