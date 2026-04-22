@@ -69,6 +69,42 @@ describe('TaskStore', () => {
       expect(task.maxDurationMinutes).toBe(30)
       expect(task.sessionId).toBe('session-123')
     })
+
+    it('defaults isDefaultModel to null when not provided', () => {
+      const task = store.create({
+        name: 'Legacy Task',
+        prompt: 'test',
+        triggerType: 'agent',
+      })
+
+      expect(task.isDefaultModel).toBeNull()
+    })
+
+    it('persists isDefaultModel=true for tasks using the default provider', () => {
+      const task = store.create({
+        name: 'Default Task',
+        prompt: 'test',
+        triggerType: 'agent',
+        provider: 'openai',
+        model: 'gpt-4o',
+        isDefaultModel: true,
+      })
+
+      expect(task.isDefaultModel).toBe(true)
+    })
+
+    it('persists isDefaultModel=false for tasks with an explicit provider override', () => {
+      const task = store.create({
+        name: 'Pinned Task',
+        prompt: 'test',
+        triggerType: 'agent',
+        provider: 'anthropic',
+        model: 'claude-sonnet-4-5',
+        isDefaultModel: false,
+      })
+
+      expect(task.isDefaultModel).toBe(false)
+    })
   })
 
   describe('getById', () => {
