@@ -188,7 +188,7 @@ export const PROVIDER_TYPE_PRESETS: Record<ProviderType, ProviderTypePreset> = {
   },
   'google-gemini-cli': {
     type: 'google-gemini-cli',
-    label: 'Google Gemini (Free)',
+    label: 'Google Gemini CLI',
     apiType: 'google-gemini-cli',
     providerName: 'google-gemini-cli',
     baseUrl: '',
@@ -200,7 +200,7 @@ export const PROVIDER_TYPE_PRESETS: Record<ProviderType, ProviderTypePreset> = {
   },
   'google-antigravity': {
     type: 'google-antigravity',
-    label: 'Google Antigravity (Free)',
+    label: 'Google Antigravity',
     apiType: 'google-gemini-cli',
     providerName: 'google-antigravity',
     baseUrl: '',
