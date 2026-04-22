@@ -1,11 +1,11 @@
 # Quickstart
 
-Get Axiom running in under five minutes with Docker.
+Get your personal Axiom agent running in under five minutes with Docker.
 
 ## Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/) (Docker Desktop on macOS/Windows already includes both)
-- An LLM API key (OpenAI, Anthropic, or any OpenAI-compatible provider). You can also point at a local [Ollama](https://ollama.com) instance.
+- An LLM API key or OAuth (OpenAI, Anthropic, or many other provider). You can also point at a local [Ollama](https://ollama.com) instance.
 
 ## 1. Get the Compose file
 
@@ -28,10 +28,10 @@ JWT_SECRET=$(openssl rand -hex 32)
 ENCRYPTION_KEY=$(openssl rand -hex 32)
 ```
 
-| Variable | Purpose |
-|---|---|
-| `ADMIN_PASSWORD` | Login password for the web UI (username defaults to `admin`). |
-| `JWT_SECRET` | Signs session tokens. Anything random and long. |
+| Variable         | Purpose                                                                                                                                  |
+|------------------|------------------------------------------------------------------------------------------------------------------------------------------|
+| `ADMIN_PASSWORD` | Login password for the web UI (username defaults to `admin`).                                                                            |
+| `JWT_SECRET`     | Signs session tokens. Anything random and long.                                                                                          |
 | `ENCRYPTION_KEY` | Encrypts API keys and provider secrets at rest in `secrets.json`. **If you lose this, stored secrets become unrecoverable.** Back it up. |
 
 For the full list of supported variables, see [Environment Variables](../reference/env-vars).
@@ -59,12 +59,16 @@ Visit [http://localhost:3000](http://localhost:3000) and log in with:
 
 ## 5. Add an LLM provider
 
-In the web UI, go to **Settings → Providers** and add at least one provider. The minimum you need:
+In the web UI, go to **Providers** and add at least one provider. The minimum you need:
 
-- A **name** (free-form, e.g. `openai`)
-- A **type** (`openai`, `anthropic`, `openai-compatible`, …)
-- The **API key** (encrypted with `ENCRYPTION_KEY` before being stored)
-- At least one **enabled model** (e.g. `gpt-4o-mini` or `claude-sonnet-4-20250514`)
+- A **name** (free-form, e.g. `OpenAI Pro`)
+- A **type**, which could be a Subscription (OAuth) provider like `OpenAI Plus/Pro (Codes)` or `Anthropic`, or an API
+  Key provider like Ollama or many OpenAI-compatible API
+- The **API key** (encrypted with `ENCRYPTION_KEY` before being stored) or click the `Login & Connect` button if it's a
+  subscription provider
+- At least one **enabled model** (e.g. `GPT-5.4` or `Claude Opus 4.7`)
+- Select the **default model** to use for this provider with clicking the 3-dot menu next to the model name and choosing
+  "Set Active". You can also set a fallback provider/model here
 
 For details on each provider type, see [LLM Providers](./providers).
 
@@ -72,12 +76,13 @@ For details on each provider type, see [LLM Providers](./providers).
 
 Open the **Chat** page in the web UI and send your first message. The agent will use the provider you configured.
 
+
+## Additional configuration and features
+
 From here, explore:
 
-- [Memory System](./memory) — how the agent remembers things across conversations
-- [Skills](./skills) — extend the agent with reusable capabilities
-- [Tasks & Cronjobs](./tasks-and-cronjobs) — let the agent do work in the background
-- [Telegram Bot](./telegram) — talk to the agent from your phone
+- [Telegram Bot](./telegram) — Talk to your agent from your phone.
+- [Personality & Prompting](./configuration#personality-and-prompt) — Customize the agent's system prompt, instructions, and personality.
 
 ## Pinning a specific version
 
