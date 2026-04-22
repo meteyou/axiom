@@ -1,7 +1,7 @@
 import type {
   ProviderCreatePayloadContract,
   ProviderUpdatePayloadContract,
-} from '@openagent/core/contracts'
+} from '@axiom/core/contracts'
 import { useProvidersApi } from '~/api/providers'
 import type {
   AvailableModel,

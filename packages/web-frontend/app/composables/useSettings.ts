@@ -11,7 +11,7 @@ import {
   type TtsSettingsContract,
   type SttSettingsContract,
   type AgentHeartbeatNightModeContract,
-} from '@openagent/core/contracts'
+} from '@axiom/core/contracts'
 import { useSettingsApi } from '~/api/settings'
 
 export type MemoryConsolidationSettings = MemoryConsolidationSettingsContract

@@ -1,4 +1,4 @@
-import type { SettingsContract, SettingsUpdateContract, TtsSettingsContract } from '@openagent/core/contracts'
+import type { SettingsContract, SettingsUpdateContract, TtsSettingsContract } from '@axiom/core/contracts'
 
 export interface ConsolidationRunResult {
   updated: boolean
