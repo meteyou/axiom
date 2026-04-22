@@ -1,5 +1,5 @@
 {
-  "name": "@openagent/web-backend",
+  "name": "@axiom/web-backend",
   "version": "0.16.1",
   "private": true,
   "type": "module",
@@ -11,7 +11,7 @@
     "start": "node dist/server.js"
   },
   "dependencies": {
-    "@openagent/core": "*",
+    "@axiom/core": "*",
     "adm-zip": "^0.5.16",
     "bcrypt": "^6.0.0",
     "express": "^5.1.0",
