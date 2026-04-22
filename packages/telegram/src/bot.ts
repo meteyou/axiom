@@ -2,9 +2,9 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { Bot, GrammyError, HttpError, InputFile } from 'grammy'
 import type { Context } from 'grammy'
-import type { AgentCore, Database } from '@openagent/core'
-import { loadConfig, saveUpload, serializeUploadsMetadata, parseUploadsMetadata, loadSttSettings, transcribeAudio, extractUploadsFromToolResult } from '@openagent/core'
-import type { UploadDescriptor } from '@openagent/core'
+import type { AgentCore, Database } from '@axiom/core'
+import { loadConfig, saveUpload, serializeUploadsMetadata, parseUploadsMetadata, loadSttSettings, transcribeAudio, extractUploadsFromToolResult } from '@axiom/core'
+import type { UploadDescriptor } from '@axiom/core'
 
 /**
  * Telegram config stored in /data/config/telegram.json
@@ -23,7 +23,7 @@ export interface TelegramConfig {
  */
 export interface TelegramChatEvent {
   type: 'user_message' | 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'done' | 'error' | 'attachment'
-  /** OpenAgent user ID (integer) — only set for linked users */
+  /** Axiom user ID (integer) — only set for linked users */
   userId: number | null
   /** Session ID used for chat_messages */
   sessionId: string
@@ -395,7 +395,7 @@ export class TelegramBot {
       this.ensureTelegramUser(ctx)
 
       const welcomeText = [
-        '👋 *Welcome to OpenAgent!*',
+        '👋 *Welcome to Axiom!*',
         '',
         'I\'m your AI assistant. You can chat with me directly or use these commands:',
         '',
@@ -567,7 +567,7 @@ export class TelegramBot {
 
   /**
    * Resolve the user ID for session management.
-   * If the telegram user is linked to an OpenAgent user, use that user's ID
+   * If the telegram user is linked to an Axiom user, use that user's ID
    * in the same format as the web backend (plain string number).
    */
   private resolveUserId(ctx: Context): string {
@@ -586,7 +586,7 @@ export class TelegramBot {
   }
 
   /**
-   * Resolve the numeric OpenAgent user ID for a Telegram user.
+   * Resolve the numeric Axiom user ID for a Telegram user.
    * Returns null if unlinked.
    */
   private resolveNumericUserId(ctx: Context): number | null {
@@ -1293,7 +1293,7 @@ export class TelegramBot {
   }
 
   /**
-   * Get the Telegram chat ID for a given OpenAgent user ID.
+   * Get the Telegram chat ID for a given Axiom user ID.
    * Returns null if no linked & approved Telegram user exists.
    */
   getTelegramChatIdForUser(userId: number): string | null {

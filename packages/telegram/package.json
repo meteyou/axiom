@@ -1,5 +1,5 @@
 {
-  "name": "@openagent/telegram",
+  "name": "@axiom/telegram",
   "version": "0.16.1",
   "private": true,
   "type": "module",
@@ -10,7 +10,7 @@
     "dev": "tsc --watch"
   },
   "dependencies": {
-    "@openagent/core": "*",
+    "@axiom/core": "*",
     "grammy": "^1.41.1"
   }
 }
