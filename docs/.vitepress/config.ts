@@ -35,7 +35,6 @@ export default defineConfig({
         items: [
           { text: 'GitHub', link: 'https://github.com/meteyou/axiom' },
           { text: 'Releases', link: 'https://github.com/meteyou/axiom/releases' },
-          { text: 'Inspired by pi.dev', link: 'https://pi.dev' },
         ],
       },
     ],
@@ -85,7 +84,6 @@ export default defineConfig({
 
     footer: {
       message: 'Released under the MIT License.',
-      copyright: 'Inspired by <a href="https://pi.dev">pi.dev</a>',
     },
 
     search: {
