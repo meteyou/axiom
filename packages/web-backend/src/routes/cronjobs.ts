@@ -1,6 +1,6 @@
 import { Router } from 'express'
-import type { Database, TaskRuntimeScheduleBoundary } from '@openagent/core'
-import { ScheduledTaskStore, validateCronExpression, cronToHumanReadable, loadSkills, listAgentSkills } from '@openagent/core'
+import type { Database, TaskRuntimeScheduleBoundary } from '@axiom/core'
+import { ScheduledTaskStore, validateCronExpression, cronToHumanReadable, loadSkills, listAgentSkills } from '@axiom/core'
 import { jwtMiddleware } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
 

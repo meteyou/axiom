@@ -1,6 +1,6 @@
 import { Router } from 'express'
-import type { Database, UsageGroupBy } from '@openagent/core'
-import { getUsageSummary, queryUsageStats } from '@openagent/core'
+import type { Database, UsageGroupBy } from '@axiom/core'
+import { getUsageSummary, queryUsageStats } from '@axiom/core'
 import { jwtMiddleware } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
 

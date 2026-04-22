@@ -2,8 +2,8 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { initDatabase, addProvider, setActiveProvider, ProviderManager } from '@openagent/core'
-import type { ProviderConfig } from '@openagent/core'
+import { initDatabase, addProvider, setActiveProvider, ProviderManager } from '@axiom/core'
+import type { ProviderConfig } from '@axiom/core'
 import { HealthMonitorService } from './health-monitor.js'
 
 let tempDataDir: string
@@ -31,7 +31,7 @@ function makeProvider(overrides: Partial<ProviderConfig> = {}): ProviderConfig {
 
 beforeEach(() => {
   previousDataDir = process.env.DATA_DIR
-  tempDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openagent-heartbeat-'))
+  tempDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'axiom-heartbeat-'))
   process.env.DATA_DIR = tempDataDir
   writeConfig('settings.json', {
     sessionTimeoutMinutes: 15,
@@ -936,7 +936,7 @@ describe('HealthMonitorService', () => {
 
       await service.runNow() // degraded (1ms threshold)
       // Update the same provider's threshold so next check is healthy
-      const { loadProviders: lp } = await import('@openagent/core')
+      const { loadProviders: lp } = await import('@axiom/core')
       const providers = lp()
       const configDir = path.join(tempDataDir, 'config')
       const p = providers.providers.find(p => p.id === added.id)!
@@ -986,7 +986,7 @@ describe('HealthMonitorService', () => {
       await service.runNow() // degraded (1ms threshold + 20ms delay)
 
       // Update the same provider's threshold so next check is healthy
-      const { loadProviders: lp } = await import('@openagent/core')
+      const { loadProviders: lp } = await import('@axiom/core')
       const providers = lp()
       const configDir = path.join(tempDataDir, 'config')
       const p = providers.providers.find(pp => pp.id === added.id)!

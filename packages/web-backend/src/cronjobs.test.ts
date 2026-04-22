@@ -4,8 +4,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { createApp } from './app.js'
-import { initDatabase } from '@openagent/core'
-import type { Database } from '@openagent/core'
+import { initDatabase } from '@axiom/core'
+import type { Database } from '@axiom/core'
 import { generateAccessToken } from './auth.js'
 
 let db: Database
@@ -27,7 +27,7 @@ async function apiFetch(urlPath: string, options: RequestInit = {}): Promise<Res
 
 beforeAll(async () => {
   previousDataDir = process.env.DATA_DIR
-  tempDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openagent-cronjobs-test-'))
+  tempDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'axiom-cronjobs-test-'))
   process.env.DATA_DIR = tempDataDir
 
   db = initDatabase(':memory:')

@@ -4,7 +4,7 @@ import {
   setSecrets,
   deleteSecret,
   injectSecretsIntoEnv,
-} from '@openagent/core'
+} from '@axiom/core'
 import { jwtMiddleware } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
 
