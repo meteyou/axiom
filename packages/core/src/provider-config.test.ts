@@ -40,7 +40,7 @@ describe('provider-config', () => {
   })
 
   function setupTmpConfig(providersContent?: object): void {
-    tmpDir = path.join(os.tmpdir(), `openagent-provider-test-${Date.now()}`)
+    tmpDir = path.join(os.tmpdir(), `axiom-provider-test-${Date.now()}`)
     const configDir = path.join(tmpDir, 'config')
     fs.mkdirSync(configDir, { recursive: true })
     if (providersContent) {
@@ -54,7 +54,7 @@ describe('provider-config', () => {
   }
 
   it('loadProviders returns empty providers when file does not exist', () => {
-    tmpDir = path.join(os.tmpdir(), `openagent-provider-test-${Date.now()}`)
+    tmpDir = path.join(os.tmpdir(), `axiom-provider-test-${Date.now()}`)
     process.env.DATA_DIR = tmpDir
     const result = loadProviders()
     expect(result.providers).toEqual([])
@@ -281,7 +281,7 @@ describe('provider CRUD', () => {
   })
 
   function setupEmpty(): void {
-    tmpDir = path.join(os.tmpdir(), `openagent-provider-crud-${Date.now()}`)
+    tmpDir = path.join(os.tmpdir(), `axiom-provider-crud-${Date.now()}`)
     const configDir = path.join(tmpDir, 'config')
     fs.mkdirSync(configDir, { recursive: true })
     fs.writeFileSync(

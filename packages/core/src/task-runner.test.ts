@@ -94,7 +94,7 @@ describe('TaskRunner', () => {
   let onTaskPausedCalls: { taskId: string; injection: string }[] = []
 
   function tmpDbPath(): string {
-    const p = path.join(os.tmpdir(), `openagent-runner-test-${Date.now()}-${Math.random().toString(36).slice(2)}.db`)
+    const p = path.join(os.tmpdir(), `axiom-runner-test-${Date.now()}-${Math.random().toString(36).slice(2)}.db`)
     tmpFiles.push(p)
     return p
   }
@@ -1175,7 +1175,7 @@ describe('TaskRunner', () => {
 
     beforeEach(() => {
       originalDataDir = process.env.DATA_DIR
-      skillsTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openagent-skills-'))
+      skillsTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'axiom-skills-'))
       process.env.DATA_DIR = skillsTmpDir
       // Create two skills
       const nitterDir = path.join(skillsTmpDir, 'skills_agent', 'nitter')

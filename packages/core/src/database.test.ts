@@ -19,7 +19,7 @@ describe('database', () => {
   })
 
   function tmpDbPath(): string {
-    const p = path.join(os.tmpdir(), `openagent-test-${Date.now()}-${Math.random().toString(36).slice(2)}.db`)
+    const p = path.join(os.tmpdir(), `axiom-test-${Date.now()}-${Math.random().toString(36).slice(2)}.db`)
     tmpFiles.push(p)
     return p
   }

@@ -176,7 +176,7 @@ export async function searchDuckDuckGo(
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
-      'User-Agent': 'Mozilla/5.0 (compatible; OpenAgent/1.0)',
+      'User-Agent': 'Mozilla/5.0 (compatible; Axiom/1.0)',
     },
     body: body.toString(),
   })
@@ -334,7 +334,7 @@ export async function searchSearXNG(
     method: 'GET',
     headers: {
       'Accept': 'application/json',
-      'User-Agent': 'Mozilla/5.0 (compatible; OpenAgent/1.0)',
+      'User-Agent': 'Mozilla/5.0 (compatible; Axiom/1.0)',
     },
   })
 
@@ -552,7 +552,7 @@ export function createWebFetchTool(_config?: WebFetchConfig): AgentTool {
       try {
         const response = await fetch(url, {
           headers: {
-            'User-Agent': 'Mozilla/5.0 (compatible; OpenAgent/1.0)',
+            'User-Agent': 'Mozilla/5.0 (compatible; Axiom/1.0)',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.7',
           },
           redirect: 'follow',

@@ -14,7 +14,7 @@ describe('config', () => {
   })
 
   function makeTmpDir(): string {
-    tmpDir = path.join(os.tmpdir(), `openagent-config-test-${Date.now()}`)
+    tmpDir = path.join(os.tmpdir(), `axiom-config-test-${Date.now()}`)
     return tmpDir
   }
 

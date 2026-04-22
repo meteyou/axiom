@@ -29,7 +29,7 @@ describe('TaskScheduler', () => {
   const tmpFiles: string[] = []
 
   function tmpDbPath(): string {
-    const p = path.join(os.tmpdir(), `openagent-scheduler-test-${Date.now()}-${Math.random().toString(36).slice(2)}.db`)
+    const p = path.join(os.tmpdir(), `axiom-scheduler-test-${Date.now()}-${Math.random().toString(36).slice(2)}.db`)
     tmpFiles.push(p)
     return p
   }
