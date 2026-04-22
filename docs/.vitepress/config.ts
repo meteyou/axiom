@@ -1,4 +1,49 @@
-import { defineConfig } from 'vitepress'
+import { defineConfig, type DefaultTheme } from 'vitepress'
+
+// Shared sidebar for /guide/ and /settings/ — Settings is a category inside the
+// Guide nav, not a separate top-level nav entry.
+const guideSidebar: DefaultTheme.SidebarItem[] = [
+  {
+    text: 'Getting Started',
+    items: [
+      { text: 'Quickstart', link: '/guide/quickstart' },
+      { text: 'Configuration', link: '/guide/configuration' },
+      { text: 'LLM Providers', link: '/guide/providers' },
+    ],
+  },
+  {
+    text: 'Core Concepts',
+    items: [
+      { text: 'Memory System', link: '/guide/memory' },
+      { text: 'Agent Instructions', link: '/guide/instructions' },
+      { text: 'Skills', link: '/guide/skills' },
+      { text: 'Tasks & Cronjobs', link: '/guide/tasks-and-cronjobs' },
+      { text: 'Built-in Tools', link: '/guide/tools' },
+    ],
+  },
+  {
+    text: 'Interfaces',
+    items: [
+      { text: 'Web UI', link: '/guide/web-ui' },
+      { text: 'Telegram Bot', link: '/guide/telegram' },
+    ],
+  },
+  {
+    text: 'Settings',
+    items: [
+      { text: 'Overview', link: '/settings/' },
+      { text: 'Agent', link: '/settings/agent' },
+      { text: 'Agent Heartbeat', link: '/settings/agent-heartbeat' },
+      { text: 'Health Monitor', link: '/settings/health-monitor' },
+      { text: 'Memory', link: '/settings/memory' },
+      { text: 'Secrets', link: '/settings/secrets' },
+      { text: 'Speech-to-Text', link: '/settings/speech-to-text' },
+      { text: 'Tasks', link: '/settings/tasks' },
+      { text: 'Telegram', link: '/settings/telegram' },
+      { text: 'Text-to-Speech', link: '/settings/text-to-speech' },
+    ],
+  },
+]
 
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
@@ -28,7 +73,7 @@ export default defineConfig({
     siteTitle: 'Axiom',
 
     nav: [
-      { text: 'Guide', link: '/guide/quickstart', activeMatch: '/guide/' },
+      { text: 'Guide', link: '/guide/quickstart', activeMatch: '/(guide|settings)/' },
       { text: 'Reference', link: '/reference/env-vars', activeMatch: '/reference/' },
       {
         text: 'Links',
@@ -40,32 +85,11 @@ export default defineConfig({
     ],
 
     sidebar: {
-      '/guide/': [
-        {
-          text: 'Getting Started',
-          items: [
-            { text: 'Quickstart', link: '/guide/quickstart' },
-            { text: 'Configuration', link: '/guide/configuration' },
-            { text: 'LLM Providers', link: '/guide/providers' },
-          ],
-        },
-        {
-          text: 'Core Concepts',
-          items: [
-            { text: 'Memory System', link: '/guide/memory' },
-            { text: 'Skills', link: '/guide/skills' },
-            { text: 'Tasks & Cronjobs', link: '/guide/tasks-and-cronjobs' },
-            { text: 'Built-in Tools', link: '/guide/tools' },
-          ],
-        },
-        {
-          text: 'Interfaces',
-          items: [
-            { text: 'Web UI', link: '/guide/web-ui' },
-            { text: 'Telegram Bot', link: '/guide/telegram' },
-          ],
-        },
-      ],
+      // Guide + Settings share the same sidebar so Settings appears as its own
+      // category under the Guide nav entry (no separate top-level nav item).
+      '/guide/': guideSidebar,
+      '/settings/': guideSidebar,
+
       '/reference/': [
         {
           text: 'Reference',
