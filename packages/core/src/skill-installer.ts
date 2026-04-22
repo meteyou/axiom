@@ -119,7 +119,7 @@ export async function downloadSkillDirectory(
   const response = await fetchFn(apiUrl, {
     headers: {
       'Accept': 'application/vnd.github.v3+json',
-      'User-Agent': 'OpenAgent-Skill-Installer',
+      'User-Agent': 'Axiom-Skill-Installer',
       ...(process.env.GITHUB_TOKEN ? { 'Authorization': `token ${process.env.GITHUB_TOKEN}` } : {}),
     },
   })

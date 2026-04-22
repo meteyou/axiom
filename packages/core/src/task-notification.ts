@@ -145,7 +145,7 @@ export type TelegramDeliveryMode = 'auto' | 'always'
 
 export interface TaskNotificationOptions {
   db: Database
-  /** The user ID (OpenAgent numeric ID) this notification is for */
+  /** The user ID (Axiom numeric ID) this notification is for */
   userId: number
   /** The completed/failed/paused task */
   task: Task
