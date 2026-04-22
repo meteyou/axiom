@@ -22,13 +22,13 @@ describe('memory schema', () => {
   })
 
   it('normalizes wiki filenames and project names', () => {
-    expect(parseWikiFilenameParam('openagent')).toEqual({
+    expect(parseWikiFilenameParam('axiom')).toEqual({
       ok: true,
-      value: { name: 'openagent', safeFilename: 'openagent.md' },
+      value: { name: 'axiom', safeFilename: 'axiom.md' },
     })
-    expect(parseWikiFilenameParam('openagent.md')).toEqual({
+    expect(parseWikiFilenameParam('axiom.md')).toEqual({
       ok: true,
-      value: { name: 'openagent', safeFilename: 'openagent.md' },
+      value: { name: 'axiom', safeFilename: 'axiom.md' },
     })
     expect(parseWikiFilenameParam('../escape')).toEqual({
       ok: false,

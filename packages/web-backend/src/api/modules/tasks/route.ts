@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import type { Database, ProviderConfig, TaskRuntimeTaskBoundary } from '@openagent/core'
+import type { Database, ProviderConfig, TaskRuntimeTaskBoundary } from '@axiom/core'
 import { jwtMiddleware } from '../../../auth.js'
 import { createTasksController } from './controller.js'
 import { createTasksService } from './service.js'

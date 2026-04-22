@@ -3,8 +3,8 @@ import fs from 'node:fs'
 import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
-import type { Database } from '@openagent/core'
-import { initDatabase } from '@openagent/core'
+import type { Database } from '@axiom/core'
+import { initDatabase } from '@axiom/core'
 import { createApp } from '../../../app.js'
 import { generateAccessToken } from '../../../auth.js'
 
@@ -20,7 +20,7 @@ const restartHealthMonitor = vi.fn()
 
 beforeAll(async () => {
   previousDataDir = process.env.DATA_DIR
-  tempDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openagent-providers-route-'))
+  tempDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'axiom-providers-route-'))
   process.env.DATA_DIR = tempDataDir
 
   db = initDatabase(':memory:')

@@ -3,8 +3,8 @@ import fs from 'node:fs'
 import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
-import type { AgentCore, Database } from '@openagent/core'
-import { initDatabase } from '@openagent/core'
+import type { AgentCore, Database } from '@axiom/core'
+import { initDatabase } from '@axiom/core'
 import { createApp } from '../../../app.js'
 import type { AppOptions } from '../../../app.js'
 import { generateAccessToken } from '../../../auth.js'
@@ -26,7 +26,7 @@ const onTelegramSettingsChanged = vi.fn()
 
 beforeAll(async () => {
   previousDataDir = process.env.DATA_DIR
-  tempDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openagent-settings-route-'))
+  tempDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'axiom-settings-route-'))
   process.env.DATA_DIR = tempDataDir
 
   db = initDatabase(':memory:')

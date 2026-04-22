@@ -1,4 +1,4 @@
-import type { TaskStatus, TaskTriggerType } from '@openagent/core'
+import type { TaskStatus, TaskTriggerType } from '@axiom/core'
 
 const VALID_STATUSES: TaskStatus[] = ['running', 'paused', 'completed', 'failed']
 const VALID_TRIGGER_TYPES: TaskTriggerType[] = ['user', 'agent', 'cronjob', 'heartbeat', 'consolidation']

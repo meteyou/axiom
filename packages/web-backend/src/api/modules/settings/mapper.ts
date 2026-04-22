@@ -1,4 +1,4 @@
-import { DEFAULT_HEALTH_MONITOR_NOTIFICATION_TOGGLES } from '@openagent/core'
+import { DEFAULT_HEALTH_MONITOR_NOTIFICATION_TOGGLES } from '@axiom/core'
 import type { HealthMonitorNotificationToggles, SettingsData, TelegramData } from './types.js'
 
 const DEFAULT_NOTIFICATIONS: HealthMonitorNotificationToggles = {

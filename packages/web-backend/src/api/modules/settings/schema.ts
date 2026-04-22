@@ -9,7 +9,7 @@ import {
   TASK_LOOP_DETECTION_METHODS,
   TASK_TELEGRAM_DELIVERY_VALUES,
   withLegacySettingsPayloadCompatibility,
-} from '@openagent/core'
+} from '@axiom/core'
 
 export interface MergeGroupResult {
   error: string | null

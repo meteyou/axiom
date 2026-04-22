@@ -3,8 +3,8 @@ import fs from 'node:fs'
 import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
-import type { Database, Task } from '@openagent/core'
-import { initDatabase, initTasksTable, TaskStore } from '@openagent/core'
+import type { Database, Task } from '@axiom/core'
+import { initDatabase, initTasksTable, TaskStore } from '@axiom/core'
 import { createApp } from '../../../app.js'
 import { generateAccessToken } from '../../../auth.js'
 
@@ -17,7 +17,7 @@ let previousDataDir: string | undefined
 
 beforeAll(async () => {
   previousDataDir = process.env.DATA_DIR
-  tempDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openagent-tasks-route-'))
+  tempDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'axiom-tasks-route-'))
   process.env.DATA_DIR = tempDataDir
 
   db = initDatabase(':memory:')

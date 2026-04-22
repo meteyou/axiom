@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { ensureConfigTemplates, getConfigDir, loadConfig, SETTINGS_THINKING_LEVELS } from '@openagent/core'
+import { ensureConfigTemplates, getConfigDir, loadConfig, SETTINGS_THINKING_LEVELS } from '@axiom/core'
 import type { SettingsData, SettingsRouterOptions, TelegramData } from './types.js'
 import {
   mergeAgentHeartbeat,
@@ -163,7 +163,7 @@ export function createSettingsService(options: SettingsRouterOptions = {}): Sett
           agentCore.setThinkingLevel(body.thinkingLevel as string)
         }
       } catch (err) {
-        console.error('[openagent] Failed to apply live settings update:', err)
+        console.error('[axiom] Failed to apply live settings update:', err)
       }
     }
 
