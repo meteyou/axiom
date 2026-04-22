@@ -17,7 +17,7 @@ Authoritative layout of the directories Axiom uses. Useful when debugging volume
 | `/data/memory/` | `axiom-data` | All memory files: SOUL, MEMORY, daily/, users/, wiki/, sources/. See [Memory System](../guide/memory). |
 | `/data/skills/` | `axiom-data` | User-installed skills (URL-installed, manually uploaded). |
 | `/data/skills_agent/` | `axiom-data` | Built-in agent skills (auto-updated) + agent-created skills. |
-| `/data/uploads/` | `axiom-data` | User-uploaded files (cleaned per `uploadRetentionDays`). |
+| `/data/uploads/` | `axiom-data` | User-uploaded files (cleaned per `uploads.retentionDays`). |
 | `/data/npm-global/` | `axiom-data` | npm global prefix — survives container upgrades. |
 | `/workspace/` | `axiom-workspace` | Agent's home directory. Anything the agent writes via `shell` or `write_file` outside `/data`. |
 

@@ -71,3 +71,17 @@ This only applies to the **interactive chat agent**. Background jobs (tasks, hea
 ```json
 { "thinkingLevel": "minimal" }
 ```
+
+## Upload retention
+
+How many days uploaded files in `/data/uploads/` are kept before the cleanup job removes them. Applies to images, audio, and any other files users attach from the web UI or Telegram. Default: `30`. Set to `0` to have the next cleanup run delete all uploads.
+
+```json
+{
+  "uploads": {
+    "retentionDays": 30
+  }
+}
+```
+
+> The cleanup job also prunes the referencing rows in the database so stale upload metadata doesn't linger after the files are gone.
