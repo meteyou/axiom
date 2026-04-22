@@ -1,6 +1,6 @@
 {
   "app": {
-    "title": "OpenAgent",
+    "title": "Axiom",
     "adminConsole": "Admin-Konsole",
     "workspace": "Arbeitsbereich"
   },
@@ -612,7 +612,7 @@
   "dashboard": {
     "kicker": "Betriebsübersicht",
     "title": "Dashboard",
-    "subtitle": "Eine kompakte Steuerzentrale für die wichtigsten Bereiche Ihrer OpenAgent-Instanz.",
+    "subtitle": "Eine kompakte Steuerzentrale für die wichtigsten Bereiche Ihrer Axiom-Instanz.",
     "refresh": "Aktualisieren",
     "loading": "Dashboard wird geladen...",
     "quickActions": "Schnellzugriffe",

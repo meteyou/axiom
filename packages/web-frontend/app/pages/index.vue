@@ -465,7 +465,7 @@
 
 <script setup lang="ts">
 import type { ChatMessage, ToolCallData } from '~/composables/useChat'
-import { SETTINGS_THINKING_LEVELS, type SettingsThinkingLevel } from '@openagent/core/contracts'
+import { SETTINGS_THINKING_LEVELS, type SettingsThinkingLevel } from '@axiom/core/contracts'
 import { useSettingsApi } from '~/api/settings'
 const { t } = useI18n()
 const { apiFetch } = useApi()
@@ -555,7 +555,7 @@ function toolIconName(toolData: ToolCallData): string {
   return 'settings'
 }
 const filterOpen = ref(false)
-const FILTER_STORAGE_KEY = 'openagent-chat-filters'
+const FILTER_STORAGE_KEY = 'axiom-chat-filters'
 
 function loadFilters() {
   try {

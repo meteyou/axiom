@@ -1,6 +1,6 @@
 {
   "app": {
-    "title": "OpenAgent",
+    "title": "Axiom",
     "adminConsole": "Admin console",
     "workspace": "Workspace"
   },
@@ -612,7 +612,7 @@
   "dashboard": {
     "kicker": "Operations overview",
     "title": "Dashboard",
-    "subtitle": "A quick control room for the most important moving parts in your OpenAgent deployment.",
+    "subtitle": "A quick control room for the most important moving parts in your Axiom deployment.",
     "refresh": "Refresh",
     "loading": "Loading dashboard...",
     "quickActions": "Quick actions",

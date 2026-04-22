@@ -1700,7 +1700,7 @@
 </template>
 
 <script setup lang="ts">
-import { canonicalizeProviderModelRef, SETTINGS_THINKING_LEVELS, type SettingsThinkingLevel } from '@openagent/core/contracts'
+import { canonicalizeProviderModelRef, SETTINGS_THINKING_LEVELS, type SettingsThinkingLevel } from '@axiom/core/contracts'
 import { useSettingsApi } from '~/api/settings'
 import type { MemoryConsolidationSettings, FactExtractionSettings, HealthMonitorNotificationToggles, HealthMonitorSettings, AgentHeartbeatSettings, TasksSettings, TtsSettings, SttSettings } from '~/composables/useSettings'
 import type { TelegramUser } from '~/composables/useTelegramUsers'
