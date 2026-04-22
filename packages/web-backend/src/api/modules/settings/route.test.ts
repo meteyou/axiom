@@ -100,7 +100,7 @@ describe('settings route module', () => {
 
     expect(response.status).toBe(200)
     expect(body.telegramBotToken).toBe('')
-    expect(body.factExtraction).toEqual({ enabled: false, providerId: '', minSessionMessages: 3 })
+    expect(body.factExtraction).toEqual({ enabled: true, providerId: '', minSessionMessages: 3 })
     expect(body.healthMonitor.notifications.downToFallback).toBe(true)
   })
 

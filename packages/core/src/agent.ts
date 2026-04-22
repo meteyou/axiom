@@ -81,7 +81,7 @@ export class AgentCore {
     // Initialize session manager
     this.sessionManager = new SessionManager({
       db: this.db,
-      timeoutMinutes: options.sessionTimeoutMinutes ?? 15,
+      timeoutMinutes: options.sessionTimeoutMinutes ?? 30,
       memoryDir: options.memoryDir,
       onSummarize: async (_sessionId: string, userId: string, conversationHistory?: string) => {
         return this.generateSessionSummary(userId, conversationHistory)

@@ -32,7 +32,7 @@ describe('config', () => {
     ensureConfigTemplates(dir)
 
     const settings = JSON.parse(fs.readFileSync(path.join(dir, 'settings.json'), 'utf-8'))
-    expect(settings.sessionTimeoutMinutes).toBe(15)
+    expect(settings.sessionTimeoutMinutes).toBe(30)
     expect(settings.language).toBe('en')
     expect(settings.batchingDelayMs).toBe(2500)
     expect(settings.tokenPriceTable['gpt-4o'].input).toBe(2.5)
@@ -54,7 +54,7 @@ describe('config', () => {
     expect(settings.heartbeat.notifications.degradedToDown).toBe(true)
 
     expect(settings.factExtraction).toEqual({
-      enabled: false,
+      enabled: true,
       providerId: '',
       minSessionMessages: 3,
     })

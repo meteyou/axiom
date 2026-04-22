@@ -939,7 +939,7 @@ describe('settings API', () => {
     }
     expect(res.status).toBe(200)
     expect(body.telegramBotToken).toBe('')
-    expect(body.factExtraction).toEqual({ enabled: false, providerId: '', minSessionMessages: 3 })
+    expect(body.factExtraction).toEqual({ enabled: true, providerId: '', minSessionMessages: 3 })
   })
 
   it('updates settings and applies live changes', async () => {
@@ -1017,7 +1017,7 @@ describe('settings API', () => {
     })
     const defaults = (await getRes.json()) as Record<string, unknown>
     expect(defaults.factExtraction).toEqual({
-      enabled: false,
+      enabled: true,
       providerId: '',
       minSessionMessages: 3,
     })
