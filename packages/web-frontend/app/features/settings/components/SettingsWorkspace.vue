@@ -247,12 +247,6 @@
                     <span class="text-sm text-muted-foreground">{{ $t('settings.minutes') }}</span>
                   </div>
                   <p class="text-xs text-muted-foreground">{{ $t('settings.sessionTimeoutHint') }}</p>
-                  <Alert v-if="form.agentHeartbeat?.enabled" variant="info" class="mt-2">
-                    <AlertDescription class="text-xs">
-                      <AppIcon name="activity" size="sm" class="mr-1 inline-block align-text-bottom" />
-                      {{ $t('settings.sessionSummarySkippedByHeartbeat') }}
-                    </AlertDescription>
-                  </Alert>
                 </div>
 
                 <!-- Session Summary Provider -->

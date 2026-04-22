@@ -319,7 +319,6 @@
     "sessionSectionDescription": "Control how long conversations stay warm before they are summarized and closed.",
     "sessionTimeout": "Session timeout",
     "sessionTimeoutHint": "After this many minutes of inactivity, the current session is summarized and reset.",
-    "sessionSummarySkippedByHeartbeat": "Agent Heartbeat is active — session summaries are handled by the periodic heartbeat instead of being generated on session end.",
     "sessionSummaryProvider": "Session Summary Provider",
     "sessionSummaryProviderDefault": "Active provider (default)",
     "sessionSummaryProviderHint": "Choose a specific provider/model for session summaries, or use the active provider. Useful for using a smaller/cheaper model.",

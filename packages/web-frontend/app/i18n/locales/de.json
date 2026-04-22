@@ -319,7 +319,6 @@
     "sessionSectionDescription": "Legen Sie fest, wie lange Gespräche aktiv bleiben, bevor sie zusammengefasst und geschlossen werden.",
     "sessionTimeout": "Sitzungs-Timeout",
     "sessionTimeoutHint": "Nach so vielen Minuten Inaktivität wird die Sitzung zusammengefasst und zurückgesetzt.",
-    "sessionSummarySkippedByHeartbeat": "Agent Heartbeat ist aktiv — Sitzungszusammenfassungen werden stattdessen vom periodischen Heartbeat übernommen.",
     "sessionSummaryProvider": "Sitzungszusammenfassungs-Provider",
     "sessionSummaryProviderDefault": "Aktiver Provider (Standard)",
     "sessionSummaryProviderHint": "Wähle einen bestimmten Provider/Modell für Sitzungszusammenfassungen oder nutze den aktiven Provider. Nützlich für ein kleineres/günstigeres Modell.",
