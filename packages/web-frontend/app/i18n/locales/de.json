@@ -846,7 +846,9 @@
       "cronjob": "Cronjob",
       "heartbeat": "Heartbeat",
       "consolidation": "Konsolidierung"
-    }
+    },
+    "triggerModelDefault": "Standard ({value})",
+    "triggerModelDefaultTooltip": "Standard-Provider und -Modell aus den Task-Einstellungen."
   },
   "cronjobs": {
     "pageTitle": "Cronjobs",
