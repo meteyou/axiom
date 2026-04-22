@@ -3,8 +3,8 @@ layout: home
 
 hero:
   name: Axiom
-  text: A personal AI agent.
-  tagline: Shape it into your own. Memory, skills, tools, and interfaces — yours to extend.
+  text: Your personal agent
+  tagline: There are many AI agents, but this one is yours.
   actions:
     - theme: brand
       text: Get Started
@@ -23,9 +23,19 @@ features:
   - title: Background tasks & cronjobs
     details: Long-running jobs, scheduled work, and one-shot reminders — driven by the same agent that talks to you.
   - title: Multiple interfaces
-    details: Web UI, Telegram bot, and a clean REST/WebSocket API. One agent, many entry points.
+    details: Web UI, Telegram bot, and a clean REST/WebSocket API. One agent, many entry points. More soon...
   - title: Pluggable LLM providers
     details: Bring your own OpenAI-compatible provider, Anthropic, or local models via Ollama. Switch per task or cronjob.
 ---
 
-> Inspired by [pi.dev](https://pi.dev).
+Axiom is not just an AI agent platform. It is a foundation for building an agent that becomes truly your own through
+customization, memory, workflow integration, and continued collaboration.  
+  
+It combines a minimal core with practical interfaces like the web UI and Telegram, while leaving room for extension,
+refinement, and personal shaping. The goal is not only to provide a capable assistant, but to enable an agent that can
+adapt to one person’s way of thinking, building, and working.  
+
+Over time, an agent should become more than a generic tool. It should become a reliable working partner. Shaped by use,
+improved through iteration, and aligned with the needs of its user.  
+  
+> Axiom is not only what it is built on. It is also what you make of it.
