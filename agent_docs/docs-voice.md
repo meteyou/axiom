@@ -43,15 +43,15 @@ mine** — not *a* personal agent, but *my* personal agent.
 
 ## Words to avoid
 
-| Don't use                          | Use instead / rephrase                          |
-|------------------------------------|-------------------------------------------------|
-| "seamlessly", "effortlessly"       | just describe the steps                          |
-| "powerful", "revolutionary"        | show the capability, don't claim it              |
-| "users" (when addressing reader)   | "you"                                            |
-| "leverage", "utilize"              | "use"                                            |
-| "simply" / "just" (as filler)      | drop it; if it's simple, the sentence shows it   |
-| "AI-powered X"                     | name the actual mechanism                        |
-| "our platform" / "our solution"    | "Axiom" or the concrete component                |
+| Don't use                        | Use instead / rephrase                         |
+|----------------------------------|------------------------------------------------|
+| "seamlessly", "effortlessly"     | just describe the steps                        |
+| "powerful", "revolutionary"      | show the capability, don't claim it            |
+| "users" (when addressing reader) | "you"                                          |
+| "leverage", "utilize"            | "use"                                          |
+| "simply" / "just" (as filler)    | drop it; if it's simple, the sentence shows it |
+| "AI-powered X"                   | name the actual mechanism                      |
+| "our platform" / "our solution"  | "Axiom" or the concrete component              |
 
 ## Words that fit
 
