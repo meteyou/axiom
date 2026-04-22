@@ -18,7 +18,7 @@ export const CLAUDE_CODE_VERSION = '2.1.96'
  * Supported provider types with presets
  */
 export type ProviderType =
-  | 'openai' | 'anthropic' | 'mistral' | 'ollama' | 'openrouter' | 'kimi' | 'zai'
+  | 'openai' | 'anthropic' | 'mistral' | 'ollama' | 'openrouter' | 'kimi' | 'zai' | 'opencode-go'
   // Legacy aliases kept for migration
   | 'ollama-local' | 'ollama-cloud'
   | 'openai-codex' | 'github-copilot' | 'google-gemini-cli' | 'google-antigravity' | 'anthropic-oauth'
@@ -149,6 +149,17 @@ export const PROVIDER_TYPE_PRESETS: Record<ProviderType, ProviderTypePreset> = {
     piAiProvider: 'zai',
     authMethod: 'api-key',
   },
+  'opencode-go': {
+    type: 'opencode-go',
+    label: 'OpenCode Go',
+    apiType: 'openai-completions',
+    providerName: 'opencode-go',
+    baseUrl: 'https://opencode.ai/zen/go/v1',
+    requiresApiKey: true,
+    urlEditable: false,
+    piAiProvider: null,
+    authMethod: 'api-key',
+  },
 
   // ── OAuth / Subscription providers ──
   'openai-codex': {
@@ -223,6 +234,30 @@ export const PROVIDER_TYPE_PRESETS: Record<ProviderType, ProviderTypePreset> = {
  * Keep this list in sync with the upstream provider's published catalog.
  */
 export const PROVIDER_TYPE_MODEL_OVERRIDES: Partial<Record<ProviderType, ProviderModelConfig[]>> = {
+  // OpenCode Go — subscription plan by the OpenCode team ($5 first month, $10/month)
+  // OpenAI-compatible endpoint: https://opencode.ai/zen/go/v1/chat/completions
+  // MiniMax M2.x use the Anthropic-compatible endpoint and are intentionally excluded here;
+  // they require a separate provider entry with apiType 'anthropic-messages'.
+  // Pricing is subscription-based (flat fee), so per-token costs are set to 0.
+  // Model IDs confirmed from https://opencode.ai/docs/go/ (April 2026).
+  'opencode-go': [
+    { id: 'glm-5.1', name: 'GLM-5.1', contextWindow: 131_072, maxTokens: 16_384, reasoning: true,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } },
+    { id: 'glm-5', name: 'GLM-5', contextWindow: 131_072, maxTokens: 16_384, reasoning: false,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } },
+    { id: 'kimi-k2.6', name: 'Kimi K2.6', contextWindow: 262_144, maxTokens: 32_768, reasoning: true,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } },
+    { id: 'kimi-k2.5', name: 'Kimi K2.5', contextWindow: 262_144, maxTokens: 32_768, reasoning: true,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } },
+    { id: 'mimo-v2-pro', name: 'MiMo-V2-Pro', contextWindow: 131_072, maxTokens: 16_384, reasoning: true,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } },
+    { id: 'mimo-v2-omni', name: 'MiMo-V2-Omni', contextWindow: 131_072, maxTokens: 16_384, reasoning: false,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } },
+    { id: 'qwen3.6-plus', name: 'Qwen3.6 Plus', contextWindow: 131_072, maxTokens: 16_384, reasoning: true,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } },
+    { id: 'qwen3.5-plus', name: 'Qwen3.5 Plus', contextWindow: 131_072, maxTokens: 16_384, reasoning: false,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } },
+  ],
   // Moonshot Platform API (https://platform.moonshot.ai)
   // Confirmed via GET https://api.moonshot.ai/v1/models and official pricing docs.
   // Pricing in USD per 1M tokens.
