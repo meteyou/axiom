@@ -1,6 +1,6 @@
 # Secrets
 
-API keys, bot tokens, and any other sensitive value the agent needs at runtime — stored in `/data/config/secrets.json` and injected into provider configs, tools, and the Telegram bot as needed.
+API keys, bot tokens, and any other sensitive value the agent needs at runtime — stored in `/data/config/secrets.json` and injected into the container.
 
 **URL:** `/settings?tab=secrets`
 
@@ -8,18 +8,12 @@ API keys, bot tokens, and any other sensitive value the agent needs at runtime �
 
 ## What lives here
 
-Any value that's sensitive, environment-specific, or rotateable. Typical keys:
+Typical entries that *do* belong here:
 
-| Key | Used by |
-|---|---|
-| `OPENAI_API_KEY` | OpenAI provider, OpenAI TTS / STT |
-| `ANTHROPIC_API_KEY` | Anthropic provider |
-| `MISTRAL_API_KEY` | Mistral/Voxtral TTS |
-| `TELEGRAM_BOT_TOKEN` | Telegram bot (alternative to the UI field) |
-| `BRAVE_SEARCH_API_KEY` | Web search tool |
-| ... | Any custom skill or tool that reads a secret |
-
-Settings panels reference secrets by key — e.g. the OpenAI provider pulls `OPENAI_API_KEY` from here automatically. You don't have to paste the same key into multiple panels.
+| Key                | Used by                                                                                       |
+|--------------------|-----------------------------------------------------------------------------------------------|
+| `GH_TOKEN`         | `gh` CLI tool (also raises the GitHub API rate limit when the skill installer fetches skills) |
+| `<ANY_CUSTOM_VAR>` | Any user-installed skill that reads `process.env.<…>`                                         |
 
 ## Adding a secret
 
