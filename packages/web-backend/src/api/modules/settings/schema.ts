@@ -27,6 +27,13 @@ export function validatePositiveNumber(value: unknown, name: string): string | n
   return null
 }
 
+export function validateIntegerRange(value: unknown, name: string, min: number, max: number): string | null {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < min || value > max) {
+    return `${name} must be an integer ${min}-${max}`
+  }
+  return null
+}
+
 export function validateNonNegativeNumber(value: unknown, name: string): string | null {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
     return `${name} must be a non-negative number`
@@ -282,10 +289,32 @@ export function mergeTasks(
     existing.loopDetection = existingLoopDetection
   }
 
+  if (tasks.statusUpdates !== undefined) {
+    const statusUpdates = tasks.statusUpdates as Record<string, unknown>
+    const existingStatusUpdates = (existing.statusUpdates ?? {}) as Record<string, unknown>
+
+    if (statusUpdates.enabled !== undefined) {
+      existingStatusUpdates.enabled = !!statusUpdates.enabled
+    }
+
+    if (statusUpdates.intervalMinutes !== undefined) {
+      const err = validateIntegerRange(statusUpdates.intervalMinutes, 'tasks.statusUpdates.intervalMinutes', 1, 120)
+      if (err) return { error: err }
+      existingStatusUpdates.intervalMinutes = statusUpdates.intervalMinutes
+    }
+
+    existing.statusUpdates = existingStatusUpdates
+  }
+
+  // Legacy flat key — preserved so existing PATCH callers that still send
+  // `tasks.statusUpdateIntervalMinutes` keep working. We migrate it into the
+  // new sub-object without clobbering an explicit `enabled` flag.
   if (tasks.statusUpdateIntervalMinutes !== undefined) {
-    const err = validatePositiveNumber(tasks.statusUpdateIntervalMinutes, 'tasks.statusUpdateIntervalMinutes')
+    const err = validateIntegerRange(tasks.statusUpdateIntervalMinutes, 'tasks.statusUpdateIntervalMinutes', 1, 120)
     if (err) return { error: err }
-    existing.statusUpdateIntervalMinutes = tasks.statusUpdateIntervalMinutes
+    const existingStatusUpdates = (existing.statusUpdates ?? {}) as Record<string, unknown>
+    existingStatusUpdates.intervalMinutes = tasks.statusUpdateIntervalMinutes
+    existing.statusUpdates = existingStatusUpdates
   }
 
   if (tasks.backgroundThinkingLevel !== undefined) {

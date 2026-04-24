@@ -63,6 +63,12 @@ function buildAgentHeartbeatResponse(settingsRaw: Record<string, unknown>) {
 function buildTasksResponse(settingsRaw: Record<string, unknown>) {
   const tasks = (settingsRaw.tasks ?? {}) as Record<string, unknown>
   const loopDetection = (tasks.loopDetection ?? {}) as Record<string, unknown>
+  const statusUpdates = (tasks.statusUpdates ?? {}) as Record<string, unknown>
+  // Legacy flat key on disk is migrated here for the API response shape
+  // so the frontend only ever sees the new sub-object form.
+  const legacyStatusInterval = tasks.statusUpdateIntervalMinutes
+  const resolvedStatusInterval = statusUpdates.intervalMinutes
+    ?? (typeof legacyStatusInterval === 'number' ? legacyStatusInterval : 10)
 
   return {
     defaultProvider: tasks.defaultProvider ?? '',
@@ -75,7 +81,10 @@ function buildTasksResponse(settingsRaw: Record<string, unknown>) {
       smartProvider: loopDetection.smartProvider ?? '',
       smartCheckInterval: loopDetection.smartCheckInterval ?? 5,
     },
-    statusUpdateIntervalMinutes: tasks.statusUpdateIntervalMinutes ?? 10,
+    statusUpdates: {
+      enabled: statusUpdates.enabled ?? false,
+      intervalMinutes: resolvedStatusInterval,
+    },
     backgroundThinkingLevel: tasks.backgroundThinkingLevel ?? 'off',
   }
 }

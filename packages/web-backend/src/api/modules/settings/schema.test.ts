@@ -10,6 +10,7 @@ import {
   normalizeSettingsPayload,
   validateEnum,
   validateHour,
+  validateIntegerRange,
   validateNonEmptyString,
   validateNonNegativeNumber,
   validatePositiveNumber,
@@ -38,6 +39,9 @@ describe('settings schema', () => {
 
     expect(validateHour(24, 'agentHeartbeat.nightMode.endHour')).toBe('agentHeartbeat.nightMode.endHour must be an integer 0-23')
     expect(validateHour(3, 'agentHeartbeat.nightMode.endHour')).toBeNull()
+
+    expect(validateIntegerRange(121, 'tasks.statusUpdates.intervalMinutes', 1, 120)).toBe('tasks.statusUpdates.intervalMinutes must be an integer 1-120')
+    expect(validateIntegerRange(10, 'tasks.statusUpdates.intervalMinutes', 1, 120)).toBeNull()
 
     expect(validateNonEmptyString('', 'language')).toBe('language must be a non-empty string')
     expect(validateNonEmptyString('German', 'language')).toBeNull()
@@ -101,6 +105,14 @@ describe('settings schema', () => {
 
     expect(mergeTasks({ tasks: { telegramDelivery: 'never' } }, settingsRaw)).toEqual({
       error: 'tasks.telegramDelivery must be "auto" or "always"',
+    })
+
+    expect(mergeTasks({ tasks: { statusUpdates: { intervalMinutes: 121 } } }, settingsRaw)).toEqual({
+      error: 'tasks.statusUpdates.intervalMinutes must be an integer 1-120',
+    })
+
+    expect(mergeTasks({ tasks: { statusUpdateIntervalMinutes: 1.5 } }, settingsRaw)).toEqual({
+      error: 'tasks.statusUpdateIntervalMinutes must be an integer 1-120',
     })
 
     expect(mergeTts({ tts: { openaiVoice: '' } }, settingsRaw)).toEqual({
