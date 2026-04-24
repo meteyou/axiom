@@ -143,6 +143,220 @@ export function persistTaskResultMessage(
 
 export type TelegramDeliveryMode = 'auto' | 'always'
 
+/**
+ * Live metrics for a periodic task heartbeat. Produced by the task runner
+ * and threaded through the notification layer so the UI and Telegram do
+ * not have to regex-parse the `<task_status>` XML payload.
+ */
+export interface TaskStatusUpdateDetails {
+  taskName: string
+  runtimeMinutes: number
+  toolCallCount: number
+  totalTokens: number
+}
+
+/**
+ * Format token count for display (e.g., 12345 -> "12.3k"). Mirrors the
+ * private helper used for task-result rendering.
+ */
+function formatTokenCountShort(count: number): string {
+  if (count >= 1000) return `${(count / 1000).toFixed(1)}k`
+  return String(count)
+}
+
+/**
+ * Human-readable single-line summary of a task heartbeat, used as the
+ * `chat_messages.content` value so the row renders sensibly both when a
+ * legacy client lacks the dedicated status-update card and when it is
+ * returned verbatim in search results.
+ */
+export function formatTaskStatusUpdateContent(
+  taskName: string,
+  details: TaskStatusUpdateDetails,
+): string {
+  const tokens = formatTokenCountShort(details.totalTokens)
+  return `⏱ Task running: ${taskName} — ${details.runtimeMinutes} min • ${details.toolCallCount} tool calls • ~${tokens} tokens`
+}
+
+/**
+ * HTML-formatted Telegram payload for a task heartbeat. Uses only tags
+ * that Telegram's Bot API recognises (`<b>`, `<code>`) so the primary
+ * HTML send path actually succeeds instead of falling back to plain text
+ * on every tick.
+ */
+export function formatTaskStatusUpdateTelegramHtml(
+  task: Task,
+  details: TaskStatusUpdateDetails,
+): string {
+  const tokens = formatTokenCountShort(details.totalTokens)
+  return [
+    `🔄 <b>Task progress:</b> ${escapeHtml(details.taskName)}`,
+    `⏱ ${details.runtimeMinutes} min  •  🔧 ${details.toolCallCount} tool calls  •  🔤 ~${tokens} tokens`,
+    '',
+    `<code>/kill_task ${escapeHtml(task.id)}</code>`,
+  ].join('\n')
+}
+
+/**
+ * Persist a periodic `<task_status>` update to the chat_messages table
+ * under the target session (resolved via the task's session lineage when
+ * no explicit session id is provided).
+ *
+ * The message is stored with `role='system'` and a metadata tag of
+ * `{ type: 'task_status_update' }` so it can be filtered out of
+ * conversation history if it should not count as a user-facing turn.
+ * Structured metrics are stored alongside so the web UI can rehydrate a
+ * dedicated progress card on reload instead of showing raw XML.
+ *
+ * Unlike `persistTaskResultMessage`, this helper intentionally does NOT
+ * invoke the LLM — status updates are ephemeral progress signals, not
+ * chat turns that the parent agent should respond to.
+ */
+export function persistTaskStatusUpdateMessage(
+  db: Database,
+  userId: number,
+  task: Task,
+  content: string,
+  details: TaskStatusUpdateDetails,
+  sessionId?: string,
+): void {
+  const metadata = JSON.stringify({
+    type: 'task_status_update',
+    taskId: task.id,
+    taskName: task.name,
+    triggerType: task.triggerType,
+    runtimeMinutes: details.runtimeMinutes,
+    toolCallCount: details.toolCallCount,
+    totalTokens: details.totalTokens,
+  })
+
+  const resolvedSessionId = sessionId ?? resolveTaskNotificationSessionId(db, task)
+  if (!resolvedSessionId) {
+    console.warn(
+      `[task-notification] Skipping status-update persist for task ${task.id}: no session_id available (legacy task?)`,
+    )
+    return
+  }
+
+  db.prepare(
+    'INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)'
+  ).run(resolvedSessionId, userId, 'system', content, metadata)
+}
+
+export interface TaskStatusUpdateEvent {
+  type: 'task_status_update'
+  userId: number
+  taskId: string
+  taskName: string
+  taskTriggerType: string
+  /** Human-readable single-line summary — also used as the persisted `content`. */
+  content: string
+  /** Structured live metrics for UI rendering. */
+  details: TaskStatusUpdateDetails
+}
+
+export interface TaskStatusUpdateOptions {
+  db: Database
+  userId: number
+  task: Task
+  /** Structured live metrics from the task runner. */
+  details: TaskStatusUpdateDetails
+  /** Pre-resolved target session id (parent interactive session) */
+  targetSessionId?: string
+  /** Telegram delivery mode (same semantics as task-result delivery) */
+  telegramDeliveryMode: TelegramDeliveryMode
+  /** Check if the user has an active WebSocket connection */
+  hasActiveWebSocket: (userId: number) => boolean
+  /**
+   * Send a Telegram message. Receives a pre-formatted HTML payload using
+   * only Telegram-supported tags. Returns true on success.
+   */
+  sendTelegram?: (html: string) => Promise<boolean>
+  /** Broadcast a chat event for connected web clients */
+  broadcastEvent?: (event: TaskStatusUpdateEvent) => void
+}
+
+/**
+ * Deliver a periodic task status update:
+ *   1. Persist to `chat_messages` as a `system` row so it shows up in
+ *      history (filtered out of LLM context via metadata tag).
+ *   2. Broadcast via ChatEventBus so connected web clients render it live.
+ *   3. Optionally send via Telegram (respecting `telegramDeliveryMode`).
+ *
+ * Never invokes the LLM — status updates are progress signals, not chat
+ * turns.
+ *
+ * Error handling: persist and broadcast failures propagate to the caller
+ * (they indicate a real bug — DB schema drift, bus misconfiguration —
+ * and should fail loudly). Only the Telegram path is caught locally
+ * because it is an external-service boundary where transient failures
+ * should not tear down the scheduled heartbeat.
+ */
+export async function deliverTaskStatusUpdate(options: TaskStatusUpdateOptions): Promise<{
+  persisted: boolean
+  telegramSent: boolean
+  broadcastSent: boolean
+}> {
+  const {
+    db,
+    userId,
+    task,
+    details,
+    targetSessionId,
+    telegramDeliveryMode,
+    hasActiveWebSocket,
+    sendTelegram,
+    broadcastEvent,
+  } = options
+
+  const content = formatTaskStatusUpdateContent(details.taskName, details)
+
+  // Persist: fail-fast. A throw here propagates to the caller's
+  // `.catch()` which logs it — this is intentional so a schema or
+  // session-lineage bug surfaces immediately instead of silently
+  // swallowing every tick.
+  persistTaskStatusUpdateMessage(db, userId, task, content, details, targetSessionId)
+  const persisted = true
+
+  // Broadcast: fail-fast. Broadcast errors mean the event bus itself is
+  // broken; silently masking them would make the feature look like it
+  // works when the UI receives nothing.
+  let broadcastSent = false
+  if (broadcastEvent) {
+    broadcastEvent({
+      type: 'task_status_update',
+      userId,
+      taskId: task.id,
+      taskName: task.name,
+      taskTriggerType: task.triggerType,
+      content,
+      details,
+    })
+    broadcastSent = true
+  }
+
+  // Telegram: external-service boundary — catch so transient network or
+  // API-rate-limit failures don't nuke the heartbeat schedule, but still
+  // log every failure so operators notice sustained problems.
+  let telegramSent = false
+  if (sendTelegram) {
+    const shouldSendTelegram =
+      telegramDeliveryMode === 'always' ||
+      (telegramDeliveryMode === 'auto' && !hasActiveWebSocket(userId))
+    if (shouldSendTelegram) {
+      const html = formatTaskStatusUpdateTelegramHtml(task, details)
+      try {
+        telegramSent = await sendTelegram(html)
+      } catch (err) {
+        console.error(`[task-notification] Failed to send Telegram status update for task ${task.id}:`, err)
+      }
+    }
+  }
+
+  return { persisted, telegramSent, broadcastSent }
+}
+
+
 export interface TaskNotificationOptions {
   db: Database
   /** The user ID (Axiom numeric ID) this notification is for */
