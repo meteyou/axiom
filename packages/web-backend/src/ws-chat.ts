@@ -20,7 +20,7 @@ interface ChatMessage {
 }
 
 interface ChatResponse {
-  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'task_completed' | 'task_failed' | 'task_question' | 'reminder' | 'pong' | 'attachment'
+  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'reminder' | 'pong' | 'attachment'
   text?: string
   /** Uploaded file attached to the current assistant turn (for type='attachment') */
   attachment?: UploadDescriptor
@@ -64,6 +64,17 @@ interface ChatResponse {
   telegramDelivered?: boolean
   /** Whether this is a task injection response */
   isTaskInjection?: boolean
+  /**
+   * Human-readable single-line summary for `task_status_update` events,
+   * matching the value persisted in `chat_messages.content`.
+   */
+  taskStatusContent?: string
+  /** How long the task has been running, in minutes. */
+  taskStatusRuntimeMinutes?: number
+  /** Number of tool calls the task has made so far. */
+  taskStatusToolCallCount?: number
+  /** Approximate total tokens consumed by the task so far. */
+  taskStatusTokensUsed?: number
 }
 
 function saveChatMessage(
@@ -529,6 +540,18 @@ export function setupWebSocketChat(
             taskDurationMinutes: event.taskDurationMinutes,
             taskTokensUsed: event.taskTokensUsed,
             taskTriggerType: event.taskTriggerType,
+          })
+        } else if (event.type === 'task_status_update') {
+          sendMessage(client, {
+            type: 'task_status_update',
+            taskId: event.taskId,
+            taskName: event.taskName,
+            taskTriggerType: event.taskTriggerType,
+            taskStatusContent: event.taskStatusContent,
+            taskStatusRuntimeMinutes: event.taskStatusRuntimeMinutes,
+            taskStatusToolCallCount: event.taskStatusToolCallCount,
+            taskStatusTokensUsed: event.taskStatusTokensUsed,
+            sessionId: event.sessionId,
           })
         } else if (event.type === 'reminder') {
           sendMessage(client, {
