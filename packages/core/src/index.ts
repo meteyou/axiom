@@ -263,14 +263,21 @@ export { createCronjobTool, editCronjobTool, removeCronjobTool, listCronjobsTool
 export type { CronjobToolsOptions } from './cronjob-tools.js'
 export {
   formatTaskTelegramMessage,
+  formatTaskStatusUpdateContent,
+  formatTaskStatusUpdateTelegramHtml,
   persistTaskResultMessage,
+  persistTaskStatusUpdateMessage,
   resolveTaskNotificationSessionId,
   deliverTaskNotification,
+  deliverTaskStatusUpdate,
 } from './task-notification.js'
 export type {
   TelegramDeliveryMode,
   TaskNotificationOptions,
   TaskNotificationEvent,
+  TaskStatusUpdateOptions,
+  TaskStatusUpdateEvent,
+  TaskStatusUpdateDetails,
 } from './task-notification.js'
 export {
   loadSttSettings,

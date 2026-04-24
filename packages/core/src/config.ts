@@ -75,7 +75,10 @@ const TEMPLATES: Record<string, object> = {
         smartProvider: '',
         smartCheckInterval: 5,
       },
-      statusUpdateIntervalMinutes: 10,
+      statusUpdates: {
+        enabled: false,
+        intervalMinutes: 10,
+      },
       backgroundThinkingLevel: 'off',
     },
   },
