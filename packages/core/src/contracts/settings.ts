@@ -92,12 +92,24 @@ export interface TasksLoopDetectionSettingsContract {
   smartCheckInterval: number
 }
 
+export interface TasksStatusUpdatesSettingsContract {
+  enabled: boolean
+  intervalMinutes: number
+}
+
 export interface TasksSettingsContract {
   defaultProvider: string
   maxDurationMinutes: number
   telegramDelivery: TaskTelegramDelivery
   loopDetection: TasksLoopDetectionSettingsContract
-  statusUpdateIntervalMinutes: number
+  /**
+   * Periodic `<task_status type="periodic_update">` signals from the task
+   * runner back to the user's parent chat while a background task is
+   * running. Disabled by default — enable it to get a visible heartbeat
+   * (duration, tool-call count, token estimate) that is delivered via the
+   * chat event bus and (optionally) Telegram without invoking the LLM.
+   */
+  statusUpdates: TasksStatusUpdatesSettingsContract
   /**
    * Thinking level used for background task agents, the task runner's loop
    * detection calls, and internal background jobs (fact extraction, memory
@@ -254,7 +266,10 @@ export const DEFAULT_SETTINGS_CONTRACT: SettingsContract = {
       smartProvider: '',
       smartCheckInterval: 5,
     },
-    statusUpdateIntervalMinutes: 10,
+    statusUpdates: {
+      enabled: false,
+      intervalMinutes: 10,
+    },
     backgroundThinkingLevel: 'off',
   },
   tts: {
@@ -289,6 +304,37 @@ function normalizeThinkingLevel(
     return value
   }
   return fallback
+}
+
+/**
+ * Normalize `tasks.statusUpdates` with migration from the legacy flat
+ * `tasks.statusUpdateIntervalMinutes` field. When only the legacy value is
+ * present, it is carried over as the interval; `enabled` stays `false` so
+ * existing installations don't suddenly start emitting status-update chat
+ * messages after upgrading. Setups that had explicitly set the legacy value
+ * to a custom interval keep that interval — only the explicit opt-in is
+ * new.
+ */
+function normalizeTasksStatusUpdates(
+  source: DeepPartial<TasksSettingsContract> | undefined,
+): TasksStatusUpdatesSettingsContract {
+  const fallback = DEFAULT_SETTINGS_CONTRACT.tasks.statusUpdates
+  const statusUpdates = source?.statusUpdates
+  const legacyInterval = (source as { statusUpdateIntervalMinutes?: number } | undefined)?.statusUpdateIntervalMinutes
+  const validLegacyInterval = typeof legacyInterval === 'number' && legacyInterval > 0 ? legacyInterval : undefined
+  if (statusUpdates && (statusUpdates.enabled !== undefined || statusUpdates.intervalMinutes !== undefined)) {
+    return {
+      enabled: statusUpdates.enabled ?? fallback.enabled,
+      intervalMinutes: statusUpdates.intervalMinutes ?? validLegacyInterval ?? fallback.intervalMinutes,
+    }
+  }
+  if (validLegacyInterval !== undefined) {
+    return {
+      enabled: fallback.enabled,
+      intervalMinutes: validLegacyInterval,
+    }
+  }
+  return { ...fallback }
 }
 
 export function normalizeSettingsContract(input: DeepPartial<SettingsContract> | null | undefined): SettingsContract {
@@ -376,8 +422,7 @@ export function normalizeSettingsContract(input: DeepPartial<SettingsContract> |
           source.tasks?.loopDetection?.smartCheckInterval
           ?? DEFAULT_SETTINGS_CONTRACT.tasks.loopDetection.smartCheckInterval,
       },
-      statusUpdateIntervalMinutes:
-        source.tasks?.statusUpdateIntervalMinutes ?? DEFAULT_SETTINGS_CONTRACT.tasks.statusUpdateIntervalMinutes,
+      statusUpdates: normalizeTasksStatusUpdates(source.tasks),
       backgroundThinkingLevel: normalizeThinkingLevel(
         source.tasks?.backgroundThinkingLevel,
         DEFAULT_SETTINGS_CONTRACT.tasks.backgroundThinkingLevel,
