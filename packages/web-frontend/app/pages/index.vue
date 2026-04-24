@@ -104,11 +104,11 @@
             // Mobile: messages fill the available width (minus avatar + gap
             // or the pl-11 offset for tool cards). On sm+ screens we cap them
             // so bubbles don't span edge-to-edge on wider viewports.
-            msg.role === 'divider' ? 'w-full' : (msg.role === 'tool' || (msg.role === 'system' && msg.isTaskResult) || msg.isThinking) ? 'self-start w-full max-w-full sm:max-w-[75%] pl-11' : 'flex max-w-full gap-3 sm:max-w-[75%]',
+            msg.role === 'divider' ? 'w-full' : (msg.role === 'tool' || (msg.role === 'system' && (msg.isTaskResult || msg.isTaskStatusUpdate)) || msg.isThinking) ? 'self-start w-full max-w-full sm:max-w-[75%] pl-11' : 'flex max-w-full gap-3 sm:max-w-[75%]',
             {
               'self-end flex-row-reverse': msg.role === 'user',
               'self-start': msg.role === 'assistant' && !msg.isThinking,
-              'self-center max-w-full sm:max-w-[85%]': msg.role === 'system' && !msg.isTaskResult,
+              'self-center max-w-full sm:max-w-[85%]': msg.role === 'system' && !msg.isTaskResult && !msg.isTaskStatusUpdate,
             },
           ]"
         >
@@ -217,6 +217,25 @@
                 <div v-else class="max-h-80 overflow-y-auto px-3 py-2">
                   <p class="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Output</p><ToolDataDisplay :data="msg.toolData!.toolResult" :is-error="msg.toolData!.toolIsError" />
                 </div>
+              </div>
+            </div>
+          </template>
+
+          <!-- Periodic task heartbeat (compact, non-collapsible progress row).
+               Rendered as a subtle single line so the user can see a task
+               is still making progress without the row looking like a
+               completed-task card. -->
+          <template v-else-if="msg.role === 'system' && msg.isTaskStatusUpdate">
+            <div class="w-full overflow-hidden rounded-lg border border-border/60 bg-muted/20 px-3 py-1.5 text-xs text-muted-foreground">
+              <div class="flex items-center gap-2">
+                <AppIcon name="zap" class="h-3 w-3 shrink-0 opacity-60" />
+                <span class="font-medium text-foreground/80">{{ msg.taskStatusUpdateName ?? 'Background Task' }}</span>
+                <span class="ml-auto flex shrink-0 items-center gap-2 text-[10px] text-muted-foreground/80">
+                  <span v-if="typeof msg.taskStatusRuntimeMinutes === 'number'">⏱ {{ msg.taskStatusRuntimeMinutes }}min</span>
+                  <span v-if="typeof msg.taskStatusToolCallCount === 'number'">• {{ msg.taskStatusToolCallCount }} tools</span>
+                  <span v-if="typeof msg.taskStatusTokensUsed === 'number'">• ~{{ formatTokenCount(msg.taskStatusTokensUsed) }} tok</span>
+                  <span class="rounded bg-amber-500/10 px-1.5 py-0.5 font-medium text-amber-600 dark:text-amber-400">Running</span>
+                </span>
               </div>
             </div>
           </template>
@@ -588,7 +607,7 @@ function toggleSummary(id: string) { const updated = new Set(expandedSummaries.v
 const filteredMessages = computed(() => {
   return messages.value.filter((msg) => {
     if (!showToolCalls.value && msg.role === 'tool' && msg.toolData) return false
-    if (!showInjections.value && msg.role === 'system' && msg.isTaskResult) return false
+    if (!showInjections.value && msg.role === 'system' && (msg.isTaskResult || msg.isTaskStatusUpdate)) return false
     if (!showThinking.value && msg.isThinking) return false
     return true
   })
@@ -607,6 +626,11 @@ function taskResultBody(content: string): string {
   const bodyLines = lines.slice(1)
   while (bodyLines.length > 0 && bodyLines[0]!.trim() === '') bodyLines.shift()
   return bodyLines.join('\n') || content
+}
+// Compact token count for the heartbeat row: 12345 -> "12.3k".
+function formatTokenCount(count: number): string {
+  if (count >= 1000) return `${(count / 1000).toFixed(1)}k`
+  return String(count)
 }
 const { messages, connectionStatus, isStreaming, connect, disconnect, sendMessage, newSession, stopTask } = useChat()
 const { playingIndex: ttsPlayingIndex, loading: ttsLoading, ttsEnabled, fetchTtsSettings, play: ttsPlay, stop: ttsStop } = useTts()
@@ -671,6 +695,21 @@ async function loadHistory() {
             taskResultName: meta.taskName ?? 'Background Task',
             taskResultStatus: meta.taskResultStatus ?? meta.taskStatus ?? 'completed',
             taskResultDuration: meta.durationMinutes,
+          } as ChatMessage
+        }
+
+        // Parse periodic task heartbeat rows — the backend stores a
+        // human-readable single-line content plus structured metrics in
+        // metadata so we can rehydrate the dedicated progress card on
+        // reload instead of falling through to a raw system bubble.
+        if (m.role === 'system' && meta.type === 'task_status_update') {
+          return {
+            id: m.id, role: 'system' as const, content: m.content, timestamp: m.timestamp, source,
+            isTaskStatusUpdate: true,
+            taskStatusUpdateName: meta.taskName ?? 'Background Task',
+            taskStatusRuntimeMinutes: typeof meta.runtimeMinutes === 'number' ? meta.runtimeMinutes : undefined,
+            taskStatusToolCallCount: typeof meta.toolCallCount === 'number' ? meta.toolCallCount : undefined,
+            taskStatusTokensUsed: typeof meta.totalTokens === 'number' ? meta.totalTokens : undefined,
           } as ChatMessage
         }
 

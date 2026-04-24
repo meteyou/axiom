@@ -1194,12 +1194,28 @@
                   </p>
                 </div>
 
-                <div class="flex flex-col gap-2">
+                <!-- Enable toggle -->
+                <div class="flex items-center justify-between rounded-lg border border-border px-4 py-3">
+                  <div class="flex flex-col gap-0.5 pr-4">
+                    <Label for="status-updates-enabled" class="cursor-pointer">
+                      {{ $t('settings.tasksStatusUpdatesEnabled') }}
+                    </Label>
+                    <p class="text-xs text-muted-foreground">
+                      {{ $t('settings.tasksStatusUpdatesEnabledHint') }}
+                    </p>
+                  </div>
+                  <Switch
+                    id="status-updates-enabled"
+                    v-model:checked="form.tasks.statusUpdates.enabled"
+                  />
+                </div>
+
+                <div v-if="form.tasks.statusUpdates.enabled" class="flex flex-col gap-2">
                   <Label for="status-update-interval">{{ $t('settings.tasksStatusUpdateInterval') }}</Label>
                   <div class="flex items-center gap-2">
                     <Input
                       id="status-update-interval"
-                      v-model.number="form.tasks.statusUpdateIntervalMinutes"
+                      v-model.number="form.tasks.statusUpdates.intervalMinutes"
                       type="number"
                       min="1"
                       max="120"
@@ -2117,6 +2133,7 @@ function hydrateForm() {
         ...s.tasks.loopDetection,
         smartProvider: migrateProviderValue(s.tasks.loopDetection.smartProvider ?? ''),
       },
+      statusUpdates: { ...s.tasks.statusUpdates },
     },
     tts: { ...s.tts },
     stt: {
