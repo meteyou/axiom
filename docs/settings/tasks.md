@@ -99,12 +99,31 @@ Only shown for `smart` / `auto`. How often (every _N_ tool calls) the smart chec
 
 ## Status updates
 
-While a task runs, the agent can push periodic progress updates into the task log (and, if `telegramDelivery` is set, into the Telegram chat).
+While a task runs, Axiom can push periodic progress signals into the parent chat (the session that triggered the task) and, when Telegram delivery is configured, into that user's Telegram DM. Each signal is a short `<task_status type="periodic_update">` line with the task's runtime, tool-call count and token estimate plus the `/kill_task <id>` hint.
+
+Status updates are **ephemeral progress signals**, not chat turns:
+
+- They are persisted as `system` messages in the chat session so they show up in history.
+- They are broadcast via the live chat event bus so the web UI renders them immediately.
+- They are **not** injected as a new user turn — the parent agent does not respond to them and no tokens are spent on an LLM call per tick.
+- Telegram delivery follows the same [telegramDelivery](#telegram-delivery) setting that task results use (`auto` suppresses Telegram when the web UI is active, `always` sends both).
+
+### Enable periodic status updates
+
+Master toggle. Default: `false` — opt-in to avoid noisy chats out of the box. Turn it on if you want a visible heartbeat for long-running background tasks.
+
+```json
+{ "tasks": { "statusUpdates": { "enabled": true } } }
+```
 
 ### Status update interval
 
-How often to emit a status update, in minutes. Default: `5`. Range: 1 – 120. Set higher for long, quiet tasks; lower if you want a visible heartbeat in chat.
+How often to emit a status update, in minutes. Default: `10`. Range: 1 – 120. Set higher for long, quiet tasks; lower if you want a more responsive heartbeat.
 
 ```json
-{ "tasks": { "statusUpdateIntervalMinutes": 5 } }
+{ "tasks": { "statusUpdates": { "intervalMinutes": 10 } } }
 ```
+
+::: tip Migrating from earlier versions
+Older installs used a flat `tasks.statusUpdateIntervalMinutes` field. Axiom reads the legacy key on load and migrates it into the new `tasks.statusUpdates.intervalMinutes` field; the feature stays **disabled** after migration so upgrades don't suddenly start posting status messages. Flip `tasks.statusUpdates.enabled` to `true` to opt in.
+:::
