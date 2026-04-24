@@ -11,6 +11,7 @@ import {
   createTaskTool,
   loadSttSettings,
   deliverTaskNotification,
+  deliverTaskStatusUpdate,
   resolveTaskNotificationSessionId,
   editCronjobTool,
   ensureConfigStructure,
@@ -86,7 +87,10 @@ interface TaskSettings {
     smartProvider: string
     smartCheckInterval: number
   }
-  statusUpdateIntervalMinutes: number
+  statusUpdates: {
+    enabled: boolean
+    intervalMinutes: number
+  }
 }
 
 interface RuntimeSettings {
@@ -146,7 +150,10 @@ function loadRuntimeSettings(): RuntimeSettings {
       smartProvider: '',
       smartCheckInterval: 5,
     },
-    statusUpdateIntervalMinutes: 10,
+    statusUpdates: {
+      enabled: false,
+      intervalMinutes: 10,
+    },
   }
 
   let builtinToolsConfig: BuiltinToolsConfig | undefined
@@ -165,16 +172,33 @@ function loadRuntimeSettings(): RuntimeSettings {
     }
 
     if (settings.tasks) {
-      taskSettings.defaultProvider = settings.tasks.defaultProvider ?? taskSettings.defaultProvider
-      taskSettings.maxDurationMinutes = settings.tasks.maxDurationMinutes ?? taskSettings.maxDurationMinutes
-      taskSettings.telegramDelivery = settings.tasks.telegramDelivery ?? taskSettings.telegramDelivery
-      taskSettings.statusUpdateIntervalMinutes =
-        settings.tasks.statusUpdateIntervalMinutes ?? taskSettings.statusUpdateIntervalMinutes
+      const tasksConfig = settings.tasks as Partial<TaskSettings> & { statusUpdateIntervalMinutes?: number }
+      taskSettings.defaultProvider = tasksConfig.defaultProvider ?? taskSettings.defaultProvider
+      taskSettings.maxDurationMinutes = tasksConfig.maxDurationMinutes ?? taskSettings.maxDurationMinutes
+      taskSettings.telegramDelivery = tasksConfig.telegramDelivery ?? taskSettings.telegramDelivery
 
-      if (settings.tasks.loopDetection) {
+      // New sub-object wins; legacy flat `statusUpdateIntervalMinutes` is
+      // migrated into the interval only (enabled stays false so upgrades
+      // stay silent until the operator opts in).
+      if (tasksConfig.statusUpdates) {
+        const legacyInterval = typeof tasksConfig.statusUpdateIntervalMinutes === 'number' && tasksConfig.statusUpdateIntervalMinutes > 0
+          ? tasksConfig.statusUpdateIntervalMinutes
+          : undefined
+        taskSettings.statusUpdates = {
+          ...taskSettings.statusUpdates,
+          ...(legacyInterval !== undefined && tasksConfig.statusUpdates.intervalMinutes === undefined
+            ? { intervalMinutes: legacyInterval }
+            : {}),
+          ...tasksConfig.statusUpdates,
+        }
+      } else if (typeof tasksConfig.statusUpdateIntervalMinutes === 'number' && tasksConfig.statusUpdateIntervalMinutes > 0) {
+        taskSettings.statusUpdates.intervalMinutes = tasksConfig.statusUpdateIntervalMinutes
+      }
+
+      if (tasksConfig.loopDetection) {
         taskSettings.loopDetection = {
           ...taskSettings.loopDetection,
-          ...settings.tasks.loopDetection,
+          ...tasksConfig.loopDetection,
         }
       }
     }
@@ -516,6 +540,79 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
     })
   }
 
+  /**
+   * Periodic progress signal while a background task is still running.
+   * Mirrors `handleTaskNotification` but intentionally routes through a
+   * non-LLM delivery path: persist to chat_messages (so history shows it),
+   * broadcast on chatEventBus (so live web clients render a progress
+   * line), and optionally send via Telegram respecting the user's
+   * `telegramDelivery` setting. No `agentCore.injectTaskResult` call —
+   * status updates are ephemeral heartbeats, not new chat turns the
+   * parent agent should respond to.
+   */
+  function handleStatusUpdateNotification(
+    taskId: string,
+    _statusMessage: string,
+    details: {
+      taskName: string
+      runtimeMinutes: number
+      toolCallCount: number
+      totalTokens: number
+    },
+    taskRuntime: TaskRuntimeTaskBoundary,
+  ): void {
+    const task = taskRuntime.getById(taskId)
+    if (!task) return
+
+    const resolvedUserId = resolveTargetUserIdForTask(task.sessionId)
+    const userId = resolvedUserId ?? getFallbackUserId()
+
+    const lineageSessionId = resolveTaskNotificationSessionId(db, task)
+    // Prefer the user's currently-cached interactive session (via
+    // `AgentCore.resolveInjectionSessionId`) so the heartbeat lands in the
+    // chat the user is actually looking at. Fall back to the lineage
+    // parent when there is no cached session AND no injection resolver
+    // — `deliverTaskStatusUpdate` skips the persist step (with a warn)
+    // if `targetSessionId` is still undefined.
+    const injectionSessionId = agentCore
+      ? agentCore.resolveInjectionSessionId(String(userId), lineageSessionId)
+      : null
+    const targetSessionId = injectionSessionId ?? lineageSessionId ?? undefined
+
+    const telegramChatId = telegramBot ? telegramBot.getTelegramChatIdForUser(userId) : null
+    const sendTelegram = telegramBot && telegramChatId
+      ? (html: string) => telegramBot!.sendTaskNotification(telegramChatId, html)
+      : undefined
+
+    deliverTaskStatusUpdate({
+      db,
+      userId,
+      task,
+      details,
+      targetSessionId,
+      telegramDeliveryMode: (taskSettings.telegramDelivery as 'auto' | 'always') ?? 'auto',
+      hasActiveWebSocket: (uid: number) => wsChatPresenceChecker?.(uid) ?? false,
+      sendTelegram,
+      broadcastEvent: (event) => {
+        chatEventBus.broadcast({
+          type: event.type,
+          userId: event.userId,
+          source: 'task',
+          sessionId: targetSessionId,
+          taskId: event.taskId,
+          taskName: event.taskName,
+          taskTriggerType: event.taskTriggerType,
+          taskStatusContent: event.content,
+          taskStatusRuntimeMinutes: event.details.runtimeMinutes,
+          taskStatusToolCallCount: event.details.toolCallCount,
+          taskStatusTokensUsed: event.details.totalTokens,
+        })
+      },
+    }).catch(err => {
+      logger.error(`[axiom] Failed to deliver task status update for ${taskId}:`, err)
+    })
+  }
+
   // Background task tools are built as a mutable array so that
   // create_task / list_tasks can be pushed in after taskRuntime is
   // available (they need taskRuntime.tasks — resolved below).
@@ -545,6 +642,9 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
       onTaskPaused: (taskId: string, injection: string) => {
         handleTaskNotification(taskId, injection, taskRuntime.tasks)
       },
+      onStatusUpdate: (taskId: string, statusMessage: string, details) => {
+        handleStatusUpdateNotification(taskId, statusMessage, details, taskRuntime.tasks)
+      },
       loopDetection: taskSettings.loopDetection.enabled
         ? {
             enabled: true,
@@ -554,7 +654,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
             smartCheckInterval: taskSettings.loopDetection.smartCheckInterval,
           }
         : undefined,
-      statusUpdateIntervalMinutes: taskSettings.statusUpdateIntervalMinutes,
+      statusUpdates: taskSettings.statusUpdates,
       getProviderById: (id: string) => resolveProvider(id),
       taskEventBus,
       // Watchdog fallback for tasks that never set maxDurationMinutes
