@@ -1,7 +1,8 @@
 import { defineConfig, type DefaultTheme } from 'vitepress'
 
-// Shared sidebar for /guide/ and /settings/ — Settings is a category inside the
-// Guide nav, not a separate top-level nav entry.
+// Shared sidebar for /guide/, /concepts/ and /settings/ — Concepts and
+// Settings are categories inside the Guide nav, not separate top-level
+// nav entries.
 const guideSidebar: DefaultTheme.SidebarItem[] = [
   {
     text: 'Getting Started',
@@ -15,11 +16,11 @@ const guideSidebar: DefaultTheme.SidebarItem[] = [
   {
     text: 'Core Concepts',
     items: [
-      { text: 'Memory System', link: '/guide/memory' },
-      { text: 'Agent Instructions', link: '/guide/instructions' },
-      { text: 'Skills', link: '/guide/skills' },
-      { text: 'Tasks & Cronjobs', link: '/guide/tasks-and-cronjobs' },
-      { text: 'Built-in Tools', link: '/guide/tools' },
+      { text: 'Agent Instructions', link: '/concepts/instructions' },
+      { text: 'Built-in Tools', link: '/concepts/tools' },
+      { text: 'Memory System', link: '/concepts/memory' },
+      { text: 'Skills', link: '/concepts/skills' },
+      { text: 'Tasks & Cronjobs', link: '/concepts/tasks-and-cronjobs' },
     ],
   },
   {
@@ -89,10 +90,10 @@ export default defineConfig({
   themeConfig: {
     // https://vitepress.dev/reference/default-theme-config
     logo: '/logo.svg',
-    siteTitle: 'Axiom Documentation',
+    siteTitle: 'Axiom',
 
     nav: [
-      { text: 'Guide', link: '/guide/quickstart', activeMatch: '/(guide|settings)/' },
+      { text: 'Guide', link: '/guide/quickstart', activeMatch: '/(guide|concepts|settings)/' },
       { text: 'Reference', link: '/reference/env-vars', activeMatch: '/reference/' },
       {
         text: 'Links',
@@ -104,9 +105,8 @@ export default defineConfig({
     ],
 
     sidebar: {
-      // Guide + Settings share the same sidebar so Settings appears as its own
-      // category under the Guide nav entry (no separate top-level nav item).
       '/guide/': guideSidebar,
+      '/concepts/': guideSidebar,
       '/settings/': guideSidebar,
 
       '/reference/': [
