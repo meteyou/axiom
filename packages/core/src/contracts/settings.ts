@@ -144,6 +144,20 @@ export interface SttSettingsContract {
   rewrite: SttRewriteSettingsContract
 }
 
+/**
+ * Telegram bot settings exposed via the Settings API.
+ *
+ * On disk these fields live in `/data/config/telegram.json`, not in
+ * `settings.json`. The API still nests them under a `telegram` object so the
+ * shape mirrors other namespaced groups (`tasks`, `agentHeartbeat`, ...).
+ */
+export interface TelegramSettingsContract {
+  enabled: boolean
+  botToken: string
+  /** Input batching delay in ms. `0` disables batching. */
+  batchingDelayMs: number
+}
+
 export interface SettingsContract {
   sessionTimeoutMinutes: number
   sessionSummaryProviderId: string
@@ -155,10 +169,8 @@ export interface SettingsContract {
    */
   thinkingLevel: SettingsThinkingLevel
   healthMonitorIntervalMinutes: number
-  batchingDelayMs: number
   uploads: UploadsSettingsContract
-  telegramEnabled: boolean
-  telegramBotToken: string
+  telegram: TelegramSettingsContract
   healthMonitor: HealthMonitorSettingsContract
   memoryConsolidation: MemoryConsolidationSettingsContract
   factExtraction: FactExtractionSettingsContract
@@ -178,7 +190,6 @@ export interface SettingsStorageContract {
   thinkingLevel?: SettingsThinkingLevel
   healthMonitorIntervalMinutes?: number
   healthMonitor?: Partial<HealthMonitorSettingsContract> & { intervalMinutes?: number }
-  batchingDelayMs?: number
   uploads?: Partial<UploadsSettingsContract>
   memoryConsolidation?: Partial<MemoryConsolidationSettingsContract>
   factExtraction?: Partial<FactExtractionSettingsContract>
@@ -221,12 +232,14 @@ export const DEFAULT_SETTINGS_CONTRACT: SettingsContract = {
   timezone: 'UTC',
   thinkingLevel: 'off',
   healthMonitorIntervalMinutes: 5,
-  batchingDelayMs: 2500,
   uploads: {
     retentionDays: 30,
   },
-  telegramEnabled: false,
-  telegramBotToken: '',
+  telegram: {
+    enabled: false,
+    botToken: '',
+    batchingDelayMs: 2500,
+  },
   healthMonitor: {
     enabled: true,
     fallbackTrigger: 'down',
@@ -347,12 +360,14 @@ export function normalizeSettingsContract(input: DeepPartial<SettingsContract> |
     timezone: source.timezone ?? DEFAULT_SETTINGS_CONTRACT.timezone,
     thinkingLevel: normalizeThinkingLevel(source.thinkingLevel, DEFAULT_SETTINGS_CONTRACT.thinkingLevel),
     healthMonitorIntervalMinutes: source.healthMonitorIntervalMinutes ?? DEFAULT_SETTINGS_CONTRACT.healthMonitorIntervalMinutes,
-    batchingDelayMs: source.batchingDelayMs ?? DEFAULT_SETTINGS_CONTRACT.batchingDelayMs,
     uploads: {
       retentionDays: source.uploads?.retentionDays ?? DEFAULT_SETTINGS_CONTRACT.uploads.retentionDays,
     },
-    telegramEnabled: source.telegramEnabled ?? DEFAULT_SETTINGS_CONTRACT.telegramEnabled,
-    telegramBotToken: source.telegramBotToken ?? DEFAULT_SETTINGS_CONTRACT.telegramBotToken,
+    telegram: {
+      enabled: source.telegram?.enabled ?? DEFAULT_SETTINGS_CONTRACT.telegram.enabled,
+      botToken: source.telegram?.botToken ?? DEFAULT_SETTINGS_CONTRACT.telegram.botToken,
+      batchingDelayMs: source.telegram?.batchingDelayMs ?? DEFAULT_SETTINGS_CONTRACT.telegram.batchingDelayMs,
+    },
     healthMonitor: {
       enabled: source.healthMonitor?.enabled ?? DEFAULT_SETTINGS_CONTRACT.healthMonitor.enabled,
       fallbackTrigger: source.healthMonitor?.fallbackTrigger ?? DEFAULT_SETTINGS_CONTRACT.healthMonitor.fallbackTrigger,

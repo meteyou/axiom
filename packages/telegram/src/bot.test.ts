@@ -324,21 +324,15 @@ describe('TelegramBot', () => {
       expect(agentCore.sendMessage).toHaveBeenCalledTimes(1)
     })
 
-    it('uses the batching delay from settings.json when created via config loading', async () => {
-      vi.mocked(loadConfig).mockImplementation((filename: string) => {
-        if (filename === 'settings.json') {
-          return { batchingDelayMs: 4000 }
-        }
-
-        return {
-          enabled: true,
-          botToken: 'test-token-123',
-          adminUserIds: [],
-          pollingMode: true,
-          webhookUrl: '',
-          batchingDelayMs: 2500,
-        }
-      })
+    it('uses the batching delay from telegram.json when created via config loading', async () => {
+      vi.mocked(loadConfig).mockImplementation(() => ({
+        enabled: true,
+        botToken: 'test-token-123',
+        adminUserIds: [],
+        pollingMode: true,
+        webhookUrl: '',
+        batchingDelayMs: 4000,
+      }))
       vi.mocked(agentCore.sendMessage).mockReturnValue(doneOnlyStream())
 
       const bot = createTelegramBot(agentCore)!

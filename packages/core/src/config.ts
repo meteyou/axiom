@@ -28,7 +28,6 @@ const TEMPLATES: Record<string, object> = {
         fallbackToHealthy: true,
       },
     },
-    batchingDelayMs: 2500,
     uploads: {
       retentionDays: 30,
     },

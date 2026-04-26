@@ -75,10 +75,6 @@ export interface TelegramUserRow {
   updated_at: string
 }
 
-interface TelegramSettings {
-  batchingDelayMs?: number
-}
-
 interface QueuedMessage {
   ctx: Context
   text: string
@@ -294,20 +290,9 @@ function normalizeCommand(text: string): string {
 
 function loadTelegramRuntimeConfig(): TelegramConfig {
   const telegram = loadConfig<TelegramConfig>('telegram.json')
-  let batchingDelayMs = telegram.batchingDelayMs ?? 2500
-
-  try {
-    const settings = loadConfig<TelegramSettings>('settings.json')
-    if (typeof settings.batchingDelayMs === 'number' && Number.isFinite(settings.batchingDelayMs) && settings.batchingDelayMs >= 0) {
-      batchingDelayMs = settings.batchingDelayMs
-    }
-  } catch {
-    // Fall back to telegram.json/defaults when settings are unavailable.
-  }
-
   return {
     ...telegram,
-    batchingDelayMs,
+    batchingDelayMs: telegram.batchingDelayMs ?? 2500,
   }
 }
 

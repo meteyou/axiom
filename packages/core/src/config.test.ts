@@ -34,7 +34,7 @@ describe('config', () => {
     const settings = JSON.parse(fs.readFileSync(path.join(dir, 'settings.json'), 'utf-8'))
     expect(settings.sessionTimeoutMinutes).toBe(30)
     expect(settings.language).toBe('en')
-    expect(settings.batchingDelayMs).toBe(2500)
+    expect(settings.batchingDelayMs).toBeUndefined()
     expect(settings.tokenPriceTable['gpt-4o'].input).toBe(2.5)
     expect(settings.tokenPriceTable['gpt-4o'].output).toBe(10)
 
