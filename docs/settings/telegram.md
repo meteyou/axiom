@@ -1,26 +1,40 @@
 # Telegram
 
-Connect Axiom to a Telegram bot so you can talk to the same agent — with the same memory, tools, and tasks — from your phone. For setup narrative and webhook vs polling, see the [Telegram Bot](../guide/telegram) guide.
+Per-field reference for the **Settings → Telegram** panel. This page assumes you already have a bot token and have the bot up and running — if not, start with the [Telegram Bot setup guide](../guide/telegram), which walks through BotFather, finding your Telegram user ID, and approving yourself.
 
 **URL:** `/settings?tab=telegram`
 
+::: warning Where these values are stored
+Unlike most settings (which live in `/data/config/settings.json`), all fields on this page are stored in **`/data/config/telegram.json`**. Each section below shows the exact key and snippet.
+:::
+
 ## Enabled
 
-Master toggle for the Telegram integration. When off, the bot is not started on container boot and no incoming messages are processed.
+Master toggle for the Telegram integration. When off, the bot is not started on container boot and no incoming messages are processed. Toggling this in the UI takes effect immediately — no restart needed.
+
+```json [/data/config/telegram.json]
+{ "enabled": true }
+```
 
 ## Bot token
 
-The secret token from [@BotFather](https://t.me/BotFather). Stored as a password field; the actual value is written into [Secrets](./secrets) as `TELEGRAM_BOT_TOKEN` and never returned in plain text afterwards.
+The secret token from [@BotFather](https://t.me/BotFather). The Settings UI renders it as a password field, but the value is **stored in plain text** in `telegram.json` — protect that file (and your `/data` directory) accordingly. It is **not** kept in [Secrets](./secrets).
 
-To rotate: paste a new token here and save. The old bot will stop working on the next request, the new one will be active immediately.
+To rotate: paste a new token here and save. The old bot stops working on the next request; the new one becomes active immediately.
+
+> If you don't have a token yet, see [step 1 of the setup guide](../guide/telegram#_1-create-a-bot-with-botfather).
+
+```json [/data/config/telegram.json]
+{ "botToken": "123456:ABC..." }
+```
 
 ## Batching delay
 
 When a human types a multi-line message on Telegram, each line often arrives as a separate update. Axiom waits `batchingDelayMs` after each arriving message before flushing them all to the agent — this way "Hi / how are you / btw" becomes one prompt instead of three.
 
-Default: `2500` (2.5s). Range: 0 – 10 000. Set to `0` for no batching (each message triggers an agent turn immediately).
+Default: `2500` (2.5 s). Range: `0` – `10000`. Set to `0` to disable batching (each message triggers an agent turn immediately).
 
-```json
+```json [/data/config/telegram.json]
 { "batchingDelayMs": 2500 }
 ```
 
@@ -35,6 +49,8 @@ The user directory. Every Telegram account that has ever `/start`ed the bot show
 | `rejected` | Explicitly blocked. The bot silently drops all incoming messages from this account. |
 
 Each row shows avatar, display name, `@username`, numeric Telegram ID, and the linked Axiom user (if any).
+
+The list itself is **not** stored in any config file — it lives in the Axiom database (`telegram_users` table), managed via this panel or the `/api/telegram-users` endpoints.
 
 ### Approve
 
@@ -52,14 +68,7 @@ Additional actions under the `⋮` menu:
 
 Reloads the list from the backend — useful after someone joins while you're looking at the page.
 
-## Full `settings.json` block
+## Related
 
-```json
-{
-  "telegramEnabled": true,
-  "telegramBotToken": "(masked — stored in secrets.json)",
-  "batchingDelayMs": 2500
-}
-```
-
-The approved/rejected user list itself is not stored in `settings.json` — it lives in the Axiom database (`telegram_users` table), managed via this panel or the `/api/telegram-users` endpoints.
+- [Telegram Bot setup guide](../guide/telegram) — one-time setup: BotFather, token, approval, bot commands.
+- [Tasks settings](./tasks) — `telegramDelivery` for routing task results into Telegram.
