@@ -109,6 +109,14 @@ function buildUploadsResponse(settingsRaw: Record<string, unknown>) {
   return { retentionDays }
 }
 
+function buildTelegramResponse(telegram: TelegramData, batchingDelayMs: number) {
+  return {
+    enabled: telegram.enabled ?? false,
+    botToken: telegram.botToken ?? '',
+    batchingDelayMs,
+  }
+}
+
 function buildSttResponse(settingsRaw: Record<string, unknown>) {
   const stt = (settingsRaw.stt ?? {}) as Record<string, unknown>
   const rewrite = (stt.rewrite ?? {}) as Record<string, unknown>
@@ -140,9 +148,7 @@ export function mapSettingsResponse(context: SettingsResponseContext) {
       ?? (context.settings.healthMonitor as Record<string, unknown> | undefined)?.intervalMinutes
       ?? 5,
     uploads: buildUploadsResponse(settingsRaw),
-    batchingDelayMs: context.batchingDelayMs,
-    telegramEnabled: context.telegram.enabled ?? false,
-    telegramBotToken: context.telegram.botToken ?? '',
+    telegram: buildTelegramResponse(context.telegram, context.batchingDelayMs),
     healthMonitor: buildHealthMonitorResponse(settingsRaw),
     memoryConsolidation: buildConsolidationResponse(settingsRaw),
     factExtraction: buildFactExtractionResponse(settingsRaw),

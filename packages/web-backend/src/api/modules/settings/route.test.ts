@@ -93,13 +93,13 @@ describe('settings route module', () => {
     })
 
     const body = await response.json() as {
-      telegramBotToken: string
+      telegram: { enabled: boolean; botToken: string; batchingDelayMs: number }
       factExtraction: { enabled: boolean; providerId: string; minSessionMessages: number }
       healthMonitor: { notifications: { downToFallback: boolean } }
     }
 
     expect(response.status).toBe(200)
-    expect(body.telegramBotToken).toBe('')
+    expect(body.telegram).toEqual({ enabled: false, botToken: '', batchingDelayMs: 2500 })
     expect(body.factExtraction).toEqual({ enabled: true, providerId: '', minSessionMessages: 3 })
     expect(body.healthMonitor.notifications.downToFallback).toBe(true)
   })
@@ -116,8 +116,10 @@ describe('settings route module', () => {
         language: 'German',
         timezone: 'Europe/Berlin',
         healthMonitorIntervalMinutes: 9,
-        telegramEnabled: true,
-        telegramBotToken: 'token-123',
+        telegram: {
+          enabled: true,
+          botToken: 'token-123',
+        },
         memoryConsolidation: {
           enabled: true,
           runAtHour: 2,
@@ -134,8 +136,7 @@ describe('settings route module', () => {
       language: string
       timezone: string
       healthMonitorIntervalMinutes: number
-      telegramEnabled: boolean
-      telegramBotToken: string
+      telegram: { enabled: boolean; botToken: string; batchingDelayMs: number }
       memoryConsolidation: { enabled: boolean; runAtHour: number; lookbackDays: number }
       agentHeartbeat: { enabled: boolean }
     }
@@ -145,8 +146,8 @@ describe('settings route module', () => {
     expect(body.language).toBe('German')
     expect(body.timezone).toBe('Europe/Berlin')
     expect(body.healthMonitorIntervalMinutes).toBe(9)
-    expect(body.telegramEnabled).toBe(true)
-    expect(body.telegramBotToken).toBe('token-123')
+    expect(body.telegram.enabled).toBe(true)
+    expect(body.telegram.botToken).toBe('token-123')
     expect(body.memoryConsolidation).toEqual({ enabled: true, runAtHour: 2, lookbackDays: 4, providerId: '' })
     expect(body.agentHeartbeat.enabled).toBe(true)
 
