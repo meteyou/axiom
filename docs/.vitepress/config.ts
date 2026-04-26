@@ -17,8 +17,9 @@ const guideSidebar: DefaultTheme.SidebarItem[] = [
     text: 'Core Concepts',
     items: [
       { text: 'Agent Instructions', link: '/concepts/instructions' },
-      { text: 'Built-in Tools', link: '/concepts/tools' },
+      { text: 'System Prompt', link: '/concepts/system-prompt' },
       { text: 'Memory System', link: '/concepts/memory' },
+      { text: 'Built-in Tools', link: '/concepts/tools' },
       { text: 'Skills', link: '/concepts/skills' },
       { text: 'Tasks & Cronjobs', link: '/concepts/tasks-and-cronjobs' },
     ],

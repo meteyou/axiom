@@ -111,5 +111,6 @@ Schedule, lookback window, and provider are configured under [Settings → Memor
 ## See also
 
 - [Agent Instructions](./instructions) — the user-editable `AGENTS.md`, `CONSOLIDATION.md`, and `HEARTBEAT.md` config files. They shape *behavior*, not memory.
+- [System Prompt](./system-prompt) — how the memory tiers above are composed into the live prompt the model sees on every turn.
 - [Settings → Memory](./../settings/memory) — session timeout, fact extraction, and consolidation schedule.
 - [Built-in Tools → `search_memories`](./tools) — the tool the agent uses to query the fact store.
