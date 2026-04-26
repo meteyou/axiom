@@ -803,18 +803,18 @@
                   </div>
                   <Switch
                     id="telegram-enabled"
-                    v-model:checked="form.telegramEnabled"
+                    v-model:checked="form.telegram.enabled"
                   />
                 </div>
 
                 <!-- Configuration — progressive disclosure -->
-                <template v-if="form.telegramEnabled">
+                <template v-if="form.telegram.enabled">
                 <!-- Bot token -->
                 <div class="flex flex-col gap-2">
                   <Label for="telegram-token">{{ $t('settings.telegramBotToken') }}</Label>
                   <Input
                     id="telegram-token"
-                    v-model="form.telegramBotToken"
+                    v-model="form.telegram.botToken"
                     type="password"
                     autocomplete="off"
                     :placeholder="$t('settings.telegramBotTokenPlaceholder')"
@@ -828,7 +828,7 @@
                   <div class="flex items-center gap-2">
                     <Input
                       id="batching-delay"
-                      v-model.number="form.batchingDelayMs"
+                      v-model.number="form.telegram.batchingDelayMs"
                       type="number"
                       min="0"
                       max="10000"
@@ -1757,7 +1757,7 @@
 <script setup lang="ts">
 import { canonicalizeProviderModelRef, SETTINGS_THINKING_LEVELS, type SettingsThinkingLevel } from '@axiom/core/contracts'
 import { useSettingsApi } from '~/api/settings'
-import type { MemoryConsolidationSettings, FactExtractionSettings, HealthMonitorNotificationToggles, HealthMonitorSettings, AgentHeartbeatSettings, TasksSettings, TtsSettings, SttSettings, UploadsSettings } from '~/composables/useSettings'
+import type { MemoryConsolidationSettings, FactExtractionSettings, HealthMonitorNotificationToggles, HealthMonitorSettings, AgentHeartbeatSettings, TasksSettings, TtsSettings, SttSettings, UploadsSettings, TelegramSettings } from '~/composables/useSettings'
 import type { TelegramUser } from '~/composables/useTelegramUsers'
 
 /* ── Auth ── */
@@ -2068,10 +2068,8 @@ interface SettingsForm {
   timezone: string
   thinkingLevel: SettingsThinkingLevel
   healthMonitorIntervalMinutes: number
-  batchingDelayMs: number
   uploads: UploadsSettings
-  telegramEnabled: boolean
-  telegramBotToken: string
+  telegram: TelegramSettings
   healthMonitor: HealthMonitorSettings
   memoryConsolidation: MemoryConsolidationSettings
   factExtraction: FactExtractionSettings
@@ -2105,10 +2103,8 @@ function hydrateForm() {
     timezone: s.timezone,
     thinkingLevel: s.thinkingLevel,
     healthMonitorIntervalMinutes: s.healthMonitorIntervalMinutes,
-    batchingDelayMs: s.batchingDelayMs,
     uploads: { ...s.uploads },
-    telegramEnabled: s.telegramEnabled,
-    telegramBotToken: s.telegramBotToken,
+    telegram: { ...s.telegram },
     healthMonitor: {
       enabled: s.healthMonitor.enabled,
       fallbackTrigger: s.healthMonitor.fallbackTrigger,

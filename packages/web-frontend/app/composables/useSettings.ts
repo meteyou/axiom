@@ -12,6 +12,7 @@ import {
   type SttSettingsContract,
   type UploadsSettingsContract,
   type AgentHeartbeatNightModeContract,
+  type TelegramSettingsContract,
 } from '@axiom/core/contracts'
 import { useSettingsApi } from '~/api/settings'
 
@@ -25,6 +26,7 @@ export type AgentHeartbeatSettings = AgentHeartbeatSettingsContract
 export type TtsSettings = TtsSettingsContract
 export type SttSettings = SttSettingsContract
 export type UploadsSettings = UploadsSettingsContract
+export type TelegramSettings = TelegramSettingsContract
 export type Settings = SettingsContract
 
 export function useSettings() {
