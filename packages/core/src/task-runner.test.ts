@@ -793,6 +793,65 @@ describe('TaskRunner', () => {
       expect(updated.errorMessage).toBe('Max duration exceeded')
     })
 
+    it('aborts a hung task that has no maxDurationMinutes via the runner-wide watchdog default', async () => {
+      // Build a runner whose default kicks in for tasks without their own
+      // limit (mirrors heartbeat/consolidation/cronjob tasks in production).
+      const watchdogRunner = new TaskRunner({
+        db,
+        buildModel: () => ({} as ReturnType<TaskRunnerOptions['buildModel']>),
+        getApiKey: async () => 'test-key',
+        tools: [],
+        memoryDir: undefined,
+        onTaskComplete: () => { /* ignore */ },
+        sessionManager,
+        defaultMaxDurationMinutes: 1, // 1-minute fallback
+      })
+
+      const { Agent } = await import('@mariozechner/pi-agent-core')
+      const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
+      let resolvePrompt: (() => void) | null = null
+      MockAgent.mockImplementationOnce(() => ({
+        subscribe: vi.fn(() => () => {}),
+        // Hang forever — no error, no return — simulating a dead provider.
+        prompt: vi.fn(() => new Promise<void>((resolve) => { resolvePrompt = resolve })),
+        abort: vi.fn(() => { if (resolvePrompt) resolvePrompt() }),
+        state: { messages: [] },
+      }))
+
+      const task = store.create({
+        name: 'Heartbeat-like Task',
+        prompt: 'work',
+        triggerType: 'heartbeat',
+        // Intentionally no maxDurationMinutes — mirrors heartbeat/cron paths.
+      })
+
+      await watchdogRunner.startTask(task, mockProvider)
+      expect(watchdogRunner.isRunning(task.id)).toBe(true)
+
+      // Backdate startedAt so the watchdog deadline is already past, then
+      // re-arm by aborting via the same code path the timer would use.
+      const longAgo = new Date(Date.now() - 5 * 60 * 1000)
+        .toISOString().replace('T', ' ').slice(0, 19)
+      store.update(task.id, { startedAt: longAgo })
+
+      // Sanity-check the helper directly: re-invoking scheduling with a
+      // past-deadline task must abort synchronously.
+      const internal = watchdogRunner as unknown as {
+        scheduleMaxDurationTimeout: (rt: { taskId: string; timeoutTimer: unknown; startedAtMs: number }, t: { id: string; maxDurationMinutes: number | null; startedAt: string | null }) => void
+        runningTasks: Map<string, { taskId: string; timeoutTimer: unknown; startedAtMs: number }>
+      }
+      const rt = internal.runningTasks.get(task.id)!
+      const refreshed = store.getById(task.id)!
+      internal.scheduleMaxDurationTimeout(rt, refreshed)
+
+      const updated = store.getById(task.id)!
+      expect(updated.status).toBe('failed')
+      expect(updated.errorMessage).toBe('Max duration exceeded')
+      expect(watchdogRunner.isRunning(task.id)).toBe(false)
+
+      watchdogRunner.dispose()
+    })
+
     it('cleanupStalePausedTasks aborts paused tasks that exceeded maxDurationMinutes', async () => {
       await mockPauseThenSlowComplete(60_000)()
 

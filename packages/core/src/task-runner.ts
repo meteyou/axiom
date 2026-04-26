@@ -76,6 +76,20 @@ export interface TaskRunnerOptions {
    * `sessions` table with the correct `type` and `parent_session_id`.
    */
   sessionManager: SessionManager
+  /**
+   * Watchdog fallback applied when `task.maxDurationMinutes` is null.
+   *
+   * Many internal task creators (agent heartbeat, memory consolidation,
+   * cronjobs, scheduled tasks) never set `maxDurationMinutes`, so without
+   * a fallback a task whose LLM call hangs silently (no error, no return)
+   * would sit at status='running' indefinitely. This option puts a hard
+   * upper bound on those runs.
+   *
+   * Set to a positive number to enable; leave undefined for legacy "no
+   * limit" behavior. The web-backend wires this to `tasks.maxDurationMinutes`
+   * from settings.
+   */
+  defaultMaxDurationMinutes?: number
 }
 
 /**
@@ -1086,8 +1100,15 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
       runningTask.timeoutTimer = null
     }
 
-    const maxMinutes = task.maxDurationMinutes
-    if (!maxMinutes || maxMinutes <= 0) return
+    // Per-task limit takes precedence; fall back to the runner-wide default
+    // so internal callers (heartbeat, consolidation, cronjobs) that never set
+    // maxDurationMinutes still get a watchdog and cannot hang forever.
+    const maxMinutes = (task.maxDurationMinutes && task.maxDurationMinutes > 0)
+      ? task.maxDurationMinutes
+      : (this.options.defaultMaxDurationMinutes && this.options.defaultMaxDurationMinutes > 0
+          ? this.options.defaultMaxDurationMinutes
+          : 0)
+    if (maxMinutes <= 0) return
 
     const startedAtMs = task.startedAt
       ? new Date(task.startedAt.replace(' ', 'T') + 'Z').getTime()
@@ -1358,10 +1379,18 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
       const task = this.store.getById(taskId)
       const pausedTooLong = now - pausedTask.pausedAt >= MAX_PAUSE_DURATION_MS
 
+      // Same fallback as scheduleMaxDurationTimeout: per-task limit, or the
+      // runner-wide default if the task has none.
+      const effectiveMaxMinutes = (task?.maxDurationMinutes && task.maxDurationMinutes > 0)
+        ? task.maxDurationMinutes
+        : (this.options.defaultMaxDurationMinutes && this.options.defaultMaxDurationMinutes > 0
+            ? this.options.defaultMaxDurationMinutes
+            : 0)
+
       let maxDurationExceeded = false
-      if (task?.maxDurationMinutes && task.maxDurationMinutes > 0 && task.startedAt) {
+      if (effectiveMaxMinutes > 0 && task?.startedAt) {
         const startedAtMs = new Date(task.startedAt.replace(' ', 'T') + 'Z').getTime()
-        const deadline = startedAtMs + task.maxDurationMinutes * 60 * 1000
+        const deadline = startedAtMs + effectiveMaxMinutes * 60 * 1000
         maxDurationExceeded = now >= deadline
       }
 
