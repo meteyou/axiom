@@ -445,7 +445,7 @@ export class AgentCore {
   /**
    * Generate a summary of the current conversation using the LLM.
    * Returns a combined activity log entry that may include an optional
-   * "### Offene Fäden" (open threads) section when unresolved items exist.
+   * "### Open Threads" section when unresolved items exist.
    */
   private async generateSessionSummary(_userId: string, conversationHistory?: string): Promise<string> {
     // Always use DB conversation history (single source of truth).
@@ -493,11 +493,18 @@ export class AgentCore {
     try {
       // Session summary is a background job — use the background thinking level.
       const response = await completeSimple(summaryModel, {
-        systemPrompt: `You are writing a chronological activity log entry for this session. Your output will be stored in a daily file so the agent can recall what happened in past sessions (e.g. "yesterday at 14:30 we discussed X and you asked me to do Y").
+        systemPrompt: `You are writing a chronological activity log entry for this session. Your output will be stored in a daily file under a "## HH:MM" timestamp heading that the surrounding code adds automatically. Other sessions will read this entry to recall what happened (e.g. "yesterday at 14:30 we discussed X and you asked me to do Y").
 
-Your output has two parts:
+## Output format (strict)
 
-**Part 1 — Activity Log (always required)**
+- Start your output directly with the activity log content. Do NOT prepend any heading such as "Activity Log", "# Activity Log", "**Activity Log**", "**Part 1 — ...**", or any other variation. The "## HH:MM" heading is added by the code, not by you.
+- Do NOT use horizontal rule separators ("---", "***", "===") anywhere in your output. Use a single blank line as separator.
+- Your output has two parts in this exact order:
+  1. The activity log (always required, written as plain prose or bullets, no heading).
+  2. An optional "### Open Threads" section (only if there are genuinely unresolved items).
+
+## Activity log content (always required)
+
 - Write 2–5 sentences or bullet points. Max 200 words.
 - Describe what actually happened: topics discussed, questions answered, decisions made, tasks started or completed, PRs or files created.
 - If a background task completed or a task result was injected, mention its outcome (e.g. "PR #15 created for X", "wiki page updated").
@@ -505,15 +512,16 @@ Your output has two parts:
 - Do NOT filter for "memory-worthiness" — this is an activity log, not a memory promotion filter. Even a single answered question is worth one sentence.
 - Write "Empty session." ONLY if the transcript contains nothing but greetings or a bare connection with zero substantive content.
 
-**Part 2 — Open Threads (optional)**
-If and only if there are genuinely unresolved items, append the following section after the activity log (separated by a blank line):
+## Open Threads section (optional)
 
-### Offene Fäden
+If and only if there are genuinely unresolved items, append exactly the following section after the activity log (separated by a single blank line — no horizontal rule):
+
+### Open Threads
 - <concrete open item>
 - <concrete open item>
 
 Open items are: explicitly mentioned but unfinished tasks, background tasks started without a confirmed result, decisions that were deferred, or questions that were not answered.
-Do NOT add this section if everything discussed was resolved or if there is nothing left open. Never add an empty "### Offene Fäden" section.`,
+Do NOT add this section if everything discussed was resolved or if there is nothing left open. Never add an empty "### Open Threads" section.`,
         messages: [{
           role: 'user' as const,
           content: `Analyze the following session transcript and write an activity log entry:\n\n<transcript>\n${conversationHistory}\n</transcript>`,
