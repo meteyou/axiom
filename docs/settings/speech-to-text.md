@@ -14,7 +14,7 @@ Master toggle. When off, the mic button is hidden in the UI and Telegram voice m
 
 ## Provider
 
-Which backend handles the actual transcription. The `openai` and `ollama` options reference an entry you already configured on the [Providers](/providers/) page — the API key / base URL is read from there, **not** from [Secrets](./secrets).
+Which backend handles the actual transcription. The `openai` and `ollama` options reference an entry you already configured on the [Providers](/guide/providers) page — the API key / base URL is read from there, **not** from [Secrets](./secrets).
 
 | Value | Notes |
 |---|---|
@@ -86,7 +86,7 @@ Useful for messy dictations. Adds latency and token cost — leave off if your t
 
 ## Rewrite provider
 
-When rewrite is on, picks which provider+model does the cleanup. Any enabled chat provider from the [Providers](/providers/) page can be selected. If left empty, rewriting is silently skipped and the raw transcript is returned.
+When rewrite is on, picks which provider+model does the cleanup. Any enabled chat provider from the [Providers](/guide/providers) page can be selected. If left empty, rewriting is silently skipped and the raw transcript is returned.
 
 The stored value is a composite `providerId::modelId` string:
 

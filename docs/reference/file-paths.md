@@ -14,7 +14,7 @@ Authoritative layout of the directories Axiom uses. Useful when debugging volume
 | `/data/` | `axiom-data` | Persistent app state. **Back this up.** |
 | `/data/db/` | `axiom-data` | SQLite database (sessions, messages, tasks, facts). |
 | `/data/config/` | `axiom-data` | Runtime config: providers, settings, secrets, telegram, AGENTS.md, HEARTBEAT.md, CONSOLIDATION.md. |
-| `/data/memory/` | `axiom-data` | All memory files: SOUL, MEMORY, daily/, users/, wiki/, sources/. See [Memory System](../guide/memory). |
+| `/data/memory/` | `axiom-data` | All memory files: SOUL, MEMORY, daily/, users/, wiki/, sources/. See [Memory System](../concepts/memory). |
 | `/data/skills/` | `axiom-data` | User-installed skills (URL-installed, manually uploaded). |
 | `/data/skills_agent/` | `axiom-data` | Built-in agent skills (auto-updated) + agent-created skills. |
 | `/data/uploads/` | `axiom-data` | User-uploaded files (cleaned per `uploads.retentionDays`). |

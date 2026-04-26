@@ -6,7 +6,7 @@ The web UI is a Nuxt 3 single-page app served by the backend on port `3000`. Top
 
 - **Chat** — the main agent conversation view.
 - **Tasks** — list/create/inspect background tasks and cronjobs; view live logs.
-- **Memory** — inline editors for `SOUL.md`, `MEMORY.md`, `AGENTS.md`, plus daily/user/wiki file browsers. See [Memory System](./memory).
+- **Memory** — inline editors for `SOUL.md`, `MEMORY.md`, `AGENTS.md`, plus daily/user/wiki file browsers. See [Memory System](../concepts/memory).
 - **Settings** — providers, secrets, scheduler, tools, telegram, memory consolidation, fact extraction, heartbeat.
 - **Sessions** — browse past sessions across all sources (web, telegram, task).
 - **Usage** — token usage and cost rollups using the `tokenPriceTable` from settings.

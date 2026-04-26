@@ -15,8 +15,8 @@ Top-level keys (defaults shown — see `packages/core/src/config.ts` for the ful
 | `thinkingLevel` | `"off" \| "low" \| "medium" \| "high"` | Default reasoning level for chat. |
 | `heartbeat` | object | Provider health checks (interval, fallback triggers, notifications). |
 | `agentHeartbeat` | object | Agent self-driven recurring tasks (see `HEARTBEAT.md`). |
-| `memoryConsolidation` | object | See [Memory System → Consolidation](../guide/memory#memory-consolidation-optional). |
-| `factExtraction` | object | See [Memory System → Fact Extraction](../guide/memory#fact-extraction-optional). |
+| `memoryConsolidation` | object | See [Memory System → Consolidation](../concepts/memory#memory-consolidation-optional). |
+| `factExtraction` | object | See [Memory System → Fact Extraction](../concepts/memory#fact-extraction-optional). |
 | `builtinTools` | object | Per-tool enabled flags + provider choice (web search, web fetch, stt). |
 | `tasks` | object | Defaults for task execution: provider, max duration, loop detection, status updates, telegram delivery. |
 | `tokenPriceTable` | object | Per-model `{ input, output }` cost in USD per 1M tokens. Used by the **Usage** page. |

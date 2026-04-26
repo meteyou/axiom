@@ -14,7 +14,7 @@ Master toggle. When off, no speaker icons disappear from the UI.
 
 ## Provider
 
-Which backend generates the audio. Both options reference an entry you already configured on the [Providers](/providers/) page — the API key / base URL is read from there.
+Which backend generates the audio. Both options reference an entry you already configured on the [Providers](/guide/providers) page — the API key / base URL is read from there.
 
 | Value     | Notes                                                                                                                         |
 |-----------|-------------------------------------------------------------------------------------------------------------------------------|

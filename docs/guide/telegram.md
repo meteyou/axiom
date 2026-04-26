@@ -9,7 +9,7 @@ The Telegram integration is a separate process inside the same container. Once e
 - Connects to the Telegram Bot API as **your** bot (you create it via BotFather).
 - Routes incoming messages to the same agent core that powers the web UI.
 - Persists Telegram conversations to the same session store, so a chat you start on your phone shows up in **Sessions** in the web UI.
-- Lets [Tasks & Cronjobs](./tasks-and-cronjobs) deliver their results to a Telegram chat.
+- Lets [Tasks & Cronjobs](../concepts/tasks-and-cronjobs) deliver their results to a Telegram chat.
 
 You only need to do steps 1–3 below once. After that, Telegram is just another way into the same agent.
 

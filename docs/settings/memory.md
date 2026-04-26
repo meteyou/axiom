@@ -1,6 +1,6 @@
 # Memory
 
-Session lifetime, fact extraction, and nightly memory consolidation. For the broader picture (files, layers, templates) see [Memory System](../guide/memory).
+Session lifetime, fact extraction, and nightly memory consolidation. For the broader picture (files, layers, templates) see [Memory System](../concepts/memory).
 
 **URL:** `/settings?tab=memory`
 
@@ -99,4 +99,4 @@ Dedicated provider for consolidation. Defaults to the active chat provider; set 
 
 A card at the bottom of this section links to `/data/config/CONSOLIDATION.md` — the prompt that tells the consolidator _how_ to condense (what to keep, what to drop, how to name entries).
 
-Click **Open editor** to jump to the [Agent Instructions](../guide/instructions#consolidation-md-memory-consolidation-rules) page. See that page for the default template and tuning tips.
+Click **Open editor** to jump to the [Agent Instructions](../concepts/instructions#consolidation-md-memory-consolidation-rules) page. See that page for the default template and tuning tips.

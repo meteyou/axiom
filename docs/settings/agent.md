@@ -8,9 +8,9 @@ Language preferences, active provider + model, reasoning level, and the user-edi
 
 A card at the top of the panel links to `/data/config/AGENTS.md` — the file the agent reads on every conversation as its "user-editable behavior rules" block.
 
-Click **Open editor** to jump to the [Agent Instructions](../guide/instructions#agents-md-the-agent-contract) page, where the file opens in a full-screen Markdown editor with a **Restore default** button.
+Click **Open editor** to jump to the [Agent Instructions](../concepts/instructions#agents-md-the-agent-contract) page, where the file opens in a full-screen Markdown editor with a **Restore default** button.
 
-See [Agent Instructions](../guide/instructions) for what belongs in this file, the default template, and editing tips.
+See [Agent Instructions](../concepts/instructions) for what belongs in this file, the default template, and editing tips.
 
 ## Agent language
 

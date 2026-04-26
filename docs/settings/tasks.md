@@ -1,6 +1,6 @@
 # Tasks
 
-Defaults and safety rails for **background tasks and cronjobs** — the long-running jobs Axiom kicks off without a user sitting in front of a chat window. For what tasks _are_ and how to create them, see [Tasks & Cronjobs](../guide/tasks-and-cronjobs).
+Defaults and safety rails for **background tasks and cronjobs** — the long-running jobs Axiom kicks off without a user sitting in front of a chat window. For what tasks _are_ and how to create them, see [Tasks & Cronjobs](../concepts/tasks-and-cronjobs).
 
 **URL:** `/settings?tab=tasks`
 

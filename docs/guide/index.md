@@ -10,10 +10,10 @@ Welcome to the Axiom user guide. Start with the basics, then go as deep as you w
 
 ## Core Concepts
 
-- [**Memory System**](./memory) — How the agent remembers things across conversations.
-- [**Skills**](./skills) — Extend the agent with reusable capabilities.
-- [**Tasks & Cronjobs**](./tasks-and-cronjobs) — Background jobs, scheduled work, one-shot reminders.
-- [**Built-in Tools**](./tools) — `web_search`, `web_fetch`, `transcribe_audio`, and the rest.
+- [**Memory System**](../concepts/memory) — How the agent remembers things across conversations.
+- [**Skills**](../concepts/skills) — Extend the agent with reusable capabilities.
+- [**Tasks & Cronjobs**](../concepts/tasks-and-cronjobs) — Background jobs, scheduled work, one-shot reminders.
+- [**Built-in Tools**](../concepts/tools) — `web_search`, `web_fetch`, `transcribe_audio`, and the rest.
 
 ## Interfaces
 

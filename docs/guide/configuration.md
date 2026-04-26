@@ -10,7 +10,7 @@ Axiom has three configuration layers. Knowing which lives where saves a lot of d
 | **Config files (JSON)** | `/data/config/*.json` inside the container | The web UI (Settings page) and the agent | Hot-reloaded by the backend |
 | **Encrypted secrets** | `/data/config/secrets.json` | The web UI; values are AES-256-GCM encrypted | Hot-reloaded; injected into `process.env` |
 
-Memory and per-user state live in a separate tree under `/data/memory/` — see [Memory System](./memory).
+Memory and per-user state live in a separate tree under `/data/memory/` — see [Memory System](../concepts/memory).
 
 ## Environment variables
 
@@ -98,5 +98,5 @@ For the full directory layout inside both volumes, see [File Paths](../reference
 ## Next steps
 
 - Add an [LLM Provider](./providers) to actually talk to a model.
-- Customize the [Memory System](./memory) so the agent learns about you.
+- Customize the [Memory System](../concepts/memory) so the agent learns about you.
 - Hook up the [Telegram bot](./telegram) for mobile access.

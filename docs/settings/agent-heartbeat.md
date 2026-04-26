@@ -15,7 +15,7 @@ Good heartbeat jobs are **interval-based**, **idempotent**, and **safe to no-op*
 
 ### Heartbeat vs. cronjob
 
-If your task starts with "every morning at 7…" or "on Mondays…", it's a **cronjob**, not a heartbeat job — use [Tasks & Cronjobs](../guide/tasks-and-cronjobs) for that. Rule of thumb:
+If your task starts with "every morning at 7…" or "on Mondays…", it's a **cronjob**, not a heartbeat job — use [Tasks & Cronjobs](../concepts/tasks-and-cronjobs) for that. Rule of thumb:
 
 | | Heartbeat | Cronjob |
 |---|---|---|
@@ -37,9 +37,9 @@ Master toggle. When off, no heartbeat ever fires — all settings below are iner
 
 A card linking to `/data/config/HEARTBEAT.md` — the prompt the agent receives on every heartbeat tick.
 
-Click **Open editor** to jump to the [Agent Instructions](../guide/instructions#heartbeat-md-scheduled-self-prompts) page. Keep it tight: this text runs every `intervalMinutes`, so every line is a recurring cost.
+Click **Open editor** to jump to the [Agent Instructions](../concepts/instructions#heartbeat-md-scheduled-self-prompts) page. Keep it tight: this text runs every `intervalMinutes`, so every line is a recurring cost.
 
-For the default template, what belongs here, and what doesn't, see [Agent Instructions → `HEARTBEAT.md`](../guide/instructions#heartbeat-md-scheduled-self-prompts).
+For the default template, what belongs here, and what doesn't, see [Agent Instructions → `HEARTBEAT.md`](../concepts/instructions#heartbeat-md-scheduled-self-prompts).
 
 ## Interval
 
