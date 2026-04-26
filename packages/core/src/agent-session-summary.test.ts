@@ -169,9 +169,9 @@ describe('generateSessionSummary — open threads prompt', () => {
     expect(summary).toBe('Discussed Docker deployment options.')
   })
 
-  it('prompt instructs LLM to add ### Offene Fäden section for unresolved items', async () => {
+  it('prompt instructs LLM to add ### Open Threads section for unresolved items', async () => {
     mockCompleteSimple.mockResolvedValueOnce(
-      makeCompleteSimpleResponse('Discussed PR workflow.\n\n### Offene Fäden\n- PR for PDF upload not yet merged')
+      makeCompleteSimpleResponse('Discussed PR workflow.\n\n### Open Threads\n- PR for PDF upload not yet merged')
     )
 
     const agent = new AgentCore({
@@ -189,16 +189,21 @@ describe('generateSessionSummary — open threads prompt', () => {
       return mockCompleteSimple.mock.calls[0]
     })()
 
-    // The system prompt must mention "Offene Fäden"
-    expect(callOptions.systemPrompt).toContain('Offene Fäden')
+    // The system prompt must mention "Open Threads" (English, not the legacy German label)
+    expect(callOptions.systemPrompt).toContain('Open Threads')
+    expect(callOptions.systemPrompt).not.toContain('Offene Fäden')
     // The system prompt must explain what counts as open
     expect(callOptions.systemPrompt).toContain('unfinished tasks')
     // The system prompt must prohibit empty sections
     expect(callOptions.systemPrompt).toContain('empty')
+    // The system prompt must forbid leaking activity-log headings into the output
+    expect(callOptions.systemPrompt).toContain('# Activity Log')
+    // The system prompt must forbid horizontal rule separators
+    expect(callOptions.systemPrompt).toContain('---')
   })
 
   it('returns summary with open threads section when LLM includes it', async () => {
-    const llmOutput = 'Discussed PR for PDF upload extraction and open threads feature.\n\n### Offene Fäden\n- PR for PDF-upload-extraction started, result not yet confirmed\n- Open threads feature discussed, PR not yet started'
+    const llmOutput = 'Discussed PR for PDF upload extraction and open threads feature.\n\n### Open Threads\n- PR for PDF-upload-extraction started, result not yet confirmed\n- Open threads feature discussed, PR not yet started'
     mockCompleteSimple.mockResolvedValueOnce(makeCompleteSimpleResponse(llmOutput))
 
     const agent = new AgentCore({
@@ -214,7 +219,7 @@ describe('generateSessionSummary — open threads prompt', () => {
     }).generateSessionSummary('user1', 'User: Lets work on two things...\nAssistant: Sure.')
 
     expect(summary).toBe(llmOutput)
-    expect(summary).toContain('### Offene Fäden')
+    expect(summary).toContain('### Open Threads')
     expect(summary).toContain('PR for PDF-upload-extraction started')
   })
 
@@ -235,7 +240,7 @@ describe('generateSessionSummary — open threads prompt', () => {
     }).generateSessionSummary('user1', 'User: What does --build do?\nAssistant: It rebuilds images.')
 
     expect(summary).toBe(llmOutput)
-    expect(summary).not.toContain('### Offene Fäden')
+    expect(summary).not.toContain('### Open Threads')
   })
 
   it('returns "Empty session." when no conversation history is provided', async () => {
@@ -275,7 +280,7 @@ describe('generateSessionSummary — open threads prompt', () => {
 
   it('uses a single completeSimple call (no second call for open threads)', async () => {
     mockCompleteSimple.mockResolvedValue(
-      makeCompleteSimpleResponse('Activity log text.\n\n### Offene Fäden\n- Something open')
+      makeCompleteSimpleResponse('Activity log text.\n\n### Open Threads\n- Something open')
     )
 
     const agent = new AgentCore({
@@ -297,7 +302,7 @@ describe('generateSessionSummary — open threads prompt', () => {
   it('daily file entry contains both activity and open threads when present', async () => {
     // Use real appendToDailyFile logic by using a real SessionManager + fake summarizer
     // We verify by checking the summary text that gets written
-    const llmOutput = 'Reviewed PR structure and discussed open threads feature.\n\n### Offene Fäden\n- Open threads feature: PR not yet created'
+    const llmOutput = 'Reviewed PR structure and discussed open threads feature.\n\n### Open Threads\n- Open threads feature: PR not yet created'
     mockCompleteSimple.mockResolvedValueOnce(makeCompleteSimpleResponse(llmOutput))
 
     const agent = new AgentCore({
@@ -315,7 +320,7 @@ describe('generateSessionSummary — open threads prompt', () => {
     // The summary is written verbatim inside the ## HH:MM block in session-manager.ts
     // Verify the structure is correct for downstream use
     expect(summary).toMatch(/^Reviewed PR structure/)
-    expect(summary).toContain('\n\n### Offene Fäden\n')
+    expect(summary).toContain('\n\n### Open Threads\n')
     expect(summary).toContain('- Open threads feature: PR not yet created')
   })
 })
