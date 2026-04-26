@@ -57,32 +57,25 @@ const memoryEditsInfo = computed<{ edits: Array<{ oldText: string; newText: stri
   }
 })
 
-/** Detect memoryDiff from write_file tool calls on memory files */
+/**
+ * For `write_file` calls on memory files, render the new content as an
+ * all-added diff. Surgical edits should use `edit_file`, which produces a
+ * real before/after view from its `edits` arg — see `memoryEditsInfo` above.
+ */
 const memoryFileDiff = computed<{ before: string; after: string; fileName: string | null } | null>(() => {
   if (!props.entry) return null
   const toolName = props.entry.toolName
   if (toolName !== 'write_file' && toolName !== 'Write') return null
 
   const fileName = extractFileNameFromInput(props.entry.input)
+  if (!fileName) return null
 
-  // Try to extract memoryDiff from output
   try {
-    const output = JSON.parse(props.entry.output ?? '{}')
-    const diff = output?.details?.memoryDiff ?? output?.memoryDiff
-    if (diff && typeof diff.before === 'string' && typeof diff.after === 'string') {
-      return { before: diff.before, after: diff.after, fileName }
+    const input = JSON.parse(props.entry.input ?? '{}')
+    if (typeof input.content === 'string') {
+      return { before: '', after: input.content, fileName }
     }
   } catch { /* ignore */ }
-
-  // Fallback: if it's a memory file write without diff, show content as all-added
-  if (fileName) {
-    try {
-      const input = JSON.parse(props.entry.input ?? '{}')
-      if (typeof input.content === 'string') {
-        return { before: '', after: input.content, fileName }
-      }
-    } catch { /* ignore */ }
-  }
 
   return null
 })

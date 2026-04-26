@@ -196,15 +196,6 @@
                     />
                   </div>
                 </template>
-                <template v-else-if="getToolMemoryDiff(msg.toolData!)">
-                  <div class="max-h-80 overflow-y-auto">
-                    <MemoryFileDiff
-                      :before="getToolMemoryDiff(msg.toolData!)!.before"
-                      :after="getToolMemoryDiff(msg.toolData!)!.after"
-                      :file-name="getToolMemoryFileName(msg.toolData!)"
-                    />
-                  </div>
-                </template>
                 <template v-else-if="getToolMemoryWriteContent(msg.toolData!) !== null">
                   <div class="max-h-80 overflow-y-auto">
                     <MemoryFileDiff
@@ -551,14 +542,12 @@ const { renderMarkdown, handleCopyAsMarkdown } = useMarkdown()
 const { isSkillLoad, getSkillName } = useSkillDetection()
 function isToolSkillLoad(toolData: ToolCallData): boolean { return isSkillLoad(toolData.toolName, toolData.toolArgs) }
 function getToolMemoryInfo(toolData: ToolCallData) { return detectMemoryFile(toolData.toolName, toolData.toolArgs) }
-function getToolMemoryDiff(toolData: ToolCallData) { return extractMemoryDiff(toolData.toolResult) }
 function getToolEdits(toolData: ToolCallData) { return extractEditsFromArgs(toolData.toolArgs) }
 function getToolMemoryFileName(toolData: ToolCallData) { return extractMemoryFileName(toolData.toolArgs) ?? undefined }
 function isEditFileTool(toolData: ToolCallData) { return toolData.toolName === 'edit_file' || toolData.toolName === 'Edit' }
 function getToolMemoryWriteContent(toolData: ToolCallData) { return extractMemoryWriteContent(toolData.toolName, toolData.toolArgs) }
 function hasMemoryView(toolData: ToolCallData) {
   return (isEditFileTool(toolData) && getToolEdits(toolData) && getToolMemoryInfo(toolData).isMemoryFile)
-    || getToolMemoryDiff(toolData) !== null
     || getToolMemoryWriteContent(toolData) !== null
 }
 function toolDisplayName(toolData: ToolCallData): string {

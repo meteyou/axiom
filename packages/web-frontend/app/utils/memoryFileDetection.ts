@@ -100,35 +100,10 @@ export function extractMemoryFileName(toolArgs: unknown): string | null {
 }
 
 /**
- * Extract memoryDiff from a write_file tool result.
- * Returns { before, after } if present, null otherwise.
- */
-export function extractMemoryDiff(toolResult: unknown): { before: string; after: string } | null {
-  if (!toolResult || typeof toolResult !== 'object') return null
-
-  // Direct shape: { details: { memoryDiff: { before, after } } }
-  const result = toolResult as Record<string, unknown>
-  const details = result.details as Record<string, unknown> | undefined
-  const diff = details?.memoryDiff as Record<string, unknown> | undefined
-
-  if (diff && typeof diff.before === 'string' && typeof diff.after === 'string') {
-    return { before: diff.before, after: diff.after }
-  }
-
-  // Stringified JSON shape (from activity log output)
-  if (typeof result.memoryDiff === 'object' && result.memoryDiff) {
-    const md = result.memoryDiff as Record<string, unknown>
-    if (typeof md.before === 'string' && typeof md.after === 'string') {
-      return { before: md.before, after: md.after }
-    }
-  }
-
-  return null
-}
-
-/**
  * Extract the written content from a write_file tool call on a memory file.
- * Used as fallback when no memoryDiff is available in the result.
+ * The chat view renders this as an "all-added" diff for memory writes — note
+ * that for surgical changes the agent should use `edit_file`, which produces
+ * a real before/after view from its `edits` args.
  */
 export function extractMemoryWriteContent(toolName: string, toolArgs: unknown): string | null {
   if (toolName !== 'write_file' && toolName !== 'Write') return null
