@@ -278,6 +278,139 @@ describe('TaskRunner', () => {
       expect(runner.isRunning(task.id)).toBe(false)
       expect(abortCalled).toBe(true)
     })
+
+    it('does not overwrite the failure status after the in-flight prompt() resolves post-abort', async () => {
+      // Regression: pi-agent-core's `prompt()` resolves normally on abort
+      // (it appends an empty "aborted" assistant message and returns)
+      // instead of rejecting. Without the `aborted` guard in `runTaskAsync`,
+      // the success branch would parse that empty message, default the
+      // status to "completed", and overwrite the row that `abortTask` just
+      // marked as failed — also emitting a second `onTaskComplete` with the
+      // wrong status.
+      const { Agent } = await import('@mariozechner/pi-agent-core')
+      const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
+
+      const messages: unknown[] = []
+      let resolvePrompt: (() => void) | null = null
+      MockAgent.mockImplementationOnce(() => {
+        return {
+          subscribe: vi.fn(() => () => {}),
+          prompt: vi.fn(() => new Promise<void>((resolve) => {
+            resolvePrompt = resolve
+          })),
+          abort: vi.fn(() => {
+            // Mirror real pi-agent-core behavior: append an empty failure
+            // message with stopReason="aborted" and resolve the prompt.
+            messages.push({
+              role: 'assistant',
+              content: [{ type: 'text', text: '' }],
+              stopReason: 'aborted',
+              errorMessage: 'aborted',
+            })
+            if (resolvePrompt) {
+              const r = resolvePrompt
+              resolvePrompt = null
+              r()
+            }
+          }),
+          state: {
+            get messages() { return messages },
+          },
+        }
+      })
+
+      const task = store.create({
+        name: 'Timeout Task',
+        prompt: 'Long running task',
+        triggerType: 'agent',
+        maxDurationMinutes: 1,
+      })
+
+      await runner.startTask(task, mockProvider)
+      expect(runner.isRunning(task.id)).toBe(true)
+
+      runner.abortTask(task.id, 'Max duration exceeded')
+
+      // DB shows the timeout failure right after abortTask returns.
+      let updated = store.getById(task.id)!
+      expect(updated.status).toBe('failed')
+      expect(updated.errorMessage).toBe('Max duration exceeded')
+
+      // Let the runTaskAsync continuation fire (prompt() resolved during abort()).
+      await new Promise(resolve => setTimeout(resolve, 50))
+
+      // The row must STILL be the timeout failure — not overwritten.
+      updated = store.getById(task.id)!
+      expect(updated.status).toBe('failed')
+      expect(updated.resultStatus).toBe('failed')
+      expect(updated.errorMessage).toBe('Max duration exceeded')
+      expect(updated.resultSummary).toBe('Max duration exceeded')
+
+      // Exactly one completion notification, with the failure injection.
+      expect(onTaskCompleteCalls).toHaveLength(1)
+      expect(onTaskCompleteCalls[0].injection).toContain('status="failed"')
+      expect(onTaskCompleteCalls[0].injection).toContain('Max duration exceeded')
+    })
+
+    it('fires the timer after maxDurationMinutes and aborts the task', async () => {
+      // End-to-end check that the setTimeout wired up in startTask actually
+      // calls abortTask once `maxDurationMinutes` elapses.
+      const { Agent } = await import('@mariozechner/pi-agent-core')
+      const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
+
+      const messages: unknown[] = []
+      let resolvePrompt: (() => void) | null = null
+      MockAgent.mockImplementationOnce(() => {
+        return {
+          subscribe: vi.fn(() => () => {}),
+          prompt: vi.fn(() => new Promise<void>((resolve) => {
+            resolvePrompt = resolve
+          })),
+          abort: vi.fn(() => {
+            messages.push({
+              role: 'assistant',
+              content: [{ type: 'text', text: '' }],
+              stopReason: 'aborted',
+              errorMessage: 'aborted',
+            })
+            if (resolvePrompt) {
+              const r = resolvePrompt
+              resolvePrompt = null
+              r()
+            }
+          }),
+          state: { get messages() { return messages } },
+        }
+      })
+
+      vi.useFakeTimers()
+      try {
+        const task = store.create({
+          name: 'Timer Task',
+          prompt: 'Long running task',
+          triggerType: 'agent',
+          maxDurationMinutes: 2,
+        })
+
+        await runner.startTask(task, mockProvider)
+        expect(runner.isRunning(task.id)).toBe(true)
+
+        // Advance just under the timeout — still running.
+        await vi.advanceTimersByTimeAsync(2 * 60 * 1000 - 1000)
+        expect(runner.isRunning(task.id)).toBe(true)
+        expect(store.getById(task.id)!.status).toBe('running')
+
+        // Cross the threshold — timer should fire and abort the task.
+        await vi.advanceTimersByTimeAsync(2000)
+
+        const updated = store.getById(task.id)!
+        expect(updated.status).toBe('failed')
+        expect(updated.errorMessage).toBe('Max duration exceeded')
+        expect(runner.isRunning(task.id)).toBe(false)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
   })
 
   describe('formatTaskInjection', () => {

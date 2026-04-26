@@ -107,6 +107,14 @@ interface RunningTask {
   statusUpdateTimer: ReturnType<typeof setInterval> | null
   /** When the task started running (for status update runtime calc) */
   startedAtMs: number
+  /**
+   * Set to true by `abortTask` (e.g. via the max-duration timeout or the UI
+   * kill button) before signalling the agent. `runTaskAsync` checks this
+   * flag after `agent.prompt()` settles so it does not overwrite the
+   * already-finalized DB row (pi-agent-core resolves the prompt() promise
+   * normally on abort instead of rejecting).
+   */
+  aborted: boolean
 }
 
 interface PausedTask {
@@ -435,6 +443,7 @@ export class TaskRunner {
         toolCallTracker: new ToolCallTracker(),
         statusUpdateTimer: null,
         startedAtMs: Date.now(),
+        aborted: false,
       }
 
       // Set up max duration timeout
@@ -509,6 +518,17 @@ export class TaskRunner {
     try {
       // Prompt the task agent with the task — the system prompt already contains the full task description
       await agent.prompt('Begin working on the task described in your system prompt. Work autonomously and report your results when done.')
+
+      // If the task was aborted (max-duration timeout, UI kill button, loop
+      // detection, ...), `abortTask`/`handleLoopDetected` has already
+      // finalized the DB row and emitted the completion notification.
+      // Bail out so we don't overwrite that state with a spurious
+      // "completed" status derived from the empty aborted assistant
+      // message that pi-agent-core appends on abort.
+      if (runningTask.aborted) {
+        unsubscribe()
+        return
+      }
 
       // Task completed successfully
       unsubscribe()
@@ -611,6 +631,13 @@ export class TaskRunner {
     } catch (err) {
       // Task failed
       unsubscribe()
+
+      // Same guard as the success path: if the task was aborted, the row
+      // has already been finalized. Don't overwrite it.
+      if (runningTask.aborted) {
+        return
+      }
+
       this.cleanupRunningTask(taskId)
 
       const errorMessage = err instanceof Error ? err.message : String(err)
@@ -903,6 +930,9 @@ export class TaskRunner {
     const { taskId } = runningTask
     const reason = `Loop detected (${result.method}): ${result.details}`
 
+    // Mark aborted before signalling so `runTaskAsync` skips its post-prompt
+    // bookkeeping (see comment in `abortTask`).
+    runningTask.aborted = true
     // Abort the agent
     runningTask.agent.abort()
     this.cleanupRunningTask(taskId)
@@ -1024,6 +1054,13 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
       return
     }
 
+    // Mark the task as aborted BEFORE signalling the agent so the
+    // `runTaskAsync` continuation can see it. pi-agent-core's `prompt()`
+    // resolves normally on abort instead of rejecting, which would
+    // otherwise cause the success branch in `runTaskAsync` to overwrite
+    // the failure status we are about to write below with a spurious
+    // "completed" derived from the empty aborted assistant message.
+    runningTask.aborted = true
     // Abort the agent
     runningTask.agent.abort()
     this.cleanupRunningTask(taskId)
@@ -1132,6 +1169,7 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
       toolCallTracker: new ToolCallTracker(),
       statusUpdateTimer: null,
       startedAtMs: task.startedAt ? new Date(task.startedAt).getTime() : Date.now(),
+      aborted: false,
     }
 
     // Set up periodic status updates for resumed task
