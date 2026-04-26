@@ -437,11 +437,14 @@ export class TaskRunner {
         startedAtMs: Date.now(),
       }
 
+      this.runningTasks.set(taskId, runningTask)
+
       // Set up max duration timeout
-      if (task.maxDurationMinutes && task.maxDurationMinutes > 0) {
-        runningTask.timeoutTimer = setTimeout(() => {
-          this.abortTask(taskId, 'Max duration exceeded')
-        }, task.maxDurationMinutes * 60 * 1000)
+      this.scheduleMaxDurationTimeout(runningTask, task)
+      // If already past the deadline, scheduleMaxDurationTimeout aborted the
+      // task synchronously — bail out before subscribing/running anything.
+      if (!this.runningTasks.has(taskId)) {
+        return taskId
       }
 
       // Set up periodic status updates
@@ -451,8 +454,6 @@ export class TaskRunner {
           this.emitStatusUpdate(runningTask, task)
         }, statusIntervalMinutes * 60 * 1000)
       }
-
-      this.runningTasks.set(taskId, runningTask)
 
       // Update task as started
       const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
@@ -1064,6 +1065,48 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
   }
 
   /**
+   * Schedule the max-duration timeout for a running task.
+   *
+   * The deadline is anchored on `task.startedAt` (the original wall-clock
+   * start), NOT on the in-memory `startedAtMs`. This way the limit also
+   * survives pause/resume cycles: if a task pauses on a question and is
+   * resumed later, the remaining budget is computed against the original
+   * start, not refreshed from zero.
+   *
+   * If the deadline has already passed (e.g. a task is resumed long after
+   * `maxDurationMinutes` would have fired), the task is aborted synchronously
+   * and no timer is registered.
+   */
+  private scheduleMaxDurationTimeout(
+    runningTask: RunningTask,
+    task: { id: string; maxDurationMinutes: number | null; startedAt: string | null },
+  ): void {
+    if (runningTask.timeoutTimer) {
+      clearTimeout(runningTask.timeoutTimer)
+      runningTask.timeoutTimer = null
+    }
+
+    const maxMinutes = task.maxDurationMinutes
+    if (!maxMinutes || maxMinutes <= 0) return
+
+    const startedAtMs = task.startedAt
+      ? new Date(task.startedAt.replace(' ', 'T') + 'Z').getTime()
+      : runningTask.startedAtMs
+    const deadline = startedAtMs + maxMinutes * 60 * 1000
+    const remaining = deadline - Date.now()
+
+    if (remaining <= 0) {
+      // Already past the deadline (e.g. resumed long after the limit).
+      this.abortTask(runningTask.taskId, 'Max duration exceeded')
+      return
+    }
+
+    runningTask.timeoutTimer = setTimeout(() => {
+      this.abortTask(runningTask.taskId, 'Max duration exceeded')
+    }, remaining)
+  }
+
+  /**
    * Clean up a running task's resources
    */
   private cleanupRunningTask(taskId: string): void {
@@ -1143,6 +1186,15 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
     }
 
     this.runningTasks.set(taskId, runningTask)
+
+    // Re-arm the max-duration timeout against the original startedAt so
+    // resumed tasks cannot run past their original budget. If the deadline
+    // has already passed, this aborts synchronously and the task is no longer
+    // in the runningTasks map.
+    this.scheduleMaxDurationTimeout(runningTask, task)
+    if (!this.runningTasks.has(taskId)) {
+      return true
+    }
 
     // Subscribe to events for the resumed task
     const unsubscribe = agent.subscribe((event: AgentEvent) => {
@@ -1288,43 +1340,65 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
   }
 
   /**
-   * Clean up paused tasks that have been waiting for >24 hours
+   * Clean up paused tasks that have exceeded their time budget.
+   *
+   * Two independent limits apply, whichever is reached first:
+   *  1. `MAX_PAUSE_DURATION_MS` (24h) — hard cap on how long a task may sit
+   *     paused waiting for a user response, regardless of `maxDurationMinutes`.
+   *  2. `task.maxDurationMinutes` measured from `task.startedAt` — a paused
+   *     task must not silently outlive its configured max duration. Without
+   *     this check a task with `maxDurationMinutes=60` could remain paused
+   *     for up to 24h, and on resume run on with no remaining budget.
    */
   cleanupStalePausedTasks(): number {
     let cleanedCount = 0
     const now = Date.now()
 
     for (const [taskId, pausedTask] of this.pausedTasks) {
-      if (now - pausedTask.pausedAt >= MAX_PAUSE_DURATION_MS) {
-        // Free the agent from memory
-        pausedTask.agent.abort()
-        this.pausedTasks.delete(taskId)
+      const task = this.store.getById(taskId)
+      const pausedTooLong = now - pausedTask.pausedAt >= MAX_PAUSE_DURATION_MS
 
-        // Mark as failed in DB
-        const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 19)
-        this.store.update(taskId, {
-          status: 'failed',
-          resultStatus: 'failed',
-          resultSummary: 'timeout — no response received',
-          errorMessage: 'timeout — no response received',
-          completedAt: nowStr,
-          promptTokens: pausedTask.promptTokens,
-          completionTokens: pausedTask.completionTokens,
-          estimatedCost: pausedTask.estimatedCost,
-          toolCallCount: pausedTask.toolCallCount,
-        })
-
-        // Notify via injection
-        const task = this.store.getById(taskId)
-        if (task) {
-          const startedAt = task.startedAt ? new Date(task.startedAt).getTime() : Date.now()
-          const durationMinutes = Math.round((Date.now() - startedAt) / 60000)
-          const injection = formatTaskInjection(task, durationMinutes)
-          this.notifyTaskComplete(taskId, injection, "failed", "timeout — no response received")
-        }
-
-        cleanedCount++
+      let maxDurationExceeded = false
+      if (task?.maxDurationMinutes && task.maxDurationMinutes > 0 && task.startedAt) {
+        const startedAtMs = new Date(task.startedAt.replace(' ', 'T') + 'Z').getTime()
+        const deadline = startedAtMs + task.maxDurationMinutes * 60 * 1000
+        maxDurationExceeded = now >= deadline
       }
+
+      if (!pausedTooLong && !maxDurationExceeded) continue
+
+      const reason = maxDurationExceeded
+        ? 'Max duration exceeded'
+        : 'timeout — no response received'
+
+      // Free the agent from memory
+      pausedTask.agent.abort()
+      this.pausedTasks.delete(taskId)
+
+      // Mark as failed in DB
+      const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 19)
+      this.store.update(taskId, {
+        status: 'failed',
+        resultStatus: 'failed',
+        resultSummary: reason,
+        errorMessage: reason,
+        completedAt: nowStr,
+        promptTokens: pausedTask.promptTokens,
+        completionTokens: pausedTask.completionTokens,
+        estimatedCost: pausedTask.estimatedCost,
+        toolCallCount: pausedTask.toolCallCount,
+      })
+
+      // Notify via injection
+      const updated = this.store.getById(taskId)
+      if (updated) {
+        const startedAt = updated.startedAt ? new Date(updated.startedAt).getTime() : Date.now()
+        const durationMinutes = Math.round((Date.now() - startedAt) / 60000)
+        const injection = formatTaskInjection(updated, durationMinutes)
+        this.notifyTaskComplete(taskId, injection, 'failed', reason)
+      }
+
+      cleanedCount++
     }
 
     return cleanedCount
