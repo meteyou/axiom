@@ -10,7 +10,7 @@ The agent always has the four core tools (`shell`, `read_file`, `write_file`, `e
 | `web_fetch` | enabled | Fetches a URL and extracts readable text. Pair with `web_search`. |
 | `transcribe_audio` | disabled | Calls a Whisper-compatible STT endpoint. Bring your own server (local `faster-whisper-server` example commented in the Compose file). |
 | `read_chat_history` | always on | Full-text search over past sessions with source/role/date filters. |
-| `search_memories` | always on | Searches the fact memory built up by [fact extraction](./memory#fact-extraction-optional). |
+| `search_memories` | always on | Searches the fact memory built up by [fact extraction](./memory#fact-extraction). |
 
 Plus the task/cronjob/reminder tools listed under [Tasks & Cronjobs](./tasks-and-cronjobs).
 

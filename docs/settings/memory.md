@@ -33,7 +33,7 @@ Which provider writes the end-of-session summary into `memory/daily/<date>.md`.
 
 ## Fact extraction
 
-After a session ends with at least _N_ messages, run the transcript through a small LLM and write durable facts into the `agent_facts` table. The agent retrieves these via the `search_memories` tool — useful once memory grows past what fits in a single prompt.
+After a session ends with at least _N_ messages, run the transcript through a small LLM and write durable facts into the `memories` table. The agent retrieves these via the `search_memories` tool — useful once memory grows past what fits in a single prompt.
 
 ### Enable fact extraction
 
@@ -53,10 +53,10 @@ Dedicated provider (defaults to the active chat provider). Use something small a
 
 ### Minimum session messages
 
-Sessions shorter than this are skipped (no useful facts to extract). Default: `4`. Range: 1 – 100.
+Sessions shorter than this are skipped (no useful facts to extract). Default: `3`. Range: 1 – 100.
 
 ```json
-{ "factExtraction": { "minSessionMessages": 4 } }
+{ "factExtraction": { "minSessionMessages": 3 } }
 ```
 
 ## Memory consolidation

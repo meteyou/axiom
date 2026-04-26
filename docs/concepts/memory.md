@@ -1,127 +1,115 @@
 # Memory System
 
-Axiom uses a **file-based, plain-Markdown memory system**. Everything the agent remembers lives under `/data/memory/` as readable, hand-editable files. There is no opaque vector blob — you can `cat`, `grep`, and `git diff` your agent's memory.
+Axiom uses a **file-based, plain-Markdown memory system**. Everything the agent remembers lives under `/data/memory/` as readable, hand-editable files. No opaque vector blob — you can `cat`, `grep`, and `git diff` your agent's memory. A small SQLite-backed fact store sits next to the files for atomic facts that the agent searches on demand.
 
 ## Why files?
 
 - **Inspectable.** You always know what the agent thinks it knows.
 - **Portable.** Back up the volume, you've backed up the memory.
 - **User-editable.** Override or correct anything via the web UI's Memory page or by editing the file directly.
-- **Composable.** The agent assembles a layered system prompt from these files on every turn.
+- **Diffable.** `git init` the directory and you have full history of how the agent's understanding evolved.
 
-## The layout
+## Memory tiers
+
+The memory directory looks like this:
 
 ```
-/data/
-├── memory/
-│   ├── SOUL.md                  ← personality
-│   ├── MEMORY.md                ← long-term core memory (lessons, facts)
-│   ├── daily/
-│   │   ├── 2025-01-14.md        ← per-day session notes
-│   │   └── …
-│   ├── users/
-│   │   ├── stefan.md            ← per-user profile (name, prefs, context)
-│   │   └── …
-│   ├── wiki/
-│   │   ├── axiom.md              ← agent-maintained knowledge base
-│   │   └── …
-│   └── sources/                 ← raw material the wiki cites (immutable layer)
-└── config/
-    ├── AGENTS.md                ← user-editable behavior rules
-    ├── HEARTBEAT.md             ← recurring self-check tasks
-    └── CONSOLIDATION.md         ← rules for daily memory consolidation
+/data/memory/
+├── SOUL.md                  ← personality
+├── MEMORY.md                ← long-term curated memory
+├── daily/
+│   ├── 2025-01-14.md        ← per-day session notes
+│   └── …
+├── users/
+│   ├── admin.md             ← per-user profile
+│   └── …
+├── wiki/
+│   ├── homelab.md           ← agent-maintained knowledge base
+│   └── …
+└── sources/                 ← immutable raw material the wiki cites
+    ├── articles/
+    ├── youtube/
+    ├── podcasts/
+    ├── papers/
+    └── notes/
 ```
 
-## The seven layers of the system prompt
+Plus one non-file tier: the SQLite **`memories`** table, holding atomic facts the agent searches on demand.
 
-Every time the agent processes a message, `assembleSystemPrompt()` builds the prompt from these layers (in order):
+Each tier has a clear role; the next sections walk through them.
 
-| # | Block | Source | Edited by |
-|---|---|---|---|
-| 1 | `<personality>` | `memory/SOUL.md` | User |
-| 2 | `<instructions>` | (set by the runtime, e.g. tool-specific instructions) | Code |
-| 3 | `<agent_rules>` | `config/AGENTS.md` | User |
-| 4 | `<core_memory>` | `memory/MEMORY.md` | Agent (writes via `edit_file`) |
-| 5 | `<recent_memory>` | `memory/daily/<last 3 days>.md` | Agent + memory consolidation |
-| 6 | `<user_profile>` | `memory/users/<current-user>.md` | Agent |
-| 7 | `<wiki_pages>` | List of `memory/wiki/*.md` (titles + aliases only — agent reads on demand) | Agent |
+### SOUL - `SOUL.md`
 
-Plus several deterministic blocks: `<available_tools>`, `<available_providers>`, `<memory_paths>`, `<project_docs>`, `<agent_skills>`, `<language>`, and `<available_skills>`.
+`SOUL.md` defines *who the agent is* — its tone, values, communication style. It's the most stable file in memory: written by the user, rarely touched by the agent, and intended to be rewritten when you want to change the agent's "vibe". The default template is conservative; customize it.
 
-## What goes where
+### Core memory - `MEMORY.md`
 
-| Information | File | Why |
-|---|---|---|
-| Personality, tone, values | `SOUL.md` | Stable across all conversations. Rewrite to change the agent's "vibe". |
-| User-editable behavior rules ("ask before destructive changes") | `config/AGENTS.md` | The user owns these — easy to override via UI without losing them on upgrade. |
-| Long-term learned facts ("user prefers `npm` over `yarn`") | `MEMORY.md` | Persisted forever, included in every prompt. Keep it short. |
-| Daily session notes ("today we set up the Telegram bot") | `daily/<date>.md` | Rolling 3-day window in the prompt; older entries get consolidated into `MEMORY.md`. |
-| Per-user info (name, location, work context) | `users/<username>.md` | Loaded only when that user is talking to the agent. |
-| Structured knowledge ("How does our deploy pipeline work?") | `wiki/<topic>.md` | Listed in the prompt by title; the agent reads them on demand via `read_file`. |
-| Raw source material the wiki cites | `sources/` | Immutable layer — wiki pages reference sources in a `## Sources` section. |
-| Settings (language, timezone, providers) | `config/settings.json` | Single source of truth — **not** mirrored into memory files. |
+The agent's long-term scratchpad: learned lessons, recurring patterns, technical decisions, corrections. Included in every prompt, so keep it short and curated.
 
-> **Don't duplicate.** Language and timezone live only in `settings.json`. User identity lives only in `users/<name>.md`. Tool-usage instructions live only in the system prompt.
+The agent edits it directly with `edit_file` / `write_file` whenever it learns something durable. The nightly consolidation job also promotes content here from daily notes.
 
-## How the agent updates memory
+### Daily notes - `daily/<date>.md`
 
-The agent has direct access to its own memory via the standard `read_file`, `write_file`, and `edit_file` tools. The system prompt's `<memory_paths>` block tells it the exact paths.
+Per-day activity log. The agent appends entries during a session when something is worth noting, and the [session-end](#session-end) job adds a short summary when the session times out. The most recent few days are loaded into every prompt as recent context.
 
-- For **small additions** (a new fact, a corrected entry) the agent uses `edit_file` with a precise `oldText → newText` replacement. This saves tokens and avoids accidental destruction.
-- For **larger restructures** (consolidating duplicated entries) it uses `write_file` after reading the current content.
+Daily files are **append-only source material for consolidation** — the consolidator reads them but never edits them. Older days get folded into `MEMORY.md`, user profiles, or wiki pages by the nightly job, and the dailies are then trimmed.
 
-You can do the same from outside the container:
+### User profiles - `users/<username>.md`
 
-```bash
-docker compose exec openagent vi /data/memory/MEMORY.md
-docker compose exec openagent vi /data/config/AGENTS.md
-```
+One file per user, holding name, location, communication style, work context, preferences — anything person-specific. Loaded into the prompt only when *that* user is talking to the agent, so multi-user setups stay clean.
 
-The next time the agent receives a message, the new content is in the prompt.
+The agent maintains the file as it learns about the user.
 
-## Memory consolidation (optional)
+### Wiki - `wiki/*.md`
 
-When **`memoryConsolidation.enabled: true`** in `settings.json`, a scheduled job runs at `runAtHour` and condenses the last `lookbackDays` of daily files into entries in `MEMORY.md`, then trims the daily files. This keeps long-term memory rich and the prompt small.
+The agent's own structured knowledge base: project notes, architecture decisions, key dependencies, evergreen concepts. Pages have an optional YAML frontmatter (`aliases: [Foo, foo-thing]`) and are listed in the system prompt **by title only** — the agent loads a page on demand with `read_file` when the topic comes up.
 
-Configure in the UI under **Settings → Memory Consolidation**, or directly in `/data/config/settings.json`:
+The agent maintains the wiki autonomously: it adds new pages, extends existing ones, merges duplicates, fixes stale entries, and keeps cross-links healthy without asking. Only genuine contradictions (new info conflicts with an existing page) get escalated to the user.
 
-```json
-"memoryConsolidation": {
-  "enabled": true,
-  "runAtHour": 3,
-  "lookbackDays": 3,
-  "providerId": "openai-gpt4o-mini"
-}
-```
+For non-trivial wiki work, the agent uses the bundled `wiki` skill (`/data/skills_agent/wiki/SKILL.md`), which carries the canonical conventions for frontmatter, filenames, cross-links, and the `## Sources` section.
 
-## Fact extraction (optional)
+### Sources - `sources/**/*.md`
 
-When **`factExtraction.enabled: true`**, after every session ending with at least `minSessionMessages` messages, Axiom runs the conversation through a small extraction model and writes durable facts into the `agent_facts` table. The agent retrieves these via the `search_memories` tool — useful when memory grows beyond what fits in a prompt.
+The **immutable, append-only** layer beneath the wiki. Articles, YouTube transcripts, podcasts, papers, hand-captured notes — raw material the wiki cites so factual claims stay verifiable. Subfolders (`articles/`, `youtube/`, `podcasts/`, `papers/`, `notes/`) are created on first use.
 
-## The wiki layer
+Each file follows `<yyyy-mm-dd>-<slug>.md` with YAML frontmatter (`source_type`, `url`, `author`, `captured`) and the raw captured body. The agent archives sources during consolidation or when ingesting external material; it **never rewrites an existing file** — if the upstream changes, it adds a new dated entry. Wiki pages link back to sources in a `## Sources` (or `## Quellen`) section.
 
-The wiki is the agent's own knowledge base. Pages are titled, optionally aliased (frontmatter `aliases: [Foo, foo-thing]`), and listed in the system prompt by title. The agent reads them on demand and maintains them autonomously: it adds new pages, extends existing ones, merges duplicates, and links between them.
+### Facts - `memories` table
 
-The agent uses the bundled `wiki` skill (`/data/skills_agent/wiki/SKILL.md`) for non-trivial wiki work. Routine edits don't require user confirmation; only genuine contradictions (new info conflicts with an existing page) get escalated.
+Not a file — a small SQLite-backed store of atomic, sentence-sized facts ("User prefers `npm` over `yarn`", "The project's PostgreSQL runs on port 5433").
 
-## Editing memory from the UI
+The agent doesn't see this table in its prompt. Instead, it queries it on demand via the **`search_memories`** tool, which supports FTS5 syntax (word matching, `prefix*`, phrase queries, boolean operators). This lets long-term memory grow far beyond what fits in a single prompt while keeping the prompt small.
 
-The **Memory** page in the web UI surfaces:
+Facts are written automatically by the [session-end fact-extraction job](#session-end). They're per-user and timestamped, so the agent can answer "what did we decide about X?" even months later.
 
-- `SOUL.md` and `MEMORY.md` as inline editors
-- `AGENTS.md` (the user-editable rules) as an inline editor
-- A list of daily files, user profiles, and wiki pages with read/edit access
-- A button to trigger memory consolidation manually
+## Session end
 
-Changes are written directly to the underlying files and picked up on the next agent turn — no restart needed.
+A session is a continuous chunk of conversation. It ends when either `sessionTimeoutMinutes` of inactivity passes (default 30) or the user runs the `/new` command in the chat. On session end Axiom runs two background jobs in parallel: one writes a summary into the daily note, the other extracts atomic facts. Both have their own provider knob and tuning under [Settings → Memory](./../settings/memory).
 
-## Migration & defaults
+### Session summary
 
-On first startup the entrypoint creates `SOUL.md`, `MEMORY.md`, and `AGENTS.md` from built-in templates if they don't exist. The templates are conservative — go customize them.
+A small LLM gets the transcript and writes a short activity-log entry, appended to `memory/daily/<date>.md`. This is what the [nightly consolidation](#memory-consolidation) later reads when it promotes durable content into `MEMORY.md`, user profiles, and the wiki.
 
-If you previously ran an older version that stored `AGENTS.md` under `/data/memory/`, Axiom will migrate it to `/data/config/AGENTS.md` on next startup and log the move.
+The summary provider defaults to the active chat provider; most setups override it with something cheap and fast under [Settings → Memory → Sessions](./../settings/memory#sessions).
 
-## Two `AGENTS.md`, do not confuse
+### Fact extraction
 
-- **`/data/config/AGENTS.md`** (runtime, user-editable) — behavior rules the agent follows when talking to users. Shipped as a template, intended to be customized.
-- **`/AGENTS.md` in the source repo** (developer-facing) — guidelines for coding agents working on the Axiom codebase. Never seen by the running agent.
+In parallel, the transcript is fed to an extraction model that pulls out atomic, sentence-sized facts and writes them into the `memories` table. Sessions shorter than `minSessionMessages` are skipped — there's nothing worth extracting from a two-line exchange.
+
+Facts are deduplicated against existing entries (token-overlap heuristic) and capped at 10 per session. The agent retrieves them later via [`search_memories`](./tools).
+
+Tune under [Settings → Memory → Fact extraction](./../settings/memory#fact-extraction).
+
+## Memory consolidation
+
+The nightly **memory consolidation** job condenses the last few days of `daily/<date>.md` files into durable entries in `MEMORY.md`, user profiles, and wiki pages — then trims the dailies. This keeps long-term memory rich and the prompt small.
+
+How aggressively it promotes vs. drops is governed by `/data/config/CONSOLIDATION.md` — the prompt the consolidator uses to judge each candidate entry. See [Agent Instructions → CONSOLIDATION.md](./instructions#consolidation-md-memory-consolidation-rules) for the template and tuning tips.
+
+Schedule, lookback window, and provider are configured under [Settings → Memory](./../settings/memory#memory-consolidation). You can also trigger a consolidation run manually from the Memory page in the web UI.
+
+## See also
+
+- [Agent Instructions](./instructions) — the user-editable `AGENTS.md`, `CONSOLIDATION.md`, and `HEARTBEAT.md` config files. They shape *behavior*, not memory.
+- [Settings → Memory](./../settings/memory) — session timeout, fact extraction, and consolidation schedule.
+- [Built-in Tools → `search_memories`](./tools) — the tool the agent uses to query the fact store.

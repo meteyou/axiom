@@ -30,8 +30,6 @@ All three are shipped with a sensible default template on first startup. You can
 | 6 | `<user_profile>` | `memory/users/<current-user>.md` |
 | 7 | `<wiki_pages>` | `memory/wiki/*.md` (titles only) |
 
-See [Memory System → The seven layers](./memory#the-seven-layers-of-the-system-prompt) for the full picture.
-
 `CONSOLIDATION.md` and `HEARTBEAT.md` are *not* injected into the chat prompt — they're read only when their respective jobs run.
 
 ## `AGENTS.md` — the agent contract
