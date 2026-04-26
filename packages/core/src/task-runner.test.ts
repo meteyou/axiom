@@ -704,6 +704,126 @@ describe('TaskRunner', () => {
     })
   })
 
+  describe('maxDurationMinutes enforcement across pause/resume', () => {
+    // Mocks an agent that asks a question on first prompt() and completes on
+    // the second (resume) prompt() — only after a configurable delay so the
+    // resumed run is observably long.
+    function mockPauseThenSlowComplete(resumeDelayMs: number) {
+      return async () => {
+        const { Agent } = await import('@mariozechner/pi-agent-core')
+        const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
+        let callCount = 0
+        let resumeAbort: (() => void) | null = null
+        MockAgent.mockImplementationOnce(() => {
+          let subscribeFn: ((event: unknown) => void) | null = null
+          const messages: unknown[] = []
+          return {
+            subscribe: vi.fn((fn: (event: unknown) => void) => {
+              subscribeFn = fn
+              return () => { subscribeFn = null }
+            }),
+            prompt: vi.fn(async () => {
+              callCount++
+              if (callCount === 1) {
+                messages.push({
+                  role: 'assistant',
+                  content: [{ type: 'text', text: 'STATUS: question\nSUMMARY: ?' }],
+                })
+                return
+              }
+              // Resume call: block until either the delay elapses or abort()
+              // is invoked (which is what the max-duration timer triggers).
+              await new Promise<void>((resolve) => {
+                const t = setTimeout(resolve, resumeDelayMs)
+                resumeAbort = () => { clearTimeout(t); resolve() }
+              })
+              if (subscribeFn) {
+                subscribeFn({
+                  type: 'message_end',
+                  message: {
+                    role: 'assistant',
+                    content: [{ type: 'text', text: 'STATUS: completed\nSUMMARY: done' }],
+                    provider: 'test-provider',
+                    model: 'test-model',
+                    usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, cost: { total: 0 } },
+                  },
+                })
+              }
+              messages.push({
+                role: 'assistant',
+                content: [{ type: 'text', text: 'STATUS: completed\nSUMMARY: done' }],
+              })
+            }),
+            abort: vi.fn(() => { if (resumeAbort) resumeAbort() }),
+            state: { get messages() { return messages } },
+          }
+        })
+      }
+    }
+
+    it('aborts a resumed task whose original maxDuration deadline has already passed', async () => {
+      await mockPauseThenSlowComplete(60_000)()
+
+      const task = store.create({
+        name: 'Long-paused Task',
+        prompt: 'work',
+        triggerType: 'agent',
+        maxDurationMinutes: 1, // 1 minute budget
+      })
+
+      await runner.startTask(task, mockProvider)
+      await new Promise(resolve => setTimeout(resolve, 50))
+      expect(runner.isPaused(task.id)).toBe(true)
+
+      // Pretend the original task started 2 minutes ago — the 1-minute
+      // budget has already been blown while the task sat paused.
+      const longAgo = new Date(Date.now() - 2 * 60 * 1000)
+        .toISOString().replace('T', ' ').slice(0, 19)
+      store.update(task.id, { startedAt: longAgo })
+
+      const ok = await runner.resumeTask(task.id, 'go')
+      expect(ok).toBe(true)
+
+      // Resume must NOT leave the task running indefinitely — it should
+      // abort synchronously because the deadline already passed.
+      await new Promise(resolve => setTimeout(resolve, 50))
+      expect(runner.isRunning(task.id)).toBe(false)
+      const updated = store.getById(task.id)!
+      expect(updated.status).toBe('failed')
+      expect(updated.errorMessage).toBe('Max duration exceeded')
+    })
+
+    it('cleanupStalePausedTasks aborts paused tasks that exceeded maxDurationMinutes', async () => {
+      await mockPauseThenSlowComplete(60_000)()
+
+      const task = store.create({
+        name: 'Paused past deadline',
+        prompt: 'work',
+        triggerType: 'agent',
+        maxDurationMinutes: 1,
+      })
+
+      await runner.startTask(task, mockProvider)
+      await new Promise(resolve => setTimeout(resolve, 50))
+      expect(runner.isPaused(task.id)).toBe(true)
+
+      // Backdate startedAt past the 1-minute budget. pausedAt is fresh,
+      // so the 24h pause cap does NOT apply — only the maxDuration check
+      // should trigger cleanup.
+      const longAgo = new Date(Date.now() - 5 * 60 * 1000)
+        .toISOString().replace('T', ' ').slice(0, 19)
+      store.update(task.id, { startedAt: longAgo })
+
+      const cleaned = runner.cleanupStalePausedTasks()
+      expect(cleaned).toBe(1)
+      expect(runner.isPaused(task.id)).toBe(false)
+
+      const updated = store.getById(task.id)!
+      expect(updated.status).toBe('failed')
+      expect(updated.errorMessage).toBe('Max duration exceeded')
+    })
+  })
+
   describe('server restart recovery', () => {
     it('marks paused tasks as failed on recovery', async () => {
       // Manually insert a paused task in DB (simulating a task left from a previous server session)
