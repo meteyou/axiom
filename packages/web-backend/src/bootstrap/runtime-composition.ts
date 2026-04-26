@@ -557,6 +557,11 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
       statusUpdateIntervalMinutes: taskSettings.statusUpdateIntervalMinutes,
       getProviderById: (id: string) => resolveProvider(id),
       taskEventBus,
+      // Watchdog fallback for tasks that never set maxDurationMinutes
+      // (heartbeat, consolidation, cronjobs, scheduled tasks). Without
+      // this a hung LLM call would leave the row at status='running'
+      // forever. Per-task limits still take precedence when set.
+      defaultMaxDurationMinutes: taskSettings.maxDurationMinutes,
     },
     scheduler: {
       getDefaultProvider: getTaskDefaultProvider,
