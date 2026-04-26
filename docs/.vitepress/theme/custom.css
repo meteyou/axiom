@@ -35,6 +35,29 @@
   );
 }
 
+/* Code block title label (rendered by markdown.config in config.ts).
+   Glued to the top of the code block so it reads as the file path / name
+   for the snippet below. */
+.vp-code-block-title {
+  display: inline-block;
+  margin-top: 16px;
+  padding: 6px 12px;
+  font-family: var(--vp-font-family-mono);
+  font-size: 12px;
+  line-height: 1;
+  color: var(--vp-c-text-2);
+  background-color: var(--vp-code-block-bg);
+  border-radius: 8px 8px 0 0;
+  border-bottom: 1px solid var(--vp-c-divider);
+}
+.vp-code-block-title + div[class*='language-'] {
+  margin-top: 0;
+  border-top-left-radius: 0;
+}
+.vp-code-block-title + div[class*='language-'] > pre.vp-code {
+  border-top-left-radius: 0;
+}
+
 .dark {
   --vp-c-brand-1: #10b87f;
   --vp-c-brand-2: #0c8d62;

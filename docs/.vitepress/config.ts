@@ -9,6 +9,7 @@ const guideSidebar: DefaultTheme.SidebarItem[] = [
       { text: 'Quickstart', link: '/guide/quickstart' },
       { text: 'Configuration', link: '/guide/configuration' },
       { text: 'LLM Providers', link: '/guide/providers' },
+      { text: 'Telegram Bot', link: '/guide/telegram' },
     ],
   },
   {
@@ -25,7 +26,6 @@ const guideSidebar: DefaultTheme.SidebarItem[] = [
     text: 'Interfaces',
     items: [
       { text: 'Web UI', link: '/guide/web-ui' },
-      { text: 'Telegram Bot', link: '/guide/telegram' },
     ],
   },
   {
@@ -47,8 +47,8 @@ const guideSidebar: DefaultTheme.SidebarItem[] = [
 
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
-  title: 'Axiom',
-  description: 'A personal AI agent you can shape into your own.',
+  title: 'Axiom Documentation',
+  description: 'Your personal AI agent you can shape into your own.',
   lang: 'en-US',
   cleanUrls: true,
   lastUpdated: true,
@@ -67,10 +67,29 @@ export default defineConfig({
   // already won't crawl it — this is just a defense-in-depth filter.
   srcExclude: ['**/README.md'],
 
+  markdown: {
+    config(md) {
+      // Render `[title]` after the language identifier on standalone code
+      // blocks as a label above the block. VitePress' built-in [title]
+      // syntax only applies inside `::: code-group`; this extends it to
+      // every fenced code block so we don't have to wrap single blocks.
+      const defaultFence = md.renderer.rules.fence!
+      md.renderer.rules.fence = (tokens, idx, options, env, self) => {
+        const token = tokens[idx]
+        const info = token.info || ''
+        const match = info.match(/\[(.+?)\]/)
+        const html = defaultFence(tokens, idx, options, env, self)
+        if (!match) return html
+        const title = md.utils.escapeHtml(match[1])
+        return `<div class="vp-code-block-title">${title}</div>${html}`
+      }
+    },
+  },
+
   themeConfig: {
     // https://vitepress.dev/reference/default-theme-config
     logo: '/logo.svg',
-    siteTitle: 'Axiom',
+    siteTitle: 'Axiom Documentation',
 
     nav: [
       { text: 'Guide', link: '/guide/quickstart', activeMatch: '/(guide|settings)/' },
