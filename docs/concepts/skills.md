@@ -94,7 +94,7 @@ If your skill ships its own scripts, reference them as `{baseDir}/scripts/run.sh
 
 The lifecycle of a skill on a given turn is:
 
-1. **Index injection.** When the system prompt is built, [`getAgentSkillsForPrompt`](https://github.com/meteyou/axiom/blob/main/packages/core/src/agent-skills.ts) scans the skills directory, reads every `SKILL.md`'s frontmatter, applies platform/toolset gating, sorts by `lastUsed` (most recent first), and emits the top 10 as `<available_skills>` entries — name, description, location, optional warning. See [System Prompt → layer 14](./system-prompt#_14-available-skills-—-installed-skills-listing).
+1. **Index injection.** When the system prompt is built, [`getAgentSkillsForPrompt`](https://github.com/meteyou/axiom/blob/main/packages/core/src/agent-skills.ts) scans the skills directory, reads every `SKILL.md`'s frontmatter, applies platform/toolset gating, sorts by `lastUsed` (most recent first), and emits the top 10 as `<available_skills>` entries — name, description, location, optional warning. See [System Prompt → layer 13](./system-prompt#_13-available-skills-—-installed-skills-listing).
 
 2. **Routing.** The agent reads the user's request, scans the descriptions, and decides whether any skill materially matches. The system prompt explicitly tells it *"Treat this as a strong routing rule: do not answer from memory when a matching skill should be used first."*
 
@@ -153,6 +153,8 @@ Remove the flag later to opt back into auto-updates — the next startup will ba
 | Skill | Purpose |
 |---|---|
 | `wiki` | Ingest, query, and lint the personal wiki under `/data/memory/wiki/` — file naming, frontmatter aliases, the `## Sources` convention, and the full Karpathy-style ingest/query/lint operations. The system prompt explicitly tells the agent to load this skill before non-trivial wiki work. |
+| `skill-creator` | Create or update an agent skill under `/data/skills_agent/<name>/`. Carries the full format guide — frontmatter rules, naming regex, gating fields (`required_env_vars`, `requires_toolsets`, `platforms`), `{baseDir}` substitution, worked examples, common mistakes. The system prompt's `<agent_skills>` block is a thin pointer to this skill so the full guide is only paid for in tokens when the agent actually needs to create a skill. |
+| `tasks-and-cronjobs` | Use the background-execution system — background tasks (`create_task`, `resume_task`), cronjobs (`create_cronjob` & friends), and static reminders (`create_reminder`). Carries the decision flow (task vs. cronjob vs. reminder), prompt-writing conventions, `<task_injection>` handling, cron-expression cheat sheet, `attached_skills` for cronjobs, and the reminder anti-misuse contract. The system prompt's `<task_system>` block is a thin pointer to this skill plus the hard "no OS-level scheduler" safety rule and a trigger note for incoming `<task_injection>` blocks. |
 
 The list will grow. Anything that's a *project-defined convention for how the agent uses Axiom's own filesystem* is a candidate.
 
@@ -208,10 +210,10 @@ The gating logic is in [`filterAndAnnotateAgentSkills`](https://github.com/metey
 
 Two layers:
 
-- **`<agent_skills>`** (layer 12) — the *creation guide*. Tells the agent how to write new skills and where to put them. Always present as long as a skills directory is configured.
-- **`<available_skills>`** (layer 14) — the *index* of currently installed skills, capped at the 10 most recent. The agent reads `SKILL.md` from `<location>` on demand.
+- **`<agent_skills>`** (layer 12) — a thin pointer to where new skills live and to the built-in `skill-creator` skill that carries the full format guide. Always present as long as a skills directory is configured.
+- **`<available_skills>`** (layer 13) — the *index* of currently installed skills, capped at the 10 most recent. The agent reads `SKILL.md` from `<location>` on demand.
 
-Both are documented in [System Prompt → layer 12](./system-prompt#_12-agent-skills-—-skill-creation-guide) and [layer 14](./system-prompt#_14-available-skills-—-installed-skills-listing).
+Both are documented in [System Prompt → layer 12](./system-prompt#_12-agent-skills-—-skill-creation-pointer) and [layer 13](./system-prompt#_13-available-skills-—-installed-skills-listing).
 
 If you have more than 10 skills, the prompt also enables the `list_agent_skills` tool so the agent can browse the rest. See [Built-in Tools → `list_agent_skills`](./tools#memory-history).
 
