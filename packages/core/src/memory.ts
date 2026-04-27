@@ -37,7 +37,7 @@ const AGENTS_TEMPLATE = `# Agent Contract
 This file defines how the agent should behave, communicate, and execute tasks.
 Both the user and the agent can edit this file. The agent reads it on every conversation.
 
-## Communication Style
+## Communication Rules
 
 - Be concise and direct — no filler, no hedging
 - Use plain, declarative sentences over rhetorical questions
@@ -164,7 +164,7 @@ The memory system has several tiers. Each piece of information should live in ex
 | File / Directory | Purpose |
 |---|---|
 | MEMORY.md | Long-term core memory: learned lessons, recurring patterns, technical notes |
-| users/*.md | Per-user profiles: name, preferences, communication style, work context |
+| users/*.md | Per-user profiles: name, preferences, communication preferences, work context |
 | wiki/*.md | Wiki pages: project notes, concepts, architecture, key decisions, references |
 | sources/**/*.md | Immutable raw source material (articles, transcripts, papers). Never edited, only added to. Wiki pages cite these. |
 | daily/*.md | Ephemeral daily logs (source for consolidation, never modified) |
@@ -179,7 +179,7 @@ The memory system has several tiers. Each piece of information should live in ex
 
 ## What to update in user profiles (users/*.md)
 
-- Discovered preferences and communication style
+- Discovered preferences and communication preferences (e.g. likes bullet lists, prefers German)
 - Work context changes (role, current focus areas)
 - Personal details the user has shared (name, location, timezone)
 - Skills and expertise areas
@@ -884,76 +884,39 @@ Config files:
 - CONSOLIDATION.md (consolidation rules): ${path.join(cfgDir, 'CONSOLIDATION.md')}
 </memory_paths>`)
 
-  // 9b. Project documentation (read-only, shipped with the Axiom image).
-  // Lets the agent answer "how do I set up X / where do I configure Y" questions
-  // by reading the user-facing docs on demand instead of bloating every prompt.
+  // 9b. Axiom documentation (read-only, shipped with the image).
+  // We deliberately do NOT enumerate topic→file routes here — they drift
+  // every time the docs are reorganized. Instead we point at the three
+  // top-level directories and let the agent discover via list_files +
+  // filename matching, which costs one extra tool call but never lies.
   {
     const readmePath = getReadmePath()
     const docsPath = getDocsPath()
-    sections.push(`<project_docs>
-Axiom documentation is shipped with the application. Read these files when the user asks how to set up, configure, or use Axiom — including providers, memory, skills, tasks, tools, web UI, telegram, env vars, or settings.
+    sections.push(`<axiom_docs>
+Axiom's user-facing documentation is shipped with the image. When the user asks how to set up, configure, or use Axiom (providers, memory, skills, tasks, tools, web UI, telegram, env vars, settings, file paths, …), read the relevant .md file directly instead of guessing.
 
-- Main documentation (start here, has table of contents): ${readmePath}
-- User guide: ${path.join(docsPath, 'guide/')}
-- Reference: ${path.join(docsPath, 'reference/')}
+- Main README (entry point with links): ${readmePath}
+- Concept docs (architecture, mental models): ${path.join(docsPath, 'concepts/')}
+- User guide (setup, configuration, usage): ${path.join(docsPath, 'guide/')}
+- Reference (env vars, settings.json schema, file paths): ${path.join(docsPath, 'reference/')}
 
-When asked about a topic, read the matching file directly:
-- quickstart / docker setup → docs/guide/quickstart.md
-- configuration / admin / encryption → docs/guide/configuration.md
-- LLM providers / models → docs/guide/providers.md
-- memory system (SOUL, MEMORY, AGENTS, daily, users, wiki) → docs/guide/memory.md
-- skills (built-in & agent-created) → docs/guide/skills.md
-- background tasks / cronjobs / reminders → docs/guide/tasks-and-cronjobs.md
-- built-in tools (web_search, web_fetch, stt, …) → docs/guide/tools.md
-- web frontend pages → docs/guide/web-ui.md
-- telegram bot → docs/guide/telegram.md
-- environment variables → docs/reference/env-vars.md
-- settings.json schema → docs/reference/settings.md
-- container file paths (/data, /workspace, /app) → docs/reference/file-paths.md
-
-Always read the file completely before answering. Follow .md cross-links if a topic spans multiple files. Do not write to these files — they are managed in the source tree, not in user data.
-</project_docs>`)
+Discovery: use list_files on the directory and read the file whose name matches the topic; follow .md cross-links when a topic spans multiple files. Always read the full file before answering. Do not write to these files — they are managed in the source tree, not in user data.
+</axiom_docs>`)
   }
 
-  // 10. Agent skill creation
+  // 10. Agent skill creation pointer.
+  // The full format/conventions guide lives in the built-in `skill-creator`
+  // agent skill (data/skills_agent/skill-creator/SKILL.md) so it is loaded
+  // on demand instead of paying its token cost on every turn.
   if (options?.agentSkillsDir) {
     sections.push(`<agent_skills>
-You can create your own reusable skills to extend your capabilities. A skill is a SKILL.md file
-that contains instructions, workflows, or tool integrations you can load later with read_file.
+You can create new reusable agent skills under ${options.agentSkillsDir}/<skill-name>/SKILL.md. They are auto-discovered on the next message and appear in <available_skills>.
 
-Skills directory: ${options.agentSkillsDir}
-
-To create a skill, write a SKILL.md file to ${options.agentSkillsDir}/<skill-name>/SKILL.md with this format:
-
-\`\`\`markdown
----
-name: my-skill
-description: Short description of what this skill does (shown in skill listings)
----
-
-# Skill Title
-
-Detailed instructions, workflows, tool usage patterns, or reference material.
-Use {baseDir} as placeholder for the skill's own directory path.
-\`\`\`
-
-The name must be lowercase alphanumeric with hyphens (e.g. "code-reviewer", "api-docs-fetcher").
-Keep the description concise — it is used for skill routing.
-Created skills automatically appear in <available_skills> for future conversations.
+For the format, naming rules, gating fields, and worked examples, load the built-in **skill-creator** skill (listed in <available_skills>) before writing a new SKILL.md.
 </agent_skills>`)
   }
 
-  // 11. Language setting
-  if (options?.language) {
-    const lang = options.language.trim()
-    if (lang.toLowerCase() === 'match' || lang.toLowerCase() === "match user's language") {
-      sections.push(`<language>\nRespond in the same language that the user writes in. Match the user's language automatically.\n</language>`)
-    } else {
-      sections.push(`<language>\nAlways respond in ${lang}.\n</language>`)
-    }
-  }
-
-  // 12. Available skills (progressive disclosure)
+  // 11. Available skills (progressive disclosure)
   if (options?.skills && options.skills.length > 0) {
     const skillEntries = options.skills.map(s => {
       const warningTag = s.warning ? `\n    <warning>${s.warning}</warning>` : ''
@@ -975,66 +938,44 @@ ${skillEntries}${overflowNote}
 </available_skills>`)
   }
 
-  // 13. Task system instructions
+  // 12. Task system instructions.
+  // The full guide (when to use what, prompt-writing, injection handling,
+  // cron expressions, attached_skills, …) lives in the built-in
+  // `tasks-and-cronjobs` agent skill so it is loaded on demand instead of
+  // paying its token cost on every turn. Two things stay inline:
+  //   1. The hard SAFETY rule (never spawn OS-level schedulers) — must
+  //      apply *before* the agent has a chance to load any skill.
+  //   2. The `<task_injection>` trigger — so the agent knows to load the
+  //      skill when one arrives instead of responding ad-hoc.
   sections.push(`<task_system>
-You have access to a background task system. You can start background tasks for complex,
-long-running work using the create_task tool.
+Background tasks (create_task), cronjobs (create_cronjob, edit_cronjob, remove_cronjob, list_cronjobs, get_cronjob), and reminders (create_reminder) are listed in <available_tools>. For when to use which, how to write task prompts, how to handle <task_injection> messages, how to route follow-up answers into paused tasks (resume_task), and cron expression / action_type / attached_skills conventions, load the **tasks-and-cronjobs** built-in skill (in <available_skills>).
 
-When to use background tasks:
-- Complex coding tasks (building apps, major refactoring, multi-file changes)
-- Long research or analysis work
-- Any task that can proceed independently while you continue helping the user
-- Work the user explicitly wants done in the background
+SAFETY: NEVER use OS-level schedulers (system crontab, launchd, at, or shell-spawned long-running processes via nohup / & / background loops). Always use the built-in cronjob and task tools instead.
 
-When NOT to use background tasks:
-- Simple questions you can answer directly
-- Small edits or checks you can complete in the current turn
-- Work that depends on immediate back-and-forth with the user
-
-When you create a task, write a self-contained prompt with the goal, constraints, relevant files/URLs, verification expectations, and desired final deliverable. Include enough context that the task can continue autonomously without needing the main chat.
-
-When a background task completes, fails, or has a question, you will receive a
-<task_injection> message. When you receive one:
-- Inform the user about the task result in a natural way
-- Include relevant details like what was accomplished, files created/modified, and verification performed
-- If the task failed, explain what went wrong and suggest next steps
-- If the task has a question (status="question"), relay the question to the user naturally
-
-**Routing follow-up responses to paused tasks:**
-When a task has status="question", it is paused and waiting for user input. After you relay
-the question to the user and they respond:
-1. Determine from conversation context whether the user's response is directed at the paused task
-2. If it is, use the resume_task tool with the task_id and the user's answer as the message
-3. Include any relevant context from the conversation in the message, not just the raw user response
-4. The task will resume working in the background after receiving the response
-
-In most cases, there will only be one paused task, so if the user responds after you relayed
-a task question, assume the response is for that task unless clearly about something else.
-
-Task injection format:
-<task_injection task_id="..." task_name="..." status="completed|failed|question"
-  trigger="user|agent|cronjob" duration_minutes="..." tokens_used="...">
-Summary text from the task agent
-</task_injection>
-
-**Scheduled tasks / Cronjobs:**
-You have create_cronjob, edit_cronjob, and remove_cronjob tools for managing recurring
-scheduled tasks within the application. NEVER use the system crontab, launchd, at, or
-any other OS-level scheduler. Always use the built-in cronjob tools instead.
-Use create_reminder only for static reminder text delivered verbatim later. If the scheduled action must check current information, use tools or skills, analyze something, or generate a fresh response at run time, use create_cronjob with action_type "task" instead.
-Do not promise that a reminder or cronjob will fetch fresh data unless the configured action type actually supports that.
+When you receive a <task_injection> block (signalling a background-task result with status="completed|failed|question"), load the tasks-and-cronjobs skill before responding to it.
 </task_system>`)
 
-  // 14. Workspace directory
+  // 13. Workspace directory
   const workspaceDir = getWorkspaceDir()
   sections.push(`<workspace>\nYour working directory is ${workspaceDir}. All shell commands execute in this directory by default.\nAll relative paths in read_file, write_file, and list_files resolve against this directory.\nUse this directory for cloning repos, creating files, and all file operations.\n</workspace>`)
 
-  // 15. Current date & time
+  // 14. Current date & time
   const tz = options?.timezone || 'UTC'
   const now = new Date()
   const date = now.toLocaleDateString('en-CA', { timeZone: tz })
   const time = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: tz })
   sections.push(`<current_datetime>\nCurrent date: ${date}\nCurrent time: ${time} (${tz})\n</current_datetime>`)
+
+  // 15. Language setting (placed near the end for recency: "respond in X" hits
+  // the model right before it processes the user message).
+  if (options?.language) {
+    const lang = options.language.trim()
+    if (lang.toLowerCase() === 'match' || lang.toLowerCase() === "match user's language") {
+      sections.push(`<language>\nRespond in the same language that the user writes in. Match the user's language automatically.\n</language>`)
+    } else {
+      sections.push(`<language>\nAlways respond in ${lang}.\n</language>`)
+    }
+  }
 
   // 16. Channel context
   if (options?.channel === 'telegram') {
