@@ -7,7 +7,7 @@ Authoritative layout of the directories Axiom uses. Useful when debugging volume
 | Path | Volume | Contents |
 |---|---|---|
 | `/app/` | (image) | Axiom source + built code. Read-only at runtime. |
-| `/app/README.md` | (image) | Main project README, surfaced to the agent via `<project_docs>`. |
+| `/app/README.md` | (image) | Main project README, surfaced to the agent via `<axiom_docs>`. |
 | `/app/docs/` | (image) | User-facing documentation (this site). Surfaced to the agent. |
 | `/app/agent_docs/` | (image) | Contributor / internals docs. **Not** surfaced to the agent. |
 | `/app/skills_agent_defaults/` | (image) | Built-in skill defaults, seeded to `/data/skills_agent/` on first run. |

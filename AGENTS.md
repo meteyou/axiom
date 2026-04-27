@@ -23,7 +23,7 @@
 
 This repo has two documentation trees — keep them strictly separated:
 
-- **`docs/`** — User-facing documentation. Built with VitePress, served as a public website, and surfaced to the runtime agent via `<project_docs>` in the system prompt. Write here for end users, self-hosters, and anyone interacting with the running agent.
+- **`docs/`** — User-facing documentation. Built with VitePress, served as a public website, and surfaced to the runtime agent via `<axiom_docs>` in the system prompt. Write here for end users, self-hosters, and anyone interacting with the running agent.
 - **`agent_docs/`** — Contributor / internals documentation. Architecture decisions, design analysis, internal mechanisms. **Not** included in the VitePress build, **not** referenced by the runtime agent's system prompt. Write here for developers and coding agents working on the codebase.
 
 Current contributor docs:
