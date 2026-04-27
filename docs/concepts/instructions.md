@@ -16,7 +16,7 @@ The shipped template has five sections — use them as a starting point, rewrite
 
 | Section | Purpose |
 |---|---|
-| **Communication Style** | Tone, verbosity, formatting conventions. |
+| **Communication Rules** | Concrete do/don't rules for verbosity, formatting, and phrasing. (High-level *voice* and *character* belong in [`SOUL.md`](./memory#soul-soul-md), not here.) |
 | **Execution Rules** | When to ask vs. act; how to handle ambiguity, destructive changes, external actions. |
 | **Anti-Hallucination Rules** | "Say I don't know." Strict-mode vs. creative-mode. Citing sources. |
 | **Memory Rules** | What belongs in `MEMORY.md` vs. daily files vs. user profiles. |
@@ -35,7 +35,7 @@ If you catch yourself writing "the agent should be helpful and friendly" — cut
 ### Example snippet
 
 ```md
-## Communication Style
+## Communication Rules
 
 - Start with the point — no warm-up, no praise, no conversational padding.
 - Default verbosity: low — scale up only when the topic genuinely requires it.
