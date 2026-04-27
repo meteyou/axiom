@@ -6,9 +6,9 @@ This page documents exactly how that prompt is built, what each block contains, 
 
 ## How it's assembled
 
-The prompt is rebuilt from scratch on **every turn** by `assembleSystemPrompt()` in `packages/core/src/memory.ts`. Each section is wrapped in an XML-style tag (`<personality>`, `<agent_rules>`, `<core_memory>`, …) so the model can clearly distinguish what each block is for.
+The prompt is rebuilt from scratch on **every turn** by [`assembleSystemPrompt()` in `packages/core/src/memory.ts`](https://github.com/meteyou/axiom/blob/main/packages/core/src/memory.ts). Each section is wrapped in an XML-style tag (`<personality>`, `<agent_rules>`, `<core_memory>`, …) so the model can clearly distinguish what each block is for.
 
-Most layers come straight from a Markdown file under `/data/memory/` or `/data/config/`. A few are computed at request time (current datetime, the active tool list, the configured language). All of them are concatenated, separated by blank lines, and handed to the LLM as the `system` message.
+Most layers come straight from a Markdown file under `/data/memory/` or `/data/config/` (see [Container file paths](./../reference/file-paths)). A few are computed at request time (current datetime, the active tool list, the configured language). All of them are concatenated, separated by blank lines, and handed to the LLM as the `system` message.
 
 Because the prompt is rebuilt every turn:
 
@@ -19,104 +19,122 @@ Because the prompt is rebuilt every turn:
 
 ## The layers
 
-The blocks are emitted in this fixed order:
-
-| # | Block | Source | Always present? |
-|---|---|---|---|
-| 1 | `<personality>` | `memory/SOUL.md` | Yes |
-| 2 | `<instructions>` | Runtime base instructions (per-channel) | Optional |
-| 3 | `<agent_rules>` | `config/AGENTS.md` | Yes |
-| 4 | `<core_memory>` | `memory/MEMORY.md` | Yes |
-| 5 | `<recent_memory>` | Last 3 days of `memory/daily/<date>.md` | When non-empty |
-| 6 | `<user_profile>` | `memory/users/<username>.md` | When a user is identified |
-| 7 | `<available_tools>` | Built-in tool registry + active settings | Yes |
-| 8 | `<available_providers>` | Configured LLM providers + enabled models | When ≥1 provider |
-| 9 | `<wiki_pages>` | Titles + aliases of `memory/wiki/*.md` | When wiki has pages |
-| 10 | `<memory_paths>` | Computed paths to memory + config files | Yes |
-| 11 | `<project_docs>` | Paths to the bundled `docs/` tree | Yes |
-| 12 | `<agent_skills>` | Skill-creation guide + agent-skills directory | When skills dir is set |
-| 13 | `<language>` | Reply-language directive | When configured |
-| 14 | `<available_skills>` | Listing of installed skills (10 most recent) | When ≥1 skill |
-| 15 | `<task_system>` | Background tasks, cronjobs, and reminders policy | Yes |
-| 16 | `<workspace>` | Path to the agent's working directory (`/workspace`) | Yes |
-| 17 | `<current_datetime>` | Current date + time in the configured timezone | Yes |
-| 18 | `<channel_context>` | Notes for the active channel (e.g. Telegram) | Optional |
-
-The order is intentional. Identity and rules come first (1–3), durable memory next (4–6), then capabilities and references (7–14), and finally the runtime anchors that tell the agent *where it is* and *when* (15–18).
-
-## Layer details
+The blocks are emitted in a fixed order. Identity and rules come first (1–3), durable memory next (4–6), then capabilities and references (7–13), and finally the runtime anchors that tell the agent *where it is*, *when*, *how to speak*, and *on which surface* (14–18).
 
 ### 1. `<personality>` — `memory/SOUL.md`
 
-The agent's *identity*: tone, values, communication style, "vibe". This is the most stable file in memory — written once by you, rarely touched by the agent. Customize it to set the personality you want. See [Memory System → SOUL](./memory#soul-soul-md).
+*Always present.*
+
+The agent's *identity*: tone, voice, character, "vibe". This is the most stable file in memory — written once by you, rarely touched by the agent. Customize it to set the personality you want. Concrete *do/don't* rules ("no filler", "use markdown lists") belong in `AGENTS.md` instead — see layer 3. See [Memory System → SOUL](./memory#soul-soul-md).
 
 ### 2. `<instructions>` — runtime base instructions
 
-A small per-channel block of technical instructions injected by the runtime (e.g. the chat backend, Telegram bot, or task runner) before the agent rules. Not user-editable. Most channels leave this empty.
+*Optional. Empty in every channel that ships today.*
+
+A small per-channel block of technical instructions a runtime can inject before the agent rules — e.g. the chat backend, Telegram bot, or task runner. Not user-editable; reserved for future surfaces that need a hard, non-negotiable preamble.
 
 ### 3. `<agent_rules>` — `config/AGENTS.md`
 
-The user-editable agent contract: communication style, execution rules, anti-hallucination rules, memory rules, red lines. Read on every turn, every task, every heartbeat. See [Agent Instructions → `AGENTS.md`](./instructions#agents-md-the-agent-contract).
+*Always present.*
+
+The user-editable agent contract: communication rules, execution rules, anti-hallucination rules, memory rules, red lines. Read on every turn, every task, every heartbeat. Where `<personality>` answers *who the agent is*, `<agent_rules>` answers *what it concretely does and doesn't do*. See [Agent Instructions → `AGENTS.md`](./instructions#agents-md).
 
 ### 4. `<core_memory>` — `memory/MEMORY.md`
+
+*Always present.*
 
 The agent's long-term scratchpad — learned lessons, recurring patterns, technical decisions, corrections. Included in every prompt, so the agent keeps it short and curated. See [Memory System → Core memory](./memory#core-memory-memory-md).
 
 ### 5. `<recent_memory>` — `memory/daily/<date>.md`
 
-Concatenated content of the **last 3 days** of daily session notes. The agent uses this to remember what happened recently without having to re-read full chat history. The block is omitted on a fresh install with no daily files yet. See [Memory System → Daily notes](./memory#daily-notes-daily-date-md).
+*Present when there is non-empty content in the last 3 daily files.*
+
+Concatenated content of the **last 3 days** of daily session notes (defaults to 3, configurable via the `recentDays` option). A short preamble reminds the agent that these are condensed and that the full conversation is available via the `read_chat_history` tool. The block is omitted on a fresh install with no daily files yet. See [Memory System → Daily notes](./memory#daily-notes-daily-date-md).
 
 ### 6. `<user_profile>` — `memory/users/<username>.md`
 
-The profile of the *currently authenticated* user — name, location, communication style, work context, preferences. Loaded only when a user is identified, so the agent never mixes up users on a multi-user setup. If no user is identified, a `<user_profiles_path>` block appears instead, pointing the agent at the directory so it can read profiles on demand. See [Memory System → User profiles](./memory#user-profiles-users-username-md).
+*Present when a user is identified. Otherwise replaced by `<user_profiles_path>`.*
+
+The profile of the *currently authenticated* user — name, location, communication preferences, work context, interests. Loaded only when a user is identified, so the agent never mixes up users on a multi-user setup. If no user is identified, a `<user_profiles_path>` block appears instead, pointing the agent at the directory so it can read profiles on demand. See [Memory System → User profiles](./memory#user-profiles-users-username-md).
 
 ### 7. `<available_tools>` — built-in tool registry
 
-A bullet list of every built-in tool the agent can call this turn, with a one-line description of each. The list is computed from the active tool settings — disabling `web_search` under [Settings → Agent](./../settings/agent), for example, drops that line. See [Built-in Tools](./tools).
+*Always present.*
+
+A bullet list of every built-in tool the agent can call this turn, with a one-line description of each. The list is computed from the active tool settings — toggling `web_search` or `web_fetch` off under **Skills → Built-in Tools** in the Web UI, for example, drops that line; disabling speech-to-text under [Settings → Speech-to-Text](./../settings/speech-to-text) drops `transcribe_audio`. See [Built-in Tools](./tools).
 
 ### 8. `<available_providers>` — configured LLM providers
+
+*Present when at least one LLM provider is configured.*
 
 A short listing of every configured provider and its enabled models. Lets the agent map a user-supplied model name (*"run this with kimi-k2.6"*) onto the right provider when creating a background task or cronjob. Dropped entirely if no provider is configured yet. See [LLM Providers](./../guide/providers).
 
 ### 9. `<wiki_pages>` — `memory/wiki/*.md`
 
+*Present when the wiki has at least one page.*
+
 The titles and aliases of every wiki page — **not** the full content. The agent loads a specific page on demand with `read_file` when a topic comes up. This is the prompt's largest source of agent-curated knowledge while staying token-cheap. See [Memory System → Wiki](./memory#wiki-wiki-md).
 
 ### 10. `<memory_paths>` — file paths cheatsheet
 
+*Always present.*
+
 The absolute paths to every memory and config file the agent might want to read or edit (`SOUL.md`, `MEMORY.md`, today's daily file, the wiki/users/sources directories, and the three config files). This is what lets the agent self-modify its memory: it doesn't have to guess where things live.
 
-### 11. `<project_docs>` — bundled documentation
+### 11. `<axiom_docs>` — bundled documentation
 
-Paths to the documentation tree that ships with Axiom (this site you're reading). When you ask "how do I configure X?", the agent reads the matching file directly instead of hallucinating from training data.
+*Always present.*
 
-### 12. `<agent_skills>` — skill creation guide
+Paths to the README and the three top-level subdirectories of the documentation tree that ships with Axiom (this site you're reading): `concepts/`, `guide/`, `reference/`. When you ask *"how do I configure X?"*, the agent uses `list_files` on the matching directory, picks the file whose name fits the topic, and reads it — instead of hallucinating from training data.
 
-Instructions for *creating new skills* on the fly, plus the path to the agent-skills directory. Lets the agent extract a recurring workflow into a reusable `SKILL.md` when it spots a pattern. See [Skills](./skills).
+### 12. `<agent_skills>` — skill creation pointer
 
-### 13. `<language>` — reply language
+*Present when an agent-skills directory is configured (default in shipped images).*
 
-A short directive set from [Settings → Agent](./../settings/agent#agent-language). Either *"match the user's language"* or *"always respond in `<language>`"*. Dropped if no preference is configured (model picks a sensible default).
+A short pointer telling the agent where new skills live (`/data/skills_agent/<name>/SKILL.md`) and to load the built-in [`skill-creator`](./skills#currently-shipped) skill for the full format guide before writing one. Frontmatter rules, naming regex, gating fields, and worked examples live in `skill-creator/SKILL.md` — loaded on demand instead of paying their token cost on every turn. See [Skills](./skills).
 
-### 14. `<available_skills>` — installed skills listing
+### 13. `<available_skills>` — installed skills listing
 
-XML-formatted listing of every installed skill — name, description, location of the `SKILL.md` file. The agent reads `SKILL.md` on demand when a request matches the description. Capped at the 10 most recent entries; older ones stay accessible via the `list_agent_skills` tool. See [Skills](./skills).
+*Present when at least one skill is active.*
 
-### 15. `<task_system>` — task and cronjob policy
+XML-formatted listing of every active skill — name, description, location of the `SKILL.md` file, and an optional `<warning>` (e.g. when a skill needs an env var that isn't set). The agent reads `SKILL.md` on demand when a request matches the description. Built-in and user-installed skills are listed in full; **agent-created** skills are capped at the 10 most recently used, with the rest reachable through the `list_agent_skills` tool. See [Skills](./skills).
 
-The rules for the background-task system: when to spawn a task, how to handle task injections (completed/failed/question), how to route follow-up answers back into a paused task, and the strict ban on OS-level schedulers (use the built-in cronjob tools instead). See [Tasks & Cronjobs](./tasks-and-cronjobs).
+### 14. `<task_system>` — task and cronjob pointer
 
-### 16. `<workspace>` — working directory
+*Always present.*
 
-A one-liner declaring `/workspace` as the working directory for shell commands and relative paths. Anchors all file operations so they don't accidentally land in `/data` or the OS root.
+A short pointer telling the agent to load the built-in [`tasks-and-cronjobs`](./skills#currently-shipped) skill for the full guide (when to use task vs. cronjob vs. reminder, how to write task prompts, how to handle `<task_injection>` messages, cron expressions, `attached_skills`). The full guide — around 750 tokens — lives in `tasks-and-cronjobs/SKILL.md` and is loaded on demand.
 
-### 17. `<current_datetime>` — current date and time
+Two things stay inline in the prompt because they have to apply *before* the agent can decide to load the skill:
+
+- **Hard safety rule**: no OS-level schedulers (`crontab`).
+- **Trigger note**: when a `<task_injection>` block arrives, load the skill before responding to it.
+
+See [Tasks & Cronjobs](./tasks-and-cronjobs).
+
+### 15. `<workspace>` — working directory
+
+*Always present.*
+
+A one-liner declaring `/workspace` as the working directory for shell commands and relative paths. Anchors all file operations so they don't accidentally land in `/data` or the OS root. See [Container file paths → `/workspace`](./../reference/file-paths).
+
+### 16. `<current_datetime>` — current date and time
+
+*Always present.*
 
 The current date and time, formatted in the configured timezone. Computed at request time, so the agent always knows "now" — useful for cron creation, daily-note naming, "what day is it" questions, and any time-relative reasoning.
 
+### 17. `<language>` — reply language
+
+*Present when a reply language is configured. Dropped otherwise (model picks a sensible default).*
+
+A short directive set from [Settings → Agent](./../settings/agent#agent-language). Either *"match the user's language"* or *"always respond in `<language>`"*. Placed near the end of the prompt on purpose: the directive lands close to the user message, so the model's recency bias works in its favor.
+
 ### 18. `<channel_context>` — channel-specific notes
 
-A short reminder about the active surface the agent is talking on. For example, on Telegram it tells the agent *"you ARE the Telegram bot — don't suggest the user run curl commands to message you"* and to keep responses concise. Omitted on the default web chat.
+*Optional. Currently only emitted on the Telegram channel.*
+
+A short reminder about the active surface the agent is talking on. For example, on [Telegram](./../guide/telegram) it tells the agent *"you ARE the Telegram bot — don't suggest the user run curl commands to message you"* and to keep responses concise. Omitted on the default web chat.
 
 ## What this means in practice
 
@@ -133,3 +151,5 @@ A few things follow from this layout:
 - [Agent Instructions](./instructions) — the user-editable `AGENTS.md` (layer 3) and the two non-prompt files (`CONSOLIDATION.md`, `HEARTBEAT.md`).
 - [Built-in Tools](./tools) — the tools enumerated in layer 7.
 - [Skills](./skills) — what powers layers 12 and 14.
+- [Tasks & Cronjobs](./tasks-and-cronjobs) — the system referenced by layer 14.
+- [Container file paths](./../reference/file-paths) — where `/data` and `/workspace` actually live on disk.
