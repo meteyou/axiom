@@ -265,7 +265,7 @@ describe('memory', () => {
 
       const content = readAgentsRulesFile(dir)
       expect(content).toContain('# Agent Contract')
-      expect(content).toContain('Communication Style')
+      expect(content).toContain('Communication Rules')
     })
 
     it('creates AGENTS.md if missing', () => {
@@ -408,22 +408,22 @@ describe('memory', () => {
       expect(prompt).toContain(path.join(dir, 'sources'))
     })
 
-    it('includes project_docs section pointing at README and docs/', () => {
+    it('includes axiom_docs section pointing at README and the three docs subdirectories', () => {
       const dir = makeTmpDir()
       ensureMemoryStructure(dir)
 
       const prompt = assembleSystemPrompt({ memoryDir: dir })
 
-      // Block markers + topic-routing hints the agent uses to navigate the docs
-      expect(prompt).toContain('<project_docs>')
+      // Block markers + the three top-level docs dirs the agent can list_files on.
+      // We deliberately do NOT assert on individual topic→file routes — the block
+      // no longer carries them; the agent discovers files via list_files instead.
+      expect(prompt).toContain('<axiom_docs>')
       expect(prompt).toContain('README.md')
+      expect(prompt).toContain('docs/concepts/')
       expect(prompt).toContain('docs/guide/')
       expect(prompt).toContain('docs/reference/')
-      expect(prompt).toContain('docs/guide/quickstart.md')
-      expect(prompt).toContain('docs/guide/memory.md')
-      expect(prompt).toContain('docs/reference/env-vars.md')
       expect(prompt).toContain('Do not write to these files')
-      expect(prompt).toContain('</project_docs>')
+      expect(prompt).toContain('</axiom_docs>')
     })
 
     it('includes wiki_pages section when wiki pages exist', () => {
