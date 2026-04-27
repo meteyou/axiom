@@ -40,7 +40,7 @@ Each tier has a clear role; the next sections walk through them.
 
 ### SOUL - `SOUL.md`
 
-`SOUL.md` defines *who the agent is* — its tone, values, communication style. It's the most stable file in memory: written by the user, rarely touched by the agent, and intended to be rewritten when you want to change the agent's "vibe". The default template is conservative; customize it.
+`SOUL.md` defines *who the agent is* — its tone, voice, character. It's the most stable file in memory: written by the user, rarely touched by the agent, and intended to be rewritten when you want to change the agent's "vibe". The default template is conservative; customize it. (Note: *concrete* communication rules — "no filler", "use markdown lists" — belong in [`AGENTS.md`](./instructions#agents-md), not here.)
 
 ### Core memory - `MEMORY.md`
 
@@ -56,7 +56,7 @@ Daily files are **append-only source material for consolidation** — the consol
 
 ### User profiles - `users/<username>.md`
 
-One file per user, holding name, location, communication style, work context, preferences — anything person-specific. Loaded into the prompt only when *that* user is talking to the agent, so multi-user setups stay clean.
+One file per user, holding name, location, communication preferences, work context, interests — anything person-specific. Loaded into the prompt only when *that* user is talking to the agent, so multi-user setups stay clean.
 
 The agent maintains the file as it learns about the user.
 
