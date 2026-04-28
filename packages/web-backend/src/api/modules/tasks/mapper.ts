@@ -1,4 +1,5 @@
 import type { Task } from '@openagent/core'
+import type { TaskProviderFilterOption } from './service.js'
 import type { TaskTimelineEvent } from './types.js'
 
 export function mapTasksListResponse(input: {
@@ -6,6 +7,7 @@ export function mapTasksListResponse(input: {
   page: number
   limit: number
   total: number
+  providerOptions?: TaskProviderFilterOption[]
 }) {
   return {
     tasks: input.tasks,
@@ -15,6 +17,7 @@ export function mapTasksListResponse(input: {
       total: input.total,
       totalPages: Math.ceil(input.total / input.limit),
     },
+    providerOptions: input.providerOptions ?? [],
   }
 }
 
