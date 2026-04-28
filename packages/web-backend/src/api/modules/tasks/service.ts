@@ -128,14 +128,14 @@ export class TasksService {
     // here so the dropdown still shows sibling options while one provider is
     // selected.
     let sql = `
-      SELECT provider, model, is_default_model
+      SELECT provider, model, MAX(is_default_model) AS is_default_model
       FROM tasks
       WHERE 1=1
         AND (provider IS NOT NULL OR model IS NOT NULL OR is_default_model = 1)
     `
     const filterClause = buildTaskFilterClause(input, { includeProviderModel: false })
     sql += filterClause.sql
-    sql += ' GROUP BY provider, model, is_default_model ORDER BY lower(provider), lower(model)'
+    sql += ' GROUP BY provider, model ORDER BY lower(provider), lower(model)'
 
     const rows = this.options.db.prepare(sql).all(...filterClause.params) as Array<{
       provider: string | null
