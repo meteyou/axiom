@@ -1,6 +1,6 @@
 import type { Task, TaskProviderFilterOption } from '~/api/tasks'
 import { useTasksApi } from '~/api/tasks'
-import { createDefaultTaskDateRange } from '../utils/dateFilters'
+import { createDefaultTaskDateRange, formatTaskCreatedAtBoundary } from '../utils/dateFilters'
 
 export const TASK_DEFAULT_PROVIDER_FILTER = '__default__'
 
@@ -84,8 +84,8 @@ export function useTasksList() {
         status: filters.status || undefined,
         triggerType: filters.triggerType || undefined,
         ...providerFilter,
-        createdFrom: filters.createdFrom || undefined,
-        createdTo: filters.createdTo || undefined,
+        createdFrom: formatTaskCreatedAtBoundary(filters.createdFrom, 'start'),
+        createdTo: formatTaskCreatedAtBoundary(filters.createdTo, 'end'),
       })
 
       providerOptions.value = data.providerOptions ?? []
