@@ -188,6 +188,17 @@ describe('tasks route module', () => {
     expect(body.error).toContain('created_to must be greater than or equal to created_from')
   })
 
+  it('returns 400 when a created date is not a real calendar date', async () => {
+    const res = await fetch(`${baseUrl}/api/tasks?created_from=2026-04-31`, {
+      headers: authHeaders(),
+    })
+
+    const body = await res.json() as { error: string }
+
+    expect(res.status).toBe(400)
+    expect(body.error).toContain('Invalid created_from filter')
+  })
+
   it('returns task details and 404 for missing task', async () => {
     const task = createTask({ name: 'Detail task' })
 

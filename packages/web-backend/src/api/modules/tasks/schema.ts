@@ -38,13 +38,28 @@ function toOptionalString(value: unknown): string | undefined {
   return undefined
 }
 
+function isValidDateOnly(year: number, month: number, day: number): boolean {
+  const date = new Date(Date.UTC(year, month - 1, day))
+  return date.getUTCFullYear() === year
+    && date.getUTCMonth() === month - 1
+    && date.getUTCDate() === day
+}
+
 function normalizeDateBoundary(value: string, boundary: 'start' | 'end'): string | null | undefined {
   const trimmed = value.trim()
   if (!trimmed) return undefined
 
-  const dateOnlyMatch = /^(\d{4}-\d{2}-\d{2})$/.exec(trimmed)
+  const dateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed)
   if (dateOnlyMatch) {
-    return `${dateOnlyMatch[1]} ${boundary === 'start' ? '00:00:00' : '23:59:59'}`
+    const [, yearRaw, monthRaw, dayRaw] = dateOnlyMatch
+    const year = Number(yearRaw)
+    const month = Number(monthRaw)
+    const day = Number(dayRaw)
+    if (!isValidDateOnly(year, month, day)) {
+      return null
+    }
+
+    return `${yearRaw}-${monthRaw}-${dayRaw} ${boundary === 'start' ? '00:00:00' : '23:59:59'}`
   }
 
   const date = new Date(trimmed)
