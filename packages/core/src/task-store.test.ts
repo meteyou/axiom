@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { initDatabase } from './database.js'
-import { TaskStore } from './task-store.js'
+import { buildTaskFilterClause, TaskStore } from './task-store.js'
 import type { Database } from './database.js'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -197,6 +197,17 @@ describe('TaskStore', () => {
       const tasks = store.list({ createdFrom: '2024-01-02 00:00:00', createdTo: '2024-01-03 23:59:59' })
       expect(tasks).toHaveLength(1)
       expect(tasks[0].name).toBe('Recent Task')
+    })
+
+    it('keeps created date filters sargable for indexes', () => {
+      const clause = buildTaskFilterClause({
+        createdFrom: '2024-01-02 00:00:00',
+        createdTo: '2024-01-03 23:59:59',
+      })
+
+      expect(clause.sql).toContain('created_at >= ?')
+      expect(clause.sql).toContain('created_at <= ?')
+      expect(clause.sql).not.toContain('datetime(created_at)')
     })
 
     it('supports limit and offset', () => {

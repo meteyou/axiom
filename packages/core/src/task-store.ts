@@ -118,11 +118,11 @@ export function buildTaskFilterClause(
     params.push(filters.model)
   }
   if (filters?.createdFrom) {
-    sql += ' AND datetime(created_at) >= datetime(?)'
+    sql += ' AND created_at >= ?'
     params.push(filters.createdFrom)
   }
   if (filters?.createdTo) {
-    sql += ' AND datetime(created_at) <= datetime(?)'
+    sql += ' AND created_at <= ?'
     params.push(filters.createdTo)
   }
 
