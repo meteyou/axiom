@@ -823,7 +823,11 @@
     "killSuccess": "Task killed successfully.",
     "filters": {
       "allStatuses": "All statuses",
-      "allTriggers": "All triggers"
+      "allTriggers": "All triggers",
+      "allProviders": "All providers",
+      "defaultProvider": "Default",
+      "fromDate": "From",
+      "toDate": "To"
     },
     "columns": {
       "name": "Name",

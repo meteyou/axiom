@@ -823,7 +823,11 @@
     "killSuccess": "Aufgabe erfolgreich beendet.",
     "filters": {
       "allStatuses": "Alle Status",
-      "allTriggers": "Alle Auslöser"
+      "allTriggers": "Alle Auslöser",
+      "allProviders": "Alle Provider",
+      "defaultProvider": "Standard",
+      "fromDate": "Von",
+      "toDate": "Bis"
     },
     "columns": {
       "name": "Name",

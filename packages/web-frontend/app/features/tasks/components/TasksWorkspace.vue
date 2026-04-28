@@ -12,8 +12,8 @@
 
     <!-- Filter toolbar -->
     <div class="flex-shrink-0 border-b border-border px-5 py-3">
-      <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <div class="flex flex-1 items-center gap-2">
+      <div class="flex flex-col gap-2 lg:flex-row lg:items-center">
+        <div class="flex flex-1 flex-wrap items-center gap-2">
           <Select v-model="filters.status" @update:model-value="onFilterChange">
             <SelectTrigger class="w-full sm:w-[160px]">
               <SelectValue />
@@ -40,6 +40,47 @@
               <SelectItem value="consolidation">{{ $t('tasks.trigger.consolidation') }}</SelectItem>
             </SelectContent>
           </Select>
+
+          <Select v-model="filters.providerFilter" @update:model-value="onFilterChange">
+            <SelectTrigger class="w-full sm:w-[240px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">{{ $t('tasks.filters.allProviders') }}</SelectItem>
+              <SelectItem v-if="hasDefaultProviderFilter" :value="TASK_DEFAULT_PROVIDER_FILTER">
+                {{ $t('tasks.filters.defaultProvider') }}
+              </SelectItem>
+              <SelectItem
+                v-for="option in providerModelFilterOptions"
+                :key="option.value"
+                :value="option.value"
+              >
+                {{ option.label }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-muted-foreground">{{ $t('tasks.filters.fromDate') }}</span>
+            <Input
+              v-model="filters.createdFrom"
+              type="date"
+              class="w-[145px]"
+              :aria-label="$t('tasks.filters.fromDate')"
+              @change="onFilterChange"
+            />
+          </div>
+
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-muted-foreground">{{ $t('tasks.filters.toDate') }}</span>
+            <Input
+              v-model="filters.createdTo"
+              type="date"
+              class="w-[145px]"
+              :aria-label="$t('tasks.filters.toDate')"
+              @change="onFilterChange"
+            />
+          </div>
         </div>
 
         <Button variant="outline" :disabled="loading" class="gap-2" @click="loadTasks(pagination.page)">
@@ -242,7 +283,11 @@
 <script setup lang="ts">
 import type { Task } from '~/api/tasks'
 import TaskEventsViewer from '~/features/tasks/components/TaskEventsViewer.vue'
-import { useTasksList } from '~/features/tasks/composables/useTasksList'
+import {
+  TASK_DEFAULT_PROVIDER_FILTER,
+  encodeTaskProviderModelFilter,
+  useTasksList,
+} from '~/features/tasks/composables/useTasksList'
 
 const { locale, t } = useI18n()
 const { formatNumber, formatCurrency } = useFormat()
@@ -270,6 +315,7 @@ function onTaskRestarted(newTaskId: string) {
 
 const {
   tasks,
+  providerOptions,
   sortedTasks,
   loading,
   error,
@@ -283,6 +329,28 @@ const {
   startPolling,
   stopPolling,
 } = useTasksList()
+
+const hasDefaultProviderFilter = computed(() =>
+  providerOptions.value.some(option => option.isDefaultModel === true),
+)
+
+const providerModelFilterOptions = computed(() => {
+  const seen = new Set<string>()
+
+  return providerOptions.value
+    .filter((option): option is { provider: string; model: string; isDefaultModel: boolean | null } =>
+      Boolean(option.provider && option.model),
+    )
+    .map((option) => ({
+      value: encodeTaskProviderModelFilter(option.provider, option.model),
+      label: `${option.provider} (${option.model})`,
+    }))
+    .filter((option) => {
+      if (seen.has(option.value)) return false
+      seen.add(option.value)
+      return true
+    })
+})
 
 const killDialog = reactive({
   open: false,

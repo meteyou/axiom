@@ -1,10 +1,47 @@
-import type { Task } from '~/api/tasks'
+import type { Task, TaskProviderFilterOption } from '~/api/tasks'
 import { useTasksApi } from '~/api/tasks'
+
+export const TASK_DEFAULT_PROVIDER_FILTER = '__default__'
+
+const DEFAULT_DATE_RANGE_DAYS = 3
+
+function formatDateInputValue(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function createDefaultDateRange() {
+  const to = new Date()
+  const from = new Date(to)
+  from.setDate(to.getDate() - (DEFAULT_DATE_RANGE_DAYS - 1))
+
+  return {
+    createdFrom: formatDateInputValue(from),
+    createdTo: formatDateInputValue(to),
+  }
+}
+
+export function encodeTaskProviderModelFilter(provider: string, model: string): string {
+  return `${encodeURIComponent(provider)}|${encodeURIComponent(model)}`
+}
+
+function decodeTaskProviderModelFilter(value: string): { provider: string; model: string } | null {
+  const [provider, model] = value.split('|')
+  if (!provider || !model) return null
+
+  return {
+    provider: decodeURIComponent(provider),
+    model: decodeURIComponent(model),
+  }
+}
 
 export function useTasksList() {
   const tasksApi = useTasksApi()
 
   const tasks = ref<Task[]>([])
+  const providerOptions = ref<TaskProviderFilterOption[]>([])
   const loading = ref(false)
   const error = ref<string | null>(null)
   const pagination = ref({
@@ -14,9 +51,13 @@ export function useTasksList() {
     totalPages: 0,
   })
 
+  const defaultDateRange = createDefaultDateRange()
   const filters = reactive({
     status: '' as string,
     triggerType: '' as string,
+    providerFilter: '' as string,
+    createdFrom: defaultDateRange.createdFrom,
+    createdTo: defaultDateRange.createdTo,
   })
 
   const sortField = ref<string>('createdAt')
@@ -28,19 +69,51 @@ export function useTasksList() {
     tasks.value.some(task => task.status === 'running'),
   )
 
-  async function loadTasks(page: number = 1, { silent = false }: { silent?: boolean } = {}) {
+  function isProviderFilterAvailable(value: string): boolean {
+    if (!value) return true
+    if (value === TASK_DEFAULT_PROVIDER_FILTER) {
+      return providerOptions.value.some(option => option.isDefaultModel === true)
+    }
+
+    const decoded = decodeTaskProviderModelFilter(value)
+    if (!decoded) return false
+
+    return providerOptions.value.some(option =>
+      option.provider === decoded.provider && option.model === decoded.model,
+    )
+  }
+
+  async function loadTasks(
+    page: number = 1,
+    { silent = false, allowProviderReset = true }: { silent?: boolean; allowProviderReset?: boolean } = {},
+  ) {
     if (!silent) {
       loading.value = true
     }
     error.value = null
 
     try {
+      const providerFilter = filters.providerFilter === TASK_DEFAULT_PROVIDER_FILTER
+        ? { isDefaultModel: true }
+        : decodeTaskProviderModelFilter(filters.providerFilter) ?? {}
+
       const data = await tasksApi.listTasks({
         page,
         limit: pagination.value.limit,
         status: filters.status || undefined,
         triggerType: filters.triggerType || undefined,
+        ...providerFilter,
+        createdFrom: filters.createdFrom || undefined,
+        createdTo: filters.createdTo || undefined,
       })
+
+      providerOptions.value = data.providerOptions ?? []
+
+      if (allowProviderReset && filters.providerFilter && !isProviderFilterAvailable(filters.providerFilter)) {
+        filters.providerFilter = ''
+        await loadTasks(1, { silent, allowProviderReset: false })
+        return
+      }
 
       tasks.value = data.tasks
       pagination.value = data.pagination
@@ -114,6 +187,7 @@ export function useTasksList() {
 
   return {
     tasks,
+    providerOptions,
     sortedTasks,
     loading,
     error,
