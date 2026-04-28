@@ -71,6 +71,11 @@ export interface UpdateTaskInput {
 export interface TaskListFilters {
   status?: TaskStatus
   triggerType?: TaskTriggerType
+  provider?: string
+  model?: string
+  isDefaultModel?: boolean
+  createdFrom?: string
+  createdTo?: string
   limit?: number
   offset?: number
 }
@@ -220,6 +225,26 @@ export class TaskStore {
     if (filters?.triggerType) {
       sql += ' AND trigger_type = ?'
       params.push(filters.triggerType)
+    }
+    if (filters?.isDefaultModel !== undefined) {
+      sql += ' AND is_default_model = ?'
+      params.push(filters.isDefaultModel ? 1 : 0)
+    }
+    if (filters?.provider) {
+      sql += ' AND provider = ?'
+      params.push(filters.provider)
+    }
+    if (filters?.model) {
+      sql += ' AND model = ?'
+      params.push(filters.model)
+    }
+    if (filters?.createdFrom) {
+      sql += ' AND datetime(created_at) >= datetime(?)'
+      params.push(filters.createdFrom)
+    }
+    if (filters?.createdTo) {
+      sql += ' AND datetime(created_at) <= datetime(?)'
+      params.push(filters.createdTo)
     }
 
     sql += ' ORDER BY created_at DESC'
