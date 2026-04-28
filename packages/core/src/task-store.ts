@@ -80,6 +80,55 @@ export interface TaskListFilters {
   offset?: number
 }
 
+export interface TaskFilterClauseOptions {
+  includeProviderModel?: boolean
+}
+
+export interface TaskFilterClause {
+  sql: string
+  params: unknown[]
+}
+
+export function buildTaskFilterClause(
+  filters?: TaskListFilters,
+  options: TaskFilterClauseOptions = {},
+): TaskFilterClause {
+  const includeProviderModel = options.includeProviderModel ?? true
+  let sql = ''
+  const params: unknown[] = []
+
+  if (filters?.status) {
+    sql += ' AND status = ?'
+    params.push(filters.status)
+  }
+  if (filters?.triggerType) {
+    sql += ' AND trigger_type = ?'
+    params.push(filters.triggerType)
+  }
+  if (includeProviderModel && filters?.isDefaultModel !== undefined) {
+    sql += ' AND is_default_model = ?'
+    params.push(filters.isDefaultModel ? 1 : 0)
+  }
+  if (includeProviderModel && filters?.provider) {
+    sql += ' AND provider = ?'
+    params.push(filters.provider)
+  }
+  if (includeProviderModel && filters?.model) {
+    sql += ' AND model = ?'
+    params.push(filters.model)
+  }
+  if (filters?.createdFrom) {
+    sql += ' AND datetime(created_at) >= datetime(?)'
+    params.push(filters.createdFrom)
+  }
+  if (filters?.createdTo) {
+    sql += ' AND datetime(created_at) <= datetime(?)'
+    params.push(filters.createdTo)
+  }
+
+  return { sql, params }
+}
+
 // Raw row from SQLite
 interface TaskRow {
   id: string
@@ -216,36 +265,9 @@ export class TaskStore {
    */
   list(filters?: TaskListFilters): Task[] {
     let sql = 'SELECT * FROM tasks WHERE 1=1'
-    const params: unknown[] = []
-
-    if (filters?.status) {
-      sql += ' AND status = ?'
-      params.push(filters.status)
-    }
-    if (filters?.triggerType) {
-      sql += ' AND trigger_type = ?'
-      params.push(filters.triggerType)
-    }
-    if (filters?.isDefaultModel !== undefined) {
-      sql += ' AND is_default_model = ?'
-      params.push(filters.isDefaultModel ? 1 : 0)
-    }
-    if (filters?.provider) {
-      sql += ' AND provider = ?'
-      params.push(filters.provider)
-    }
-    if (filters?.model) {
-      sql += ' AND model = ?'
-      params.push(filters.model)
-    }
-    if (filters?.createdFrom) {
-      sql += ' AND datetime(created_at) >= datetime(?)'
-      params.push(filters.createdFrom)
-    }
-    if (filters?.createdTo) {
-      sql += ' AND datetime(created_at) <= datetime(?)'
-      params.push(filters.createdTo)
-    }
+    const filterClause = buildTaskFilterClause(filters)
+    sql += filterClause.sql
+    const params = filterClause.params
 
     sql += ' ORDER BY created_at DESC'
 

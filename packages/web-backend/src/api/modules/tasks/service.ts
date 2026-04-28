@@ -1,4 +1,4 @@
-import { TaskStore, getToolCalls, resolveProviderModelInput } from '@openagent/core'
+import { TaskStore, buildTaskFilterClause, getToolCalls, resolveProviderModelInput } from '@openagent/core'
 import type {
   Database,
   ProviderConfig,
@@ -111,45 +111,11 @@ export class TasksService {
       ? runtime.list(listFilters)
       : this.store.list(listFilters)
 
-    let countSql = 'SELECT COUNT(*) as count FROM tasks WHERE 1=1'
-    const countParams: unknown[] = []
-
-    if (input.status) {
-      countSql += ' AND status = ?'
-      countParams.push(input.status)
-    }
-
-    if (input.triggerType) {
-      countSql += ' AND trigger_type = ?'
-      countParams.push(input.triggerType)
-    }
-
-    if (input.isDefaultModel !== undefined) {
-      countSql += ' AND is_default_model = ?'
-      countParams.push(input.isDefaultModel ? 1 : 0)
-    }
-
-    if (input.provider) {
-      countSql += ' AND provider = ?'
-      countParams.push(input.provider)
-    }
-
-    if (input.model) {
-      countSql += ' AND model = ?'
-      countParams.push(input.model)
-    }
-
-    if (input.createdFrom) {
-      countSql += ' AND datetime(created_at) >= datetime(?)'
-      countParams.push(input.createdFrom)
-    }
-
-    if (input.createdTo) {
-      countSql += ' AND datetime(created_at) <= datetime(?)'
-      countParams.push(input.createdTo)
-    }
-
-    const total = (this.options.db.prepare(countSql).get(...countParams) as { count: number }).count
+    const countFilterClause = buildTaskFilterClause(input)
+    const countSql = `SELECT COUNT(*) as count FROM tasks WHERE 1=1${countFilterClause.sql}`
+    const total = (
+      this.options.db.prepare(countSql).get(...countFilterClause.params) as { count: number }
+    ).count
     const providerOptions = this.listProviderFilterOptions(input)
 
     return { tasks, total, providerOptions }
@@ -158,39 +124,20 @@ export class TasksService {
   private listProviderFilterOptions(input: ListTasksInput): TaskProviderFilterOption[] {
     // Provider choices must come from historical task rows for the current
     // non-provider filters (especially date range), not from today's provider
-    // configuration. Intentionally ignore input.provider/model here so the
-    // dropdown still shows sibling options while one provider is selected.
+    // configuration. Intentionally ignore input.provider/model/isDefaultModel
+    // here so the dropdown still shows sibling options while one provider is
+    // selected.
     let sql = `
       SELECT provider, model, is_default_model
       FROM tasks
       WHERE 1=1
         AND (provider IS NOT NULL OR model IS NOT NULL OR is_default_model = 1)
     `
-    const params: unknown[] = []
-
-    if (input.status) {
-      sql += ' AND status = ?'
-      params.push(input.status)
-    }
-
-    if (input.triggerType) {
-      sql += ' AND trigger_type = ?'
-      params.push(input.triggerType)
-    }
-
-    if (input.createdFrom) {
-      sql += ' AND datetime(created_at) >= datetime(?)'
-      params.push(input.createdFrom)
-    }
-
-    if (input.createdTo) {
-      sql += ' AND datetime(created_at) <= datetime(?)'
-      params.push(input.createdTo)
-    }
-
+    const filterClause = buildTaskFilterClause(input, { includeProviderModel: false })
+    sql += filterClause.sql
     sql += ' GROUP BY provider, model, is_default_model ORDER BY lower(provider), lower(model)'
 
-    const rows = this.options.db.prepare(sql).all(...params) as Array<{
+    const rows = this.options.db.prepare(sql).all(...filterClause.params) as Array<{
       provider: string | null
       model: string | null
       is_default_model: number | null
