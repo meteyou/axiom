@@ -30,8 +30,19 @@ export interface TasksServiceOptions {
 export interface ListTasksInput {
   status?: TaskStatus
   triggerType?: TaskTriggerType
+  provider?: string
+  model?: string
+  isDefaultModel?: boolean
+  createdFrom?: string
+  createdTo?: string
   limit: number
   offset: number
+}
+
+export interface TaskProviderFilterOption {
+  provider: string | null
+  model: string | null
+  isDefaultModel: boolean | null
 }
 
 export class TaskNotFoundError extends Error {
@@ -82,21 +93,23 @@ export class TasksService {
     return this.options.getTaskRuntime?.() ?? null
   }
 
-  listTasks(input: ListTasksInput): { tasks: Task[]; total: number } {
+  listTasks(input: ListTasksInput): { tasks: Task[]; total: number; providerOptions: TaskProviderFilterOption[] } {
+    const listFilters = {
+      status: input.status,
+      triggerType: input.triggerType,
+      provider: input.provider,
+      model: input.model,
+      isDefaultModel: input.isDefaultModel,
+      createdFrom: input.createdFrom,
+      createdTo: input.createdTo,
+      limit: input.limit,
+      offset: input.offset,
+    }
+
     const runtime = this.getRuntime()
     const tasks = runtime
-      ? runtime.list({
-          status: input.status,
-          triggerType: input.triggerType,
-          limit: input.limit,
-          offset: input.offset,
-        })
-      : this.store.list({
-          status: input.status,
-          triggerType: input.triggerType,
-          limit: input.limit,
-          offset: input.offset,
-        })
+      ? runtime.list(listFilters)
+      : this.store.list(listFilters)
 
     let countSql = 'SELECT COUNT(*) as count FROM tasks WHERE 1=1'
     const countParams: unknown[] = []
@@ -111,9 +124,86 @@ export class TasksService {
       countParams.push(input.triggerType)
     }
 
-    const total = (this.options.db.prepare(countSql).get(...countParams) as { count: number }).count
+    if (input.isDefaultModel !== undefined) {
+      countSql += ' AND is_default_model = ?'
+      countParams.push(input.isDefaultModel ? 1 : 0)
+    }
 
-    return { tasks, total }
+    if (input.provider) {
+      countSql += ' AND provider = ?'
+      countParams.push(input.provider)
+    }
+
+    if (input.model) {
+      countSql += ' AND model = ?'
+      countParams.push(input.model)
+    }
+
+    if (input.createdFrom) {
+      countSql += ' AND datetime(created_at) >= datetime(?)'
+      countParams.push(input.createdFrom)
+    }
+
+    if (input.createdTo) {
+      countSql += ' AND datetime(created_at) <= datetime(?)'
+      countParams.push(input.createdTo)
+    }
+
+    const total = (this.options.db.prepare(countSql).get(...countParams) as { count: number }).count
+    const providerOptions = this.listProviderFilterOptions(input)
+
+    return { tasks, total, providerOptions }
+  }
+
+  private listProviderFilterOptions(input: ListTasksInput): TaskProviderFilterOption[] {
+    // Provider choices must come from historical task rows for the current
+    // non-provider filters (especially date range), not from today's provider
+    // configuration. Intentionally ignore input.provider/model here so the
+    // dropdown still shows sibling options while one provider is selected.
+    let sql = `
+      SELECT provider, model, is_default_model
+      FROM tasks
+      WHERE 1=1
+        AND (provider IS NOT NULL OR model IS NOT NULL OR is_default_model = 1)
+    `
+    const params: unknown[] = []
+
+    if (input.status) {
+      sql += ' AND status = ?'
+      params.push(input.status)
+    }
+
+    if (input.triggerType) {
+      sql += ' AND trigger_type = ?'
+      params.push(input.triggerType)
+    }
+
+    if (input.createdFrom) {
+      sql += ' AND datetime(created_at) >= datetime(?)'
+      params.push(input.createdFrom)
+    }
+
+    if (input.createdTo) {
+      sql += ' AND datetime(created_at) <= datetime(?)'
+      params.push(input.createdTo)
+    }
+
+    sql += ' GROUP BY provider, model, is_default_model ORDER BY lower(provider), lower(model)'
+
+    const rows = this.options.db.prepare(sql).all(...params) as Array<{
+      provider: string | null
+      model: string | null
+      is_default_model: number | null
+    }>
+
+    return rows.map(row => ({
+      provider: row.provider,
+      model: row.model,
+      isDefaultModel:
+        row.is_default_model === null || row.is_default_model === undefined
+          ? null
+          : row.is_default_model === 1,
+    }))
   }
 
   getTaskById(id: string): Task | null {
