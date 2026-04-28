@@ -90,7 +90,7 @@ export function useTasksList() {
 
       providerOptions.value = data.providerOptions ?? []
 
-      if (allowProviderReset && filters.providerFilter && !isProviderFilterAvailable(filters.providerFilter)) {
+      if (!silent && allowProviderReset && filters.providerFilter && !isProviderFilterAvailable(filters.providerFilter)) {
         filters.providerFilter = ''
         await loadTasks(1, { silent, allowProviderReset: false })
         return
