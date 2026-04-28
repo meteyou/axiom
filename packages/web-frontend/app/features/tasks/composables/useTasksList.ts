@@ -1,27 +1,8 @@
 import type { Task, TaskProviderFilterOption } from '~/api/tasks'
 import { useTasksApi } from '~/api/tasks'
+import { createDefaultTaskDateRange } from '../utils/dateFilters'
 
 export const TASK_DEFAULT_PROVIDER_FILTER = '__default__'
-
-const DEFAULT_DATE_RANGE_DAYS = 3
-
-function formatDateInputValue(date: Date): string {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
-
-function createDefaultDateRange() {
-  const to = new Date()
-  const from = new Date(to)
-  from.setDate(to.getDate() - (DEFAULT_DATE_RANGE_DAYS - 1))
-
-  return {
-    createdFrom: formatDateInputValue(from),
-    createdTo: formatDateInputValue(to),
-  }
-}
 
 export function encodeTaskProviderModelFilter(provider: string, model: string): string {
   return `${encodeURIComponent(provider)}|${encodeURIComponent(model)}`
@@ -51,7 +32,7 @@ export function useTasksList() {
     totalPages: 0,
   })
 
-  const defaultDateRange = createDefaultDateRange()
+  const defaultDateRange = createDefaultTaskDateRange()
   const filters = reactive({
     status: '' as string,
     triggerType: '' as string,
