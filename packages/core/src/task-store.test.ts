@@ -364,5 +364,14 @@ describe('TaskStore', () => {
       expect(colNames).toContain('completed_at')
       expect(colNames).toContain('session_id')
     })
+
+    it('indexes task provider filters', () => {
+      const indexes = db.prepare('PRAGMA index_list(tasks)').all() as { name: string }[]
+      const indexNames = indexes.map(index => index.name)
+
+      expect(indexNames).toContain('idx_tasks_provider_model_created_at')
+      expect(indexNames).toContain('idx_tasks_model_created_at')
+      expect(indexNames).toContain('idx_tasks_is_default_model_created_at')
+    })
   })
 })

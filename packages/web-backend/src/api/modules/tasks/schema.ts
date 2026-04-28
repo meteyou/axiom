@@ -100,6 +100,10 @@ export function parseListTasksQuery(query: Record<string, unknown>): ParseResult
     return { ok: false, error: 'Invalid created_to filter. Must be a date or ISO date-time.' }
   }
 
+  if (createdFrom && createdTo && createdTo < createdFrom) {
+    return { ok: false, error: 'Invalid date range. created_to must be greater than or equal to created_from.' }
+  }
+
   return {
     ok: true,
     value: {
