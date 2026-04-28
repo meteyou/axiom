@@ -161,6 +161,44 @@ describe('TaskStore', () => {
       expect(agentTasks[0].name).toBe('Agent Task')
     })
 
+    it('filters by default-provider flag and provider/model', () => {
+      store.create({
+        name: 'Default Task',
+        prompt: 'p1',
+        triggerType: 'agent',
+        provider: 'OpenAI',
+        model: 'gpt-4o',
+        isDefaultModel: true,
+      })
+      store.create({
+        name: 'Pinned Task',
+        prompt: 'p2',
+        triggerType: 'agent',
+        provider: 'Anthropic',
+        model: 'claude-sonnet-4-5',
+        isDefaultModel: false,
+      })
+
+      const defaultTasks = store.list({ isDefaultModel: true })
+      expect(defaultTasks).toHaveLength(1)
+      expect(defaultTasks[0].name).toBe('Default Task')
+
+      const providerModelTasks = store.list({ provider: 'Anthropic', model: 'claude-sonnet-4-5' })
+      expect(providerModelTasks).toHaveLength(1)
+      expect(providerModelTasks[0].name).toBe('Pinned Task')
+    })
+
+    it('filters by created date range', () => {
+      const oldTask = store.create({ name: 'Old Task', prompt: 'p1', triggerType: 'agent' })
+      const recentTask = store.create({ name: 'Recent Task', prompt: 'p2', triggerType: 'agent' })
+      db.prepare('UPDATE tasks SET created_at = ? WHERE id = ?').run('2024-01-01 10:00:00', oldTask.id)
+      db.prepare('UPDATE tasks SET created_at = ? WHERE id = ?').run('2024-01-03 10:00:00', recentTask.id)
+
+      const tasks = store.list({ createdFrom: '2024-01-02 00:00:00', createdTo: '2024-01-03 23:59:59' })
+      expect(tasks).toHaveLength(1)
+      expect(tasks[0].name).toBe('Recent Task')
+    })
+
     it('supports limit and offset', () => {
       for (let i = 0; i < 5; i++) {
         store.create({ name: `Task ${i}`, prompt: `p${i}`, triggerType: 'agent' })
