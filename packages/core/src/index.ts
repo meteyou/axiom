@@ -190,8 +190,18 @@ export type { AgentRuntimeBoundary, AgentRuntimeOptions, AgentRuntimePiAgentAcce
 export type { AgentRuntimeStateSnapshot } from './agent-runtime-types.js'
 export { ProviderManager } from './provider-manager.js'
 export type { OperatingMode, ProviderManagerEvents } from './provider-manager.js'
-export { TaskStore, initTasksTable } from './task-store.js'
-export type { Task, TaskStatus, TaskTriggerType, TaskResultStatus, CreateTaskInput, UpdateTaskInput, TaskListFilters } from './task-store.js'
+export { TaskStore, initTasksTable, buildTaskFilterClause } from './task-store.js'
+export type {
+  Task,
+  TaskStatus,
+  TaskTriggerType,
+  TaskResultStatus,
+  CreateTaskInput,
+  UpdateTaskInput,
+  TaskListFilters,
+  TaskFilterClause,
+  TaskFilterClauseOptions,
+} from './task-store.js'
 export { TaskRunner, formatTaskInjection } from './task-runner.js'
 export type { TaskRunnerOptions, TaskOverrides } from './task-runner.js'
 export { createTaskRuntime } from './task-runtime.js'

@@ -9,6 +9,11 @@ export interface ListTasksQuery {
   offset: number
   status?: TaskStatus
   triggerType?: TaskTriggerType
+  provider?: string
+  model?: string
+  isDefaultModel?: boolean
+  createdFrom?: string
+  createdTo?: string
 }
 
 interface ParseSuccess<T> {
@@ -33,6 +38,38 @@ function toOptionalString(value: unknown): string | undefined {
   return undefined
 }
 
+function isValidDateOnly(year: number, month: number, day: number): boolean {
+  const date = new Date(Date.UTC(year, month - 1, day))
+  return date.getUTCFullYear() === year
+    && date.getUTCMonth() === month - 1
+    && date.getUTCDate() === day
+}
+
+function normalizeDateBoundary(value: string, boundary: 'start' | 'end'): string | null | undefined {
+  const trimmed = value.trim()
+  if (!trimmed) return undefined
+
+  const dateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed)
+  if (dateOnlyMatch) {
+    const [, yearRaw, monthRaw, dayRaw] = dateOnlyMatch
+    const year = Number(yearRaw)
+    const month = Number(monthRaw)
+    const day = Number(dayRaw)
+    if (!isValidDateOnly(year, month, day)) {
+      return null
+    }
+
+    return `${yearRaw}-${monthRaw}-${dayRaw} ${boundary === 'start' ? '00:00:00' : '23:59:59'}`
+  }
+
+  const date = new Date(trimmed)
+  if (Number.isNaN(date.getTime())) {
+    return null
+  }
+
+  return date.toISOString().replace('T', ' ').slice(0, 19)
+}
+
 export function parseListTasksQuery(query: Record<string, unknown>): ParseResult<ListTasksQuery> {
   const page = Math.max(1, Number.parseInt(toOptionalString(query.page) ?? '', 10) || 1)
   const limit = Math.min(100, Math.max(1, Number.parseInt(toOptionalString(query.limit) ?? '', 10) || 20))
@@ -40,6 +77,11 @@ export function parseListTasksQuery(query: Record<string, unknown>): ParseResult
 
   const statusParam = toOptionalString(query.status)
   const triggerTypeParam = toOptionalString(query.trigger_type)
+  const providerParam = toOptionalString(query.provider)?.trim()
+  const modelParam = toOptionalString(query.model)?.trim()
+  const isDefaultModelParam = toOptionalString(query.is_default_model)
+  const createdFromParam = toOptionalString(query.created_from)
+  const createdToParam = toOptionalString(query.created_to)
 
   if (statusParam && !VALID_STATUSES.includes(statusParam as TaskStatus)) {
     return {
@@ -55,6 +97,28 @@ export function parseListTasksQuery(query: Record<string, unknown>): ParseResult
     }
   }
 
+  let isDefaultModel: boolean | undefined
+  if (isDefaultModelParam) {
+    if (isDefaultModelParam !== 'true' && isDefaultModelParam !== 'false') {
+      return { ok: false, error: 'Invalid is_default_model filter. Must be true or false.' }
+    }
+    isDefaultModel = isDefaultModelParam === 'true'
+  }
+
+  const createdFrom = createdFromParam ? normalizeDateBoundary(createdFromParam, 'start') : undefined
+  if (createdFrom === null) {
+    return { ok: false, error: 'Invalid created_from filter. Must be a date or ISO date-time.' }
+  }
+
+  const createdTo = createdToParam ? normalizeDateBoundary(createdToParam, 'end') : undefined
+  if (createdTo === null) {
+    return { ok: false, error: 'Invalid created_to filter. Must be a date or ISO date-time.' }
+  }
+
+  if (createdFrom && createdTo && createdTo < createdFrom) {
+    return { ok: false, error: 'Invalid date range. created_to must be greater than or equal to created_from.' }
+  }
+
   return {
     ok: true,
     value: {
@@ -63,6 +127,11 @@ export function parseListTasksQuery(query: Record<string, unknown>): ParseResult
       offset,
       status: statusParam as TaskStatus | undefined,
       triggerType: triggerTypeParam as TaskTriggerType | undefined,
+      provider: providerParam || undefined,
+      model: modelParam || undefined,
+      isDefaultModel,
+      createdFrom,
+      createdTo,
     },
   }
 }

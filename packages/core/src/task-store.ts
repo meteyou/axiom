@@ -71,8 +71,62 @@ export interface UpdateTaskInput {
 export interface TaskListFilters {
   status?: TaskStatus
   triggerType?: TaskTriggerType
+  provider?: string
+  model?: string
+  isDefaultModel?: boolean
+  createdFrom?: string
+  createdTo?: string
   limit?: number
   offset?: number
+}
+
+export interface TaskFilterClauseOptions {
+  includeProviderModel?: boolean
+}
+
+export interface TaskFilterClause {
+  sql: string
+  params: unknown[]
+}
+
+export function buildTaskFilterClause(
+  filters?: TaskListFilters,
+  options: TaskFilterClauseOptions = {},
+): TaskFilterClause {
+  const includeProviderModel = options.includeProviderModel ?? true
+  let sql = ''
+  const params: unknown[] = []
+
+  if (filters?.status) {
+    sql += ' AND status = ?'
+    params.push(filters.status)
+  }
+  if (filters?.triggerType) {
+    sql += ' AND trigger_type = ?'
+    params.push(filters.triggerType)
+  }
+  if (includeProviderModel && filters?.isDefaultModel !== undefined) {
+    sql += ' AND is_default_model = ?'
+    params.push(filters.isDefaultModel ? 1 : 0)
+  }
+  if (includeProviderModel && filters?.provider) {
+    sql += ' AND provider = ?'
+    params.push(filters.provider)
+  }
+  if (includeProviderModel && filters?.model) {
+    sql += ' AND model = ?'
+    params.push(filters.model)
+  }
+  if (filters?.createdFrom) {
+    sql += ' AND created_at >= ?'
+    params.push(filters.createdFrom)
+  }
+  if (filters?.createdTo) {
+    sql += ' AND created_at <= ?'
+    params.push(filters.createdTo)
+  }
+
+  return { sql, params }
 }
 
 // Raw row from SQLite
@@ -161,6 +215,9 @@ export function initTasksTable(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
     CREATE INDEX IF NOT EXISTS idx_tasks_trigger_type ON tasks(trigger_type);
     CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at);
+    CREATE INDEX IF NOT EXISTS idx_tasks_provider_model_created_at ON tasks(provider, model, created_at);
+    CREATE INDEX IF NOT EXISTS idx_tasks_model_created_at ON tasks(model, created_at);
+    CREATE INDEX IF NOT EXISTS idx_tasks_is_default_model_created_at ON tasks(is_default_model, created_at);
     CREATE INDEX IF NOT EXISTS idx_tasks_session_id ON tasks(session_id);
   `)
 }
@@ -211,16 +268,9 @@ export class TaskStore {
    */
   list(filters?: TaskListFilters): Task[] {
     let sql = 'SELECT * FROM tasks WHERE 1=1'
-    const params: unknown[] = []
-
-    if (filters?.status) {
-      sql += ' AND status = ?'
-      params.push(filters.status)
-    }
-    if (filters?.triggerType) {
-      sql += ' AND trigger_type = ?'
-      params.push(filters.triggerType)
-    }
+    const filterClause = buildTaskFilterClause(filters)
+    sql += filterClause.sql
+    const params = filterClause.params
 
     sql += ' ORDER BY created_at DESC'
 

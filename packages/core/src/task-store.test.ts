@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { initDatabase } from './database.js'
-import { TaskStore } from './task-store.js'
+import { buildTaskFilterClause, TaskStore } from './task-store.js'
 import type { Database } from './database.js'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -159,6 +159,55 @@ describe('TaskStore', () => {
       const agentTasks = store.list({ triggerType: 'agent' })
       expect(agentTasks).toHaveLength(1)
       expect(agentTasks[0].name).toBe('Agent Task')
+    })
+
+    it('filters by default-provider flag and provider/model', () => {
+      store.create({
+        name: 'Default Task',
+        prompt: 'p1',
+        triggerType: 'agent',
+        provider: 'OpenAI',
+        model: 'gpt-4o',
+        isDefaultModel: true,
+      })
+      store.create({
+        name: 'Pinned Task',
+        prompt: 'p2',
+        triggerType: 'agent',
+        provider: 'Anthropic',
+        model: 'claude-sonnet-4-5',
+        isDefaultModel: false,
+      })
+
+      const defaultTasks = store.list({ isDefaultModel: true })
+      expect(defaultTasks).toHaveLength(1)
+      expect(defaultTasks[0].name).toBe('Default Task')
+
+      const providerModelTasks = store.list({ provider: 'Anthropic', model: 'claude-sonnet-4-5' })
+      expect(providerModelTasks).toHaveLength(1)
+      expect(providerModelTasks[0].name).toBe('Pinned Task')
+    })
+
+    it('filters by created date range', () => {
+      const oldTask = store.create({ name: 'Old Task', prompt: 'p1', triggerType: 'agent' })
+      const recentTask = store.create({ name: 'Recent Task', prompt: 'p2', triggerType: 'agent' })
+      db.prepare('UPDATE tasks SET created_at = ? WHERE id = ?').run('2024-01-01 10:00:00', oldTask.id)
+      db.prepare('UPDATE tasks SET created_at = ? WHERE id = ?').run('2024-01-03 10:00:00', recentTask.id)
+
+      const tasks = store.list({ createdFrom: '2024-01-02 00:00:00', createdTo: '2024-01-03 23:59:59' })
+      expect(tasks).toHaveLength(1)
+      expect(tasks[0].name).toBe('Recent Task')
+    })
+
+    it('keeps created date filters sargable for indexes', () => {
+      const clause = buildTaskFilterClause({
+        createdFrom: '2024-01-02 00:00:00',
+        createdTo: '2024-01-03 23:59:59',
+      })
+
+      expect(clause.sql).toContain('created_at >= ?')
+      expect(clause.sql).toContain('created_at <= ?')
+      expect(clause.sql).not.toContain('datetime(created_at)')
     })
 
     it('supports limit and offset', () => {
@@ -325,6 +374,15 @@ describe('TaskStore', () => {
       expect(colNames).toContain('started_at')
       expect(colNames).toContain('completed_at')
       expect(colNames).toContain('session_id')
+    })
+
+    it('indexes task provider filters', () => {
+      const indexes = db.prepare('PRAGMA index_list(tasks)').all() as { name: string }[]
+      const indexNames = indexes.map(index => index.name)
+
+      expect(indexNames).toContain('idx_tasks_provider_model_created_at')
+      expect(indexNames).toContain('idx_tasks_model_created_at')
+      expect(indexNames).toContain('idx_tasks_is_default_model_created_at')
     })
   })
 })

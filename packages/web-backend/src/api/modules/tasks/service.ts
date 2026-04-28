@@ -1,4 +1,4 @@
-import { TaskStore, getToolCalls, resolveProviderModelInput } from '@openagent/core'
+import { TaskStore, buildTaskFilterClause, getToolCalls, resolveProviderModelInput } from '@openagent/core'
 import type {
   Database,
   ProviderConfig,
@@ -30,8 +30,19 @@ export interface TasksServiceOptions {
 export interface ListTasksInput {
   status?: TaskStatus
   triggerType?: TaskTriggerType
+  provider?: string
+  model?: string
+  isDefaultModel?: boolean
+  createdFrom?: string
+  createdTo?: string
   limit: number
   offset: number
+}
+
+export interface TaskProviderFilterOption {
+  provider: string | null
+  model: string | null
+  isDefaultModel: boolean | null
 }
 
 export class TaskNotFoundError extends Error {
@@ -82,38 +93,64 @@ export class TasksService {
     return this.options.getTaskRuntime?.() ?? null
   }
 
-  listTasks(input: ListTasksInput): { tasks: Task[]; total: number } {
+  listTasks(input: ListTasksInput): { tasks: Task[]; total: number; providerOptions: TaskProviderFilterOption[] } {
+    const listFilters = {
+      status: input.status,
+      triggerType: input.triggerType,
+      provider: input.provider,
+      model: input.model,
+      isDefaultModel: input.isDefaultModel,
+      createdFrom: input.createdFrom,
+      createdTo: input.createdTo,
+      limit: input.limit,
+      offset: input.offset,
+    }
+
     const runtime = this.getRuntime()
     const tasks = runtime
-      ? runtime.list({
-          status: input.status,
-          triggerType: input.triggerType,
-          limit: input.limit,
-          offset: input.offset,
-        })
-      : this.store.list({
-          status: input.status,
-          triggerType: input.triggerType,
-          limit: input.limit,
-          offset: input.offset,
-        })
+      ? runtime.list(listFilters)
+      : this.store.list(listFilters)
 
-    let countSql = 'SELECT COUNT(*) as count FROM tasks WHERE 1=1'
-    const countParams: unknown[] = []
+    const countFilterClause = buildTaskFilterClause(input)
+    const countSql = `SELECT COUNT(*) as count FROM tasks WHERE 1=1${countFilterClause.sql}`
+    const total = (
+      this.options.db.prepare(countSql).get(...countFilterClause.params) as { count: number }
+    ).count
+    const providerOptions = this.listProviderFilterOptions(input)
 
-    if (input.status) {
-      countSql += ' AND status = ?'
-      countParams.push(input.status)
-    }
+    return { tasks, total, providerOptions }
+  }
 
-    if (input.triggerType) {
-      countSql += ' AND trigger_type = ?'
-      countParams.push(input.triggerType)
-    }
+  private listProviderFilterOptions(input: ListTasksInput): TaskProviderFilterOption[] {
+    // Provider choices must come from historical task rows for the current
+    // non-provider filters (especially date range), not from today's provider
+    // configuration. Intentionally ignore input.provider/model/isDefaultModel
+    // here so the dropdown still shows sibling options while one provider is
+    // selected.
+    let sql = `
+      SELECT provider, model, MAX(is_default_model) AS is_default_model
+      FROM tasks
+      WHERE 1=1
+        AND (provider IS NOT NULL OR model IS NOT NULL OR is_default_model = 1)
+    `
+    const filterClause = buildTaskFilterClause(input, { includeProviderModel: false })
+    sql += filterClause.sql
+    sql += ' GROUP BY provider, model ORDER BY lower(provider), lower(model)'
 
-    const total = (this.options.db.prepare(countSql).get(...countParams) as { count: number }).count
+    const rows = this.options.db.prepare(sql).all(...filterClause.params) as Array<{
+      provider: string | null
+      model: string | null
+      is_default_model: number | null
+    }>
 
-    return { tasks, total }
+    return rows.map(row => ({
+      provider: row.provider,
+      model: row.model,
+      isDefaultModel:
+        row.is_default_model === null || row.is_default_model === undefined
+          ? null
+          : row.is_default_model === 1,
+    }))
   }
 
   getTaskById(id: string): Task | null {

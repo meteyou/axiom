@@ -28,6 +28,12 @@ export interface Task {
   sessionId: string | null
 }
 
+export interface TaskProviderFilterOption {
+  provider: string | null
+  model: string | null
+  isDefaultModel: boolean | null
+}
+
 export interface TasksResponse {
   tasks: Task[]
   pagination: {
@@ -36,6 +42,7 @@ export interface TasksResponse {
     total: number
     totalPages: number
   }
+  providerOptions?: TaskProviderFilterOption[]
 }
 
 export interface TaskResponse {
@@ -88,6 +95,11 @@ export interface ListTasksParams {
   limit?: number
   status?: string
   triggerType?: string
+  provider?: string
+  model?: string
+  isDefaultModel?: boolean
+  createdFrom?: string
+  createdTo?: string
 }
 
 export function useTasksApi() {
@@ -100,6 +112,11 @@ export function useTasksApi() {
     if (params.limit !== undefined) query.set('limit', String(params.limit))
     if (params.status) query.set('status', params.status)
     if (params.triggerType) query.set('trigger_type', params.triggerType)
+    if (params.provider) query.set('provider', params.provider)
+    if (params.model) query.set('model', params.model)
+    if (params.isDefaultModel !== undefined) query.set('is_default_model', String(params.isDefaultModel))
+    if (params.createdFrom) query.set('created_from', params.createdFrom)
+    if (params.createdTo) query.set('created_to', params.createdTo)
 
     const suffix = query.toString()
     return apiFetch<TasksResponse>(`/api/tasks${suffix ? `?${suffix}` : ''}`)

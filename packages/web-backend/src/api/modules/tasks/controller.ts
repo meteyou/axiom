@@ -29,7 +29,7 @@ export function createTasksController(service: TasksService): TasksController {
           return
         }
 
-        const { tasks, total } = service.listTasks(parsedQuery.value)
+        const { tasks, total, providerOptions } = service.listTasks(parsedQuery.value)
 
         res.json(
           mapTasksListResponse({
@@ -37,6 +37,7 @@ export function createTasksController(service: TasksService): TasksController {
             page: parsedQuery.value.page,
             limit: parsedQuery.value.limit,
             total,
+            providerOptions,
           }),
         )
       } catch (err) {

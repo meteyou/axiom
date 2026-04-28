@@ -53,13 +53,24 @@ function authHeaders() {
   return { Authorization: `Bearer ${token}` }
 }
 
-function createTask(input?: Partial<{ name: string; prompt: string; triggerType: Task['triggerType']; sessionId: string }>) {
+function createTask(input?: Partial<{
+  name: string
+  prompt: string
+  triggerType: Task['triggerType']
+  sessionId: string
+  provider: string
+  model: string
+  isDefaultModel: boolean
+}>) {
   const store = new TaskStore(db)
   return store.create({
     name: input?.name ?? 'Task',
     prompt: input?.prompt ?? 'Do something',
     triggerType: input?.triggerType ?? 'user',
     sessionId: input?.sessionId,
+    provider: input?.provider,
+    model: input?.model,
+    isDefaultModel: input?.isDefaultModel,
   })
 }
 
@@ -96,6 +107,65 @@ describe('tasks route module', () => {
     expect(body.tasks[0]?.id).not.toBe(runningTask.id)
   })
 
+  it('returns provider filter options from historical task rows in the selected date range', async () => {
+    const defaultTask = createTask({
+      name: 'Default task',
+      provider: 'ChatGPT Plus',
+      model: 'gpt-5.4-mini',
+      isDefaultModel: true,
+    })
+    const explicitTask = createTask({
+      name: 'Explicit task',
+      provider: 'OpenAI GPT-5.4',
+      model: 'gpt-5.4',
+      isDefaultModel: false,
+    })
+    const explicitDefaultProviderTask = createTask({
+      name: 'Explicit default provider task',
+      provider: 'ChatGPT Plus',
+      model: 'gpt-5.4-mini',
+      isDefaultModel: false,
+    })
+    const outsideRangeTask = createTask({
+      name: 'Outside task',
+      provider: 'Old Provider',
+      model: 'old-model',
+      isDefaultModel: false,
+    })
+
+    db.prepare('UPDATE tasks SET created_at = ? WHERE id = ?').run('2026-04-14 23:00:00', defaultTask.id)
+    db.prepare('UPDATE tasks SET created_at = ? WHERE id = ?').run('2026-04-09 23:00:00', explicitTask.id)
+    db.prepare('UPDATE tasks SET created_at = ? WHERE id = ?').run('2026-04-14 23:30:00', explicitDefaultProviderTask.id)
+    db.prepare('UPDATE tasks SET created_at = ? WHERE id = ?').run('2026-03-31 23:00:00', outsideRangeTask.id)
+
+    const res = await fetch(`${baseUrl}/api/tasks?created_from=2026-04-01&created_to=2026-04-28`, {
+      headers: authHeaders(),
+    })
+
+    const body = await res.json() as {
+      providerOptions: Array<{ provider: string | null; model: string | null; isDefaultModel: boolean | null }>
+    }
+
+    expect(res.status).toBe(200)
+    expect(body.providerOptions.filter(option =>
+      option.provider === 'ChatGPT Plus' && option.model === 'gpt-5.4-mini',
+    )).toEqual([{
+      provider: 'ChatGPT Plus',
+      model: 'gpt-5.4-mini',
+      isDefaultModel: true,
+    }])
+    expect(body.providerOptions).toContainEqual({
+      provider: 'OpenAI GPT-5.4',
+      model: 'gpt-5.4',
+      isDefaultModel: false,
+    })
+    expect(body.providerOptions).not.toContainEqual({
+      provider: 'Old Provider',
+      model: 'old-model',
+      isDefaultModel: false,
+    })
+  })
+
   it('returns 400 for invalid filters', async () => {
     const res = await fetch(`${baseUrl}/api/tasks?status=not-a-valid-status`, {
       headers: authHeaders(),
@@ -105,6 +175,28 @@ describe('tasks route module', () => {
 
     expect(res.status).toBe(400)
     expect(body.error).toContain('Invalid status filter')
+  })
+
+  it('returns 400 when the created date range is inverted', async () => {
+    const res = await fetch(`${baseUrl}/api/tasks?created_from=2026-04-28&created_to=2026-04-01`, {
+      headers: authHeaders(),
+    })
+
+    const body = await res.json() as { error: string }
+
+    expect(res.status).toBe(400)
+    expect(body.error).toContain('created_to must be greater than or equal to created_from')
+  })
+
+  it('returns 400 when a created date is not a real calendar date', async () => {
+    const res = await fetch(`${baseUrl}/api/tasks?created_from=2026-04-31`, {
+      headers: authHeaders(),
+    })
+
+    const body = await res.json() as { error: string }
+
+    expect(res.status).toBe(400)
+    expect(body.error).toContain('Invalid created_from filter')
   })
 
   it('returns task details and 404 for missing task', async () => {
