@@ -215,6 +215,9 @@ export function initTasksTable(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
     CREATE INDEX IF NOT EXISTS idx_tasks_trigger_type ON tasks(trigger_type);
     CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at);
+    CREATE INDEX IF NOT EXISTS idx_tasks_provider_model_created_at ON tasks(provider, model, created_at);
+    CREATE INDEX IF NOT EXISTS idx_tasks_model_created_at ON tasks(model, created_at);
+    CREATE INDEX IF NOT EXISTS idx_tasks_is_default_model_created_at ON tasks(is_default_model, created_at);
     CREATE INDEX IF NOT EXISTS idx_tasks_session_id ON tasks(session_id);
   `)
 }

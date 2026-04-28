@@ -473,6 +473,14 @@ export function initDatabase(dbPath?: string): Database {
     db.exec("ALTER TABLE tasks ADD COLUMN is_default_model INTEGER")
   }
 
+  // Provider/model task filters can otherwise fall back to a full task scan
+  // when the date range is wide or cleared.
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_tasks_provider_model_created_at ON tasks(provider, model, created_at);
+    CREATE INDEX IF NOT EXISTS idx_tasks_model_created_at ON tasks(model, created_at);
+    CREATE INDEX IF NOT EXISTS idx_tasks_is_default_model_created_at ON tasks(is_default_model, created_at);
+  `)
+
   // Migration: add last_activity, session_user, and token columns to sessions table
   const sessionCols = db.prepare("PRAGMA table_info(sessions)").all() as { name: string }[]
   if (!sessionCols.find(c => c.name === 'last_activity')) {
