@@ -177,6 +177,17 @@ describe('tasks route module', () => {
     expect(body.error).toContain('Invalid status filter')
   })
 
+  it('returns 400 when the created date range is inverted', async () => {
+    const res = await fetch(`${baseUrl}/api/tasks?created_from=2026-04-28&created_to=2026-04-01`, {
+      headers: authHeaders(),
+    })
+
+    const body = await res.json() as { error: string }
+
+    expect(res.status).toBe(400)
+    expect(body.error).toContain('created_to must be greater than or equal to created_from')
+  })
+
   it('returns task details and 404 for missing task', async () => {
     const task = createTask({ name: 'Detail task' })
 
