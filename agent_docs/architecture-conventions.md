@@ -1,6 +1,6 @@
 # Architecture Conventions & Guardrails
 
-This document is the **permanent reference** for structure rules, boundary constraints, and verification checks in the OpenAgent monorepo.
+This document is the **permanent reference** for structure rules, boundary constraints, and verification checks in the Axiom monorepo.
 
 Goals:
 
@@ -11,7 +11,7 @@ Goals:
 ## 1) Package Boundaries
 
 - `packages/core` is the stable, platform-independent boundary.
-- `web-backend`, `web-frontend`, and `telegram` consume Core only via `@openagent/core` (no `@openagent/core/src/*` deep imports).
+- `web-backend`, `web-frontend`, and `telegram` consume Core only via `@axiom/core` (no `@axiom/core/src/*` deep imports).
 - `core` does not import any platform packages.
 - `web-frontend` does not import `web-backend` or `telegram`.
 - `telegram` does not import `web-backend` or `web-frontend`.
@@ -100,7 +100,7 @@ The workflow runs on `pull_request` (against `main`) and `push` to `main` and ex
 
 ## 8) Session Architecture
 
-All sessions in OpenAgent share a **single UUID-based model**. Session kind, origin,
+All sessions in Axiom share a **single UUID-based model**. Session kind, origin,
 and lineage are expressed as columns on the `sessions` table — **never** encoded
 into the session ID itself.
 
