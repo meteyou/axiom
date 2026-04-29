@@ -7,7 +7,7 @@ If you are an end user, prefer the [Settings overview](../settings/) and its sub
 ::: tip Editing rules of thumb
 - **Web UI is the supported path** for everything except `AGENTS.md` / `HEARTBEAT.md` / `CONSOLIDATION.md` (those have their own [Instructions editor](../web-ui/instructions)).
 - **Stop the container before hand-editing JSON** — the backend keeps an in-memory copy and overwrites the file on the next save through the UI.
-- All non-secret values are merged via [PATCH `/api/settings`](#how-the-ui-writes-files) which applies per-field validation; raw file edits bypass that validation.
+- All non-secret values are merged via [PUT `/api/settings`](#how-the-ui-writes-files) which applies per-field validation; raw file edits bypass that validation.
 :::
 
 ## Files in `/data/config/`
@@ -86,7 +86,7 @@ The on-disk shape is a **superset** of [`SettingsContract`](https://github.com/)
 | `healthMonitor.notifications.fallbackToHealthy` | `boolean`               | `true`      | bool                                                |
 
 ::: warning Legacy nested `intervalMinutes`
-The PATCH endpoint also accepts `healthMonitor.intervalMinutes` and migrates it to the top-level `healthMonitorIntervalMinutes` (see `withLegacySettingsPayloadCompatibility`). New writes always go to the top-level field.
+The PUT endpoint also accepts `healthMonitor.intervalMinutes` and migrates it to the top-level `healthMonitorIntervalMinutes` (see `withLegacySettingsPayloadCompatibility`). New writes always go to the top-level field.
 :::
 
 ### `memoryConsolidation`
@@ -147,7 +147,7 @@ Companion file: `/data/config/HEARTBEAT.md` — the prompt the agent receives ev
 | `tasks.statusUpdates.intervalMinutes`           | `number`                          | `10`          | integer `1–120`                             |
 
 ::: warning Legacy `tasks.statusUpdateIntervalMinutes`
-A flat `tasks.statusUpdateIntervalMinutes` may exist on disk from older installs. PATCH still accepts it (validated as integer `1–120`) and writes it through to `tasks.statusUpdates.intervalMinutes` without flipping `enabled` to `true` — opting in is explicit. After the next save, the flat key is no longer needed.
+A flat `tasks.statusUpdateIntervalMinutes` may exist on disk from older installs. PUT still accepts it (validated as integer `1–120`) and writes it through to `tasks.statusUpdates.intervalMinutes` without flipping `enabled` to `true` — opting in is explicit. After the next save, the flat key is no longer needed.
 :::
 
 ### `tts`
@@ -440,7 +440,7 @@ Built-in agent skills are kept under `/data/skills_agent/` and are **not** liste
 ## How the UI writes files
 
 ```
-PATCH /api/settings   { … partial update … }
+PUT /api/settings   { … partial update … }
         │
         ▼
 withLegacySettingsPayloadCompatibility   ← migrate old key shapes (heartbeat.intervalMinutes → top-level)
@@ -506,8 +506,10 @@ Things that may exist in older `settings.json` files and how the runtime handles
 | Old field                                  | Replaced by                                            | Behavior                                                                             |
 |--------------------------------------------|--------------------------------------------------------|--------------------------------------------------------------------------------------|
 | `heartbeat` (whole block)                  | `healthMonitor` + `healthMonitorIntervalMinutes`       | Template still seeds it on first boot. Live code never reads it. Replaced on first save. |
-| `healthMonitor.intervalMinutes`            | top-level `healthMonitorIntervalMinutes`               | PATCH migrates it via `withLegacySettingsPayloadCompatibility`.                       |
+| `healthMonitor.intervalMinutes`            | top-level `healthMonitorIntervalMinutes`               | PUT migrates it via `withLegacySettingsPayloadCompatibility`.                       |
 | `tasks.statusUpdateIntervalMinutes` (flat) | `tasks.statusUpdates.intervalMinutes`                  | Migrated on first save; `tasks.statusUpdates.enabled` stays `false` until opted in.   |
+| `uploadRetentionDays` (top-level)          | `uploads.retentionDays`                                | Read at runtime by `getUploadRetentionDays()` if the new key is absent. Replaced on first save of the Uploads panel. |
+| `batchingDelayMs` (top-level in `settings.json`) | `telegram.batchingDelayMs` (in `telegram.json`)  | Read at boot by the Telegram bot if `telegram.json` does not yet have the key. Replaced on first save of the Telegram panel. |
 | `braveSearchApiKey` (top-level)            | `builtinTools.webSearch.braveSearchApiKey`             | Folded in at boot if the new key is empty.                                            |
 | `searxngUrl` (top-level)                   | `builtinTools.webSearch.searxngUrl`                    | Folded in at boot if the new key is empty.                                            |
 
