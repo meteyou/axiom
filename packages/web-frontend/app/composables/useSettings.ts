@@ -10,8 +10,10 @@ import {
   type TasksSettingsContract,
   type TtsSettingsContract,
   type SttSettingsContract,
+  type UploadsSettingsContract,
   type AgentHeartbeatNightModeContract,
-} from '@openagent/core/contracts'
+  type TelegramSettingsContract,
+} from '@axiom/core/contracts'
 import { useSettingsApi } from '~/api/settings'
 
 export type MemoryConsolidationSettings = MemoryConsolidationSettingsContract
@@ -23,6 +25,8 @@ export type AgentHeartbeatNightMode = AgentHeartbeatNightModeContract
 export type AgentHeartbeatSettings = AgentHeartbeatSettingsContract
 export type TtsSettings = TtsSettingsContract
 export type SttSettings = SttSettingsContract
+export type UploadsSettings = UploadsSettingsContract
+export type TelegramSettings = TelegramSettingsContract
 export type Settings = SettingsContract
 
 export function useSettings() {

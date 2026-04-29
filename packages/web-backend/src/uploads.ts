@@ -6,7 +6,7 @@ import {
   getUploadsDir,
   parseUploadsMetadata,
   type UploadDescriptor,
-} from '@openagent/core'
+} from '@axiom/core'
 
 const MAX_UPLOAD_SIZE = 50 * 1024 * 1024
 

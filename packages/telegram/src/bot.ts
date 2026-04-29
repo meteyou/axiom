@@ -2,9 +2,9 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { Bot, GrammyError, HttpError, InputFile } from 'grammy'
 import type { Context } from 'grammy'
-import type { AgentCore, Database } from '@openagent/core'
-import { loadConfig, saveUpload, serializeUploadsMetadata, parseUploadsMetadata, loadSttSettings, transcribeAudio, extractUploadsFromToolResult } from '@openagent/core'
-import type { UploadDescriptor } from '@openagent/core'
+import type { AgentCore, Database } from '@axiom/core'
+import { loadConfig, saveUpload, serializeUploadsMetadata, parseUploadsMetadata, loadSttSettings, transcribeAudio, extractUploadsFromToolResult } from '@axiom/core'
+import type { UploadDescriptor } from '@axiom/core'
 
 /**
  * Telegram config stored in /data/config/telegram.json
@@ -23,7 +23,7 @@ export interface TelegramConfig {
  */
 export interface TelegramChatEvent {
   type: 'user_message' | 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'done' | 'error' | 'attachment'
-  /** OpenAgent user ID (integer) — only set for linked users */
+  /** Axiom user ID (integer) — only set for linked users */
   userId: number | null
   /** Session ID used for chat_messages */
   sessionId: string
@@ -73,10 +73,6 @@ export interface TelegramUserRow {
   user_id: number | null
   created_at: string
   updated_at: string
-}
-
-interface TelegramSettings {
-  batchingDelayMs?: number
 }
 
 interface QueuedMessage {
@@ -294,20 +290,27 @@ function normalizeCommand(text: string): string {
 
 function loadTelegramRuntimeConfig(): TelegramConfig {
   const telegram = loadConfig<TelegramConfig>('telegram.json')
-  let batchingDelayMs = telegram.batchingDelayMs ?? 2500
+  let batchingDelayMs = telegram.batchingDelayMs
+  const isValidDelay = (value: unknown): value is number =>
+    typeof value === 'number' && Number.isFinite(value) && value >= 0
 
-  try {
-    const settings = loadConfig<TelegramSettings>('settings.json')
-    if (typeof settings.batchingDelayMs === 'number' && Number.isFinite(settings.batchingDelayMs) && settings.batchingDelayMs >= 0) {
-      batchingDelayMs = settings.batchingDelayMs
+  if (!isValidDelay(batchingDelayMs)) {
+    // Legacy fallback: the field used to live at the top level of
+    // settings.json. Read it here so an upgrade does not silently revert a
+    // customised delay to the 2500 ms default.
+    try {
+      const settings = loadConfig<{ batchingDelayMs?: number }>('settings.json')
+      if (isValidDelay(settings.batchingDelayMs)) {
+        batchingDelayMs = settings.batchingDelayMs
+      }
+    } catch {
+      // ignore
     }
-  } catch {
-    // Fall back to telegram.json/defaults when settings are unavailable.
   }
 
   return {
     ...telegram,
-    batchingDelayMs,
+    batchingDelayMs: isValidDelay(batchingDelayMs) ? batchingDelayMs : 2500,
   }
 }
 
@@ -395,7 +398,7 @@ export class TelegramBot {
       this.ensureTelegramUser(ctx)
 
       const welcomeText = [
-        '👋 *Welcome to OpenAgent!*',
+        '👋 *Welcome to Axiom!*',
         '',
         'I\'m your AI assistant. You can chat with me directly or use these commands:',
         '',
@@ -567,7 +570,7 @@ export class TelegramBot {
 
   /**
    * Resolve the user ID for session management.
-   * If the telegram user is linked to an OpenAgent user, use that user's ID
+   * If the telegram user is linked to an Axiom user, use that user's ID
    * in the same format as the web backend (plain string number).
    */
   private resolveUserId(ctx: Context): string {
@@ -586,7 +589,7 @@ export class TelegramBot {
   }
 
   /**
-   * Resolve the numeric OpenAgent user ID for a Telegram user.
+   * Resolve the numeric Axiom user ID for a Telegram user.
    * Returns null if unlinked.
    */
   private resolveNumericUserId(ctx: Context): number | null {
@@ -1293,7 +1296,7 @@ export class TelegramBot {
   }
 
   /**
-   * Get the Telegram chat ID for a given OpenAgent user ID.
+   * Get the Telegram chat ID for a given Axiom user ID.
    * Returns null if no linked & approved Telegram user exists.
    */
   getTelegramChatIdForUser(userId: number): string | null {

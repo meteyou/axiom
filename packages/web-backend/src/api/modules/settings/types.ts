@@ -3,7 +3,7 @@ import type {
   HealthMonitorNotificationTogglesContract,
   SettingsStorageContract,
   TelegramSettingsStorageContract,
-} from '@openagent/core'
+} from '@axiom/core'
 
 export type HealthMonitorNotificationToggles = HealthMonitorNotificationTogglesContract
 

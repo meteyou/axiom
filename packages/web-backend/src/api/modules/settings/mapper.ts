@@ -1,4 +1,4 @@
-import { DEFAULT_HEALTH_MONITOR_NOTIFICATION_TOGGLES } from '@openagent/core'
+import { DEFAULT_HEALTH_MONITOR_NOTIFICATION_TOGGLES } from '@axiom/core'
 import type { HealthMonitorNotificationToggles, SettingsData, TelegramData } from './types.js'
 
 const DEFAULT_NOTIFICATIONS: HealthMonitorNotificationToggles = {
@@ -29,7 +29,7 @@ function buildHealthMonitorResponse(settingsRaw: Record<string, unknown>) {
 function buildConsolidationResponse(settingsRaw: Record<string, unknown>) {
   const memoryConsolidation = (settingsRaw.memoryConsolidation ?? {}) as Record<string, unknown>
   return {
-    enabled: memoryConsolidation.enabled ?? false,
+    enabled: memoryConsolidation.enabled ?? true,
     runAtHour: memoryConsolidation.runAtHour ?? 3,
     lookbackDays: memoryConsolidation.lookbackDays ?? 3,
     providerId: memoryConsolidation.providerId ?? '',
@@ -39,7 +39,7 @@ function buildConsolidationResponse(settingsRaw: Record<string, unknown>) {
 function buildFactExtractionResponse(settingsRaw: Record<string, unknown>) {
   const factExtraction = (settingsRaw.factExtraction ?? {}) as Record<string, unknown>
   return {
-    enabled: factExtraction.enabled ?? false,
+    enabled: factExtraction.enabled ?? true,
     providerId: factExtraction.providerId ?? '',
     minSessionMessages: factExtraction.minSessionMessages ?? 3,
   }
@@ -63,6 +63,12 @@ function buildAgentHeartbeatResponse(settingsRaw: Record<string, unknown>) {
 function buildTasksResponse(settingsRaw: Record<string, unknown>) {
   const tasks = (settingsRaw.tasks ?? {}) as Record<string, unknown>
   const loopDetection = (tasks.loopDetection ?? {}) as Record<string, unknown>
+  const statusUpdates = (tasks.statusUpdates ?? {}) as Record<string, unknown>
+  // Legacy flat key on disk is migrated here for the API response shape
+  // so the frontend only ever sees the new sub-object form.
+  const legacyStatusInterval = tasks.statusUpdateIntervalMinutes
+  const resolvedStatusInterval = statusUpdates.intervalMinutes
+    ?? (typeof legacyStatusInterval === 'number' ? legacyStatusInterval : 10)
 
   return {
     defaultProvider: tasks.defaultProvider ?? '',
@@ -75,7 +81,10 @@ function buildTasksResponse(settingsRaw: Record<string, unknown>) {
       smartProvider: loopDetection.smartProvider ?? '',
       smartCheckInterval: loopDetection.smartCheckInterval ?? 5,
     },
-    statusUpdateIntervalMinutes: tasks.statusUpdateIntervalMinutes ?? 10,
+    statusUpdates: {
+      enabled: statusUpdates.enabled ?? false,
+      intervalMinutes: resolvedStatusInterval,
+    },
     backgroundThinkingLevel: tasks.backgroundThinkingLevel ?? 'off',
   }
 }
@@ -91,6 +100,20 @@ function buildTtsResponse(settingsRaw: Record<string, unknown>) {
     openaiInstructions: tts.openaiInstructions ?? '',
     mistralVoice: tts.mistralVoice ?? '',
     responseFormat: tts.responseFormat ?? 'mp3',
+  }
+}
+
+function buildUploadsResponse(settingsRaw: Record<string, unknown>) {
+  const uploads = (settingsRaw.uploads ?? {}) as Record<string, unknown>
+  const retentionDays = typeof uploads.retentionDays === 'number' ? uploads.retentionDays : 30
+  return { retentionDays }
+}
+
+function buildTelegramResponse(telegram: TelegramData, batchingDelayMs: number) {
+  return {
+    enabled: telegram.enabled ?? false,
+    botToken: telegram.botToken ?? '',
+    batchingDelayMs,
   }
 }
 
@@ -115,7 +138,7 @@ export function mapSettingsResponse(context: SettingsResponseContext) {
   const settingsRaw = context.settings as unknown as Record<string, unknown>
 
   return {
-    sessionTimeoutMinutes: context.settings.sessionTimeoutMinutes ?? 15,
+    sessionTimeoutMinutes: context.settings.sessionTimeoutMinutes ?? 30,
     sessionSummaryProviderId: (settingsRaw.sessionSummaryProviderId as string) ?? '',
     language: context.settings.language ?? 'match',
     timezone: context.settings.timezone ?? 'UTC',
@@ -124,10 +147,8 @@ export function mapSettingsResponse(context: SettingsResponseContext) {
       context.settings.healthMonitorIntervalMinutes
       ?? (context.settings.healthMonitor as Record<string, unknown> | undefined)?.intervalMinutes
       ?? 5,
-    uploadRetentionDays: context.settings.uploadRetentionDays ?? 30,
-    batchingDelayMs: context.batchingDelayMs,
-    telegramEnabled: context.telegram.enabled ?? false,
-    telegramBotToken: context.telegram.botToken ?? '',
+    uploads: buildUploadsResponse(settingsRaw),
+    telegram: buildTelegramResponse(context.telegram, context.batchingDelayMs),
     healthMonitor: buildHealthMonitorResponse(settingsRaw),
     memoryConsolidation: buildConsolidationResponse(settingsRaw),
     factExtraction: buildFactExtractionResponse(settingsRaw),

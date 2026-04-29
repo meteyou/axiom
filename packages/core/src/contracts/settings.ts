@@ -64,6 +64,14 @@ export interface FactExtractionSettingsContract {
   minSessionMessages: number
 }
 
+export interface UploadsSettingsContract {
+  /**
+   * How many days uploaded files in `/data/uploads/` are kept before the cleanup job
+   * removes them. `0` means files are deleted on the next cleanup run.
+   */
+  retentionDays: number
+}
+
 export interface AgentHeartbeatNightModeContract {
   enabled: boolean
   startHour: number
@@ -84,12 +92,24 @@ export interface TasksLoopDetectionSettingsContract {
   smartCheckInterval: number
 }
 
+export interface TasksStatusUpdatesSettingsContract {
+  enabled: boolean
+  intervalMinutes: number
+}
+
 export interface TasksSettingsContract {
   defaultProvider: string
   maxDurationMinutes: number
   telegramDelivery: TaskTelegramDelivery
   loopDetection: TasksLoopDetectionSettingsContract
-  statusUpdateIntervalMinutes: number
+  /**
+   * Periodic `<task_status type="periodic_update">` signals from the task
+   * runner back to the user's parent chat while a background task is
+   * running. Disabled by default — enable it to get a visible heartbeat
+   * (duration, tool-call count, token estimate) that is delivered via the
+   * chat event bus and (optionally) Telegram without invoking the LLM.
+   */
+  statusUpdates: TasksStatusUpdatesSettingsContract
   /**
    * Thinking level used for background task agents, the task runner's loop
    * detection calls, and internal background jobs (fact extraction, memory
@@ -124,6 +144,20 @@ export interface SttSettingsContract {
   rewrite: SttRewriteSettingsContract
 }
 
+/**
+ * Telegram bot settings exposed via the Settings API.
+ *
+ * On disk these fields live in `/data/config/telegram.json`, not in
+ * `settings.json`. The API still nests them under a `telegram` object so the
+ * shape mirrors other namespaced groups (`tasks`, `agentHeartbeat`, ...).
+ */
+export interface TelegramSettingsContract {
+  enabled: boolean
+  botToken: string
+  /** Input batching delay in ms. `0` disables batching. */
+  batchingDelayMs: number
+}
+
 export interface SettingsContract {
   sessionTimeoutMinutes: number
   sessionSummaryProviderId: string
@@ -135,10 +169,8 @@ export interface SettingsContract {
    */
   thinkingLevel: SettingsThinkingLevel
   healthMonitorIntervalMinutes: number
-  batchingDelayMs: number
-  uploadRetentionDays: number
-  telegramEnabled: boolean
-  telegramBotToken: string
+  uploads: UploadsSettingsContract
+  telegram: TelegramSettingsContract
   healthMonitor: HealthMonitorSettingsContract
   memoryConsolidation: MemoryConsolidationSettingsContract
   factExtraction: FactExtractionSettingsContract
@@ -158,8 +190,7 @@ export interface SettingsStorageContract {
   thinkingLevel?: SettingsThinkingLevel
   healthMonitorIntervalMinutes?: number
   healthMonitor?: Partial<HealthMonitorSettingsContract> & { intervalMinutes?: number }
-  batchingDelayMs?: number
-  uploadRetentionDays?: number
+  uploads?: Partial<UploadsSettingsContract>
   memoryConsolidation?: Partial<MemoryConsolidationSettingsContract>
   factExtraction?: Partial<FactExtractionSettingsContract>
   agentHeartbeat?: Partial<AgentHeartbeatSettingsContract>
@@ -195,16 +226,20 @@ export const DEFAULT_HEALTH_MONITOR_NOTIFICATION_TOGGLES: HealthMonitorNotificat
 }
 
 export const DEFAULT_SETTINGS_CONTRACT: SettingsContract = {
-  sessionTimeoutMinutes: 15,
+  sessionTimeoutMinutes: 30,
   sessionSummaryProviderId: '',
   language: 'match',
   timezone: 'UTC',
   thinkingLevel: 'off',
   healthMonitorIntervalMinutes: 5,
-  batchingDelayMs: 2500,
-  uploadRetentionDays: 30,
-  telegramEnabled: false,
-  telegramBotToken: '',
+  uploads: {
+    retentionDays: 30,
+  },
+  telegram: {
+    enabled: false,
+    botToken: '',
+    batchingDelayMs: 2500,
+  },
   healthMonitor: {
     enabled: true,
     fallbackTrigger: 'down',
@@ -214,13 +249,13 @@ export const DEFAULT_SETTINGS_CONTRACT: SettingsContract = {
     notifications: { ...DEFAULT_HEALTH_MONITOR_NOTIFICATION_TOGGLES },
   },
   memoryConsolidation: {
-    enabled: false,
+    enabled: true,
     runAtHour: 3,
     lookbackDays: 3,
     providerId: '',
   },
   factExtraction: {
-    enabled: false,
+    enabled: true,
     providerId: '',
     minSessionMessages: 3,
   },
@@ -244,7 +279,10 @@ export const DEFAULT_SETTINGS_CONTRACT: SettingsContract = {
       smartProvider: '',
       smartCheckInterval: 5,
     },
-    statusUpdateIntervalMinutes: 10,
+    statusUpdates: {
+      enabled: false,
+      intervalMinutes: 10,
+    },
     backgroundThinkingLevel: 'off',
   },
   tts: {
@@ -281,6 +319,37 @@ function normalizeThinkingLevel(
   return fallback
 }
 
+/**
+ * Normalize `tasks.statusUpdates` with migration from the legacy flat
+ * `tasks.statusUpdateIntervalMinutes` field. When only the legacy value is
+ * present, it is carried over as the interval; `enabled` stays `false` so
+ * existing installations don't suddenly start emitting status-update chat
+ * messages after upgrading. Setups that had explicitly set the legacy value
+ * to a custom interval keep that interval — only the explicit opt-in is
+ * new.
+ */
+function normalizeTasksStatusUpdates(
+  source: DeepPartial<TasksSettingsContract> | undefined,
+): TasksStatusUpdatesSettingsContract {
+  const fallback = DEFAULT_SETTINGS_CONTRACT.tasks.statusUpdates
+  const statusUpdates = source?.statusUpdates
+  const legacyInterval = (source as { statusUpdateIntervalMinutes?: number } | undefined)?.statusUpdateIntervalMinutes
+  const validLegacyInterval = typeof legacyInterval === 'number' && legacyInterval > 0 ? legacyInterval : undefined
+  if (statusUpdates && (statusUpdates.enabled !== undefined || statusUpdates.intervalMinutes !== undefined)) {
+    return {
+      enabled: statusUpdates.enabled ?? fallback.enabled,
+      intervalMinutes: statusUpdates.intervalMinutes ?? validLegacyInterval ?? fallback.intervalMinutes,
+    }
+  }
+  if (validLegacyInterval !== undefined) {
+    return {
+      enabled: fallback.enabled,
+      intervalMinutes: validLegacyInterval,
+    }
+  }
+  return { ...fallback }
+}
+
 export function normalizeSettingsContract(input: DeepPartial<SettingsContract> | null | undefined): SettingsContract {
   const source = input ?? {}
 
@@ -291,10 +360,14 @@ export function normalizeSettingsContract(input: DeepPartial<SettingsContract> |
     timezone: source.timezone ?? DEFAULT_SETTINGS_CONTRACT.timezone,
     thinkingLevel: normalizeThinkingLevel(source.thinkingLevel, DEFAULT_SETTINGS_CONTRACT.thinkingLevel),
     healthMonitorIntervalMinutes: source.healthMonitorIntervalMinutes ?? DEFAULT_SETTINGS_CONTRACT.healthMonitorIntervalMinutes,
-    batchingDelayMs: source.batchingDelayMs ?? DEFAULT_SETTINGS_CONTRACT.batchingDelayMs,
-    uploadRetentionDays: source.uploadRetentionDays ?? DEFAULT_SETTINGS_CONTRACT.uploadRetentionDays,
-    telegramEnabled: source.telegramEnabled ?? DEFAULT_SETTINGS_CONTRACT.telegramEnabled,
-    telegramBotToken: source.telegramBotToken ?? DEFAULT_SETTINGS_CONTRACT.telegramBotToken,
+    uploads: {
+      retentionDays: source.uploads?.retentionDays ?? DEFAULT_SETTINGS_CONTRACT.uploads.retentionDays,
+    },
+    telegram: {
+      enabled: source.telegram?.enabled ?? DEFAULT_SETTINGS_CONTRACT.telegram.enabled,
+      botToken: source.telegram?.botToken ?? DEFAULT_SETTINGS_CONTRACT.telegram.botToken,
+      batchingDelayMs: source.telegram?.batchingDelayMs ?? DEFAULT_SETTINGS_CONTRACT.telegram.batchingDelayMs,
+    },
     healthMonitor: {
       enabled: source.healthMonitor?.enabled ?? DEFAULT_SETTINGS_CONTRACT.healthMonitor.enabled,
       fallbackTrigger: source.healthMonitor?.fallbackTrigger ?? DEFAULT_SETTINGS_CONTRACT.healthMonitor.fallbackTrigger,
@@ -364,8 +437,7 @@ export function normalizeSettingsContract(input: DeepPartial<SettingsContract> |
           source.tasks?.loopDetection?.smartCheckInterval
           ?? DEFAULT_SETTINGS_CONTRACT.tasks.loopDetection.smartCheckInterval,
       },
-      statusUpdateIntervalMinutes:
-        source.tasks?.statusUpdateIntervalMinutes ?? DEFAULT_SETTINGS_CONTRACT.tasks.statusUpdateIntervalMinutes,
+      statusUpdates: normalizeTasksStatusUpdates(source.tasks),
       backgroundThinkingLevel: normalizeThinkingLevel(
         source.tasks?.backgroundThinkingLevel,
         DEFAULT_SETTINGS_CONTRACT.tasks.backgroundThinkingLevel,
