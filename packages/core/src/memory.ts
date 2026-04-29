@@ -822,7 +822,7 @@ ${dailyContext}
 
     // Agent skills tool (only useful when there are more skills than shown in the prompt)
     if (options?.agentSkillsOverflowCount && options.agentSkillsOverflowCount > 10) {
-      toolLines.push(`- **list_agent_skills**: Browse all ${options.agentSkillsOverflowCount} self-created agent skills (only the 10 most recent are shown in <available_skills>).`)
+      toolLines.push(`- **list_agent_skills**: Browse all ${options.agentSkillsOverflowCount} self-created agent skills (only the 10 most recent are shown in the available_skills block).`)
     }
 
     sections.push(`<available_tools>\nYou have the following tools available. Use the right tool for the job.\n\n${toolLines.join('\n')}\n</available_tools>`)
@@ -910,9 +910,9 @@ Discovery: use list_files on the directory and read the file whose name matches 
   // on demand instead of paying its token cost on every turn.
   if (options?.agentSkillsDir) {
     sections.push(`<agent_skills>
-You can create new reusable agent skills under ${options.agentSkillsDir}/<skill-name>/SKILL.md. They are auto-discovered on the next message and appear in <available_skills>.
+You can create new reusable agent skills under ${options.agentSkillsDir}/<skill-name>/SKILL.md. They are auto-discovered on the next message and appear in the available_skills block.
 
-For the format, naming rules, gating fields, and worked examples, load the built-in **skill-creator** skill (listed in <available_skills>) before writing a new SKILL.md.
+For the format, naming rules, gating fields, and worked examples, load the built-in **skill-creator** skill (listed in the available_skills block) before writing a new SKILL.md.
 </agent_skills>`)
   }
 
@@ -948,7 +948,7 @@ ${skillEntries}${overflowNote}
   //   2. The `<task_injection>` trigger — so the agent knows to load the
   //      skill when one arrives instead of responding ad-hoc.
   sections.push(`<task_system>
-Background tasks (create_task), cronjobs (create_cronjob, edit_cronjob, remove_cronjob, list_cronjobs, get_cronjob), and reminders (create_reminder) are listed in <available_tools>. For when to use which, how to write task prompts, how to handle <task_injection> messages, how to route follow-up answers into paused tasks (resume_task), and cron expression / action_type / attached_skills conventions, load the **tasks-and-cronjobs** built-in skill (in <available_skills>).
+Background tasks (create_task), cronjobs (create_cronjob, edit_cronjob, remove_cronjob, list_cronjobs, get_cronjob), and reminders (create_reminder) are listed in the available_tools block. For when to use which, how to write task prompts, how to handle <task_injection> messages, how to route follow-up answers into paused tasks (resume_task), and cron expression / action_type / attached_skills conventions, load the **tasks-and-cronjobs** built-in skill (in the available_skills block).
 
 SAFETY: NEVER use OS-level schedulers (system crontab, launchd, at, or shell-spawned long-running processes via nohup / & / background loops). Always use the built-in cronjob and task tools instead.
 

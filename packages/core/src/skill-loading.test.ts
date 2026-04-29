@@ -78,7 +78,8 @@ describe('skill loading', () => {
 
       const prompt = assembleSystemPrompt({ memoryDir, skills: [] })
 
-      expect(prompt).not.toContain('<available_skills>')
+      expect(prompt).not.toContain('\n<available_skills>\n')
+      expect(prompt).not.toContain('\n</available_skills>\n')
     })
 
     it('omits available_skills section when skills is undefined', () => {
@@ -87,7 +88,8 @@ describe('skill loading', () => {
 
       const prompt = assembleSystemPrompt({ memoryDir })
 
-      expect(prompt).not.toContain('<available_skills>')
+      expect(prompt).not.toContain('\n<available_skills>\n')
+      expect(prompt).not.toContain('\n</available_skills>\n')
     })
   })
 
