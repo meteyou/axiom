@@ -105,7 +105,7 @@ export function getConfigDir(): string {
 //   under /app/.
 // In dev (tsx, tests): we walk up from this file's directory until we find a
 //   package.json that declares `workspaces` — that's the monorepo root.
-// Override via env var OPENAGENT_PROJECT_DIR for unusual deployments.
+// Override via env var AXIOM_PROJECT_DIR for unusual deployments.
 // =============================================================================
 
 const __filename = fileURLToPath(import.meta.url)
