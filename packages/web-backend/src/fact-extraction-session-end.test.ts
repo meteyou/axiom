@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Api, Model } from '@mariozechner/pi-ai'
-import { initDatabase } from '@openagent/core'
-import type { Database, ProviderConfig } from '@openagent/core'
+import { initDatabase } from '@axiom/core'
+import type { Database, ProviderConfig } from '@axiom/core'
 import {
   resolveFactExtractionExecutionContext,
   triggerFactExtractionForSessionEnd,

@@ -151,7 +151,7 @@ export class TaskScheduler {
     for (const task of enabledTasks) {
       this.setNextTimer(task)
     }
-    console.log(`[openagent] Task scheduler loaded ${enabledTasks.length} enabled schedule(s)`)
+    console.log(`[axiom] Task scheduler loaded ${enabledTasks.length} enabled schedule(s)`)
   }
 
   /** Minimum cooldown between firings of the same cronjob (in ms) */
@@ -184,7 +184,7 @@ export class TaskScheduler {
       const nextRun = getNextRunTime(fields)
 
       if (!nextRun) {
-        console.warn(`[openagent] Could not calculate next run time for schedule "${scheduledTask.name}" (${scheduledTask.schedule})`)
+        console.warn(`[axiom] Could not calculate next run time for schedule "${scheduledTask.name}" (${scheduledTask.schedule})`)
         return
       }
 
@@ -193,7 +193,7 @@ export class TaskScheduler {
       // Guard: if the next run is in the past (e.g. server restart after the
       // scheduled time), skip it rather than firing immediately.
       if (delayMs < -5_000) {
-        console.log(`[openagent] Skipping past-due schedule "${scheduledTask.name}" (was due ${Math.round(-delayMs / 60000)} min ago)`)
+        console.log(`[axiom] Skipping past-due schedule "${scheduledTask.name}" (was due ${Math.round(-delayMs / 60000)} min ago)`)
         return
       }
 
@@ -231,12 +231,12 @@ export class TaskScheduler {
       })
 
       if (effectiveDelay > MAX_SAFE_TIMEOUT_MS) {
-        console.log(`[openagent] Scheduled "${scheduledTask.name}" next run at ${nextRun.toISOString()} (in ${Math.round(delayMs / 86400000)} days, wake-up in 24h)`)
+        console.log(`[axiom] Scheduled "${scheduledTask.name}" next run at ${nextRun.toISOString()} (in ${Math.round(delayMs / 86400000)} days, wake-up in 24h)`)
       } else {
-        console.log(`[openagent] Scheduled "${scheduledTask.name}" next run at ${nextRun.toISOString()} (in ${Math.round(delayMs / 60000)} min)`)
+        console.log(`[axiom] Scheduled "${scheduledTask.name}" next run at ${nextRun.toISOString()} (in ${Math.round(delayMs / 60000)} min)`)
       }
     } catch (err) {
-      console.error(`[openagent] Failed to schedule "${scheduledTask.name}":`, (err as Error).message)
+      console.error(`[axiom] Failed to schedule "${scheduledTask.name}":`, (err as Error).message)
     }
   }
 
@@ -254,7 +254,7 @@ export class TaskScheduler {
     // Deduplication guard: skip if this cronjob already fired very recently
     // (protects against double-fire from server restarts / watch-mode reloads)
     if (this.wasFiredRecently(scheduledTask)) {
-      console.log(`[openagent] Skipping cronjob "${scheduledTask.name}" — already fired recently (lastRunAt: ${scheduledTask.lastRunAt})`)
+      console.log(`[axiom] Skipping cronjob "${scheduledTask.name}" — already fired recently (lastRunAt: ${scheduledTask.lastRunAt})`)
       // Still schedule the next run
       if (this.running) {
         this.setNextTimer(scheduledTask)
@@ -265,15 +265,15 @@ export class TaskScheduler {
     try {
       if (scheduledTask.actionType === 'injection') {
         this.fireInjection(scheduledTask)
-        console.log(`[openagent] Cronjob "${scheduledTask.name}" fired → injection`)
+        console.log(`[axiom] Cronjob "${scheduledTask.name}" fired → injection`)
       } else {
         const taskId = await this.fireTask(scheduledTask)
         if (taskId) {
-          console.log(`[openagent] Cronjob "${scheduledTask.name}" fired → task ${taskId}`)
+          console.log(`[axiom] Cronjob "${scheduledTask.name}" fired → task ${taskId}`)
         }
       }
     } catch (err) {
-      console.error(`[openagent] Cronjob "${scheduledTask.name}" failed to fire:`, (err as Error).message)
+      console.error(`[axiom] Cronjob "${scheduledTask.name}" failed to fire:`, (err as Error).message)
     }
 
     // Schedule the next run (if still enabled and running)
@@ -301,7 +301,7 @@ export class TaskScheduler {
     if (this.options.onInjection) {
       this.options.onInjection(scheduledTask)
     } else {
-      console.warn(`[openagent] Injection cronjob "${scheduledTask.name}" fired but no onInjection handler is set`)
+      console.warn(`[axiom] Injection cronjob "${scheduledTask.name}" fired but no onInjection handler is set`)
     }
 
     // Auto-disable if this is effectively a one-time schedule
@@ -322,7 +322,7 @@ export class TaskScheduler {
         // No next run at all — disable
         this.scheduledTaskStore.update(scheduledTask.id, { enabled: false })
         this.unregisterSchedule(scheduledTask.id)
-        console.log(`[openagent] Auto-disabled one-time schedule "${scheduledTask.name}" (no future run found)`)
+        console.log(`[axiom] Auto-disabled one-time schedule "${scheduledTask.name}" (no future run found)`)
         return
       }
 
@@ -330,7 +330,7 @@ export class TaskScheduler {
       if (delayMs > ONE_TIME_THRESHOLD_MS) {
         this.scheduledTaskStore.update(scheduledTask.id, { enabled: false })
         this.unregisterSchedule(scheduledTask.id)
-        console.log(`[openagent] Auto-disabled one-time schedule "${scheduledTask.name}" (next run ${Math.round(delayMs / 86400000)} days away)`)
+        console.log(`[axiom] Auto-disabled one-time schedule "${scheduledTask.name}" (next run ${Math.round(delayMs / 86400000)} days away)`)
       }
     } catch {
       // ignore parse errors

@@ -1,5 +1,5 @@
 import type { Response as ExpressResponse } from 'express'
-import { PROVIDER_TYPE_PRESETS } from '@openagent/core'
+import { PROVIDER_TYPE_PRESETS } from '@axiom/core'
 import type { AuthenticatedRequest } from '../../../auth.js'
 import {
   mapCreatedProviderResponse,

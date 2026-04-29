@@ -69,11 +69,11 @@ export async function startHttpBoundary(
   const address = server.address()
   const actualPort = typeof address === 'object' && address ? address.port : options.port
 
-  logger.log(`[openagent] Server running at http://${options.host}:${actualPort}`)
-  logger.log(`[openagent] Health check: http://${options.host}:${actualPort}/health`)
-  logger.log(`[openagent] WebSocket chat: ws://${options.host}:${actualPort}/ws/chat`)
-  logger.log(`[openagent] WebSocket logs: ws://${options.host}:${actualPort}/ws/logs`)
-  logger.log(`[openagent] WebSocket task viewer: ws://${options.host}:${actualPort}/ws/task/:id`)
+  logger.log(`[axiom] Server running at http://${options.host}:${actualPort}`)
+  logger.log(`[axiom] Health check: http://${options.host}:${actualPort}/health`)
+  logger.log(`[axiom] WebSocket chat: ws://${options.host}:${actualPort}/ws/chat`)
+  logger.log(`[axiom] WebSocket logs: ws://${options.host}:${actualPort}/ws/logs`)
+  logger.log(`[axiom] WebSocket task viewer: ws://${options.host}:${actualPort}/ws/task/:id`)
 
   return {
     server,

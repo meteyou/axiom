@@ -39,7 +39,7 @@ describe('cronjob-tools: attachedSkills', () => {
   let boundary: TaskRuntimeScheduleBoundary
 
   beforeEach(() => {
-    dbPath = path.join(os.tmpdir(), `openagent-cronjob-tools-test-${Date.now()}-${Math.random().toString(36).slice(2)}.db`)
+    dbPath = path.join(os.tmpdir(), `axiom-cronjob-tools-test-${Date.now()}-${Math.random().toString(36).slice(2)}.db`)
     db = initDatabase(dbPath)
     boundary = buildScheduleBoundary(db)
   })

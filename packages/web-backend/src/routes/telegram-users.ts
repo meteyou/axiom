@@ -1,8 +1,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { Router } from 'express'
-import type { Database } from '@openagent/core'
-import type { TelegramBot } from '@openagent/telegram'
+import type { Database } from '@axiom/core'
+import type { TelegramBot } from '@axiom/telegram'
 import { jwtMiddleware, verifyToken } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
 
@@ -85,7 +85,7 @@ export function createTelegramUsersRouter(options: TelegramUsersRouterOptions): 
   })
 
   /**
-   * GET /api/telegram-users/avatar-by-user-id/:userId — serve avatar by OpenAgent user ID
+   * GET /api/telegram-users/avatar-by-user-id/:userId — serve avatar by Axiom user ID
    * Used by the sidebar account button where we only know the logged-in user's ID.
    * Any authenticated user can fetch their own avatar; admins can fetch any.
    */

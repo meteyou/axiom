@@ -42,9 +42,9 @@ export default [
       {
         patterns: [
           {
-            group: ['@openagent/core/src/*'],
+            group: ['@axiom/core/src/*'],
             message:
-              'Do not deep-import from @openagent/core/src. Use the public @openagent/core boundary exports.',
+              'Do not deep-import from @axiom/core/src. Use the public @axiom/core boundary exports.',
           },
         ],
       },
@@ -59,12 +59,12 @@ export default [
         patterns: [
           {
             group: [
-              '@openagent/web-backend',
-              '@openagent/web-backend/*',
-              '@openagent/web-frontend',
-              '@openagent/web-frontend/*',
-              '@openagent/telegram',
-              '@openagent/telegram/*',
+              '@axiom/web-backend',
+              '@axiom/web-backend/*',
+              '@axiom/web-frontend',
+              '@axiom/web-frontend/*',
+              '@axiom/telegram',
+              '@axiom/telegram/*',
             ],
             message:
               'packages/core must not depend on platform packages (web-backend, web-frontend, telegram).',
@@ -82,10 +82,10 @@ export default [
         patterns: [
           {
             group: [
-              '@openagent/web-backend',
-              '@openagent/web-backend/*',
-              '@openagent/telegram',
-              '@openagent/telegram/*',
+              '@axiom/web-backend',
+              '@axiom/web-backend/*',
+              '@axiom/telegram',
+              '@axiom/telegram/*',
             ],
             message:
               'packages/web-frontend must not depend on backend or telegram package internals.',
@@ -103,10 +103,10 @@ export default [
         patterns: [
           {
             group: [
-              '@openagent/web-backend',
-              '@openagent/web-backend/*',
-              '@openagent/web-frontend',
-              '@openagent/web-frontend/*',
+              '@axiom/web-backend',
+              '@axiom/web-backend/*',
+              '@axiom/web-frontend',
+              '@axiom/web-frontend/*',
             ],
             message:
               'packages/telegram must stay isolated from web-backend and web-frontend internals.',

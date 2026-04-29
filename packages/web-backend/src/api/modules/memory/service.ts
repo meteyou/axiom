@@ -22,8 +22,8 @@ import {
   listMemories,
   updateMemory,
   deleteMemory,
-} from '@openagent/core'
-import type { ConsolidationResult } from '@openagent/core'
+} from '@axiom/core'
+import type { ConsolidationResult } from '@axiom/core'
 import type {
   DailyFileSummary,
   FactsQuery,
@@ -345,7 +345,7 @@ export class MemoryService {
     try {
       agentCore.refreshSystemPrompt()
     } catch (err) {
-      console.error('[openagent] Failed to refresh system prompt after memory update:', err)
+      console.error('[axiom] Failed to refresh system prompt after memory update:', err)
     }
   }
 }

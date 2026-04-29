@@ -3,8 +3,8 @@ import fs from 'node:fs'
 import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
-import type { AgentCore, Database } from '@openagent/core'
-import { createMemory, initDatabase } from '@openagent/core'
+import type { AgentCore, Database } from '@axiom/core'
+import { createMemory, initDatabase } from '@axiom/core'
 import { createApp } from '../../../app.js'
 import { generateAccessToken } from '../../../auth.js'
 
@@ -19,7 +19,7 @@ const refreshSystemPrompt = vi.fn()
 
 beforeAll(async () => {
   previousDataDir = process.env.DATA_DIR
-  tempDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openagent-memory-route-'))
+  tempDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'axiom-memory-route-'))
   process.env.DATA_DIR = tempDataDir
 
   db = initDatabase(':memory:')

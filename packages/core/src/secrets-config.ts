@@ -51,7 +51,7 @@ export function loadSecretsDecrypted(): Record<string, string> {
         decrypted[key] = decrypt(value)
       } catch {
         // Skip secrets that can't be decrypted (e.g. ENCRYPTION_KEY changed)
-        console.warn(`[openagent] Failed to decrypt secret "${key}", skipping`)
+        console.warn(`[axiom] Failed to decrypt secret "${key}", skipping`)
       }
     } else {
       decrypted[key] = value
@@ -143,6 +143,6 @@ export function injectSecretsIntoEnv(): void {
   _injectedKeys = currentKeys
 
   if (currentKeys.size > 0) {
-    console.log(`[openagent] Injected ${currentKeys.size} secret(s) into environment`)
+    console.log(`[axiom] Injected ${currentKeys.size} secret(s) into environment`)
   }
 }

@@ -1,11 +1,11 @@
-import type { Database } from '@openagent/core'
-import type { ConsolidationResult } from '@openagent/core'
-import type { AgentCore } from '@openagent/core'
-import type { Task } from '@openagent/core'
-import type { TaskRuntimeTaskBoundary } from '@openagent/core'
-import type { ProviderConfig } from '@openagent/core'
-import type { SessionManager } from '@openagent/core'
-import { generateSessionId } from '@openagent/core'
+import type { Database } from '@axiom/core'
+import type { ConsolidationResult } from '@axiom/core'
+import type { AgentCore } from '@axiom/core'
+import type { Task } from '@axiom/core'
+import type { TaskRuntimeTaskBoundary } from '@axiom/core'
+import type { ProviderConfig } from '@axiom/core'
+import type { SessionManager } from '@axiom/core'
+import { generateSessionId } from '@axiom/core'
 import {
   getActiveProvider,
   loadProvidersDecrypted,
@@ -15,7 +15,7 @@ import {
   logToolCall,
   readConsolidationFile,
   getMemoryDir,
-} from '@openagent/core'
+} from '@axiom/core'
 
 export interface ConsolidationSettings {
   enabled: boolean
@@ -260,7 +260,7 @@ export class MemoryConsolidationScheduler {
       this.timer.unref()
     }
 
-    console.log(`[openagent] Memory consolidation scheduled for ${nextRun.toISOString()} (in ${Math.round(delayMs / 60000)} min)`)
+    console.log(`[axiom] Memory consolidation scheduled for ${nextRun.toISOString()} (in ${Math.round(delayMs / 60000)} min)`)
   }
 
   private getNextRunTime(): Date {
@@ -277,7 +277,7 @@ export class MemoryConsolidationScheduler {
   }
 
   private async executeConsolidation(): Promise<ConsolidationResult> {
-    console.log('[openagent] Starting memory consolidation...')
+    console.log('[axiom] Starting memory consolidation...')
     const startTime = Date.now()
     // Create the consolidation session up-front so both the task and the
     // scheduler's tool-call logging share the same session ID (registered
@@ -319,7 +319,7 @@ export class MemoryConsolidationScheduler {
         status: 'error',
       })
 
-      console.warn('[openagent] Memory consolidation skipped: task runtime not available')
+      console.warn('[axiom] Memory consolidation skipped: task runtime not available')
       return result
     }
 
@@ -344,7 +344,7 @@ export class MemoryConsolidationScheduler {
           status: 'error',
         })
 
-        console.warn('[openagent] Memory consolidation skipped: no provider available')
+        console.warn('[axiom] Memory consolidation skipped: no provider available')
         return result
       }
 
@@ -371,7 +371,7 @@ export class MemoryConsolidationScheduler {
       // Start the task via task runtime boundary
       await taskRuntime.start(task, provider)
 
-      console.log(`[openagent] Memory consolidation task started: ${task.id}`)
+      console.log(`[axiom] Memory consolidation task started: ${task.id}`)
 
       // Wait for the task to complete by polling
       const result = await this.waitForTaskCompletion(task.id, startTime, taskRuntime)
@@ -384,7 +384,7 @@ export class MemoryConsolidationScheduler {
         try {
           this.agentCore.refreshSystemPrompt()
         } catch (err) {
-          console.error('[openagent] Failed to refresh system prompt after consolidation:', err)
+          console.error('[axiom] Failed to refresh system prompt after consolidation:', err)
         }
       }
 
@@ -408,7 +408,7 @@ export class MemoryConsolidationScheduler {
       })
 
       console.log(
-        `[openagent] Memory consolidation complete: ${result.updated ? 'UPDATED' : 'no change'} ` +
+        `[axiom] Memory consolidation complete: ${result.updated ? 'UPDATED' : 'no change'} ` +
         `(task ${task.id}` +
         (result.usage ? `, ${result.usage.input + result.usage.output} tokens` : '') +
         `)`,
@@ -438,7 +438,7 @@ export class MemoryConsolidationScheduler {
         status: 'error',
       })
 
-      console.error('[openagent] Memory consolidation failed:', err)
+      console.error('[axiom] Memory consolidation failed:', err)
       return result
     }
   }

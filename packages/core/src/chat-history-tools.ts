@@ -154,7 +154,7 @@ export function createReadChatHistoryTool(options: ChatHistoryToolsOptions): Age
         // instead of fragile session_id prefix matching.
         //
         // Accepted filter values (aligned with the canonical session model
-        // in docs/architecture-conventions.md):
+        // in agent_docs/architecture-conventions.md):
         //   'web'      — WebSocket + REST upload (source IN ('web','rest'))
         //   'rest'     — alias for 'web' (REST uploads are logged under the
         //                user's web session; exposed so callers who reason

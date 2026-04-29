@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { PROVIDER_TYPE_PRESETS } from '@openagent/core'
+import { PROVIDER_TYPE_PRESETS } from '@axiom/core'
 import {
   parseFallbackPayload,
   parseOAuthCodePayload,

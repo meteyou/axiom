@@ -38,7 +38,7 @@ describe('usage-stats', () => {
   })
 
   function setup(): Database {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openagent-usage-stats-'))
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'axiom-usage-stats-'))
     process.env.DATA_DIR = tmpDir
     const configDir = path.join(tmpDir, 'config')
     fs.mkdirSync(configDir, { recursive: true })

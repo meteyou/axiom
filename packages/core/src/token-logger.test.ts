@@ -21,7 +21,7 @@ describe('token-logger', () => {
   })
 
   function createDb(): Database {
-    const p = path.join(os.tmpdir(), `openagent-token-test-${Date.now()}-${Math.random().toString(36).slice(2)}.db`)
+    const p = path.join(os.tmpdir(), `axiom-token-test-${Date.now()}-${Math.random().toString(36).slice(2)}.db`)
     tmpFiles.push(p)
     db = initDatabase(p)
     return db

@@ -24,7 +24,7 @@ describe('send_file_to_user tool', () => {
 
   beforeEach(() => {
     originalEnv = { DATA_DIR: process.env.DATA_DIR, WORKSPACE_DIR: process.env.WORKSPACE_DIR }
-    dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openagent-send-file-'))
+    dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'axiom-send-file-'))
     workspaceDir = path.join(dataDir, 'workspace')
     fs.mkdirSync(workspaceDir, { recursive: true })
     fs.mkdirSync(path.join(dataDir, 'uploads'), { recursive: true })

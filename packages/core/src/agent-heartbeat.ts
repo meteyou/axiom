@@ -158,7 +158,7 @@ export class AgentHeartbeatService {
   async executeHeartbeat(): Promise<string | null> {
     // Check night mode
     if (this.isNightMode()) {
-      console.log('[openagent] Agent heartbeat skipped: night mode active')
+      console.log('[axiom] Agent heartbeat skipped: night mode active')
       return null
     }
 
@@ -167,18 +167,18 @@ export class AgentHeartbeatService {
     try {
       const content = fs.readFileSync(heartbeatPath, 'utf-8')
       if (isHeartbeatContentEffectivelyEmpty(content)) {
-        console.log('[openagent] Agent heartbeat skipped: HEARTBEAT.md has no actionable content')
+        console.log('[axiom] Agent heartbeat skipped: HEARTBEAT.md has no actionable content')
         return null
       }
     } catch {
       // File doesn't exist or can't be read — skip heartbeat
-      console.log('[openagent] Agent heartbeat skipped: HEARTBEAT.md not found or unreadable')
+      console.log('[axiom] Agent heartbeat skipped: HEARTBEAT.md not found or unreadable')
       return null
     }
 
     const provider = this.getDefaultProvider()
     if (!provider) {
-      console.warn('[openagent] Agent heartbeat skipped: no provider available')
+      console.warn('[axiom] Agent heartbeat skipped: no provider available')
       return null
     }
 
@@ -198,10 +198,10 @@ export class AgentHeartbeatService {
 
     try {
       await this.taskRuntime.start(task, provider)
-      console.log(`[openagent] Agent heartbeat task started: ${task.id}`)
+      console.log(`[axiom] Agent heartbeat task started: ${task.id}`)
       return task.id
     } catch (err) {
-      console.error('[openagent] Agent heartbeat task failed to start:', err)
+      console.error('[axiom] Agent heartbeat task failed to start:', err)
       return null
     }
   }

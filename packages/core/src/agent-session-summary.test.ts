@@ -131,7 +131,7 @@ describe('generateSessionSummary — open threads prompt', () => {
   let memoryDir: string
 
   beforeEach(() => {
-    tmpDir = path.join(os.tmpdir(), `openagent-summary-test-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+    tmpDir = path.join(os.tmpdir(), `axiom-summary-test-${Date.now()}-${Math.random().toString(36).slice(2)}`)
     memoryDir = path.join(tmpDir, 'memory')
     fs.mkdirSync(path.join(memoryDir, 'daily'), { recursive: true })
 

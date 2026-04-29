@@ -17,8 +17,8 @@ import {
   isEncrypted,
   maskApiKey,
   listAgentSkills,
-} from '@openagent/core'
-import type { AgentCore, SkillConfig, BuiltinToolsConfig } from '@openagent/core'
+} from '@axiom/core'
+import type { AgentCore, SkillConfig, BuiltinToolsConfig } from '@axiom/core'
 import { jwtMiddleware } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
 

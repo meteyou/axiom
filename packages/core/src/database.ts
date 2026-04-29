@@ -134,7 +134,7 @@ export function initDatabase(dbPath?: string): Database {
   const resolvedPath = dbPath ?? path.join(
     process.env.DATA_DIR ?? '/data',
     'db',
-    'openagent.db'
+    'axiom.db'
   )
 
   // Ensure directory exists

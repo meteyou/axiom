@@ -16,8 +16,8 @@ import {
   updateOAuthCredentials,
   updateProvider as updateProviderConfig,
   updateProviderStatus,
-} from '@openagent/core'
-import type { AvailableModel, ProviderConfig, ProviderType, ProvidersFile } from '@openagent/core'
+} from '@axiom/core'
+import type { AvailableModel, ProviderConfig, ProviderType, ProvidersFile } from '@axiom/core'
 import type {
   OAuthLoginResponseContract,
   ProviderCreatePayloadContract,
@@ -25,7 +25,7 @@ import type {
   ProviderModelSelectionPayloadContract,
   ProviderOAuthLoginStartPayloadContract,
   ProviderUpdatePayloadContract,
-} from '@openagent/core/contracts'
+} from '@axiom/core/contracts'
 import { getOAuthProvider } from '@mariozechner/pi-ai/oauth'
 import type { OAuthCredentials } from '@mariozechner/pi-ai/oauth'
 import {

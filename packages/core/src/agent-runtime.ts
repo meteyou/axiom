@@ -12,7 +12,7 @@ import type { ProviderConfig } from './provider-config.js'
 import type { ProviderManager } from './provider-manager.js'
 import type { SettingsThinkingLevel } from './contracts/settings.js'
 import { normalizeThinkingLevel } from './thinking-level.js'
-import { assembleSystemPrompt, ensureMemoryStructure, ensureConfigStructure, getMemoryDir } from './memory.js'
+import { assembleSystemPrompt, ensureMemoryStructure, ensureConfigStructure } from './memory.js'
 import type { SkillPromptEntry } from './memory.js'
 import { getWorkspaceDir } from './workspace.js'
 import { loadConfig, ensureConfigTemplates } from './config.js'
@@ -249,18 +249,10 @@ export function createYoloTools(): AgentTool[] {
           fs.mkdirSync(dir, { recursive: true })
         }
 
-        // Capture before-content for memory files (enables diff view in UI)
-        let memoryDiff: { before: string; after: string } | undefined
-        const memoryDir = getMemoryDir()
-        if (resolved.startsWith(memoryDir)) {
-          const before = fs.existsSync(resolved) ? fs.readFileSync(resolved, 'utf-8') : ''
-          memoryDiff = { before, after: content }
-        }
-
         fs.writeFileSync(resolved, content, 'utf-8')
         return {
           content: [{ type: 'text' as const, text: `Successfully wrote ${content.length} bytes to ${resolved}` }],
-          details: { path: resolved, size: content.length, memoryDiff },
+          details: { path: resolved, size: content.length },
         }
       } catch (err: unknown) {
         return {
@@ -343,17 +335,10 @@ export function createYoloTools(): AgentTool[] {
           }
         }
 
-        // Capture before/after for memory files (enables diff view in UI)
-        let memoryDiff: { before: string; after: string } | undefined
-        const memoryDir = getMemoryDir()
-        if (resolved.startsWith(memoryDir)) {
-          memoryDiff = { before: originalContent, after: content }
-        }
-
         fs.writeFileSync(resolved, content, 'utf-8')
         return {
           content: [{ type: 'text' as const, text: `Successfully replaced ${edits.length} block(s) in ${filePath}.` }],
-          details: { path: resolved, editsApplied: edits.length, memoryDiff },
+          details: { path: resolved, editsApplied: edits.length },
         }
       } catch (err: unknown) {
         return {

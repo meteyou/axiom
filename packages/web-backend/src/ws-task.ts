@@ -1,9 +1,9 @@
 import { WebSocketServer, WebSocket } from 'ws'
 import type { Server } from 'node:http'
-import type { Database } from '@openagent/core'
-import type { TaskEventBus, TaskEvent } from '@openagent/core'
-import { TaskStore } from '@openagent/core'
-import { getToolCalls } from '@openagent/core'
+import type { Database } from '@axiom/core'
+import type { TaskEventBus, TaskEvent } from '@axiom/core'
+import { TaskStore } from '@axiom/core'
+import { getToolCalls } from '@axiom/core'
 import { verifyToken } from './auth.js'
 import { URL } from 'node:url'
 

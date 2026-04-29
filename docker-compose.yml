@@ -1,13 +1,13 @@
 services:
-  openagent:
-    image: ghcr.io/meteyou/openagent:latest
-    container_name: openagent
+  axiom:
+    image: ghcr.io/meteyou/axiom:latest
+    container_name: axiom
     restart: unless-stopped
     ports:
       - "${HOST_PORT:-3000}:3000"
     volumes:
-      - openagent-data:/data
-      - openagent-workspace:/workspace
+      - axiom-data:/data
+      - axiom-workspace:/workspace
     environment:
       - TZ=Europe/Vienna
       - NODE_ENV=production
@@ -23,7 +23,7 @@ services:
   # Uncomment to enable local Whisper for speech-to-text
   # whisper:
   #   image: fedirz/faster-whisper-server:latest-cpu
-  #   container_name: openagent-whisper
+  #   container_name: axiom-whisper
   #   restart: unless-stopped
   #   ports:
   #     - "8000:8000"
@@ -33,7 +33,7 @@ services:
   # Uncomment to enable local Ollama for running local LLM models
   # ollama:
   #   image: ollama/ollama:latest
-  #   container_name: openagent-ollama
+  #   container_name: axiom-ollama
   #   restart: unless-stopped
   #   ports:
   #     - "11434:11434"
@@ -49,7 +49,7 @@ services:
   #   #           capabilities: [gpu]
 
 volumes:
-  openagent-data:
-  openagent-workspace:
+  axiom-data:
+  axiom-workspace:
   # ollama-data:
   # whisper-data:

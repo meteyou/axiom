@@ -1,7 +1,7 @@
 import { Router } from 'express'
-import { loadProvidersDecrypted, getApiKeyForProvider } from '@openagent/core'
-import type { ProviderConfig } from '@openagent/core'
-import { loadConfig, ensureConfigTemplates } from '@openagent/core'
+import { loadProvidersDecrypted, getApiKeyForProvider } from '@axiom/core'
+import type { ProviderConfig } from '@axiom/core'
+import { loadConfig, ensureConfigTemplates } from '@axiom/core'
 import { jwtMiddleware } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
 

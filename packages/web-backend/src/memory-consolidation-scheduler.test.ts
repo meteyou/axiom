@@ -2,8 +2,8 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { initDatabase, TaskStore, initTasksTable } from '@openagent/core'
-import type { AgentCore, Database, Task, ProviderConfig } from '@openagent/core'
+import { initDatabase, TaskStore, initTasksTable } from '@axiom/core'
+import type { AgentCore, Database, Task, ProviderConfig } from '@axiom/core'
 import { MemoryConsolidationScheduler, DEFAULT_CONSOLIDATION_SETTINGS } from './memory-consolidation-scheduler.js'
 
 let tempDataDir: string
@@ -52,7 +52,7 @@ function createMockTaskRuntime(taskStore: TaskStore) {
 }
 
 beforeEach(() => {
-  tempDataDir = path.join(os.tmpdir(), `openagent-consolidation-scheduler-test-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+  tempDataDir = path.join(os.tmpdir(), `axiom-consolidation-scheduler-test-${Date.now()}-${Math.random().toString(36).slice(2)}`)
   fs.mkdirSync(tempDataDir, { recursive: true })
   previousDataDir = process.env.DATA_DIR
   process.env.DATA_DIR = tempDataDir

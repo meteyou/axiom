@@ -9,7 +9,10 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  # Hardcoded during the rebrand from `openagent` to `axiom`. Once the GitHub
+  # repo is renamed to `meteyou/axiom`, this can be reduced back to
+  # `${{ github.repository }}` which would resolve to the same thing.
+  IMAGE_NAME: meteyou/axiom
 
 jobs:
   build-and-push:
