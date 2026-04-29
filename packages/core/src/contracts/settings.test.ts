@@ -55,6 +55,20 @@ describe('settings contracts', () => {
     expect(payload.healthMonitorIntervalMinutes).toBe(4)
   })
 
+  it('uses legacy task status interval when only the new enabled flag is present', () => {
+    const normalized = normalizeSettingsContract({
+      tasks: {
+        statusUpdates: { enabled: true },
+        statusUpdateIntervalMinutes: 5,
+      },
+    } as unknown as Parameters<typeof normalizeSettingsContract>[0])
+
+    expect(normalized.tasks.statusUpdates).toEqual({
+      enabled: true,
+      intervalMinutes: 5,
+    })
+  })
+
   describe('thinking level', () => {
     it('defaults both thinking levels to "off"', () => {
       expect(DEFAULT_SETTINGS_CONTRACT.thinkingLevel).toBe('off')

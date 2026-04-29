@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-function-type, @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import type { AgentCore, ResponseChunk, Database } from '@openagent/core'
+import type { AgentCore, ResponseChunk, Database } from '@axiom/core'
 
 // Mock grammy before importing the module under test
 vi.mock('grammy', () => {
@@ -54,8 +54,8 @@ vi.mock('grammy', () => {
   }
 })
 
-// Mock @openagent/core
-vi.mock('@openagent/core', () => ({
+// Mock @axiom/core
+vi.mock('@axiom/core', () => ({
   loadConfig: vi.fn((filename: string) => {
     if (filename === 'settings.json') {
       return { batchingDelayMs: 2500 }
@@ -74,7 +74,7 @@ vi.mock('@openagent/core', () => ({
 
 import { TelegramBot, createTelegramBot, extractReplyContext, buildAgentMessage } from './bot.js'
 import type { TelegramConfig, TelegramChatEvent } from './bot.js'
-import { loadConfig } from '@openagent/core'
+import { loadConfig } from '@axiom/core'
 
 function createMockAgentCore(): AgentCore {
   const mockSessionManager = {
@@ -226,7 +226,7 @@ describe('TelegramBot', () => {
 
       expect(ctx.reply).toHaveBeenCalledTimes(1)
       const msg = ctx.reply.mock.calls[0][0] as string
-      expect(msg).toContain('Welcome to OpenAgent')
+      expect(msg).toContain('Welcome to Axiom')
       expect(msg).toContain('/new')
       expect(msg).toContain('/start')
       expect(msg).toContain('/stop')
@@ -324,19 +324,44 @@ describe('TelegramBot', () => {
       expect(agentCore.sendMessage).toHaveBeenCalledTimes(1)
     })
 
-    it('uses the batching delay from settings.json when created via config loading', async () => {
+    it('uses the batching delay from telegram.json when created via config loading', async () => {
+      vi.mocked(loadConfig).mockImplementation(() => ({
+        enabled: true,
+        botToken: 'test-token-123',
+        adminUserIds: [],
+        pollingMode: true,
+        webhookUrl: '',
+        batchingDelayMs: 4000,
+      }))
+      vi.mocked(agentCore.sendMessage).mockReturnValue(doneOnlyStream())
+
+      const bot = createTelegramBot(agentCore)!
+      const underlying = bot.getBot() as unknown as MockBotInternals
+      const handler = underlying._handlers.get('message:text')!
+
+      await handler(createMockContext({ message: { text: 'Delayed', message_id: 1 } }))
+      await vi.advanceTimersByTimeAsync(3999)
+      expect(agentCore.sendMessage).not.toHaveBeenCalled()
+
+      await vi.advanceTimersByTimeAsync(1)
+      expect(agentCore.sendMessage).toHaveBeenCalledTimes(1)
+    })
+
+    it('falls back to legacy top-level batchingDelayMs in settings.json when telegram.json is missing the key', async () => {
+      // Simulate an upgraded install whose telegram.json predates the move
+      // and therefore has no batchingDelayMs field at all, while the user's
+      // customised delay still lives at the top of settings.json.
       vi.mocked(loadConfig).mockImplementation((filename: string) => {
         if (filename === 'settings.json') {
-          return { batchingDelayMs: 4000 }
+          return { batchingDelayMs: 5000 }
         }
-
         return {
           enabled: true,
           botToken: 'test-token-123',
           adminUserIds: [],
           pollingMode: true,
           webhookUrl: '',
-          batchingDelayMs: 2500,
+          // batchingDelayMs intentionally omitted
         }
       })
       vi.mocked(agentCore.sendMessage).mockReturnValue(doneOnlyStream())
@@ -346,7 +371,35 @@ describe('TelegramBot', () => {
       const handler = underlying._handlers.get('message:text')!
 
       await handler(createMockContext({ message: { text: 'Delayed', message_id: 1 } }))
-      await vi.advanceTimersByTimeAsync(3999)
+      await vi.advanceTimersByTimeAsync(4999)
+      expect(agentCore.sendMessage).not.toHaveBeenCalled()
+
+      await vi.advanceTimersByTimeAsync(1)
+      expect(agentCore.sendMessage).toHaveBeenCalledTimes(1)
+    })
+
+    it('prefers telegram.json batchingDelayMs over the legacy settings.json value when both exist', async () => {
+      vi.mocked(loadConfig).mockImplementation((filename: string) => {
+        if (filename === 'settings.json') {
+          return { batchingDelayMs: 5000 }
+        }
+        return {
+          enabled: true,
+          botToken: 'test-token-123',
+          adminUserIds: [],
+          pollingMode: true,
+          webhookUrl: '',
+          batchingDelayMs: 1500,
+        }
+      })
+      vi.mocked(agentCore.sendMessage).mockReturnValue(doneOnlyStream())
+
+      const bot = createTelegramBot(agentCore)!
+      const underlying = bot.getBot() as unknown as MockBotInternals
+      const handler = underlying._handlers.get('message:text')!
+
+      await handler(createMockContext({ message: { text: 'Delayed', message_id: 1 } }))
+      await vi.advanceTimersByTimeAsync(1499)
       expect(agentCore.sendMessage).not.toHaveBeenCalled()
 
       await vi.advanceTimersByTimeAsync(1)

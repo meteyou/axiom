@@ -217,6 +217,34 @@
                   <p class="text-xs text-muted-foreground">{{ $t('settings.thinkingLevelHint') }}</p>
                 </div>
 
+                <!-- ─── Storage ─── -->
+                <Separator />
+
+                <div>
+                  <h3 class="text-base font-semibold tracking-tight text-foreground">
+                    {{ $t('settings.storageSection') }}
+                  </h3>
+                  <p class="mt-1 text-sm text-muted-foreground">
+                    {{ $t('settings.storageSectionDescription') }}
+                  </p>
+                </div>
+
+                <!-- Upload retention -->
+                <div class="flex flex-col gap-2">
+                  <Label for="upload-retention">{{ $t('settings.uploadRetention') }}</Label>
+                  <div class="flex items-center gap-2">
+                    <Input
+                      id="upload-retention"
+                      v-model.number="form.uploads.retentionDays"
+                      type="number"
+                      min="0"
+                      class="w-full"
+                    />
+                    <span class="text-sm text-muted-foreground">{{ $t('settings.days') }}</span>
+                  </div>
+                  <p class="text-xs text-muted-foreground">{{ $t('settings.uploadRetentionHint') }}</p>
+                </div>
+
               </div>
             </div>
 
@@ -232,7 +260,16 @@
               </div>
 
               <div class="flex flex-col gap-8">
-                <!-- Session timeout -->
+                <!-- ─── Sessions ─── -->
+                <div>
+                  <h3 class="text-base font-semibold tracking-tight text-foreground">
+                    {{ $t('settings.sessionSection') }}
+                  </h3>
+                  <p class="mt-1 text-sm text-muted-foreground">
+                    {{ $t('settings.sessionSectionDescription') }}
+                  </p>
+                </div>
+
                 <div class="flex flex-col gap-2">
                   <Label for="session-timeout">{{ $t('settings.sessionTimeout') }}</Label>
                   <div class="flex items-center gap-2">
@@ -247,15 +284,8 @@
                     <span class="text-sm text-muted-foreground">{{ $t('settings.minutes') }}</span>
                   </div>
                   <p class="text-xs text-muted-foreground">{{ $t('settings.sessionTimeoutHint') }}</p>
-                  <Alert v-if="form.agentHeartbeat?.enabled" variant="info" class="mt-2">
-                    <AlertDescription class="text-xs">
-                      <AppIcon name="activity" size="sm" class="mr-1 inline-block align-text-bottom" />
-                      {{ $t('settings.sessionSummarySkippedByHeartbeat') }}
-                    </AlertDescription>
-                  </Alert>
                 </div>
 
-                <!-- Session Summary Provider -->
                 <div class="flex flex-col gap-2">
                   <Label for="session-summary-provider">{{ $t('settings.sessionSummaryProvider') }}</Label>
                   <Select v-model="form.sessionSummaryProviderId">
@@ -272,18 +302,81 @@
                   <p class="text-xs text-muted-foreground">{{ $t('settings.sessionSummaryProviderHint') }}</p>
                 </div>
 
-                <div class="flex flex-col gap-2">
-                  <Label for="upload-retention">{{ $t('settings.uploadRetention') }}</Label>
-                  <div class="flex items-center gap-2">
-                    <Input id="upload-retention" v-model.number="form.uploadRetentionDays" type="number" min="0" class="w-full" />
-                    <span class="text-sm text-muted-foreground">{{ $t('settings.days') }}</span>
-                  </div>
-                  <p class="text-xs text-muted-foreground">{{ $t('settings.uploadRetentionHint') }}</p>
-                </div>
-
+                <!-- ─── Fact Extraction ─── -->
                 <Separator />
 
-                <!-- Enable toggle -->
+                <div>
+                  <h3 class="text-base font-semibold tracking-tight text-foreground">
+                    {{ $t('settings.factExtractionSection') }}
+                  </h3>
+                  <p class="mt-1 text-sm text-muted-foreground">
+                    {{ $t('settings.factExtractionSectionDescription') }}
+                  </p>
+                </div>
+
+                <div class="flex items-center justify-between rounded-lg border border-border px-4 py-3">
+                  <div class="flex flex-col gap-0.5 pr-4">
+                    <Label for="fact-extraction-enabled" class="cursor-pointer">
+                      {{ $t('settings.factExtractionEnabled') }}
+                    </Label>
+                    <p class="text-xs text-muted-foreground">
+                      {{ $t('settings.factExtractionEnabledHint') }}
+                    </p>
+                  </div>
+                  <Switch
+                    id="fact-extraction-enabled"
+                    v-model:checked="form.factExtraction.enabled"
+                  />
+                </div>
+
+                <template v-if="form.factExtraction.enabled">
+                  <div class="flex flex-col gap-8">
+                    <div class="flex flex-col gap-2">
+                      <Label for="fact-extraction-provider">{{ $t('settings.factExtractionProvider') }}</Label>
+                      <Select v-model="form.factExtraction.providerId">
+                        <SelectTrigger id="fact-extraction-provider">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="">{{ $t('settings.factExtractionProviderDefault') }}</SelectItem>
+                          <SelectItem v-for="opt in providerModelOptions" :key="opt.value" :value="opt.value">
+                            {{ opt.label }}
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p class="text-xs text-muted-foreground">{{ $t('settings.factExtractionProviderHint') }}</p>
+                    </div>
+
+                    <div class="flex flex-col gap-2">
+                      <Label for="fact-extraction-min-messages">{{ $t('settings.factExtractionMinSessionMessages') }}</Label>
+                      <div class="flex items-center gap-2">
+                        <Input
+                          id="fact-extraction-min-messages"
+                          v-model.number="form.factExtraction.minSessionMessages"
+                          type="number"
+                          min="1"
+                          max="100"
+                          class="w-full"
+                        />
+                        <span class="text-sm text-muted-foreground">{{ $t('settings.messagesUnit') }}</span>
+                      </div>
+                      <p class="text-xs text-muted-foreground">{{ $t('settings.factExtractionMinSessionMessagesHint') }}</p>
+                    </div>
+                  </div>
+                </template>
+
+                <!-- ─── Memory Consolidation ─── -->
+                <Separator />
+
+                <div>
+                  <h3 class="text-base font-semibold tracking-tight text-foreground">
+                    {{ $t('settings.consolidationSection') }}
+                  </h3>
+                  <p class="mt-1 text-sm text-muted-foreground">
+                    {{ $t('settings.consolidationSectionDescription') }}
+                  </p>
+                </div>
+
                 <div class="flex items-center justify-between rounded-lg border border-border px-4 py-3">
                   <div class="flex flex-col gap-0.5 pr-4">
                     <Label for="consolidation-enabled" class="cursor-pointer">
@@ -299,7 +392,6 @@
                   />
                 </div>
 
-                <!-- Configuration — progressive disclosure -->
                 <template v-if="form.memoryConsolidation.enabled">
                   <div class="flex flex-col gap-8">
                     <div class="flex flex-col gap-2">
@@ -378,62 +470,9 @@
                       </Button>
                     </div>
                   </div>
-
                 </template>
 
-                <Separator />
-
-                <div class="flex items-center justify-between rounded-lg border border-border px-4 py-3">
-                  <div class="flex flex-col gap-0.5 pr-4">
-                    <Label for="fact-extraction-enabled" class="cursor-pointer">
-                      {{ $t('settings.factExtractionEnabled') }}
-                    </Label>
-                    <p class="text-xs text-muted-foreground">
-                      {{ $t('settings.factExtractionEnabledHint') }}
-                    </p>
-                  </div>
-                  <Switch
-                    id="fact-extraction-enabled"
-                    v-model:checked="form.factExtraction.enabled"
-                  />
-                </div>
-
-                <template v-if="form.factExtraction.enabled">
-                  <div class="flex flex-col gap-8">
-                    <div class="flex flex-col gap-2">
-                      <Label for="fact-extraction-provider">{{ $t('settings.factExtractionProvider') }}</Label>
-                      <Select v-model="form.factExtraction.providerId">
-                        <SelectTrigger id="fact-extraction-provider">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="">{{ $t('settings.factExtractionProviderDefault') }}</SelectItem>
-                          <SelectItem v-for="opt in providerModelOptions" :key="opt.value" :value="opt.value">
-                            {{ opt.label }}
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <p class="text-xs text-muted-foreground">{{ $t('settings.factExtractionProviderHint') }}</p>
-                    </div>
-
-                    <div class="flex flex-col gap-2">
-                      <Label for="fact-extraction-min-messages">{{ $t('settings.factExtractionMinSessionMessages') }}</Label>
-                      <div class="flex items-center gap-2">
-                        <Input
-                          id="fact-extraction-min-messages"
-                          v-model.number="form.factExtraction.minSessionMessages"
-                          type="number"
-                          min="1"
-                          max="100"
-                          class="w-full"
-                        />
-                        <span class="text-sm text-muted-foreground">{{ $t('settings.messagesUnit') }}</span>
-                      </div>
-                      <p class="text-xs text-muted-foreground">{{ $t('settings.factExtractionMinSessionMessagesHint') }}</p>
-                    </div>
-                  </div>
-                </template>
-
+                <!-- CONSOLIDATION.md rules card — belongs to the consolidation section -->
                 <div class="rounded-xl border border-border bg-card px-4 py-4">
                   <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div class="min-w-0">
@@ -764,18 +803,18 @@
                   </div>
                   <Switch
                     id="telegram-enabled"
-                    v-model:checked="form.telegramEnabled"
+                    v-model:checked="form.telegram.enabled"
                   />
                 </div>
 
                 <!-- Configuration — progressive disclosure -->
-                <template v-if="form.telegramEnabled">
+                <template v-if="form.telegram.enabled">
                 <!-- Bot token -->
                 <div class="flex flex-col gap-2">
                   <Label for="telegram-token">{{ $t('settings.telegramBotToken') }}</Label>
                   <Input
                     id="telegram-token"
-                    v-model="form.telegramBotToken"
+                    v-model="form.telegram.botToken"
                     type="password"
                     autocomplete="off"
                     :placeholder="$t('settings.telegramBotTokenPlaceholder')"
@@ -789,7 +828,7 @@
                   <div class="flex items-center gap-2">
                     <Input
                       id="batching-delay"
-                      v-model.number="form.batchingDelayMs"
+                      v-model.number="form.telegram.batchingDelayMs"
                       type="number"
                       min="0"
                       max="10000"
@@ -1155,12 +1194,28 @@
                   </p>
                 </div>
 
-                <div class="flex flex-col gap-2">
+                <!-- Enable toggle -->
+                <div class="flex items-center justify-between rounded-lg border border-border px-4 py-3">
+                  <div class="flex flex-col gap-0.5 pr-4">
+                    <Label for="status-updates-enabled" class="cursor-pointer">
+                      {{ $t('settings.tasksStatusUpdatesEnabled') }}
+                    </Label>
+                    <p class="text-xs text-muted-foreground">
+                      {{ $t('settings.tasksStatusUpdatesEnabledHint') }}
+                    </p>
+                  </div>
+                  <Switch
+                    id="status-updates-enabled"
+                    v-model:checked="form.tasks.statusUpdates.enabled"
+                  />
+                </div>
+
+                <div v-if="form.tasks.statusUpdates.enabled" class="flex flex-col gap-2">
                   <Label for="status-update-interval">{{ $t('settings.tasksStatusUpdateInterval') }}</Label>
                   <div class="flex items-center gap-2">
                     <Input
                       id="status-update-interval"
-                      v-model.number="form.tasks.statusUpdateIntervalMinutes"
+                      v-model.number="form.tasks.statusUpdates.intervalMinutes"
                       type="number"
                       min="1"
                       max="120"
@@ -1700,9 +1755,9 @@
 </template>
 
 <script setup lang="ts">
-import { canonicalizeProviderModelRef, SETTINGS_THINKING_LEVELS, type SettingsThinkingLevel } from '@openagent/core/contracts'
+import { canonicalizeProviderModelRef, SETTINGS_THINKING_LEVELS, type SettingsThinkingLevel } from '@axiom/core/contracts'
 import { useSettingsApi } from '~/api/settings'
-import type { MemoryConsolidationSettings, FactExtractionSettings, HealthMonitorNotificationToggles, HealthMonitorSettings, AgentHeartbeatSettings, TasksSettings, TtsSettings, SttSettings } from '~/composables/useSettings'
+import type { MemoryConsolidationSettings, FactExtractionSettings, HealthMonitorNotificationToggles, HealthMonitorSettings, AgentHeartbeatSettings, TasksSettings, TtsSettings, SttSettings, UploadsSettings, TelegramSettings } from '~/composables/useSettings'
 import type { TelegramUser } from '~/composables/useTelegramUsers'
 
 /* ── Auth ── */
@@ -2013,10 +2068,8 @@ interface SettingsForm {
   timezone: string
   thinkingLevel: SettingsThinkingLevel
   healthMonitorIntervalMinutes: number
-  batchingDelayMs: number
-  uploadRetentionDays: number
-  telegramEnabled: boolean
-  telegramBotToken: string
+  uploads: UploadsSettings
+  telegram: TelegramSettings
   healthMonitor: HealthMonitorSettings
   memoryConsolidation: MemoryConsolidationSettings
   factExtraction: FactExtractionSettings
@@ -2050,10 +2103,8 @@ function hydrateForm() {
     timezone: s.timezone,
     thinkingLevel: s.thinkingLevel,
     healthMonitorIntervalMinutes: s.healthMonitorIntervalMinutes,
-    batchingDelayMs: s.batchingDelayMs,
-    uploadRetentionDays: s.uploadRetentionDays,
-    telegramEnabled: s.telegramEnabled,
-    telegramBotToken: s.telegramBotToken,
+    uploads: { ...s.uploads },
+    telegram: { ...s.telegram },
     healthMonitor: {
       enabled: s.healthMonitor.enabled,
       fallbackTrigger: s.healthMonitor.fallbackTrigger,
@@ -2078,6 +2129,7 @@ function hydrateForm() {
         ...s.tasks.loopDetection,
         smartProvider: migrateProviderValue(s.tasks.loopDetection.smartProvider ?? ''),
       },
+      statusUpdates: { ...s.tasks.statusUpdates },
     },
     tts: { ...s.tts },
     stt: {

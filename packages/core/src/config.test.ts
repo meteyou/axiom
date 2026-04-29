@@ -14,7 +14,7 @@ describe('config', () => {
   })
 
   function makeTmpDir(): string {
-    tmpDir = path.join(os.tmpdir(), `openagent-config-test-${Date.now()}`)
+    tmpDir = path.join(os.tmpdir(), `axiom-config-test-${Date.now()}`)
     return tmpDir
   }
 
@@ -32,9 +32,9 @@ describe('config', () => {
     ensureConfigTemplates(dir)
 
     const settings = JSON.parse(fs.readFileSync(path.join(dir, 'settings.json'), 'utf-8'))
-    expect(settings.sessionTimeoutMinutes).toBe(15)
+    expect(settings.sessionTimeoutMinutes).toBe(30)
     expect(settings.language).toBe('en')
-    expect(settings.batchingDelayMs).toBe(2500)
+    expect(settings.batchingDelayMs).toBeUndefined()
     expect(settings.tokenPriceTable['gpt-4o'].input).toBe(2.5)
     expect(settings.tokenPriceTable['gpt-4o'].output).toBe(10)
 
@@ -54,7 +54,7 @@ describe('config', () => {
     expect(settings.heartbeat.notifications.degradedToDown).toBe(true)
 
     expect(settings.factExtraction).toEqual({
-      enabled: false,
+      enabled: true,
       providerId: '',
       minSessionMessages: 3,
     })

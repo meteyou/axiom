@@ -5,6 +5,13 @@ import type { Database } from './database.js'
 import { loadConfig } from './config.js'
 
 export interface UploadSettings {
+  uploads?: { retentionDays?: number }
+  /**
+   * Legacy top-level field. Kept here so that `getUploadRetentionDays()` can
+   * fall back to it when an older `settings.json` from before the
+   * `uploads.retentionDays` move is still on disk. New writes always go to
+   * `uploads.retentionDays`.
+   */
   uploadRetentionDays?: number
 }
 
@@ -193,8 +200,13 @@ export function parseUploadsMetadata(metadata?: string | null): UploadDescriptor
 export function getUploadRetentionDays(): number {
   try {
     const settings = loadConfig<UploadSettings>('settings.json')
-    const days = settings.uploadRetentionDays
+    const days = settings.uploads?.retentionDays
     if (typeof days === 'number' && Number.isFinite(days) && days >= 0) return days
+    // Legacy fallback: older installs kept this at the top level of
+    // settings.json. Read it here so an upgrade does not silently revert
+    // a customised retention value to the default.
+    const legacyDays = settings.uploadRetentionDays
+    if (typeof legacyDays === 'number' && Number.isFinite(legacyDays) && legacyDays >= 0) return legacyDays
   } catch {
     // ignore
   }

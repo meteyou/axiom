@@ -1,5 +1,5 @@
-import type { Database } from '@openagent/core'
-import { cleanupExpiredUploads } from '@openagent/core'
+import type { Database } from '@axiom/core'
+import { cleanupExpiredUploads } from '@axiom/core'
 
 export class UploadCleanupService {
   private timer: ReturnType<typeof setInterval> | null = null

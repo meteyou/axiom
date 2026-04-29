@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { ensureConfigTemplates, getConfigDir, loadConfig, SETTINGS_THINKING_LEVELS } from '@openagent/core'
+import { ensureConfigTemplates, getConfigDir, loadConfig, SETTINGS_THINKING_LEVELS } from '@axiom/core'
 import type { SettingsData, SettingsRouterOptions, TelegramData } from './types.js'
 import {
   mergeAgentHeartbeat,
@@ -10,6 +10,7 @@ import {
   mergeStt,
   mergeTasks,
   mergeTts,
+  mergeUploads,
   normalizeSettingsPayload,
   validateEnum,
   validateNonEmptyString,
@@ -43,7 +44,7 @@ export function createSettingsService(options: SettingsRouterOptions = {}): Sett
     return mapSettingsResponse({
       settings,
       telegram,
-      batchingDelayMs: settings.batchingDelayMs ?? telegram.batchingDelayMs ?? 2500,
+      batchingDelayMs: telegram.batchingDelayMs ?? 2500,
     })
   }
 
@@ -60,7 +61,7 @@ export function createSettingsService(options: SettingsRouterOptions = {}): Sett
     const telegram = JSON.parse(fs.readFileSync(telegramPath, 'utf-8')) as TelegramData
 
     const previousHealthMonitorInterval = settings.healthMonitorIntervalMinutes ?? 5
-    const previousBatchingDelayMs = settings.batchingDelayMs ?? telegram.batchingDelayMs ?? 2500
+    const previousBatchingDelayMs = telegram.batchingDelayMs ?? 2500
     const previousTelegramEnabled = telegram.enabled
     const previousTelegramBotToken = telegram.botToken
 
@@ -101,17 +102,7 @@ export function createSettingsService(options: SettingsRouterOptions = {}): Sett
       settings.healthMonitorIntervalMinutes = body.healthMonitorIntervalMinutes as number
     }
 
-    if (body.uploadRetentionDays !== undefined) {
-      const err = validateNonNegativeNumber(body.uploadRetentionDays, 'uploadRetentionDays')
-      if (err) throw new SettingsValidationError(err)
-      settings.uploadRetentionDays = body.uploadRetentionDays as number
-    }
 
-    if (body.batchingDelayMs !== undefined) {
-      const err = validateNonNegativeNumber(body.batchingDelayMs, 'batchingDelayMs')
-      if (err) throw new SettingsValidationError(err)
-      settings.batchingDelayMs = body.batchingDelayMs as number
-    }
 
     const settingsRaw = settings as unknown as Record<string, unknown>
 
@@ -136,15 +127,27 @@ export function createSettingsService(options: SettingsRouterOptions = {}): Sett
     const sttMerge = mergeStt(body, settingsRaw)
     if (sttMerge.error) throw new SettingsValidationError(sttMerge.error)
 
-    if (body.telegramEnabled !== undefined) {
-      telegram.enabled = !!body.telegramEnabled
-    }
+    const uploadsMerge = mergeUploads(body, settingsRaw)
+    if (uploadsMerge.error) throw new SettingsValidationError(uploadsMerge.error)
 
-    if (body.telegramBotToken !== undefined) {
-      if (typeof body.telegramBotToken !== 'string') {
-        throw new SettingsValidationError('telegramBotToken must be a string')
+    const telegramBody = body.telegram as Record<string, unknown> | undefined
+    if (telegramBody !== undefined) {
+      if (telegramBody.enabled !== undefined) {
+        telegram.enabled = !!telegramBody.enabled
       }
-      telegram.botToken = body.telegramBotToken.trim()
+
+      if (telegramBody.botToken !== undefined) {
+        if (typeof telegramBody.botToken !== 'string') {
+          throw new SettingsValidationError('telegram.botToken must be a string')
+        }
+        telegram.botToken = telegramBody.botToken.trim()
+      }
+
+      if (telegramBody.batchingDelayMs !== undefined) {
+        const err = validateNonNegativeNumber(telegramBody.batchingDelayMs, 'telegram.batchingDelayMs')
+        if (err) throw new SettingsValidationError(err)
+        telegram.batchingDelayMs = telegramBody.batchingDelayMs as number
+      }
     }
 
     fs.writeFileSync(settingsPath, `${JSON.stringify(settings, null, 2)}\n`, 'utf-8')
@@ -163,7 +166,7 @@ export function createSettingsService(options: SettingsRouterOptions = {}): Sett
           agentCore.setThinkingLevel(body.thinkingLevel as string)
         }
       } catch (err) {
-        console.error('[openagent] Failed to apply live settings update:', err)
+        console.error('[axiom] Failed to apply live settings update:', err)
       }
     }
 
@@ -186,7 +189,7 @@ export function createSettingsService(options: SettingsRouterOptions = {}): Sett
     return mapSettingsUpdateResponse({
       settings,
       telegram,
-      batchingDelayMs: settings.batchingDelayMs ?? previousBatchingDelayMs,
+      batchingDelayMs: telegram.batchingDelayMs ?? previousBatchingDelayMs,
     })
   }
 
