@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events'
-import type { UploadDescriptor } from '@openagent/core'
+import type { UploadDescriptor } from '@axiom/core'
 
 /**
  * A chat event emitted when messages flow through any channel (web, telegram).
@@ -7,8 +7,8 @@ import type { UploadDescriptor } from '@openagent/core'
  */
 export interface ChatEvent {
   /** The kind of event being broadcast */
-  type: 'user_message' | 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'done' | 'error' | 'system' | 'session_end' | 'task_completed' | 'task_failed' | 'task_question' | 'reminder' | 'attachment'
-  /** The OpenAgent user ID (integer) this event belongs to */
+  type: 'user_message' | 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'done' | 'error' | 'system' | 'session_end' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'reminder' | 'attachment'
+  /** The Axiom user ID (integer) this event belongs to */
   userId: number
   /** Where the event originated */
   source: 'web' | 'telegram' | 'task'
@@ -46,6 +46,18 @@ export interface ChatEvent {
   taskTokensUsed?: number
   /** Task trigger type (user, agent, cronjob) */
   taskTriggerType?: string
+  /**
+   * Human-readable single-line summary for `task_status_update` events
+   * (also the value persisted in `chat_messages.content`). Live clients
+   * render this verbatim so a page reload + live rendering match.
+   */
+  taskStatusContent?: string
+  /** How long the task has been running, in minutes. */
+  taskStatusRuntimeMinutes?: number
+  /** Number of tool calls the task has made so far. */
+  taskStatusToolCallCount?: number
+  /** Approximate total tokens consumed by the task so far. */
+  taskStatusTokensUsed?: number
   /** Reminder message (for reminder events) */
   reminderMessage?: string
   /** Reminder/cronjob name (for reminder events) */

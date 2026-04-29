@@ -25,6 +25,8 @@ import type { LoopDetectionConfig, LoopDetectionResult } from './loop-detection.
 import type { TaskEventBus } from './task-event-bus.js'
 import { getWorkspaceDir } from './agent.js'
 
+const MAX_STATUS_UPDATE_INTERVAL_MINUTES = 120
+
 export interface TaskOverrides {
   /** JSON array of tool names to exclude (null = all enabled) */
   toolsOverride?: string | null
@@ -56,11 +58,34 @@ export interface TaskRunnerOptions {
   /** Callback when a task pauses with a question — delivers the injection message */
   onTaskPaused?: (taskId: string, injection: string) => void
   /** Callback for periodic status updates */
-  onStatusUpdate?: (taskId: string, statusMessage: string) => void
+  /**
+   * Periodic heartbeat callback. Fires every `statusUpdates.intervalMinutes`
+   * minutes while a task is in the running map. Receives:
+   *   - `taskId` / `statusMessage`: the task id and the legacy
+   *     `<task_status type="periodic_update">…</task_status>` XML payload
+   *     (kept for potential LLM-injection / logging consumers).
+   *   - `details`: structured live metrics so non-LLM consumers
+   *     (web UI, Telegram) don't have to regex-parse the XML string.
+   */
+  onStatusUpdate?: (
+    taskId: string,
+    statusMessage: string,
+    details: {
+      taskName: string
+      runtimeMinutes: number
+      toolCallCount: number
+      totalTokens: number
+    },
+  ) => void
   /** Loop detection configuration */
   loopDetection?: LoopDetectionConfig
-  /** Status update interval in minutes */
-  statusUpdateIntervalMinutes?: number
+  /**
+   * Periodic status-update configuration. When `enabled` is true and
+   * `intervalMinutes > 0`, the runner calls `onStatusUpdate` every N
+   * minutes for each running (and resumed) task. The default is disabled
+   * so existing installations stay quiet until the operator opts in.
+   */
+  statusUpdates?: { enabled: boolean; intervalMinutes: number }
   /** Function to resolve a provider config by ID (for smart detection) */
   getProviderById?: (providerId: string) => ProviderConfig | null
   /** Optional event bus for streaming task execution events to WebSocket clients */
@@ -388,6 +413,7 @@ export class TaskRunner {
     overrides?: TaskOverrides,
     parentSessionId?: string | null,
   ): Promise<string> {
+    this.validateStatusUpdatesConfig()
     const taskId = task.id
 
     try {
@@ -462,12 +488,7 @@ export class TaskRunner {
       }
 
       // Set up periodic status updates
-      const statusIntervalMinutes = this.options.statusUpdateIntervalMinutes ?? 10
-      if (statusIntervalMinutes > 0 && this.options.onStatusUpdate) {
-        runningTask.statusUpdateTimer = setInterval(() => {
-          this.emitStatusUpdate(runningTask, task)
-        }, statusIntervalMinutes * 60 * 1000)
-      }
+      this.startStatusUpdateTimer(runningTask, task)
 
       // Update task as started
       const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
@@ -947,6 +968,34 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
     }
   }
 
+  private validateStatusUpdatesConfig(): void {
+    const statusUpdates = this.options.statusUpdates
+    if (!statusUpdates?.enabled) return
+    if (
+      !Number.isInteger(statusUpdates.intervalMinutes)
+      || statusUpdates.intervalMinutes < 1
+      || statusUpdates.intervalMinutes > MAX_STATUS_UPDATE_INTERVAL_MINUTES
+    ) {
+      throw new Error(`tasks.statusUpdates.intervalMinutes must be an integer 1-${MAX_STATUS_UPDATE_INTERVAL_MINUTES}`)
+    }
+  }
+
+  /**
+   * Start the periodic status-update timer for a (running or resumed) task,
+   * if the feature is enabled and a callback is registered. Invalid intervals
+   * fail fast so misconfiguration cannot overflow into a hot timer loop.
+   */
+  private startStatusUpdateTimer(runningTask: RunningTask, task: Task): void {
+    this.validateStatusUpdatesConfig()
+    const statusUpdates = this.options.statusUpdates
+    if (!statusUpdates?.enabled) return
+    if (!this.options.onStatusUpdate) return
+
+    runningTask.statusUpdateTimer = setInterval(() => {
+      this.emitStatusUpdate(runningTask, task)
+    }, statusUpdates.intervalMinutes * 60 * 1000)
+  }
+
   /**
    * Emit a periodic status update for a running task
    */
@@ -965,7 +1014,12 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
       totalTokens,
     )
 
-    this.options.onStatusUpdate(task.id, statusMessage)
+    this.options.onStatusUpdate(task.id, statusMessage, {
+      taskName: task.name,
+      runtimeMinutes,
+      toolCallCount: runningTask.toolCallCount,
+      totalTokens,
+    })
   }
 
   /**
@@ -1163,6 +1217,7 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
   async resumeTask(taskId: string, message: string): Promise<boolean> {
     const pausedTask = this.pausedTasks.get(taskId)
     if (!pausedTask) return false
+    this.validateStatusUpdatesConfig()
 
     // Remove from paused map
     this.pausedTasks.delete(taskId)
@@ -1199,12 +1254,7 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
     }
 
     // Set up periodic status updates for resumed task
-    const statusIntervalMinutes = this.options.statusUpdateIntervalMinutes ?? 10
-    if (statusIntervalMinutes > 0 && this.options.onStatusUpdate) {
-      runningTask.statusUpdateTimer = setInterval(() => {
-        this.emitStatusUpdate(runningTask, task)
-      }, statusIntervalMinutes * 60 * 1000)
-    }
+    this.startStatusUpdateTimer(runningTask, task)
 
     this.runningTasks.set(taskId, runningTask)
 

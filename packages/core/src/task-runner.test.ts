@@ -94,7 +94,7 @@ describe('TaskRunner', () => {
   let onTaskPausedCalls: { taskId: string; injection: string }[] = []
 
   function tmpDbPath(): string {
-    const p = path.join(os.tmpdir(), `openagent-runner-test-${Date.now()}-${Math.random().toString(36).slice(2)}.db`)
+    const p = path.join(os.tmpdir(), `axiom-runner-test-${Date.now()}-${Math.random().toString(36).slice(2)}.db`)
     tmpFiles.push(p)
     return p
   }
@@ -1175,7 +1175,7 @@ describe('TaskRunner', () => {
 
     beforeEach(() => {
       originalDataDir = process.env.DATA_DIR
-      skillsTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openagent-skills-'))
+      skillsTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'axiom-skills-'))
       process.env.DATA_DIR = skillsTmpDir
       // Create two skills
       const nitterDir = path.join(skillsTmpDir, 'skills_agent', 'nitter')
@@ -1289,6 +1289,236 @@ describe('TaskRunner', () => {
         expect(warnSpy).toHaveBeenCalled()
       } finally {
         warnSpy.mockRestore()
+      }
+    })
+  })
+
+  describe('periodic status updates', () => {
+    /**
+     * Build a fresh runner with an adjustable `statusUpdates` config and a
+     * mocked `onStatusUpdate` callback. The outer `runner` in the suite's
+     * `beforeEach` doesn't expose these options, so tests that need them
+     * dispose the outer runner and construct their own.
+     */
+    function makeRunnerWithStatusUpdates(config: {
+      statusUpdates?: { enabled: boolean; intervalMinutes: number }
+      onStatusUpdate?: TaskRunnerOptions['onStatusUpdate']
+    }): TaskRunner {
+      runner.dispose()
+      const options: TaskRunnerOptions = {
+        db,
+        buildModel: () => ({} as ReturnType<TaskRunnerOptions['buildModel']>),
+        getApiKey: async () => 'test-key',
+        tools: [],
+        memoryDir: undefined,
+        onTaskComplete: (taskId: string, injection: string) => {
+          onTaskCompleteCalls.push({ taskId, injection })
+        },
+        onTaskPaused: (taskId: string, injection: string) => {
+          onTaskPausedCalls.push({ taskId, injection })
+        },
+        onStatusUpdate: config.onStatusUpdate,
+        statusUpdates: config.statusUpdates,
+        sessionManager,
+      }
+      return new TaskRunner(options)
+    }
+
+    /**
+     * Stub the mocked `Agent.prompt` so the task stays in the "running"
+     * state indefinitely — we need the running map populated while fake
+     * timers advance.
+     */
+    async function stubLongRunningAgent(): Promise<void> {
+      const { Agent } = await import('@mariozechner/pi-agent-core')
+      const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
+      MockAgent.mockImplementationOnce(() => {
+        return {
+          subscribe: vi.fn(() => () => {}),
+          prompt: vi.fn(() => new Promise<void>(() => { /* never resolves */ })),
+          abort: vi.fn(),
+          state: { messages: [] },
+        }
+      })
+    }
+
+    it('fires onStatusUpdate at the configured interval with a <task_status> payload', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: false })
+      try {
+        const onStatusUpdate = vi.fn()
+        runner = makeRunnerWithStatusUpdates({
+          statusUpdates: { enabled: true, intervalMinutes: 1 },
+          onStatusUpdate,
+        })
+
+        await stubLongRunningAgent()
+        const task = store.create({
+          name: 'Heartbeat Task',
+          prompt: 'long-running work',
+          triggerType: 'agent',
+          sessionId: 'status-session-1',
+        })
+        await runner.startTask(task, mockProvider)
+
+        // Advance past the first interval tick.
+        await vi.advanceTimersByTimeAsync(60_000)
+        expect(onStatusUpdate).toHaveBeenCalledTimes(1)
+        const [firedTaskId, firedMessage, firedDetails] = onStatusUpdate.mock.calls[0]
+        expect(firedTaskId).toBe(task.id)
+        expect(firedMessage).toContain(`<task_status task_id="${task.id}"`)
+        expect(firedMessage).toContain('type="periodic_update"')
+        expect(firedMessage).toContain('Heartbeat Task')
+        expect(firedDetails).toMatchObject({
+          taskName: 'Heartbeat Task',
+          runtimeMinutes: expect.any(Number),
+          toolCallCount: expect.any(Number),
+          totalTokens: expect.any(Number),
+        })
+
+        // Second interval — still firing.
+        await vi.advanceTimersByTimeAsync(60_000)
+        expect(onStatusUpdate).toHaveBeenCalledTimes(2)
+
+        runner.abortTask(task.id, 'test cleanup')
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('does not fire when statusUpdates.enabled=false', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: false })
+      try {
+        const onStatusUpdate = vi.fn()
+        runner = makeRunnerWithStatusUpdates({
+          statusUpdates: { enabled: false, intervalMinutes: 1 },
+          onStatusUpdate,
+        })
+
+        await stubLongRunningAgent()
+        const task = store.create({
+          name: 'Silent Task',
+          prompt: 'should stay quiet',
+          triggerType: 'agent',
+        })
+        await runner.startTask(task, mockProvider)
+
+        await vi.advanceTimersByTimeAsync(5 * 60_000)
+        expect(onStatusUpdate).not.toHaveBeenCalled()
+
+        runner.abortTask(task.id, 'test cleanup')
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('does not crash when enabled but no onStatusUpdate callback is wired', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: false })
+      try {
+        runner = makeRunnerWithStatusUpdates({
+          statusUpdates: { enabled: true, intervalMinutes: 1 },
+          onStatusUpdate: undefined,
+        })
+
+        await stubLongRunningAgent()
+        const task = store.create({
+          name: 'No-Callback Task',
+          prompt: 'runs silently',
+          triggerType: 'agent',
+        })
+        await expect(runner.startTask(task, mockProvider)).resolves.toBeTypeOf('string')
+
+        // Advance well past several intervals; no callback → no throw.
+        await vi.advanceTimersByTimeAsync(3 * 60_000)
+
+        runner.abortTask(task.id, 'test cleanup')
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('rejects invalid status-update intervals before starting the task', async () => {
+      const onStatusUpdate = vi.fn()
+      runner = makeRunnerWithStatusUpdates({
+        statusUpdates: { enabled: true, intervalMinutes: 121 },
+        onStatusUpdate,
+      })
+
+      const task = store.create({
+        name: 'Invalid Interval Task',
+        prompt: 'should not start',
+        triggerType: 'agent',
+      })
+
+      await expect(runner.startTask(task, mockProvider)).rejects.toThrow('tasks.statusUpdates.intervalMinutes must be an integer 1-120')
+      expect(runner.isRunning(task.id)).toBe(false)
+      expect(onStatusUpdate).not.toHaveBeenCalled()
+    })
+
+    it('keeps firing after a pause/resume cycle', async () => {
+      const onStatusUpdate = vi.fn()
+      runner = makeRunnerWithStatusUpdates({
+        statusUpdates: { enabled: true, intervalMinutes: 1 },
+        onStatusUpdate,
+      })
+
+      const { Agent } = await import('@mariozechner/pi-agent-core')
+      const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
+
+      // First prompt pauses with a question; second (after resume) never
+      // resolves so the runner stays in the running map for the second
+      // interval tick.
+      let promptCount = 0
+      const messages: unknown[] = []
+      MockAgent.mockImplementation(() => {
+        return {
+          subscribe: vi.fn(() => () => {}),
+          prompt: vi.fn(() => {
+            promptCount++
+            if (promptCount === 1) {
+              messages.push({
+                role: 'assistant',
+                content: [{ type: 'text', text: 'STATUS: question\nSUMMARY: Need more detail' }],
+              })
+              return Promise.resolve()
+            }
+            return new Promise<void>(() => { /* never resolves */ })
+          }),
+          abort: vi.fn(),
+          state: { get messages() { return messages } },
+        }
+      })
+
+      const task = store.create({
+        name: 'Resume Heartbeat Task',
+        prompt: 'work',
+        triggerType: 'agent',
+        sessionId: 'status-session-resume',
+      })
+
+      // Use fake timers from the start so `advanceTimersByTimeAsync` drains
+      // both the short microtask sleeps AND the periodic interval tick.
+      vi.useFakeTimers({ shouldAdvanceTime: false })
+      try {
+        await runner.startTask(task, mockProvider)
+        // Let the mocked agent's `prompt` microtask chain settle so the task
+        // transitions to the paused state.
+        await vi.advanceTimersByTimeAsync(50)
+        expect(runner.isPaused(task.id)).toBe(true)
+
+        // Resume — the runner creates a fresh status-update timer.
+        await runner.resumeTask(task.id, 'here is more detail')
+        await vi.advanceTimersByTimeAsync(50)
+        expect(runner.isRunning(task.id)).toBe(true)
+
+        // Past the first interval tick after resume → callback fires.
+        await vi.advanceTimersByTimeAsync(60_000)
+        expect(onStatusUpdate).toHaveBeenCalledTimes(1)
+        expect(onStatusUpdate.mock.calls[0][0]).toBe(task.id)
+        expect(onStatusUpdate.mock.calls[0][1]).toContain('type="periodic_update"')
+
+        runner.abortTask(task.id, 'test cleanup')
+      } finally {
+        vi.useRealTimers()
       }
     })
   })
