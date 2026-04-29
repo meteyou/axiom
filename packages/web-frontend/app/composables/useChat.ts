@@ -45,6 +45,20 @@ export interface ChatMessage {
   /** Task duration in minutes */
   taskResultDuration?: number
   /**
+   * Whether this is a periodic task-status heartbeat (system message).
+   * Rendered as a compact single-line progress row so it does not look
+   * like a completed-task card.
+   */
+  isTaskStatusUpdate?: boolean
+  /** Task name for the heartbeat */
+  taskStatusUpdateName?: string
+  /** How long the task has been running so far, in minutes */
+  taskStatusRuntimeMinutes?: number
+  /** Number of tool calls the task has made so far */
+  taskStatusToolCallCount?: number
+  /** Approximate total tokens the task has consumed so far */
+  taskStatusTokensUsed?: number
+  /**
    * Whether this assistant message is a thinking/reasoning block.
    * Rendered as a separate collapsible card (sparkles icon).
    */
@@ -58,7 +72,7 @@ export interface ChatMessage {
 }
 
 interface WsMessage {
-  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'reminder' | 'task_completed' | 'task_failed' | 'task_question' | 'pong' | 'attachment'
+  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'reminder' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'pong' | 'attachment'
   text?: string
   /** Uploaded file the agent sent for the current turn (for type='attachment') */
   attachment?: ChatAttachment
@@ -95,6 +109,14 @@ interface WsMessage {
   taskId?: string
   /** Task duration in minutes */
   taskDurationMinutes?: number
+  /** Human-readable content for task_status_update events */
+  taskStatusContent?: string
+  /** Task runtime in minutes (task_status_update) */
+  taskStatusRuntimeMinutes?: number
+  /** Task tool-call count so far (task_status_update) */
+  taskStatusToolCallCount?: number
+  /** Task tokens consumed so far (task_status_update) */
+  taskStatusTokensUsed?: number
 }
 
 type ConnectionStatus = 'connecting' | 'connected' | 'disconnected'
@@ -144,6 +166,14 @@ function closeStreamingThinking(list: ChatMessage[]): ChatMessage[] {
     return updated
   }
   return list
+}
+
+function insertBeforeTrailingStreams(list: ChatMessage[], message: ChatMessage): ChatMessage[] {
+  let insertAt = list.length
+  while (insertAt > 0 && list[insertAt - 1]?.streaming) {
+    insertAt--
+  }
+  return [...list.slice(0, insertAt), message, ...list.slice(insertAt)]
 }
 
 function parseAttachments(metadata?: string): ChatAttachment[] {
@@ -357,6 +387,25 @@ export function useChat() {
           taskResultStatus: statusLabel,
           taskResultDuration: msg.taskDurationMinutes,
         }]
+        break
+      }
+
+      case 'task_status_update': {
+        // Ephemeral heartbeat from a running background task. Rendered as a
+        // compact single-line progress row; distinct from task_result cards
+        // because the task is still in progress.
+        const taskName = msg.taskName ?? 'Background Task'
+        const content = msg.taskStatusContent ?? `⏱ Task running: ${taskName}`
+        messages.value = insertBeforeTrailingStreams(messages.value, {
+          role: 'system',
+          content,
+          timestamp: new Date().toISOString(),
+          isTaskStatusUpdate: true,
+          taskStatusUpdateName: taskName,
+          taskStatusRuntimeMinutes: msg.taskStatusRuntimeMinutes,
+          taskStatusToolCallCount: msg.taskStatusToolCallCount,
+          taskStatusTokensUsed: msg.taskStatusTokensUsed,
+        })
         break
       }
 

@@ -1,4 +1,4 @@
-import type { Task } from '@openagent/core'
+import type { Task } from '@axiom/core'
 import type { TaskProviderFilterOption } from './service.js'
 import type { TaskTimelineEvent } from './types.js'
 

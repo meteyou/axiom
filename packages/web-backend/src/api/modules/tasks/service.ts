@@ -1,4 +1,4 @@
-import { TaskStore, buildTaskFilterClause, getToolCalls, resolveProviderModelInput } from '@openagent/core'
+import { TaskStore, buildTaskFilterClause, getToolCalls, resolveProviderModelInput } from '@axiom/core'
 import type {
   Database,
   ProviderConfig,
@@ -6,7 +6,7 @@ import type {
   TaskRuntimeTaskBoundary,
   TaskStatus,
   TaskTriggerType,
-} from '@openagent/core'
+} from '@axiom/core'
 import type { RestartTaskInput } from './schema.js'
 import type { TaskTimelineEvent, TaskToolCallTimelineEvent } from './types.js'
 
