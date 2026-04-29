@@ -6,7 +6,7 @@ import type {
   ProviderTestResultContract,
   ProvidersListResponseContract,
   OAuthStatusResponseContract,
-} from '@openagent/core/contracts'
+} from '@axiom/core/contracts'
 
 export interface ProvidersRouterOptions {
   onActiveProviderChanged?: () => void

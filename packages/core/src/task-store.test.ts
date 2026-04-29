@@ -12,7 +12,7 @@ describe('TaskStore', () => {
   const tmpFiles: string[] = []
 
   function tmpDbPath(): string {
-    const p = path.join(os.tmpdir(), `openagent-task-test-${Date.now()}-${Math.random().toString(36).slice(2)}.db`)
+    const p = path.join(os.tmpdir(), `axiom-task-test-${Date.now()}-${Math.random().toString(36).slice(2)}.db`)
     tmpFiles.push(p)
     return p
   }

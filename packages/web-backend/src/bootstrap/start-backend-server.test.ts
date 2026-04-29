@@ -13,7 +13,7 @@ describe('backend bootstrap composition root', () => {
 
   beforeEach(() => {
     previousDataDir = process.env.DATA_DIR
-    tempDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openagent-bootstrap-'))
+    tempDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'axiom-bootstrap-'))
     process.env.DATA_DIR = tempDataDir
   })
 

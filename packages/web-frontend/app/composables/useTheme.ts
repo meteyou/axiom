@@ -16,7 +16,7 @@ export function useTheme() {
       dark: 'dark',
       light: 'light',
     },
-    storageKey: 'openagent-color-mode',
+    storageKey: 'axiom-color-mode',
     // Default to system preference
     initialValue: 'auto',
   })

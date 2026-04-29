@@ -60,7 +60,7 @@ export default defineNuxtConfig({
 
   app: {
     head: {
-      title: 'OpenAgent',
+      title: 'Axiom',
       meta: [
         { name: 'viewport', content: 'width=device-width, initial-scale=1' },
         { name: 'description', content: 'Self-hosted AI Agent with Web Dashboard' },

@@ -1,9 +1,9 @@
-import { buildModel, PROVIDER_TYPE_MODEL_OVERRIDES, PROVIDER_TYPE_PRESETS } from '@openagent/core'
+import { buildModel, PROVIDER_TYPE_MODEL_OVERRIDES, PROVIDER_TYPE_PRESETS } from '@axiom/core'
 import type {
   ProviderConfig,
   ProviderType,
   ProvidersFile,
-} from '@openagent/core'
+} from '@axiom/core'
 import type {
   OllamaModelContract,
   ProviderActivationResponseContract,
@@ -11,7 +11,7 @@ import type {
   ProviderFallbackResponseContract,
   ProviderMutationResponseContract,
   ProvidersListResponseContract,
-} from '@openagent/core/contracts'
+} from '@axiom/core/contracts'
 import { getModels as getPiAiModels } from '@mariozechner/pi-ai'
 import type { KnownProvider as PiAiKnownProvider } from '@mariozechner/pi-ai'
 import type { OllamaTagsResponse } from './types.js'

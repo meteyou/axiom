@@ -16,11 +16,11 @@ import path from 'node:path'
 import os from 'node:os'
 
 async function main() {
-  console.log('🤖 openagent - Agent Core Test\n')
+  console.log('🤖 axiom - Agent Core Test\n')
 
   // Set up DATA_DIR for local testing if not set
   if (!process.env.DATA_DIR) {
-    process.env.DATA_DIR = path.join(os.homedir(), '.openagent')
+    process.env.DATA_DIR = path.join(os.homedir(), '.axiom')
     console.log(`ℹ️  DATA_DIR not set, using: ${process.env.DATA_DIR}`)
   }
 
@@ -52,7 +52,7 @@ async function main() {
 
   // Build model and init database
   const model = buildModel(provider)
-  const dbPath = path.join(process.env.DATA_DIR, 'db', 'openagent.db')
+  const dbPath = path.join(process.env.DATA_DIR, 'db', 'axiom.db')
   const db = initDatabase(dbPath)
   console.log(`✅ Database: ${dbPath}\n`)
 
@@ -61,7 +61,7 @@ async function main() {
     model,
     apiKey: provider.apiKey,
     db,
-    systemPrompt: 'You are openagent, a helpful AI assistant. Keep responses concise.',
+    systemPrompt: 'You are Axiom, a helpful AI assistant. Keep responses concise.',
   })
 
   // Send a test message

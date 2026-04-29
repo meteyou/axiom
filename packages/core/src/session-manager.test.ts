@@ -16,7 +16,7 @@ describe('SessionManager', () => {
   let dbPath: string
 
   beforeEach(() => {
-    tmpDir = path.join(os.tmpdir(), `openagent-session-test-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+    tmpDir = path.join(os.tmpdir(), `axiom-session-test-${Date.now()}-${Math.random().toString(36).slice(2)}`)
     memoryDir = path.join(tmpDir, 'memory')
     dbPath = path.join(tmpDir, 'db', 'test.db')
 

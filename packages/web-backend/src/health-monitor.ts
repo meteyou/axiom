@@ -1,4 +1,4 @@
-import type { Database, ProviderConfig, ProviderHealthCheckResult, ProviderHealthStatus, OperatingMode } from '@openagent/core'
+import type { Database, ProviderConfig, ProviderHealthCheckResult, ProviderHealthStatus, OperatingMode } from '@axiom/core'
 import {
   getActiveProvider,
   performProviderHealthCheck,
@@ -7,7 +7,7 @@ import {
   ensureConfigTemplates,
   loadConfig,
   ProviderManager,
-} from '@openagent/core'
+} from '@axiom/core'
 
 interface TelegramConfig {
   enabled: boolean
@@ -236,7 +236,7 @@ export class HealthMonitorService {
       // Background tick: swallow errors so a closed DB or transient failure
       // during a scheduled run never surfaces as an unhandled rejection.
       this.runNow().catch((err) => {
-        console.error('[openagent] Health monitor background check failed:', err)
+        console.error('[axiom] Health monitor background check failed:', err)
       })
     }, Math.max(0, delayMs))
 
@@ -489,12 +489,12 @@ export class HealthMonitorService {
     fallbackProvider?: ProviderConfig,
   ): string {
     const messages: Record<NotificationTransition, { emoji: string; title: string }> = {
-      healthyToDegraded: { emoji: '⚠️', title: 'OpenAgent provider is degraded' },
-      degradedToHealthy: { emoji: '✅', title: 'OpenAgent provider recovered from degraded' },
-      degradedToDown: { emoji: '🚨', title: 'OpenAgent provider is down' },
-      healthyToDown: { emoji: '🚨', title: 'OpenAgent provider is down' },
-      downToFallback: { emoji: '🔄', title: 'OpenAgent switched to fallback provider' },
-      fallbackToHealthy: { emoji: '✅', title: 'OpenAgent primary provider restored' },
+      healthyToDegraded: { emoji: '⚠️', title: 'Axiom provider is degraded' },
+      degradedToHealthy: { emoji: '✅', title: 'Axiom provider recovered from degraded' },
+      degradedToDown: { emoji: '🚨', title: 'Axiom provider is down' },
+      healthyToDown: { emoji: '🚨', title: 'Axiom provider is down' },
+      downToFallback: { emoji: '🔄', title: 'Axiom switched to fallback provider' },
+      fallbackToHealthy: { emoji: '✅', title: 'Axiom primary provider restored' },
     }
 
     const { emoji, title } = messages[transition]
@@ -557,10 +557,10 @@ export class HealthMonitorService {
 
         if (!response.ok) {
           const body = await response.text().catch(() => '')
-          console.error(`[openagent] Failed to send Telegram health alert to ${chatId}: ${response.status} ${body}`)
+          console.error(`[axiom] Failed to send Telegram health alert to ${chatId}: ${response.status} ${body}`)
         }
       } catch (err) {
-        console.error(`[openagent] Failed to send Telegram health alert to ${chatId}:`, err)
+        console.error(`[axiom] Failed to send Telegram health alert to ${chatId}:`, err)
       }
     }))
   }

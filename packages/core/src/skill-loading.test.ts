@@ -9,7 +9,7 @@ describe('skill loading', () => {
   let tmpDir: string
 
   function makeTmpDir(): string {
-    tmpDir = path.join(os.tmpdir(), `openagent-skill-loading-test-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+    tmpDir = path.join(os.tmpdir(), `axiom-skill-loading-test-${Date.now()}-${Math.random().toString(36).slice(2)}`)
     fs.mkdirSync(tmpDir, { recursive: true })
     return tmpDir
   }

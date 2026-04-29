@@ -8,6 +8,12 @@ const KEY_LENGTH = 32
 /**
  * Get or derive the encryption key from environment or a default.
  * In production, ENCRYPTION_KEY should be set.
+ *
+ * NOTE: The scrypt salt and default key string are kept as `openagent-salt`
+ * and `openagent-dev-key` on purpose — they are **cryptographic seeds**, not
+ * brand identifiers. Renaming them would change the derived AES key and make
+ * every existing `secrets.json` / `providers.json` entry undecryptable.
+ * This is a permanent historical identifier from before the Axiom rebrand.
  */
 function getEncryptionKey(): Buffer {
   const envKey = process.env.ENCRYPTION_KEY

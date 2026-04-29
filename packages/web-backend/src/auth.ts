@@ -1,7 +1,7 @@
 import bcrypt from 'bcrypt'
 import jwt from 'jsonwebtoken'
 import type { Request, Response, NextFunction } from 'express'
-import type { Database } from '@openagent/core'
+import type { Database } from '@axiom/core'
 
 const SALT_ROUNDS = 10
 const JWT_EXPIRY = '1h'
@@ -18,7 +18,7 @@ export interface AuthenticatedRequest extends Request {
 }
 
 function getJwtSecret(): string {
-  return process.env.JWT_SECRET ?? 'openagent-dev-secret-change-me'
+  return process.env.JWT_SECRET ?? 'axiom-dev-secret-change-me'
 }
 
 /**
@@ -36,7 +36,7 @@ export function ensureAdminUser(db: Database): void {
     'INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)'
   ).run(username, hash, 'admin')
 
-  console.log(`[openagent] Admin user "${username}" created.`)
+  console.log(`[axiom] Admin user "${username}" created.`)
 }
 
 /**

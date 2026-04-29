@@ -1,5 +1,5 @@
 import { URL } from 'node:url'
-import { PROVIDER_TYPE_PRESETS } from '@openagent/core'
+import { PROVIDER_TYPE_PRESETS } from '@axiom/core'
 import type {
   ProviderCreatePayloadContract,
   ProviderFallbackUpdatePayloadContract,
@@ -8,7 +8,7 @@ import type {
   ProviderOAuthLoginStartPayloadContract,
   ProviderTypePresetContract,
   ProviderUpdatePayloadContract,
-} from '@openagent/core/contracts'
+} from '@axiom/core/contracts'
 
 const VALID_PROVIDER_TYPES = Object.keys(PROVIDER_TYPE_PRESETS)
 

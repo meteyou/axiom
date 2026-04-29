@@ -10,9 +10,9 @@ interface LoginResponse {
   user: User
 }
 
-const TOKEN_KEY = 'openagent_access_token'
-const REFRESH_TOKEN_KEY = 'openagent_refresh_token'
-const USER_KEY = 'openagent_user'
+const TOKEN_KEY = 'axiom_access_token'
+const REFRESH_TOKEN_KEY = 'axiom_refresh_token'
+const USER_KEY = 'axiom_user'
 
 /**
  * Decode the JWT payload and check if the token is expired.

@@ -5,9 +5,9 @@ import os from 'node:os'
 import path from 'node:path'
 import { WebSocket } from 'ws'
 import { createApp } from './app.js'
-import { createMemory, initDatabase } from '@openagent/core'
-import type { Database } from '@openagent/core'
-import type { AgentCore } from '@openagent/core'
+import { createMemory, initDatabase } from '@axiom/core'
+import type { Database } from '@axiom/core'
+import type { AgentCore } from '@axiom/core'
 import { setupWebSocketChat } from './ws-chat.js'
 import { setupWebSocketLogs } from './ws-logs.js'
 import { generateAccessToken } from './auth.js'
@@ -18,7 +18,7 @@ let db: Database
 let server: http.Server
 let wss: import('./ws-chat.js').WebSocketChatResult
 let logsWss: import('ws').WebSocketServer
-let broadcastLog: (record: import('@openagent/core').ToolCallRecord) => void
+let broadcastLog: (record: import('@axiom/core').ToolCallRecord) => void
 let port: number
 let baseUrl: string
 let tempDataDir: string
@@ -40,7 +40,7 @@ const healthMonitorSnapshot: HealthMonitorSnapshot = {
 
 beforeAll(async () => {
   previousDataDir = process.env.DATA_DIR
-  tempDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openagent-web-backend-'))
+  tempDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'axiom-web-backend-'))
   process.env.DATA_DIR = tempDataDir
 
   db = initDatabase(':memory:')
@@ -934,12 +934,12 @@ describe('settings API', () => {
       headers: { Authorization: `Bearer ${adminToken}` },
     })
     const body = (await res.json()) as {
-      telegramBotToken: string
+      telegram: { enabled: boolean; botToken: string; batchingDelayMs: number }
       factExtraction: { enabled: boolean; providerId: string; minSessionMessages: number }
     }
     expect(res.status).toBe(200)
-    expect(body.telegramBotToken).toBe('')
-    expect(body.factExtraction).toEqual({ enabled: false, providerId: '', minSessionMessages: 3 })
+    expect(body.telegram).toEqual({ enabled: false, botToken: '', batchingDelayMs: 2500 })
+    expect(body.factExtraction).toEqual({ enabled: true, providerId: '', minSessionMessages: 3 })
   })
 
   it('updates settings and applies live changes', async () => {
@@ -957,34 +957,36 @@ describe('settings API', () => {
         sessionTimeoutMinutes: 30,
         language: 'German',
         healthMonitorIntervalMinutes: 7,
-        batchingDelayMs: 4000,
-        telegramBotToken: 'telegram-secret',
+        telegram: {
+          batchingDelayMs: 4000,
+          botToken: 'telegram-secret',
+        },
       }),
     })
     const body = (await res.json()) as {
       sessionTimeoutMinutes: number
       language: string
       healthMonitorIntervalMinutes: number
-      batchingDelayMs: number
-      telegramBotToken: string
+      telegram: { botToken: string; batchingDelayMs: number }
     }
 
     expect(res.status).toBe(200)
     expect(body.sessionTimeoutMinutes).toBe(30)
     expect(body.language).toBe('German')
     expect(body.healthMonitorIntervalMinutes).toBe(7)
-    expect(body.batchingDelayMs).toBe(4000)
-    expect(body.telegramBotToken).toBe('telegram-secret')
+    expect(body.telegram.batchingDelayMs).toBe(4000)
+    expect(body.telegram.botToken).toBe('telegram-secret')
     expect(setTimeoutMinutes).toHaveBeenCalledWith(30)
     expect(refreshSystemPrompt).toHaveBeenCalled()
     expect(restartHealthMonitor).toHaveBeenCalled()
 
     const settingsPath = path.join(tempDataDir, 'config', 'settings.json')
     const telegramPath = path.join(tempDataDir, 'config', 'telegram.json')
-    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as { language: string; batchingDelayMs: number }
-    const telegram = JSON.parse(fs.readFileSync(telegramPath, 'utf-8')) as { botToken: string }
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as { language: string; batchingDelayMs?: number }
+    const telegram = JSON.parse(fs.readFileSync(telegramPath, 'utf-8')) as { botToken: string; batchingDelayMs: number }
     expect(settings.language).toBe('German')
-    expect(settings.batchingDelayMs).toBe(4000)
+    expect(settings.batchingDelayMs).toBeUndefined()
+    expect(telegram.batchingDelayMs).toBe(4000)
     expect(telegram.botToken).toBe('telegram-secret')
   })
 
@@ -1017,7 +1019,7 @@ describe('settings API', () => {
     })
     const defaults = (await getRes.json()) as Record<string, unknown>
     expect(defaults.factExtraction).toEqual({
-      enabled: false,
+      enabled: true,
       providerId: '',
       minSessionMessages: 3,
     })
@@ -1107,32 +1109,33 @@ describe('settings API', () => {
     expect(reloaded.agentHeartbeat.enabled).toBe(true)
   })
 
-  it('persists telegramEnabled when saving full form', async () => {
+  it('persists telegram.enabled when saving full form', async () => {
     // GET defaults
     const getRes = await fetch(`${baseUrl}/api/settings`, {
       headers: { Authorization: `Bearer ${adminToken}` },
     })
     const defaults = (await getRes.json()) as Record<string, unknown>
+    const telegramDefaults = defaults.telegram as Record<string, unknown>
 
-    // PUT with telegramEnabled = true
+    // PUT with telegram.enabled = true
     const putRes = await fetch(`${baseUrl}/api/settings`, {
       method: 'PUT',
       headers: {
         Authorization: `Bearer ${adminToken}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ ...defaults, telegramEnabled: true }),
+      body: JSON.stringify({ ...defaults, telegram: { ...telegramDefaults, enabled: true } }),
     })
     expect(putRes.status).toBe(200)
-    const putBody = (await putRes.json()) as { telegramEnabled: boolean }
-    expect(putBody.telegramEnabled).toBe(true)
+    const putBody = (await putRes.json()) as { telegram: { enabled: boolean } }
+    expect(putBody.telegram.enabled).toBe(true)
 
     // GET again — should persist
     const reloadRes = await fetch(`${baseUrl}/api/settings`, {
       headers: { Authorization: `Bearer ${adminToken}` },
     })
-    const reloaded = (await reloadRes.json()) as { telegramEnabled: boolean }
-    expect(reloaded.telegramEnabled).toBe(true)
+    const reloaded = (await reloadRes.json()) as { telegram: { enabled: boolean } }
+    expect(reloaded.telegram.enabled).toBe(true)
   })
 
   it('applies live settings updates to agentCore without failures (thinkingLevel, session, prompt)', async () => {

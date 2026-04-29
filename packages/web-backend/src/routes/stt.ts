@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { loadConfig, ensureConfigTemplates, transcribeAudio, loadSttSettings } from '@openagent/core'
+import { loadConfig, ensureConfigTemplates, transcribeAudio, loadSttSettings } from '@axiom/core'
 import { jwtMiddleware } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
 import { uploadMiddleware } from '../uploads.js'

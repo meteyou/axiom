@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import type { Database } from '@openagent/core'
+import type { Database } from '@axiom/core'
 import { jwtMiddleware } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
 

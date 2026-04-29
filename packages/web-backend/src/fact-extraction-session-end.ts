@@ -6,8 +6,8 @@ import {
   loadConfig,
   loadProvidersDecrypted,
   parseProviderModelId,
-} from '@openagent/core'
-import type { Database, ProviderConfig } from '@openagent/core'
+} from '@axiom/core'
+import type { Database, ProviderConfig } from '@axiom/core'
 
 export interface FactExtractionSettings {
   enabled: boolean
@@ -46,7 +46,7 @@ interface TriggerFactExtractionOptions {
 }
 
 const DEFAULT_FACT_EXTRACTION_SETTINGS: FactExtractionSettings = {
-  enabled: false,
+  enabled: true,
   providerId: '',
   minSessionMessages: 3,
 }

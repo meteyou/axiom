@@ -22,7 +22,7 @@ let agentSkillsDir: string
 
 beforeAll(() => {
   prevDataDir = process.env.DATA_DIR
-  tempDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openagent-attached-skills-'))
+  tempDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'axiom-attached-skills-'))
   process.env.DATA_DIR = tempDataDir
 
   // Initialise config templates so skills.json exists with default shape.

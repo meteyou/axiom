@@ -1,6 +1,6 @@
 import { Router } from 'express'
-import type { Database, AgentCore } from '@openagent/core'
-import { saveUpload, serializeUploadsMetadata } from '@openagent/core'
+import type { Database, AgentCore } from '@axiom/core'
+import { saveUpload, serializeUploadsMetadata } from '@axiom/core'
 import { jwtMiddleware } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
 import { uploadMiddleware } from '../uploads.js'

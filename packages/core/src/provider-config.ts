@@ -188,7 +188,7 @@ export const PROVIDER_TYPE_PRESETS: Record<ProviderType, ProviderTypePreset> = {
   },
   'google-gemini-cli': {
     type: 'google-gemini-cli',
-    label: 'Google Gemini (Free)',
+    label: 'Google Gemini CLI',
     apiType: 'google-gemini-cli',
     providerName: 'google-gemini-cli',
     baseUrl: '',
@@ -200,7 +200,7 @@ export const PROVIDER_TYPE_PRESETS: Record<ProviderType, ProviderTypePreset> = {
   },
   'google-antigravity': {
     type: 'google-antigravity',
-    label: 'Google Antigravity (Free)',
+    label: 'Google Antigravity',
     apiType: 'google-gemini-cli',
     providerName: 'google-antigravity',
     baseUrl: '',
@@ -503,11 +503,23 @@ export function loadProvidersDecrypted(): ProvidersFile {
       const preset = PROVIDER_TYPE_PRESETS[p.providerType]
       const baseUrl = (preset && !preset.urlEditable) ? preset.baseUrl : p.baseUrl
 
+      const decryptedApiKey = tryDecryptField(p.apiKey, `API key for provider "${p.name}"`) ?? p.apiKey
+
+      let decryptedOAuth: OAuthCredentialsStored | undefined
+      if (p.oauthCredentials) {
+        try {
+          decryptedOAuth = decryptOAuthCredentials(p.oauthCredentials)
+        } catch (err) {
+          console.warn(`[axiom] Skipping OAuth credentials for provider "${p.name}": ${(err as Error).message}`)
+          decryptedOAuth = undefined
+        }
+      }
+
       return {
         ...p,
         baseUrl,
-        apiKey: p.apiKey && isEncrypted(p.apiKey) ? decrypt(p.apiKey) : p.apiKey,
-        oauthCredentials: p.oauthCredentials ? decryptOAuthCredentials(p.oauthCredentials) : undefined,
+        apiKey: decryptedApiKey,
+        oauthCredentials: decryptedOAuth,
       }
     }),
   }
@@ -543,14 +555,33 @@ export function encryptOAuthCredentials(creds: OAuthCredentials): OAuthCredentia
 }
 
 /**
- * Decrypt OAuth credentials from storage
+ * Attempt to decrypt a single encrypted field, returning `undefined` on
+ * failure (logs a warning). Lets callers skip unreadable fields instead of
+ * bringing down the entire server when e.g. the encryption key rotated.
+ */
+function tryDecryptField(value: string | undefined, label: string): string | undefined {
+  if (!value) return value
+  if (!isEncrypted(value)) return value
+  try {
+    return decrypt(value)
+  } catch (err) {
+    console.warn(`[axiom] Failed to decrypt ${label}: ${(err as Error).message}. Field will be treated as absent. Set ENCRYPTION_KEY correctly or re-enter the value via the web UI.`)
+    return undefined
+  }
+}
+
+/**
+ * Decrypt OAuth credentials from storage. Individual fields that fail to
+ * decrypt are dropped with a warning rather than throwing — this keeps the
+ * server booting even when a stale `providers.json` has credentials
+ * encrypted under a previous key.
  */
 function decryptOAuthCredentials(stored: OAuthCredentialsStored): OAuthCredentialsStored {
   return {
-    refresh: isEncrypted(stored.refresh) ? decrypt(stored.refresh) : stored.refresh,
-    access: isEncrypted(stored.access) ? decrypt(stored.access) : stored.access,
+    refresh: tryDecryptField(stored.refresh, 'OAuth refresh token') ?? stored.refresh,
+    access: tryDecryptField(stored.access, 'OAuth access token') ?? stored.access,
     expires: stored.expires,
-    extra: stored.extra && isEncrypted(stored.extra) ? decrypt(stored.extra) : stored.extra,
+    extra: stored.extra ? (tryDecryptField(stored.extra, 'OAuth extra payload') ?? stored.extra) : stored.extra,
   }
 }
 

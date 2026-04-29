@@ -23,7 +23,7 @@ describe('agent-skills', () => {
 
   beforeEach(() => {
     originalDataDir = process.env.DATA_DIR
-    tmpDir = path.join(os.tmpdir(), `openagent-agent-skills-test-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+    tmpDir = path.join(os.tmpdir(), `axiom-agent-skills-test-${Date.now()}-${Math.random().toString(36).slice(2)}`)
     fs.mkdirSync(tmpDir, { recursive: true })
     process.env.DATA_DIR = tmpDir
   })

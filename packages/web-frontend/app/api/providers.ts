@@ -13,7 +13,7 @@ import type {
   ProviderTypePresetContract,
   ProviderUpdatePayloadContract,
   ProvidersListResponseContract,
-} from '@openagent/core/contracts'
+} from '@axiom/core/contracts'
 
 export type Provider = ProviderContract
 export type OAuthLoginResponse = OAuthLoginResponseContract

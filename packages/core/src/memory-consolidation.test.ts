@@ -18,7 +18,7 @@ describe('memory-consolidation', () => {
   })
 
   function makeTmpDir(): string {
-    tmpDir = path.join(os.tmpdir(), `openagent-consolidation-test-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+    tmpDir = path.join(os.tmpdir(), `axiom-consolidation-test-${Date.now()}-${Math.random().toString(36).slice(2)}`)
     return tmpDir
   }
 
