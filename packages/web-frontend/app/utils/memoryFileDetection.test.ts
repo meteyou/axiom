@@ -97,7 +97,7 @@ describe('extractMemoryFileName', () => {
 
   it('normalizes dev paths to canonical /data/memory/ prefix', () => {
     expect(extractMemoryFileName({ path: '/Users/dev/project/.data/memory/users/admin.md' })).toBe('/data/memory/users/admin.md')
-    expect(extractMemoryFileName({ path: '/home/user/openagent/.data/memory/SOUL.md' })).toBe('/data/memory/SOUL.md')
+    expect(extractMemoryFileName({ path: '/home/user/axiom/.data/memory/SOUL.md' })).toBe('/data/memory/SOUL.md')
     expect(extractMemoryFileName({ path: '/Users/dev/project/.data/memory/daily/2026-04-05.md' })).toBe('/data/memory/daily/2026-04-05.md')
   })
 

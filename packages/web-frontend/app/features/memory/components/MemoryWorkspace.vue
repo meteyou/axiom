@@ -161,7 +161,7 @@
                 <MarkdownEditor
                   v-model="pageContent"
                   :saving="saving"
-                  :file-path="selectedPage ? `.data/memory/wiki/${selectedPage}.md` : ''"
+                  :file-path="selectedPage ? `/data/memory/wiki/${selectedPage}.md` : ''"
                   @save="handleSavePage"
                 />
               </div>
@@ -178,7 +178,7 @@
             <MarkdownEditor
               v-model="soulContent"
               :saving="saving"
-              file-path=".data/memory/SOUL.md"
+              file-path="/data/memory/SOUL.md"
               @save="handleSaveSoul"
             />
           </div>
@@ -193,7 +193,7 @@
             <MarkdownEditor
               v-model="coreMemoryContent"
               :saving="saving"
-              file-path=".data/memory/MEMORY.md"
+              file-path="/data/memory/MEMORY.md"
               @save="handleSaveCoreMemory"
             />
           </div>
@@ -208,7 +208,7 @@
             <MarkdownEditor
               v-model="profileContent"
               :saving="saving"
-              :file-path="`.data/memory/users/${profileUsername || 'profile'}.md`"
+              :file-path="`/data/memory/users/${profileUsername || 'profile'}.md`"
               @save="handleSaveProfile"
             />
           </div>
@@ -309,7 +309,7 @@
               <MarkdownEditor
                 v-model="dailyContent"
                 :saving="saving"
-                :file-path="`.data/memory/daily/${selectedDaily}.md`"
+                :file-path="`/data/memory/daily/${selectedDaily}.md`"
                 @save="handleSaveDaily"
               />
             </div>
