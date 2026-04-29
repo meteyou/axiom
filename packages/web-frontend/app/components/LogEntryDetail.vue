@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import type { LogEntry } from '~/composables/useLogs'
 import { parseLogData, hasInputData } from '~/utils/logDataParsing'
-import { hasMemoryConsolidationDiff } from '~/utils/memoryConsolidation'
 
 const props = defineProps<{
   entry: LogEntry | null
@@ -19,11 +18,6 @@ const showInput = computed(() => {
   // Hide raw input when a memory diff view is available (it's redundant)
   if (memoryEditsInfo.value || memoryFileDiff.value) return false
   return true
-})
-
-const showMemoryConsolidationDiff = computed(() => {
-  if (!props.entry) return false
-  return hasMemoryConsolidationDiff(props.entry.toolName, props.entry.output)
 })
 
 /** Extract filename from log entry input using shared utility */
@@ -57,37 +51,30 @@ const memoryEditsInfo = computed<{ edits: Array<{ oldText: string; newText: stri
   }
 })
 
-/** Detect memoryDiff from write_file tool calls on memory files */
+/**
+ * For `write_file` calls on memory files, render the new content as an
+ * all-added diff. Surgical edits should use `edit_file`, which produces a
+ * real before/after view from its `edits` arg — see `memoryEditsInfo` above.
+ */
 const memoryFileDiff = computed<{ before: string; after: string; fileName: string | null } | null>(() => {
   if (!props.entry) return null
   const toolName = props.entry.toolName
   if (toolName !== 'write_file' && toolName !== 'Write') return null
 
   const fileName = extractFileNameFromInput(props.entry.input)
+  if (!fileName) return null
 
-  // Try to extract memoryDiff from output
   try {
-    const output = JSON.parse(props.entry.output ?? '{}')
-    const diff = output?.details?.memoryDiff ?? output?.memoryDiff
-    if (diff && typeof diff.before === 'string' && typeof diff.after === 'string') {
-      return { before: diff.before, after: diff.after, fileName }
+    const input = JSON.parse(props.entry.input ?? '{}')
+    if (typeof input.content === 'string') {
+      return { before: '', after: input.content, fileName }
     }
   } catch { /* ignore */ }
-
-  // Fallback: if it's a memory file write without diff, show content as all-added
-  if (fileName) {
-    try {
-      const input = JSON.parse(props.entry.input ?? '{}')
-      if (typeof input.content === 'string') {
-        return { before: '', after: input.content, fileName }
-      }
-    } catch { /* ignore */ }
-  }
 
   return null
 })
 
-const showMemoryDiff = computed(() => showMemoryConsolidationDiff.value || memoryFileDiff.value !== null || memoryEditsInfo.value !== null)
+const showMemoryDiff = computed(() => memoryFileDiff.value !== null || memoryEditsInfo.value !== null)
 
 const isSkillLoad = computed(() => {
   if (!props.entry) return false
@@ -119,7 +106,7 @@ const isSkillLoad = computed(() => {
         </h4>
         <!-- Memory diffs: edge-to-edge inside a single border container -->
         <div
-          v-if="memoryEditsInfo || memoryFileDiff || showMemoryConsolidationDiff"
+          v-if="memoryEditsInfo || memoryFileDiff"
           class="oa-scrollbar max-h-[420px] overflow-y-auto overflow-x-hidden rounded-md border border-border bg-muted/50 text-xs leading-snug"
         >
           <template v-if="memoryEditsInfo">
@@ -134,9 +121,6 @@ const isSkillLoad = computed(() => {
               :after="memoryFileDiff.after"
               :file-name="memoryFileDiff.fileName ?? undefined"
             />
-          </template>
-          <template v-else-if="showMemoryConsolidationDiff">
-            <MemoryConsolidationDiff :output="entry.output" />
           </template>
         </div>
         <!-- Standard output -->
