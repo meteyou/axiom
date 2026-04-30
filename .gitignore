@@ -33,3 +33,4 @@ packages/web-frontend/dist
 # VitePress
 docs/.vitepress/cache/
 docs/.vitepress/dist/
+.fallow/
