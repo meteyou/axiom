@@ -1254,8 +1254,9 @@ export class TelegramBot {
 
   /**
    * Send a message directly to a Telegram chat by chat ID.
-   * Used for notifications (e.g. approval messages).
+   * Used by the web backend for admin-triggered approval/rejection notifications.
    */
+  // fallow-ignore-next-line unused-class-member
   async sendDirectMessage(chatId: string | number, text: string): Promise<boolean> {
     try {
       await this.bot.api.sendMessage(chatId, text)
