@@ -18,7 +18,7 @@ export const uploadMiddleware = multer({
   },
 })
 
-export function extractUploadsFromMetadata(metadata?: string | null): UploadDescriptor[] {
+function extractUploadsFromMetadata(metadata?: string | null): UploadDescriptor[] {
   return parseUploadsMetadata(metadata)
 }
 

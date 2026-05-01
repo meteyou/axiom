@@ -12,7 +12,7 @@ import { encrypt, decrypt, isEncrypted, maskApiKey } from './encryption.js'
  * Claude Code CLI version to advertise in the user-agent header for Anthropic requests.
  * This ensures Anthropic treats requests as coming from a Claude Code client.
  */
-export const CLAUDE_CODE_VERSION = '2.1.96'
+const CLAUDE_CODE_VERSION = '2.1.96'
 
 /**
  * Supported provider types with presets

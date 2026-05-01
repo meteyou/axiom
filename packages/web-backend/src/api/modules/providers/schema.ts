@@ -52,11 +52,7 @@ function normalizeDegradedThresholdMs(value: unknown): number | undefined {
   return Math.max(1, Math.round(value as number))
 }
 
-export function getValidProviderTypes(): string[] {
-  return [...VALID_PROVIDER_TYPES]
-}
-
-export function isValidProviderType(providerType: string): boolean {
+function isValidProviderType(providerType: string): boolean {
   return VALID_PROVIDER_TYPES.includes(providerType)
 }
 
