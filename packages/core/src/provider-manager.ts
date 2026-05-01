@@ -134,7 +134,9 @@ export class ProviderManager extends EventEmitter {
 
   /**
    * Reset failure and success counters without changing mode.
+   * Used by the backend health monitor after fallback/recovery transitions.
    */
+  // fallow-ignore-next-line unused-class-member
   resetCounters(): void {
     this.consecutiveFailures = 0
     this.consecutiveSuccesses = 0
