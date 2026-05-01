@@ -326,6 +326,17 @@ export const PROVIDER_TYPE_MODEL_OVERRIDES: Partial<Record<ProviderType, Provide
 }
 
 /**
+ * Whether a provider type's pi-ai apiType actually consumes the
+ * `textVerbosity` stream option. Today only the OpenAI Codex / Responses
+ * API honours it; for every other provider the value is silently ignored
+ * downstream, so we drop it on persist instead of storing a no-op.
+ */
+export function presetSupportsTextVerbosity(providerType: ProviderType): boolean {
+  const preset = PROVIDER_TYPE_PRESETS[providerType]
+  return preset?.apiType === 'openai-codex-responses'
+}
+
+/**
  * Get available models for a given provider type.
  *
  * Resolution order:
@@ -684,7 +695,8 @@ export function addProvider(input: {
     defaultModel: input.defaultModel,
     enabledModels,
     degradedThresholdMs: input.degradedThresholdMs ?? 5000,
-    ...(input.textVerbosity && { textVerbosity: input.textVerbosity }),
+    ...(input.textVerbosity && presetSupportsTextVerbosity(input.providerType)
+      && { textVerbosity: input.textVerbosity }),
     status: 'untested',
     authMethod: preset.authMethod,
   }
@@ -746,7 +758,8 @@ export function addOAuthProvider(input: {
     defaultModel: input.defaultModel,
     enabledModels,
     degradedThresholdMs: input.degradedThresholdMs ?? 5000,
-    ...(input.textVerbosity && { textVerbosity: input.textVerbosity }),
+    ...(input.textVerbosity && presetSupportsTextVerbosity(input.providerType)
+      && { textVerbosity: input.textVerbosity }),
     status: 'untested',
     authMethod: 'oauth',
     oauthCredentials: encryptOAuthCredentials(input.oauthCredentials),
@@ -817,11 +830,18 @@ export function updateProvider(id: string, input: {
   }
   if (input.degradedThresholdMs !== undefined) existing.degradedThresholdMs = input.degradedThresholdMs
   if (input.textVerbosity !== undefined) {
-    if (input.textVerbosity === null) {
+    if (input.textVerbosity === null || !presetSupportsTextVerbosity(existing.providerType)) {
+      // Either the caller explicitly cleared the value or the (possibly
+      // newly-changed) provider type does not consume textVerbosity. In
+      // both cases we drop it rather than persisting a no-op.
       delete existing.textVerbosity
     } else {
       existing.textVerbosity = input.textVerbosity
     }
+  } else if (existing.textVerbosity && !presetSupportsTextVerbosity(existing.providerType)) {
+    // Provider type was switched to one that does not support textVerbosity
+    // — strip the now-orphaned value so it does not silently persist.
+    delete existing.textVerbosity
   }
 
   // For providers with fixed URLs, always sync from preset
