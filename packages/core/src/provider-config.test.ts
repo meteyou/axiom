@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import {
   loadProviders,
   loadProvidersDecrypted,
@@ -18,6 +18,9 @@ import {
   updateProviderStatus,
   PROVIDER_TYPE_PRESETS,
   getConfiguredPriceTable,
+  applyTextVerbosity,
+  buildStreamFn,
+  presetSupportsTextVerbosity,
 } from './provider-config.js'
 import { encrypt, decrypt, maskApiKey } from './encryption.js'
 import fs from 'node:fs'
@@ -245,6 +248,116 @@ describe('provider-config', () => {
     const model = buildModel(provider)
     const cost = estimateCost(model, 1000, 500, 2000, 1000)
     expect(cost).toBeCloseTo(0.035, 6)
+  })
+})
+
+describe('streamFn injection', () => {
+  it('applyTextVerbosity returns opts unchanged when textVerbosity is undefined', () => {
+    const opts = { temperature: 0.7 }
+    expect(applyTextVerbosity(undefined, opts)).toBe(opts)
+  })
+
+  it('applyTextVerbosity merges textVerbosity into opts when set', () => {
+    const opts = { temperature: 0.7 }
+    const merged = applyTextVerbosity('medium', opts)
+    expect(merged).toEqual({ temperature: 0.7, textVerbosity: 'medium' })
+    // does not mutate the input
+    expect(opts).toEqual({ temperature: 0.7 })
+  })
+
+  it('buildStreamFn forwards textVerbosity into streamSimple options when configured', async () => {
+    const fakeStream = vi.fn().mockResolvedValue({ ok: true })
+    const fn = buildStreamFn({ textVerbosity: 'medium' }, fakeStream as never)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await fn({ id: 'm' } as any, { messages: [] } as any, { temperature: 0.5 } as any)
+    expect(fakeStream).toHaveBeenCalledTimes(1)
+    const [, , opts] = fakeStream.mock.calls[0]!
+    expect(opts).toEqual({ temperature: 0.5, textVerbosity: 'medium' })
+  })
+
+  it('buildStreamFn passes options through unchanged when no textVerbosity is set', async () => {
+    const fakeStream = vi.fn().mockResolvedValue({ ok: true })
+    const fn = buildStreamFn({}, fakeStream as never)
+    const inputOpts = { temperature: 0.5 }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await fn({ id: 'm' } as any, { messages: [] } as any, inputOpts as any)
+    const [, , opts] = fakeStream.mock.calls[0]!
+    expect(opts).toBe(inputOpts) // identity — no spread when not needed
+    expect(opts).not.toHaveProperty('textVerbosity')
+  })
+})
+
+describe('textVerbosity persistence guard', () => {
+  let tmpDir: string
+  const originalDataDir = process.env.DATA_DIR
+
+  afterEach(() => {
+    if (tmpDir) fs.rmSync(tmpDir, { recursive: true, force: true })
+    if (originalDataDir !== undefined) process.env.DATA_DIR = originalDataDir
+    else delete process.env.DATA_DIR
+  })
+
+  function setupEmpty(): void {
+    tmpDir = path.join(os.tmpdir(), `axiom-tv-guard-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+    const configDir = path.join(tmpDir, 'config')
+    fs.mkdirSync(configDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(configDir, 'providers.json'),
+      JSON.stringify({ providers: [] }, null, 2),
+      'utf-8',
+    )
+    process.env.DATA_DIR = tmpDir
+  }
+
+  it('addProvider drops textVerbosity when preset does not support it', () => {
+    setupEmpty()
+    const provider = addProvider({
+      name: 'openai-noop',
+      providerType: 'openai',
+      apiKey: 'sk-1',
+      defaultModel: 'gpt-4o',
+      textVerbosity: 'medium',
+    })
+    expect(provider.textVerbosity).toBeUndefined()
+  })
+
+  it('updateProvider strips textVerbosity when switching to a non-supporting providerType', () => {
+    setupEmpty()
+    // Need a non-active provider so we can mutate freely without re-pointing active
+    addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-a', defaultModel: 'gpt-4o' })
+    const codex = addProvider({
+      name: 'codex',
+      providerType: 'openai-codex',
+      defaultModel: 'gpt-5-codex',
+      textVerbosity: 'high',
+    })
+    // codex preset is OAuth + openai-codex-responses — textVerbosity is honoured
+    expect(codex.textVerbosity).toBe('high')
+
+    // Flip to a providerType that does not consume textVerbosity
+    const updated = updateProvider(codex.id, { providerType: 'openai' })
+    expect(updated.textVerbosity).toBeUndefined()
+  })
+
+  it('updateProvider clears textVerbosity when explicitly set to null', () => {
+    setupEmpty()
+    addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-a', defaultModel: 'gpt-4o' })
+    const codex = addProvider({
+      name: 'codex',
+      providerType: 'openai-codex',
+      defaultModel: 'gpt-5-codex',
+      textVerbosity: 'low',
+    })
+    expect(codex.textVerbosity).toBe('low')
+    const updated = updateProvider(codex.id, { textVerbosity: null })
+    expect(updated.textVerbosity).toBeUndefined()
+  })
+
+  it('updateProvider ignores textVerbosity on providers whose preset does not support it', () => {
+    setupEmpty()
+    const provider = addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-a', defaultModel: 'gpt-4o' })
+    const updated = updateProvider(provider.id, { textVerbosity: 'high' })
+    expect(updated.textVerbosity).toBeUndefined()
   })
 })
 
@@ -556,6 +669,13 @@ describe('getAvailableModels', () => {
     expect(resolveModelTemperature(provider, 'kimi-k2-turbo-preview', 0.5)).toBe(0.5)
     // Unknown model id passes through unchanged
     expect(resolveModelTemperature(provider, 'some-other-model', 0.7)).toBe(0.7)
+  })
+
+  it('presetSupportsTextVerbosity is true only for openai-codex-responses presets', () => {
+    expect(presetSupportsTextVerbosity('openai-codex')).toBe(true)
+    expect(presetSupportsTextVerbosity('openai')).toBe(false)
+    expect(presetSupportsTextVerbosity('anthropic')).toBe(false)
+    expect(presetSupportsTextVerbosity('github-copilot')).toBe(false)
   })
 
   it('resolveModelTemperature respects per-provider models[].fixedTemperature override', () => {
