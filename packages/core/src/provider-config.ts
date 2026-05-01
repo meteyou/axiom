@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import type { Api, KnownProvider, Model } from '@mariozechner/pi-ai'
-import { getModels as getPiAiModels } from '@mariozechner/pi-ai'
+import { getModels as getPiAiModels, streamSimple } from '@mariozechner/pi-ai'
 import { getOAuthProvider, getOAuthApiKey } from '@mariozechner/pi-ai/oauth'
 import type { OAuthCredentials } from '@mariozechner/pi-ai/oauth'
 import { getConfigDir, ensureConfigTemplates, loadConfig } from './config.js'
@@ -334,6 +334,39 @@ export const PROVIDER_TYPE_MODEL_OVERRIDES: Partial<Record<ProviderType, Provide
 export function presetSupportsTextVerbosity(providerType: ProviderType): boolean {
   const preset = PROVIDER_TYPE_PRESETS[providerType]
   return preset?.apiType === 'openai-codex-responses'
+}
+
+/**
+ * Pure helper: merge the configured `textVerbosity` into a `streamSimple`
+ * options object. Returns `opts` unchanged when the provider has no
+ * verbosity override. Exported so tests can lock the contract without
+ * having to mock pi-ai's streamSimple.
+ */
+export function applyTextVerbosity<T extends object | undefined>(
+  textVerbosity: TextVerbosity | undefined,
+  opts: T,
+): T {
+  if (!textVerbosity) return opts
+  return { ...(opts ?? {}), textVerbosity } as T
+}
+
+/**
+ * Build the `streamFn` callback that the agent loop hands to pi-agent-core.
+ * Wraps `streamSimple` and forwards the provider's `textVerbosity` override
+ * when one is configured. Centralising this keeps the cast in one place
+ * and makes it impossible to forget the spread at a call site.
+ *
+ * The `streamSimple` argument is injectable purely for testing; production
+ * call sites should omit it so the real pi-ai implementation is used.
+ */
+export function buildStreamFn(
+  provider: Pick<ProviderConfig, 'textVerbosity'>,
+  streamImpl: typeof streamSimple = streamSimple,
+): typeof streamSimple {
+  return ((model, context, options) => {
+    const merged = applyTextVerbosity(provider.textVerbosity, options) as Parameters<typeof streamSimple>[2]
+    return streamImpl(model, context, merged)
+  }) as typeof streamSimple
 }
 
 /**

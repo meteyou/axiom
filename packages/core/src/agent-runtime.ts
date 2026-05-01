@@ -4,10 +4,10 @@ import nodePath from 'node:path'
 import { Agent as PiAgent } from '@mariozechner/pi-agent-core'
 import type { AgentEvent, AgentTool } from '@mariozechner/pi-agent-core'
 import type { Api, AssistantMessage, Message, ImageContent, Model } from '@mariozechner/pi-ai'
-import { Type, streamSimple } from '@mariozechner/pi-ai'
+import { Type } from '@mariozechner/pi-ai'
 import type { Database } from './database.js'
 import { logTokenUsage, logToolCall } from './token-logger.js'
-import { estimateCost, getApiKeyForProvider, buildModel, loadProvidersDecrypted } from './provider-config.js'
+import { estimateCost, getApiKeyForProvider, buildModel, buildStreamFn, loadProvidersDecrypted } from './provider-config.js'
 import type { ProviderConfig } from './provider-config.js'
 import type { ProviderManager } from './provider-manager.js'
 import type { SettingsThinkingLevel } from './contracts/settings.js'
@@ -471,13 +471,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
         tools,
         thinkingLevel: effectiveThinkingLevel,
       },
-      streamFn: (model, context, loopOptions) => {
-        const textVerbosity = this.providerConfig?.textVerbosity
-        const optionsWithVerbosity = textVerbosity
-          ? { ...loopOptions, textVerbosity }
-          : loopOptions
-        return streamSimple(model, context, optionsWithVerbosity as Parameters<typeof streamSimple>[2])
-      },
+      streamFn: buildStreamFn({ textVerbosity: this.providerConfig?.textVerbosity }),
       getApiKey: this.providerConfig?.authMethod === 'oauth'
         ? async () => {
             try {
