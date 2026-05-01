@@ -46,7 +46,7 @@ export class MemoryFileNotFoundError extends Error {}
 
 export class MemorySchedulerUnavailableError extends Error {}
 
-export class MemoryService {
+class MemoryService {
   constructor(private readonly options: MemoryModuleOptions) {}
 
   readSoul(): string {

@@ -98,7 +98,7 @@ const USER_PROFILE_TEMPLATE = `# User Profile — {username}
 (none yet)
 `
 
-export const SOURCES_README_TEMPLATE = `# Sources
+const SOURCES_README_TEMPLATE = `# Sources
 
 <!-- This directory holds the immutable raw material the wiki is built on. -->
 <!-- Sources are what you read. The wiki is what you learned. -->

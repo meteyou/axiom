@@ -1,4 +1,4 @@
-export const TASK_DEFAULT_DATE_RANGE_DAYS = 3
+const TASK_DEFAULT_DATE_RANGE_DAYS = 3
 
 export type DateBoundary = 'start' | 'end'
 

@@ -123,7 +123,7 @@ export interface TaskRunnerOptions {
  * - `triggerType='consolidation'` -> `type='consolidation'`
  * - all other triggers (`user`, `agent`, `cronjob`) -> `type='task'`
  */
-export function triggerTypeToSessionType(triggerType: TaskTriggerType): SessionType {
+function triggerTypeToSessionType(triggerType: TaskTriggerType): SessionType {
   if (triggerType === 'heartbeat') return 'heartbeat'
   if (triggerType === 'consolidation') return 'consolidation'
   return 'task'

@@ -278,7 +278,7 @@ const LANGUAGE_TO_ISO: Record<string, string> = {
  * If the value is already a 2-3 letter code, return it as-is.
  * If it's a full name (e.g. "German"), map it to the code (e.g. "de").
  */
-export function resolveLanguageCode(lang: string | undefined): string | undefined {
+function resolveLanguageCode(lang: string | undefined): string | undefined {
   if (!lang) return undefined
   // Already an ISO code (2-3 chars)?
   if (lang.length <= 3) return lang.toLowerCase()
