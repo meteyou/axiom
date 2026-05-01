@@ -71,11 +71,20 @@ export function decrypt(encryptedBase64: string): string {
 }
 
 /**
- * Check if a string looks like it's already encrypted (base64 with expected minimum length)
+ * Check if a string looks like it's already encrypted (strict base64 with expected minimum length).
+ *
+ * NOTE: We must validate strict base64 here. Node's `Buffer.from(value, 'base64')`
+ * silently ignores invalid characters (e.g. `-` in `tvly-dev-...`), which previously
+ * caused plaintext API keys with dashes to be misclassified as encrypted, breaking
+ * both storage (no encryption applied) and decryption (auth tag check fails on startup).
  */
 export function isEncrypted(value: string): boolean {
-  // Minimum: IV (12) + authTag (16) + at least 1 byte ciphertext = 29 bytes = ~40 base64 chars
+  // Minimum: IV (12) + authTag (16) + at least 1 byte ciphertext = 29 bytes
+  // Strict base64 length must be a multiple of 4, so minimum is 40 chars (covers 30 bytes).
   if (value.length < 40) return false
+  if (value.length % 4 !== 0) return false
+  // Strict base64 alphabet: A-Z a-z 0-9 + / and up to 2 '=' padding chars at the end
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(value)) return false
   try {
     const buf = Buffer.from(value, 'base64')
     return buf.length >= IV_LENGTH + AUTH_TAG_LENGTH + 1
