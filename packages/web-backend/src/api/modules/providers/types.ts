@@ -27,7 +27,7 @@ export interface PendingOAuthLogin {
   existingProviderId?: string
 }
 
-export interface ProvidersListData {
+interface ProvidersListData {
   providers: ProvidersListResponseContract['providers']
   activeProvider: string | null
   activeModel: string | null
@@ -36,19 +36,19 @@ export interface ProvidersListData {
   presets: ProvidersListResponseContract['presets']
 }
 
-export interface ProvidersMutationData {
+interface ProvidersMutationData {
   provider: ProviderContract
 }
 
-export type ProviderActivationData = ProviderActivationResponseContract
-export type ProviderFallbackData = ProviderFallbackResponseContract
-export type ProviderTestData = ProviderTestResultContract & {
+type ProviderActivationData = ProviderActivationResponseContract
+type ProviderFallbackData = ProviderFallbackResponseContract
+type ProviderTestData = ProviderTestResultContract & {
   latencyMs?: number
   status?: string
   modelId?: string
 }
 
-export type OAuthStatusData = OAuthStatusResponseContract
+type OAuthStatusData = OAuthStatusResponseContract
 
 export interface OllamaTagsResponse {
   models?: Array<{

@@ -21,7 +21,7 @@ export interface MemoryWikiFile {
   modifiedAt: string
 }
 
-export interface MemoryProfileResponse {
+interface MemoryProfileResponse {
   content: string
   username: string
 }
@@ -44,7 +44,7 @@ export interface MemoryFactsQuery {
   offset?: number
 }
 
-export interface MemoryFactsResponse {
+interface MemoryFactsResponse {
   facts: MemoryFact[]
   total: number
 }

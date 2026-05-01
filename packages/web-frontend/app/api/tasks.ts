@@ -34,7 +34,7 @@ export interface TaskProviderFilterOption {
   isDefaultModel: boolean | null
 }
 
-export interface TasksResponse {
+interface TasksResponse {
   tasks: Task[]
   pagination: {
     page: number
@@ -45,7 +45,7 @@ export interface TasksResponse {
   providerOptions?: TaskProviderFilterOption[]
 }
 
-export interface TaskResponse {
+interface TaskResponse {
   task: Task
 }
 
@@ -85,12 +85,12 @@ export interface TaskEventItem {
   thinking?: string
 }
 
-export interface TaskEventsResponse {
+interface TaskEventsResponse {
   events: TaskEventItem[]
   task: TaskInfo
 }
 
-export interface ListTasksParams {
+interface ListTasksParams {
   page?: number
   limit?: number
   status?: string
@@ -159,7 +159,7 @@ export function useTasksApi() {
  * from the original task. `provider` is the composite `providerId:modelId`
  * (as selected in the UI) or just a provider id / name for legacy values.
  */
-export interface RestartTaskPayload {
+interface RestartTaskPayload {
   name?: string
   prompt?: string
   provider?: string

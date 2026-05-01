@@ -15,7 +15,7 @@ interface TelegramConfig {
   adminUserIds: number[]
 }
 
-export interface HealthMonitorNotificationToggles {
+interface HealthMonitorNotificationToggles {
   healthyToDegraded: boolean
   degradedToHealthy: boolean
   degradedToDown: boolean

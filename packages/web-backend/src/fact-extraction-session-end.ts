@@ -15,7 +15,7 @@ export interface FactExtractionSettings {
   minSessionMessages: number
 }
 
-export interface SessionHistoryProvider {
+interface SessionHistoryProvider {
   getSessionManager(): {
     buildConversationHistory(sessionId: string): string | null
   }

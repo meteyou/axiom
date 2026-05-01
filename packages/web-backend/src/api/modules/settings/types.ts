@@ -30,7 +30,7 @@ export interface SettingsRouterOptions {
   onTelegramSettingsChanged?: () => void
 }
 
-export interface SettingsUpdateEffects {
+interface SettingsUpdateEffects {
   healthMonitorChanged: boolean
   consolidationChanged: boolean
   agentHeartbeatChanged: boolean
