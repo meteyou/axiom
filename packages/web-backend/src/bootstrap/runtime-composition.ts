@@ -53,6 +53,7 @@ import { triggerFactExtractionForSessionEnd } from '../fact-extraction-session-e
 import { HealthMonitorService } from '../health-monitor.js'
 import { MemoryConsolidationScheduler } from '../memory-consolidation-scheduler.js'
 import { RuntimeMetrics } from '../runtime-metrics.js'
+import { UploadCleanupService } from '../upload-cleanup.js'
 
 interface PendingTaskInjectionMeta {
   taskId: string
@@ -105,6 +106,7 @@ export interface RuntimeComposition {
   healthMonitorService: HealthMonitorService
   consolidationScheduler: MemoryConsolidationScheduler
   agentHeartbeatService: AgentHeartbeatService
+  uploadCleanupService: UploadCleanupService
   taskEventBus: TaskEventBus
   chatEventBus: ChatEventBus
   getAgentCore: () => AgentCore | null
@@ -882,6 +884,9 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
   })
   agentHeartbeatService.start()
 
+  const uploadCleanupService = new UploadCleanupService(db)
+  uploadCleanupService.start()
+
   const onTelegramChatEvent = (event: TelegramChatEvent) => {
     if (event.userId == null) return
     chatEventBus.broadcast({
@@ -1163,6 +1168,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
     healthMonitorService,
     consolidationScheduler,
     agentHeartbeatService,
+    uploadCleanupService,
     taskEventBus,
     chatEventBus,
     getAgentCore: () => agentCore,
@@ -1188,6 +1194,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
       healthMonitorService.stop()
       consolidationScheduler.stop()
       agentHeartbeatService.stop()
+      uploadCleanupService.stop()
       taskRuntime.schedules.stop()
 
       if (telegramBot) {
