@@ -6,6 +6,8 @@
  */
 
 export class NotFoundError extends Error {
+  // Public API for callers that need stable error identification without instanceof.
+  // fallow-ignore-next-line unused-class-member
   readonly code = 'NOT_FOUND' as const
 
   constructor(message: string) {
@@ -15,6 +17,8 @@ export class NotFoundError extends Error {
 }
 
 export class InvalidInputError extends Error {
+  // Public API for callers that need stable error identification without instanceof.
+  // fallow-ignore-next-line unused-class-member
   readonly code = 'INVALID_INPUT' as const
 
   constructor(message: string) {
