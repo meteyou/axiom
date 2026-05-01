@@ -471,7 +471,9 @@ describe('provider CRUD', () => {
     expect(PROVIDER_TYPE_PRESETS).toHaveProperty('ollama-local')
     expect(PROVIDER_TYPE_PRESETS).toHaveProperty('ollama-cloud')
     expect(PROVIDER_TYPE_PRESETS).toHaveProperty('openrouter')
+    expect(PROVIDER_TYPE_PRESETS).toHaveProperty('deepseek')
     expect(PROVIDER_TYPE_PRESETS).toHaveProperty('kimi')
+    expect(PROVIDER_TYPE_PRESETS).toHaveProperty('minimax')
     expect(PROVIDER_TYPE_PRESETS).toHaveProperty('zai')
   })
 })
@@ -506,9 +508,23 @@ describe('getAvailableModels', () => {
     expect(models).toEqual([])
   })
 
-  it('returns empty array for openrouter (no pi-ai mapping)', () => {
+  it('returns models for openrouter provider type', () => {
     const models = getAvailableModels('openrouter')
-    expect(models).toEqual([])
+    expect(models.length).toBeGreaterThan(0)
+    expect(models[0]).toHaveProperty('id')
+    expect(models[0]).toHaveProperty('name')
+  })
+
+  it('returns models for deepseek provider type', () => {
+    const models = getAvailableModels('deepseek')
+    expect(models.length).toBeGreaterThan(0)
+    expect(models.map(m => m.id)).toContain('deepseek-v4-pro')
+  })
+
+  it('returns models for minimax provider type', () => {
+    const models = getAvailableModels('minimax')
+    expect(models.length).toBeGreaterThan(0)
+    expect(models.some(m => m.id.startsWith('MiniMax-M2.'))).toBe(true)
   })
 
   it('returns Moonshot platform models for kimi (local override, not pi-ai)', () => {
