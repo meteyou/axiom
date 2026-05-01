@@ -63,6 +63,7 @@ const TEMPLATES: Record<string, object> = {
     },
     braveSearchApiKey: '',
     searxngUrl: '',
+    tavilyApiKey: '',
     tasks: {
       defaultProvider: '',
       maxDurationMinutes: 60,

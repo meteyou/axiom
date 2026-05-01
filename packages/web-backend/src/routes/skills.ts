@@ -47,6 +47,7 @@ interface SettingsWithBuiltinTools {
   builtinTools?: BuiltinToolsConfig
   braveSearchApiKey?: string
   searxngUrl?: string
+  tavilyApiKey?: string
   [key: string]: unknown
 }
 
@@ -204,10 +205,15 @@ export function createSkillsRouter(options: SkillsRouterOptions = {}): Router {
       // Read searxngUrl from builtinTools.webSearch (preferred) or top-level (legacy)
       const resolvedSearxngUrl = builtinTools.webSearch?.searxngUrl ?? settings.searxngUrl ?? ''
 
+      // Read tavilyApiKey from builtinTools.webSearch (preferred) or top-level (legacy)
+      const rawTavilyKey = builtinTools.webSearch?.tavilyApiKey ?? settings.tavilyApiKey ?? ''
+      const maskedTavilyKey = rawTavilyKey ? maskApiKey(rawTavilyKey) : ''
+
       res.json({
         builtinTools,
         braveSearchApiKey: maskedApiKey,
         searxngUrl: resolvedSearxngUrl,
+        tavilyApiKey: maskedTavilyKey,
       })
     } catch (err) {
       res.status(500).json({ error: `Failed to load built-in tools config: ${(err as Error).message}` })
@@ -223,6 +229,7 @@ export function createSkillsRouter(options: SkillsRouterOptions = {}): Router {
       builtinTools?: Partial<BuiltinToolsConfig>
       braveSearchApiKey?: string
       searxngUrl?: string
+      tavilyApiKey?: string
     }
 
     try {
@@ -267,6 +274,17 @@ export function createSkillsRouter(options: SkillsRouterOptions = {}): Router {
         settings.builtinTools.webSearch.searxngUrl = body.searxngUrl
       }
 
+      // Encrypt and store tavilyApiKey — write into builtinTools.webSearch
+      // so createBuiltinWebTools() picks it up, plus top-level for legacy reads
+      if (body.tavilyApiKey !== undefined) {
+        const raw = body.tavilyApiKey
+        const encrypted = raw ? (isEncrypted(raw) ? raw : encrypt(raw)) : ''
+        settings.tavilyApiKey = encrypted
+        if (!settings.builtinTools) settings.builtinTools = {}
+        if (!settings.builtinTools.webSearch) settings.builtinTools.webSearch = { enabled: true, provider: 'duckduckgo' }
+        settings.builtinTools.webSearch.tavilyApiKey = encrypted
+      }
+
       fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf-8')
 
       // Refresh agent tools (skills + built-in tools)
@@ -276,11 +294,15 @@ export function createSkillsRouter(options: SkillsRouterOptions = {}): Router {
       const rawKey = settings.builtinTools?.webSearch?.braveSearchApiKey ?? settings.braveSearchApiKey ?? ''
       const maskedApiKey = rawKey ? maskApiKey(rawKey) : ''
 
+      const rawTavilyKey = settings.builtinTools?.webSearch?.tavilyApiKey ?? settings.tavilyApiKey ?? ''
+      const maskedTavilyKey = rawTavilyKey ? maskApiKey(rawTavilyKey) : ''
+
       res.json({
         message: 'Built-in tools config updated',
         builtinTools: settings.builtinTools,
         braveSearchApiKey: maskedApiKey,
         searxngUrl: settings.builtinTools?.webSearch?.searxngUrl ?? settings.searxngUrl ?? '',
+        tavilyApiKey: maskedTavilyKey,
       })
     } catch (err) {
       res.status(500).json({ error: `Failed to update built-in tools config: ${(err as Error).message}` })

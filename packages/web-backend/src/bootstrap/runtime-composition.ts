@@ -167,6 +167,7 @@ function loadRuntimeSettings(): RuntimeSettings {
       builtinTools?: BuiltinToolsConfig
       braveSearchApiKey?: string
       searxngUrl?: string
+      tavilyApiKey?: string
     }>('settings.json')
 
     if (settings.sessionTimeoutMinutes && settings.sessionTimeoutMinutes > 0) {
@@ -221,6 +222,14 @@ function loadRuntimeSettings(): RuntimeSettings {
       builtinToolsConfig.webSearch = {
         ...builtinToolsConfig.webSearch,
         searxngUrl: settings.searxngUrl,
+      }
+    }
+
+    if (settings.tavilyApiKey && !builtinToolsConfig?.webSearch?.tavilyApiKey) {
+      builtinToolsConfig = builtinToolsConfig ?? {}
+      builtinToolsConfig.webSearch = {
+        ...builtinToolsConfig.webSearch,
+        tavilyApiKey: settings.tavilyApiKey,
       }
     }
   } catch {

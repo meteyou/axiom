@@ -242,7 +242,7 @@
                   <Label :for="'web-search-provider'">{{ $t('skills.webSearchProvider') }}</Label>
                   <Select
                     :model-value="localWebSearch.provider"
-                    @update:model-value="localWebSearch.provider = $event as 'duckduckgo' | 'brave' | 'searxng'"
+                    @update:model-value="localWebSearch.provider = $event as 'duckduckgo' | 'brave' | 'searxng' | 'tavily'"
                   >
                     <SelectTrigger id="web-search-provider">
                       <SelectValue />
@@ -251,6 +251,7 @@
                       <SelectItem value="duckduckgo">DuckDuckGo</SelectItem>
                       <SelectItem value="brave">Brave Search</SelectItem>
                       <SelectItem value="searxng">SearXNG</SelectItem>
+                      <SelectItem value="tavily">Tavily</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -279,6 +280,19 @@
                     autocomplete="off"
                   />
                   <p class="text-xs text-muted-foreground">{{ $t('skills.searxngUrlHint') }}</p>
+                </div>
+
+                <!-- Tavily API Key (conditional) -->
+                <div v-if="localWebSearch.provider === 'tavily'" class="space-y-2">
+                  <Label :for="'tavily-api-key'">{{ $t('skills.tavilyApiKey') }}</Label>
+                  <Input
+                    id="tavily-api-key"
+                    v-model="localTavilyApiKey"
+                    type="password"
+                    :placeholder="$t('skills.tavilyApiKeyPlaceholder')"
+                    autocomplete="off"
+                  />
+                  <p class="text-xs text-muted-foreground">{{ $t('skills.tavilyApiKeyHint') }}</p>
                 </div>
 
                 <div class="flex justify-end">
@@ -501,6 +515,7 @@ const {
   builtinTools,
   braveSearchApiKey,
   searxngUrl,
+  tavilyApiKey,
   loading,
   error,
   installing,
@@ -548,13 +563,14 @@ const deleting = ref(false)
 // Built-in tools local state
 const localWebSearch = reactive({
   enabled: true,
-  provider: 'duckduckgo' as 'duckduckgo' | 'brave' | 'searxng',
+  provider: 'duckduckgo' as 'duckduckgo' | 'brave' | 'searxng' | 'tavily',
 })
 const localWebFetch = reactive({
   enabled: true,
 })
 const localBraveApiKey = ref('')
 const localSearxngUrl = ref('')
+const localTavilyApiKey = ref('')
 const savingBuiltin = ref(false)
 
 function syncBuiltinLocal() {
@@ -563,6 +579,7 @@ function syncBuiltinLocal() {
   localWebFetch.enabled = builtinTools.value.webFetch.enabled
   localBraveApiKey.value = braveSearchApiKey.value
   localSearxngUrl.value = searxngUrl.value
+  localTavilyApiKey.value = tavilyApiKey.value
 }
 
 async function switchTab(tab: 'installed' | 'agent' | 'builtin') {
@@ -737,9 +754,10 @@ async function handleSaveWebSearch() {
   savingBuiltin.value = true
 
   const input: {
-    builtinTools: { webSearch: { enabled: boolean; provider: 'duckduckgo' | 'brave' | 'searxng' } }
+    builtinTools: { webSearch: { enabled: boolean; provider: 'duckduckgo' | 'brave' | 'searxng' | 'tavily' } }
     braveSearchApiKey?: string
     searxngUrl?: string
+    tavilyApiKey?: string
   } = {
     builtinTools: {
       webSearch: {
@@ -755,6 +773,9 @@ async function handleSaveWebSearch() {
   }
   if (localWebSearch.provider === 'searxng' && localSearxngUrl.value !== searxngUrl.value) {
     input.searxngUrl = localSearxngUrl.value
+  }
+  if (localWebSearch.provider === 'tavily' && localTavilyApiKey.value !== tavilyApiKey.value) {
+    input.tavilyApiKey = localTavilyApiKey.value
   }
 
   const success = await updateBuiltinTools(input)
