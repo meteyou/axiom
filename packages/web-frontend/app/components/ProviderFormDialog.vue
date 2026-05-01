@@ -435,12 +435,53 @@ const form = reactive({
 })
 
 const availableModels = ref<AvailableModel[]>([])
-const duplicateModelNameCounts = computed(() => {
-  const counts = new Map<string, number>()
+
+/**
+ * Compute the disambiguation suffix for a model id (last `-`-separated
+ * segment of the part after `/` or `:`). E.g. `mistral-medium-3.5` → `3.5`,
+ * `openrouter/google/gemini-2.5-pro` → `pro`.
+ */
+function modelIdSuffix(id: string): string {
+  const tail = id.split(/[/:]/).pop() ?? id
+  return tail.includes('-') ? (tail.split('-').pop() ?? tail) : tail
+}
+
+/**
+ * Map of `model.id` → disambiguation label, populated only for models whose
+ * `model.name` collides with another entry. When the per-id suffix is unique
+ * within a duplicate-name group we render `"<name> (<suffix>)"`; when two
+ * ids in the same group also share a suffix the suffix is useless, so we
+ * fall back to the full `model.id` for those entries.
+ */
+const duplicateModelLabels = computed(() => {
+  const groups = new Map<string, AvailableModel[]>()
   for (const model of availableModels.value) {
-    counts.set(model.name, (counts.get(model.name) ?? 0) + 1)
+    const bucket = groups.get(model.name)
+    if (bucket) bucket.push(model)
+    else groups.set(model.name, [model])
   }
-  return counts
+
+  const labels = new Map<string, string>()
+  for (const models of groups.values()) {
+    if (models.length <= 1) continue
+
+    // Count suffix occurrences within this duplicate-name group
+    const suffixes = models.map(m => modelIdSuffix(m.id))
+    const suffixCounts = new Map<string, number>()
+    for (const s of suffixes) suffixCounts.set(s, (suffixCounts.get(s) ?? 0) + 1)
+
+    for (let i = 0; i < models.length; i++) {
+      const model = models[i]!
+      const suffix = suffixes[i]!
+      // Suffix is useless when multiple ids in the group share it — fall back to the full id
+      if ((suffixCounts.get(suffix) ?? 0) > 1) {
+        labels.set(model.id, model.id)
+      } else {
+        labels.set(model.id, model.name.includes(`(${suffix})`) ? model.name : `${model.name} (${suffix})`)
+      }
+    }
+  }
+  return labels
 })
 const loadingModels = ref(false)
 const modelsError = ref<string | null>(null)
@@ -679,13 +720,7 @@ function normalizeTextVerbosityPayload(): null | 'low' | 'medium' | 'high' {
 }
 
 function formatKnownModelLabel(model: AvailableModel): string {
-  if ((duplicateModelNameCounts.value.get(model.name) ?? 0) <= 1) {
-    return model.name
-  }
-
-  const tail = model.id.split(/[/:]/).pop() ?? model.id
-  const suffix = tail.includes('-') ? (tail.split('-').pop() ?? tail) : tail
-  return model.name.includes(`(${suffix})`) ? model.name : `${model.name} (${suffix})`
+  return duplicateModelLabels.value.get(model.id) ?? model.name
 }
 
 async function loadModelsForType(providerType: string) {
