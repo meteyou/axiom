@@ -3,7 +3,7 @@ import path from 'node:path'
 import { Agent as PiAgent } from '@mariozechner/pi-agent-core'
 import type { AgentEvent, AgentTool } from '@mariozechner/pi-agent-core'
 import type { AssistantMessage, Message, Model, Api } from '@mariozechner/pi-ai'
-import { streamSimple } from '@mariozechner/pi-ai'
+
 import type { Database } from './database.js'
 import { getAgentSkillsDir } from './agent-skills.js'
 import { getSkill } from './skill-config.js'
@@ -13,7 +13,7 @@ import { TaskStore } from './task-store.js'
 import type { Task, TaskResultStatus, TaskTriggerType } from './task-store.js'
 import type { SessionManager, SessionType } from './session-manager.js'
 import { logTokenUsage, logToolCall } from './token-logger.js'
-import { estimateCost, parseProviderModelId } from './provider-config.js'
+import { estimateCost, parseProviderModelId, buildStreamFn } from './provider-config.js'
 import type { ProviderConfig } from './provider-config.js'
 import {
   ToolCallTracker,
@@ -457,10 +457,7 @@ export class TaskRunner {
           tools: effectiveTools,
           thinkingLevel: this.resolveBackgroundThinkingLevel(),
         },
-        streamFn: (streamModel, context, loopOptions) => {
-          const textVerbosity = provider.textVerbosity
-          return streamSimple(streamModel, context, (textVerbosity ? { ...loopOptions, textVerbosity } : loopOptions) as Parameters<typeof streamSimple>[2])
-        },
+        streamFn: buildStreamFn(provider),
         getApiKey: () => apiKey,
       })
 
@@ -874,10 +871,7 @@ export class TaskRunner {
           tools: [],
           thinkingLevel: this.resolveBackgroundThinkingLevel(),
         },
-        streamFn: (streamModel, context, loopOptions) => {
-          const textVerbosity = provider.textVerbosity
-          return streamSimple(streamModel, context, (textVerbosity ? { ...loopOptions, textVerbosity } : loopOptions) as Parameters<typeof streamSimple>[2])
-        },
+        streamFn: buildStreamFn(provider),
         getApiKey: () => apiKey,
       })
 
