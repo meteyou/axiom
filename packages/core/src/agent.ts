@@ -102,6 +102,8 @@ export class AgentCore {
    * Initialize async components (must be called after construction).
    * Handles orphaned sessions from previous server runs.
    */
+  // Called by the web backend after construction to recover orphaned sessions.
+  // fallow-ignore-next-line unused-class-member
   async init(): Promise<void> {
     await this.sessionManager.init()
   }
@@ -260,6 +262,8 @@ export class AgentCore {
    * served (set during processUserMessage). Used by tools (e.g. create_task)
    * to link background sessions back to the triggering interactive session.
    */
+  // Used by backend task/tool wiring to associate background work with the active chat session.
+  // fallow-ignore-next-line unused-class-member
   getCurrentInteractiveSessionId(): string | null {
     return this.currentInteractiveSessionId ?? null
   }
@@ -272,6 +276,8 @@ export class AgentCore {
    *
    * Returns `undefined` outside an active turn.
    */
+  // Used by tool factories that need to attribute side effects to the active user.
+  // fallow-ignore-next-line unused-class-member
   getCurrentToolUserId(): number | undefined {
     return this.currentToolUserId
   }
@@ -437,6 +443,8 @@ export class AgentCore {
   /**
    * Handle /new command: summarize current session and start fresh.
    */
+  // Used by Telegram command handling for /new.
+  // fallow-ignore-next-line unused-class-member
   async handleNewCommand(userId: string): Promise<string | null> {
     const summary = await this.sessionManager.handleNewCommand(userId)
     return summary
@@ -560,6 +568,8 @@ Do NOT add this section if everything discussed was resolved or if there is noth
   /**
    * Set the callback for session end events.
    */
+  // Used by backend runtime composition to stream session-end events to clients.
+  // fallow-ignore-next-line unused-class-member
   setOnSessionEnd(callback: (userId: string, sessionId: string, summary: string | null) => void): void {
     this.onSessionEndCallback = callback
   }
@@ -575,6 +585,8 @@ Do NOT add this section if everything discussed was resolved or if there is noth
   /**
    * Abort the current agent task.
    */
+  // Used by web/Telegram cancellation handlers.
+  // fallow-ignore-next-line unused-class-member
   abort(): void {
     this.runtime.abort()
   }
@@ -582,6 +594,8 @@ Do NOT add this section if everything discussed was resolved or if there is noth
   /**
    * Reset a user's session (async - generates summary before reset).
    */
+  // Used by the websocket chat /new command handler.
+  // fallow-ignore-next-line unused-class-member
   async resetSession(userId: string): Promise<string | null> {
     const summary = await this.sessionManager.handleNewCommand(userId)
     return summary
@@ -590,6 +604,8 @@ Do NOT add this section if everything discussed was resolved or if there is noth
   /**
    * End all active sessions and emit session_end events.
    */
+  // Used before provider swaps so existing sessions are summarized with the old context.
+  // fallow-ignore-next-line unused-class-member
   async endAllSessions(): Promise<void> {
     await this.sessionManager.endAllSessions('provider_change')
   }
@@ -605,6 +621,8 @@ Do NOT add this section if everything discussed was resolved or if there is noth
    * Update the thinking/reasoning level used for future agent turns.
    * Accepts any string; invalid values are ignored by the runtime.
    */
+  // Used by settings updates to apply reasoning changes without recreating the agent.
+  // fallow-ignore-next-line unused-class-member
   setThinkingLevel(level: string): void {
     this.runtime.setThinkingLevel(level)
   }
@@ -612,6 +630,8 @@ Do NOT add this section if everything discussed was resolved or if there is noth
   /**
    * Refresh skills: rebuild system prompt with current active skills.
    */
+  // Used by skill-management routes after install/update/remove operations.
+  // fallow-ignore-next-line unused-class-member
   refreshSkills(): void {
     this.refreshSystemPrompt()
   }
@@ -624,16 +644,11 @@ Do NOT add this section if everything discussed was resolved or if there is noth
   }
 
   /**
-   * Get the message queue (for monitoring/testing).
-   */
-  getMessageQueue(): MessageQueue {
-    return this.messageQueue
-  }
-
-  /**
    * Get the underlying pi-mono agent (for advanced usage).
    * @deprecated Prefer boundary methods like sendMessage()/abort()/getRuntimeStateSnapshot().
    */
+  // Public escape hatch kept for compatibility with advanced internal integrations.
+  // fallow-ignore-next-line unused-class-member
   getAgent(): PiAgent {
     const runtimeWithAgent = this.runtime as Partial<AgentRuntimePiAgentAccess>
     if (typeof runtimeWithAgent.getAgent !== 'function') {
