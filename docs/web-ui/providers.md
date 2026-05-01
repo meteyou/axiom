@@ -103,8 +103,9 @@ Opened by **Add Provider** or by clicking a provider header row. The form is sma
 | Field                  | Notes                                                                                                |
 |------------------------|------------------------------------------------------------------------------------------------------|
 | **Name**               | Free text, your label for this provider — appears in the table, in `<task_injection>` blocks, on the Dashboard. |
-| **Type**               | Dropdown grouped into two sections: **API Key** (OpenAI, Anthropic, Mistral, Ollama, generic OpenAI-compatible, …) and **Subscription / OAuth** (Anthropic Claude Pro/Max, OpenAI ChatGPT Plus/Pro, Google Antigravity Free, …). |
+| **Type**               | Dropdown grouped into two sections: **API Key** (OpenAI, Anthropic, Mistral, OpenRouter, DeepSeek, Kimi / Moonshot, MiniMax, Ollama, generic OpenAI-compatible, …) and **Subscription / OAuth** (Anthropic Claude Pro/Max, OpenAI ChatGPT Plus/Pro, Google Antigravity Free, …). |
 | **Degraded Threshold** | Latency in ms above which the provider is marked *Degraded* in health checks. Default `5000`. Lower = more sensitive. |
+| **Text verbosity**     | Shown for supported OpenAI Codex/Responses-style providers. `Default` leaves the value unset so pi-ai's provider default applies; `Low`, `Medium`, `High` override response verbosity. |
 
 ### API-key providers
 
@@ -114,7 +115,7 @@ When you pick a type from the *API Key* group, three additional fields surface d
 
 The model selector adapts to the preset:
 
-- **Curated providers (OpenAI, Anthropic, Mistral, …)** — a checkbox list of known models. Tick the ones you want to enable; the first enabled becomes the default.
+- **Curated providers (OpenAI, Anthropic, Mistral, OpenRouter, DeepSeek, Kimi / Moonshot, MiniMax, …)** — a checkbox list of known models. Tick the ones you want to enable; the first enabled becomes the default.
 - **Generic OpenAI-compatible** — a free-text input for the default model id (e.g. `google/gemini-2.5-pro`, `kimi-k2.6`).
 - **Ollama** — a separate panel with its own controls (see below).
 

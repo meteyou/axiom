@@ -403,13 +403,14 @@ function closeForm() {
 
 async function handleSubmit(payload: ProviderFormPayload) {
   if (formMode.value === 'edit' && editingProvider.value) {
-    const input: Record<string, string | number | string[] | undefined> = {
+    const input: Record<string, string | number | string[] | null | undefined> = {
       name: payload.name,
       providerType: payload.providerType,
       baseUrl: payload.baseUrl,
       defaultModel: payload.defaultModel,
       enabledModels: payload.enabledModels,
       degradedThresholdMs: payload.degradedThresholdMs,
+      textVerbosity: payload.textVerbosity,
     }
     if (payload.apiKey) {
       input.apiKey = payload.apiKey
@@ -425,6 +426,7 @@ async function handleSubmit(payload: ProviderFormPayload) {
       defaultModel: payload.defaultModel,
       enabledModels: payload.enabledModels,
       degradedThresholdMs: payload.degradedThresholdMs,
+      textVerbosity: payload.textVerbosity,
     })
     if (result) closeForm()
   }

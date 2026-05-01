@@ -4,7 +4,7 @@ import nodePath from 'node:path'
 import { Agent as PiAgent } from '@mariozechner/pi-agent-core'
 import type { AgentEvent, AgentTool } from '@mariozechner/pi-agent-core'
 import type { Api, AssistantMessage, Message, ImageContent, Model } from '@mariozechner/pi-ai'
-import { Type } from '@mariozechner/pi-ai'
+import { Type, streamSimple } from '@mariozechner/pi-ai'
 import type { Database } from './database.js'
 import { logTokenUsage, logToolCall } from './token-logger.js'
 import { estimateCost, getApiKeyForProvider, buildModel, loadProvidersDecrypted } from './provider-config.js'
@@ -470,6 +470,13 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
         model: this.model,
         tools,
         thinkingLevel: effectiveThinkingLevel,
+      },
+      streamFn: (model, context, loopOptions) => {
+        const textVerbosity = this.providerConfig?.textVerbosity
+        const optionsWithVerbosity = textVerbosity
+          ? { ...loopOptions, textVerbosity }
+          : loopOptions
+        return streamSimple(model, context, optionsWithVerbosity as Parameters<typeof streamSimple>[2])
       },
       getApiKey: this.providerConfig?.authMethod === 'oauth'
         ? async () => {

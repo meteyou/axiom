@@ -59,6 +59,7 @@ describe('providers schema', () => {
         name: 'OpenAI',
         defaultModel: 'gpt-4o-mini',
         providerId: undefined,
+        textVerbosity: undefined,
       },
     })
 

@@ -3,6 +3,7 @@ import path from 'node:path'
 import { Agent as PiAgent } from '@mariozechner/pi-agent-core'
 import type { AgentEvent, AgentTool } from '@mariozechner/pi-agent-core'
 import type { AssistantMessage, Message, Model, Api } from '@mariozechner/pi-ai'
+import { streamSimple } from '@mariozechner/pi-ai'
 import type { Database } from './database.js'
 import { getAgentSkillsDir } from './agent-skills.js'
 import { getSkill } from './skill-config.js'
@@ -456,6 +457,10 @@ export class TaskRunner {
           tools: effectiveTools,
           thinkingLevel: this.resolveBackgroundThinkingLevel(),
         },
+        streamFn: (streamModel, context, loopOptions) => {
+          const textVerbosity = provider.textVerbosity
+          return streamSimple(streamModel, context, (textVerbosity ? { ...loopOptions, textVerbosity } : loopOptions) as Parameters<typeof streamSimple>[2])
+        },
         getApiKey: () => apiKey,
       })
 
@@ -868,6 +873,10 @@ export class TaskRunner {
           model,
           tools: [],
           thinkingLevel: this.resolveBackgroundThinkingLevel(),
+        },
+        streamFn: (streamModel, context, loopOptions) => {
+          const textVerbosity = provider.textVerbosity
+          return streamSimple(streamModel, context, (textVerbosity ? { ...loopOptions, textVerbosity } : loopOptions) as Parameters<typeof streamSimple>[2])
         },
         getApiKey: () => apiKey,
       })

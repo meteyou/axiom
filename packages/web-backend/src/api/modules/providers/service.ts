@@ -169,6 +169,7 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
       providerType: payload.providerType,
       name: payload.name,
       defaultModel: payload.defaultModel,
+      textVerbosity: payload.textVerbosity,
       createdAt: Date.now(),
       existingProviderId: payload.providerId,
     }
@@ -253,6 +254,7 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
             name: loginState.name,
             providerType: loginState.providerType as ProviderType,
             defaultModel: loginState.defaultModel,
+            textVerbosity: loginState.textVerbosity ?? undefined,
             oauthCredentials: loginState.credentials,
           })
           const afterActiveProvider = loadProviders().activeProvider ?? null
@@ -311,6 +313,7 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
         defaultModel: payload.defaultModel,
         enabledModels: payload.enabledModels,
         degradedThresholdMs: payload.degradedThresholdMs,
+        textVerbosity: payload.textVerbosity ?? undefined,
       })
 
       const afterActiveProvider = loadProviders().activeProvider ?? null
@@ -335,6 +338,7 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
         defaultModel: payload.defaultModel,
         enabledModels: payload.enabledModels,
         degradedThresholdMs: payload.degradedThresholdMs,
+        textVerbosity: payload.textVerbosity,
       })
 
       if (activeProvider === id) {
