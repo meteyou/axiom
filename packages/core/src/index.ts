@@ -288,7 +288,6 @@ export {
   rewriteTranscript,
 } from './stt.js'
 export type {
-  SttProvider,
   SttSettings,
   SttRewriteSettings,
   TranscribeOptions,
