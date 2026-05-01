@@ -7,7 +7,7 @@ export type TaskTelegramDelivery = (typeof TASK_TELEGRAM_DELIVERY_VALUES)[number
 export const TASK_LOOP_DETECTION_METHODS = ['systematic', 'smart', 'auto'] as const
 export type TaskLoopDetectionMethod = (typeof TASK_LOOP_DETECTION_METHODS)[number]
 
-export const SETTINGS_TTS_PROVIDERS = ['openai', 'mistral'] as const
+export const SETTINGS_TTS_PROVIDERS = ['openai', 'mistral', 'deepgram'] as const
 export type TtsProvider = (typeof SETTINGS_TTS_PROVIDERS)[number]
 
 export const SETTINGS_TTS_OPENAI_MODELS = ['gpt-4o-mini-tts', 'tts-1', 'tts-1-hd'] as const
@@ -16,7 +16,7 @@ export type TtsOpenAiModel = (typeof SETTINGS_TTS_OPENAI_MODELS)[number]
 export const SETTINGS_TTS_RESPONSE_FORMATS = ['mp3', 'wav', 'opus', 'flac'] as const
 export type TtsResponseFormat = (typeof SETTINGS_TTS_RESPONSE_FORMATS)[number]
 
-export const SETTINGS_STT_PROVIDERS = ['whisper-url', 'openai', 'ollama'] as const
+export const SETTINGS_STT_PROVIDERS = ['whisper-url', 'openai', 'ollama', 'deepgram'] as const
 export type SttProvider = (typeof SETTINGS_STT_PROVIDERS)[number]
 
 export const SETTINGS_STT_OPENAI_MODELS = ['whisper-1', 'gpt-4o-transcribe', 'gpt-4o-mini-transcribe'] as const
@@ -127,6 +127,19 @@ export interface TtsSettingsContract {
   openaiInstructions: string
   mistralVoice: string
   responseFormat: TtsResponseFormat
+  /** Deepgram voice/model id, e.g. `aura-2-thalia-en`. */
+  deepgramModel: string
+  /**
+   * Encrypted Deepgram API key used by the TTS path. Stored separately from
+   * the STT key so a Deepgram account dashboard cleanly attributes
+   * synthesis vs. transcription usage to distinct keys. Canonical storage
+   * path: `settings.tts.deepgramApiKey`.
+   *
+   * Returned by the Settings API as a *masked* string (e.g. `dg_••••••abcd`)
+   * when configured, empty string otherwise. Mask characters (`•`) are used
+   * by `mergeTts` as a sentinel for "no change".
+   */
+  deepgramApiKey: string
 }
 
 export interface SttRewriteSettingsContract {
@@ -141,6 +154,24 @@ export interface SttSettingsContract {
   providerId: string
   openaiModel: SttOpenAiModel
   ollamaModel: string
+  /** Deepgram STT model id, e.g. `nova-3` or `nova-2-general`. */
+  deepgramModel: string
+  /**
+   * Language code passed to Deepgram (`en`, `de`, `multi`, …). Empty string
+   * lets Deepgram auto-detect.
+   */
+  deepgramLanguage: string
+  /**
+   * Encrypted Deepgram API key used by the STT path. Stored separately from
+   * the TTS key so a Deepgram account dashboard cleanly attributes
+   * transcription vs. synthesis usage to distinct keys. Canonical storage
+   * path: `settings.stt.deepgramApiKey`.
+   *
+   * Returned by the Settings API as a *masked* string (e.g. `dg_••••••abcd`)
+   * when configured, empty string otherwise. Mask characters (`•`) are used
+   * by `mergeStt` as a sentinel for "no change".
+   */
+  deepgramApiKey: string
   rewrite: SttRewriteSettingsContract
 }
 
@@ -156,6 +187,15 @@ export interface TelegramSettingsContract {
   botToken: string
   /** Input batching delay in ms. `0` disables batching. */
   batchingDelayMs: number
+  /**
+   * When `true`, the Telegram gateway synthesizes the agent's reply via the
+   * configured TTS provider (currently Deepgram only) and uploads it as a
+   * Telegram voice message in addition to the regular text reply.
+   *
+   * Lives on the Telegram side (not TTS) because it controls a Telegram
+   * delivery channel; web TTS playback is unaffected by this toggle.
+   */
+  sendVoiceReply: boolean
 }
 
 export interface SettingsContract {
@@ -206,6 +246,7 @@ export interface TelegramSettingsStorageContract {
   pollingMode?: boolean
   webhookUrl?: string
   batchingDelayMs?: number
+  sendVoiceReply?: boolean
 }
 
 export type HealthMonitorSettingsUpdateContract = DeepPartial<HealthMonitorSettingsContract> & {
@@ -239,6 +280,7 @@ export const DEFAULT_SETTINGS_CONTRACT: SettingsContract = {
     enabled: false,
     botToken: '',
     batchingDelayMs: 2500,
+    sendVoiceReply: false,
   },
   healthMonitor: {
     enabled: true,
@@ -294,6 +336,8 @@ export const DEFAULT_SETTINGS_CONTRACT: SettingsContract = {
     openaiInstructions: '',
     mistralVoice: '',
     responseFormat: 'mp3',
+    deepgramModel: 'aura-2-thalia-en',
+    deepgramApiKey: '',
   },
   stt: {
     enabled: false,
@@ -302,6 +346,9 @@ export const DEFAULT_SETTINGS_CONTRACT: SettingsContract = {
     providerId: '',
     openaiModel: 'whisper-1',
     ollamaModel: '',
+    deepgramModel: 'nova-3',
+    deepgramLanguage: '',
+    deepgramApiKey: '',
     rewrite: {
       enabled: false,
       providerId: '',
@@ -367,6 +414,7 @@ export function normalizeSettingsContract(input: DeepPartial<SettingsContract> |
       enabled: source.telegram?.enabled ?? DEFAULT_SETTINGS_CONTRACT.telegram.enabled,
       botToken: source.telegram?.botToken ?? DEFAULT_SETTINGS_CONTRACT.telegram.botToken,
       batchingDelayMs: source.telegram?.batchingDelayMs ?? DEFAULT_SETTINGS_CONTRACT.telegram.batchingDelayMs,
+      sendVoiceReply: source.telegram?.sendVoiceReply ?? DEFAULT_SETTINGS_CONTRACT.telegram.sendVoiceReply,
     },
     healthMonitor: {
       enabled: source.healthMonitor?.enabled ?? DEFAULT_SETTINGS_CONTRACT.healthMonitor.enabled,
@@ -452,6 +500,8 @@ export function normalizeSettingsContract(input: DeepPartial<SettingsContract> |
       openaiInstructions: source.tts?.openaiInstructions ?? DEFAULT_SETTINGS_CONTRACT.tts.openaiInstructions,
       mistralVoice: source.tts?.mistralVoice ?? DEFAULT_SETTINGS_CONTRACT.tts.mistralVoice,
       responseFormat: source.tts?.responseFormat ?? DEFAULT_SETTINGS_CONTRACT.tts.responseFormat,
+      deepgramModel: source.tts?.deepgramModel ?? DEFAULT_SETTINGS_CONTRACT.tts.deepgramModel,
+      deepgramApiKey: source.tts?.deepgramApiKey ?? DEFAULT_SETTINGS_CONTRACT.tts.deepgramApiKey,
     },
     stt: {
       enabled: source.stt?.enabled ?? DEFAULT_SETTINGS_CONTRACT.stt.enabled,
@@ -460,6 +510,9 @@ export function normalizeSettingsContract(input: DeepPartial<SettingsContract> |
       providerId: source.stt?.providerId ?? DEFAULT_SETTINGS_CONTRACT.stt.providerId,
       openaiModel: source.stt?.openaiModel ?? DEFAULT_SETTINGS_CONTRACT.stt.openaiModel,
       ollamaModel: source.stt?.ollamaModel ?? DEFAULT_SETTINGS_CONTRACT.stt.ollamaModel,
+      deepgramModel: source.stt?.deepgramModel ?? DEFAULT_SETTINGS_CONTRACT.stt.deepgramModel,
+      deepgramLanguage: source.stt?.deepgramLanguage ?? DEFAULT_SETTINGS_CONTRACT.stt.deepgramLanguage,
+      deepgramApiKey: source.stt?.deepgramApiKey ?? DEFAULT_SETTINGS_CONTRACT.stt.deepgramApiKey,
       rewrite: {
         enabled: source.stt?.rewrite?.enabled ?? DEFAULT_SETTINGS_CONTRACT.stt.rewrite.enabled,
         providerId: source.stt?.rewrite?.providerId ?? DEFAULT_SETTINGS_CONTRACT.stt.rewrite.providerId,

@@ -148,6 +148,10 @@ export function createSettingsService(options: SettingsRouterOptions = {}): Sett
         if (err) throw new SettingsValidationError(err)
         telegram.batchingDelayMs = telegramBody.batchingDelayMs as number
       }
+
+      if (telegramBody.sendVoiceReply !== undefined) {
+        telegram.sendVoiceReply = !!telegramBody.sendVoiceReply
+      }
     }
 
     fs.writeFileSync(settingsPath, `${JSON.stringify(settings, null, 2)}\n`, 'utf-8')

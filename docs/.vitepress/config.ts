@@ -10,6 +10,7 @@ const guideSidebar: DefaultTheme.SidebarItem[] = [
       { text: 'Quickstart', link: '/guide/quickstart' },
       { text: 'Configuration', link: '/guide/configuration' },
       { text: 'Telegram Bot', link: '/guide/telegram' },
+      { text: 'Voice (Deepgram)', link: '/guide/voice' },
     ],
   },
   {

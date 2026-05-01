@@ -1,4 +1,4 @@
-import { DEFAULT_HEALTH_MONITOR_NOTIFICATION_TOGGLES } from '@axiom/core'
+import { DEFAULT_HEALTH_MONITOR_NOTIFICATION_TOGGLES, maskApiKey } from '@axiom/core'
 import type { HealthMonitorNotificationToggles, SettingsData, TelegramData } from './types.js'
 
 const DEFAULT_NOTIFICATIONS: HealthMonitorNotificationToggles = {
@@ -91,6 +91,13 @@ function buildTasksResponse(settingsRaw: Record<string, unknown>) {
 
 function buildTtsResponse(settingsRaw: Record<string, unknown>) {
   const tts = (settingsRaw.tts ?? {}) as Record<string, unknown>
+
+  // Mask the TTS Deepgram key the same way as the STT one so the form can
+  // show "key configured" without leaking the secret. `mergeTts` treats
+  // values containing the mask character (`•`) as "no change".
+  const rawDeepgramKey = typeof tts.deepgramApiKey === 'string' ? tts.deepgramApiKey : ''
+  const maskedDeepgramKey = rawDeepgramKey ? maskApiKey(rawDeepgramKey) : ''
+
   return {
     enabled: tts.enabled ?? false,
     provider: tts.provider ?? 'openai',
@@ -100,6 +107,8 @@ function buildTtsResponse(settingsRaw: Record<string, unknown>) {
     openaiInstructions: tts.openaiInstructions ?? '',
     mistralVoice: tts.mistralVoice ?? '',
     responseFormat: tts.responseFormat ?? 'mp3',
+    deepgramModel: tts.deepgramModel ?? 'aura-2-thalia-en',
+    deepgramApiKey: maskedDeepgramKey,
   }
 }
 
@@ -114,12 +123,20 @@ function buildTelegramResponse(telegram: TelegramData, batchingDelayMs: number) 
     enabled: telegram.enabled ?? false,
     botToken: telegram.botToken ?? '',
     batchingDelayMs,
+    sendVoiceReply: telegram.sendVoiceReply ?? false,
   }
 }
 
 function buildSttResponse(settingsRaw: Record<string, unknown>) {
   const stt = (settingsRaw.stt ?? {}) as Record<string, unknown>
   const rewrite = (stt.rewrite ?? {}) as Record<string, unknown>
+
+  // Mask the STT Deepgram key. Stored separately from the TTS one so account
+  // usage can be split. `mergeStt` treats values containing the mask
+  // character (`•`) as "no change".
+  const rawDeepgramKey = typeof stt.deepgramApiKey === 'string' ? stt.deepgramApiKey : ''
+  const maskedDeepgramKey = rawDeepgramKey ? maskApiKey(rawDeepgramKey) : ''
+
   return {
     enabled: stt.enabled ?? false,
     provider: stt.provider ?? 'whisper-url',
@@ -127,6 +144,9 @@ function buildSttResponse(settingsRaw: Record<string, unknown>) {
     providerId: stt.providerId ?? '',
     openaiModel: stt.openaiModel ?? 'whisper-1',
     ollamaModel: stt.ollamaModel ?? '',
+    deepgramModel: stt.deepgramModel ?? 'nova-3',
+    deepgramLanguage: stt.deepgramLanguage ?? '',
+    deepgramApiKey: maskedDeepgramKey,
     rewrite: {
       enabled: rewrite.enabled ?? false,
       providerId: rewrite.providerId ?? '',

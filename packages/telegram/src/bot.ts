@@ -3,7 +3,7 @@ import path from 'node:path'
 import { Bot, GrammyError, HttpError, InputFile } from 'grammy'
 import type { Context } from 'grammy'
 import type { AgentCore, Database } from '@axiom/core'
-import { loadConfig, saveUpload, serializeUploadsMetadata, parseUploadsMetadata, loadSttSettings, transcribeAudio, extractUploadsFromToolResult } from '@axiom/core'
+import { loadConfig, saveUpload, serializeUploadsMetadata, parseUploadsMetadata, loadSttSettings, transcribeAudio, extractUploadsFromToolResult, synthesizeTts } from '@axiom/core'
 import type { UploadDescriptor } from '@axiom/core'
 
 /**
@@ -703,6 +703,72 @@ export class TelegramBot {
     }
   }
 
+  /**
+   * Synthesize the assistant's text response via the configured TTS provider
+   * and upload it as a Telegram voice/audio message. No-op when the
+   * Telegram-side `sendVoiceReply` toggle is off. Errors propagate so the
+   * caller can log them — the text reply has already been sent.
+   *
+   * Provider is whatever `settings.tts.provider` says (OpenAI, Mistral, or
+   * Deepgram). The toggle lives in `telegram.json` because it controls a
+   * Telegram delivery channel, not synthesis behavior; the synthesis config
+   * (provider/voice/format) stays under `settings.tts`.
+   *
+   * Telegram requires OGG/Opus for the native voice-bubble UI; any other
+   * audio format falls back to `sendAudio` (regular file player). Deepgram
+   * users get the voice bubble by picking `opus` encoding; OpenAI/Mistral
+   * default to `mp3` so they show as a regular audio attachment.
+   */
+  private async maybeSendVoiceReply(chatId: string | number, text: string): Promise<void> {
+    const telegramConfig = loadConfig<{ sendVoiceReply?: boolean }>('telegram.json')
+    if (!telegramConfig.sendVoiceReply) return
+
+    // Strip Markdown-y tokens so the synthesized speech is clean. Same set
+    // as the web TTS route applies; kept inline here so we don't need to
+    // pull a markdown helper into the telegram package just for this.
+    const stripped = text
+      .replace(/```[\s\S]*?```/g, '')
+      .replace(/`([^`]+)`/g, '$1')
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/\*([^*]+)\*/g, '$1')
+      .replace(/__([^_]+)__/g, '$1')
+      .replace(/_([^_]+)_/g, '$1')
+      .replace(/^#{1,6}\s+/gm, '')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/^>\s+/gm, '')
+      .replace(/^[-*+]\s+/gm, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+    if (!stripped) return
+
+    // 2000-char cap matches Deepgram's /v1/speak ceiling; OpenAI and Mistral
+    // tolerate more but a uniform cap keeps the audio short enough to feel
+    // like a voice message rather than an audiobook.
+    if (stripped.length > 2000) {
+      console.warn(`[telegram] Voice reply skipped: text length ${stripped.length} exceeds 2000 char limit.`)
+      return
+    }
+
+    let result
+    try {
+      result = await synthesizeTts(stripped)
+    } catch (err) {
+      console.warn(`[telegram] Voice reply skipped: ${(err as Error).message}`)
+      return
+    }
+
+    const filename = `voice.${result.extension}`
+    const inputFile = new InputFile(result.audio, filename)
+
+    // Only OGG/Opus renders as the native Telegram voice bubble; everything
+    // else (mp3/wav/etc) goes via sendAudio.
+    if (result.extension === 'ogg') {
+      await this.bot.api.sendVoice(chatId, inputFile)
+    } else {
+      await this.bot.api.sendAudio(chatId, inputFile)
+    }
+  }
+
   private async handleVoiceMessage(ctx: Context): Promise<void> {
     if (!await this.checkAuthorized(ctx)) return
 
@@ -1015,6 +1081,15 @@ export class TelegramBot {
 
       if (!state.abortRequested && (fullResponse.trim() || assistantUploads.length > 0)) {
         await this.sendAssistantResponseToTelegram(ctx.chat!.id, fullResponse, assistantUploads)
+        // Optional Deepgram voice reply. Best-effort: a TTS failure must never
+        // suppress the text response or abort the turn.
+        if (fullResponse.trim()) {
+          try {
+            await this.maybeSendVoiceReply(ctx.chat!.id, fullResponse)
+          } catch (ttsErr) {
+            console.warn('[telegram] Voice reply failed (text already sent):', (ttsErr as Error).message)
+          }
+        }
       }
 
       // Save assistant response to chat_messages (if linked to a web user).

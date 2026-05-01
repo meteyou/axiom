@@ -285,6 +285,7 @@ export type {
 } from './task-notification.js'
 export {
   loadSttSettings,
+  loadDeepgramApiKey,
   transcribeAudio,
   transcribeWhisperUrl,
   transcribeOpenAi,
@@ -298,3 +299,37 @@ export type {
   TranscribeResult,
 } from './stt.js'
 export { createTranscribeAudioTool } from './stt-tool.js'
+export {
+  loadTtsSettings,
+  loadTtsDeepgramApiKey,
+  synthesizeOpenAi,
+  synthesizeMistral,
+  synthesizeTts,
+} from './tts.js'
+export type {
+  TtsSettings,
+  SynthesizeOptions,
+  SynthesizeResult,
+} from './tts.js'
+export {
+  transcribeDeepgram,
+  synthesizeDeepgram,
+  listDeepgramModels,
+  encryptDeepgramApiKey,
+  decryptDeepgramApiKey,
+  extractDeepgramTranscript,
+  DEEPGRAM_DEFAULT_BASE_URL,
+  DEEPGRAM_DEFAULT_STT_MODEL,
+  DEEPGRAM_DEFAULT_TTS_MODEL,
+  DEEPGRAM_TTS_PRESET_MODELS,
+  DEEPGRAM_TTS_ENCODINGS,
+} from './deepgram.js'
+export type {
+  DeepgramTranscribeOptions,
+  DeepgramSynthesizeOptions,
+  DeepgramListModelsOptions,
+  DeepgramModel,
+  DeepgramModelsList,
+  DeepgramTtsEncoding,
+  DeepgramTtsPresetModel,
+} from './deepgram.js'
