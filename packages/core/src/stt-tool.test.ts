@@ -83,6 +83,8 @@ describe('transcribe_audio execute', () => {
       providerId: '',
       openaiModel: 'whisper-1',
       ollamaModel: '',
+      deepgramModel: 'nova-3',
+      deepgramLanguage: '',
       rewrite: { enabled: false, providerId: '' },
     })
     mockExistsSync.mockReturnValue(true)
@@ -112,6 +114,8 @@ describe('transcribe_audio execute', () => {
       providerId: '',
       openaiModel: 'whisper-1',
       ollamaModel: '',
+      deepgramModel: 'nova-3',
+      deepgramLanguage: '',
       rewrite: { enabled: false, providerId: '' },
     })
     mockExistsSync.mockReturnValue(true)
@@ -137,6 +141,8 @@ describe('transcribe_audio execute', () => {
       providerId: '',
       openaiModel: 'whisper-1',
       ollamaModel: '',
+      deepgramModel: 'nova-3',
+      deepgramLanguage: '',
       rewrite: { enabled: true, providerId: 'prov-1' },
     })
     mockExistsSync.mockReturnValue(true)
@@ -160,6 +166,8 @@ describe('transcribe_audio execute', () => {
       providerId: '',
       openaiModel: 'whisper-1',
       ollamaModel: '',
+      deepgramModel: 'nova-3',
+      deepgramLanguage: '',
       rewrite: { enabled: true, providerId: 'prov-1' },
     })
     mockExistsSync.mockReturnValue(true)
@@ -182,6 +190,8 @@ describe('transcribe_audio execute', () => {
       providerId: '',
       openaiModel: 'whisper-1',
       ollamaModel: '',
+      deepgramModel: 'nova-3',
+      deepgramLanguage: '',
       rewrite: { enabled: false, providerId: '' },
     })
     mockExistsSync.mockReturnValue(true)
@@ -208,7 +218,9 @@ describe('transcribe_audio execute', () => {
         providerId: '',
         openaiModel: 'whisper-1',
       ollamaModel: '',
-        rewrite: { enabled: false, providerId: '' },
+        deepgramModel: 'nova-3',
+      deepgramLanguage: '',
+      rewrite: { enabled: false, providerId: '' },
       })
       mockExistsSync.mockReturnValue(true)
       mockAccessSync.mockReturnValue(undefined)
@@ -239,6 +251,8 @@ describe('transcribe_audio error handling', () => {
       providerId: '',
       openaiModel: 'whisper-1',
       ollamaModel: '',
+      deepgramModel: 'nova-3',
+      deepgramLanguage: '',
       rewrite: { enabled: false, providerId: '' },
     })
 
@@ -258,6 +272,8 @@ describe('transcribe_audio error handling', () => {
       providerId: '',
       openaiModel: 'whisper-1',
       ollamaModel: '',
+      deepgramModel: 'nova-3',
+      deepgramLanguage: '',
       rewrite: { enabled: false, providerId: '' },
     })
     mockExistsSync.mockReturnValue(false)
@@ -278,6 +294,8 @@ describe('transcribe_audio error handling', () => {
       providerId: '',
       openaiModel: 'whisper-1',
       ollamaModel: '',
+      deepgramModel: 'nova-3',
+      deepgramLanguage: '',
       rewrite: { enabled: false, providerId: '' },
     })
     mockExistsSync.mockReturnValue(true)
@@ -299,6 +317,8 @@ describe('transcribe_audio error handling', () => {
       providerId: '',
       openaiModel: 'whisper-1',
       ollamaModel: '',
+      deepgramModel: 'nova-3',
+      deepgramLanguage: '',
       rewrite: { enabled: false, providerId: '' },
     })
     mockExistsSync.mockReturnValue(true)
@@ -322,6 +342,8 @@ describe('transcribe_audio error handling', () => {
       providerId: '',
       openaiModel: 'whisper-1',
       ollamaModel: '',
+      deepgramModel: 'nova-3',
+      deepgramLanguage: '',
       rewrite: { enabled: false, providerId: '' },
     })
     mockExistsSync.mockReturnValue(true)
@@ -346,6 +368,8 @@ describe('transcribe_audio error handling', () => {
       providerId: '',
       openaiModel: 'whisper-1',
       ollamaModel: '',
+      deepgramModel: 'nova-3',
+      deepgramLanguage: '',
       rewrite: { enabled: false, providerId: '' },
     })
     mockExistsSync.mockReturnValue(true)
@@ -368,6 +392,8 @@ describe('transcribe_audio error handling', () => {
       providerId: '',
       openaiModel: 'whisper-1',
       ollamaModel: '',
+      deepgramModel: 'nova-3',
+      deepgramLanguage: '',
       rewrite: { enabled: false, providerId: '' },
     })
     mockExistsSync.mockReturnValue(true)

@@ -840,6 +840,22 @@
                   <p class="text-xs text-muted-foreground">{{ $t('settings.batchingDelayHint') }}</p>
                 </div>
 
+                <!-- Voice replies -->
+                <div class="flex items-center justify-between rounded-lg border border-border px-4 py-3">
+                  <div class="flex flex-col gap-0.5 pr-4">
+                    <Label for="telegram-send-voice-reply" class="cursor-pointer">
+                      {{ $t('settings.telegramSendVoiceReply') }}
+                    </Label>
+                    <p class="text-xs text-muted-foreground">
+                      {{ $t('settings.telegramSendVoiceReplyHint') }}
+                    </p>
+                  </div>
+                  <Switch
+                    id="telegram-send-voice-reply"
+                    v-model:checked="form.telegram.sendVoiceReply"
+                  />
+                </div>
+
                 <!-- Telegram users section -->
                 <Separator />
 
@@ -1328,6 +1344,60 @@
                     </div>
                   </template>
 
+                  <!-- Deepgram Settings -->
+                  <template v-if="form.tts.provider === 'deepgram'">
+                    <div>
+                      <h3 class="text-base font-semibold tracking-tight text-foreground">Deepgram Aura</h3>
+                    </div>
+
+                    <!-- TTS Deepgram key (separate from STT). Needed before the model list can be refreshed. -->
+                    <div class="flex flex-col gap-2">
+                      <Label for="tts-deepgram-api-key">{{ $t('settings.deepgramApiKey') }}</Label>
+                      <Input
+                        id="tts-deepgram-api-key"
+                        v-model="form.tts.deepgramApiKey"
+                        type="password"
+                        :placeholder="$t('settings.deepgramApiKeyPlaceholder')"
+                        autocomplete="off"
+                      />
+                      <p class="text-xs text-muted-foreground">{{ $t('settings.deepgramApiKeyHint') }}</p>
+                    </div>
+
+                    <div class="flex flex-col gap-2">
+                      <Label for="tts-deepgram-model">{{ $t('settings.ttsDeepgramModel') }}</Label>
+                      <div class="flex items-center gap-2">
+                        <Select v-model="form.tts.deepgramModel" class="flex-1">
+                          <SelectTrigger id="tts-deepgram-model" class="flex-1">
+                            <SelectValue :placeholder="$t('settings.deepgramModelPlaceholder')" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem
+                              v-for="opt in ttsDeepgramModelOptions"
+                              :key="opt.value"
+                              :value="opt.value"
+                            >
+                              {{ opt.label }}
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          :disabled="deepgramModelsLoading"
+                          :title="$t('settings.deepgramModelsRefresh')"
+                          :aria-label="$t('settings.deepgramModelsRefresh')"
+                          @click="handleRefreshTtsDeepgramModels"
+                        >
+                          <AppIcon name="refresh" class="h-4 w-4" :class="{ 'animate-spin': deepgramModelsLoading }" />
+                        </Button>
+                      </div>
+                      <p v-if="deepgramModelsError" class="text-xs text-destructive">{{ deepgramModelsError }}</p>
+                      <p v-else class="text-xs text-muted-foreground">{{ $t('settings.ttsDeepgramModelHint') }}</p>
+                    </div>
+
+                  </template>
+
                   <!-- Mistral Settings -->
                   <template v-if="form.tts.provider === 'mistral'">
                     <div>
@@ -1409,9 +1479,14 @@
                     <p class="text-xs text-muted-foreground">{{ $t('settings.ttsPreviewHint') }}</p>
                   </div>
 
+                  <!--
+                    Single audio format selector across all providers. The
+                    core dispatcher maps it to provider-specific knobs (e.g.
+                    Deepgram's `wav` becomes raw `linear16` PCM with a WAV
+                    header wrapped around it post-synthesis).
+                  -->
                   <Separator />
 
-                  <!-- Audio Format -->
                   <div class="flex flex-col gap-2">
                     <Label for="tts-format">{{ $t('settings.ttsResponseFormat') }}</Label>
                     <Select v-model="form.tts.responseFormat">
@@ -1518,6 +1593,64 @@
                     />
                     <p class="text-xs text-muted-foreground">{{ $t('settings.sttOllamaModelHint') }}</p>
                   </div>
+
+                  <!-- Deepgram fields (only visible when provider is deepgram) -->
+                  <template v-if="form.stt.provider === 'deepgram'">
+                    <!-- STT Deepgram key (separate from TTS). Needed before the model list can be refreshed. -->
+                    <div class="flex flex-col gap-2">
+                      <Label for="stt-deepgram-api-key">{{ $t('settings.deepgramApiKey') }}</Label>
+                      <Input
+                        id="stt-deepgram-api-key"
+                        v-model="form.stt.deepgramApiKey"
+                        type="password"
+                        :placeholder="$t('settings.deepgramApiKeyPlaceholder')"
+                        autocomplete="off"
+                      />
+                      <p class="text-xs text-muted-foreground">{{ $t('settings.deepgramApiKeyHint') }}</p>
+                    </div>
+                    <div class="flex flex-col gap-2">
+                      <Label for="stt-deepgram-model">{{ $t('settings.sttDeepgramModel') }}</Label>
+                      <div class="flex items-center gap-2">
+                        <Select v-model="form.stt.deepgramModel" class="flex-1">
+                          <SelectTrigger id="stt-deepgram-model" class="flex-1">
+                            <SelectValue :placeholder="$t('settings.deepgramModelPlaceholder')" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem
+                              v-for="opt in sttDeepgramModelOptions"
+                              :key="opt.value"
+                              :value="opt.value"
+                            >
+                              {{ opt.label }}
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          :disabled="deepgramModelsLoading"
+                          :title="$t('settings.deepgramModelsRefresh')"
+                          :aria-label="$t('settings.deepgramModelsRefresh')"
+                          @click="handleRefreshSttDeepgramModels"
+                        >
+                          <AppIcon name="refresh" class="h-4 w-4" :class="{ 'animate-spin': deepgramModelsLoading }" />
+                        </Button>
+                      </div>
+                      <p v-if="deepgramModelsError" class="text-xs text-destructive">{{ deepgramModelsError }}</p>
+                      <p v-else class="text-xs text-muted-foreground">{{ $t('settings.sttDeepgramModelHint') }}</p>
+                    </div>
+                    <div class="flex flex-col gap-2">
+                      <Label for="stt-deepgram-language">{{ $t('settings.sttDeepgramLanguage') }}</Label>
+                      <Input
+                        id="stt-deepgram-language"
+                        v-model="form.stt.deepgramLanguage"
+                        type="text"
+                        :placeholder="$t('settings.sttDeepgramLanguagePlaceholder')"
+                      />
+                      <p class="text-xs text-muted-foreground">{{ $t('settings.sttDeepgramLanguageHint') }}</p>
+                    </div>
+                  </template>
 
                   <!-- Rewrite toggle -->
                   <div class="flex items-center justify-between rounded-lg border border-border px-4 py-3">
@@ -2178,6 +2311,171 @@ watch(() => form.value?.tts.openaiModel, (model) => {
 
 /* ── TTS voices & preview ── */
 const { mistralVoices, voicesLoading, fetchMistralVoices } = useTts()
+
+/* ── Deepgram models (shared between STT + TTS panes) ── */
+const {
+  sttModels: deepgramSttModels,
+  ttsModels: deepgramTtsModels,
+  loading: deepgramModelsLoading,
+  error: deepgramModelsError,
+  loaded: deepgramModelsLoaded,
+  fetchModels: fetchDeepgramModels,
+} = useDeepgram()
+
+/**
+ * Format a list of Deepgram language codes for a model dropdown label.
+ *
+ * Three transformations are applied so multilingual STT models (Deepgram's
+ * `nova-3-general` ships with 100+ language entries) stay scannable:
+ *
+ * 1. **Collapse locale suffixes once the list gets long.** `zh-Hant`,
+ *    `zh-CN`, `zh-TW` all collapse to `zh`. Locale variants matter for
+ *    pronunciation, but at 117 languages the user mostly wants to know
+ *    "does this support Chinese?" — the locale picker is the language field
+ *    below, not the model picker.
+ * 2. **English first.** Most installations transcribe English most of the
+ *    time, so seeing `en` in the visible prefix is the most useful signal.
+ *    Everything else sorts alphabetically for predictable scanning.
+ * 3. **Truncate with `+N`** to keep the label width bounded.
+ */
+function formatDeepgramLanguageList(langs: string[]): string {
+  if (langs.length === 0) return ''
+
+  // Strip locale suffixes once the list is long enough that per-locale detail
+  // is more noise than signal. Threshold of 6 means small bilingual TTS
+  // voices keep their precise codes (`en-US`), while the big STT catalogs
+  // collapse cleanly.
+  const COLLAPSE_THRESHOLD = 6
+  let normalized: string[]
+  if (langs.length > COLLAPSE_THRESHOLD) {
+    const seen = new Set<string>()
+    normalized = []
+    for (const lang of langs) {
+      const base = lang.split('-')[0] ?? lang
+      if (!seen.has(base)) {
+        seen.add(base)
+        normalized.push(base)
+      }
+    }
+  } else {
+    normalized = [...langs]
+  }
+
+  // Pull `en` to the front (case-insensitive, locale-tolerant), keep the rest
+  // alphabetically sorted. Done after the collapse so an `en-US`-only list
+  // also gets the priority treatment.
+  const front: string[] = []
+  const rest: string[] = []
+  for (const lang of normalized) {
+    if (lang.toLowerCase().startsWith('en')) front.push(lang)
+    else rest.push(lang)
+  }
+  rest.sort((a, b) => a.localeCompare(b))
+  const ordered = [...front, ...rest]
+
+  const MAX_INLINE = 6
+  if (ordered.length <= MAX_INLINE) return ordered.join(', ')
+  return `${ordered.slice(0, MAX_INLINE).join(', ')}, +${ordered.length - MAX_INLINE}`
+}
+
+/**
+ * Build the option list for a Deepgram model `<Select>`. Four responsibilities:
+ *
+ * 1. **Dedup by `canonical_name`** — Deepgram's `/v1/models` returns one entry
+ *    per supported language (and per batch/streaming mode and internal
+ *    version), but only `canonical_name` ever gets passed back via `?model=`.
+ *    For STT the language is set independently via `?language=...` (the
+ *    "Deepgram Language" field below the model picker), so collapsing
+ *    language variants into one entry is correct — they're the same model.
+ *    For TTS the language is already baked into the canonical_name
+ *    (`aura-2-thalia-en` vs. `aura-2-ophelia-de`) so each entry survives
+ *    dedup naturally.
+ * 2. **Aggregate languages per canonical_name** so the user can still tell at
+ *    a glance which languages a model supports without seeing duplicate rows.
+ * 3. **Sort by primary language first, then canonical_name.** Useful mostly
+ *    for TTS voices: groups all `aura-*-de`, `aura-*-en`, `aura-*-es` ...
+ *    blocks together so picking a German voice doesn't require scrolling
+ *    through interleaved languages. Harmless for STT because the big
+ *    multilingual models share the same primary language after aggregation.
+ * 4. **Always include the currently-selected value** — even when the API
+ *    hasn't been polled yet or the value is no longer in Deepgram's catalog —
+ *    so the dropdown never silently drops the user's saved selection.
+ */
+function deepgramModelOptions(
+  apiModels: Array<{ canonical_name: string; languages?: string[] }>,
+  currentValue: string,
+): Array<{ value: string; label: string }> {
+  // Aggregate: canonical_name -> ordered set of distinct languages
+  const langsByName = new Map<string, string[]>()
+  for (const m of apiModels) {
+    if (!m.canonical_name) continue
+    let bucket = langsByName.get(m.canonical_name)
+    if (!bucket) {
+      bucket = []
+      langsByName.set(m.canonical_name, bucket)
+    }
+    for (const lang of m.languages ?? []) {
+      if (lang && !bucket.includes(lang)) bucket.push(lang)
+    }
+  }
+
+  // Primary language used for sorting: the first language of each model with
+  // its locale suffix stripped (`de-DE` -> `de`). For TTS each canonical_name
+  // has exactly one base language; for STT it's whichever Deepgram lists
+  // first — which is fine since the per-model lang set is shown in the label
+  // anyway.
+  const options = Array.from(langsByName.entries()).map(([name, langs]) => {
+    const langPart = formatDeepgramLanguageList(langs)
+    const primaryLang = (langs[0] ?? '').split('-')[0] ?? ''
+    return {
+      value: name,
+      label: langPart ? `${name} (${langPart})` : name,
+      primaryLang,
+    }
+  })
+  options.sort((a, b) => {
+    const langCmp = a.primaryLang.localeCompare(b.primaryLang)
+    return langCmp !== 0 ? langCmp : a.value.localeCompare(b.value)
+  })
+
+  // Drop the internal `primaryLang` before returning so the option shape
+  // stays `{ value, label }` for the `<Select>`.
+  const cleaned = options.map(({ value, label }) => ({ value, label }))
+
+  if (currentValue && !langsByName.has(currentValue)) {
+    // Surface the saved value so the trigger can render it; flag as `(current)`
+    // so the user knows it's not part of the freshly-fetched list.
+    cleaned.unshift({ value: currentValue, label: `${currentValue} (current)` })
+  }
+  return cleaned
+}
+
+const sttDeepgramModelOptions = computed(() =>
+  deepgramModelOptions(deepgramSttModels.value, form.value?.stt.deepgramModel ?? ''),
+)
+const ttsDeepgramModelOptions = computed(() =>
+  deepgramModelOptions(deepgramTtsModels.value, form.value?.tts.deepgramModel ?? ''),
+)
+
+/**
+ * Trigger a refresh of the Deepgram model list, scoped to either STT or TTS
+ * since the two now have separate Deepgram keys. The currently-typed key
+ * from the matching form block is passed along so the user can test a fresh
+ * key without having to Save first — the backend falls back to the saved
+ * key for the same scope when this is empty or still the masked sentinel.
+ *
+ * Failures are surfaced inline via `deepgramModelsError` so the click never
+ * throws.
+ */
+async function handleRefreshSttDeepgramModels() {
+  const typedKey = form.value?.stt.deepgramApiKey ?? ''
+  await fetchDeepgramModels({ scope: 'stt', apiKey: typedKey })
+}
+
+async function handleRefreshTtsDeepgramModels() {
+  const typedKey = form.value?.tts.deepgramApiKey ?? ''
+  await fetchDeepgramModels({ scope: 'tts', apiKey: typedKey })
+}
 const ttsPreviewText = ref('Hello! This is a preview of the selected voice.')
 const ttsPreviewLoading = ref(false)
 const ttsPreviewPlaying = ref(false)
@@ -2355,6 +2653,10 @@ const ttsProviderOptions = computed(() => {
     options.push({ value: 'mistral::', label: t('settings.ttsProviderMistralNone'), disabled: true })
   }
 
+  // Deepgram — standalone, uses the shared `deepgramApiKey` from the STT block
+  // (canonical location, since both STT and TTS share one Deepgram account).
+  options.push({ value: 'deepgram::', label: t('settings.ttsProviderDeepgram') })
+
   return options
 })
 
@@ -2368,7 +2670,7 @@ const ttsProviderComposite = computed({
     if (!form.value) return
     const [type, ...rest] = value.split('::')
     const id = rest.join('::')
-    form.value.tts.provider = type as 'openai' | 'mistral'
+    form.value.tts.provider = type as 'openai' | 'mistral' | 'deepgram'
     form.value.tts.providerId = id
   },
 })
@@ -2404,6 +2706,10 @@ const sttProviderOptions = computed(() => {
     options.push({ value: 'ollama::', label: t('settings.sttOllamaNone'), disabled: true })
   }
 
+  // Deepgram — standalone, uses the shared `deepgramApiKey` stored under STT
+  // (also consumed by the Deepgram TTS path).
+  options.push({ value: 'deepgram::', label: t('settings.sttProviderDeepgram') })
+
   return options
 })
 
@@ -2417,7 +2723,7 @@ const sttProviderComposite = computed({
     if (!form.value) return
     const [type, ...rest] = value.split('::')
     const id = rest.join('::')
-    form.value.stt.provider = type as 'whisper-url' | 'openai' | 'ollama'
+    form.value.stt.provider = type as 'whisper-url' | 'openai' | 'ollama' | 'deepgram'
     form.value.stt.providerId = id
   },
 })
@@ -2457,5 +2763,17 @@ onMounted(async () => {
     fetchMistralVoices(),
   ])
   hydrateForm()
+  // Auto-fetch Deepgram models on first load so the dropdown is populated by
+  // the time the user opens the STT/TTS pane. STT takes precedence when both
+  // providers are set to Deepgram — the user can hit either refresh button to
+  // re-fetch with the other key. Skipped silently when no key is present;
+  // the refresh buttons still give the user a manual trigger.
+  if (!deepgramModelsLoaded.value) {
+    if (form.value?.stt.provider === 'deepgram' && form.value.stt.deepgramApiKey) {
+      void fetchDeepgramModels({ scope: 'stt' })
+    } else if (form.value?.tts.provider === 'deepgram' && form.value.tts.deepgramApiKey) {
+      void fetchDeepgramModels({ scope: 'tts' })
+    }
+  }
 })
 </script>

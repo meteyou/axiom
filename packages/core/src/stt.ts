@@ -3,6 +3,7 @@ import { loadProvidersDecrypted, getApiKeyForProvider, buildModel, parseProvider
 import type { ProviderConfig } from './provider-config.js'
 import type { SttProvider } from './contracts/settings.js'
 import { completeSimple } from '@mariozechner/pi-ai'
+import { transcribeDeepgram, decryptDeepgramApiKey, DEEPGRAM_DEFAULT_STT_MODEL } from './deepgram.js'
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -18,6 +19,10 @@ export interface SttSettings {
   providerId: string
   openaiModel: string
   ollamaModel: string
+  /** Deepgram model id (e.g. `nova-3`). */
+  deepgramModel: string
+  /** Optional language hint passed to Deepgram (`en`, `de`, `multi`, ...). */
+  deepgramLanguage: string
   rewrite: SttRewriteSettings
 }
 
@@ -46,11 +51,33 @@ export function loadSttSettings(): SttSettings {
     providerId: stt.providerId ?? '',
     openaiModel: stt.openaiModel ?? 'whisper-1',
     ollamaModel: stt.ollamaModel ?? '',
+    deepgramModel: stt.deepgramModel ?? DEEPGRAM_DEFAULT_STT_MODEL,
+    deepgramLanguage: stt.deepgramLanguage ?? '',
     rewrite: {
       enabled: rewrite.enabled ?? false,
       providerId: rewrite.providerId ?? '',
     },
   }
+}
+
+/**
+ * Read the (possibly encrypted) Deepgram API key from `settings.json`. The
+ * value is decrypted on read so callers always see plaintext. Returns an
+ * empty string when the key is unset.
+ *
+ * STT and TTS keep separate keys so the Deepgram account dashboard cleanly
+ * attributes usage to the right call site. Canonical storage paths:
+ *   - STT: `settings.stt.deepgramApiKey`
+ *   - TTS: `settings.tts.deepgramApiKey`
+ *
+ * Defaults to STT for backwards compat with the original single-key API.
+ */
+export function loadDeepgramApiKey(scope: 'stt' | 'tts' = 'stt'): string {
+  ensureConfigTemplates()
+  const settings = loadConfig<Record<string, unknown>>('settings.json')
+  const block = (settings[scope] ?? {}) as { deepgramApiKey?: unknown }
+  const raw = typeof block.deepgramApiKey === 'string' ? block.deepgramApiKey : ''
+  return raw ? decryptDeepgramApiKey(raw) : ''
 }
 
 // ── Whisper URL provider ──────────────────────────────────────────────
@@ -320,6 +347,20 @@ export async function transcribeAudio(
         throw new Error('Ollama STT provider is not configured. Select a provider in Settings → Speech-to-Text.')
       }
       transcript = await transcribeOllama(buffer, settings.providerId, settings.ollamaModel, language)
+      break
+    }
+    case 'deepgram': {
+      const apiKey = loadDeepgramApiKey()
+      if (!apiKey) {
+        throw new Error('Deepgram API key is not configured. Set it in Settings → Speech-to-Text.')
+      }
+      // Per-STT language override wins over the global agent language so
+      // multilingual setups (Telegram in DE, agent in EN) keep working.
+      const deepgramLanguage = settings.deepgramLanguage || language
+      transcript = await transcribeDeepgram(buffer, apiKey, {
+        model: settings.deepgramModel,
+        language: deepgramLanguage,
+      })
       break
     }
     default:

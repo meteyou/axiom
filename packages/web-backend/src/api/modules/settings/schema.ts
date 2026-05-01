@@ -1,4 +1,5 @@
 import {
+  encrypt,
   HEALTH_MONITOR_FALLBACK_TRIGGERS,
   SETTINGS_STT_OPENAI_MODELS,
   SETTINGS_STT_PROVIDERS,
@@ -384,6 +385,33 @@ export function mergeTts(
     existing.responseFormat = tts.responseFormat
   }
 
+  if (tts.deepgramModel !== undefined) {
+    if (typeof tts.deepgramModel !== 'string' || !tts.deepgramModel.trim()) {
+      return { error: 'tts.deepgramModel must be a non-empty string' }
+    }
+    existing.deepgramModel = tts.deepgramModel.trim()
+  }
+
+  // Deepgram TTS API key. Same masked-sentinel handling as `mergeStt`: a
+  // value containing the bullet character (U+2022) means "the user didn't
+  // touch the masked field" and is skipped. Empty string clears the key,
+  // anything else is encrypted fresh and stored under `tts.deepgramApiKey`.
+  // Stored separately from `stt.deepgramApiKey` so Deepgram account usage
+  // can be split between transcription and synthesis.
+  //
+  // Same caveat as `mergeStt`: we don't `isEncrypted()`-guard the encrypt
+  // call because Deepgram's hex keys false-positive that heuristic. Form
+  // values are always plaintext or the (already-filtered) masked sentinel.
+  if (tts.deepgramApiKey !== undefined) {
+    if (typeof tts.deepgramApiKey !== 'string') {
+      return { error: 'tts.deepgramApiKey must be a string' }
+    }
+    const raw = tts.deepgramApiKey
+    if (!raw.includes('•')) {
+      existing.deepgramApiKey = raw ? encrypt(raw) : ''
+    }
+  }
+
   settingsRaw.tts = existing
   return { error: null }
 }
@@ -449,6 +477,45 @@ export function mergeStt(
       return { error: 'stt.ollamaModel must be a string' }
     }
     existing.ollamaModel = stt.ollamaModel
+  }
+
+  if (stt.deepgramModel !== undefined) {
+    if (typeof stt.deepgramModel !== 'string' || !stt.deepgramModel.trim()) {
+      return { error: 'stt.deepgramModel must be a non-empty string' }
+    }
+    existing.deepgramModel = stt.deepgramModel.trim()
+  }
+
+  if (stt.deepgramLanguage !== undefined) {
+    if (typeof stt.deepgramLanguage !== 'string') {
+      return { error: 'stt.deepgramLanguage must be a string' }
+    }
+    existing.deepgramLanguage = stt.deepgramLanguage.trim()
+  }
+
+  // Deepgram API key handling. The Settings API returns the key *masked*
+  // (e.g. `dg_••••••abcd`) so the form can show "key configured" without
+  // leaking the secret. When the user submits the form unchanged, the masked
+  // value comes back — we treat any value containing the bullet character
+  // (U+2022) as "no change" and skip writing. Empty string clears the key.
+  // Anything else is encrypted fresh and stored under `stt.deepgramApiKey`.
+  //
+  // We deliberately do NOT use `isEncrypted()` as an idempotency guard here:
+  // Deepgram API keys are 40-char hex strings, which coincidentally satisfy
+  // strict-base64 + length-divisible-by-4 + decodes-to-30-bytes — the
+  // heuristic returns a false positive and the plaintext key gets stored as
+  // if it were ciphertext, blowing up the next decrypt with "Unsupported
+  // state or unable to authenticate data". Form values are always either the
+  // masked sentinel (already filtered above), empty (clear), or fresh
+  // user-typed plaintext, so we can encrypt unconditionally.
+  if (stt.deepgramApiKey !== undefined) {
+    if (typeof stt.deepgramApiKey !== 'string') {
+      return { error: 'stt.deepgramApiKey must be a string' }
+    }
+    const raw = stt.deepgramApiKey
+    if (!raw.includes('•')) {
+      existing.deepgramApiKey = raw ? encrypt(raw) : ''
+    }
   }
 
   if (stt.rewrite !== undefined) {

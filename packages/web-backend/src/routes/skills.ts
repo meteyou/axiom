@@ -45,9 +45,6 @@ export interface SkillsRouterOptions {
  */
 interface SettingsWithBuiltinTools {
   builtinTools?: BuiltinToolsConfig
-  braveSearchApiKey?: string
-  searxngUrl?: string
-  tavilyApiKey?: string
   [key: string]: unknown
 }
 
@@ -198,15 +195,16 @@ export function createSkillsRouter(options: SkillsRouterOptions = {}): Router {
         webFetch: { enabled: true },
       }
 
-      // Read braveSearchApiKey from builtinTools.webSearch (preferred) or top-level (legacy)
-      const rawApiKey = builtinTools.webSearch?.braveSearchApiKey ?? settings.braveSearchApiKey ?? ''
+      // braveSearch / searxng / tavily are stored exclusively under
+      // `builtinTools.webSearch`. Legacy top-level fields were removed in the
+      // settings-key cleanup; existing settings.json files are migrated by
+      // `runtime-composition.ts` on bootstrap.
+      const rawApiKey = builtinTools.webSearch?.braveSearchApiKey ?? ''
       const maskedApiKey = rawApiKey ? maskApiKey(rawApiKey) : ''
 
-      // Read searxngUrl from builtinTools.webSearch (preferred) or top-level (legacy)
-      const resolvedSearxngUrl = builtinTools.webSearch?.searxngUrl ?? settings.searxngUrl ?? ''
+      const resolvedSearxngUrl = builtinTools.webSearch?.searxngUrl ?? ''
 
-      // Read tavilyApiKey from builtinTools.webSearch (preferred) or top-level (legacy)
-      const rawTavilyKey = builtinTools.webSearch?.tavilyApiKey ?? settings.tavilyApiKey ?? ''
+      const rawTavilyKey = builtinTools.webSearch?.tavilyApiKey ?? ''
       const maskedTavilyKey = rawTavilyKey ? maskApiKey(rawTavilyKey) : ''
 
       res.json({
@@ -255,31 +253,27 @@ export function createSkillsRouter(options: SkillsRouterOptions = {}): Router {
         settings.builtinTools = existing
       }
 
-      // Encrypt and store braveSearchApiKey — write into builtinTools.webSearch
-      // so createBuiltinWebTools() picks it up, plus top-level for API response
+      // Encrypt and store braveSearchApiKey — written exclusively into
+      // `builtinTools.webSearch` so `createBuiltinWebTools()` picks it up.
       if (body.braveSearchApiKey !== undefined) {
         const raw = body.braveSearchApiKey
         const encrypted = raw ? (isEncrypted(raw) ? raw : encrypt(raw)) : ''
-        settings.braveSearchApiKey = encrypted
         if (!settings.builtinTools) settings.builtinTools = {}
         if (!settings.builtinTools.webSearch) settings.builtinTools.webSearch = { enabled: true, provider: 'duckduckgo' }
         settings.builtinTools.webSearch.braveSearchApiKey = encrypted
       }
 
-      // Store searxngUrl — write into builtinTools.webSearch + top-level
+      // Store searxngUrl exclusively under `builtinTools.webSearch`.
       if (body.searxngUrl !== undefined) {
-        settings.searxngUrl = body.searxngUrl
         if (!settings.builtinTools) settings.builtinTools = {}
         if (!settings.builtinTools.webSearch) settings.builtinTools.webSearch = { enabled: true, provider: 'duckduckgo' }
         settings.builtinTools.webSearch.searxngUrl = body.searxngUrl
       }
 
-      // Encrypt and store tavilyApiKey — write into builtinTools.webSearch
-      // so createBuiltinWebTools() picks it up, plus top-level for legacy reads
+      // Encrypt and store tavilyApiKey exclusively under `builtinTools.webSearch`.
       if (body.tavilyApiKey !== undefined) {
         const raw = body.tavilyApiKey
         const encrypted = raw ? (isEncrypted(raw) ? raw : encrypt(raw)) : ''
-        settings.tavilyApiKey = encrypted
         if (!settings.builtinTools) settings.builtinTools = {}
         if (!settings.builtinTools.webSearch) settings.builtinTools.webSearch = { enabled: true, provider: 'duckduckgo' }
         settings.builtinTools.webSearch.tavilyApiKey = encrypted
@@ -291,17 +285,17 @@ export function createSkillsRouter(options: SkillsRouterOptions = {}): Router {
       getAgentCore()?.refreshSkills()
 
       // Mask API key in response — read from builtinTools.webSearch (canonical location)
-      const rawKey = settings.builtinTools?.webSearch?.braveSearchApiKey ?? settings.braveSearchApiKey ?? ''
+      const rawKey = settings.builtinTools?.webSearch?.braveSearchApiKey ?? ''
       const maskedApiKey = rawKey ? maskApiKey(rawKey) : ''
 
-      const rawTavilyKey = settings.builtinTools?.webSearch?.tavilyApiKey ?? settings.tavilyApiKey ?? ''
+      const rawTavilyKey = settings.builtinTools?.webSearch?.tavilyApiKey ?? ''
       const maskedTavilyKey = rawTavilyKey ? maskApiKey(rawTavilyKey) : ''
 
       res.json({
         message: 'Built-in tools config updated',
         builtinTools: settings.builtinTools,
         braveSearchApiKey: maskedApiKey,
-        searxngUrl: settings.builtinTools?.webSearch?.searxngUrl ?? settings.searxngUrl ?? '',
+        searxngUrl: settings.builtinTools?.webSearch?.searxngUrl ?? '',
         tavilyApiKey: maskedTavilyKey,
       })
     } catch (err) {

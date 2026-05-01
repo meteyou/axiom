@@ -50,6 +50,11 @@ export {
 } from './providers.js'
 
 export type {
+  DeepgramModelContract,
+  DeepgramModelsListContract,
+} from './deepgram.js'
+
+export type {
   ProviderStatusContract,
   ProviderAuthMethodContract,
   ProviderContract,

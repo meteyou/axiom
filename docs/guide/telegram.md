@@ -70,6 +70,20 @@ The bot understands a handful of slash commands inside Telegram:
 
 Everything else is treated as a normal message and forwarded to the agent.
 
+## Voice messages (Deepgram)
+
+Axiom can transcribe incoming Telegram voice messages and optionally reply with synthesized speech via [Deepgram](https://deepgram.com).
+
+1. Get an API key from [console.deepgram.com](https://console.deepgram.com) (free tier includes a generous trial credit).
+2. In the Web UI, open **Settings → Skills → Voice**, paste the key, and save. The key is encrypted at rest and shared between STT and TTS.
+3. **Speech-to-Text** — open **Settings → Speech-to-Text**, enable STT, set the provider to **Deepgram**, pick a model (`nova-3` recommended), and optionally a language (`en`, `de`, `multi`, or empty for auto-detect). Voice messages sent to the bot are now transcribed and forwarded to the agent as text.
+4. **Text-to-Speech (optional)** — open **Settings → Text-to-Speech**, enable TTS, pick the **Deepgram Aura** provider, choose a voice (e.g. `aura-2-thalia-en` for English, `aura-2-ophelia-de` for German), and turn on **Voice replies in Telegram**. Each agent reply is then also synthesized and uploaded as an audio/voice message.
+
+Notes:
+- Telegram voice messages are OGG/Opus; Deepgram detects the container automatically.
+- Replies longer than 2000 characters are sent as text only — Deepgram’s `/v1/speak` endpoint rejects larger payloads.
+- TTS errors never suppress the text reply; if synthesis fails, the user still gets the text response and a warning is logged.
+
 ## Troubleshooting
 
 **Bot doesn't reply at all** — Check the container logs for `✅ Telegram bot connected`. If you see `Failed to start Telegram bot: 401 Unauthorized`, the token is wrong (or was revoked via BotFather). If you see `409 Conflict`, another instance of the bot is already polling — stop the other one or revoke and re-issue the token.

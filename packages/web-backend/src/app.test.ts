@@ -959,7 +959,7 @@ describe('settings API', () => {
       factExtraction: { enabled: boolean; providerId: string; minSessionMessages: number }
     }
     expect(res.status).toBe(200)
-    expect(body.telegram).toEqual({ enabled: false, botToken: '', batchingDelayMs: 2500 })
+    expect(body.telegram).toEqual({ enabled: false, botToken: '', batchingDelayMs: 2500, sendVoiceReply: false })
     expect(body.factExtraction).toEqual({ enabled: true, providerId: '', minSessionMessages: 3 })
   })
 

@@ -22,7 +22,7 @@ vi.mock('@mariozechner/pi-ai', () => ({
   completeSimple: vi.fn(),
 }))
 
-import { loadSttSettings, transcribeAudio, transcribeWhisperUrl, transcribeOpenAi, transcribeOllama, rewriteTranscript } from './stt.js'
+import { loadSttSettings, loadDeepgramApiKey, transcribeAudio, transcribeWhisperUrl, transcribeOpenAi, transcribeOllama, rewriteTranscript } from './stt.js'
 import { loadConfig } from './config.js'
 import { loadProvidersDecrypted, getApiKeyForProvider, buildModel } from './provider-config.js'
 import { completeSimple } from '@mariozechner/pi-ai'
@@ -46,6 +46,8 @@ describe('loadSttSettings', () => {
       providerId: '',
       openaiModel: 'whisper-1',
       ollamaModel: '',
+      deepgramModel: 'nova-3',
+      deepgramLanguage: '',
       rewrite: {
         enabled: false,
         providerId: '',
@@ -95,6 +97,35 @@ describe('loadSttSettings', () => {
     })
     const result = loadSttSettings()
     expect(result.rewrite).toEqual({ enabled: false, providerId: '' })
+  })
+})
+
+// ── loadDeepgramApiKey scoping ────────────────────────────────────
+
+describe('loadDeepgramApiKey scoping', () => {
+  it('reads stt.deepgramApiKey by default', () => {
+    mockLoadConfig.mockReturnValue({
+      stt: { deepgramApiKey: 'stt-key' },
+      tts: { deepgramApiKey: 'tts-key' },
+    })
+    expect(loadDeepgramApiKey()).toBe('stt-key')
+    expect(loadDeepgramApiKey('stt')).toBe('stt-key')
+  })
+
+  it('reads tts.deepgramApiKey when scope is tts', () => {
+    mockLoadConfig.mockReturnValue({
+      stt: { deepgramApiKey: 'stt-key' },
+      tts: { deepgramApiKey: 'tts-key' },
+    })
+    expect(loadDeepgramApiKey('tts')).toBe('tts-key')
+  })
+
+  it('returns empty string when the requested scope has no key (no cross-scope fallback)', () => {
+    mockLoadConfig.mockReturnValue({
+      stt: { deepgramApiKey: 'stt-key' },
+      // no tts.deepgramApiKey — must NOT fall back to STT
+    })
+    expect(loadDeepgramApiKey('tts')).toBe('')
   })
 })
 
@@ -784,6 +815,76 @@ describe('transcribeAudio', () => {
     await expect(transcribeAudio(Buffer.from('audio'))).rejects.toThrow(
       'Unknown STT provider: unknown-provider',
     )
+  })
+
+  it('routes to deepgram provider when configured and key is present', async () => {
+    mockLoadConfig.mockReturnValue({
+      stt: {
+        enabled: true,
+        provider: 'deepgram',
+        deepgramModel: 'nova-3',
+        deepgramLanguage: 'en',
+        deepgramApiKey: 'plaintext-key',
+      },
+    })
+
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({
+        results: { channels: [{ alternatives: [{ transcript: 'deepgram heard you' }] }] },
+      }),
+    })
+    globalThis.fetch = mockFetch
+
+    const result = await transcribeAudio(Buffer.from('audio'))
+    expect(result).toEqual({ transcript: 'deepgram heard you' })
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+
+    const [url, options] = mockFetch.mock.calls[0]
+    const parsed = new URL(url as string)
+    expect(parsed.origin).toBe('https://api.deepgram.com')
+    expect(parsed.pathname).toBe('/v1/listen')
+    expect(parsed.searchParams.get('model')).toBe('nova-3')
+    expect(parsed.searchParams.get('language')).toBe('en')
+    expect(options.headers.Authorization).toBe('Token plaintext-key')
+  })
+
+  it('throws when deepgram is selected but no API key is configured', async () => {
+    mockLoadConfig.mockReturnValue({
+      stt: { enabled: true, provider: 'deepgram', deepgramApiKey: '' },
+    })
+
+    await expect(transcribeAudio(Buffer.from('audio'))).rejects.toThrow(
+      /Deepgram API key is not configured/,
+    )
+  })
+
+  it('falls back to the agent language when stt.deepgramLanguage is empty', async () => {
+    mockLoadConfig.mockReturnValue({
+      stt: {
+        enabled: true,
+        provider: 'deepgram',
+        deepgramModel: 'nova-3',
+        deepgramLanguage: '',
+        deepgramApiKey: 'k',
+      },
+    })
+
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({
+        results: { channels: [{ alternatives: [{ transcript: 'hi' }] }] },
+      }),
+    })
+    globalThis.fetch = mockFetch
+
+    await transcribeAudio(Buffer.from('audio'), { language: 'de' })
+
+    const [url] = mockFetch.mock.calls[0]
+    const parsed = new URL(url as string)
+    expect(parsed.searchParams.get('language')).toBe('de')
   })
 
   it('calls rewriteTranscript when rewrite is enabled and returns both fields', async () => {
