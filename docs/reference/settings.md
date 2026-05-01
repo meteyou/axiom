@@ -349,13 +349,14 @@ LLM provider catalog. UI-managed via the [Providers page](../web-ui/providers); 
 | `id`                     | `string`                                        | Stable, unique within the file. Used everywhere as `providerId`.                              |
 | `name`                   | `string`                                        | Display name in the UI.                                                                        |
 | `type`                   | `string`                                        | Wire protocol, e.g. `"openai-completions"`, `"anthropic-messages"`.                            |
-| `providerType`           | `string`                                        | Logical class — `"openai"`, `"anthropic"`, `"ollama"`, `"openai-chatgpt"`, etc.                 |
+| `providerType`           | `string`                                        | Logical class — `"openai"`, `"anthropic"`, `"mistral"`, `"openrouter"`, `"deepseek"`, `"kimi"`, `"minimax"`, `"ollama"`, `"openai-codex"`, `"github-copilot"`, `"google-antigravity"`, `"anthropic-oauth"`, etc. |
 | `provider`               | `string`                                        | pi-ai provider key.                                                                            |
 | `baseUrl`                | `string`                                        | API base URL.                                                                                  |
 | `apiKey`                 | `string` (**encrypted**)                        | Encrypted with `ENCRYPTION_KEY` (`packages/core/src/encryption.ts`). Use the UI to write.      |
 | `defaultModel`           | `string`                                        | Model id used when `activeModel` is unset.                                                     |
 | `enabledModels`          | `string[]?`                                     | Model ids the user has enabled for this provider.                                              |
 | `degradedThresholdMs`    | `number?`                                       | Latency threshold for `healthy → degraded` transitions in [Health Monitor](../settings/health-monitor). |
+| `textVerbosity`          | `"low" \| "medium" \| "high"` (optional)          | Response verbosity for supported OpenAI Codex/Responses-style providers. Omit to use the provider default (pi-ai currently defaults Codex to `low`). Configure via [Providers UI](../web-ui/providers#add-edit-dialog). |
 | `models`                 | `ProviderModelConfig[]?`                        | Per-model overrides — context window, max tokens, reasoning support, fixed temperature, custom cost. |
 | `status`                 | `"connected" \| "error" \| "untested"`          | Last-known result of an explicit "test connection" click.                                      |
 | `modelStatuses`          | `Record<modelId, status>`                       | Per-model variant of `status`.                                                                 |
