@@ -58,12 +58,15 @@ const TEMPLATES: Record<string, object> = {
       },
     },
     builtinTools: {
-      webSearch: { enabled: true, provider: 'duckduckgo' },
+      webSearch: {
+        enabled: true,
+        provider: 'duckduckgo',
+        braveSearchApiKey: '',
+        searxngUrl: '',
+        tavilyApiKey: '',
+      },
       webFetch: { enabled: true },
     },
-    braveSearchApiKey: '',
-    searxngUrl: '',
-    tavilyApiKey: '',
     tasks: {
       defaultProvider: '',
       maxDurationMinutes: 60,
