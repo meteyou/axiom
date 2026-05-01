@@ -37,9 +37,10 @@ describe('search_memories tool', () => {
     expect(tool.name).toBe('search_memories')
     expect(tool.label).toBe('Search Memories')
     expect(tool.description).toContain('fact memory')
-    expect(tool.parameters.properties.query).toBeDefined()
-    expect(tool.parameters.properties.limit).toBeDefined()
-    expect(tool.parameters.required).toContain('query')
+    const schema = tool.parameters as { properties: Record<string, unknown>; required?: string[] }
+    expect(schema.properties.query).toBeDefined()
+    expect(schema.properties.limit).toBeDefined()
+    expect(schema.required).toContain('query')
   })
 
   it('returns formatted results when called', async () => {
