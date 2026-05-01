@@ -19,6 +19,8 @@ export class RuntimeMetrics {
     this.externalQueueDepths.set(source, Math.floor(depth))
   }
 
+  // Used by the health route to report combined in-flight request and external queue depth.
+  // fallow-ignore-next-line unused-class-member
   getQueueDepth(): number {
     let total = this.activeRequests
 
