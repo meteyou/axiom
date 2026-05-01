@@ -24,6 +24,7 @@ export type ProviderType =
   | 'openai-codex' | 'github-copilot' | 'google-gemini-cli' | 'google-antigravity' | 'anthropic-oauth'
 
 export type AuthMethod = 'api-key' | 'oauth'
+export type TextVerbosity = 'low' | 'medium' | 'high'
 
 export interface ProviderTypePreset {
   type: ProviderType
@@ -404,6 +405,12 @@ export interface ProviderConfig {
   defaultModel: string
   enabledModels?: string[] // list of model IDs enabled for this provider
   degradedThresholdMs?: number
+  /**
+   * Optional OpenAI/Codex Responses text verbosity override. Undefined means
+   * "use the provider implementation default" (pi-ai currently defaults Codex
+   * to low).
+   */
+  textVerbosity?: TextVerbosity
   models?: ProviderModelConfig[]
   status?: 'connected' | 'error' | 'untested'
   modelStatuses?: Record<string, 'connected' | 'error' | 'untested'>
@@ -645,6 +652,7 @@ export function addProvider(input: {
   defaultModel: string
   enabledModels?: string[]
   degradedThresholdMs?: number
+  textVerbosity?: TextVerbosity
 }): ProviderConfig {
   const preset = PROVIDER_TYPE_PRESETS[input.providerType]
   if (!preset) {
@@ -676,6 +684,7 @@ export function addProvider(input: {
     defaultModel: input.defaultModel,
     enabledModels,
     degradedThresholdMs: input.degradedThresholdMs ?? 5000,
+    ...(input.textVerbosity && { textVerbosity: input.textVerbosity }),
     status: 'untested',
     authMethod: preset.authMethod,
   }
@@ -701,6 +710,7 @@ export function addOAuthProvider(input: {
   defaultModel: string
   enabledModels?: string[]
   degradedThresholdMs?: number
+  textVerbosity?: TextVerbosity
   oauthCredentials: OAuthCredentials
 }): ProviderConfig {
   const preset = PROVIDER_TYPE_PRESETS[input.providerType]
@@ -736,6 +746,7 @@ export function addOAuthProvider(input: {
     defaultModel: input.defaultModel,
     enabledModels,
     degradedThresholdMs: input.degradedThresholdMs ?? 5000,
+    ...(input.textVerbosity && { textVerbosity: input.textVerbosity }),
     status: 'untested',
     authMethod: 'oauth',
     oauthCredentials: encryptOAuthCredentials(input.oauthCredentials),
@@ -763,6 +774,7 @@ export function updateProvider(id: string, input: {
   defaultModel?: string
   enabledModels?: string[]
   degradedThresholdMs?: number
+  textVerbosity?: TextVerbosity | null
 }): ProviderConfig {
   const file = loadProviders()
   const index = file.providers.findIndex(p => p.id === id)
@@ -804,6 +816,13 @@ export function updateProvider(id: string, input: {
       : [dm, ...input.enabledModels]
   }
   if (input.degradedThresholdMs !== undefined) existing.degradedThresholdMs = input.degradedThresholdMs
+  if (input.textVerbosity !== undefined) {
+    if (input.textVerbosity === null) {
+      delete existing.textVerbosity
+    } else {
+      existing.textVerbosity = input.textVerbosity
+    }
+  }
 
   // For providers with fixed URLs, always sync from preset
   const currentPreset = PROVIDER_TYPE_PRESETS[existing.providerType]

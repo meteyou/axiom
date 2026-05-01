@@ -18,6 +18,7 @@ export interface PendingOAuthLogin {
   providerType: string
   name: string
   defaultModel: string
+  textVerbosity?: 'low' | 'medium' | 'high' | null
   authUrl?: string
   instructions?: string
   credentials?: OAuthCredentials

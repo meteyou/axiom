@@ -88,7 +88,7 @@ export {
   PROVIDER_TYPE_PRESETS,
   PROVIDER_TYPE_MODEL_OVERRIDES,
 } from './provider-config.js'
-export type { ProviderConfig, ProviderModelConfig, ProvidersFile, ProviderType, ProviderTypePreset, AuthMethod, AvailableModel, OAuthCredentialsStored, TokenPriceTable } from './provider-config.js'
+export type { ProviderConfig, ProviderModelConfig, ProvidersFile, ProviderType, ProviderTypePreset, AuthMethod, TextVerbosity, AvailableModel, OAuthCredentialsStored, TokenPriceTable } from './provider-config.js'
 export { encrypt, decrypt, isEncrypted, maskApiKey } from './encryption.js'
 export {
   logTokenUsage,

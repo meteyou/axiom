@@ -80,7 +80,7 @@
                 :disabled="oauthInProgress"
                 @change="toggleModel(model.id)"
               >
-              <span class="flex-1 truncate">{{ model.name }}</span>
+              <span class="flex-1 truncate">{{ formatKnownModelLabel(model) }}</span>
             </label>
           </div>
           <p class="text-xs text-muted-foreground">{{ $t('providers.enabledModelsHint') }}</p>
@@ -273,6 +273,23 @@
           <p class="text-xs text-muted-foreground">{{ $t('providers.degradedThresholdHint') }}</p>
         </div>
 
+        <!-- Text verbosity (OpenAI Codex Responses) -->
+        <div v-if="supportsTextVerbosity" class="flex flex-col gap-1.5">
+          <Label>{{ $t('providers.textVerbosity') }}</Label>
+          <Select v-model="form.textVerbosity">
+            <SelectTrigger>
+              <SelectValue :placeholder="$t('providers.textVerbosityDefault')" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="default">{{ $t('providers.textVerbosityDefault') }}</SelectItem>
+              <SelectItem value="low">{{ $t('providers.textVerbosityLow') }}</SelectItem>
+              <SelectItem value="medium">{{ $t('providers.textVerbosityMedium') }}</SelectItem>
+              <SelectItem value="high">{{ $t('providers.textVerbosityHigh') }}</SelectItem>
+            </SelectContent>
+          </Select>
+          <p class="text-xs text-muted-foreground">{{ $t('providers.textVerbosityHint') }}</p>
+        </div>
+
         <!-- OAuth Login Section -->
         <div v-if="isOAuthProvider && (mode === 'create' || oauthInProgress)" class="flex flex-col gap-3">
           <!-- OAuth status messages -->
@@ -377,6 +394,7 @@ export interface ProviderFormPayload {
   defaultModel: string
   enabledModels: string[]
   degradedThresholdMs: number
+  textVerbosity: null | 'low' | 'medium' | 'high'
 }
 
 const props = defineProps<{
@@ -413,9 +431,17 @@ const form = reactive({
   defaultModel: '',
   enabledModels: [] as string[],
   degradedThresholdMs: 5000,
+  textVerbosity: 'default' as 'default' | 'low' | 'medium' | 'high',
 })
 
 const availableModels = ref<AvailableModel[]>([])
+const duplicateModelNameCounts = computed(() => {
+  const counts = new Map<string, number>()
+  for (const model of availableModels.value) {
+    counts.set(model.name, (counts.get(model.name) ?? 0) + 1)
+  }
+  return counts
+})
 const loadingModels = ref(false)
 const modelsError = ref<string | null>(null)
 const oauthInProgress = ref(false)
@@ -456,6 +482,10 @@ const isOAuthProvider = computed(() => {
   return selectedPreset.value?.authMethod === 'oauth'
 })
 
+const supportsTextVerbosity = computed(() => {
+  return selectedPreset.value?.apiType === 'openai-codex-responses'
+})
+
 const canStartOAuth = computed(() => {
   return form.name.trim() && form.providerType && form.defaultModel
 })
@@ -482,6 +512,7 @@ watch(() => [props.open, props.provider] as const, ([isOpen, entry]) => {
     form.defaultModel = entry.defaultModel
     form.enabledModels = entry.enabledModels?.length ? [...entry.enabledModels] : [entry.defaultModel]
     form.degradedThresholdMs = entry.degradedThresholdMs ?? 5000
+    form.textVerbosity = entry.textVerbosity ?? 'default'
     // Reset Ollama state
     resetOllamaState()
     if (entry.providerType === 'ollama') {
@@ -497,6 +528,7 @@ watch(() => [props.open, props.provider] as const, ([isOpen, entry]) => {
     form.defaultModel = ''
     form.enabledModels = []
     form.degradedThresholdMs = 5000
+    form.textVerbosity = 'default'
     availableModels.value = []
     modelsError.value = null
     resetOllamaState()
@@ -642,6 +674,20 @@ function formatSize(bytes: number): string {
   return `${(bytes / Math.pow(1024, i)).toFixed(i > 1 ? 1 : 0)} ${units[i]}`
 }
 
+function normalizeTextVerbosityPayload(): null | 'low' | 'medium' | 'high' {
+  return form.textVerbosity === 'default' ? null : form.textVerbosity
+}
+
+function formatKnownModelLabel(model: AvailableModel): string {
+  if ((duplicateModelNameCounts.value.get(model.name) ?? 0) <= 1) {
+    return model.name
+  }
+
+  const tail = model.id.split(/[/:]/).pop() ?? model.id
+  const suffix = tail.includes('-') ? (tail.split('-').pop() ?? tail) : tail
+  return model.name.includes(`(${suffix})`) ? model.name : `${model.name} (${suffix})`
+}
+
 async function loadModelsForType(providerType: string) {
   const preset = props.presets[providerType]
   // Fetch if the preset has either a pi-ai provider or a local override
@@ -711,7 +757,11 @@ function handleSubmit() {
   if (!enabledModels.includes(form.defaultModel) && form.defaultModel) {
     enabledModels.unshift(form.defaultModel)
   }
-  emit('submit', { ...form, enabledModels })
+  emit('submit', {
+    ...form,
+    textVerbosity: normalizeTextVerbosityPayload(),
+    enabledModels,
+  })
 }
 
 async function startOAuthRenew() {
@@ -727,6 +777,7 @@ async function startOAuthRenew() {
       name: form.name.trim(),
       defaultModel: form.defaultModel,
       providerId: props.provider.id,
+      textVerbosity: normalizeTextVerbosityPayload(),
     })
 
     oauthLoginId.value = response.loginId
@@ -755,6 +806,7 @@ async function startOAuth() {
       providerType: form.providerType,
       name: form.name.trim(),
       defaultModel: form.defaultModel,
+      textVerbosity: normalizeTextVerbosityPayload(),
     })
 
     oauthLoginId.value = response.loginId

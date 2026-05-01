@@ -170,6 +170,7 @@ export function useProviders() {
     name: string
     defaultModel: string
     providerId?: string
+    textVerbosity?: 'low' | 'medium' | 'high' | null
   }): Promise<OAuthLoginResponse> {
     return providersApi.startOAuthLogin(input)
   }

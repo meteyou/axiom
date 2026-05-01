@@ -52,6 +52,12 @@ function normalizeDegradedThresholdMs(value: unknown): number | undefined {
   return Math.max(1, Math.round(value as number))
 }
 
+function normalizeTextVerbosity(value: unknown): 'low' | 'medium' | 'high' | null | undefined {
+  if (value === null || value === '') return null
+  if (value === 'low' || value === 'medium' || value === 'high') return value
+  return undefined
+}
+
 function isValidProviderType(providerType: string): boolean {
   return VALID_PROVIDER_TYPES.includes(providerType)
 }
@@ -127,6 +133,7 @@ export function parseOAuthLoginPayload(payload: unknown): ParseResult<ProviderOA
       name,
       defaultModel,
       providerId: asTrimmedString(body.providerId),
+      textVerbosity: normalizeTextVerbosity(body.textVerbosity),
     },
   }
 }
@@ -184,6 +191,7 @@ export function parseProviderCreatePayload(
       defaultModel,
       enabledModels: normalizeEnabledModels(body.enabledModels),
       degradedThresholdMs: normalizeDegradedThresholdMs(body.degradedThresholdMs),
+      textVerbosity: normalizeTextVerbosity(body.textVerbosity),
     },
   }
 }
@@ -209,6 +217,7 @@ export function parseProviderUpdatePayload(payload: unknown): ParseResult<Provid
       defaultModel: asTrimmedString(body.defaultModel),
       enabledModels: normalizeEnabledModels(body.enabledModels),
       degradedThresholdMs: normalizeDegradedThresholdMs(body.degradedThresholdMs),
+      textVerbosity: normalizeTextVerbosity(body.textVerbosity),
     },
   }
 }
