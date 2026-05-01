@@ -1350,6 +1350,7 @@ export function createTelegramBot(
   agentCore: AgentCore,
   db?: Database,
   onChatEvent?: (event: TelegramChatEvent) => void,
+  onQueueDepthChanged?: (queueDepth: number) => void,
 ): TelegramBot | null {
   try {
     const config = loadTelegramRuntimeConfig()
@@ -1364,7 +1365,7 @@ export function createTelegramBot(
       return null
     }
 
-    return new TelegramBot({ agentCore, db, config, onChatEvent })
+    return new TelegramBot({ agentCore, db, config, onChatEvent, onQueueDepthChanged })
   } catch {
     console.log('ℹ️  Telegram config not found. Running in web-only mode.')
     return null

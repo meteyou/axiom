@@ -1055,7 +1055,12 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
       telegramBot = null
     }
 
-    telegramBot = createTelegramBot(agentCore, db, onTelegramChatEvent)
+    telegramBot = createTelegramBot(
+      agentCore,
+      db,
+      onTelegramChatEvent,
+      (queueDepth) => runtimeMetrics.setQueueDepth('telegram', queueDepth),
+    )
     if (telegramBot) {
       try {
         await telegramBot.start()
