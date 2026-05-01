@@ -18,7 +18,7 @@ const CLAUDE_CODE_VERSION = '2.1.96'
  * Supported provider types with presets
  */
 export type ProviderType =
-  | 'openai' | 'anthropic' | 'mistral' | 'ollama' | 'openrouter' | 'kimi' | 'zai' | 'opencode-go'
+  | 'openai' | 'anthropic' | 'mistral' | 'ollama' | 'openrouter' | 'deepseek' | 'kimi' | 'minimax' | 'zai' | 'opencode-go'
   // Legacy aliases kept for migration
   | 'ollama-local' | 'ollama-cloud'
   | 'openai-codex' | 'github-copilot' | 'google-gemini-cli' | 'google-antigravity' | 'anthropic-oauth'
@@ -120,7 +120,18 @@ export const PROVIDER_TYPE_PRESETS: Record<ProviderType, ProviderTypePreset> = {
     baseUrl: 'https://openrouter.ai/api/v1',
     requiresApiKey: true,
     urlEditable: false,
-    piAiProvider: null,
+    piAiProvider: 'openrouter',
+    authMethod: 'api-key',
+  },
+  deepseek: {
+    type: 'deepseek',
+    label: 'DeepSeek',
+    apiType: 'openai-completions',
+    providerName: 'deepseek',
+    baseUrl: 'https://api.deepseek.com',
+    requiresApiKey: true,
+    urlEditable: false,
+    piAiProvider: 'deepseek',
     authMethod: 'api-key',
   },
   kimi: {
@@ -136,6 +147,17 @@ export const PROVIDER_TYPE_PRESETS: Record<ProviderType, ProviderTypePreset> = {
     // provider targets a different endpoint (api.kimi.com/coding,
     // anthropic-messages) and does not list the platform models.
     piAiProvider: null,
+    authMethod: 'api-key',
+  },
+  minimax: {
+    type: 'minimax',
+    label: 'MiniMax',
+    apiType: 'anthropic-messages',
+    providerName: 'minimax',
+    baseUrl: 'https://api.minimax.io/anthropic',
+    requiresApiKey: true,
+    urlEditable: false,
+    piAiProvider: 'minimax',
     authMethod: 'api-key',
   },
   zai: {
