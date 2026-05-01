@@ -58,7 +58,7 @@ describe('createTranscribeAudioTool', () => {
 
   it('has correct parameter schema', () => {
     const tool = createTranscribeAudioTool()
-    const schema = tool.parameters
+    const schema = tool.parameters as { properties: Record<string, unknown>; required?: string[] }
     expect(schema).toBeDefined()
     // Verify required and optional properties exist
     expect(schema.properties.path).toBeDefined()
