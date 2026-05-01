@@ -144,13 +144,14 @@ When enabled, three additional fields appear:
 
 | Field             | Notes                                                                                                |
 |-------------------|------------------------------------------------------------------------------------------------------|
-| **Search Provider** | `DuckDuckGo` (default, no key needed), `Brave Search`, or `SearXNG`.                              |
+| **Search Provider** | `DuckDuckGo` (default, no key needed), `Brave Search`, `SearXNG`, or `Tavily`.                    |
 | **Brave Search API Key** | Visible only when provider = Brave. Password field; existing key is masked. Hint: *"Leave empty to keep the existing key."* |
 | **SearXNG Instance URL** | Visible only when provider = SearXNG. Free-text URL. Use this for self-hosted SearXNG instances. |
+| **Tavily API Key** | Visible only when provider = Tavily. Password field; existing key is masked. Get a free key at <https://app.tavily.com> (1,000 queries/month free). |
 
 Click **Save** at the bottom of the card to persist the changes. Unlike the toggle, the provider/key/URL fields don't auto-save — you have to click Save explicitly.
 
-The Brave API key is encrypted at rest in the same way as provider API keys; see [Configuration → Why `ENCRYPTION_KEY` matters](../guide/configuration#why-encryption-key-matters).
+The Brave and Tavily API keys are encrypted at rest in the same way as provider API keys; see [Configuration → Why `ENCRYPTION_KEY` matters](../guide/configuration#why-encryption-key-matters).
 
 ## See also
 

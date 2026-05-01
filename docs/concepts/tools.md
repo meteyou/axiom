@@ -80,13 +80,14 @@ Designed to pair with `web_search`: the agent searches first, picks a result, th
 
 Runs a search query and returns a list of `{title, url, snippet}` results. **Enabled by default** with the DuckDuckGo backend, which needs zero configuration.
 
-Three backends are available — pick one in the UI:
+Four backends are available — pick one in the UI:
 
 | Provider | Setup | Notes |
 |---|---|---|
 | `duckduckgo` | nothing | Default. Zero config, no key, no external account. Rate-limited; fine for casual use. |
 | `brave` | needs `braveSearchApiKey` | Enter the key in the same UI card. Stored encrypted in `builtinTools.webSearch.braveSearchApiKey`. Better quality and structured snippets; sign up at <https://api-dashboard.search.brave.com>. |
 | `searxng` | needs `searxngUrl` | Point at your own SearXNG instance, e.g. `http://searxng:8080`. Best for self-hosted/private setups; no third-party calls. |
+| `tavily` | needs `tavilyApiKey` | AI-optimized search API. Sign up at <https://app.tavily.com> (1,000 queries/month free). Stored encrypted in `builtinTools.webSearch.tavilyApiKey`. |
 
 Switching the provider takes effect on the next prompt — no restart needed.
 
@@ -99,13 +100,14 @@ Switching the provider takes effect on the next prompt — no restart needed.
       "enabled": true,
       "provider": "duckduckgo",
       "braveSearchApiKey": "<encrypted>",
-      "searxngUrl": "http://searxng:8080"
+      "searxngUrl": "http://searxng:8080",
+      "tavilyApiKey": "<encrypted>"
     }
   }
 }
 ```
 
-Only the keys relevant to the chosen `provider` are read — the others are ignored but kept around so you can switch back without re-entering them. `braveSearchApiKey` is stored encrypted at rest.
+Only the keys relevant to the chosen `provider` are read — the others are ignored but kept around so you can switch back without re-entering them. `braveSearchApiKey` and `tavilyApiKey` are stored encrypted at rest.
 
 ## See also
 

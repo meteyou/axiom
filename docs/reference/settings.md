@@ -31,7 +31,7 @@ The directory itself is created with `0700` mode the first time the backend runs
 
 The non-secret runtime config. Edited via every Settings UI panel except [Telegram](../settings/telegram) (which writes to `telegram.json`) and [Secrets](../settings/secrets) (which writes to `secrets.json`).
 
-The on-disk shape is a **superset** of [`SettingsContract`](https://github.com/) (`packages/core/src/contracts/settings.ts`): the contract describes what the API exchanges with the frontend; the file may also contain a few keys the UI doesn't surface (`tokenPriceTable`, `builtinTools`, `braveSearchApiKey`, `searxngUrl`) plus dead fields from older versions until they get re-saved.
+The on-disk shape is a **superset** of [`SettingsContract`](https://github.com/) (`packages/core/src/contracts/settings.ts`): the contract describes what the API exchanges with the frontend; the file may also contain a few keys the UI doesn't surface (`tokenPriceTable`, `builtinTools`, `braveSearchApiKey`, `searxngUrl`, `tavilyApiKey`) plus dead fields from older versions until they get re-saved.
 
 ### Top-level keys
 
@@ -55,6 +55,7 @@ The on-disk shape is a **superset** of [`SettingsContract`](https://github.com/)
 | `builtinTools`                     | object                                                            | see below      | not validated by API                    | Enable/disable built-in `web_search` and `web_fetch` tools, choose the search provider.                           |
 | `braveSearchApiKey`                | `string`                                                          | `""`           | not validated by API                    | **Legacy** — read at boot, migrated into `builtinTools.webSearch.braveSearchApiKey` if present.                   |
 | `searxngUrl`                       | `string`                                                          | `""`           | not validated by API                    | **Legacy** — read at boot, migrated into `builtinTools.webSearch.searxngUrl` if present.                          |
+| `tavilyApiKey`                     | `string`                                                          | `""`           | not validated by API                    | **Legacy** — read at boot, migrated into `builtinTools.webSearch.tavilyApiKey` if present.                       |
 | `heartbeat`                        | object                                                            | see template   | not read at runtime                     | **Legacy / dead key.** Seeded by the template, never read by current code. Replaced by `healthMonitor` + `healthMonitorIntervalMinutes` on the first save. Safe to delete by hand. |
 
 ### `uploads`
@@ -207,7 +208,8 @@ A flat `tasks.statusUpdateIntervalMinutes` may exist on disk from older installs
       "enabled": true,
       "provider": "duckduckgo",
       "braveSearchApiKey": "",
-      "searxngUrl": ""
+      "searxngUrl": "",
+      "tavilyApiKey": ""
     },
     "webFetch": { "enabled": true }
   }
@@ -217,12 +219,13 @@ A flat `tasks.statusUpdateIntervalMinutes` may exist on disk from older installs
 | Key                                            | Type                                       | Default        | Notes                                                                                                                                                         |
 |------------------------------------------------|--------------------------------------------|----------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `builtinTools.webSearch.enabled`               | `boolean`                                  | `true`         | When `false`, the `web_search` tool is not registered.                                                                                                        |
-| `builtinTools.webSearch.provider`              | `"duckduckgo" \| "brave" \| "searxng"`     | `"duckduckgo"` | DuckDuckGo is keyless. `brave` requires `braveSearchApiKey`. `searxng` requires `searxngUrl`.                                                                  |
+| `builtinTools.webSearch.provider`              | `"duckduckgo" \| "brave" \| "searxng" \| "tavily"` | `"duckduckgo"` | DuckDuckGo is keyless. `brave` requires `braveSearchApiKey`. `searxng` requires `searxngUrl`. `tavily` requires `tavilyApiKey`.                                |
 | `builtinTools.webSearch.braveSearchApiKey`     | `string`                                   | `""`           | Encrypted at rest by `web-tools.ts` if you write it via that path; the file form is plain text — prefer keeping this in [secrets.json](#secrets-json) and referencing via env. |
 | `builtinTools.webSearch.searxngUrl`            | `string`                                   | `""`           | Base URL of a SearXNG instance.                                                                                                                               |
+| `builtinTools.webSearch.tavilyApiKey`          | `string`                                   | `""`           | Encrypted at rest by `web-tools.ts` if you write it via that path; the file form is plain text — prefer keeping this in [secrets.json](#secrets-json) and referencing via env. Sign up at <https://app.tavily.com> (1,000 queries/month free). |
 | `builtinTools.webFetch.enabled`                | `boolean`                                  | `true`         | When `false`, the `web_fetch` tool is not registered.                                                                                                          |
 
-The runtime also accepts the **legacy** flat keys `braveSearchApiKey` and `searxngUrl` at the top level of `settings.json`; on boot they are folded into `builtinTools.webSearch` if the new keys are empty (`packages/web-backend/src/bootstrap/runtime-composition.ts`).
+The runtime also accepts the **legacy** flat keys `braveSearchApiKey`, `searxngUrl`, and `tavilyApiKey` at the top level of `settings.json`; on boot they are folded into `builtinTools.webSearch` if the new keys are empty (`packages/web-backend/src/bootstrap/runtime-composition.ts`).
 
 ### Default `settings.json` (after first boot)
 
@@ -270,6 +273,7 @@ This is the literal file written by `ensureConfigTemplates()`:
   },
   "braveSearchApiKey": "",
   "searxngUrl": "",
+  "tavilyApiKey": "",
   "tasks": {
     "defaultProvider": "",
     "maxDurationMinutes": 60,
@@ -512,6 +516,7 @@ Things that may exist in older `settings.json` files and how the runtime handles
 | `batchingDelayMs` (top-level in `settings.json`) | `telegram.batchingDelayMs` (in `telegram.json`)  | Read at boot by the Telegram bot if `telegram.json` does not yet have the key. Replaced on first save of the Telegram panel. |
 | `braveSearchApiKey` (top-level)            | `builtinTools.webSearch.braveSearchApiKey`             | Folded in at boot if the new key is empty.                                            |
 | `searxngUrl` (top-level)                   | `builtinTools.webSearch.searxngUrl`                    | Folded in at boot if the new key is empty.                                            |
+| `tavilyApiKey` (top-level)                 | `builtinTools.webSearch.tavilyApiKey`                  | Folded in at boot if the new key is empty.                                            |
 
 There is **no automatic rewrite** of these legacy fields. The new shape lands the next time the user saves the relevant panel; until then both shapes coexist and the runtime prefers the new one if both are present.
 
