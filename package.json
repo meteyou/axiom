@@ -27,6 +27,7 @@
     "baseline:smoke": "vitest run packages/web-backend/src/app.test.ts --testNamePattern=\"health endpoint|auth flow|chat history API|memory API|settings API|providers API\"",
     "verify:critical-flows": "npm run baseline:smoke && vitest run packages/web-backend/src/api/modules/tasks/route.test.ts packages/web-backend/src/cronjobs.test.ts",
     "baseline:parity": "npm run lint:boundaries && npm run baseline:unit && npm run baseline:api && npm run verify:critical-flows",
+    "smoke:agent": "tsx packages/core/test-agent.ts",
     "clean": "rm -rf packages/*/dist",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
