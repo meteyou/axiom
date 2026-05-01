@@ -1,6 +1,6 @@
-export type MemoryTab = 'soul' | 'core' | 'facts' | 'profile' | 'daily' | 'wiki'
+type MemoryTab = 'soul' | 'core' | 'facts' | 'profile' | 'daily' | 'wiki'
 
-export interface MemoryWikiFile {
+interface MemoryWikiFile {
   filename: string
   name: string
   title: string
@@ -9,7 +9,7 @@ export interface MemoryWikiFile {
   modifiedAt: string
 }
 
-export interface MemoryDailyFile {
+interface MemoryDailyFile {
   filename: string
   date: string
   size: number

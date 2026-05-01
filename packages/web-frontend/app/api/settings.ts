@@ -1,16 +1,16 @@
 import type { SettingsContract, SettingsUpdateContract, TtsSettingsContract } from '@axiom/core/contracts'
 
-export interface ConsolidationRunResult {
+interface ConsolidationRunResult {
   updated: boolean
   reason?: string
 }
 
-export interface ConsolidationStatus {
+interface ConsolidationStatus {
   lastRun: string | null
   lastResult: ConsolidationRunResult | null
 }
 
-export interface TtsPreviewPayload {
+interface TtsPreviewPayload {
   text: string
   settings: Pick<
     TtsSettingsContract,
