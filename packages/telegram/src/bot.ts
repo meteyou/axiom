@@ -1273,6 +1273,8 @@ export class TelegramBot {
    * Automatically splits long messages to stay within Telegram's 4096 char limit.
    * Used for proactive task result notifications.
    */
+  // Public cross-workspace API used by web-backend; Fallow cannot see this in clean CI before workspace dist files exist.
+  // fallow-ignore-next-line unused-class-member
   async sendTaskNotification(chatId: string | number, html: string): Promise<boolean> {
     const parts = splitMessage(html)
     const plainFull = telegramHtmlToPlainText(html)
@@ -1300,6 +1302,8 @@ export class TelegramBot {
    * Get the Telegram chat ID for a given Axiom user ID.
    * Returns null if no linked & approved Telegram user exists.
    */
+  // Public cross-workspace API used by web-backend; Fallow cannot see this in clean CI before workspace dist files exist.
+  // fallow-ignore-next-line unused-class-member
   getTelegramChatIdForUser(userId: number): string | null {
     if (!this.db) return null
 
@@ -1315,6 +1319,8 @@ export class TelegramBot {
    * Converts Markdown to Telegram HTML and sends with fallback to plain text.
    * Does NOT sync back to web chat (intended for task injection responses).
    */
+  // Public cross-workspace API used by web-backend; Fallow cannot see this in clean CI before workspace dist files exist.
+  // fallow-ignore-next-line unused-class-member
   async sendFormattedMessage(chatId: string | number, markdown: string): Promise<boolean> {
     const parts = splitMessage(markdown)
 
