@@ -11,5 +11,8 @@
   },
   "rules": {
     "unused-dependencies": "warn"
-  }
+  },
+  "ignoreDependencies": [
+    "@axiom/core"
+  ]
 }
