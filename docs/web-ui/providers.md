@@ -112,6 +112,13 @@ The dialog keeps connection details first, then model selection, then advanced h
 | **Degraded Threshold** | Last field in the form. Latency in ms above which the provider is marked *Degraded* in health checks. Default `5000`. Lower = more sensitive. |
 | **Text verbosity**     | Shown for supported OpenAI Codex/Responses-style providers. `Default` leaves the value unset so pi-ai's provider default applies; `Low`, `Medium`, `High` override response verbosity. |
 
+The provider record also accepts an optional `transport` field (`sse` /
+`websocket` / `websocket-cached` / `auto`) for OpenAI Codex / Responses-style
+providers, but it is not yet surfaced as a dialog control. To enable a
+non-default transport today, set it via the providers HTTP API or by editing
+`providers.json` directly — see [Transport modes in `providers.json`](../reference/settings#transport-modes).
+| **Transport**          | Wire-level streaming protocol. Honoured today only by OpenAI Codex/Responses providers; ignored elsewhere. Defaults to `sse`. `websocket-cached` keeps a persistent WebSocket open and ships only delta context items per turn — noticeably faster on long agent sessions. See [`providers.json` → Transport modes](../reference/settings#transport-modes) for the full table. Currently configured by editing `providers.json` directly; UI control is planned. |
+
 ### API-key providers
 
 When you pick a type from the *API Key* group, the fields appear in this order:

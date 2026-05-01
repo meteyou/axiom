@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
-import type { Api, KnownProvider, Model } from '@mariozechner/pi-ai'
+import type { Api, KnownProvider, Model, Transport } from '@mariozechner/pi-ai'
 import { getModels as getPiAiModels, streamSimple } from '@mariozechner/pi-ai'
 import { getOAuthProvider, getOAuthApiKey } from '@mariozechner/pi-ai/oauth'
 import type { OAuthCredentials } from '@mariozechner/pi-ai/oauth'
@@ -25,6 +25,20 @@ export type ProviderType =
 
 export type AuthMethod = 'api-key' | 'oauth'
 export type TextVerbosity = 'low' | 'medium' | 'high'
+/**
+ * Wire-level transport for providers that support multiple transports. Mirrors
+ * pi-ai's `Transport` union. Only the `openai-codex-responses` apiType honours
+ * a non-`sse` value today; for every other provider the field is ignored
+ * downstream and is dropped on persist (see `presetSupportsTransport`).
+ *
+ * - `"sse"` (default): regular HTTP + Server-Sent Events streaming.
+ * - `"websocket"`: persistent WebSocket connection, no SSE fallback.
+ * - `"websocket-cached"`: persistent WebSocket connection that ships only
+ *   delta context items per turn (much smaller payloads on long sessions);
+ *   first turn primes the cache, subsequent turns reuse `previous_response_id`.
+ * - `"auto"`: try WebSocket first, fall back to SSE on connection error.
+ */
+export type ProviderTransport = Transport
 
 export interface ProviderTypePreset {
   type: ProviderType
@@ -352,6 +366,19 @@ export function presetSupportsTextVerbosity(providerType: ProviderType): boolean
 }
 
 /**
+ * Whether a provider type's pi-ai apiType actually consumes the `transport`
+ * stream option. Today only the OpenAI Codex / Responses API supports the
+ * WebSocket / cached-WebSocket transports; every other provider streams over
+ * SSE only and the value is silently ignored. We drop the field on persist
+ * for unsupported providers so it cannot accidentally diverge from runtime
+ * behaviour.
+ */
+export function presetSupportsTransport(providerType: ProviderType): boolean {
+  const preset = PROVIDER_TYPE_PRESETS[providerType]
+  return preset?.apiType === 'openai-codex-responses'
+}
+
+/**
  * Pure helper: merge the configured `textVerbosity` into a `streamSimple`
  * options object. Returns `opts` unchanged when the provider has no
  * verbosity override. Exported so tests can lock the contract without
@@ -366,20 +393,43 @@ export function applyTextVerbosity<T extends object | undefined>(
 }
 
 /**
+ * Pure helper: merge the configured `transport` into a `streamSimple` options
+ * object. Returns `opts` unchanged when the provider has no transport
+ * override or when the override is the default `"sse"`. Exported so tests can
+ * lock the contract without having to mock pi-ai's streamSimple.
+ *
+ * The default of `"sse"` is a no-op upstream (pi-ai also defaults to SSE), so
+ * we omit it from the spread to keep call paths identity-preserving when no
+ * change is requested.
+ */
+export function applyTransport<T extends object | undefined>(
+  transport: ProviderTransport | undefined,
+  opts: T,
+): T {
+  if (!transport || transport === 'sse') return opts
+  return { ...(opts ?? {}), transport } as T
+}
+
+/**
  * Build the `streamFn` callback that the agent loop hands to pi-agent-core.
- * Wraps `streamSimple` and forwards the provider's `textVerbosity` override
- * when one is configured. Centralising this keeps the cast in one place
- * and makes it impossible to forget the spread at a call site.
+ * Wraps `streamSimple` and forwards the provider's `textVerbosity` and
+ * `transport` overrides when configured. Centralising this keeps the cast
+ * in one place and makes it impossible to forget the spread at a call site.
+ *
+ * pi-agent-core also reads `transport` directly from its `Agent` constructor
+ * options and forwards it on every loop turn, so a configured non-`sse`
+ * transport flows through both code paths.
  *
  * The `streamSimple` argument is injectable purely for testing; production
  * call sites should omit it so the real pi-ai implementation is used.
  */
 export function buildStreamFn(
-  provider: Pick<ProviderConfig, 'textVerbosity'>,
+  provider: Pick<ProviderConfig, 'textVerbosity' | 'transport'>,
   streamImpl: typeof streamSimple = streamSimple,
 ): typeof streamSimple {
   return ((model, context, options) => {
-    const merged = applyTextVerbosity(provider.textVerbosity, options) as Parameters<typeof streamSimple>[2]
+    const withVerbosity = applyTextVerbosity(provider.textVerbosity, options)
+    const merged = applyTransport(provider.transport, withVerbosity) as Parameters<typeof streamSimple>[2]
     return streamImpl(model, context, merged)
   }) as typeof streamSimple
 }
@@ -470,6 +520,17 @@ export interface ProviderConfig {
    * to low).
    */
   textVerbosity?: TextVerbosity
+  /**
+   * Optional wire-level transport override. Currently only honoured by the
+   * OpenAI Codex / Responses apiType (other providers ignore it and the field
+   * is dropped on persist). Defaults to `"sse"` when unset.
+   *
+   * `"websocket-cached"` is the headline alternative: it keeps a persistent
+   * WebSocket connection and only ships delta context items per turn, which
+   * cuts per-round token overhead substantially on long agent sessions. See
+   * `presetSupportsTransport()` for the gating rule.
+   */
+  transport?: ProviderTransport
   models?: ProviderModelConfig[]
   status?: 'connected' | 'error' | 'untested'
   modelStatuses?: Record<string, 'connected' | 'error' | 'untested'>
@@ -712,6 +773,7 @@ export function addProvider(input: {
   enabledModels?: string[]
   degradedThresholdMs?: number
   textVerbosity?: TextVerbosity
+  transport?: ProviderTransport
 }): ProviderConfig {
   const preset = PROVIDER_TYPE_PRESETS[input.providerType]
   if (!preset) {
@@ -745,6 +807,8 @@ export function addProvider(input: {
     degradedThresholdMs: input.degradedThresholdMs ?? 5000,
     ...(input.textVerbosity && presetSupportsTextVerbosity(input.providerType)
       && { textVerbosity: input.textVerbosity }),
+    ...(input.transport && input.transport !== 'sse' && presetSupportsTransport(input.providerType)
+      && { transport: input.transport }),
     status: 'untested',
     authMethod: preset.authMethod,
   }
@@ -771,6 +835,7 @@ export function addOAuthProvider(input: {
   enabledModels?: string[]
   degradedThresholdMs?: number
   textVerbosity?: TextVerbosity
+  transport?: ProviderTransport
   oauthCredentials: OAuthCredentials
 }): ProviderConfig {
   const preset = PROVIDER_TYPE_PRESETS[input.providerType]
@@ -808,6 +873,8 @@ export function addOAuthProvider(input: {
     degradedThresholdMs: input.degradedThresholdMs ?? 5000,
     ...(input.textVerbosity && presetSupportsTextVerbosity(input.providerType)
       && { textVerbosity: input.textVerbosity }),
+    ...(input.transport && input.transport !== 'sse' && presetSupportsTransport(input.providerType)
+      && { transport: input.transport }),
     status: 'untested',
     authMethod: 'oauth',
     oauthCredentials: encryptOAuthCredentials(input.oauthCredentials),
@@ -836,6 +903,7 @@ export function updateProvider(id: string, input: {
   enabledModels?: string[]
   degradedThresholdMs?: number
   textVerbosity?: TextVerbosity | null
+  transport?: ProviderTransport | null
 }): ProviderConfig {
   const file = loadProviders()
   const index = file.providers.findIndex(p => p.id === id)
@@ -890,6 +958,20 @@ export function updateProvider(id: string, input: {
     // Provider type was switched to one that does not support textVerbosity
     // — strip the now-orphaned value so it does not silently persist.
     delete existing.textVerbosity
+  }
+  if (input.transport !== undefined) {
+    if (input.transport === null || input.transport === 'sse' || !presetSupportsTransport(existing.providerType)) {
+      // Caller explicitly cleared, asked for the SSE default, or switched to
+      // a provider type that does not consume `transport`. In all three
+      // cases we drop the field rather than persisting a no-op.
+      delete existing.transport
+    } else {
+      existing.transport = input.transport
+    }
+  } else if (existing.transport && !presetSupportsTransport(existing.providerType)) {
+    // Provider type was switched to one that does not support transport
+    // — strip the now-orphaned value so it does not silently persist.
+    delete existing.transport
   }
 
   // For providers with fixed URLs, always sync from preset

@@ -471,7 +471,12 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
         tools,
         thinkingLevel: effectiveThinkingLevel,
       },
-      streamFn: buildStreamFn({ textVerbosity: this.providerConfig?.textVerbosity }),
+      streamFn: buildStreamFn({
+        textVerbosity: this.providerConfig?.textVerbosity,
+        transport: this.providerConfig?.transport,
+      }),
+      ...(this.providerConfig?.transport && this.providerConfig.transport !== 'sse'
+        && { transport: this.providerConfig.transport }),
       getApiKey: this.providerConfig?.authMethod === 'oauth'
         ? async () => {
             try {

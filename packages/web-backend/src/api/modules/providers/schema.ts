@@ -58,6 +58,16 @@ function normalizeTextVerbosity(value: unknown): 'low' | 'medium' | 'high' | nul
   return undefined
 }
 
+function normalizeTransport(
+  value: unknown,
+): 'sse' | 'websocket' | 'websocket-cached' | 'auto' | null | undefined {
+  if (value === null || value === '') return null
+  if (value === 'sse' || value === 'websocket' || value === 'websocket-cached' || value === 'auto') {
+    return value
+  }
+  return undefined
+}
+
 function isValidProviderType(providerType: string): boolean {
   return VALID_PROVIDER_TYPES.includes(providerType)
 }
@@ -134,6 +144,7 @@ export function parseOAuthLoginPayload(payload: unknown): ParseResult<ProviderOA
       defaultModel,
       providerId: asTrimmedString(body.providerId),
       textVerbosity: normalizeTextVerbosity(body.textVerbosity),
+      transport: normalizeTransport(body.transport),
     },
   }
 }
@@ -192,6 +203,7 @@ export function parseProviderCreatePayload(
       enabledModels: normalizeEnabledModels(body.enabledModels),
       degradedThresholdMs: normalizeDegradedThresholdMs(body.degradedThresholdMs),
       textVerbosity: normalizeTextVerbosity(body.textVerbosity),
+      transport: normalizeTransport(body.transport),
     },
   }
 }
@@ -218,6 +230,7 @@ export function parseProviderUpdatePayload(payload: unknown): ParseResult<Provid
       enabledModels: normalizeEnabledModels(body.enabledModels),
       degradedThresholdMs: normalizeDegradedThresholdMs(body.degradedThresholdMs),
       textVerbosity: normalizeTextVerbosity(body.textVerbosity),
+      transport: normalizeTransport(body.transport),
     },
   }
 }

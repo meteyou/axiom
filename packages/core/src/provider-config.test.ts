@@ -19,8 +19,10 @@ import {
   PROVIDER_TYPE_PRESETS,
   getConfiguredPriceTable,
   applyTextVerbosity,
+  applyTransport,
   buildStreamFn,
   presetSupportsTextVerbosity,
+  presetSupportsTransport,
 } from './provider-config.js'
 import { encrypt, decrypt, maskApiKey } from './encryption.js'
 import fs from 'node:fs'
@@ -285,6 +287,74 @@ describe('streamFn injection', () => {
     expect(opts).toBe(inputOpts) // identity — no spread when not needed
     expect(opts).not.toHaveProperty('textVerbosity')
   })
+
+  it('applyTransport returns opts unchanged when transport is undefined', () => {
+    const opts = { temperature: 0.7 }
+    expect(applyTransport(undefined, opts)).toBe(opts)
+  })
+
+  it('applyTransport returns opts unchanged when transport is the default "sse"', () => {
+    const opts = { temperature: 0.7 }
+    // "sse" matches pi-ai's default — the spread would be a no-op, so we keep
+    // identity for the common case to make the call site free of churn.
+    expect(applyTransport('sse', opts)).toBe(opts)
+  })
+
+  it('applyTransport merges non-default transports into opts', () => {
+    const opts = { temperature: 0.7 }
+    const merged = applyTransport('websocket-cached', opts)
+    expect(merged).toEqual({ temperature: 0.7, transport: 'websocket-cached' })
+    // does not mutate the input
+    expect(opts).toEqual({ temperature: 0.7 })
+  })
+
+  it('buildStreamFn forwards transport into streamSimple options when configured', async () => {
+    const fakeStream = vi.fn().mockResolvedValue({ ok: true })
+    const fn = buildStreamFn({ transport: 'websocket-cached' }, fakeStream as never)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await fn({ id: 'm' } as any, { messages: [] } as any, { temperature: 0.5 } as any)
+    expect(fakeStream).toHaveBeenCalledTimes(1)
+    const [, , opts] = fakeStream.mock.calls[0]!
+    expect(opts).toEqual({ temperature: 0.5, transport: 'websocket-cached' })
+  })
+
+  it('buildStreamFn forwards both textVerbosity and transport when both configured', async () => {
+    const fakeStream = vi.fn().mockResolvedValue({ ok: true })
+    const fn = buildStreamFn(
+      { textVerbosity: 'medium', transport: 'websocket' },
+      fakeStream as never,
+    )
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await fn({ id: 'm' } as any, { messages: [] } as any, { temperature: 0.5 } as any)
+    const [, , opts] = fakeStream.mock.calls[0]!
+    expect(opts).toEqual({
+      temperature: 0.5,
+      textVerbosity: 'medium',
+      transport: 'websocket',
+    })
+  })
+
+  it('buildStreamFn passes options through unchanged when transport is "sse" (default)', async () => {
+    const fakeStream = vi.fn().mockResolvedValue({ ok: true })
+    const fn = buildStreamFn({ transport: 'sse' }, fakeStream as never)
+    const inputOpts = { temperature: 0.5 }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await fn({ id: 'm' } as any, { messages: [] } as any, inputOpts as any)
+    const [, , opts] = fakeStream.mock.calls[0]!
+    expect(opts).toBe(inputOpts) // identity — no spread when not needed
+    expect(opts).not.toHaveProperty('transport')
+  })
+
+  it('presetSupportsTransport is true only for openai-codex-responses presets', () => {
+    // Only the OpenAI Codex / Responses apiType currently honours `transport`
+    // in pi-ai. Keeping this list explicit so a future provider gaining WS
+    // support fails this assertion and forces a deliberate update.
+    expect(presetSupportsTransport('openai-codex')).toBe(true)
+    expect(presetSupportsTransport('openai')).toBe(false)
+    expect(presetSupportsTransport('anthropic')).toBe(false)
+    expect(presetSupportsTransport('github-copilot')).toBe(false)
+    expect(presetSupportsTransport('ollama')).toBe(false)
+  })
 })
 
 describe('textVerbosity persistence guard', () => {
@@ -358,6 +428,136 @@ describe('textVerbosity persistence guard', () => {
     const provider = addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-a', defaultModel: 'gpt-4o' })
     const updated = updateProvider(provider.id, { textVerbosity: 'high' })
     expect(updated.textVerbosity).toBeUndefined()
+  })
+})
+
+describe('transport persistence guard', () => {
+  let tmpDir: string
+  const originalDataDir = process.env.DATA_DIR
+
+  afterEach(() => {
+    if (tmpDir) fs.rmSync(tmpDir, { recursive: true, force: true })
+    if (originalDataDir !== undefined) process.env.DATA_DIR = originalDataDir
+    else delete process.env.DATA_DIR
+  })
+
+  function setupEmpty(): void {
+    tmpDir = path.join(os.tmpdir(), `axiom-tr-guard-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+    const configDir = path.join(tmpDir, 'config')
+    fs.mkdirSync(configDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(configDir, 'providers.json'),
+      JSON.stringify({ providers: [] }, null, 2),
+      'utf-8',
+    )
+    process.env.DATA_DIR = tmpDir
+  }
+
+  it('addProvider persists transport on supported providerType (openai-codex)', () => {
+    setupEmpty()
+    const codex = addProvider({
+      name: 'codex-ws',
+      providerType: 'openai-codex',
+      defaultModel: 'gpt-5-codex',
+      transport: 'websocket-cached',
+    })
+    expect(codex.transport).toBe('websocket-cached')
+  })
+
+  it('addProvider drops transport when preset does not support it', () => {
+    setupEmpty()
+    const provider = addProvider({
+      name: 'openai-noop',
+      providerType: 'openai',
+      apiKey: 'sk-1',
+      defaultModel: 'gpt-4o',
+      transport: 'websocket-cached',
+    })
+    expect(provider.transport).toBeUndefined()
+  })
+
+  it('addProvider drops transport when value is the default "sse"', () => {
+    setupEmpty()
+    const codex = addProvider({
+      name: 'codex-sse',
+      providerType: 'openai-codex',
+      defaultModel: 'gpt-5-codex',
+      transport: 'sse',
+    })
+    // We never persist the no-op default — absence == "sse".
+    expect(codex.transport).toBeUndefined()
+  })
+
+  it('addProvider defaults transport to undefined (== sse) when not provided', () => {
+    setupEmpty()
+    const codex = addProvider({
+      name: 'codex-default',
+      providerType: 'openai-codex',
+      defaultModel: 'gpt-5-codex',
+    })
+    expect(codex.transport).toBeUndefined()
+  })
+
+  it('updateProvider persists transport on supported provider', () => {
+    setupEmpty()
+    addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-a', defaultModel: 'gpt-4o' })
+    const codex = addProvider({
+      name: 'codex',
+      providerType: 'openai-codex',
+      defaultModel: 'gpt-5-codex',
+    })
+    const updated = updateProvider(codex.id, { transport: 'websocket-cached' })
+    expect(updated.transport).toBe('websocket-cached')
+  })
+
+  it('updateProvider strips transport when switching to a non-supporting providerType', () => {
+    setupEmpty()
+    addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-a', defaultModel: 'gpt-4o' })
+    const codex = addProvider({
+      name: 'codex',
+      providerType: 'openai-codex',
+      defaultModel: 'gpt-5-codex',
+      transport: 'websocket-cached',
+    })
+    expect(codex.transport).toBe('websocket-cached')
+
+    // Flip to a providerType that does not consume transport
+    const updated = updateProvider(codex.id, { providerType: 'openai' })
+    expect(updated.transport).toBeUndefined()
+  })
+
+  it('updateProvider clears transport when explicitly set to null', () => {
+    setupEmpty()
+    addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-a', defaultModel: 'gpt-4o' })
+    const codex = addProvider({
+      name: 'codex',
+      providerType: 'openai-codex',
+      defaultModel: 'gpt-5-codex',
+      transport: 'websocket-cached',
+    })
+    expect(codex.transport).toBe('websocket-cached')
+    const updated = updateProvider(codex.id, { transport: null })
+    expect(updated.transport).toBeUndefined()
+  })
+
+  it('updateProvider clears transport when explicitly set to "sse" (the default)', () => {
+    setupEmpty()
+    addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-a', defaultModel: 'gpt-4o' })
+    const codex = addProvider({
+      name: 'codex',
+      providerType: 'openai-codex',
+      defaultModel: 'gpt-5-codex',
+      transport: 'websocket-cached',
+    })
+    const updated = updateProvider(codex.id, { transport: 'sse' })
+    expect(updated.transport).toBeUndefined()
+  })
+
+  it('updateProvider ignores transport on providers whose preset does not support it', () => {
+    setupEmpty()
+    const provider = addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-a', defaultModel: 'gpt-4o' })
+    const updated = updateProvider(provider.id, { transport: 'websocket-cached' })
+    expect(updated.transport).toBeUndefined()
   })
 })
 
