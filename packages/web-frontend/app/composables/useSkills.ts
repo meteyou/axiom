@@ -29,7 +29,7 @@ export interface AgentSkill {
 export interface BuiltinToolsConfig {
   webSearch: {
     enabled: boolean
-    provider: 'duckduckgo' | 'brave' | 'searxng'
+    provider: 'duckduckgo' | 'brave' | 'searxng' | 'tavily'
   }
   webFetch: {
     enabled: boolean
@@ -48,6 +48,7 @@ interface BuiltinToolsResponse {
   builtinTools: BuiltinToolsConfig
   braveSearchApiKey: string
   searxngUrl: string
+  tavilyApiKey: string
 }
 
 interface SkillMutationResponse {
@@ -65,6 +66,7 @@ export function useSkills() {
   }))
   const braveSearchApiKey = useState<string>('skills_brave_api_key', () => '')
   const searxngUrl = useState<string>('skills_searxng_url', () => '')
+  const tavilyApiKey = useState<string>('skills_tavily_api_key', () => '')
   const loading = useState<boolean>('skills_loading', () => false)
   const error = useState<string | null>('skills_error', () => null)
   const installing = useState<boolean>('skills_installing', () => false)
@@ -99,6 +101,7 @@ export function useSkills() {
       builtinTools.value = data.builtinTools
       braveSearchApiKey.value = data.braveSearchApiKey
       searxngUrl.value = data.searxngUrl
+      tavilyApiKey.value = data.tavilyApiKey ?? ''
     } catch (err) {
       error.value = (err as Error).message
     }
@@ -180,6 +183,7 @@ export function useSkills() {
     builtinTools?: Partial<BuiltinToolsConfig>
     braveSearchApiKey?: string
     searxngUrl?: string
+    tavilyApiKey?: string
   }): Promise<boolean> {
     error.value = null
     try {
@@ -190,6 +194,7 @@ export function useSkills() {
       builtinTools.value = data.builtinTools
       braveSearchApiKey.value = data.braveSearchApiKey
       searxngUrl.value = data.searxngUrl
+      tavilyApiKey.value = data.tavilyApiKey ?? ''
       return true
     } catch (err) {
       error.value = (err as Error).message
@@ -207,6 +212,7 @@ export function useSkills() {
     builtinTools,
     braveSearchApiKey,
     searxngUrl,
+    tavilyApiKey,
     loading,
     error,
     installing,

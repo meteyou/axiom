@@ -4,13 +4,17 @@ import {
   stripInlineHtml,
   withRetry,
   BraveSearchError,
+  TavilySearchError,
   parseDuckDuckGoLiteHtml,
   searchDuckDuckGo,
   searchBrave,
   searchSearXNG,
+  searchTavily,
   resolveSearchProvider,
   encryptBraveApiKey,
   decryptBraveApiKey,
+  encryptTavilyApiKey,
+  decryptTavilyApiKey,
   createWebSearchTool,
   createWebFetchTool,
   createBuiltinWebTools,
@@ -702,6 +706,168 @@ describe('searchSearXNG', () => {
   })
 })
 
+// ─── searchTavily ──────────────────────────────────────────────────────────
+
+describe('searchTavily', () => {
+  it('calls Tavily API with correct body, auth header, and method', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        results: [
+          { title: 'Tavily R1', url: 'https://example.com/1', content: 'First tavily result' },
+          { title: 'Tavily R2', url: 'https://example.com/2', content: 'Second tavily result' },
+        ],
+      }),
+    })
+
+    const results = await searchTavily('test query', 'tvly-test-key', 5, mockFetch)
+
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+    const [url, options] = mockFetch.mock.calls[0]
+    expect(url).toBe('https://api.tavily.com/search')
+    expect(options.method).toBe('POST')
+    expect(options.headers['Authorization']).toBe('Bearer tvly-test-key')
+    expect(options.headers['Content-Type']).toBe('application/json')
+
+    const body = JSON.parse(options.body as string) as { query: string; max_results: number; search_depth: string }
+    expect(body.query).toBe('test query')
+    expect(body.max_results).toBe(5)
+    expect(body.search_depth).toBe('basic')
+
+    expect(results).toHaveLength(2)
+    expect(results[0]).toEqual({
+      title: 'Tavily R1',
+      url: 'https://example.com/1',
+      snippet: 'First tavily result',
+    })
+  })
+
+  it('throws TavilySearchError with auth category on 401', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      text: async () => 'Unauthorized',
+    })
+
+    try {
+      await searchTavily('test', 'bad-key', 5, mockFetch)
+      expect.fail('should have thrown')
+    } catch (err) {
+      expect(err).toBeInstanceOf(TavilySearchError)
+      const e = err as InstanceType<typeof TavilySearchError>
+      expect(e.status).toBe(401)
+      expect(e.category).toBe('auth')
+      expect(e.retryable).toBe(false)
+      expect(e.message).toContain('auth failed')
+      expect(e.message).toContain('API key')
+      expect(e.message).toContain('Unauthorized')
+    }
+  })
+
+  it('throws TavilySearchError with rate_limit category on 429', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 429,
+      text: async () => 'Too Many Requests',
+    })
+
+    try {
+      await searchTavily('test', 'key', 5, mockFetch)
+      expect.fail('should have thrown')
+    } catch (err) {
+      expect(err).toBeInstanceOf(TavilySearchError)
+      const e = err as InstanceType<typeof TavilySearchError>
+      expect(e.status).toBe(429)
+      expect(e.category).toBe('rate_limit')
+      expect(e.retryable).toBe(true)
+      expect(e.message).toContain('rate limited')
+    }
+  })
+
+  it('throws TavilySearchError with server_error category on 5xx', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 502,
+      text: async () => 'Bad Gateway',
+    })
+
+    try {
+      await searchTavily('test', 'key', 5, mockFetch)
+      expect.fail('should have thrown')
+    } catch (err) {
+      expect(err).toBeInstanceOf(TavilySearchError)
+      const e = err as InstanceType<typeof TavilySearchError>
+      expect(e.status).toBe(502)
+      expect(e.category).toBe('server_error')
+      expect(e.retryable).toBe(true)
+      expect(e.message).toContain('server error')
+      expect(e.message).toContain('Bad Gateway')
+    }
+  })
+
+  it('returns empty array when no results', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ results: [] }),
+    })
+
+    const results = await searchTavily('test', 'key', 5, mockFetch)
+    expect(results).toHaveLength(0)
+  })
+
+  it('handles missing results field gracefully', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({}),
+    })
+
+    const results = await searchTavily('test', 'key', 5, mockFetch)
+    expect(results).toHaveLength(0)
+  })
+
+  it('respects count limit', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        results: [
+          { title: 'R1', url: 'https://1.com', content: 'S1' },
+          { title: 'R2', url: 'https://2.com', content: 'S2' },
+          { title: 'R3', url: 'https://3.com', content: 'S3' },
+        ],
+      }),
+    })
+
+    const results = await searchTavily('test', 'key', 2, mockFetch)
+    expect(results).toHaveLength(2)
+  })
+
+  it('handles missing fields in results gracefully', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        results: [{ title: 'Only Title' }],
+      }),
+    })
+
+    const results = await searchTavily('test', 'key', 5, mockFetch)
+    expect(results).toHaveLength(1)
+    expect(results[0]).toEqual({ title: 'Only Title', url: '', snippet: '' })
+  })
+
+  it('forwards count to max_results', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ results: [] }),
+    })
+
+    await searchTavily('test', 'key', 7, mockFetch)
+
+    const [, options] = mockFetch.mock.calls[0]
+    const body = JSON.parse(options.body as string) as { max_results: number }
+    expect(body.max_results).toBe(7)
+  })
+})
+
 // ─── resolveSearchProvider ──────────────────────────────────────────────────
 
 describe('resolveSearchProvider', () => {
@@ -761,6 +927,32 @@ describe('resolveSearchProvider', () => {
     expect(resolved.provider).toBe('brave')
     expect(resolved.warning).toBeUndefined()
   })
+
+  it('returns tavily when configured with API key', () => {
+    const resolved = resolveSearchProvider({ provider: 'tavily', tavilyApiKey: 'tvly-test-key' })
+    expect(resolved.provider).toBe('tavily')
+    expect(resolved.warning).toBeUndefined()
+  })
+
+  it('falls back to duckduckgo when tavily has no API key', () => {
+    const resolved = resolveSearchProvider({ provider: 'tavily' })
+    expect(resolved.provider).toBe('duckduckgo')
+    expect(resolved.warning).toContain('Tavily Search')
+    expect(resolved.warning).toContain('Falling back to DuckDuckGo')
+  })
+
+  it('falls back to duckduckgo when tavily has empty API key', () => {
+    const resolved = resolveSearchProvider({ provider: 'tavily', tavilyApiKey: '' })
+    expect(resolved.provider).toBe('duckduckgo')
+    expect(resolved.warning).toContain('Falling back to DuckDuckGo')
+  })
+
+  it('decrypts encrypted tavily API key', () => {
+    const encryptedKey = encrypt('tvly-secret-key')
+    const resolved = resolveSearchProvider({ provider: 'tavily', tavilyApiKey: encryptedKey })
+    expect(resolved.provider).toBe('tavily')
+    expect(resolved.warning).toBeUndefined()
+  })
 })
 
 // ─── encryptBraveApiKey / decryptBraveApiKey ───────────────────────────────
@@ -772,6 +964,30 @@ describe('encryptBraveApiKey / decryptBraveApiKey', () => {
     expect(encrypted).not.toBe(apiKey)
     const decrypted = decryptBraveApiKey(encrypted)
     expect(decrypted).toBe(apiKey)
+  })
+})
+
+// ─── encryptTavilyApiKey / decryptTavilyApiKey ─────────────────────────────
+
+describe('encryptTavilyApiKey / decryptTavilyApiKey', () => {
+  it('encrypts and decrypts API key round-trip', () => {
+    const apiKey = 'tvly-test123456789'
+    const encrypted = encryptTavilyApiKey(apiKey)
+    expect(encrypted).not.toBe(apiKey)
+    const decrypted = decryptTavilyApiKey(encrypted)
+    expect(decrypted).toBe(apiKey)
+  })
+
+  it('returns empty string for empty input', () => {
+    expect(encryptTavilyApiKey('')).toBe('')
+  })
+
+  it('does not double-encrypt already encrypted keys', () => {
+    const apiKey = 'tvly-already-secret'
+    const encrypted = encryptTavilyApiKey(apiKey)
+    const reEncrypted = encryptTavilyApiKey(encrypted)
+    expect(reEncrypted).toBe(encrypted)
+    expect(decryptTavilyApiKey(reEncrypted)).toBe(apiKey)
   })
 })
 
@@ -824,6 +1040,89 @@ describe('createWebSearchTool', () => {
       expect(text).toContain('Search failed')
       expect(text).toContain('Network error')
       expect(result.details.error).toBe(true)
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  it('falls back to DuckDuckGo when Tavily fails after retries', async () => {
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+      if (typeof url === 'string' && url.includes('api.tavily.com')) {
+        return Promise.resolve({
+          ok: false,
+          status: 429,
+          text: async () => 'Rate limited',
+        })
+      }
+      // DuckDuckGo fallback
+      return Promise.resolve({
+        ok: true,
+        text: async () => `
+          <a rel="nofollow" href="https://example.com" class="result-link">DDG Fallback</a>
+          <td class="result-snippet">Fallback snippet</td>
+        `,
+      })
+    }) as unknown as typeof fetch
+
+    try {
+      const tool = createWebSearchTool({
+        provider: 'tavily',
+        tavilyApiKey: 'tvly-test-key',
+        retry: { maxRetries: 1, baseDelayMs: 1, delayFn: async () => {} },
+      })
+      const result = await tool.execute('test-id', { query: 'test' })
+
+      const text = (result.content[0] as { type: 'text'; text: string }).text
+      expect(text).toContain('DDG Fallback')
+      expect(text).toContain('DuckDuckGo fallback')
+      expect(result.details.provider).toBe('duckduckgo')
+      expect(result.details.fallback).toBe(true)
+      expect(result.details.requestedProvider).toBe('tavily')
+      expect(result.details.failureCategory).toBe('rate_limit')
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  it('retries Tavily on retryable errors and succeeds on subsequent attempt', async () => {
+    const originalFetch = globalThis.fetch
+    let tavilyCallCount = 0
+    globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+      if (typeof url === 'string' && url.includes('api.tavily.com')) {
+        tavilyCallCount++
+        if (tavilyCallCount === 1) {
+          return Promise.resolve({
+            ok: false,
+            status: 503,
+            text: async () => 'Server Error',
+          })
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            results: [
+              { title: 'Tavily Result', url: 'https://example.com', content: 'Got it on retry' },
+            ],
+          }),
+        })
+      }
+      return Promise.resolve({ ok: false, status: 500 })
+    }) as unknown as typeof fetch
+
+    try {
+      const tool = createWebSearchTool({
+        provider: 'tavily',
+        tavilyApiKey: 'tvly-test-key',
+        retry: { maxRetries: 2, baseDelayMs: 1, delayFn: async () => {} },
+      })
+      const result = await tool.execute('test-id', { query: 'test' })
+
+      const text = (result.content[0] as { type: 'text'; text: string }).text
+      expect(text).toContain('Tavily Result')
+      expect(result.details.retries).toBe(1)
+      expect(result.details.provider).toBe('tavily')
+      expect(result.details.fallback).toBeUndefined()
     } finally {
       globalThis.fetch = originalFetch
     }
@@ -1201,6 +1500,24 @@ describe('createBuiltinWebTools', () => {
     })
     expect(tools).toHaveLength(2)
     expect(tools[0].name).toBe('web_search')
+  })
+
+  it('passes tavily config to search tool', () => {
+    const tools = createBuiltinWebTools({
+      webSearch: { enabled: true, provider: 'tavily', tavilyApiKey: 'tvly-test' },
+    })
+    expect(tools).toHaveLength(2)
+    expect(tools[0].name).toBe('web_search')
+  })
+
+  it('falls back to duckduckgo when tavily configured without API key', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const tools = createBuiltinWebTools({
+      webSearch: { enabled: true, provider: 'tavily' },
+    })
+    expect(tools).toHaveLength(2)
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Falling back to DuckDuckGo'))
+    warnSpy.mockRestore()
   })
 
   it('falls back to duckduckgo when brave configured without API key', () => {

@@ -163,14 +163,18 @@ export {
   parseDuckDuckGoLiteHtml,
   searchBrave,
   searchSearXNG,
+  searchTavily,
   resolveSearchProvider,
   encryptBraveApiKey,
   decryptBraveApiKey,
+  encryptTavilyApiKey,
+  decryptTavilyApiKey,
   stripInlineHtml,
   withRetry,
   BraveSearchError,
+  TavilySearchError,
 } from './web-tools.js'
-export type { WebSearchResult, WebSearchConfig, WebFetchConfig, BuiltinToolsConfig, SearchProvider, ResolvedSearchProvider, BraveErrorCategory, RetryOptions } from './web-tools.js'
+export type { WebSearchResult, WebSearchConfig, WebFetchConfig, BuiltinToolsConfig, SearchProvider, ResolvedSearchProvider, BraveErrorCategory, TavilyErrorCategory, RetryOptions } from './web-tools.js'
 export {
   listAgentSkills,
   trackAgentSkillUsage,

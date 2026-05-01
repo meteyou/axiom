@@ -4,7 +4,7 @@ import { encrypt, decrypt, isEncrypted } from './encryption.js'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export type SearchProvider = 'duckduckgo' | 'brave' | 'searxng'
+export type SearchProvider = 'duckduckgo' | 'brave' | 'searxng' | 'tavily'
 
 export interface WebSearchResult {
   title: string
@@ -16,6 +16,7 @@ export interface WebSearchConfig {
   provider?: SearchProvider
   braveSearchApiKey?: string
   searxngUrl?: string
+  tavilyApiKey?: string
   retry?: {
     maxRetries?: number
     baseDelayMs?: number
@@ -32,6 +33,7 @@ export interface BuiltinToolsConfig {
     provider?: string
     braveSearchApiKey?: string
     searxngUrl?: string
+    tavilyApiKey?: string
   }
   webFetch?: { enabled?: boolean }
 }
@@ -49,6 +51,20 @@ export class BraveSearchError extends Error {
   ) {
     super(message)
     this.name = 'BraveSearchError'
+  }
+}
+
+export type TavilyErrorCategory = 'auth' | 'rate_limit' | 'server_error' | 'network' | 'unknown'
+
+export class TavilySearchError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly category: TavilyErrorCategory,
+    public readonly retryable: boolean,
+  ) {
+    super(message)
+    this.name = 'TavilySearchError'
   }
 }
 
@@ -312,6 +328,83 @@ export async function searchBrave(
   }))
 }
 
+// ─── Tavily Search Provider ──────────────────────────────────────────────────
+
+/**
+ * Search using the Tavily Search API.
+ * Tavily is a search API built specifically for AI agents — it returns clean,
+ * structured results in a single call.
+ *
+ * API: POST https://api.tavily.com/search
+ * Auth: Authorization: Bearer <key>
+ * Docs: https://docs.tavily.com/documentation/api-reference/endpoint/search
+ */
+export async function searchTavily(
+  query: string,
+  apiKey: string,
+  count: number = 5,
+  fetchFn: typeof globalThis.fetch = globalThis.fetch,
+): Promise<WebSearchResult[]> {
+  const response = await fetchFn('https://api.tavily.com/search', {
+    method: 'POST',
+    headers: {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      query,
+      max_results: count,
+      search_depth: 'basic',
+    }),
+  })
+
+  if (!response.ok) {
+    let bodyText = ''
+    try {
+      bodyText = await response.text()
+    } catch { /* ignore body read failures */ }
+
+    const detail = bodyText ? ` Details: ${bodyText}` : ''
+    const status = response.status
+
+    if (status === 401) {
+      throw new TavilySearchError(
+        `Tavily Search auth failed (HTTP 401): invalid or missing API key. Check your tavilyApiKey configuration.${detail}`,
+        status, 'auth', false,
+      )
+    }
+
+    if (status === 429) {
+      throw new TavilySearchError(
+        `Tavily Search rate limited (HTTP 429). You may have hit the free plan monthly quota.${detail}`,
+        status, 'rate_limit', true,
+      )
+    }
+
+    if (status >= 500) {
+      throw new TavilySearchError(
+        `Tavily Search server error (HTTP ${status}).${detail}`,
+        status, 'server_error', true,
+      )
+    }
+
+    throw new TavilySearchError(
+      `Tavily Search failed (HTTP ${status}).${detail}`,
+      status, 'unknown', false,
+    )
+  }
+
+  const data = await response.json() as { results?: Array<{ title?: string; url?: string; content?: string }> }
+  const results = data?.results ?? []
+
+  return results.slice(0, count).map(r => ({
+    title: r.title ?? '',
+    url: r.url ?? '',
+    snippet: r.content ?? '',
+  }))
+}
+
 // ─── SearXNG Search Provider ─────────────────────────────────────────────────
 
 /**
@@ -369,6 +462,21 @@ export function decryptBraveApiKey(encryptedKey: string): string {
   return decrypt(encryptedKey)
 }
 
+/**
+ * Encrypt a Tavily API key for storage in settings.json.
+ */
+export function encryptTavilyApiKey(apiKey: string): string {
+  if (!apiKey) return ''
+  return isEncrypted(apiKey) ? apiKey : encrypt(apiKey)
+}
+
+/**
+ * Decrypt a Tavily API key from settings.json.
+ */
+export function decryptTavilyApiKey(encryptedKey: string): string {
+  return decrypt(encryptedKey)
+}
+
 export interface ResolvedSearchProvider {
   provider: SearchProvider
   searchFn: (query: string, count: number) => Promise<WebSearchResult[]>
@@ -414,6 +522,23 @@ export function resolveSearchProvider(config?: WebSearchConfig): ResolvedSearchP
     }
   }
 
+  if (requested === 'tavily') {
+    const rawKey = config?.tavilyApiKey ?? ''
+    if (!rawKey) {
+      return {
+        provider: 'duckduckgo',
+        searchFn: (query, count) => searchDuckDuckGo(query, count),
+        warning: 'Tavily Search selected but no API key configured. Falling back to DuckDuckGo.',
+      }
+    }
+    // Decrypt key if it looks encrypted
+    const apiKey = isEncrypted(rawKey) ? decryptTavilyApiKey(rawKey) : rawKey
+    return {
+      provider: 'tavily',
+      searchFn: (query, count) => searchTavily(query, apiKey, count),
+    }
+  }
+
   // Default: DuckDuckGo
   return {
     provider: 'duckduckgo',
@@ -452,14 +577,16 @@ export function createWebSearchTool(config?: WebSearchConfig): AgentTool {
       const retryOpts: RetryOptions = {
         maxRetries: resolved.provider !== 'duckduckgo' ? (config?.retry?.maxRetries ?? 2) : 0,
         baseDelayMs: config?.retry?.baseDelayMs ?? 500,
-        shouldRetry: (err: unknown) => err instanceof BraveSearchError && err.retryable,
+        shouldRetry: (err: unknown) =>
+          (err instanceof BraveSearchError && err.retryable) ||
+          (err instanceof TavilySearchError && err.retryable),
         delayFn: config?.retry?.delayFn,
       }
 
       let results: WebSearchResult[]
       let retries = 0
       let usedFallback = false
-      let failureCategory: BraveErrorCategory | 'network' | undefined
+      let failureCategory: BraveErrorCategory | TavilyErrorCategory | 'network' | undefined
 
       try {
         const retryResult = await withRetry(
@@ -469,7 +596,10 @@ export function createWebSearchTool(config?: WebSearchConfig): AgentTool {
         results = retryResult.result
         retries = retryResult.retries
       } catch (err: unknown) {
-        failureCategory = err instanceof BraveSearchError ? err.category : 'network'
+        failureCategory =
+          err instanceof BraveSearchError ? err.category :
+          err instanceof TavilySearchError ? err.category :
+          'network'
 
         // Fall back to DuckDuckGo if primary provider is not already DDG
         if (resolved.provider !== 'duckduckgo') {
@@ -613,6 +743,7 @@ export function createBuiltinWebTools(config?: BuiltinToolsConfig): AgentTool[] 
       provider,
       braveSearchApiKey: config?.webSearch?.braveSearchApiKey,
       searxngUrl: config?.webSearch?.searxngUrl,
+      tavilyApiKey: config?.webSearch?.tavilyApiKey,
     }))
   }
 
