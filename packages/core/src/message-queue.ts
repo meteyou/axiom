@@ -21,16 +21,6 @@ export interface QueuedMessage {
 export class MessageQueue extends EventEmitter {
   private pendingCount = 0
   private lockPromise: Promise<void> = Promise.resolve()
-  private releaseLock: (() => void) | null = null
-
-  /**
-   * Acquire the processing lock. Waits until any current processing is done.
-   * Returns a release function that MUST be called when processing is complete.
-   */
-  async acquire(): Promise<{ release: () => void; message: QueuedMessage }> {
-    // This should not be called directly — use enqueue instead
-    throw new Error('Use enqueue() instead')
-  }
 
   /**
    * Enqueue a message for sequential processing.
@@ -88,10 +78,4 @@ export class MessageQueue extends EventEmitter {
     return this.pendingCount
   }
 
-  /**
-   * Check if any message is currently being processed
-   */
-  get isProcessing(): boolean {
-    return this.pendingCount > 0 || this.releaseLock !== null
-  }
 }
