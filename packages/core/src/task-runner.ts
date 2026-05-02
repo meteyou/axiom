@@ -420,9 +420,13 @@ export class TaskRunner {
     try {
       const sessionId = this.ensureTaskSession(task, parentSessionId)
 
-      // Build model and get API key
+      // Build model and resolve the initial API key. We pre-resolve once so
+      // that obviously broken credentials fail fast at startTask() time
+      // (preserved by the outer try/catch below). The actual key handed to
+      // PiAgent is re-resolved on every LLM call further down so OAuth tokens
+      // refresh during long task runs — see the `getApiKey` callback below.
       const model = this.options.buildModel(provider)
-      const apiKey = await this.options.getApiKey(provider)
+      const initialApiKey = await this.options.getApiKey(provider)
 
       // Determine effective system prompt
       const baseSystemPrompt = overrides?.systemPromptOverride
@@ -450,6 +454,32 @@ export class TaskRunner {
       }
 
       // Create isolated PiAgent
+      //
+      // For OAuth providers (e.g. ChatGPT Codex / Claude Pro) the access token
+      // expires within ~1 hour. A long-running background task that captured
+      // the apiKey synchronously at startTask() time would keep sending the
+      // expired token until every LLM call 401s. pi-ai turns those failures
+      // into a final assistant message with `stopReason='error'` and empty
+      // content, which the task-runner then records as `status='completed'`
+      // with an empty summary — exactly the symptom users see.
+      //
+      // We therefore re-resolve the apiKey on every LLM call by calling
+      // `getApiKey` against the freshest provider snapshot we can get. The
+      // host wires `getApiKey` to `getApiKeyForProvider`, which routes OAuth
+      // through pi-ai's `getOAuthApiKey` and only refreshes when expired, so
+      // this stays cheap for non-expired and api-key providers.
+      const resolveApiKey = async (): Promise<string> => {
+        try {
+          const fresh = this.options.getProviderById?.(provider.id) ?? provider
+          return await this.options.getApiKey(fresh)
+        } catch (err) {
+          console.error(`[task-runner] Failed to refresh API key for task ${taskId}:`, err)
+          // Fall back to the last known good key so a transient failure during
+          // refresh does not also break the in-flight call.
+          return initialApiKey
+        }
+      }
+
       const agent = new PiAgent({
         initialState: {
           systemPrompt,
@@ -460,7 +490,7 @@ export class TaskRunner {
         streamFn: buildStreamFn(provider),
         ...(provider.transport && provider.transport !== 'sse'
           && { transport: provider.transport }),
-        getApiKey: () => apiKey,
+        getApiKey: resolveApiKey,
       })
 
       const abortController = new AbortController()
