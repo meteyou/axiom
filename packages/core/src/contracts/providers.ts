@@ -3,11 +3,6 @@ import type { ProviderType } from '../provider-config.js'
 export type ProviderStatusContract = 'connected' | 'error' | 'untested'
 export type ProviderAuthMethodContract = 'api-key' | 'oauth'
 export type ProviderTextVerbosityContract = 'low' | 'medium' | 'high'
-/**
- * Wire-level transport for providers that expose more than one. Mirrors
- * pi-ai's `Transport` union — see `ProviderTransport` in provider-config.ts
- * for semantics. `undefined` means "use the provider default" (`"sse"`).
- */
 export type ProviderTransportContract = 'sse' | 'websocket' | 'websocket-cached' | 'auto'
 
 export interface ProviderContract {

@@ -25,19 +25,6 @@ export type ProviderType =
 
 export type AuthMethod = 'api-key' | 'oauth'
 export type TextVerbosity = 'low' | 'medium' | 'high'
-/**
- * Wire-level transport for providers that support multiple transports. Mirrors
- * pi-ai's `Transport` union. Only the `openai-codex-responses` apiType honours
- * a non-`sse` value today; for every other provider the field is ignored
- * downstream and is dropped on persist (see `presetSupportsTransport`).
- *
- * - `"sse"` (default): regular HTTP + Server-Sent Events streaming.
- * - `"websocket"`: persistent WebSocket connection, no SSE fallback.
- * - `"websocket-cached"`: persistent WebSocket connection that ships only
- *   delta context items per turn (much smaller payloads on long sessions);
- *   first turn primes the cache, subsequent turns reuse `previous_response_id`.
- * - `"auto"`: try WebSocket first, fall back to SSE on connection error.
- */
 export type ProviderTransport = Transport
 
 export interface ProviderTypePreset {
@@ -514,22 +501,7 @@ export interface ProviderConfig {
   defaultModel: string
   enabledModels?: string[] // list of model IDs enabled for this provider
   degradedThresholdMs?: number
-  /**
-   * Optional OpenAI/Codex Responses text verbosity override. Undefined means
-   * "use the provider implementation default" (pi-ai currently defaults Codex
-   * to low).
-   */
   textVerbosity?: TextVerbosity
-  /**
-   * Optional wire-level transport override. Currently only honoured by the
-   * OpenAI Codex / Responses apiType (other providers ignore it and the field
-   * is dropped on persist). Defaults to `"sse"` when unset.
-   *
-   * `"websocket-cached"` is the headline alternative: it keeps a persistent
-   * WebSocket connection and only ships delta context items per turn, which
-   * cuts per-round token overhead substantially on long agent sessions. See
-   * `presetSupportsTransport()` for the gating rule.
-   */
   transport?: ProviderTransport
   models?: ProviderModelConfig[]
   status?: 'connected' | 'error' | 'untested'
