@@ -16,11 +16,11 @@ Master toggle. When off, no speaker icons disappear from the UI.
 
 Which backend generates the audio. Both options reference an entry you already configured on the [Providers](../web-ui/providers) page — the API key / base URL is read from there.
 
-| Value      | Notes                                                                                                                                                                                                                |
-|------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `openai`   | Uses an OpenAI API-Key provider from `providers.json`. Calls its `/v1/audio/speech` endpoint with one of OpenAI's TTS models.                                                                                        |
-| `mistral`  | Uses a Mistral API-Key provider from `providers.json`. Synthesises with Mistral's Voxtral voices.                                                                                                                    |
-| `deepgram` | Hosted Deepgram Aura voices. Standalone — does **not** use a provider entry. Uses the shared `deepgramApiKey` configured under [Skills → Voice](../web-ui/skills). Adds optional voice replies for Telegram messages. |
+| Value      | Notes                                                                                                                                                                              |
+|------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `openai`   | Uses an OpenAI API-Key provider from `providers.json`. Calls its `/v1/audio/speech` endpoint with one of OpenAI's TTS models.                                                      |
+| `mistral`  | Uses a Mistral API-Key provider from `providers.json`. Synthesises with Mistral's Voxtral voices.                                                                                  |
+| `deepgram` | Hosted Deepgram Aura voices. Standalone — does **not** use a provider entry. Uses the API key configured directly in the **Deepgram** card below (stored in `tts.deepgramApiKey`). |
 
 The dropdown lists each matching provider as its own entry, e.g. `OpenAI (My OpenAI)` or `Mistral Voxtral (Mistral Main)`. If no matching provider is configured, the option appears `disabled`.
 
@@ -79,40 +79,27 @@ The list is fetched live from the Voxtral catalog when you open the panel. The t
 { "tts": { "mistralVoice": "nadia-neutral" } }
 ```
 
+## Deepgram API key
+
+Shown when provider is `deepgram`. The API key used to authenticate against Deepgram. Stored encrypted at rest in `tts.deepgramApiKey`. Get a free key at [console.deepgram.com](https://console.deepgram.com).
+
+The field is rendered as a password input. Once saved, it shows a masked preview (e.g. `dg_••••••abcd`) — leave the masked value untouched to keep the existing key.
+
+```json
+{ "tts": { "deepgramApiKey": "dg_..." } }
+```
+
 ## Deepgram voice
 
-Shown when provider is `deepgram`. The Deepgram Aura voice/model id passed as `?model=` to `/v1/speak`. Stored in `tts.deepgramModel`:
+Shown when provider is `deepgram`. Deepgram bundles voice and language into a single Aura model id (e.g. `aura-2-thalia-en` for an English voice, `aura-2-ophelia-de` for German), so picking a voice and picking a language is one decision.
+
+The dropdown is pre-populated with a small list of common Aura voices. Click the **refresh** icon next to the dropdown to fetch the full, up-to-date voice catalog from your Deepgram account — useful when Deepgram releases new voices. Refreshing requires the API key to be saved first.
+
+Stored in `tts.deepgramModel`:
 
 ```json
 { "tts": { "deepgramModel": "aura-2-thalia-en" } }
 ```
-
-A few sensible presets are exposed in the dropdown (`aura-2-thalia-en`, `aura-2-andromeda-en`, `aura-asteria-en`, `aura-2-ophelia-de`, ...). Any model id Deepgram supports can be set directly in `settings.json`.
-
-## Deepgram audio encoding
-
-Shown when provider is `deepgram`. Container format Deepgram returns. `opus` is required if you want the Telegram reply to render as a native voice message; `mp3` falls back to a regular audio attachment. Stored in `tts.deepgramEncoding`:
-
-```json
-{ "tts": { "deepgramEncoding": "opus" } }
-```
-
-## Send voice message in Telegram
-
-Shown when provider is `deepgram`. When enabled, after the agent produces a text reply the Telegram gateway also synthesizes that reply via Deepgram and uploads it to the Telegram chat:
-
-- `deepgramEncoding: "opus"` → sent via `sendVoice` (renders as a native Telegram voice message).
-- Any other encoding → sent via `sendAudio` (renders as a regular audio attachment).
-
-Failures are non-fatal: if synthesis fails, the text reply is still delivered. Replies longer than 2000 characters skip the voice step (Deepgram's `/v1/speak` limit).
-
-```json
-{ "tts": { "sendVoiceMessageInTelegram": true } }
-```
-
-The Deepgram API key itself lives at the top level of `settings.json` as `deepgramApiKey` (encrypted) and is configured under **Settings → Skills → Voice**. The same key powers both Deepgram STT and Deepgram TTS.
-
-See the [Voice setup guide](../guide/voice) for the end-to-end Telegram voice flow.
 
 ## Voice preview
 

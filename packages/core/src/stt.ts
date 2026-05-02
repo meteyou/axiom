@@ -19,9 +19,7 @@ export interface SttSettings {
   providerId: string
   openaiModel: string
   ollamaModel: string
-  /** Deepgram model id (e.g. `nova-3`). */
   deepgramModel: string
-  /** Optional language hint passed to Deepgram (`en`, `de`, `multi`, ...). */
   deepgramLanguage: string
   rewrite: SttRewriteSettings
 }
@@ -65,12 +63,9 @@ export function loadSttSettings(): SttSettings {
  * value is decrypted on read so callers always see plaintext. Returns an
  * empty string when the key is unset.
  *
- * STT and TTS keep separate keys so the Deepgram account dashboard cleanly
- * attributes usage to the right call site. Canonical storage paths:
+ * STT and TTS keep separate keys. Canonical storage paths:
  *   - STT: `settings.stt.deepgramApiKey`
  *   - TTS: `settings.tts.deepgramApiKey`
- *
- * Defaults to STT for backwards compat with the original single-key API.
  */
 export function loadDeepgramApiKey(scope: 'stt' | 'tts' = 'stt'): string {
   ensureConfigTemplates()

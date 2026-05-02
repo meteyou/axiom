@@ -38,6 +38,23 @@ Default: `2500` (2.5 s). Range: `0` – `10000`. Set to `0` to disable batching 
 { "batchingDelayMs": 2500 }
 ```
 
+## Send voice reply
+
+When enabled, after the agent produces a text reply the Telegram gateway also synthesises that reply via the configured TTS provider and uploads the result to the Telegram chat in addition to the regular text message.
+
+Requires a working Text-to-Speech configuration (see [Settings → Text-to-Speech](./text-to-speech)). The TTS provider, voice, and audio format set there control how the voice reply is generated; this toggle only controls *whether* it is sent to Telegram.
+
+Delivery mode is picked automatically based on the TTS [Audio format](./text-to-speech#audio-format):
+
+- `opus` — sent via `sendVoice`, renders as a native Telegram voice message.
+- Anything else (`mp3`, `wav`, `flac`) — sent via `sendAudio`, renders as a regular audio attachment.
+
+Failures are non-fatal: if synthesis or upload fails, the text reply is still delivered and a warning is logged server-side.
+
+```json [/data/config/telegram.json]
+{ "sendVoiceReply": false }
+```
+
 ## Telegram users
 
 The user directory. Every Telegram account that has ever `/start`ed the bot shows up here with one of three statuses:
