@@ -41,6 +41,62 @@ const DEEPGRAM_LINEAR16_CHANNELS = 1
 const DEEPGRAM_LINEAR16_BITS_PER_SAMPLE = 16
 
 /**
+ * Deepgram's `/v1/speak` rejects payloads >2000 chars. We split longer
+ * texts into chunks and synthesize each separately so the user-facing
+ * “Read message aloud” button works for long assistant replies. Kept a
+ * touch under the hard limit to leave headroom for whitespace tweaks.
+ */
+const DEEPGRAM_TTS_CHUNK_LIMIT = 1900
+
+/**
+ * Split `text` into chunks of at most `maxLen` characters, preferring
+ * paragraph → sentence → word boundaries before falling back to a hard
+ * slice. The goal is to keep prosody intact across chunks: cutting at
+ * `. ` / `! ` / `? ` / `\n\n` produces audibly smoother joins than
+ * mid-sentence splits.
+ */
+export function chunkTextForDeepgram(text: string, maxLen = DEEPGRAM_TTS_CHUNK_LIMIT): string[] {
+  const trimmed = text.trim()
+  if (trimmed.length <= maxLen) return [trimmed]
+
+  // First pass: split on sentence-ish boundaries while keeping the
+  // delimiter attached to the preceding piece (so the synthesized audio
+  // still ends on the punctuation).
+  const pieces = trimmed.split(/(?<=[.!?\n])\s+/)
+
+  const chunks: string[] = []
+  let current = ''
+  const flush = () => {
+    if (current.trim()) chunks.push(current.trim())
+    current = ''
+  }
+
+  for (const piece of pieces) {
+    if (piece.length > maxLen) {
+      // A single “sentence” that's still too long — fall back to a
+      // word-boundary slice so we don't chop a word in half.
+      flush()
+      let remaining = piece
+      while (remaining.length > maxLen) {
+        const slice = remaining.slice(0, maxLen)
+        const lastSpace = slice.lastIndexOf(' ')
+        const cut = lastSpace > maxLen * 0.5 ? lastSpace : maxLen
+        chunks.push(slice.slice(0, cut).trim())
+        remaining = remaining.slice(cut).trim()
+      }
+      if (remaining) current = remaining
+      continue
+    }
+    if (current.length + piece.length + 1 > maxLen) {
+      flush()
+    }
+    current = current ? `${current} ${piece}` : piece
+  }
+  flush()
+  return chunks
+}
+
+/**
  * Wrap raw little-endian PCM samples in a 44-byte canonical WAV/RIFF header
  * so generic players (Telegram's audio player, browsers, ffmpeg, ...) can
  * decode it. Used to bridge Deepgram's headerless `linear16` output to the
@@ -323,10 +379,29 @@ async function synthesizeDeepgramWrapped(
   // `linear16` (raw PCM) which we wrap in a WAV header below so the user
   // gets a playable file.
   const deepgramEncoding = DEEPGRAM_FORMAT_MAP[settings.responseFormat]
-  const raw = await synthesizeDeepgram(text, apiKey, {
-    model: options.voice || settings.deepgramModel,
-    encoding: deepgramEncoding,
-  })
+  const model = options.voice || settings.deepgramModel
+
+  // Deepgram caps `/v1/speak` at 2000 chars per call. Split longer texts
+  // and concatenate the audio. Safe for `mp3` (frame-aligned) and
+  // `linear16` (raw PCM — just bytes); `opus`/`flac` use page/frame
+  // containers that don't survive naive concatenation, so we refuse those
+  // explicitly with an actionable error rather than producing a corrupt
+  // file.
+  const chunks = chunkTextForDeepgram(text)
+  if (chunks.length > 1 && (deepgramEncoding === 'opus' || deepgramEncoding === 'flac')) {
+    throw new Error(
+      `Deepgram TTS: text is ${text.length} chars (>2000). Long-text chunking is only supported for `
+      + `\`mp3\` and \`wav\` — switch “Response format” in Settings → Text-to-Speech.`,
+    )
+  }
+
+  const parts: Buffer[] = []
+  for (const chunk of chunks) {
+    parts.push(
+      await synthesizeDeepgram(chunk, apiKey, { model, encoding: deepgramEncoding }),
+    )
+  }
+  const raw = parts.length === 1 ? parts[0]! : Buffer.concat(parts)
 
   if (settings.responseFormat === 'wav') {
     const wav = wrapPcmInWav(
