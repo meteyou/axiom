@@ -31,7 +31,7 @@ The directory itself is created with `0700` mode the first time the backend runs
 
 The non-secret runtime config. Edited via every Settings UI panel except [Telegram](../settings/telegram) (which writes to `telegram.json`) and [Secrets](../settings/secrets) (which writes to `secrets.json`).
 
-The on-disk shape is a **superset** of [`SettingsContract`](https://github.com/) (`packages/core/src/contracts/settings.ts`): the contract describes what the API exchanges with the frontend; the file may also contain a few keys the UI doesn't surface (`tokenPriceTable`, `builtinTools`, `braveSearchApiKey`, `searxngUrl`, `tavilyApiKey`, `deepgramApiKey`) plus dead fields from older versions until they get re-saved.
+The on-disk shape is a **superset** of [`SettingsContract`](https://github.com/) (`packages/core/src/contracts/settings.ts`): the contract describes what the API exchanges with the frontend; the file may also contain a few keys the UI doesn't surface (`tokenPriceTable`, `builtinTools`, `braveSearchApiKey`, `searxngUrl`, `tavilyApiKey`) plus dead fields from older versions until they get re-saved.
 
 ### Top-level keys
 
@@ -56,7 +56,6 @@ The on-disk shape is a **superset** of [`SettingsContract`](https://github.com/)
 | `braveSearchApiKey`                | `string`                                                          | `""`           | not validated by API                    | **Legacy** — read at boot, migrated into `builtinTools.webSearch.braveSearchApiKey` if present.                   |
 | `searxngUrl`                       | `string`                                                          | `""`           | not validated by API                    | **Legacy** — read at boot, migrated into `builtinTools.webSearch.searxngUrl` if present.                          |
 | `tavilyApiKey`                     | `string`                                                          | `""`           | not validated by API                    | **Legacy** — read at boot, migrated into `builtinTools.webSearch.tavilyApiKey` if present.                       |
-| `deepgramApiKey`                   | `string` (encrypted at rest)                                      | `""`           | string; managed via Skills → Voice      | Top-level Deepgram API key shared between `stt.provider = "deepgram"` and `tts.provider = "deepgram"`. See [Voice (Deepgram)](../guide/voice).                                          |
 | `heartbeat`                        | object                                                            | see template   | not read at runtime                     | **Legacy / dead key.** Seeded by the template, never read by current code. Replaced by `healthMonitor` + `healthMonitorIntervalMinutes` on the first save. Safe to delete by hand. |
 
 ### `uploads`
@@ -156,46 +155,36 @@ A flat `tasks.statusUpdateIntervalMinutes` may exist on disk from older installs
 
 [Text-to-Speech UI](../settings/text-to-speech).
 
-| Key                          | Type                                           | Default            | Validation                                                              |
-|------------------------------|------------------------------------------------|--------------------|-------------------------------------------------------------------------|
-| `tts.enabled`                       | `boolean`                                       | `false`              | bool                                                                    |
-| `tts.provider`                      | `"openai" \| "mistral" \| "deepgram"`           | `"openai"`           | enum (`SETTINGS_TTS_PROVIDERS`)                                         |
-| `tts.providerId`                    | `string` (provider entry id)                    | `""`                 | string                                                                  |
-| `tts.openaiModel`                   | `"gpt-4o-mini-tts" \| "tts-1" \| "tts-1-hd"`    | `"gpt-4o-mini-tts"`  | enum (`SETTINGS_TTS_OPENAI_MODELS`)                                     |
-| `tts.openaiVoice`                   | `string` (e.g. `"nova"`, `"alloy"`)             | `"nova"`             | non-empty string                                                        |
-| `tts.openaiInstructions`            | `string`                                        | `""`                 | string                                                                  |
-| `tts.mistralVoice`                  | `string` (e.g. `"nadia-neutral"`)               | `""`                 | string                                                                  |
-| `tts.responseFormat`                | `"mp3" \| "wav" \| "opus" \| "flac"`            | `"mp3"`              | enum (`SETTINGS_TTS_RESPONSE_FORMATS`)                                  |
-| `tts.deepgramModel`                 | `string` (e.g. `"aura-2-thalia-en"`)            | `"aura-2-thalia-en"` | non-empty string                                                        |
-| `tts.deepgramEncoding`              | `"mp3" \| "linear16" \| "opus" \| "flac"`       | `"mp3"`              | enum (`SETTINGS_DEEPGRAM_TTS_ENCODINGS`)                                |
-| `tts.sendVoiceMessageInTelegram`    | `boolean`                                       | `false`              | bool                                                                    |
+| Key                      | Type                                         | Default              | Validation                             |
+|--------------------------|----------------------------------------------|----------------------|----------------------------------------|
+| `tts.enabled`            | `boolean`                                    | `false`              | bool                                   |
+| `tts.provider`           | `"openai" \| "mistral" \| "deepgram"`        | `"openai"`           | enum (`SETTINGS_TTS_PROVIDERS`)        |
+| `tts.providerId`         | `string` (provider entry id)                 | `""`                 | string                                 |
+| `tts.openaiModel`        | `"gpt-4o-mini-tts" \| "tts-1" \| "tts-1-hd"` | `"gpt-4o-mini-tts"`  | enum (`SETTINGS_TTS_OPENAI_MODELS`)    |
+| `tts.openaiVoice`        | `string` (e.g. `"nova"`, `"alloy"`)          | `"nova"`             | non-empty string                       |
+| `tts.openaiInstructions` | `string`                                     | `""`                 | string                                 |
+| `tts.mistralVoice`       | `string` (e.g. `"nadia-neutral"`)            | `""`                 | string                                 |
+| `tts.responseFormat`     | `"mp3" \| "wav" \| "opus" \| "flac"`         | `"mp3"`              | enum (`SETTINGS_TTS_RESPONSE_FORMATS`) |
+| `tts.deepgramModel`      | `string` (e.g. `"aura-2-thalia-en"`)         | `"aura-2-thalia-en"` | non-empty string                       |
+| `tts.deepgramApiKey`     | `string` (encrypted at rest)                 | `""`                 | string                                 |
 
 ### `stt`
 
 [Speech-to-Text UI](../settings/speech-to-text).
 
-| Key                          | Type                                                             | Default          | Validation                                  |
-|------------------------------|------------------------------------------------------------------|------------------|---------------------------------------------|
-| `stt.enabled`                | `boolean`                                                        | `false`          | bool                                        |
-| `stt.provider`               | `"whisper-url" \| "openai" \| "ollama" \| "deepgram"`            | `"whisper-url"`  | enum (`SETTINGS_STT_PROVIDERS`)             |
-| `stt.whisperUrl`             | `string` (full URL)                                              | `""`             | string                                      |
-| `stt.providerId`             | `string` (provider entry id)                                     | `""`             | string                                      |
-| `stt.openaiModel`            | `"whisper-1" \| "gpt-4o-transcribe" \| "gpt-4o-mini-transcribe"` | `"whisper-1"`    | enum (`SETTINGS_STT_OPENAI_MODELS`)         |
-| `stt.ollamaModel`            | `string`                                                         | `""`             | string                                      |
-| `stt.deepgramModel`          | `string` (e.g. `"nova-3"`, `"nova-2-general"`)                   | `"nova-3"`       | non-empty string                            |
-| `stt.deepgramLanguage`       | `string` (`"en"`, `"de"`, `"multi"`, …)                          | `""`             | string (empty = auto-detect)                |
-| `stt.rewrite.enabled`        | `boolean`                                                        | `false`          | bool                                        |
-| `stt.rewrite.providerId`     | `string` (`provider::model` composite)                           | `""`             | string                                      |
-
-### `deepgramApiKey`
-
-Top-level encrypted API key shared between `stt.provider = "deepgram"` and `tts.provider = "deepgram"`. Mirrors how `braveSearchApiKey` works for the web-search tool — one key, used wherever Deepgram is selected.
-
-| Key               | Type                          | Default | Validation                                |
-|-------------------|-------------------------------|---------|-------------------------------------------|
-| `deepgramApiKey`  | `string` (encrypted at rest)  | `""`    | string; managed via Settings → Skills → Voice |
-
-Managed through the **Skills → Voice** card in the Web UI. The PATCH endpoint encrypts the value before persisting; GET responses return a masked preview. Direct edits to `settings.json` accept either a plaintext key (auto-encrypted on next save) or a pre-encrypted ciphertext.
+| Key                          | Type                                                             | Default          | Validation                          |
+|------------------------------|------------------------------------------------------------------|------------------|-------------------------------------|
+| `stt.enabled`                | `boolean`                                                        | `false`          | bool                                |
+| `stt.provider`               | `"whisper-url" \| "openai" \| "ollama" \| "deepgram"`            | `"whisper-url"`  | enum (`SETTINGS_STT_PROVIDERS`)     |
+| `stt.whisperUrl`             | `string` (full URL)                                              | `""`             | string                              |
+| `stt.providerId`             | `string` (provider entry id)                                     | `""`             | string                              |
+| `stt.openaiModel`            | `"whisper-1" \| "gpt-4o-transcribe" \| "gpt-4o-mini-transcribe"` | `"whisper-1"`    | enum (`SETTINGS_STT_OPENAI_MODELS`) |
+| `stt.ollamaModel`            | `string`                                                         | `""`             | string                              |
+| `stt.deepgramModel`          | `string` (e.g. `"nova-3"`, `"nova-2-general"`)                   | `"nova-3"`       | non-empty string                    |
+| `stt.deepgramLanguage`       | `string` (`"en"`, `"de"`, `"multi"`, …)                          | `""`             | string (empty = auto-detect)        |
+| `stt.deepgramApiKey`         | `string` (encrypted at rest)                                     | `""`             | string                              |
+| `stt.rewrite.enabled`        | `boolean`                                                        | `false`          | bool                                |
+| `stt.rewrite.providerId`     | `string` (`provider::model` composite)                           | `""`             | string                              |
 
 ### `tokenPriceTable`
 
@@ -320,6 +309,7 @@ Stored separately from `settings.json` (the Settings UI groups it under the [Tel
 | `enabled`            | `boolean`   | `false`        | bool             | [Telegram → Enabled](../settings/telegram#enabled)                                 |
 | `botToken`           | `string`    | `""`           | string (plain)   | [Telegram → Bot token](../settings/telegram#bot-token) — **stored in plain text**  |
 | `batchingDelayMs`    | `number`    | `2500`         | `>= 0`           | [Telegram → Batching delay](../settings/telegram#batching-delay)                   |
+| `sendVoiceReply`     | `boolean`   | `false`        | bool             | [Telegram → Send voice reply](../settings/telegram#send-voice-reply) — synthesise the agent's reply via the configured TTS provider and upload it as a Telegram voice message in addition to the text reply. |
 | `adminUserIds`       | `number[]`  | `[]`           | not exposed via UI | Numeric Telegram IDs that receive [Health Monitor notifications](../settings/health-monitor#notifications). Edit by hand. |
 | `pollingMode`        | `boolean`   | `true`         | not exposed via UI | `true` = long-poll (default). `false` = expect `webhookUrl` to be set.            |
 | `webhookUrl`         | `string`    | `""`           | not exposed via UI | Public HTTPS URL for webhook mode. Ignored when `pollingMode: true`.              |
@@ -333,7 +323,8 @@ Stored separately from `settings.json` (the Settings UI groups it under the [Tel
   "adminUserIds": [],
   "pollingMode": true,
   "webhookUrl": "",
-  "batchingDelayMs": 2500
+  "batchingDelayMs": 2500,
+  "sendVoiceReply": false
 }
 ```
 

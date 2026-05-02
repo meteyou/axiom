@@ -21,7 +21,7 @@ Which backend handles the actual transcription. The `openai` and `ollama` option
 | `openai` | Uses an OpenAI-compatible provider from `providers.json` (typically your OpenAI entry). Calls its `/v1/audio/transcriptions` endpoint with OpenAI's Whisper / GPT‑4o transcription models. |
 | `whisper-url` | A self-hosted Whisper-compatible HTTP endpoint (e.g. `faster-whisper-server`, `whisper.cpp` server). Standalone — does **not** use a provider entry, just a raw URL. Local-first, zero API cost. |
 | `ollama` | Uses an Ollama provider from `providers.json`. A Whisper-family model served by that Ollama instance handles the transcription. |
-| `deepgram` | Hosted Deepgram pre-recorded audio API. Standalone — does **not** use a provider entry. Uses the shared `deepgramApiKey` configured under [Skills → Voice](../web-ui/skills). |
+| `deepgram` | Hosted Deepgram pre-recorded audio API. Standalone — does **not** use a provider entry. Uses the API key configured directly in the **Deepgram** card below (stored in `stt.deepgramApiKey`). |
 
 The dropdown lists each matching provider from `providers.json` as its own entry, e.g. `OpenAI Whisper (My OpenAI)` or `Ollama (Ollama Mac)`. If no matching provider is configured, the option appears `disabled`.
 
@@ -73,7 +73,9 @@ Shown when provider is `ollama`. The model tag as pulled into the Ollama server 
 
 ## Deepgram model
 
-Shown when provider is `deepgram`. The Deepgram model name passed as `?model=` to `/v1/listen`. `nova-3` is Deepgram's current production transcription model.
+Shown when provider is `deepgram`. The Deepgram transcription model used for incoming audio. `nova-3` is Deepgram's current production model and a sensible default.
+
+The dropdown is pre-populated with a small list of common models. Click the **refresh** icon next to the dropdown to fetch the full, up-to-date model catalog from your Deepgram account — useful when Deepgram releases a new model. Refreshing requires the API key to be saved first.
 
 ```json
 { "stt": { "deepgramModel": "nova-3" } }
@@ -89,9 +91,13 @@ Shown when provider is `deepgram`. ISO‑639‑1 language code (`en`, `de`, `es`
 
 ## Deepgram API key
 
-The Deepgram API key is **not** stored in the `stt.*` block — it lives at the top level (`deepgramApiKey`, encrypted at rest) and is shared with the Deepgram TTS provider. Configure it under **Settings → Skills → Voice**. Get a free key at [console.deepgram.com](https://console.deepgram.com).
+Shown when provider is `deepgram`. The API key used to authenticate against Deepgram. Stored encrypted at rest in `stt.deepgramApiKey`. Get a free key at [console.deepgram.com](https://console.deepgram.com).
 
-See the [Voice setup guide](../guide/voice) for the full Telegram voice-message flow.
+The field is rendered as a password input. Once saved, it shows a masked preview (e.g. `dg_••••••abcd`) — leave the masked value untouched to keep the existing key.
+
+```json
+{ "stt": { "deepgramApiKey": "dg_..." } }
+```
 
 ## Rewrite enabled
 

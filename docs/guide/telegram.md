@@ -70,19 +70,14 @@ The bot understands a handful of slash commands inside Telegram:
 
 Everything else is treated as a normal message and forwarded to the agent.
 
-## Voice messages (Deepgram)
+## Voice messages
 
-Axiom can transcribe incoming Telegram voice messages and optionally reply with synthesized speech via [Deepgram](https://deepgram.com).
+Axiom can transcribe incoming Telegram voice messages and optionally reply with synthesized speech. Configuration lives in two places:
 
-1. Get an API key from [console.deepgram.com](https://console.deepgram.com) (free tier includes a generous trial credit).
-2. In the Web UI, open **Settings → Skills → Voice**, paste the key, and save. The key is encrypted at rest and shared between STT and TTS.
-3. **Speech-to-Text** — open **Settings → Speech-to-Text**, enable STT, set the provider to **Deepgram**, pick a model (`nova-3` recommended), and optionally a language (`en`, `de`, `multi`, or empty for auto-detect). Voice messages sent to the bot are now transcribed and forwarded to the agent as text.
-4. **Text-to-Speech (optional)** — open **Settings → Text-to-Speech**, enable TTS, pick the **Deepgram Aura** provider, choose a voice (e.g. `aura-2-thalia-en` for English, `aura-2-ophelia-de` for German), and turn on **Voice replies in Telegram**. Each agent reply is then also synthesized and uploaded as an audio/voice message.
+- **Speech-to-Text** — pick a provider and model under [Settings → Speech-to-Text](../settings/speech-to-text). Voice messages sent to the bot are transcribed and forwarded to the agent as text.
+- **Text-to-Speech (optional)** — pick a provider and voice under [Settings → Text-to-Speech](../settings/text-to-speech), then enable [Send voice reply](../settings/telegram#send-voice-reply) on the Telegram settings page. Each agent reply is then also synthesized and uploaded as a voice/audio message.
 
-Notes:
-- Telegram voice messages are OGG/Opus; Deepgram detects the container automatically.
-- Replies longer than 2000 characters are sent as text only — Deepgram’s `/v1/speak` endpoint rejects larger payloads.
-- TTS errors never suppress the text reply; if synthesis fails, the user still gets the text response and a warning is logged.
+If TTS synthesis fails for a given reply, the text reply is still delivered — voice is best-effort.
 
 ## Troubleshooting
 

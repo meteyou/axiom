@@ -127,18 +127,7 @@ export interface TtsSettingsContract {
   openaiInstructions: string
   mistralVoice: string
   responseFormat: TtsResponseFormat
-  /** Deepgram voice/model id, e.g. `aura-2-thalia-en`. */
   deepgramModel: string
-  /**
-   * Encrypted Deepgram API key used by the TTS path. Stored separately from
-   * the STT key so a Deepgram account dashboard cleanly attributes
-   * synthesis vs. transcription usage to distinct keys. Canonical storage
-   * path: `settings.tts.deepgramApiKey`.
-   *
-   * Returned by the Settings API as a *masked* string (e.g. `dg_••••••abcd`)
-   * when configured, empty string otherwise. Mask characters (`•`) are used
-   * by `mergeTts` as a sentinel for "no change".
-   */
   deepgramApiKey: string
 }
 
@@ -154,23 +143,8 @@ export interface SttSettingsContract {
   providerId: string
   openaiModel: SttOpenAiModel
   ollamaModel: string
-  /** Deepgram STT model id, e.g. `nova-3` or `nova-2-general`. */
   deepgramModel: string
-  /**
-   * Language code passed to Deepgram (`en`, `de`, `multi`, …). Empty string
-   * lets Deepgram auto-detect.
-   */
   deepgramLanguage: string
-  /**
-   * Encrypted Deepgram API key used by the STT path. Stored separately from
-   * the TTS key so a Deepgram account dashboard cleanly attributes
-   * transcription vs. synthesis usage to distinct keys. Canonical storage
-   * path: `settings.stt.deepgramApiKey`.
-   *
-   * Returned by the Settings API as a *masked* string (e.g. `dg_••••••abcd`)
-   * when configured, empty string otherwise. Mask characters (`•`) are used
-   * by `mergeStt` as a sentinel for "no change".
-   */
   deepgramApiKey: string
   rewrite: SttRewriteSettingsContract
 }
@@ -187,14 +161,6 @@ export interface TelegramSettingsContract {
   botToken: string
   /** Input batching delay in ms. `0` disables batching. */
   batchingDelayMs: number
-  /**
-   * When `true`, the Telegram gateway synthesizes the agent's reply via the
-   * configured TTS provider (currently Deepgram only) and uploads it as a
-   * Telegram voice message in addition to the regular text reply.
-   *
-   * Lives on the Telegram side (not TTS) because it controls a Telegram
-   * delivery channel; web TTS playback is unaffected by this toggle.
-   */
   sendVoiceReply: boolean
 }
 
