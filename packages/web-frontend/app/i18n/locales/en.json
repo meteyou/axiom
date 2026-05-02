@@ -81,6 +81,8 @@
     },
     "ttsPlay": "Read aloud",
     "ttsStop": "Stop reading",
+    "ttsErrorTitle": "Read aloud failed",
+    "ttsErrorDismiss": "Dismiss",
     "ttsLoading": "Generating speech...",
     "micTooltip": "Hold to record",
     "thinkingLevelTooltip": "Thinking level for the next turn (applies to the main agent globally)",

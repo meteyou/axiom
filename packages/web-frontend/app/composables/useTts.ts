@@ -27,6 +27,14 @@ export function useTts() {
   const mistralVoices = useState<MistralVoice[]>('tts_mistral_voices', () => [])
   /** Whether voices are loading */
   const voicesLoading = useState<boolean>('tts_voices_loading', () => false)
+  /**
+   * Last playback error (server message or network failure). Cleared on
+   * each new `play()` call. Surfaced inline in the chat so a failed
+   * “Read aloud” click doesn't look like a dead button — the most common
+   * Deepgram failure mode (text >2000 chars) used to disappear into the
+   * console.
+   */
+  const error = useState<string | null>('tts_error', () => null)
 
   /** Fetch TTS settings from the server */
   async function fetchTtsSettings(): Promise<void> {
@@ -66,6 +74,11 @@ export function useTts() {
     loading.value = false
   }
 
+  /** Clear the last error banner (e.g. when the user dismisses it). */
+  function clearError() {
+    error.value = null
+  }
+
   /**
    * Play TTS for the given text.
    * If the same index is already playing, stop it (toggle behavior).
@@ -79,6 +92,7 @@ export function useTts() {
 
     // Stop any existing playback
     stop()
+    error.value = null
 
     if (!text.trim()) return
 
@@ -117,7 +131,9 @@ export function useTts() {
       await audioElement.play()
       loading.value = false
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
       console.error('TTS playback failed:', err)
+      error.value = message
       stop()
     }
   }
@@ -129,9 +145,11 @@ export function useTts() {
     ttsSettings,
     mistralVoices,
     voicesLoading,
+    error,
     fetchTtsSettings,
     fetchMistralVoices,
     play,
     stop,
+    clearError,
   }
 }

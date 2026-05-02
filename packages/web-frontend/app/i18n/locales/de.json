@@ -82,6 +82,8 @@
     "ttsPlay": "Vorlesen",
     "ttsStop": "Vorlesen stoppen",
     "ttsLoading": "Sprache wird generiert...",
+    "ttsErrorTitle": "Vorlesen fehlgeschlagen",
+    "ttsErrorDismiss": "Schließen",
     "micTooltip": "Gedrückt halten zum Aufnehmen",
     "thinkingLevelTooltip": "Denk-Level für den nächsten Zug (gilt global für den Haupt-Agent)",
     "thinkingLevelSaved": "Denk-Level aktualisiert",
