@@ -36,18 +36,52 @@
               <SelectGroup>
                 <SelectLabel>{{ $t('providers.groupApiKey') }}</SelectLabel>
                 <SelectItem v-for="(preset, key) in apiKeyPresets" :key="key" :value="String(key)">
-                  {{ preset.label }}
+                  {{ presetLabel(String(key), preset) }}
                 </SelectItem>
               </SelectGroup>
               <SelectSeparator />
               <SelectGroup>
                 <SelectLabel>{{ $t('providers.groupSubscription') }}</SelectLabel>
                 <SelectItem v-for="(preset, key) in oauthPresets" :key="key" :value="String(key)">
-                  {{ preset.label }}
+                  {{ presetLabel(String(key), preset) }}
                 </SelectItem>
               </SelectGroup>
             </SelectContent>
           </Select>
+        </div>
+
+        <!-- Base URL (only for providers with editable URLs) -->
+        <div v-if="form.providerType && !isOAuthProvider && selectedPreset?.urlEditable" class="flex flex-col gap-1.5">
+          <Label for="provider-url">{{ $t('providers.baseUrl') }}</Label>
+          <Input
+            id="provider-url"
+            v-model="form.baseUrl"
+            type="url"
+            :placeholder="isOpenAiCompatibleProvider ? openAiCompatibleBaseUrlPlaceholder : 'https://...'"
+            :required="isOpenAiCompatibleProvider"
+          />
+          <p v-if="selectedPreset?.type === 'ollama'" class="text-xs text-muted-foreground">
+            {{ $t('providers.ollamaUrlHint') }}
+          </p>
+          <p v-else-if="isOpenAiCompatibleProvider" class="text-xs text-muted-foreground">
+            {{ openAiCompatibleBaseUrlHint }}
+          </p>
+        </div>
+
+        <!-- API Key (all non-OAuth providers; optional for providers that don't require it) -->
+        <div v-if="form.providerType && !isOAuthProvider" class="flex flex-col gap-1.5">
+          <Label for="provider-key">
+            {{ $t('providers.apiKey') }}
+            <span v-if="!selectedPreset?.requiresApiKey" class="text-xs font-normal text-muted-foreground">({{ $t('providers.optional') }})</span>
+          </Label>
+          <Input
+            id="provider-key"
+            v-model="form.apiKey"
+            type="password"
+            :placeholder="mode === 'edit' ? $t('providers.apiKeyHint') : $t('providers.apiKeyPlaceholder')"
+          />
+          <p v-if="mode === 'edit'" class="text-xs text-muted-foreground">{{ $t('providers.apiKeyHint') }}</p>
+          <p v-if="!selectedPreset?.requiresApiKey && mode !== 'edit'" class="text-xs text-muted-foreground">{{ $t('providers.apiKeyOptionalHint') }}</p>
         </div>
 
         <!-- Models (checkbox list for providers with pi-ai models) -->
@@ -212,47 +246,83 @@
           </div>
         </div>
 
-        <!-- Model (free text for other unknown providers) -->
-        <div v-else-if="form.providerType && !isOAuthProvider" class="flex flex-col gap-1.5">
-          <Label for="provider-model">{{ $t('providers.model') }}</Label>
-          <Input
-            id="provider-model"
-            v-model="form.defaultModel"
-            type="text"
-            :placeholder="$t('providers.modelPlaceholderCustom')"
-            required
-          />
+        <!-- Models (free text for OpenAI-compatible/custom providers) -->
+        <div v-else-if="isFreeTextModelProvider" class="flex flex-col gap-2">
+          <Label for="provider-model-input">{{ $t('providers.enabledModels') }}</Label>
+          <div class="flex gap-2">
+            <Input
+              id="provider-model-input"
+              v-model="customModelInput"
+              type="text"
+              :placeholder="$t('providers.modelPlaceholderCustom')"
+              class="flex-1 font-mono text-xs"
+              @keydown.enter.prevent="addCustomModel"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              :disabled="!customModelInput.trim()"
+              class="shrink-0"
+              @click="addCustomModel"
+            >
+              {{ $t('providers.addModel') }}
+            </Button>
+            <Button
+              v-if="isOpenAiCompatibleProvider"
+              type="button"
+              variant="outline"
+              :disabled="!form.baseUrl.trim() || customModelsLoading"
+              class="shrink-0"
+              @click="loadCustomModels"
+            >
+              <span
+                v-if="customModelsLoading"
+                class="mr-1.5 h-3 w-3 animate-spin rounded-full border-2 border-primary/30 border-t-primary"
+              />
+              {{ customModelsLoading ? $t('providers.loadingModels') : $t('providers.loadModels') }}
+            </Button>
+          </div>
+          <div v-if="customModelsError" class="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            {{ customModelsError }}
+          </div>
+          <div v-if="customDiscoveredModels.length > 0" class="flex flex-col gap-0 rounded-md border border-border overflow-hidden max-h-52 overflow-y-auto">
+            <label
+              v-for="model in customDiscoveredModels"
+              :key="model.id"
+              :class="[
+                'flex items-center gap-3 px-3 py-2 text-sm cursor-pointer transition-colors hover:bg-accent/50',
+                form.enabledModels.includes(model.id) ? 'bg-accent/30' : '',
+              ]"
+            >
+              <input
+                type="checkbox"
+                :checked="form.enabledModels.includes(model.id)"
+                class="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                @change="toggleCustomModel(model.id)"
+              >
+              <span class="flex-1 truncate font-mono text-xs">{{ model.id }}</span>
+            </label>
+          </div>
+          <div v-if="form.enabledModels.length > 0" class="flex flex-col gap-0 rounded-md border border-border overflow-hidden">
+            <div
+              v-for="modelId in form.enabledModels"
+              :key="modelId"
+              class="flex items-center gap-3 px-3 py-2 text-sm transition-colors hover:bg-accent/40"
+            >
+              <span class="flex-1 truncate font-mono text-xs">{{ modelId }}</span>
+              <button
+                type="button"
+                class="text-xs text-muted-foreground hover:text-destructive disabled:pointer-events-none disabled:opacity-40"
+                :disabled="form.enabledModels.length <= 1"
+                @click="removeCustomModel(modelId)"
+              >
+                {{ $t('providers.removeModel') }}
+              </button>
+            </div>
+          </div>
+          <p class="text-xs text-muted-foreground">{{ $t('providers.customModelsHint') }}</p>
         </div>
 
-        <!-- API Key (all non-OAuth providers; optional for providers that don't require it) -->
-        <div v-if="form.providerType && !isOAuthProvider" class="flex flex-col gap-1.5">
-          <Label for="provider-key">
-            {{ $t('providers.apiKey') }}
-            <span v-if="!selectedPreset?.requiresApiKey" class="text-xs font-normal text-muted-foreground">({{ $t('providers.optional') }})</span>
-          </Label>
-          <Input
-            id="provider-key"
-            v-model="form.apiKey"
-            type="password"
-            :placeholder="mode === 'edit' ? $t('providers.apiKeyHint') : $t('providers.apiKeyPlaceholder')"
-          />
-          <p v-if="mode === 'edit'" class="text-xs text-muted-foreground">{{ $t('providers.apiKeyHint') }}</p>
-          <p v-if="!selectedPreset?.requiresApiKey && mode !== 'edit'" class="text-xs text-muted-foreground">{{ $t('providers.apiKeyOptionalHint') }}</p>
-        </div>
-
-        <!-- Base URL (only for providers with editable URLs) -->
-        <div v-if="form.providerType && !isOAuthProvider && selectedPreset?.urlEditable" class="flex flex-col gap-1.5">
-          <Label for="provider-url">{{ $t('providers.baseUrl') }}</Label>
-          <Input
-            id="provider-url"
-            v-model="form.baseUrl"
-            type="url"
-            placeholder="https://..."
-          />
-          <p v-if="selectedPreset?.type === 'ollama'" class="text-xs text-muted-foreground">
-            {{ $t('providers.ollamaUrlHint') }}
-          </p>
-        </div>
 
         <!-- Degraded Threshold -->
         <div v-if="form.providerType" class="flex flex-col gap-1.5">
@@ -359,6 +429,7 @@
             <Button
               v-if="!isOAuthProvider || mode === 'edit'"
               type="submit"
+              :disabled="!canSubmit"
             >
               {{ $t('providers.save') }}
             </Button>
@@ -413,6 +484,7 @@ const emit = defineEmits<{
 const {
   fetchModels,
   fetchOllamaModels,
+  probeOpenAiCompatibleModels,
   probeOllamaModels,
   pullOllamaModel,
   probeOllamaPull,
@@ -435,6 +507,10 @@ const form = reactive({
 })
 
 const availableModels = ref<AvailableModel[]>([])
+const customModelInput = ref('')
+const customDiscoveredModels = ref<AvailableModel[]>([])
+const customModelsLoading = ref(false)
+const customModelsError = ref<string | null>(null)
 
 /**
  * Compute the disambiguation suffix for a model id (last `-`-separated
@@ -523,6 +599,14 @@ const isOAuthProvider = computed(() => {
   return selectedPreset.value?.authMethod === 'oauth'
 })
 
+const isOpenAiCompatibleProvider = computed(() => {
+  return form.providerType === 'openai-compatible' || selectedPreset.value?.type === 'openai-compatible'
+})
+
+const isFreeTextModelProvider = computed(() => {
+  return Boolean(form.providerType && !hasKnownModels.value && !isOllamaProvider.value && !isOAuthProvider.value)
+})
+
 const supportsTextVerbosity = computed(() => {
   return selectedPreset.value?.apiType === 'openai-codex-responses'
 })
@@ -531,11 +615,46 @@ const canStartOAuth = computed(() => {
   return form.name.trim() && form.providerType && form.defaultModel
 })
 
+const canSubmit = computed(() => {
+  const hasModel = form.defaultModel || (isFreeTextModelProvider.value && customModelInput.value.trim())
+  return Boolean(form.name.trim() && form.providerType && hasModel)
+})
+
+function translatedOr(key: string, fallback: string): string {
+  const translated = t(key)
+  return translated && translated !== key ? translated : fallback
+}
+
+const openAiCompatibleBaseUrlPlaceholder = computed(() => translatedOr(
+  'providers.openaiCompatibleBaseUrlPlaceholder',
+  'https://integrate.api.nvidia.com/v1',
+))
+
+const openAiCompatibleBaseUrlHint = computed(() => translatedOr(
+  'providers.openaiCompatibleBaseUrlHint',
+  'Required. Endpoint root that exposes /v1/chat/completions (e.g. NVIDIA NIM, LM Studio, vLLM).',
+))
+
 const apiKeyPresets = computed(() => {
   return Object.fromEntries(
     Object.entries(props.presets).filter(([, p]) => p.authMethod !== 'oauth')
   )
 })
+
+/**
+ * Resolve the dropdown label for a preset.
+ *
+ * The backend ships English labels (e.g. "OpenAI-compatible (custom)"); for
+ * a select few preset keys we expose a translatable override under
+ * `providers.providerTypes.<key>` so non-English UIs can localize them.
+ * Falls back to the backend label when no translation exists.
+ */
+function presetLabel(key: string, preset: ProviderTypePreset): string {
+  const translationKey = `providers.providerTypes.${key}`
+  const translated = t(translationKey)
+  // vue-i18n returns the key itself when no translation is registered
+  return translated && translated !== translationKey ? translated : preset.label
+}
 
 const oauthPresets = computed(() => {
   return Object.fromEntries(
@@ -554,6 +673,9 @@ watch(() => [props.open, props.provider] as const, ([isOpen, entry]) => {
     form.enabledModels = entry.enabledModels?.length ? [...entry.enabledModels] : [entry.defaultModel]
     form.degradedThresholdMs = entry.degradedThresholdMs ?? 5000
     form.textVerbosity = entry.textVerbosity ?? 'default'
+    customModelInput.value = ''
+    customDiscoveredModels.value = []
+    customModelsError.value = null
     // Reset Ollama state
     resetOllamaState()
     if (entry.providerType === 'ollama') {
@@ -570,7 +692,10 @@ watch(() => [props.open, props.provider] as const, ([isOpen, entry]) => {
     form.enabledModels = []
     form.degradedThresholdMs = 5000
     form.textVerbosity = 'default'
+    customModelInput.value = ''
     availableModels.value = []
+    customDiscoveredModels.value = []
+    customModelsError.value = null
     modelsError.value = null
     resetOllamaState()
     oauthInProgress.value = false
@@ -751,6 +876,64 @@ async function loadModelsForType(providerType: string) {
   }
 }
 
+async function loadCustomModels() {
+  if (!form.baseUrl.trim()) return
+  customModelsLoading.value = true
+  customModelsError.value = null
+  try {
+    customDiscoveredModels.value = await probeOpenAiCompatibleModels(
+      form.baseUrl.trim(),
+      form.apiKey.trim() || undefined,
+      form.providerType,
+    )
+    if (customDiscoveredModels.value.length === 0) {
+      customModelsError.value = t('providers.modelsLoadEmpty')
+    }
+  } catch (err) {
+    customModelsError.value = `${t('providers.modelsLoadError')}: ${(err as Error).message}`
+    customDiscoveredModels.value = []
+  } finally {
+    customModelsLoading.value = false
+  }
+}
+
+function toggleCustomModel(modelId: string) {
+  const idx = form.enabledModels.indexOf(modelId)
+  if (idx >= 0) {
+    removeCustomModel(modelId)
+  } else {
+    form.enabledModels.push(modelId)
+    if (!form.defaultModel) {
+      form.defaultModel = modelId
+    }
+  }
+}
+
+function addCustomModel() {
+  const modelId = customModelInput.value.trim()
+  if (!modelId) return
+  if (!form.enabledModels.includes(modelId)) {
+    form.enabledModels.push(modelId)
+  }
+  // Kept internally for backwards compatibility with the provider contract.
+  // The UI no longer exposes a separate "default" concept for custom models.
+  if (!form.defaultModel) {
+    form.defaultModel = modelId
+  }
+  customModelInput.value = ''
+}
+
+function removeCustomModel(modelId: string) {
+  if (form.enabledModels.length <= 1) return
+  const idx = form.enabledModels.indexOf(modelId)
+  if (idx >= 0) {
+    form.enabledModels.splice(idx, 1)
+  }
+  if (form.defaultModel === modelId) {
+    form.defaultModel = form.enabledModels[0] ?? ''
+  }
+}
+
 function toggleModel(modelId: string) {
   const idx = form.enabledModels.indexOf(modelId)
   if (idx >= 0) {
@@ -776,6 +959,9 @@ function onTypeChange() {
     form.baseUrl = preset.baseUrl
     form.defaultModel = ''
     form.enabledModels = []
+    customModelInput.value = ''
+    customDiscoveredModels.value = []
+    customModelsError.value = null
   }
   oauthError.value = null
   resetOllamaState()
@@ -787,6 +973,10 @@ function onTypeChange() {
 }
 
 function handleSubmit() {
+  if (isFreeTextModelProvider.value && customModelInput.value.trim()) {
+    addCustomModel()
+  }
+
   // Ensure enabledModels always includes the default model
   const enabledModels = form.enabledModels.length > 0 ? [...form.enabledModels] : [form.defaultModel]
   if (!enabledModels.includes(form.defaultModel) && form.defaultModel) {

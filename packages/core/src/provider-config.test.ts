@@ -588,6 +588,118 @@ describe('provider CRUD', () => {
     expect(PROVIDER_TYPE_PRESETS).toHaveProperty('kimi')
     expect(PROVIDER_TYPE_PRESETS).toHaveProperty('minimax')
     expect(PROVIDER_TYPE_PRESETS).toHaveProperty('zai')
+    expect(PROVIDER_TYPE_PRESETS).toHaveProperty('openai-compatible')
+  })
+})
+
+describe('openai-compatible provider type', () => {
+  let tmpDir: string
+  const originalDataDir = process.env.DATA_DIR
+
+  afterEach(() => {
+    if (tmpDir) {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
+    }
+    if (originalDataDir !== undefined) {
+      process.env.DATA_DIR = originalDataDir
+    } else {
+      delete process.env.DATA_DIR
+    }
+  })
+
+  function setupTmp(): void {
+    tmpDir = path.join(os.tmpdir(), `axiom-openai-compat-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+    fs.mkdirSync(path.join(tmpDir, 'config'), { recursive: true })
+    process.env.DATA_DIR = tmpDir
+  }
+
+  it('preset is configured as a generic, BYO-URL, optional-key endpoint', () => {
+    const preset = PROVIDER_TYPE_PRESETS['openai-compatible']
+    expect(preset).toBeDefined()
+    // Must use the OpenAI completions wire format so streaming/tool-calling
+    // is identical to the regular `openai` provider type.
+    expect(preset.apiType).toBe('openai-completions')
+    expect(preset.authMethod).toBe('api-key')
+    // Generic by design: URL is user-supplied, key is optional, and there is
+    // no upstream catalog to fetch a model list from.
+    expect(preset.urlEditable).toBe(true)
+    expect(preset.requiresApiKey).toBe(false)
+    expect(preset.piAiProvider).toBeNull()
+    expect(preset.baseUrl).toBe('')
+    // Label is used for the dropdown entry; the (custom) suffix is the
+    // contract that distinguishes it from the regular `openai` preset.
+    expect(preset.label.toLowerCase()).toContain('custom')
+  })
+
+  it('returns no catalog models (free-text input is expected)', () => {
+    expect(getAvailableModels('openai-compatible')).toEqual([])
+  })
+
+  it('does not advertise textVerbosity support', () => {
+    expect(presetSupportsTextVerbosity('openai-compatible')).toBe(false)
+  })
+
+  it('addProvider persists a user-supplied baseUrl, encrypts the key, and round-trips via decrypted load', () => {
+    setupTmp()
+    const created = addProvider({
+      name: 'NVIDIA NIM',
+      providerType: 'openai-compatible',
+      baseUrl: 'https://integrate.api.nvidia.com/v1',
+      apiKey: 'nvapi-secret-token',
+      defaultModel: 'meta/llama-3.1-405b-instruct',
+    })
+
+    // Stored config should track exactly what the user typed (not a preset URL)
+    expect(created.providerType).toBe('openai-compatible')
+    expect(created.type).toBe('openai-completions')
+    expect(created.provider).toBe('openai-compatible')
+    expect(created.baseUrl).toBe('https://integrate.api.nvidia.com/v1')
+    expect(created.defaultModel).toBe('meta/llama-3.1-405b-instruct')
+
+    // On disk the API key must be encrypted, never plaintext
+    const onDisk = loadProviders().providers[0]!
+    expect(onDisk.apiKey).not.toBe('nvapi-secret-token')
+    expect(onDisk.apiKey.length).toBeGreaterThan(0)
+    expect(decrypt(onDisk.apiKey)).toBe('nvapi-secret-token')
+
+    // The decrypted view (used by the runtime) must give the plaintext back
+    const decryptedView = loadProvidersDecrypted().providers[0]!
+    expect(decryptedView.apiKey).toBe('nvapi-secret-token')
+    // baseUrl is treated as user-editable, so it must NOT be overridden by the empty preset value
+    expect(decryptedView.baseUrl).toBe('https://integrate.api.nvidia.com/v1')
+  })
+
+  it('addProvider works without an API key (e.g. local LM Studio / vLLM)', () => {
+    setupTmp()
+    const created = addProvider({
+      name: 'Local LM Studio',
+      providerType: 'openai-compatible',
+      baseUrl: 'http://localhost:1234/v1',
+      defaultModel: 'qwen2.5-coder-32b',
+    })
+
+    expect(created.apiKey).toBe('')
+    const onDisk = loadProviders().providers[0]!
+    expect(onDisk.apiKey).toBe('')
+  })
+
+  it('buildModel returns a Model whose api/baseUrl come from the user-supplied config', () => {
+    setupTmp()
+    const provider = addProvider({
+      name: 'NIM',
+      providerType: 'openai-compatible',
+      baseUrl: 'https://integrate.api.nvidia.com/v1',
+      apiKey: 'nvapi-key',
+      defaultModel: 'meta/llama-3.1-70b-instruct',
+    })
+    // Use the decrypted record so buildModel sees the user's plaintext key
+    const decrypted = loadProvidersDecrypted().providers.find(p => p.id === provider.id)!
+    const model = buildModel(decrypted)
+
+    expect(model.id).toBe('meta/llama-3.1-70b-instruct')
+    expect(model.api).toBe('openai-completions')
+    expect(model.baseUrl).toBe('https://integrate.api.nvidia.com/v1')
+    expect(model.provider).toBe('openai-compatible')
   })
 })
 

@@ -18,7 +18,7 @@ const CLAUDE_CODE_VERSION = '2.1.96'
  * Supported provider types with presets
  */
 export type ProviderType =
-  | 'openai' | 'anthropic' | 'mistral' | 'ollama' | 'openrouter' | 'deepseek' | 'kimi' | 'minimax' | 'zai' | 'opencode-go'
+  | 'openai' | 'anthropic' | 'mistral' | 'ollama' | 'openrouter' | 'deepseek' | 'kimi' | 'minimax' | 'zai' | 'opencode-go' | 'openai-compatible'
   // Legacy aliases kept for migration
   | 'ollama-local' | 'ollama-cloud'
   | 'openai-codex' | 'github-copilot' | 'google-gemini-cli' | 'google-antigravity' | 'anthropic-oauth'
@@ -29,6 +29,7 @@ export type TextVerbosity = 'low' | 'medium' | 'high'
 export interface ProviderTypePreset {
   type: ProviderType
   label: string
+  description?: string
   apiType: string // pi-ai API type (used for api-key providers)
   providerName: string
   baseUrl: string
@@ -180,6 +181,32 @@ export const PROVIDER_TYPE_PRESETS: Record<ProviderType, ProviderTypePreset> = {
     baseUrl: 'https://opencode.ai/zen/go/v1',
     requiresApiKey: true,
     urlEditable: false,
+    piAiProvider: null,
+    authMethod: 'api-key',
+  },
+  // Generic OpenAI-compatible endpoint. Lets users plug in any service that
+  // speaks the OpenAI chat-completions wire format (NVIDIA NIM, LM Studio,
+  // vLLM, Cloudflare AI Gateway, custom deployments, …) without requiring a
+  // dedicated preset in source. The user supplies a base URL, display name,
+  // optional API key, and free-text model ids.
+  //
+  // Notes:
+  //  - `piAiProvider: null` so we never try to resolve a model catalog from
+  //    pi-ai; the UI renders a free-text model input instead.
+  //  - `requiresApiKey: false` because some self-hosted compatible servers
+  //    (LM Studio, vLLM, local proxies) accept any/no key; users that need
+  //    one (e.g. NVIDIA NIM) just enter it manually.
+  //  - `urlEditable: true` because the entire point of this type is a
+  //    user-supplied endpoint.
+  'openai-compatible': {
+    type: 'openai-compatible',
+    label: 'OpenAI-compatible (custom)',
+    description: 'Any OpenAI-compatible API (NVIDIA NIM, LM Studio, vLLM, Cloudflare AI Gateway, …)',
+    apiType: 'openai-completions',
+    providerName: 'openai-compatible',
+    baseUrl: '',
+    requiresApiKey: false,
+    urlEditable: true,
     piAiProvider: null,
     authMethod: 'api-key',
   },

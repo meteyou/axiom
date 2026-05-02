@@ -100,24 +100,25 @@ Opened by **Add Provider** or by clicking a provider header row. The form is sma
 
 ### Common fields
 
+The dialog keeps connection details first, then model selection, then advanced health settings:
+
 | Field                  | Notes                                                                                                |
 |------------------------|------------------------------------------------------------------------------------------------------|
 | **Name**               | Free text, your label for this provider — appears in the table, in `<task_injection>` blocks, on the Dashboard. |
 | **Type**               | Dropdown grouped into two sections: **API Key** (OpenAI, Anthropic, Mistral, OpenRouter, DeepSeek, Kimi / Moonshot, MiniMax, Ollama, generic OpenAI-compatible, …) and **Subscription / OAuth** (Anthropic Claude Pro/Max, OpenAI ChatGPT Plus/Pro, Google Antigravity Free, …). |
-| **Degraded Threshold** | Latency in ms above which the provider is marked *Degraded* in health checks. Default `5000`. Lower = more sensitive. |
+| **Base URL**           | Shown directly after Type when the preset has an editable URL (Ollama, generic OpenAI-compatible, …). |
+| **API Key**            | Shown after Base URL for API-key providers. Required for most hosted presets, optional for local/custom providers that do not need auth. |
+| **Enabled Models**     | Model selector or model-id entry for this provider. The exact control depends on the provider type. |
+| **Degraded Threshold** | Last field in the form. Latency in ms above which the provider is marked *Degraded* in health checks. Default `5000`. Lower = more sensitive. |
 | **Text verbosity**     | Shown for supported OpenAI Codex/Responses-style providers. `Default` leaves the value unset so pi-ai's provider default applies; `Low`, `Medium`, `High` override response verbosity. |
 
 ### API-key providers
 
-When you pick a type from the *API Key* group, three additional fields surface depending on what that preset declares:
+When you pick a type from the *API Key* group, the fields appear in this order:
 
-#### Models
+#### Base URL
 
-The model selector adapts to the preset:
-
-- **Curated providers (OpenAI, Anthropic, Mistral, OpenRouter, DeepSeek, Kimi / Moonshot, MiniMax, …)** — a checkbox list of known models. Tick the ones you want to enable; the first enabled becomes the default.
-- **Generic OpenAI-compatible** — a free-text input for the default model id (e.g. `google/gemini-2.5-pro`, `kimi-k2.6`).
-- **Ollama** — a separate panel with its own controls (see below).
+Only visible for presets where the URL is editable (Ollama, generic OpenAI-compatible, …). For Ollama the placeholder shows the default `http://localhost:11434/v1`.
 
 #### API Key
 
@@ -125,9 +126,71 @@ A password field. Required for most presets, optional for ones that don't strict
 
 Stored encrypted at rest in `/data/config/providers.json` using `ENCRYPTION_KEY`. See [Configuration](../guide/configuration#why-encryption-key-matters).
 
-#### Base URL
+#### Enabled Models
 
-Only visible for presets where the URL is editable (Ollama, generic OpenAI-compatible, …). For Ollama the placeholder shows the default `http://localhost:11434/v1`.
+The model selector adapts to the preset:
+
+- **Curated providers (OpenAI, Anthropic, Mistral, OpenRouter, DeepSeek, Kimi / Moonshot, MiniMax, …)** — a checkbox list of known models. Tick the ones you want to enable; the first enabled becomes the provider's internal default/fallback model.
+- **Generic OpenAI-compatible** — free-text model-id entry plus an optional **Load models** button for providers that implement OpenAI's `/models` endpoint.
+- **Ollama** — a separate panel with its own controls (see below).
+
+#### Degraded Threshold
+
+Always shown last once a provider type is selected. It controls the latency threshold used by health checks.
+
+### Custom OpenAI-compatible providers
+
+Pick **OpenAI-compatible (custom)** from the *API Key* group whenever you want to talk to a service that exposes the OpenAI `POST /v1/chat/completions` wire format but doesn't have a dedicated preset in Axiom — for example NVIDIA NIM (`build.nvidia.com`), self-hosted vLLM, LM Studio, llama.cpp's OpenAI server, Cloudflare AI Gateway proxies, or in-house deployments.
+
+Unlike the curated presets, this type carries no model catalog and no fixed endpoint:
+
+| Field              | What to enter                                                                                              |
+|--------------------|------------------------------------------------------------------------------------------------------------|
+| **Name**           | Any label (e.g. `NVIDIA NIM`, `Local LM Studio`).                                                          |
+| **Type**           | `OpenAI-compatible (custom)`.                                                                              |
+| **Base URL**       | The endpoint root that exposes `/v1/chat/completions`. Required.                                           |
+| **API Key**        | Optional. Leave blank for unauthenticated local servers; paste the upstream key for hosted services.       |
+| **Enabled Models** | Add one or more exact model ids the upstream API expects (e.g. `meta/llama-3.1-405b-instruct`, `qwen2.5-coder-32b`). Use **Load models** when the provider supports OpenAI's `/models` endpoint. No prefix is stripped. |
+| **Degraded Threshold** | Optional latency threshold override; defaults to `5000` ms.                                           |
+
+The provider is wired through pi-ai's `openai-completions` API, so streaming, tool-calling, and reasoning capture work the same way they do for the regular `openai` preset.
+
+#### Example: NVIDIA NIM (`build.nvidia.com`)
+
+1. Grab a key from <https://build.nvidia.com> (header `Authorization: Bearer nvapi-…`).
+2. **Add Provider** → pick **OpenAI-compatible (custom)**.
+3. Fill the form:
+   - **Name** → `NVIDIA NIM`
+   - **Base URL** → `https://integrate.api.nvidia.com/v1`
+   - **API Key** → `nvapi-…`
+   - **Enabled Models** → click **Load models** or add ids manually, e.g. `mistralai/mistral-medium-3.5-128b`
+4. **Save**, then hit **Test** on the model row to confirm the endpoint and key are good.
+
+##### Possible NVIDIA NIM chat models (as of 05/2026)
+
+NVIDIA's catalog changes over time and includes non-chat models (embedding, rerank, image, speech, safety, parsing). Only add models that successfully pass **Test Connection** in Axiom.
+
+> **Current reliability note (05/2026):** NVIDIA NIM's hosted/free endpoints can be very slow or intermittently fail with API errors/timeouts. The service appears overloaded at times. Treat these models as experimental until repeated **Test Connection** runs and real chat usage are stable for your account/region.
+
+Models that fit Axiom's OpenAI-compatible chat-completions integration:
+
+- `mistralai/mistral-medium-3.5-128b`
+- `google/gemma-4-31b-it`
+- `moonshotai/kimi-k2.6`
+- `minimaxai/minimax-m2.7`
+
+#### Example: Local LM Studio / vLLM
+
+1. Start LM Studio's OpenAI server (defaults to `http://localhost:1234/v1`) or a `vllm serve …` instance.
+2. **Add Provider** → **OpenAI-compatible (custom)**.
+3. Fill in:
+   - **Name** → `LM Studio`
+   - **Base URL** → `http://localhost:1234/v1`
+   - **API Key** → leave blank (LM Studio ignores it)
+   - **Enabled Models** → click **Load models** or add the loaded model id manually, e.g. `qwen2.5-coder-32b-instruct`
+4. **Save** → **Test**.
+
+If the upstream service requires a non-standard wire format (Anthropic-Messages, Google Gemini, …) use the matching dedicated preset instead — this type is strictly for OpenAI chat-completions semantics.
 
 ### Ollama-specific controls
 

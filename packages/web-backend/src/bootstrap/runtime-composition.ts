@@ -1165,9 +1165,10 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
 
       await restartTelegramBot()
 
-      logger.log(`[axiom] Agent core initialized with provider: ${provider.name} (${provider.defaultModel})`)
+      logger.log(`[axiom] Agent core initialized with provider: ${provider.name} (${activeModelId ?? provider.defaultModel})`)
       if (fallbackProvider) {
-        logger.log(`[axiom] Fallback provider configured: ${fallbackProvider.name} (${fallbackProvider.defaultModel})`)
+        const fallbackModelId = getFallbackModelId()
+        logger.log(`[axiom] Fallback provider configured: ${fallbackProvider.name} (${fallbackModelId ?? fallbackProvider.defaultModel})`)
       }
     } catch (err) {
       logger.error('[axiom] Failed to initialize agent core:', err)

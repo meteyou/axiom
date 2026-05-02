@@ -28,6 +28,9 @@ export interface ProviderContract {
 export interface ProviderTypePresetContract {
   type: ProviderType | string
   label: string
+  /** Optional human-readable hint shown alongside the label (e.g. for
+   *  the generic OpenAI-compatible preset to explain what it covers). */
+  description?: string
   apiType: string
   providerName: string
   baseUrl: string

@@ -1,4 +1,5 @@
 import crypto from 'node:crypto'
+import { URL } from 'node:url'
 import {
   addOAuthProvider,
   addProvider as addProviderConfig,
@@ -70,6 +71,7 @@ export interface ProvidersService {
     modelId: string
   }>
   activateProvider: (id: string, payload: ProviderModelSelectionPayloadContract) => { activeProvider: string; activeModel: string | null }
+  probeOpenAiCompatibleModels: (baseUrl: string, apiKey?: string) => Promise<AvailableModel[]>
   probeOllamaModels: (baseUrl: string) => Promise<OllamaTagsResponse>
   listOllamaModels: (providerId: string) => Promise<OllamaTagsResponse>
   requestOllamaProbePull: (baseUrl: string, modelName: string, signal: AbortSignal) => Promise<Response>
@@ -388,7 +390,13 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
     const testProviderConfig = modelId ? { ...provider, defaultModel: modelId } : provider
     const testModelId = modelId ?? provider.defaultModel
 
-    const result = await performProviderHealthCheck(testProviderConfig)
+    const result = await performProviderHealthCheck(testProviderConfig, {
+      // Hosted "free" endpoints (notably NVIDIA NIM partner/free models) can
+      // cold-start or queue for longer than the regular health-monitor timeout.
+      // Manual tests should answer "does this model work?" rather than marking
+      // slow-but-valid models as broken after 15s.
+      timeoutMs: 60_000,
+    })
     const status = result.status === 'down' ? 'error' : 'connected'
     updateProviderStatus(id, status, modelId)
 
@@ -439,6 +447,10 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
       }
       throw new ProvidersValidationError(message)
     }
+  }
+
+  async function probeOpenAiCompatibleModels(baseUrl: string, apiKey?: string): Promise<AvailableModel[]> {
+    return probeOpenAiCompatibleModelsFromBase(baseUrl, apiKey)
   }
 
   async function probeOllamaModels(baseUrl: string): Promise<OllamaTagsResponse> {
@@ -518,12 +530,53 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
     deleteProvider,
     testProvider,
     activateProvider,
+    probeOpenAiCompatibleModels,
     probeOllamaModels,
     listOllamaModels,
     requestOllamaProbePull,
     requestOllamaPull,
     deleteOllamaModel,
   }
+}
+
+async function probeOpenAiCompatibleModelsFromBase(baseUrl: string, apiKey?: string): Promise<AvailableModel[]> {
+  validateOpenAiCompatibleUrl(baseUrl)
+
+  const urls = buildOpenAiModelsProbeUrls(baseUrl)
+  let lastError = 'No /models endpoint responded successfully'
+
+  for (const url of urls) {
+    try {
+      const response = await fetch(url, {
+        headers: {
+          Accept: 'application/json',
+          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+        },
+        signal: AbortSignal.timeout(15_000),
+      })
+
+      if (!response.ok) {
+        lastError = `HTTP ${response.status}`
+        continue
+      }
+
+      const body = await response.json() as { data?: Array<{ id?: unknown; object?: unknown }> }
+      const seen = new Set<string>()
+      return (body.data ?? [])
+        .map(entry => typeof entry.id === 'string' ? entry.id.trim() : '')
+        .filter((id) => {
+          if (!id || seen.has(id)) return false
+          seen.add(id)
+          return true
+        })
+        .sort((a, b) => a.localeCompare(b))
+        .map(id => ({ id, name: id }))
+    } catch (err) {
+      lastError = (err as Error).message
+    }
+  }
+
+  throw new ProvidersExternalError(lastError)
 }
 
 async function requestOllamaPullFromBase(
@@ -544,6 +597,28 @@ async function requestOllamaPullFromBase(
   }
 
   return pullResponse
+}
+
+function validateOpenAiCompatibleUrl(urlStr: string): void {
+  let parsed: URL
+  try {
+    parsed = new URL(urlStr)
+  } catch {
+    throw new ProvidersValidationError('Invalid base URL')
+  }
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new ProvidersValidationError('Only http/https URLs are allowed')
+  }
+}
+
+function buildOpenAiModelsProbeUrls(baseUrl: string): string[] {
+  const normalized = baseUrl.replace(/\/+$/, '')
+  const candidates = [`${normalized}/models`]
+  if (!/\/v1$/i.test(normalized)) {
+    candidates.push(`${normalized}/v1/models`)
+  }
+  return [...new Set(candidates)]
 }
 
 function requireProvider(providerId: string): ProviderConfig {
