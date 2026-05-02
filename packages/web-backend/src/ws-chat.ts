@@ -1,8 +1,14 @@
 import { WebSocketServer, WebSocket } from 'ws'
 import type { Server } from 'node:http'
-import type { Database, UploadDescriptor } from '@axiom/core'
+import type { Database, UploadDescriptor, SlashCommandRegistry } from '@axiom/core'
 import type { AgentCore, ResponseChunk } from '@axiom/core'
-import { extractUploadsFromToolResult, serializeUploadsMetadata } from '@axiom/core'
+import {
+  extractUploadsFromToolResult,
+  serializeUploadsMetadata,
+  TaskStore,
+  ScheduledTaskStore,
+} from '@axiom/core'
+import { buildWebChatSlashCommandRegistry } from './slash-commands.js'
 import { verifyToken } from './auth.js'
 import type { JwtPayload } from './auth.js'
 import { URL } from 'node:url'
@@ -110,6 +116,13 @@ export function setupWebSocketChat(
   const resolveAgentCore = typeof getAgentCore === 'function' ? getAgentCore : () => getAgentCore
   const wss = new WebSocketServer({ noServer: true })
 
+  // Shared slash-command registry. Surface-owned commands (`/new`, `/stop`)
+  // are registered as metadata-only so they appear in `/help` even though
+  // their behaviour stays inline below.
+  const slashRegistry: SlashCommandRegistry = buildWebChatSlashCommandRegistry()
+  const taskStore = new TaskStore(db)
+  const scheduledTaskStore = new ScheduledTaskStore(db)
+
   // Handle upgrade requests for /ws/chat path
   server.on('upgrade', (request, socket, head) => {
     const pathname = new URL(request.url ?? '', 'http://localhost').pathname
@@ -207,7 +220,46 @@ export function setupWebSocketChat(
 
       // Handle commands
       if (parsed.type === 'command' || parsed.content.startsWith('/')) {
-        const command = parsed.content.replace(/^\//, '').trim().toLowerCase()
+        // Bare `/`-prefixed input goes through the shared slash-command registry.
+        // Surface-owned commands (`/new`, `/stop`/`/kill`) keep their custom
+        // behaviour because they need to abort an active stream / reset session
+        // state on this transport — they are registered as metadata-only so
+        // they still appear in `/help` and the Telegram menu.
+        const dispatch = await slashRegistry.dispatch(parsed.content, {
+          surface: 'web',
+          userId: String(currentUser.userId),
+          registry: slashRegistry,
+          db,
+          taskStore,
+          scheduledTaskStore,
+        })
+        if (dispatch.kind === 'handled') {
+          if (dispatch.reply !== null) {
+            sendMessage(ws, { type: 'system', text: dispatch.reply })
+          }
+          return
+        }
+        if (dispatch.kind === 'not_found') {
+          sendMessage(ws, {
+            type: 'system',
+            text: `Unknown command: /${dispatch.name}. Type /help for a list of commands.`,
+          })
+          return
+        }
+        if (dispatch.kind === 'wrong_surface') {
+          sendMessage(ws, {
+            type: 'system',
+            text: `/${dispatch.command.name} is not available on the web chat.`,
+          })
+          return
+        }
+        // dispatch.kind === 'external' or 'no_command': fall through to legacy handling.
+        // For 'external' we trust the registry's resolved command name; for 'no_command'
+        // (e.g. `//foo` literal escape, `/foo-bar` invalid name) we mirror the original
+        // pre-registry regex so existing behaviour is preserved exactly.
+        const command = dispatch.kind === 'external'
+          ? dispatch.command.name
+          : parsed.content.replace(/^\//, '').trim().toLowerCase()
 
         if (command === 'new') {
           // Abort any active stream

@@ -101,6 +101,27 @@ Pending files appear as chips above the composer. Click `×` on a chip to remove
 
 Where attachments end up on the backend, how long they're kept, and the upload limit live in [Settings → Agent → Upload retention](../settings/agent#upload-retention).
 
+## Slash commands
+
+Messages that start with `/` are intercepted by the chat client and answered
+locally instead of being forwarded to the LLM. The same vocabulary is shared
+with the [Telegram bot](../guide/telegram#bot-commands), so muscle memory
+carries between surfaces.
+
+| Command     | What it does                                                                |
+|-------------|-----------------------------------------------------------------------------|
+| `/help`     | List all available slash commands.                                          |
+| `/new`      | Summarize the current session, persist it, and start a fresh conversation.  |
+| `/stop`     | Abort the current agent turn and clear queued work. (alias `/kill`)         |
+| `/tasks`    | Show running and recent background tasks (read-only).                       |
+| `/cronjobs` | Show configured cronjobs and their next run time. (alias `/cron`)           |
+| `/settings` | Show the active provider and model. (alias `/model`)                        |
+
+Unknown commands respond with a hint pointing at `/help` and are not sent to
+the agent. To send a literal message that starts with a slash to the agent
+anyway, prefix it with a second slash — inputs starting with `//` bypass the
+slash-command interception and are delivered to the agent verbatim.
+
 ## Reconnecting
 
 If the WebSocket drops (network blip, server restart), the connection dot turns amber and the client reconnects automatically with backoff. Messages you sent before the drop arrive when the socket is back. The Send button stays disabled while disconnected.

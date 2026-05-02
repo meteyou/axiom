@@ -2,8 +2,21 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { Bot, GrammyError, HttpError, InputFile } from 'grammy'
 import type { Context } from 'grammy'
-import type { AgentCore, Database } from '@axiom/core'
-import { loadConfig, saveUpload, serializeUploadsMetadata, parseUploadsMetadata, loadSttSettings, transcribeAudio, extractUploadsFromToolResult, synthesizeTts } from '@axiom/core'
+import type { AgentCore, Database, SlashCommandRegistry } from '@axiom/core'
+import {
+  loadConfig,
+  saveUpload,
+  serializeUploadsMetadata,
+  parseUploadsMetadata,
+  loadSttSettings,
+  transcribeAudio,
+  extractUploadsFromToolResult,
+  synthesizeTts,
+  SlashCommandRegistry as SlashCommandRegistryCtor,
+  registerBuiltInSlashCommands,
+  TaskStore,
+  ScheduledTaskStore,
+} from '@axiom/core'
 import type { UploadDescriptor } from '@axiom/core'
 
 /**
@@ -326,6 +339,9 @@ export class TelegramBot {
   private chatStates = new Map<string, ChatState>()
   private onQueueDepthChanged?: (queueDepth: number) => void
   private onChatEvent?: (event: TelegramChatEvent) => void
+  private slashRegistry: SlashCommandRegistry
+  private taskStore: TaskStore | null
+  private scheduledTaskStore: ScheduledTaskStore | null
 
   constructor(options: TelegramBotOptions) {
     this.agentCore = options.agentCore
@@ -333,6 +349,9 @@ export class TelegramBot {
     this.config = options.config ?? loadTelegramRuntimeConfig()
     this.onQueueDepthChanged = options.onQueueDepthChanged
     this.onChatEvent = options.onChatEvent
+    this.slashRegistry = buildTelegramSlashCommandRegistry()
+    this.taskStore = this.db ? new TaskStore(this.db) : null
+    this.scheduledTaskStore = this.db ? new ScheduledTaskStore(this.db) : null
 
     if (!this.config.botToken) {
       throw new Error(
@@ -400,11 +419,7 @@ export class TelegramBot {
       const welcomeText = [
         '👋 *Welcome to Axiom!*',
         '',
-        'I\'m your AI assistant. You can chat with me directly or use these commands:',
-        '',
-        '`/new` — Start a fresh conversation (summarizes & resets current session)',
-        '`/start` — Show this welcome message',
-        '`/stop` — Abort the current task and clear queued work',
+        'I\'m your AI assistant. You can chat with me directly or type /help to see all available commands.',
         '',
         'Just send me a message to get started!',
       ].join('\n')
@@ -438,6 +453,23 @@ export class TelegramBot {
 
     this.bot.command('kill', async (ctx) => {
       await this.handleKillSwitch(ctx)
+    })
+
+    // Read-only commands routed through the shared slash-command registry.
+    this.bot.command('help', async (ctx) => {
+      await this.handleRegistryCommand(ctx, 'help')
+    })
+    this.bot.command('tasks', async (ctx) => {
+      await this.handleRegistryCommand(ctx, 'tasks')
+    })
+    this.bot.command('cronjobs', async (ctx) => {
+      await this.handleRegistryCommand(ctx, 'cronjobs')
+    })
+    this.bot.command('settings', async (ctx) => {
+      await this.handleRegistryCommand(ctx, 'settings')
+    })
+    this.bot.command('model', async (ctx) => {
+      await this.handleRegistryCommand(ctx, 'model')
     })
 
     this.bot.on('message:text', async (ctx) => {
@@ -1114,6 +1146,40 @@ export class TelegramBot {
     }
   }
 
+  /**
+   * Dispatch a typed slash command through the shared registry and reply with
+   * its rendered markdown text. Used for read-only commands (/help, /tasks,
+   * /cronjobs, /settings, /model).
+   */
+  private async handleRegistryCommand(ctx: Context, name: string): Promise<void> {
+    if (!await this.checkAuthorized(ctx)) return
+    const text = ctx.message?.text ?? `/${name}`
+    const userId = this.resolveUserId(ctx)
+    const result = await this.slashRegistry.dispatch(text, {
+      surface: 'telegram',
+      userId,
+      registry: this.slashRegistry,
+      db: this.db ?? undefined,
+      taskStore: this.taskStore ?? undefined,
+      scheduledTaskStore: this.scheduledTaskStore ?? undefined,
+    })
+    if (result.kind === 'handled') {
+      if (result.reply) await ctx.reply(result.reply)
+      return
+    }
+    if (result.kind === 'not_found') {
+      await ctx.reply(`Unknown command: /${result.name}. Try /help.`)
+      return
+    }
+    if (result.kind === 'wrong_surface') {
+      await ctx.reply(`/${result.command.name} is not available on Telegram.`)
+      return
+    }
+    // 'external' or 'no_command' should not happen here since we route only
+    // registered commands, but fall back gracefully.
+    await ctx.reply(`Cannot handle /${name}.`)
+  }
+
   private async handleKillSwitch(ctx: Context): Promise<void> {
     const chatKey = getChatKey(ctx)
     const state = this.getOrCreateChatState(chatKey)
@@ -1250,6 +1316,20 @@ export class TelegramBot {
       // Verify the bot token by fetching bot info
       const me = await this.bot.api.getMe()
       console.log(`✅ Telegram bot connected: @${me.username} (${me.first_name})`)
+
+      // Publish the slash-command menu to Telegram so users see autocomplete
+      // suggestions. Telegram limits each command name to 1–32 chars and the
+      // total list to 100 entries, with a description of up to 256 chars
+      // (BotCommand). Failures are non-fatal — the bot still works without
+      // the menu.
+      try {
+        const menu = this.slashRegistry
+          .list('telegram')
+          .map((c) => ({ command: c.name, description: c.description.slice(0, 256) }))
+        if (menu.length > 0) await this.bot.api.setMyCommands(menu)
+      } catch (err) {
+        console.warn('[telegram] setMyCommands failed (menu may be missing):', (err as Error).message)
+      }
 
       // Start polling
       this.running = true
@@ -1456,4 +1536,32 @@ export function createTelegramBot(
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+/**
+ * Build the slash-command registry used by the Telegram surface.
+ * Adds metadata-only entries for surface-owned commands (`/start`, `/new`,
+ * `/stop`, `/kill`) so they appear in `/help` and the Telegram command menu
+ * even though their behaviour stays inline in `setupHandlers()`.
+ */
+export function buildTelegramSlashCommandRegistry(): SlashCommandRegistry {
+  const registry = new SlashCommandRegistryCtor()
+  registerBuiltInSlashCommands(registry)
+  registry.register({
+    name: 'start',
+    description: 'Welcome message and bot introduction.',
+    surfaces: ['telegram'],
+  })
+  registry.register({
+    name: 'new',
+    description: 'Summarize the current session and start a fresh conversation.',
+    surfaces: ['web', 'telegram'],
+  })
+  registry.register({
+    name: 'stop',
+    aliases: ['kill'],
+    description: 'Abort the current agent turn and clear queued work.',
+    surfaces: ['web', 'telegram'],
+  })
+  return registry
 }

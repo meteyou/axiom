@@ -55,22 +55,26 @@ vi.mock('grammy', () => {
 })
 
 // Mock @axiom/core
-vi.mock('@axiom/core', () => ({
-  loadConfig: vi.fn((filename: string) => {
-    if (filename === 'settings.json') {
-      return { batchingDelayMs: 2500 }
-    }
+vi.mock('@axiom/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@axiom/core')>()
+  return {
+    ...actual,
+    loadConfig: vi.fn((filename: string) => {
+      if (filename === 'settings.json') {
+        return { batchingDelayMs: 2500 }
+      }
 
-    return {
-      enabled: true,
-      botToken: 'test-token-123',
-      adminUserIds: [],
-      pollingMode: true,
-      webhookUrl: '',
-      batchingDelayMs: 2500,
-    }
-  }),
-}))
+      return {
+        enabled: true,
+        botToken: 'test-token-123',
+        adminUserIds: [],
+        pollingMode: true,
+        webhookUrl: '',
+        batchingDelayMs: 2500,
+      }
+    }),
+  }
+})
 
 import { TelegramBot, createTelegramBot, extractReplyContext, buildAgentMessage } from './bot.js'
 import type { TelegramConfig, TelegramChatEvent } from './bot.js'
@@ -216,7 +220,7 @@ describe('TelegramBot', () => {
   })
 
   describe('/start command', () => {
-    it('sends welcome message', async () => {
+    it('sends welcome message that points at /help', async () => {
       const bot = new TelegramBot({ agentCore, config: defaultConfig })
       const underlying = bot.getBot() as unknown as MockBotInternals
       const handler = underlying._commandHandlers.get('start')!
@@ -227,9 +231,48 @@ describe('TelegramBot', () => {
       expect(ctx.reply).toHaveBeenCalledTimes(1)
       const msg = ctx.reply.mock.calls[0][0] as string
       expect(msg).toContain('Welcome to Axiom')
+      expect(msg).toContain('/help')
+    })
+  })
+
+  describe('/help command', () => {
+    it('lists all available slash commands', async () => {
+      const bot = new TelegramBot({ agentCore, config: defaultConfig })
+      const underlying = bot.getBot() as unknown as MockBotInternals
+      const handler = underlying._commandHandlers.get('help')!
+
+      const ctx = createMockContext()
+      ctx.message = { text: '/help' }
+      await handler(ctx)
+
+      expect(ctx.reply).toHaveBeenCalledTimes(1)
+      const msg = ctx.reply.mock.calls[0][0] as string
+      expect(msg).toContain('/help')
       expect(msg).toContain('/new')
-      expect(msg).toContain('/start')
       expect(msg).toContain('/stop')
+      expect(msg).toContain('/tasks')
+      expect(msg).toContain('/cronjobs')
+      expect(msg).toContain('/settings')
+    })
+  })
+
+  describe('/settings command', () => {
+    it('replies with active provider/model summary', async () => {
+      const bot = new TelegramBot({ agentCore, config: defaultConfig })
+      const underlying = bot.getBot() as unknown as MockBotInternals
+      const handler = underlying._commandHandlers.get('settings')!
+
+      const ctx = createMockContext()
+      ctx.message = { text: '/settings' }
+      await handler(ctx)
+
+      expect(ctx.reply).toHaveBeenCalledTimes(1)
+      const msg = ctx.reply.mock.calls[0][0] as string
+      // /settings reads provider config from disk; in the test env it falls
+      // back to the “no active provider” branch, but the reply is still
+      // produced and human-readable.
+      expect(typeof msg).toBe('string')
+      expect(msg.length).toBeGreaterThan(0)
     })
   })
 
