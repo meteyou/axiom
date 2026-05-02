@@ -23,6 +23,8 @@ let port: number
 let baseUrl: string
 let tempDataDir: string
 let previousDataDir: string | undefined
+let previousAdminUsername: string | undefined
+let previousAdminPassword: string | undefined
 const setTimeoutMinutes = vi.fn()
 const refreshSystemPrompt = vi.fn()
 const setThinkingLevel = vi.fn()
@@ -42,6 +44,15 @@ beforeAll(async () => {
   previousDataDir = process.env.DATA_DIR
   tempDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'axiom-web-backend-'))
   process.env.DATA_DIR = tempDataDir
+
+  // Tests assume the default admin credentials (admin/admin) created by
+  // ensureAdminUser(). Snapshot and clear any inherited ADMIN_USERNAME /
+  // ADMIN_PASSWORD from the host environment so they don't leak into the
+  // bcrypt hash used during admin provisioning.
+  previousAdminUsername = process.env.ADMIN_USERNAME
+  previousAdminPassword = process.env.ADMIN_PASSWORD
+  delete process.env.ADMIN_USERNAME
+  delete process.env.ADMIN_PASSWORD
 
   db = initDatabase(':memory:')
   const mockAgentCore = {
@@ -99,6 +110,16 @@ afterAll(async () => {
     delete process.env.DATA_DIR
   } else {
     process.env.DATA_DIR = previousDataDir
+  }
+  if (previousAdminUsername === undefined) {
+    delete process.env.ADMIN_USERNAME
+  } else {
+    process.env.ADMIN_USERNAME = previousAdminUsername
+  }
+  if (previousAdminPassword === undefined) {
+    delete process.env.ADMIN_PASSWORD
+  } else {
+    process.env.ADMIN_PASSWORD = previousAdminPassword
   }
 })
 
