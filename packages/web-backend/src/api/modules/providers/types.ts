@@ -19,6 +19,7 @@ export interface PendingOAuthLogin {
   name: string
   defaultModel: string
   textVerbosity?: 'low' | 'medium' | 'high' | null
+  transport?: 'sse' | 'websocket' | 'websocket-cached' | 'auto' | null
   authUrl?: string
   instructions?: string
   credentials?: OAuthCredentials

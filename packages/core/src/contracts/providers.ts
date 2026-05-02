@@ -3,6 +3,7 @@ import type { ProviderType } from '../provider-config.js'
 export type ProviderStatusContract = 'connected' | 'error' | 'untested'
 export type ProviderAuthMethodContract = 'api-key' | 'oauth'
 export type ProviderTextVerbosityContract = 'low' | 'medium' | 'high'
+export type ProviderTransportContract = 'sse' | 'websocket' | 'websocket-cached' | 'auto'
 
 export interface ProviderContract {
   id: string
@@ -17,6 +18,7 @@ export interface ProviderContract {
   enabledModels?: string[]
   degradedThresholdMs?: number
   textVerbosity?: ProviderTextVerbosityContract
+  transport?: ProviderTransportContract
   status?: ProviderStatusContract
   modelStatuses?: Record<string, ProviderStatusContract>
   authMethod?: ProviderAuthMethodContract
@@ -120,6 +122,7 @@ export interface ProviderCreatePayloadContract {
   enabledModels?: string[]
   degradedThresholdMs?: number
   textVerbosity?: ProviderTextVerbosityContract | null
+  transport?: ProviderTransportContract | null
 }
 
 export interface ProviderUpdatePayloadContract {
@@ -131,6 +134,7 @@ export interface ProviderUpdatePayloadContract {
   enabledModels?: string[]
   degradedThresholdMs?: number
   textVerbosity?: ProviderTextVerbosityContract | null
+  transport?: ProviderTransportContract | null
 }
 
 export interface ProviderFallbackUpdatePayloadContract {
@@ -144,6 +148,7 @@ export interface ProviderOAuthLoginStartPayloadContract {
   defaultModel: string
   providerId?: string
   textVerbosity?: ProviderTextVerbosityContract | null
+  transport?: ProviderTransportContract | null
 }
 
 export interface ProviderOAuthCodePayloadContract {

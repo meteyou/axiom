@@ -60,10 +60,42 @@ describe('providers schema', () => {
         defaultModel: 'gpt-4o-mini',
         providerId: undefined,
         textVerbosity: undefined,
+        transport: undefined,
       },
     })
 
     expect(parseOAuthCodePayload({})).toEqual({ ok: false, error: 'Code is required' })
+  })
+
+  it('parses transport field on create payload (sse / websocket / websocket-cached / auto / null)', () => {
+    const presets = PROVIDER_TYPE_PRESETS as unknown as typeof PROVIDER_TYPE_PRESETS
+    const base = { name: 'codex', providerType: 'openai-codex', defaultModel: 'gpt-5-codex' }
+
+    for (const value of ['sse', 'websocket', 'websocket-cached', 'auto'] as const) {
+      const result = parseProviderCreatePayload({ ...base, transport: value }, presets)
+      expect(result.ok).toBe(true)
+      if (result.ok) expect(result.value.transport).toBe(value)
+    }
+
+    // null / empty string → explicit clear
+    const cleared = parseProviderCreatePayload({ ...base, transport: null }, presets)
+    expect(cleared.ok).toBe(true)
+    if (cleared.ok) expect(cleared.value.transport).toBeNull()
+
+    // unknown values are dropped (undefined), not echoed back unchecked
+    const garbage = parseProviderCreatePayload({ ...base, transport: 'http2' }, presets)
+    expect(garbage.ok).toBe(true)
+    if (garbage.ok) expect(garbage.value.transport).toBeUndefined()
+  })
+
+  it('parses transport field on update payload', () => {
+    const updated = parseProviderUpdatePayload({ transport: 'websocket-cached' })
+    expect(updated.ok).toBe(true)
+    if (updated.ok) expect(updated.value.transport).toBe('websocket-cached')
+
+    const cleared = parseProviderUpdatePayload({ transport: null })
+    expect(cleared.ok).toBe(true)
+    if (cleared.ok) expect(cleared.value.transport).toBeNull()
   })
 
   it('validates ollama probe payload and url format', () => {

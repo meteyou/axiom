@@ -458,6 +458,8 @@ export class TaskRunner {
           thinkingLevel: this.resolveBackgroundThinkingLevel(),
         },
         streamFn: buildStreamFn(provider),
+        ...(provider.transport && provider.transport !== 'sse'
+          && { transport: provider.transport }),
         getApiKey: () => apiKey,
       })
 
@@ -872,6 +874,8 @@ export class TaskRunner {
           thinkingLevel: this.resolveBackgroundThinkingLevel(),
         },
         streamFn: buildStreamFn(provider),
+        ...(provider.transport && provider.transport !== 'sse'
+          && { transport: provider.transport }),
         getApiKey: () => apiKey,
       })
 

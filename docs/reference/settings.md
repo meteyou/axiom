@@ -357,11 +357,38 @@ LLM provider catalog. UI-managed via the [Providers page](../web-ui/providers); 
 | `enabledModels`          | `string[]?`                                     | Model ids the user has enabled for this provider.                                              |
 | `degradedThresholdMs`    | `number?`                                       | Latency threshold for `healthy → degraded` transitions in [Health Monitor](../settings/health-monitor). |
 | `textVerbosity`          | `"low" \| "medium" \| "high"` (optional)          | Response verbosity for supported OpenAI Codex/Responses-style providers. Omit to use the provider default (pi-ai currently defaults Codex to `low`). Configure via [Providers UI](../web-ui/providers#add-edit-dialog). |
+| `transport`              | `"sse" \| "websocket" \| "websocket-cached" \| "auto"` (optional) | Wire-level streaming transport. **Only honoured by the OpenAI Codex / Responses apiType today** — silently ignored on every other provider type and dropped on persist. Omit (or set to `"sse"`) to use the default HTTP+SSE streaming. See [Transport modes](#transport-modes) below. |
 | `models`                 | `ProviderModelConfig[]?`                        | Per-model overrides — context window, max tokens, reasoning support, fixed temperature, custom cost. |
 | `status`                 | `"connected" \| "error" \| "untested"`          | Last-known result of an explicit "test connection" click.                                      |
 | `modelStatuses`          | `Record<modelId, status>`                       | Per-model variant of `status`.                                                                 |
 | `authMethod`             | `"apiKey" \| "oauth"`                           | Determines whether `apiKey` or `oauthCredentials` is used.                                     |
 | `oauthCredentials`       | `OAuthCredentialsStored?` (**encrypted**)       | `{ refresh, access, expires, extra }` — only present when `authMethod === "oauth"`.            |
+
+### Transport modes
+
+The `transport` field selects the wire protocol used to stream completions for
+providers that expose more than one. **In Axiom today this only applies to the
+OpenAI Codex / Responses apiType** (`providerType: "openai-codex"`); for every
+other provider type the value is dropped on save and the default SSE transport
+is used.
+
+| Value                | Behaviour                                                                                                                                                                              |
+|----------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `"sse"` (default)    | Regular HTTP request per turn with Server-Sent Events streaming. The full conversation context is resent on every tool-call round.                                                     |
+| `"websocket"`        | Persistent WebSocket connection per session. No SSE fallback — connection errors surface as request errors.                                                                            |
+| `"websocket-cached"` | Persistent WebSocket connection that ships only **delta context items** per turn. The first turn primes the cache; subsequent turns reuse `previous_response_id` and send only what's new. Best fit for long agent sessions. |
+| `"auto"`             | Try WebSocket first; fall back to SSE on connection error.                                                                                                                             |
+
+Why `"websocket-cached"` matters for long sessions: with `"sse"` every tool-call
+round re-uploads the full transcript, which scales linearly with session length.
+`"websocket-cached"` instead keys off `sessionId` (Axiom already passes one per
+session), keeps the connection open, and the upstream API resolves the prior
+context from cache — only new items are sent.
+
+Reconfigure via [Providers UI](../web-ui/providers#add-edit-dialog) or by
+editing `providers.json` directly. Switching a provider away from a Codex-style
+`providerType` automatically strips an existing `transport` value, since it
+would otherwise be a silent no-op.
 
 ### Encryption
 
