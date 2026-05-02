@@ -18,10 +18,10 @@ const CLAUDE_CODE_VERSION = '2.1.96'
  * Supported provider types with presets
  */
 export type ProviderType =
-  | 'openai' | 'anthropic' | 'mistral' | 'ollama' | 'openrouter' | 'deepseek' | 'kimi' | 'minimax' | 'zai' | 'opencode-go' | 'openai-compatible'
+  | 'openai' | 'anthropic' | 'mistral' | 'ollama' | 'openrouter' | 'deepseek' | 'kimi' | 'minimax' | 'zai' | 'opencode-go' | 'openai-compatible' | 'google'
   // Legacy aliases kept for migration
   | 'ollama-local' | 'ollama-cloud'
-  | 'openai-codex' | 'github-copilot' | 'google-gemini-cli' | 'google-antigravity' | 'anthropic-oauth'
+  | 'openai-codex' | 'github-copilot' | 'anthropic-oauth'
 
 export type AuthMethod = 'api-key' | 'oauth'
 export type TextVerbosity = 'low' | 'medium' | 'high'
@@ -211,6 +211,18 @@ export const PROVIDER_TYPE_PRESETS: Record<ProviderType, ProviderTypePreset> = {
     authMethod: 'api-key',
   },
 
+  google: {
+    type: 'google',
+    label: 'Google Gemini',
+    apiType: 'google-generative-ai',
+    providerName: 'google',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+    requiresApiKey: true,
+    urlEditable: false,
+    piAiProvider: 'google',
+    authMethod: 'api-key',
+  },
+
   // ── OAuth / Subscription providers ──
   'openai-codex': {
     type: 'openai-codex',
@@ -235,30 +247,6 @@ export const PROVIDER_TYPE_PRESETS: Record<ProviderType, ProviderTypePreset> = {
     piAiProvider: 'github-copilot',
     authMethod: 'oauth',
     oauthProviderId: 'github-copilot',
-  },
-  'google-gemini-cli': {
-    type: 'google-gemini-cli',
-    label: 'Google Gemini CLI',
-    apiType: 'google-gemini-cli',
-    providerName: 'google-gemini-cli',
-    baseUrl: '',
-    requiresApiKey: false,
-    urlEditable: false,
-    piAiProvider: 'google-gemini-cli',
-    authMethod: 'oauth',
-    oauthProviderId: 'google-gemini-cli',
-  },
-  'google-antigravity': {
-    type: 'google-antigravity',
-    label: 'Google Antigravity',
-    apiType: 'google-gemini-cli',
-    providerName: 'google-antigravity',
-    baseUrl: '',
-    requiresApiKey: false,
-    urlEditable: false,
-    piAiProvider: 'google-antigravity',
-    authMethod: 'oauth',
-    oauthProviderId: 'google-antigravity',
   },
   'anthropic-oauth': {
     type: 'anthropic-oauth',

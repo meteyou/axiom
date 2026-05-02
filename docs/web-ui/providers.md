@@ -105,7 +105,7 @@ The dialog keeps connection details first, then model selection, then advanced h
 | Field                  | Notes                                                                                                |
 |------------------------|------------------------------------------------------------------------------------------------------|
 | **Name**               | Free text, your label for this provider — appears in the table, in `<task_injection>` blocks, on the Dashboard. |
-| **Type**               | Dropdown grouped into two sections: **API Key** (OpenAI, Anthropic, Mistral, OpenRouter, DeepSeek, Kimi / Moonshot, MiniMax, Ollama, generic OpenAI-compatible, …) and **Subscription / OAuth** (Anthropic Claude Pro/Max, OpenAI ChatGPT Plus/Pro, Google Antigravity Free, …). |
+| **Type**               | Dropdown grouped into two sections: **API Key** (OpenAI, Anthropic, Mistral, OpenRouter, DeepSeek, Kimi / Moonshot, MiniMax, Google Gemini, Ollama, generic OpenAI-compatible, …) and **Subscription / OAuth** (Anthropic Claude Pro/Max, OpenAI ChatGPT Plus/Pro, GitHub Copilot, …). |
 | **Base URL**           | Shown directly after Type when the preset has an editable URL (Ollama, generic OpenAI-compatible, …). |
 | **API Key**            | Shown after Base URL for API-key providers. Required for most hosted presets, optional for local/custom providers that do not need auth. |
 | **Enabled Models**     | Model selector or model-id entry for this provider. The exact control depends on the provider type. |

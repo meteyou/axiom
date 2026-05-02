@@ -349,7 +349,7 @@ LLM provider catalog. UI-managed via the [Providers page](../web-ui/providers); 
 | `id`                     | `string`                                        | Stable, unique within the file. Used everywhere as `providerId`.                              |
 | `name`                   | `string`                                        | Display name in the UI.                                                                        |
 | `type`                   | `string`                                        | Wire protocol, e.g. `"openai-completions"`, `"anthropic-messages"`.                            |
-| `providerType`           | `string`                                        | Logical class — `"openai"`, `"anthropic"`, `"mistral"`, `"openrouter"`, `"deepseek"`, `"kimi"`, `"minimax"`, `"ollama"`, `"openai-codex"`, `"github-copilot"`, `"google-antigravity"`, `"anthropic-oauth"`, etc. |
+| `providerType`           | `string`                                        | Logical class — `"openai"`, `"anthropic"`, `"mistral"`, `"openrouter"`, `"deepseek"`, `"kimi"`, `"minimax"`, `"ollama"`, `"google"`, `"openai-codex"`, `"github-copilot"`, `"anthropic-oauth"`, etc. |
 | `provider`               | `string`                                        | pi-ai provider key.                                                                            |
 | `baseUrl`                | `string`                                        | API base URL.                                                                                  |
 | `apiKey`                 | `string` (**encrypted**)                        | Encrypted with `ENCRYPTION_KEY` (`packages/core/src/encryption.ts`). Use the UI to write.      |
