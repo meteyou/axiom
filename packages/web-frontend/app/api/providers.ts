@@ -136,6 +136,7 @@ export function useProvidersApi() {
     defaultModel: string
     providerId?: string
     textVerbosity?: 'low' | 'medium' | 'high' | null
+    transport?: 'sse' | 'websocket' | 'websocket-cached' | 'auto' | null
   }) =>
     apiFetch<OAuthLoginResponse>('/api/providers/oauth/login', {
       method: 'POST',

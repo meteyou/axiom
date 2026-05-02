@@ -176,6 +176,7 @@ export function useProviders() {
     defaultModel: string
     providerId?: string
     textVerbosity?: 'low' | 'medium' | 'high' | null
+    transport?: 'sse' | 'websocket' | 'websocket-cached' | 'auto' | null
   }): Promise<OAuthLoginResponse> {
     return providersApi.startOAuthLogin(input)
   }

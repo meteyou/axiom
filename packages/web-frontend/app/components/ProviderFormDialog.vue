@@ -360,6 +360,24 @@
           <p class="text-xs text-muted-foreground">{{ $t('providers.textVerbosityHint') }}</p>
         </div>
 
+        <!-- Transport (OpenAI Codex Responses) -->
+        <div v-if="supportsTransport" class="flex flex-col gap-1.5">
+          <Label>{{ $t('providers.transport') }}</Label>
+          <Select v-model="form.transport">
+            <SelectTrigger>
+              <SelectValue :placeholder="$t('providers.transportDefault')" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="default">{{ $t('providers.transportDefault') }}</SelectItem>
+              <SelectItem value="sse">{{ $t('providers.transportSse') }}</SelectItem>
+              <SelectItem value="websocket">{{ $t('providers.transportWebsocket') }}</SelectItem>
+              <SelectItem value="websocket-cached">{{ $t('providers.transportWebsocketCached') }}</SelectItem>
+              <SelectItem value="auto">{{ $t('providers.transportAuto') }}</SelectItem>
+            </SelectContent>
+          </Select>
+          <p class="text-xs text-muted-foreground">{{ $t('providers.transportHint') }}</p>
+        </div>
+
         <!-- OAuth Login Section -->
         <div v-if="isOAuthProvider && (mode === 'create' || oauthInProgress)" class="flex flex-col gap-3">
           <!-- OAuth status messages -->
@@ -466,6 +484,7 @@ export interface ProviderFormPayload {
   enabledModels: string[]
   degradedThresholdMs: number
   textVerbosity: null | 'low' | 'medium' | 'high'
+  transport: null | 'sse' | 'websocket' | 'websocket-cached' | 'auto'
 }
 
 const props = defineProps<{
@@ -504,6 +523,7 @@ const form = reactive({
   enabledModels: [] as string[],
   degradedThresholdMs: 5000,
   textVerbosity: 'default' as 'default' | 'low' | 'medium' | 'high',
+  transport: 'default' as 'default' | 'sse' | 'websocket' | 'websocket-cached' | 'auto',
 })
 
 const availableModels = ref<AvailableModel[]>([])
@@ -611,6 +631,16 @@ const supportsTextVerbosity = computed(() => {
   return selectedPreset.value?.apiType === 'openai-codex-responses'
 })
 
+/**
+ * Wire-level transport is currently only honoured by the OpenAI Codex /
+ * Responses apiType — every other provider streams over SSE only and the
+ * field is dropped on persist. Mirrors `presetSupportsTransport()` in
+ * `@axiom/core/provider-config`.
+ */
+const supportsTransport = computed(() => {
+  return selectedPreset.value?.apiType === 'openai-codex-responses'
+})
+
 const canStartOAuth = computed(() => {
   return form.name.trim() && form.providerType && form.defaultModel
 })
@@ -673,6 +703,7 @@ watch(() => [props.open, props.provider] as const, ([isOpen, entry]) => {
     form.enabledModels = entry.enabledModels?.length ? [...entry.enabledModels] : [entry.defaultModel]
     form.degradedThresholdMs = entry.degradedThresholdMs ?? 5000
     form.textVerbosity = entry.textVerbosity ?? 'default'
+    form.transport = entry.transport ?? 'default'
     customModelInput.value = ''
     customDiscoveredModels.value = []
     customModelsError.value = null
@@ -692,6 +723,7 @@ watch(() => [props.open, props.provider] as const, ([isOpen, entry]) => {
     form.enabledModels = []
     form.degradedThresholdMs = 5000
     form.textVerbosity = 'default'
+    form.transport = 'default'
     customModelInput.value = ''
     availableModels.value = []
     customDiscoveredModels.value = []
@@ -844,6 +876,10 @@ function normalizeTextVerbosityPayload(): null | 'low' | 'medium' | 'high' {
   return form.textVerbosity === 'default' ? null : form.textVerbosity
 }
 
+function normalizeTransportPayload(): null | 'sse' | 'websocket' | 'websocket-cached' | 'auto' {
+  return form.transport === 'default' ? null : form.transport
+}
+
 function formatKnownModelLabel(model: AvailableModel): string {
   return duplicateModelLabels.value.get(model.id) ?? model.name
 }
@@ -985,6 +1021,7 @@ function handleSubmit() {
   emit('submit', {
     ...form,
     textVerbosity: normalizeTextVerbosityPayload(),
+    transport: normalizeTransportPayload(),
     enabledModels,
   })
 }
@@ -1003,6 +1040,7 @@ async function startOAuthRenew() {
       defaultModel: form.defaultModel,
       providerId: props.provider.id,
       textVerbosity: normalizeTextVerbosityPayload(),
+      transport: normalizeTransportPayload(),
     })
 
     oauthLoginId.value = response.loginId
@@ -1032,6 +1070,7 @@ async function startOAuth() {
       name: form.name.trim(),
       defaultModel: form.defaultModel,
       textVerbosity: normalizeTextVerbosityPayload(),
+      transport: normalizeTransportPayload(),
     })
 
     oauthLoginId.value = response.loginId

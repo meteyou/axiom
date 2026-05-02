@@ -411,6 +411,7 @@ async function handleSubmit(payload: ProviderFormPayload) {
       enabledModels: payload.enabledModels,
       degradedThresholdMs: payload.degradedThresholdMs,
       textVerbosity: payload.textVerbosity,
+      transport: payload.transport,
     }
     if (payload.apiKey) {
       input.apiKey = payload.apiKey
@@ -427,6 +428,7 @@ async function handleSubmit(payload: ProviderFormPayload) {
       enabledModels: payload.enabledModels,
       degradedThresholdMs: payload.degradedThresholdMs,
       textVerbosity: payload.textVerbosity,
+      transport: payload.transport,
     })
     if (result) closeForm()
   }
