@@ -222,6 +222,29 @@ export function parseProviderUpdatePayload(payload: unknown): ParseResult<Provid
   }
 }
 
+export function parseOpenAiCompatibleModelsProbePayload(payload: unknown): ParseResult<{ baseUrl: string; apiKey?: string; providerType: string }> {
+  const body = toRecord(payload)
+  const providerType = asTrimmedString(body.providerType)
+  const baseUrl = asTrimmedString(body.baseUrl)
+
+  if (!providerType || providerType !== 'openai-compatible') {
+    return { ok: false, error: 'providerType must be openai-compatible' }
+  }
+
+  if (!baseUrl) {
+    return { ok: false, error: 'baseUrl is required' }
+  }
+
+  return {
+    ok: true,
+    value: {
+      providerType,
+      baseUrl,
+      apiKey: asTrimmedString(body.apiKey),
+    },
+  }
+}
+
 export function parseOllamaProbePayload(payload: unknown): ParseResult<{ baseUrl: string; providerType: string }> {
   const body = toRecord(payload)
   const providerType = asTrimmedString(body.providerType)

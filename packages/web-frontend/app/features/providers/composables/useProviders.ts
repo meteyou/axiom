@@ -139,6 +139,11 @@ export function useProviders() {
     return data.models
   }
 
+  async function probeOpenAiCompatibleModels(baseUrl: string, apiKey: string | undefined, providerType: string): Promise<AvailableModel[]> {
+    const data = await providersApi.probeOpenAiCompatibleModels(baseUrl, apiKey, providerType)
+    return data.models
+  }
+
   async function probeOllamaModels(baseUrl: string, providerType: string): Promise<OllamaModel[]> {
     const data = await providersApi.probeOllamaModels(baseUrl, providerType)
     return data.models
@@ -196,6 +201,7 @@ export function useProviders() {
     fetchProviders,
     fetchModels,
     fetchOllamaModels,
+    probeOpenAiCompatibleModels,
     probeOllamaModels,
     pullOllamaModel,
     probeOllamaPull,

@@ -68,12 +68,16 @@ function buildOpenAiCompatibleRequest(provider: ProviderConfig): {
     headers.Authorization = `Bearer ${provider.apiKey}`
   }
 
+  const tokenLimitField = provider.providerType === 'openai-compatible'
+    ? { max_tokens: 5 }
+    : { max_completion_tokens: 5 }
+
   return {
     url: `${provider.baseUrl}/chat/completions`,
     headers,
     body: {
       model: provider.defaultModel,
-      max_completion_tokens: 5,
+      ...tokenLimitField,
       temperature: resolveModelTemperature(provider, provider.defaultModel, 0),
       messages: [{ role: 'user', content: 'Respond with OK only.' }],
     },

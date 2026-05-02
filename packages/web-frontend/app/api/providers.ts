@@ -72,6 +72,12 @@ export function useProvidersApi() {
   const getOllamaModels = (providerId: string) =>
     apiFetch<{ models: OllamaModel[] }>(`/api/providers/${providerId}/ollama-models`)
 
+  const probeOpenAiCompatibleModels = (baseUrl: string, apiKey: string | undefined, providerType: string) =>
+    apiFetch<{ models: AvailableModel[] }>('/api/providers/openai-compatible/models-probe', {
+      method: 'POST',
+      body: JSON.stringify({ baseUrl, apiKey, providerType }),
+    })
+
   const probeOllamaModels = (baseUrl: string, providerType: string) =>
     apiFetch<{ models: OllamaModel[] }>('/api/providers/ollama-probe', {
       method: 'POST',
@@ -154,6 +160,7 @@ export function useProvidersApi() {
     setFallbackProvider,
     getModels,
     getOllamaModels,
+    probeOpenAiCompatibleModels,
     probeOllamaModels,
     deleteOllamaModel,
     pullOllamaModel,

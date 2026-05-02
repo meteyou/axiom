@@ -30,6 +30,7 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
 
   router.post('/', controller.postProvider)
 
+  router.post('/openai-compatible/models-probe', controller.postOpenAiCompatibleModelsProbe)
   router.post('/ollama-probe', controller.postOllamaProbe)
   router.post('/ollama-probe/pull', controller.postOllamaProbePull)
 
