@@ -21,7 +21,7 @@ export type ProviderType =
   | 'openai' | 'anthropic' | 'mistral' | 'ollama' | 'openrouter' | 'deepseek' | 'kimi' | 'minimax' | 'zai' | 'opencode-go' | 'openai-compatible' | 'google'
   // Legacy aliases kept for migration
   | 'ollama-local' | 'ollama-cloud'
-  | 'openai-codex' | 'github-copilot' | 'google-gemini-cli' | 'anthropic-oauth'
+  | 'openai-codex' | 'github-copilot' | 'anthropic-oauth'
 
 export type AuthMethod = 'api-key' | 'oauth'
 export type TextVerbosity = 'low' | 'medium' | 'high'
@@ -247,18 +247,6 @@ export const PROVIDER_TYPE_PRESETS: Record<ProviderType, ProviderTypePreset> = {
     piAiProvider: 'github-copilot',
     authMethod: 'oauth',
     oauthProviderId: 'github-copilot',
-  },
-  'google-gemini-cli': {
-    type: 'google-gemini-cli',
-    label: 'Google Gemini CLI',
-    apiType: 'google-gemini-cli',
-    providerName: 'google-gemini-cli',
-    baseUrl: '',
-    requiresApiKey: false,
-    urlEditable: false,
-    piAiProvider: 'google-gemini-cli',
-    authMethod: 'oauth',
-    oauthProviderId: 'google-gemini-cli',
   },
   'anthropic-oauth': {
     type: 'anthropic-oauth',
