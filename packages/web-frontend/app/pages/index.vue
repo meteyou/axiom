@@ -335,6 +335,20 @@
       </button>
     </Transition>
 
+    <Transition enter-active-class="transition duration-200 ease-out" enter-from-class="translate-y-2 opacity-0" enter-to-class="translate-y-0 opacity-100" leave-active-class="transition duration-150 ease-in" leave-from-class="translate-y-0 opacity-100" leave-to-class="translate-y-2 opacity-0">
+      <div v-if="ttsError" class="absolute bottom-24 left-1/2 z-10 w-[min(92%,32rem)] -translate-x-1/2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive shadow-md">
+        <div class="flex items-start gap-2">
+          <div class="flex-1">
+            <div class="font-medium">{{ $t('chat.ttsErrorTitle') }}</div>
+            <div class="mt-0.5 break-words text-destructive/90">{{ ttsError }}</div>
+          </div>
+          <button type="button" class="shrink-0 rounded p-0.5 text-destructive/70 hover:text-destructive" :title="$t('chat.ttsErrorDismiss')" @click="clearTtsError">
+            <AppIcon name="x" size="sm" />
+          </button>
+        </div>
+      </div>
+    </Transition>
+
     <div class="shrink-0 border-t border-border bg-background p-3">
       <form class="flex flex-col gap-2" @submit.prevent="handleSend">
         <!-- Pending files row -->
@@ -622,7 +636,7 @@ function formatTokenCount(count: number): string {
   return String(count)
 }
 const { messages, connectionStatus, isStreaming, connect, disconnect, sendMessage, newSession, stopTask } = useChat()
-const { playingIndex: ttsPlayingIndex, loading: ttsLoading, ttsEnabled, fetchTtsSettings, play: ttsPlay, stop: ttsStop } = useTts()
+const { playingIndex: ttsPlayingIndex, loading: ttsLoading, ttsEnabled, error: ttsError, fetchTtsSettings, play: ttsPlay, stop: ttsStop, clearError: clearTtsError } = useTts()
 const { recording: sttRecording, transcribing: sttTranscribing, error: sttError, sttEnabled, fetchSttSettings, startRecording: sttStartRecording, stopAndTranscribe: sttStopAndTranscribe, cleanup: sttCleanup } = useStt()
 
 function handleTtsPlay(content: string, index: number) {
