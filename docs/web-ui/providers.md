@@ -111,13 +111,7 @@ The dialog keeps connection details first, then model selection, then advanced h
 | **Enabled Models**     | Model selector or model-id entry for this provider. The exact control depends on the provider type. |
 | **Degraded Threshold** | Last field in the form. Latency in ms above which the provider is marked *Degraded* in health checks. Default `5000`. Lower = more sensitive. |
 | **Text verbosity**     | Shown for supported OpenAI Codex/Responses-style providers. `Default` leaves the value unset so pi-ai's provider default applies; `Low`, `Medium`, `High` override response verbosity. |
-
-The provider record also accepts an optional `transport` field (`sse` /
-`websocket` / `websocket-cached` / `auto`) for OpenAI Codex / Responses-style
-providers, but it is not yet surfaced as a dialog control. To enable a
-non-default transport today, set it via the providers HTTP API or by editing
-`providers.json` directly — see [Transport modes in `providers.json`](../reference/settings#transport-modes).
-| **Transport**          | Wire-level streaming protocol. Honoured today only by OpenAI Codex/Responses providers; ignored elsewhere. Defaults to `sse`. `websocket-cached` keeps a persistent WebSocket open and ships only delta context items per turn — noticeably faster on long agent sessions. See [`providers.json` → Transport modes](../reference/settings#transport-modes) for the full table. Currently configured by editing `providers.json` directly; UI control is planned. |
+| **Transport**          | Shown for the same OpenAI Codex/Responses-style providers as **Text verbosity**. Selects the wire-level streaming protocol: `Default (SSE)` leaves the value unset, `SSE`, `WebSocket`, `WebSocket (cached)`, or `Auto`. `WebSocket (cached)` keeps a persistent connection open and ships only delta context items per turn — noticeably faster on long agent sessions. Ignored (and dropped on save) for every other provider type. See [`providers.json` → Transport modes](../reference/settings#transport-modes) for the full table. |
 
 ### API-key providers
 
