@@ -116,6 +116,11 @@ carries between surfaces.
 | `/tasks`    | Show running and recent background tasks (read-only).                       |
 | `/cronjobs` | Show configured cronjobs and their next run time. (alias `/cron`)           |
 | `/settings` | Show the active provider and model. (alias `/model`)                        |
+| `/thinking` | Show or set the global main-agent thinking level.                           |
+
+`/thinking` accepts `off`, `minimal`, `low`, `medium`, `high`, or `xhigh`.
+Like the brain-icon selector, it changes the global main-agent setting and
+applies to the next turn.
 
 Unknown commands respond with a hint pointing at `/help` and are not sent to
 the agent. To send a literal message that starts with a slash to the agent

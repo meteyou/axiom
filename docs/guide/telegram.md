@@ -75,6 +75,7 @@ to the input field) is populated automatically on bot startup via
 | `/tasks`    | Show running and recent background tasks (read-only).                       |
 | `/cronjobs` | Show configured cronjobs and their next run time. (alias `/cron`)           |
 | `/settings` | Show the active provider and model. (alias `/model`)                        |
+| `/thinking` | Show or set the global main-agent thinking level.                           |
 
 Everything else is treated as a normal message and forwarded to the agent.
 If the menu does not appear in your Telegram client, restart the chat or wait

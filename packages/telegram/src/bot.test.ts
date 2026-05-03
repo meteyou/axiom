@@ -253,6 +253,23 @@ describe('TelegramBot', () => {
       expect(msg).toContain('/tasks')
       expect(msg).toContain('/cronjobs')
       expect(msg).toContain('/settings')
+      expect(msg).toContain('/thinking')
+    })
+  })
+
+  describe('/cron alias command', () => {
+    it('dispatches through the shared /cronjobs handler', async () => {
+      const bot = new TelegramBot({ agentCore, config: defaultConfig })
+      const underlying = bot.getBot() as unknown as MockBotInternals
+      const handler = underlying._commandHandlers.get('cron')!
+
+      const ctx = createMockContext()
+      ctx.message = { text: '/cron' }
+      await handler(ctx)
+
+      expect(ctx.reply).toHaveBeenCalledTimes(1)
+      const msg = ctx.reply.mock.calls[0][0] as string
+      expect(msg).toContain('Cronjob store is not available')
     })
   })
 

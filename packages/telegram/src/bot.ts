@@ -443,6 +443,9 @@ export class TelegramBot {
     this.bot.command('cronjobs', async (ctx) => {
       await this.handleRegistryCommand(ctx, 'cronjobs')
     })
+    this.bot.command('cron', async (ctx) => {
+      await this.handleRegistryCommand(ctx, 'cron')
+    })
     this.bot.command('settings', async (ctx) => {
       await this.handleRegistryCommand(ctx, 'settings')
     })
