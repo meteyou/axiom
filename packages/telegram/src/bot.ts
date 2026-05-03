@@ -1429,7 +1429,7 @@ export class TelegramBot {
    * Used for proactive task result notifications.
    */
   // Public cross-workspace API used by web-backend; Fallow cannot see this in clean CI before workspace dist files exist.
-  // fallow-ignore-next-line unused-class-members
+  // fallow-ignore-next-line unused-class-member
   async sendTaskNotification(chatId: string | number, html: string): Promise<boolean> {
     const parts = splitMessage(html)
     const plainFull = telegramHtmlToPlainText(html)
@@ -1458,7 +1458,7 @@ export class TelegramBot {
    * Returns null if no linked & approved Telegram user exists.
    */
   // Public cross-workspace API used by web-backend; Fallow cannot see this in clean CI before workspace dist files exist.
-  // fallow-ignore-next-line unused-class-members
+  // fallow-ignore-next-line unused-class-member
   getTelegramChatIdForUser(userId: number): string | null {
     if (!this.db) return null
 
@@ -1475,7 +1475,7 @@ export class TelegramBot {
    * Does NOT sync back to web chat (intended for task injection responses).
    */
   // Public cross-workspace API used by web-backend; Fallow cannot see this in clean CI before workspace dist files exist.
-  // fallow-ignore-next-line unused-class-members
+  // fallow-ignore-next-line unused-class-member
   async sendFormattedMessage(chatId: string | number, markdown: string): Promise<boolean> {
     const parts = splitMessage(markdown)
 
