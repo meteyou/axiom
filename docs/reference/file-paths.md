@@ -52,6 +52,7 @@ Resolved by `getConfigDir()` in `packages/core/src/config.ts`. Default templates
 | `AGENTS.md` | `AGENTS_TEMPLATE` in `memory.ts` | User (Web UI Instructions); migrated from legacy `/data/memory/AGENTS.md` if present | [Web UI → Instructions](../web-ui/instructions) |
 | `HEARTBEAT.md` | `HEARTBEAT_TEMPLATE` in `memory.ts` | User; read pre-flight by `agent-heartbeat.ts` (skipped if empty) | [Settings → Agent Heartbeat](../settings/agent-heartbeat) |
 | `CONSOLIDATION.md` | `CONSOLIDATION_TEMPLATE` in `memory.ts` | User; read by `memory-consolidation.ts` for nightly consolidation rules | [Settings → Memory](../settings/memory) |
+| `TASKS.md` | `TASKS_TEMPLATE` in `memory.ts` | User; read on every background task start by `task-runner.ts` and injected as `<task_guidelines>` | [Web UI → Instructions](../web-ui/instructions) |
 
 **Important — historical migrations** (handled in `ensureConfigStructure()`): `AGENTS.md` and `HEARTBEAT.md` used to live under `/data/memory/`; on first start they are moved to `/data/config/`. Do not write back to the legacy paths.
 
@@ -172,6 +173,7 @@ Browse them as your host user via `sudo` or a temporary bind-mount. Backup recip
 | Where is the agent contract / behavior rules? | `/data/config/AGENTS.md` (edited via [Web UI → Instructions](../web-ui/instructions)). |
 | Where do heartbeat tasks live? | `/data/config/HEARTBEAT.md`. |
 | Where do nightly consolidation rules live? | `/data/config/CONSOLIDATION.md`. |
+| Where do background task guidelines live? | `/data/config/TASKS.md` (injected into every background task system prompt). |
 | Where are encrypted secrets (API keys, OAuth)? | `/data/config/secrets.json` (AES-256-GCM with `ENCRYPTION_KEY`). |
 | Where are user-installed skills? | `/data/skills/<owner>/<name>/SKILL.md`. |
 | Where are built-in / agent-created skills? | `/data/skills_agent/<name>/SKILL.md`. |

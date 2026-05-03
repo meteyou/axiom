@@ -1,6 +1,6 @@
 # Agent Instructions
 
-Axiom's behavior is shaped by plain-Markdown "instruction files" that live in `/data/config/`. They tell the agent *what to do* — how to talk, what to remember, and what to check on a schedule — while the [Settings](./../settings/) pages control *when* and *with which provider* it does those things.
+Axiom's behavior is shaped by plain-Markdown "instruction files" that live in `/data/config/`. They tell the agent *what to do* — how to talk, what to remember, what to do in background tasks, and what to check on a schedule — while the [Settings](./../settings/) pages control *when* and *with which provider* it does those things.
 
 This page describes each file, what it controls, when the agent reads it, and what belongs inside. Each file ships with a sensible default template on first startup; the exact templates live in [`packages/core/src/memory.ts`](https://github.com/meteyou/axiom/blob/main/packages/core/src/memory.ts) — per-file links are in the sections below.
 
@@ -71,6 +71,48 @@ Customize it to match your taxonomy. For example, if you don't use the `wiki/` l
 - If your `MEMORY.md` grows unbounded, tighten the "promote" section — raise the bar.
 - If you find user profiles get bloated, move those rules into "ignore" for that user's style.
 - If the consolidator keeps duplicating entries across `MEMORY.md` and user profiles, add an explicit "prefer user profile for anything person-specific" rule.
+
+## `TASKS.md`
+
+The **background task guidelines** — generic rules injected into the system prompt of every agent that runs in the background. Where `AGENTS.md` shapes the *interactive* chat agent, `TASKS.md` shapes the *task* agent: the autonomous worker spawned by `create_task`, by `task`-type cronjob runs, by the heartbeat, and by memory consolidation.
+
+The file lives at `/data/config/TASKS.md` and is read on every background task start (in [`task-runner.ts → buildTaskSystemPrompt`](https://github.com/meteyou/axiom/blob/main/packages/core/src/task-runner.ts)). Its content is concatenated into the spawned task's system prompt under a `<task_guidelines>` block, after the hardcoded identity / workspace framing and before the final `STATUS: … / SUMMARY: …` output contract. The shipped default — [`TASKS_TEMPLATE` in `memory.ts`](https://github.com/meteyou/axiom/blob/main/packages/core/src/memory.ts) — captures the generic "work autonomously, report concrete results, don't paraphrase what you did" advice; rewrite it freely to match how *you* want background work done.
+
+### What stays hardcoded
+
+`TASKS.md` holds *guidelines only*. The non-negotiable parts of a task system prompt are still hardcoded in `task-runner.ts` and cannot be edited from the UI:
+
+- The identity / framing line ("You are a background task agent. You are NOT a chatbot …").
+- The concrete `Your task: <prompt>` block built from the task's `prompt` field.
+- The `<workspace>` block pointing at `/workspace`.
+- The optional `<memory_reference>` block.
+- The final `STATUS: completed | failed | question | silent` / `SUMMARY: …` output contract, including the protocol for `question`, `silent`, and `failed`.
+
+If you blank `TASKS.md` entirely, the `<task_guidelines>` block is omitted from the prompt and tasks fall back to whatever rules the per-task prompt or attached skills carry. The hardcoded framing always remains.
+
+### Distinction from `attached_skills` and per-task prompts
+
+Background tasks see four complementary instruction layers:
+
+| Source | Scope | Where it lives |
+|---|---|---|
+| `TASKS.md` | Global generic guidelines for **every** background task run. | `/data/config/TASKS.md` |
+| `attached_skills` | Skill-specific rules pinned at cronjob authoring time — always loaded for that specific cronjob. | `/data/skills_agent/<name>/SKILL.md` (or installed skills) |
+| Task `prompt` | The concrete work this run must do. | `tasks.prompt` column / per-cronjob `prompt` field |
+| `AGENTS.md` | Read by the **interactive** agent only — NOT injected into background task prompts. | `/data/config/AGENTS.md` |
+
+Use `TASKS.md` for rules that should apply to *all* background work ("always commit before pushing", "never auto-merge PRs", "prefer pnpm over npm"). Use `attached_skills` for rules that only matter to one cronjob ("this nitter scrape needs the nitter skill"). Put the actual work in the task `prompt`. Don't copy `AGENTS.md` content into `TASKS.md` — the two roles are different and the chat-only rules waste tokens on every task run.
+
+### Effect on cronjobs
+
+A cronjob with `action_type: "task"` spawns a fresh task on every tick, and that task reads `TASKS.md` at start time. Editing `TASKS.md` therefore takes effect on the **next** scheduled run — no restart, no per-cronjob update needed. `action_type: "injection"` cronjobs (and their reminder shortcut) deliver static text and never spawn an agent, so `TASKS.md` does not apply to them.
+
+### Tuning tips
+
+- Keep it tight. Every line ships in every task system prompt — long lists cost tokens on every run.
+- Be imperative and observable ("verify with the project's test command before reporting success"), not aspirational ("do good work").
+- Resist re-stating what `AGENTS.md` already covers — the chat agent's tone rules don't help a task that has no user to talk to.
+- If a rule only matters in one specific scheduled job, prefer `attached_skills` or embedding it in that cronjob's prompt over polluting `TASKS.md`.
 
 ## `HEARTBEAT.md`
 

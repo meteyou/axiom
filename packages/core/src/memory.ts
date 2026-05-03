@@ -151,6 +151,26 @@ const HEARTBEAT_TEMPLATE = `# Heartbeat Tasks
 <!-- If this file has no actionable content, the heartbeat will skip automatically. -->
 `
 
+const TASKS_TEMPLATE = `# Background Task Guidelines
+
+<!-- These guidelines are injected into every background task's system prompt. -->
+<!-- They apply to tasks created via create_task, cronjob runs with action_type="task", -->
+<!-- heartbeat-spawned tasks, and consolidation-spawned tasks. -->
+<!-- Both the user and the agent can edit this file. Keep it tight — every line ships in every task prompt. -->
+
+- Work independently for as long as possible
+- Prefer acting over asking when the next step is clear and low-risk
+- Make reasonable assumptions, but record important assumptions in your final report
+- Only pause with a question if you truly cannot proceed without user input, missing access, or an irreversible decision
+- Read relevant files and tool results before changing anything
+- Do not overwrite, discard, or ignore user changes or unrelated local work
+- Keep edits focused on the requested outcome; avoid unnecessary refactors or extra features
+- Verify meaningful work when practical, and report the actual result honestly
+- If you reference files, commands, URLs, test output, or errors, include the concrete details rather than vague summaries
+- When finished, your final message must contain ALL your actual findings, data, and results
+- Do NOT just describe what you did — include the full content of your work
+`
+
 const CONSOLIDATION_TEMPLATE = `# Memory Consolidation Rules
 
 <!-- These rules guide the nightly memory consolidation process. -->
@@ -299,6 +319,10 @@ export function getDefaultConsolidationContent(): string {
   return CONSOLIDATION_TEMPLATE
 }
 
+export function getDefaultTasksGuidelinesContent(): string {
+  return TASKS_TEMPLATE
+}
+
 export function ensureMemoryStructure(memoryDir?: string): void {
   const dir = memoryDir ?? getMemoryDir()
   const dailyDir = path.join(dir, 'daily')
@@ -385,6 +409,11 @@ export function ensureConfigStructure(configDir?: string): void {
   const consolidationPath = path.join(dir, 'CONSOLIDATION.md')
   if (!fs.existsSync(consolidationPath)) {
     fs.writeFileSync(consolidationPath, CONSOLIDATION_TEMPLATE, 'utf-8')
+  }
+
+  const tasksPath = path.join(dir, 'TASKS.md')
+  if (!fs.existsSync(tasksPath)) {
+    fs.writeFileSync(tasksPath, TASKS_TEMPLATE, 'utf-8')
   }
 }
 
@@ -608,6 +637,26 @@ export function writeConsolidationFile(content: string, configDir?: string): voi
   ensureConfigStructure(dir)
   const consolidationPath = path.join(dir, 'CONSOLIDATION.md')
   fs.writeFileSync(consolidationPath, content, 'utf-8')
+}
+
+export function readTasksGuidelinesFile(configDir?: string): string {
+  const dir = configDir ?? getConfigDir()
+  const tasksPath = path.join(dir, 'TASKS.md')
+  try {
+    if (!fs.existsSync(tasksPath)) {
+      ensureConfigStructure(dir)
+    }
+    return fs.readFileSync(tasksPath, 'utf-8')
+  } catch {
+    return TASKS_TEMPLATE
+  }
+}
+
+export function writeTasksGuidelinesFile(content: string, configDir?: string): void {
+  const dir = configDir ?? getConfigDir()
+  ensureConfigStructure(dir)
+  const tasksPath = path.join(dir, 'TASKS.md')
+  fs.writeFileSync(tasksPath, content, 'utf-8')
 }
 
 /**
@@ -882,6 +931,7 @@ Config files:
 - AGENTS.md (agent rules): ${path.join(cfgDir, 'AGENTS.md')}
 - HEARTBEAT.md (heartbeat tasks): ${path.join(cfgDir, 'HEARTBEAT.md')}
 - CONSOLIDATION.md (consolidation rules): ${path.join(cfgDir, 'CONSOLIDATION.md')}
+- TASKS.md (background task guidelines): ${path.join(cfgDir, 'TASKS.md')}
 </memory_paths>`)
 
   // 9b. Axiom documentation (read-only, shipped with the image).

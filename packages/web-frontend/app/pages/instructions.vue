@@ -108,10 +108,13 @@ const {
   loadConsolidationRules,
   saveConsolidationRules,
   loadDefaultConsolidationRules,
+  loadTasksGuidelines,
+  saveTasksGuidelines,
+  loadDefaultTasksGuidelines,
   clearMessages,
 } = useMemory()
 
-const VALID_FILES = ['agents', 'consolidation', 'heartbeat'] as const
+const VALID_FILES = ['agents', 'consolidation', 'heartbeat', 'tasks'] as const
 
 type InstructionFileId = (typeof VALID_FILES)[number]
 
@@ -159,6 +162,14 @@ const instructionItems = computed<InstructionItem[]>(() => [
     save: saveHeartbeat,
     loadDefault: loadDefaultHeartbeat,
   },
+  {
+    id: 'tasks',
+    title: t('settings.tasksGuidelinesTitle'),
+    path: '/data/config/TASKS.md',
+    load: loadTasksGuidelines,
+    save: saveTasksGuidelines,
+    loadDefault: loadDefaultTasksGuidelines,
+  },
 ])
 
 const currentInstruction = computed<InstructionItem>(() => (
@@ -169,6 +180,7 @@ const contents = reactive<Record<InstructionFileId, string>>({
   agents: '',
   consolidation: '',
   heartbeat: '',
+  tasks: '',
 })
 const loadedFiles = ref<Set<InstructionFileId>>(new Set())
 const restoreDialogOpen = ref(false)

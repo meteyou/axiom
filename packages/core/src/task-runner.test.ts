@@ -1709,6 +1709,107 @@ describe('TaskRunner', () => {
     })
   })
 
+  describe('TASKS.md background task guidelines injection', () => {
+    let configTmpDir: string
+    let originalDataDir: string | undefined
+
+    beforeEach(() => {
+      originalDataDir = process.env.DATA_DIR
+      configTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'axiom-tasks-md-'))
+      process.env.DATA_DIR = configTmpDir
+    })
+
+    afterEach(() => {
+      if (originalDataDir === undefined) {
+        delete process.env.DATA_DIR
+      } else {
+        process.env.DATA_DIR = originalDataDir
+      }
+      try { fs.rmSync(configTmpDir, { recursive: true, force: true }) } catch {}
+    })
+
+    async function captureSystemPromptForTask(): Promise<string> {
+      const { Agent } = await import('@mariozechner/pi-agent-core')
+      const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
+
+      type Captured = { initialState: { systemPrompt: string } }
+      const captured: { value: Captured | null } = { value: null }
+      const messages: unknown[] = []
+      MockAgent.mockImplementationOnce((options: unknown) => {
+        captured.value = options as Captured
+        return {
+          subscribe: vi.fn(() => () => {}),
+          prompt: vi.fn(async () => {
+            messages.push({
+              role: 'assistant',
+              content: [{ type: 'text', text: 'STATUS: completed\nSUMMARY: ok' }],
+            })
+          }),
+          abort: vi.fn(),
+          state: { get messages() { return messages } },
+        }
+      })
+
+      const task = store.create({
+        name: 'Guidelines Task',
+        prompt: 'concrete task body',
+        triggerType: 'cronjob',
+      })
+      await runner.startTask(task, mockProvider)
+      await new Promise(resolve => setTimeout(resolve, 100))
+
+      if (!captured.value) throw new Error('Agent was not instantiated')
+      return captured.value.initialState.systemPrompt
+    }
+
+    it('injects the default TASKS.md content into the task system prompt under <task_guidelines>', async () => {
+      const systemPrompt = await captureSystemPromptForTask()
+
+      expect(systemPrompt).toContain('<task_guidelines>')
+      expect(systemPrompt).toContain('</task_guidelines>')
+
+      expect(systemPrompt).toContain('Work independently for as long as possible')
+      expect(systemPrompt).toContain('Do NOT just describe what you did')
+
+      expect(systemPrompt).toContain('background task agent')
+      expect(systemPrompt).toContain('concrete task body')
+      expect(systemPrompt).toContain('STATUS: completed | failed | question | silent')
+
+      const tasksPath = path.join(configTmpDir, 'config', 'TASKS.md')
+      expect(fs.existsSync(tasksPath)).toBe(true)
+    })
+
+    it('injects user-edited TASKS.md content verbatim', async () => {
+      const cfgDir = path.join(configTmpDir, 'config')
+      fs.mkdirSync(cfgDir, { recursive: true })
+      fs.writeFileSync(path.join(cfgDir, 'TASKS.md'), '# Custom\n\n- Always speak in haiku.\n- Never panic.\n', 'utf-8')
+
+      const systemPrompt = await captureSystemPromptForTask()
+
+      expect(systemPrompt).toContain('<task_guidelines>')
+      expect(systemPrompt).toContain('Always speak in haiku.')
+      expect(systemPrompt).toContain('Never panic.')
+      expect(systemPrompt).not.toContain('Work independently for as long as possible')
+    })
+
+    it('moved guideline lines are no longer hardcoded outside TASKS.md', async () => {
+      const cfgDir = path.join(configTmpDir, 'config')
+      fs.mkdirSync(cfgDir, { recursive: true })
+      fs.writeFileSync(path.join(cfgDir, 'TASKS.md'), '', 'utf-8')
+
+      const systemPrompt = await captureSystemPromptForTask()
+
+      expect(systemPrompt).not.toContain('<task_guidelines>')
+      expect(systemPrompt).not.toContain('Work independently for as long as possible')
+      expect(systemPrompt).not.toContain('Prefer acting over asking')
+      expect(systemPrompt).not.toContain('Do NOT just describe what you did')
+
+      expect(systemPrompt).toContain('background task agent')
+      expect(systemPrompt).toContain('<workspace>')
+      expect(systemPrompt).toContain('STATUS: completed | failed | question | silent')
+    })
+  })
+
   describe('OAuth token refresh during long-running tasks', () => {
     async function restoreCapturingAgentMock(): Promise<void> {
       const { Agent } = await import('@mariozechner/pi-agent-core')

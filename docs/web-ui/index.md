@@ -32,7 +32,7 @@ The sidebar is the canonical map of the interface. Every entry below has its own
 | [Users](./users)                 | Add, remove, and manage local accounts and Telegram-linked users.                          |
 | [Providers](./providers)         | Configure LLM providers and pick the active default model.                                 |
 | [Skills](./skills)               | Install, inspect, and toggle skills. Browse the built-in tool catalog.                     |
-| [Instructions](./instructions)   | Edit `AGENTS.md`, `HEARTBEAT.md`, and `CONSOLIDATION.md` — the agent's behavior rules.     |
+| [Instructions](./instructions)   | Edit `AGENTS.md`, `TASKS.md`, `HEARTBEAT.md`, and `CONSOLIDATION.md` — the agent's behavior rules. |
 | [Settings](../settings/)         | Runtime configuration — provider, scheduler, telegram, voice, secrets, etc.                |
 
 ## Conventions across all pages

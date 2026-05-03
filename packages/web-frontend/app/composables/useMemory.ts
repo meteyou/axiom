@@ -248,6 +248,50 @@ export function useMemory() {
     }
   }
 
+  async function loadTasksGuidelines(): Promise<string> {
+    loading.value = true
+    error.value = null
+    try {
+      const data = await memoryApi.getTasksGuidelines()
+      return data.content
+    } catch (err) {
+      error.value = (err as Error).message
+      return ''
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function saveTasksGuidelines(content: string): Promise<boolean> {
+    saving.value = true
+    error.value = null
+    successMessage.value = null
+    try {
+      await memoryApi.updateTasksGuidelines(content)
+      successMessage.value = 'saved'
+      return true
+    } catch (err) {
+      error.value = (err as Error).message
+      return false
+    } finally {
+      saving.value = false
+    }
+  }
+
+  async function loadDefaultTasksGuidelines(): Promise<string> {
+    loading.value = true
+    error.value = null
+    try {
+      const data = await memoryApi.getDefaultTasksGuidelines()
+      return data.content
+    } catch (err) {
+      error.value = (err as Error).message
+      return ''
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function loadProfile(): Promise<{ content: string; username: string }> {
     loading.value = true
     error.value = null
@@ -345,6 +389,9 @@ export function useMemory() {
     loadConsolidationRules,
     saveConsolidationRules,
     loadDefaultConsolidationRules,
+    loadTasksGuidelines,
+    saveTasksGuidelines,
+    loadDefaultTasksGuidelines,
     loadProfile,
     saveProfile,
     loadDailyFiles,

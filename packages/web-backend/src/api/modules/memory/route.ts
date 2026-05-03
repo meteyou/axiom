@@ -67,6 +67,10 @@ export function createMemoryRouter(options: MemoryRouterOptions): Router {
   router.put('/consolidation-rules', controller.putConsolidationRules)
   router.get('/consolidation-rules/default', controller.getDefaultConsolidationRules)
 
+  router.get('/tasks-guidelines', controller.getTasksGuidelines)
+  router.put('/tasks-guidelines', controller.putTasksGuidelines)
+  router.get('/tasks-guidelines/default', controller.getDefaultTasksGuidelines)
+
   // Consolidation endpoints
   router.get('/consolidation/status', controller.getConsolidationStatus)
   router.post('/consolidation/run', controller.runConsolidation)

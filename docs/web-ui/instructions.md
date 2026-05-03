@@ -1,6 +1,6 @@
 # Instructions
 
-The Instructions page is the dedicated editor for the three Markdown files that shape the agent's behavior — what it reads on every turn, when it consolidates daily notes, and what it does on each heartbeat tick. These are the same files you can edit on disk under `/data/config/`; this page just gives them more screen real estate than the [Memory](./memory) page and adds a *Restore default* affordance for when you want to start over.
+The Instructions page is the dedicated editor for the Markdown files that shape the agent's behavior — what the chat agent reads on every turn, what background tasks read on every spawn, when memory is consolidated, and what runs on each heartbeat tick. These are the same files you can edit on disk under `/data/config/`; this page just gives them more screen real estate than the [Memory](./memory) page and adds a *Restore default* affordance for when you want to start over.
 
 > **Admin only.** Regular users don't see this page.
 
@@ -10,19 +10,20 @@ The Instructions page is the dedicated editor for the three Markdown files that 
 
 ## Layout
 
-A single tab bar with three tabs, each one a full-file Markdown editor backed by the same component used elsewhere in the app:
+A single tab bar with four tabs, each one a full-file Markdown editor backed by the same component used elsewhere in the app:
 
 | Tab                     | File                              | Read by                                                                                  |
 |-------------------------|-----------------------------------|------------------------------------------------------------------------------------------|
-| **Agent Rules**         | `/data/config/AGENTS.md`          | Every chat turn, every task, every heartbeat — concatenated into the system prompt.      |
+| **Agent Rules**         | `/data/config/AGENTS.md`          | Every chat turn (interactive agent system prompt).                                       |
 | **Consolidation Rules** | `/data/config/CONSOLIDATION.md`   | Only the [memory-consolidation job](../settings/memory#memory-consolidation).            |
 | **Heartbeat Tasks**     | `/data/config/HEARTBEAT.md`       | Only the [agent heartbeat](../settings/agent-heartbeat) on each scheduled tick.          |
+| **Task Guidelines**     | `/data/config/TASKS.md`           | Every background task spawn (`create_task`, `task`-type cronjobs, heartbeat-/consolidation-spawned tasks). |
 
 The screenshot at the top shows the **Agent Rules** tab.
 
 ### Tab state in the URL
 
-The active tab is reflected in the URL as `?file=agents | consolidation | heartbeat`. Reload the page and you stay on the same tab; share a link and the recipient lands on the same view. Invalid or missing `file` values fall back to **Agent Rules**.
+The active tab is reflected in the URL as `?file=agents | consolidation | heartbeat | tasks`. Reload the page and you stay on the same tab; share a link and the recipient lands on the same view. Invalid or missing `file` values fall back to **Agent Rules**.
 
 ### Lazy loading
 
@@ -68,9 +69,10 @@ Effects of a save vary by file — see [Agent Instructions concept](../concepts/
 
 | File                    | When the next read picks up your changes                                              |
 |-------------------------|---------------------------------------------------------------------------------------|
-| `AGENTS.md`             | Next chat turn, next task spawn, next heartbeat tick — read fresh every time.        |
+| `AGENTS.md`             | Next chat turn — read fresh every time.                                              |
 | `CONSOLIDATION.md`      | Next consolidation run (manual *Run now* or scheduled).                               |
 | `HEARTBEAT.md`          | Next heartbeat tick.                                                                  |
+| `TASKS.md`              | Next background task spawn — read fresh on every `create_task` / cronjob run.        |
 
 There is no restart needed for any of them.
 
@@ -91,6 +93,12 @@ Loaded into **every** prompt verbatim. Token-expensive — keep it tight, impera
 The judging rubric for the nightly memory-consolidation job. Tells it which entries from `daily/<date>.md` to promote into `MEMORY.md`, user profiles, the wiki, or `sources/` — and which to drop entirely.
 
 Only the consolidation job ever reads this; it never appears in the chat system prompt. Customize it to match the memory taxonomy you actually use — for example, if you don't keep a wiki, strip the wiki section so the job stops trying to write there.
+
+### Task Guidelines: `TASKS.md`
+
+The background-task contract. Generic guidelines injected into every background task's system prompt as the `<task_guidelines>` block — applies to `create_task`, to cronjobs with `action_type: "task"`, and to heartbeat-/consolidation-spawned tasks. The hardcoded identity ("you are a background task agent"), the concrete `Your task: …` block, the `<workspace>` block, and the final `STATUS: … / SUMMARY: …` output contract stay in code and are not editable here.
+
+Reads on every background task start. An empty file is valid: the `<task_guidelines>` block is then skipped and tasks rely on whatever rules the per-task prompt or attached skills carry. See [Agent Instructions → `TASKS.md`](../concepts/instructions#tasks-md) for the full distinction from `attached_skills` and per-task prompts.
 
 ### Heartbeat Tasks: `HEARTBEAT.md`
 

@@ -435,6 +435,8 @@
     "heartbeatTasksDescription": "Define periodic tasks for the agent to execute during each heartbeat cycle.",
     "consolidationRulesTitle": "Consolidation Rules",
     "consolidationRulesDescription": "Define what the nightly memory consolidation should focus on — what to promote, update, or ignore.",
+    "tasksGuidelinesTitle": "Task Guidelines",
+    "tasksGuidelinesDescription": "Generic guidelines injected into every background task's system prompt. Applies to create_task, cronjob 'task' runs, heartbeat-spawned tasks, and consolidation-spawned tasks.",
     "consolidationSection": "Memory consolidation",
     "consolidationSectionDescription": "Automatically review daily memory entries and promote lasting insights into core memory (MEMORY.md).",
     "consolidationEnabled": "Enable automatic consolidation",

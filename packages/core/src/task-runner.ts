@@ -7,6 +7,7 @@ import type { AssistantMessage, Message, Model, Api } from '@mariozechner/pi-ai'
 import type { Database } from './database.js'
 import { getAgentSkillsDir } from './agent-skills.js'
 import { getSkill } from './skill-config.js'
+import { readTasksGuidelinesFile } from './memory.js'
 import type { SettingsThinkingLevel } from './contracts/settings.js'
 import { readBackgroundThinkingLevelFromConfig } from './thinking-level.js'
 import { TaskStore } from './task-store.js'
@@ -262,10 +263,7 @@ export function renderAttachedSkillsBlock(
   return `<attached_skills>\n${parts.join('\n\n')}\n</attached_skills>`
 }
 
-/**
- * Build the system prompt for a task agent
- */
-function buildTaskSystemPrompt(taskPrompt: string, memoryDir?: string): string {
+function buildTaskSystemPrompt(taskPrompt: string, memoryDir?: string, configDir?: string): string {
   const sections: string[] = []
 
   const workspaceDir = getWorkspaceDir()
@@ -278,20 +276,14 @@ Your working directory is ${workspaceDir}. All shell commands execute in this di
 All relative paths in read_file, write_file, and list_files resolve against this directory.
 Use this directory for cloning repos, creating files, and all file operations.
 Do NOT create working directories elsewhere (e.g. /tmp) — use ${workspaceDir} instead.
-</workspace>
+</workspace>`)
 
-Guidelines:
-- Work independently for as long as possible
-- Prefer acting over asking when the next step is clear and low-risk
-- Make reasonable assumptions, but record important assumptions in your final report
-- Only pause with a question if you truly cannot proceed without user input, missing access, or an irreversible decision
-- Read relevant files and tool results before changing anything
-- Do not overwrite, discard, or ignore user changes or unrelated local work
-- Keep edits focused on the requested outcome; avoid unnecessary refactors or extra features
-- Verify meaningful work when practical, and report the actual result honestly
-- If you reference files, commands, URLs, test output, or errors, include the concrete details rather than vague summaries
-- When finished, your final message must contain ALL your actual findings, data, and results
-- Do NOT just describe what you did — include the full content of your work`)
+  const taskGuidelines = readTasksGuidelinesFile(configDir).trim()
+  if (taskGuidelines.length > 0) {
+    sections.push(`<task_guidelines>
+${taskGuidelines}
+</task_guidelines>`)
+  }
 
   if (memoryDir) {
     sections.push(`<memory_reference>

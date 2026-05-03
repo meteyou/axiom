@@ -1,11 +1,15 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import {
   ensureMemoryStructure,
+  ensureConfigStructure,
   readSoulFile,
   readMemoryFile,
   writeMemoryFile,
   readAgentsRulesFile,
   readHeartbeatFile,
+  readTasksGuidelinesFile,
+  writeTasksGuidelinesFile,
+  getDefaultTasksGuidelinesContent,
   ensureDailyFile,
   readDailyFile,
   appendToDailyFile,
@@ -289,6 +293,56 @@ describe('memory', () => {
       const dir = makeTmpDir()
       const content = readHeartbeatFile(dir)
       expect(content).toContain('# Heartbeat Tasks')
+    })
+  })
+
+  describe('TASKS.md (background task guidelines)', () => {
+    it('ensureConfigStructure creates TASKS.md from the default template', () => {
+      const dir = makeTmpDir()
+      ensureConfigStructure(dir)
+
+      const tasksPath = path.join(dir, 'TASKS.md')
+      expect(fs.existsSync(tasksPath)).toBe(true)
+      const content = fs.readFileSync(tasksPath, 'utf-8')
+      expect(content).toBe(getDefaultTasksGuidelinesContent())
+      expect(content).toContain('# Background Task Guidelines')
+      expect(content).toContain('Work independently for as long as possible')
+      expect(content).toContain('Do NOT just describe what you did')
+    })
+
+    it('readTasksGuidelinesFile creates TASKS.md if missing and returns content', () => {
+      const dir = makeTmpDir()
+      const content = readTasksGuidelinesFile(dir)
+      expect(content).toContain('# Background Task Guidelines')
+      expect(fs.existsSync(path.join(dir, 'TASKS.md'))).toBe(true)
+    })
+
+    it('readTasksGuidelinesFile reads existing custom content unchanged', () => {
+      const dir = makeTmpDir()
+      ensureConfigStructure(dir)
+      const custom = '# Background Task Guidelines\n\n- Be brief.\n'
+      fs.writeFileSync(path.join(dir, 'TASKS.md'), custom, 'utf-8')
+
+      const content = readTasksGuidelinesFile(dir)
+      expect(content).toBe(custom)
+    })
+
+    it('writeTasksGuidelinesFile persists user edits', () => {
+      const dir = makeTmpDir()
+      writeTasksGuidelinesFile('# Custom\n- one rule\n', dir)
+
+      const onDisk = fs.readFileSync(path.join(dir, 'TASKS.md'), 'utf-8')
+      expect(onDisk).toBe('# Custom\n- one rule\n')
+      expect(readTasksGuidelinesFile(dir)).toBe('# Custom\n- one rule\n')
+    })
+
+    it('ensureConfigStructure does not overwrite existing TASKS.md', () => {
+      const dir = makeTmpDir()
+      ensureConfigStructure(dir)
+      fs.writeFileSync(path.join(dir, 'TASKS.md'), '# Mine\n', 'utf-8')
+
+      ensureConfigStructure(dir)
+      expect(fs.readFileSync(path.join(dir, 'TASKS.md'), 'utf-8')).toBe('# Mine\n')
     })
   })
 
