@@ -1429,7 +1429,6 @@ export class TelegramBot {
    * Used for proactive task result notifications.
    */
   // Public cross-workspace API used by web-backend; Fallow cannot see this in clean CI before workspace dist files exist.
-  // fallow-ignore-next-line unused-class-member
   async sendTaskNotification(chatId: string | number, html: string): Promise<boolean> {
     const parts = splitMessage(html)
     const plainFull = telegramHtmlToPlainText(html)
@@ -1458,7 +1457,6 @@ export class TelegramBot {
    * Returns null if no linked & approved Telegram user exists.
    */
   // Public cross-workspace API used by web-backend; Fallow cannot see this in clean CI before workspace dist files exist.
-  // fallow-ignore-next-line unused-class-member
   getTelegramChatIdForUser(userId: number): string | null {
     if (!this.db) return null
 
@@ -1475,7 +1473,6 @@ export class TelegramBot {
    * Does NOT sync back to web chat (intended for task injection responses).
    */
   // Public cross-workspace API used by web-backend; Fallow cannot see this in clean CI before workspace dist files exist.
-  // fallow-ignore-next-line unused-class-member
   async sendFormattedMessage(chatId: string | number, markdown: string): Promise<boolean> {
     const parts = splitMessage(markdown)
 
@@ -1544,7 +1541,7 @@ function sleep(ms: number): Promise<void> {
  * `/stop`, `/kill`) so they appear in `/help` and the Telegram command menu
  * even though their behaviour stays inline in `setupHandlers()`.
  */
-export function buildTelegramSlashCommandRegistry(): SlashCommandRegistry {
+function buildTelegramSlashCommandRegistry(): SlashCommandRegistry {
   const registry = new SlashCommandRegistryCtor()
   registerBuiltInSlashCommands(registry)
   registry.register({

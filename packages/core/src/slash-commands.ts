@@ -173,11 +173,6 @@ export class SlashCommandRegistry {
       .sort((a, b) => a.name.localeCompare(b.name))
   }
 
-  /** All registered commands, sorted by name. */
-  all(): SlashCommandDefinition[] {
-    return [...this.byName.values()].sort((a, b) => a.name.localeCompare(b.name))
-  }
-
   /**
    * Try to dispatch a chat input. Returns a discriminated result describing
    * what happened. Surfaces use the result to decide how to respond.
