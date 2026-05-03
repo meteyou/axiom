@@ -139,7 +139,7 @@ export interface RuntimeCompositionOptions {
   logger?: Pick<typeof console, 'log' | 'warn' | 'error'>
 }
 
-function loadRuntimeSettings(): RuntimeSettings {
+export function loadRuntimeSettings(): RuntimeSettings {
   let sessionTimeoutMinutes = 30
   const taskSettings: TaskSettings = {
     defaultProvider: '',
@@ -307,6 +307,10 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
   const runtimeMetrics = new RuntimeMetrics()
   const { sessionTimeoutMinutes, taskSettings, builtinToolsConfig } = loadRuntimeSettings()
 
+  function getCurrentTaskSettings(): TaskSettings {
+    return loadRuntimeSettings().taskSettings
+  }
+
   function resolveProvider(nameOrId: string): ProviderConfig | null {
     try {
       const file = loadProvidersDecrypted()
@@ -319,8 +323,9 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
   }
 
   function getTaskDefaultProvider(): ProviderConfig {
-    if (taskSettings.defaultProvider) {
-      const { providerId, modelId } = parseProviderModelId(taskSettings.defaultProvider)
+    const currentTaskSettings = getCurrentTaskSettings()
+    if (currentTaskSettings.defaultProvider) {
+      const { providerId, modelId } = parseProviderModelId(currentTaskSettings.defaultProvider)
       if (providerId) {
         let resolved = resolveProvider(providerId)
         if (resolved && modelId) {
