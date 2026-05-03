@@ -99,6 +99,8 @@ On mobile the mic and send buttons swap based on whether you've typed anything: 
 
 Pending files appear as chips above the composer. Click `×` on a chip to remove it before sending. Once sent, attachments render below the message body — images inline, other files as download chips.
 
+For text-based files, Axiom also makes the content available to the agent automatically. Plain text, Markdown, CSV, JSON, and PDF uploads are extracted on the backend and inserted into the next agent turn, so you can ask questions about the document without copying its text into the chat. Extraction is best-effort: if a file cannot be parsed, the upload is still stored and shown as a downloadable attachment.
+
 Where attachments end up on the backend, how long they're kept, and the upload limit live in [Settings → Agent → Upload retention](../settings/agent#upload-retention).
 
 ## Reconnecting
