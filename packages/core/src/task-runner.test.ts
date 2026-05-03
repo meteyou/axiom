@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { initDatabase } from './database.js'
 import { TaskStore } from './task-store.js'
-import { TaskRunner, formatTaskInjection } from './task-runner.js'
+import { TaskRunner, formatTaskInjection, parseTaskTimestampMs } from './task-runner.js'
 import type { TaskRunnerOptions, TaskOverrides } from './task-runner.js'
 import type { Database } from './database.js'
 import type { ProviderConfig } from './provider-config.js'
@@ -1540,6 +1540,172 @@ describe('TaskRunner', () => {
       } finally {
         vi.useRealTimers()
       }
+    })
+  })
+
+
+  describe('parseTaskTimestampMs', () => {
+    it('parses a task store timestamp as UTC, regardless of host TZ', () => {
+      const ms = parseTaskTimestampMs('2024-01-15 12:00:00')
+      expect(ms).toBe(Date.UTC(2024, 0, 15, 12, 0, 0))
+    })
+
+    it('returns null for empty / invalid input', () => {
+      expect(parseTaskTimestampMs(null)).toBe(null)
+      expect(parseTaskTimestampMs(undefined)).toBe(null)
+      expect(parseTaskTimestampMs('')).toBe(null)
+      expect(parseTaskTimestampMs('not a date')).toBe(null)
+    })
+  })
+
+  describe('task injection duration uses real elapsed time', () => {
+    it('reports duration based on actual elapsed time, not a TZ-offset artefact', async () => {
+      const { Agent } = await import('@mariozechner/pi-agent-core')
+      const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
+      MockAgent.mockImplementationOnce(() => {
+        let subscribeFn: ((event: unknown) => void) | null = null
+        const messages: unknown[] = []
+        return {
+          subscribe: vi.fn((fn: (event: unknown) => void) => {
+            subscribeFn = fn
+            return () => { subscribeFn = null }
+          }),
+          prompt: vi.fn(async () => {
+            if (subscribeFn) {
+              subscribeFn({
+                type: 'message_end',
+                message: {
+                  role: 'assistant',
+                  content: [{ type: 'text', text: 'STATUS: completed\nSUMMARY: ok' }],
+                  provider: 'test-provider',
+                  model: 'test-model',
+                  usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, cost: { total: 0 } },
+                },
+              })
+            }
+            messages.push({
+              role: 'assistant',
+              content: [{ type: 'text', text: 'STATUS: completed\nSUMMARY: ok' }],
+            })
+          }),
+          abort: vi.fn(),
+          state: { get messages() { return messages } },
+        }
+      })
+
+      const task = store.create({
+        name: 'Smoke Test',
+        prompt: 'quick',
+        triggerType: 'agent',
+        maxDurationMinutes: 5,
+      })
+
+      await runner.startTask(task, mockProvider)
+      await new Promise(resolve => setTimeout(resolve, 100))
+
+      expect(onTaskCompleteCalls).toHaveLength(1)
+      const m = onTaskCompleteCalls[0].injection.match(/duration_minutes="(\d+)"/)
+      expect(m).not.toBeNull()
+      const reported = parseInt(m![1], 10)
+      expect(reported).toBeLessThan(2)
+    })
+  })
+
+  describe('live metric persistence during execution', () => {
+    it('persists token / cost counters to the task row on message_end', async () => {
+      const { Agent } = await import('@mariozechner/pi-agent-core')
+      const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
+
+      let subscribeFn: ((event: unknown) => void) | null = null
+      let resumePromptResolve: (() => void) | null = null
+      MockAgent.mockImplementationOnce(() => {
+        const messages: unknown[] = []
+        return {
+          subscribe: vi.fn((fn: (event: unknown) => void) => {
+            subscribeFn = fn
+            return () => { subscribeFn = null }
+          }),
+          prompt: vi.fn(() => new Promise<void>((resolve) => {
+            resumePromptResolve = () => {
+              messages.push({
+                role: 'assistant',
+                content: [{ type: 'text', text: 'STATUS: completed\nSUMMARY: ok' }],
+              })
+              resolve()
+            }
+          })),
+          abort: vi.fn(() => { resumePromptResolve?.() }),
+          state: { get messages() { return messages } },
+        }
+      })
+
+      const task = store.create({
+        name: 'Live Metrics Task',
+        prompt: 'work',
+        triggerType: 'agent',
+        sessionId: 'live-metrics-session',
+      })
+
+      await runner.startTask(task, mockProvider)
+      await new Promise(resolve => setTimeout(resolve, 20))
+
+      const beforeEvent = store.getById(task.id)!
+      expect(beforeEvent.status).toBe('running')
+      expect(beforeEvent.promptTokens).toBe(0)
+      expect(beforeEvent.completionTokens).toBe(0)
+      expect(beforeEvent.toolCallCount).toBe(0)
+
+      expect(subscribeFn).not.toBeNull()
+      subscribeFn!({
+        type: 'message_end',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: 'thinking out loud' }],
+          provider: 'test-provider',
+          model: 'test-model',
+          usage: {
+            input: 250,
+            output: 90,
+            cacheRead: 0,
+            cacheWrite: 0,
+            cost: { total: 0.0042 },
+          },
+        },
+      })
+
+      const afterMsg = store.getById(task.id)!
+      expect(afterMsg.status).toBe('running')
+      expect(afterMsg.promptTokens).toBe(250)
+      expect(afterMsg.completionTokens).toBe(90)
+      expect(afterMsg.estimatedCost).toBeCloseTo(0.0042, 6)
+
+      subscribeFn!({
+        type: 'tool_execution_start',
+        toolCallId: 'call-1',
+        toolName: 'shell',
+        args: { command: 'ls' },
+      })
+      subscribeFn!({
+        type: 'tool_execution_end',
+        toolCallId: 'call-1',
+        toolName: 'shell',
+        result: 'ok',
+        isError: false,
+      })
+
+      const afterTool = store.getById(task.id)!
+      expect(afterTool.status).toBe('running')
+      expect(afterTool.toolCallCount).toBe(1)
+      expect(afterTool.promptTokens).toBe(250)
+
+      resumePromptResolve!()
+      await new Promise(resolve => setTimeout(resolve, 50))
+
+      const finalRow = store.getById(task.id)!
+      expect(finalRow.status).toBe('completed')
+      expect(finalRow.promptTokens).toBe(250)
+      expect(finalRow.completionTokens).toBe(90)
+      expect(finalRow.toolCallCount).toBe(1)
     })
   })
 

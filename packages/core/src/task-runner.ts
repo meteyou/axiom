@@ -28,6 +28,16 @@ import { getWorkspaceDir } from './agent.js'
 
 const MAX_STATUS_UPDATE_INTERVAL_MINUTES = 120
 
+export function parseTaskTimestampMs(value: string | null | undefined): number | null {
+  if (!value) return null
+  const ms = new Date(value.replace(' ', 'T') + 'Z').getTime()
+  return Number.isFinite(ms) ? ms : null
+}
+
+function taskStartedAtMs(value: string | null | undefined): number {
+  return parseTaskTimestampMs(value) ?? Date.now()
+}
+
 export interface TaskOverrides {
   /** JSON array of tool names to exclude (null = all enabled) */
   toolsOverride?: string | null
@@ -615,7 +625,7 @@ export class TaskRunner {
 
         // Notify via injection with question status
         const task = this.store.getById(taskId)!
-        const startedAt = task.startedAt ? new Date(task.startedAt).getTime() : Date.now()
+        const startedAt = taskStartedAtMs(task.startedAt)
         const durationMinutes = Math.round((Date.now() - startedAt) / 60000)
         const injection = formatTaskInjection(task, durationMinutes)
         this.notifyTaskPaused(taskId, injection, summary)
@@ -653,7 +663,7 @@ export class TaskRunner {
 
       if (updatedTask) {
         const task = this.store.getById(taskId)!
-        const startedAt = task.startedAt ? new Date(task.startedAt).getTime() : Date.now()
+        const startedAt = taskStartedAtMs(task.startedAt)
         const durationMinutes = Math.round((Date.now() - startedAt) / 60000)
         const injection = formatTaskInjection(task, durationMinutes)
         this.notifyTaskComplete(taskId, injection, task.status, task.resultSummary ?? undefined)
@@ -680,7 +690,7 @@ export class TaskRunner {
 
       if (updatedTask) {
         const task = this.store.getById(taskId)!
-        const startedAt = task.startedAt ? new Date(task.startedAt).getTime() : Date.now()
+        const startedAt = taskStartedAtMs(task.startedAt)
         const durationMinutes = Math.round((Date.now() - startedAt) / 60000)
         const injection = formatTaskInjection(task, durationMinutes)
         this.notifyTaskComplete(taskId, injection, "failed", errorMessage)
@@ -730,6 +740,8 @@ export class TaskRunner {
           runningTask.promptTokens += assistantMsg.usage.input
           runningTask.completionTokens += assistantMsg.usage.output
           runningTask.estimatedCost += finalCost
+
+          this.persistLiveMetrics(runningTask)
 
           // Log to token_usage table with task's session_id
           logTokenUsage(this.db, {
@@ -793,6 +805,8 @@ export class TaskRunner {
         runningTask.toolCallArgs.delete(event.toolCallId)
 
         runningTask.toolCallCount++
+
+        this.persistLiveMetrics(runningTask)
 
         const outputStr = JSON.stringify(event.result ?? {})
         const isError = event.isError === true || (typeof event.result === 'string' && event.result.startsWith('Error'))
@@ -975,7 +989,7 @@ export class TaskRunner {
 
     const task = this.store.getById(taskId)
     if (task) {
-      const startedAt = task.startedAt ? new Date(task.startedAt).getTime() : Date.now()
+      const startedAt = taskStartedAtMs(task.startedAt)
       const durationMinutes = Math.round((Date.now() - startedAt) / 60000)
       const injection = `<task_injection task_id="${task.id}" task_name="${task.name}" status="failed" trigger="${task.triggerType}" duration_minutes="${durationMinutes}" tokens_used="${task.promptTokens + task.completionTokens}">
 ${reason}
@@ -1102,7 +1116,7 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
 
       const task = this.store.getById(taskId)
       if (task) {
-        const startedAt = task.startedAt ? new Date(task.startedAt).getTime() : Date.now()
+        const startedAt = taskStartedAtMs(task.startedAt)
         const durationMinutes = Math.round((Date.now() - startedAt) / 60000)
         const injection = formatTaskInjection(task, durationMinutes)
         this.notifyTaskComplete(taskId, injection, 'failed', reason)
@@ -1128,7 +1142,7 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
 
     const task = this.store.getById(taskId)
     if (task) {
-      const startedAt = task.startedAt ? new Date(task.startedAt).getTime() : Date.now()
+      const startedAt = taskStartedAtMs(task.startedAt)
       const durationMinutes = Math.round((Date.now() - startedAt) / 60000)
       const injection = formatTaskInjection(task, durationMinutes)
       this.notifyTaskComplete(taskId, injection, "failed", reason)
@@ -1181,9 +1195,7 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
           : 0)
     if (maxMinutes <= 0) return
 
-    const startedAtMs = task.startedAt
-      ? new Date(task.startedAt.replace(' ', 'T') + 'Z').getTime()
-      : runningTask.startedAtMs
+    const startedAtMs = parseTaskTimestampMs(task.startedAt) ?? runningTask.startedAtMs
     const deadline = startedAtMs + maxMinutes * 60 * 1000
     const remaining = deadline - Date.now()
 
@@ -1196,6 +1208,19 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
     runningTask.timeoutTimer = setTimeout(() => {
       this.abortTask(runningTask.taskId, 'Max duration exceeded')
     }, remaining)
+  }
+
+  private persistLiveMetrics(runningTask: RunningTask): void {
+    try {
+      this.store.update(runningTask.taskId, {
+        promptTokens: runningTask.promptTokens,
+        completionTokens: runningTask.completionTokens,
+        estimatedCost: runningTask.estimatedCost,
+        toolCallCount: runningTask.toolCallCount,
+      })
+    } catch (err) {
+      console.warn(`[task-runner] live metrics update failed for ${runningTask.taskId}:`, err)
+    }
   }
 
   /**
@@ -1267,7 +1292,7 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
       toolCallArgs: new Map(),
       toolCallTracker: new ToolCallTracker(),
       statusUpdateTimer: null,
-      startedAtMs: task.startedAt ? new Date(task.startedAt).getTime() : Date.now(),
+      startedAtMs: taskStartedAtMs(task.startedAt),
     }
 
     // Set up periodic status updates for resumed task
@@ -1361,7 +1386,7 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
         })
 
         const task = this.store.getById(taskId)!
-        const startedAt = task.startedAt ? new Date(task.startedAt).getTime() : Date.now()
+        const startedAt = taskStartedAtMs(task.startedAt)
         const durationMinutes = Math.round((Date.now() - startedAt) / 60000)
         const injection = formatTaskInjection(task, durationMinutes)
         this.notifyTaskPaused(taskId, injection, summary)
@@ -1396,7 +1421,7 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
       })
 
       const task = this.store.getById(taskId)!
-      const startedAt = task.startedAt ? new Date(task.startedAt).getTime() : Date.now()
+      const startedAt = taskStartedAtMs(task.startedAt)
       const durationMinutes = Math.round((Date.now() - startedAt) / 60000)
       const injection = formatTaskInjection(task, durationMinutes)
       this.notifyTaskComplete(taskId, injection, task.status, task.resultSummary ?? undefined)
@@ -1420,7 +1445,7 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
       })
 
       const task = this.store.getById(taskId)!
-      const startedAt = task.startedAt ? new Date(task.startedAt).getTime() : Date.now()
+      const startedAt = taskStartedAtMs(task.startedAt)
       const durationMinutes = Math.round((Date.now() - startedAt) / 60000)
       const injection = formatTaskInjection(task, durationMinutes)
       this.notifyTaskComplete(taskId, injection, "failed", errorMessage)
@@ -1455,8 +1480,8 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
             : 0)
 
       let maxDurationExceeded = false
-      if (effectiveMaxMinutes > 0 && task?.startedAt) {
-        const startedAtMs = new Date(task.startedAt.replace(' ', 'T') + 'Z').getTime()
+      const startedAtMs = parseTaskTimestampMs(task?.startedAt)
+      if (effectiveMaxMinutes > 0 && startedAtMs !== null) {
         const deadline = startedAtMs + effectiveMaxMinutes * 60 * 1000
         maxDurationExceeded = now >= deadline
       }
@@ -1488,7 +1513,7 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
       // Notify via injection
       const updated = this.store.getById(taskId)
       if (updated) {
-        const startedAt = updated.startedAt ? new Date(updated.startedAt).getTime() : Date.now()
+        const startedAt = taskStartedAtMs(updated.startedAt)
         const durationMinutes = Math.round((Date.now() - startedAt) / 60000)
         const injection = formatTaskInjection(updated, durationMinutes)
         this.notifyTaskComplete(taskId, injection, 'failed', reason)
