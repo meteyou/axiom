@@ -19,10 +19,6 @@ vi.mock('./provider-config.js', async (importOriginal) => {
   }
 })
 
-// Captured PiAgent constructor options for tests that need to inspect
-// what the runner passes to pi-agent-core (e.g. getApiKey resolution).
-// We track the most recent options on a stable singleton so test isolation
-// works even when individual tests override `mockImplementation`.
 interface CapturedAgentOptions {
   getApiKey?: () => unknown
 }
@@ -1548,13 +1544,6 @@ describe('TaskRunner', () => {
   })
 
   describe('OAuth token refresh during long-running tasks', () => {
-    /**
-     * Restore a minimal default Agent mock that exposes the constructor
-     * options via `lastAgentOptions`. Some earlier tests (e.g. periodic
-     * status updates) replace the mock implementation with a long-running
-     * stub that ignores its options, so we re-install a friendly default
-     * before each OAuth-refresh test instead of relying on test ordering.
-     */
     async function restoreCapturingAgentMock(): Promise<void> {
       const { Agent } = await import('@mariozechner/pi-agent-core')
       const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
@@ -1569,8 +1558,6 @@ describe('TaskRunner', () => {
             return () => { subscribeFn = null }
           }),
           prompt: vi.fn(async () => {
-            // Push a minimal completion so `runTaskAsync` reaches the
-            // success path without invoking `options.getApiKey`.
             const msg = {
               role: 'assistant',
               content: [{ type: 'text', text: 'STATUS: completed\nSUMMARY: ok' }],
@@ -1591,18 +1578,6 @@ describe('TaskRunner', () => {
       })
     }
 
-    // Regression: tasks used to capture `apiKey` synchronously at startTask()
-    // time. For OAuth providers (ChatGPT Codex, Claude Pro) the access token
-    // expires within ~1 hour, so a long-running task would 401 every LLM call
-    // after that. pi-ai turns those failures into a final assistant message
-    // with stopReason='error' and empty content, which the runner then logs
-    // as `status='completed'` with an empty summary — matching the symptom
-    // users reported on the websocket-cached transport.
-    //
-    // These tests pin the contract: the `getApiKey` callback handed to
-    // PiAgent must re-resolve on every call, and (when available) it must
-    // route through `getProviderById` so disk-persisted refreshed credentials
-    // are picked up.
     it('PiAgent.getApiKey re-resolves on every call instead of capturing once', async () => {
       await restoreCapturingAgentMock()
       resetAgentOptions()
@@ -1628,13 +1603,11 @@ describe('TaskRunner', () => {
       await customRunner.startTask(task, mockProvider)
       await new Promise(resolve => setTimeout(resolve, 50))
 
-      // Pre-resolve at startTask happened (call #1).
       expect(getApiKey).toHaveBeenCalledTimes(1)
       const captured = getCapturedAgentOptions()
       const capturedGetApiKey = captured.getApiKey
       if (!capturedGetApiKey) throw new Error('getApiKey missing on captured options')
 
-      // Subsequent invocations of the agent's getApiKey hit getApiKey again.
       const k1 = await capturedGetApiKey()
       const k2 = await capturedGetApiKey()
       expect(k1).toBe('key-fresh-2')
@@ -1680,16 +1653,11 @@ describe('TaskRunner', () => {
       const captured = getCapturedAgentOptions()
       const capturedGetApiKey = captured.getApiKey
       if (!capturedGetApiKey) throw new Error('getApiKey missing on captured options')
-      // Each invocation of the agent's getApiKey must reload the latest
-      // provider snapshot via getProviderById; otherwise OAuth credentials
-      // refreshed on disk would never reach the LLM call.
       const k1 = await capturedGetApiKey()
       const k2 = await capturedGetApiKey()
       expect(k1).toBe('snapshot-1')
       expect(k2).toBe('snapshot-2')
       expect(getProviderById).toHaveBeenCalledWith(mockProvider.id)
-      // Two LLM-side resolutions → two getProviderById hits (the pre-resolve
-      // at startTask uses the captured provider directly).
       expect(getProviderById).toHaveBeenCalledTimes(2)
 
       customRunner.dispose()
@@ -1705,7 +1673,6 @@ describe('TaskRunner', () => {
         throw new Error('OAuth refresh exploded')
       })
 
-      // Silence expected error log
       const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
       const customRunner = new TaskRunner({
