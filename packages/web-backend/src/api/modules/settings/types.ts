@@ -30,10 +30,3 @@ export interface SettingsRouterOptions {
   onAgentHeartbeatSettingsChanged?: () => void
   onTelegramSettingsChanged?: () => void
 }
-
-interface SettingsUpdateEffects {
-  healthMonitorChanged: boolean
-  consolidationChanged: boolean
-  agentHeartbeatChanged: boolean
-  telegramChanged: boolean
-}
