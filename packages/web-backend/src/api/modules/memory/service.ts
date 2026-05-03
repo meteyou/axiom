@@ -17,6 +17,9 @@ import {
   readConsolidationFile,
   writeConsolidationFile,
   getDefaultConsolidationContent,
+  readTasksGuidelinesFile,
+  writeTasksGuidelinesFile,
+  getDefaultTasksGuidelinesContent,
   readUserProfile,
   ensureUserProfile,
   listMemories,
@@ -314,6 +317,19 @@ class MemoryService {
 
   readDefaultConsolidationRules(): string {
     return getDefaultConsolidationContent()
+  }
+
+  readTasksGuidelines(): string {
+    return readTasksGuidelinesFile()
+  }
+
+  writeTasksGuidelines(content: string): void {
+    writeTasksGuidelinesFile(content)
+    this.refreshAgentPrompt()
+  }
+
+  readDefaultTasksGuidelines(): string {
+    return getDefaultTasksGuidelinesContent()
   }
 
   getConsolidationStatus() {

@@ -59,7 +59,7 @@ Once the container is running, open `http://localhost:3000`, log in as admin, an
 | Provider health checks and fallback                  | [Settings → Health Monitor](../settings/health-monitor) |
 | Background task defaults, loop detection             | [Settings → Tasks](../settings/tasks)                   |
 | Recurring agent self-tasks                           | [Settings → Agent Heartbeat](../settings/agent-heartbeat) |
-| `AGENTS.md`, `HEARTBEAT.md`, `CONSOLIDATION.md`      | [Instructions](../web-ui/instructions)                  |
+| `AGENTS.md`, `HEARTBEAT.md`, `CONSOLIDATION.md`, `TASKS.md` | [Instructions](../web-ui/instructions)            |
 | `SOUL.md`, `MEMORY.md`, daily notes, user profiles, wiki | [Memory](../web-ui/memory)                          |
 | Cronjobs and scheduled reminders                     | [Cronjobs](../web-ui/cronjobs)                          |
 | Add or remove user accounts                          | [Users](../web-ui/users)                                |
@@ -92,9 +92,10 @@ The entrypoint creates these on first startup with safe defaults:
 | `secrets.json`     | Encrypted env vars (created on first secret-write). Do not edit by hand — values are AES-256-GCM encrypted with `ENCRYPTION_KEY`.                          | [Settings → Secrets](../settings/secrets)                  |
 | `telegram.json`    | Telegram bot config: token, admin user IDs, polling vs. webhook                                                                                            | [Settings → Telegram](../settings/telegram)                |
 | `skills.json`      | Installed skill registry (managed by the skills subsystem)                                                                                                 | [Skills](../web-ui/skills)                                 |
-| `AGENTS.md`        | User-editable agent rules (loaded into every system prompt)                                                                                                | [Instructions](../web-ui/instructions)                     |
+| `AGENTS.md`        | User-editable agent rules (loaded into every chat system prompt)                                                                                           | [Instructions](../web-ui/instructions)                     |
 | `HEARTBEAT.md`     | Recurring agent self-check tasks                                                                                                                           | [Instructions](../web-ui/instructions)                     |
 | `CONSOLIDATION.md` | Memory-consolidation rules                                                                                                                                 | [Instructions](../web-ui/instructions)                     |
+| `TASKS.md`         | Background-task guidelines (injected into every `create_task` / cronjob `task` run)                                                                        | [Instructions](../web-ui/instructions)                     |
 
 > ⚠️ **`secrets.json` is the exception.** It contains AES-256-GCM ciphertext keyed by `ENCRYPTION_KEY`. Always edit secrets through the UI — manual edits will not decrypt. If the UI is unreachable, you can stage values via `.env` / Compose `environment:` instead; runtime env vars take precedence.
 

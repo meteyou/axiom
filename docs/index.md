@@ -51,7 +51,7 @@ features:
 
 **Understand the agent**
 - [System prompt](/concepts/system-prompt) — what the model sees every turn
-- [Agent instructions](/concepts/instructions) — `AGENTS.md`, `CONSOLIDATION.md`, `HEARTBEAT.md`
+- [Agent instructions](/concepts/instructions) — `AGENTS.md`, `TASKS.md`, `CONSOLIDATION.md`, `HEARTBEAT.md`
 - [Built-in tools](/concepts/tools) — what the agent can call out of the box
 
 **Customize and extend**

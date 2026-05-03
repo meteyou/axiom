@@ -435,6 +435,8 @@
     "heartbeatTasksDescription": "Definiere periodische Aufgaben, die der Agent bei jedem Heartbeat-Zyklus ausführen soll.",
     "consolidationRulesTitle": "Konsolidierungs-Regeln",
     "consolidationRulesDescription": "Lege fest, worauf sich die nächtliche Memory-Konsolidierung konzentrieren soll — was übernommen, aktualisiert oder ignoriert werden soll.",
+    "tasksGuidelinesTitle": "Task-Guidelines",
+    "tasksGuidelinesDescription": "Allgemeine Richtlinien, die in den System-Prompt jeder Hintergrund-Task eingefügt werden. Gilt für create_task, Cronjob-Task-Läufe sowie von Heartbeat oder Konsolidierung gestartete Tasks.",
     "consolidationSection": "Memory-Konsolidierung",
     "consolidationSectionDescription": "Überprüft automatisch tägliche Einträge und übernimmt dauerhafte Erkenntnisse in das Kerngedächtnis (MEMORY.md).",
     "consolidationEnabled": "Automatische Konsolidierung aktivieren",

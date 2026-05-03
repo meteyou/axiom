@@ -46,6 +46,9 @@ export interface MemoryController {
   getConsolidationRules: (req: AuthenticatedRequest, res: Response) => void
   putConsolidationRules: (req: AuthenticatedRequest, res: Response) => void
   getDefaultConsolidationRules: (req: AuthenticatedRequest, res: Response) => void
+  getTasksGuidelines: (req: AuthenticatedRequest, res: Response) => void
+  putTasksGuidelines: (req: AuthenticatedRequest, res: Response) => void
+  getDefaultTasksGuidelines: (req: AuthenticatedRequest, res: Response) => void
   getConsolidationStatus: (req: AuthenticatedRequest, res: Response) => void
   runConsolidation: (req: AuthenticatedRequest, res: Response) => Promise<void>
 }
@@ -476,6 +479,38 @@ export function createMemoryController(options: MemoryModuleOptions): MemoryCont
         res.json({ content: service.readDefaultConsolidationRules() })
       } catch (err) {
         res.status(500).json({ error: `Failed to load CONSOLIDATION.md default: ${(err as Error).message}` })
+      }
+    },
+
+    getTasksGuidelines(_req, res) {
+      try {
+        const content = service.readTasksGuidelines()
+        res.json({ content })
+      } catch (err) {
+        res.status(500).json({ error: `Failed to read TASKS.md: ${(err as Error).message}` })
+      }
+    },
+
+    putTasksGuidelines(req, res) {
+      const parsedContent = parseContentBody(req.body)
+      if (!parsedContent.ok) {
+        res.status(400).json({ error: parsedContent.error })
+        return
+      }
+
+      try {
+        service.writeTasksGuidelines(parsedContent.value)
+        res.json({ message: 'TASKS.md updated', content: parsedContent.value })
+      } catch (err) {
+        res.status(500).json({ error: `Failed to write TASKS.md: ${(err as Error).message}` })
+      }
+    },
+
+    getDefaultTasksGuidelines(_req, res) {
+      try {
+        res.json({ content: service.readDefaultTasksGuidelines() })
+      } catch (err) {
+        res.status(500).json({ error: `Failed to load TASKS.md default: ${(err as Error).message}` })
       }
     },
 

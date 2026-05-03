@@ -39,7 +39,7 @@ Paused agents that nobody resumes are garbage-collected after a stale-cleanup in
 Every task runs in its own agent instance with its own session ID — separate from the parent chat. A task agent has:
 
 - **No chat history.** It cannot read what was said in the conversation that triggered it. Anything it needs has to be in the `prompt` field.
-- **A different system prompt.** Built by [`buildTaskSystemPrompt`](https://github.com/meteyou/axiom/blob/main/packages/core/src/task-runner.ts) — it tells the agent *"You are a background task agent. You are NOT a chatbot — you are an autonomous worker"*, points at `/workspace`, and enforces the `STATUS: … / SUMMARY: …` final-message format described below.
+- **A different system prompt.** Built by [`buildTaskSystemPrompt`](https://github.com/meteyou/axiom/blob/main/packages/core/src/task-runner.ts) — it tells the agent *"You are a background task agent. You are NOT a chatbot — you are an autonomous worker"*, points at `/workspace`, injects the user-editable `<task_guidelines>` block from [`TASKS.md`](./instructions#tasks-md), and enforces the `STATUS: … / SUMMARY: …` final-message format described below.
 - **The full toolset and skill index.** Same `<available_tools>` and `<available_skills>` as a chat agent. Cronjobs can additionally pin specific skills via `attached_skills` (see below).
 - **A fresh provider/model session.** The task either uses the configured task default provider (Settings → Tasks) or whatever was explicitly pinned at creation time.
 

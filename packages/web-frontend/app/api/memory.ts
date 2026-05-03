@@ -102,6 +102,13 @@ export function useMemoryApi() {
   })
   const getDefaultConsolidationRules = () => apiFetch<{ content: string }>('/api/memory/consolidation-rules/default')
 
+  const getTasksGuidelines = () => apiFetch<{ content: string }>('/api/memory/tasks-guidelines')
+  const updateTasksGuidelines = (content: string) => apiFetch('/api/memory/tasks-guidelines', {
+    method: 'PUT',
+    body: JSON.stringify({ content }),
+  })
+  const getDefaultTasksGuidelines = () => apiFetch<{ content: string }>('/api/memory/tasks-guidelines/default')
+
   const getProfile = () => apiFetch<MemoryProfileResponse>('/api/memory/profile')
   const updateProfile = (content: string) => apiFetch('/api/memory/profile', {
     method: 'PUT',
@@ -159,6 +166,9 @@ export function useMemoryApi() {
     getConsolidationRules,
     updateConsolidationRules,
     getDefaultConsolidationRules,
+    getTasksGuidelines,
+    updateTasksGuidelines,
+    getDefaultTasksGuidelines,
     getProfile,
     updateProfile,
     listProjectFiles,

@@ -811,6 +811,39 @@ describe('memory API', () => {
     expect(refreshSystemPrompt).toHaveBeenCalled()
   })
 
+  it('reads, updates, and exposes the default of TASKS.md', async () => {
+    const getRes = await fetch(`${baseUrl}/api/memory/tasks-guidelines`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    })
+    const getBody = (await getRes.json()) as { content: string }
+    expect(getRes.status).toBe(200)
+    expect(getBody.content).toContain('# Background Task Guidelines')
+
+    const defaultRes = await fetch(`${baseUrl}/api/memory/tasks-guidelines/default`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    })
+    const defaultBody = (await defaultRes.json()) as { content: string }
+    expect(defaultRes.status).toBe(200)
+    expect(defaultBody.content).toContain('# Background Task Guidelines')
+    expect(defaultBody.content).toContain('Work independently for as long as possible')
+
+    const putRes = await fetch(`${baseUrl}/api/memory/tasks-guidelines`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ content: '# Custom Task Guidelines\n\n- Be concise\n' }),
+    })
+    const putBody = (await putRes.json()) as { content: string }
+    expect(putRes.status).toBe(200)
+    expect(putBody.content).toContain('Be concise')
+    expect(refreshSystemPrompt).toHaveBeenCalled()
+
+    const onDisk = fs.readFileSync(path.join(tempDataDir, 'config', 'TASKS.md'), 'utf-8')
+    expect(onDisk).toContain('Be concise')
+  })
+
   it('reads and updates user profile', async () => {
     const getRes = await fetch(`${baseUrl}/api/memory/profile`, {
       headers: { Authorization: `Bearer ${adminToken}` },
