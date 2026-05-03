@@ -2,11 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import multer from 'multer'
 import type { Request, Response, NextFunction } from 'express'
-import {
-  getUploadsDir,
-  parseUploadsMetadata,
-  type UploadDescriptor,
-} from '@axiom/core'
+import { getUploadsDir } from '@axiom/core'
 
 const MAX_UPLOAD_SIZE = 50 * 1024 * 1024
 
@@ -17,10 +13,6 @@ export const uploadMiddleware = multer({
     files: 5,
   },
 })
-
-function extractUploadsFromMetadata(metadata?: string | null): UploadDescriptor[] {
-  return parseUploadsMetadata(metadata)
-}
 
 export function sendUploadedFile(req: Request, res: Response, next: NextFunction): void {
   try {
