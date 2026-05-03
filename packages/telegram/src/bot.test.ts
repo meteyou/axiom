@@ -268,9 +268,6 @@ describe('TelegramBot', () => {
 
       expect(ctx.reply).toHaveBeenCalledTimes(1)
       const msg = ctx.reply.mock.calls[0][0] as string
-      // /settings reads provider config from disk; in the test env it falls
-      // back to the “no active provider” branch, but the reply is still
-      // produced and human-readable.
       expect(typeof msg).toBe('string')
       expect(msg.length).toBeGreaterThan(0)
     })

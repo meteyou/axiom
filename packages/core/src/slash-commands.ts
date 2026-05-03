@@ -1,112 +1,59 @@
-/**
- * Shared slash-command parser, registry and dispatcher.
- *
- * The same registry is used by the web chat WebSocket layer and the Telegram
- * bot so both surfaces understand the same vocabulary. A command is metadata
- * (`name`, `aliases`, `description`, `usage`, `surfaces`) plus an optional
- * `handler`. Surface-specific commands that need to mutate transport state
- * (e.g. aborting an in-flight WebSocket stream for `/stop`) register
- * themselves *without* a handler so the surface keeps its custom behaviour
- * while still appearing in `/help` and the Telegram command menu.
- *
- * Inspired by Hermes Agent's central `COMMAND_REGISTRY` (one source of truth
- * for CLI + messaging surfaces) and OpenClaw's `setMyCommands`-based Telegram
- * menu. Kept intentionally small for a first version: no skill commands,
- * autocomplete or destructive operations.
- */
 
+import fs from 'node:fs'
+import path from 'node:path'
 import type { Database } from './database.js'
 import type { TaskStore } from './task-store.js'
 import type { ScheduledTaskStore } from './scheduled-task-store.js'
 import { parseCronExpression, getNextRunTime } from './cron-parser.js'
 import { getActiveProvider, getActiveModelId } from './provider-config.js'
+import { getConfigDir, loadConfig } from './config.js'
+import { SETTINGS_THINKING_LEVELS, type SettingsThinkingLevel } from './contracts/settings.js'
+import { normalizeThinkingLevel } from './thinking-level.js'
 
-/** Surface a command can be invoked from. */
 export type SlashCommandSurface = 'web' | 'telegram'
 
-/** Metadata describing a slash command. */
 export interface SlashCommandMetadata {
-  /** Canonical name without the leading slash. Lowercase, no whitespace. */
   name: string
-  /** Optional alternate names (without leading slash). Lowercase. */
   aliases?: string[]
-  /** One-line description shown in `/help` and the Telegram menu. */
   description: string
-  /** Optional usage hint shown in detailed help (e.g. `/title <text>`). */
   usage?: string
-  /** Surfaces this command is exposed on. */
   surfaces: SlashCommandSurface[]
 }
 
-/** Definition stored in the registry. Handler is optional for surface-owned commands. */
 export interface SlashCommandDefinition extends SlashCommandMetadata {
-  /**
-   * Returns the markdown text reply, or `null` if the command produced no
-   * reply (e.g. surface-owned commands that handle the response themselves).
-   * Throwing inside a handler is caught by the dispatcher and surfaced as an
-   * error reply — handlers should not need their own try/catch.
-   */
   handler?: (ctx: SlashCommandContext) => Promise<string | null> | string | null
 }
 
-/** Per-invocation context passed to handlers. */
 export interface SlashCommandContext {
-  /** Axiom user ID as string, or `null` for unauthenticated/anonymous calls. */
   userId: string | null
-  /** Surface that received the command. */
   surface: SlashCommandSurface
-  /** Trimmed argument string after the command name (may be empty). */
   args: string
-  /** The matched definition. */
   command: SlashCommandDefinition
-  /** Registry — handlers may call `registry.list(surface)` for `/help`. */
   registry: SlashCommandRegistry
-  /** Database, when the surface has one. */
   db?: Database
-  /** Task store, when configured. */
   taskStore?: TaskStore
-  /** Scheduled-task (cronjob) store, when configured. */
   scheduledTaskStore?: ScheduledTaskStore
+  onThinkingLevelChanged?: (level: SettingsThinkingLevel) => void
 }
 
-/** Result of parsing an input string. */
 export interface ParsedSlashCommand {
-  /** The full raw line (input as given). */
   raw: string
-  /** Lowercased name (without leading slash). */
   name: string
-  /** Trimmed argument substring (may be empty). */
   args: string
 }
 
-/**
- * Parse a chat input. Returns `null` if the text is not a slash command (i.e.
- * does not start with `/`, contains whitespace before the slash, is just `/`,
- * or starts with `//` which is conventionally an escaped/literal slash).
- *
- * Rules:
- *  - Must start with exactly one `/`.
- *  - The command name is `[a-zA-Z0-9_]+` and is case-insensitive.
- *  - Telegram-style `@botname` suffix on the name is stripped.
- *  - Everything after the first whitespace is the argument string (trimmed).
- */
 export function parseSlashCommand(input: string): ParsedSlashCommand | null {
   if (typeof input !== 'string') return null
   const raw = input
-  // Do not trim leading whitespace: a message that starts with whitespace is
-  // not a slash command.
   if (!raw.startsWith('/')) return null
-  // Escaped slash: `//foo` is treated as literal text, not a command.
   if (raw.startsWith('//')) return null
   const body = raw.slice(1)
   if (body.length === 0) return null
 
-  // Split off args at the first whitespace.
   const wsIdx = body.search(/\s/)
   let head = wsIdx === -1 ? body : body.slice(0, wsIdx)
   const args = wsIdx === -1 ? '' : body.slice(wsIdx + 1).trim()
 
-  // Strip Telegram @botname suffix (e.g. `/help@my_bot`).
   const atIdx = head.indexOf('@')
   if (atIdx !== -1) head = head.slice(0, atIdx)
 
@@ -115,7 +62,6 @@ export function parseSlashCommand(input: string): ParsedSlashCommand | null {
   return { raw, name: head.toLowerCase(), args }
 }
 
-/** Outcome of `dispatch()`. */
 export type SlashCommandDispatchResult =
   | { kind: 'no_command' }
   | { kind: 'not_found'; name: string }
@@ -124,7 +70,6 @@ export type SlashCommandDispatchResult =
   | { kind: 'handled'; command: SlashCommandDefinition; reply: string | null }
   | { kind: 'error'; command: SlashCommandDefinition; error: Error }
 
-/** Central registry of slash commands, shared by all surfaces. */
 export class SlashCommandRegistry {
   private byName = new Map<string, SlashCommandDefinition>()
   private aliasToName = new Map<string, string>()
@@ -157,8 +102,7 @@ export class SlashCommandRegistry {
     return this
   }
 
-  /** Resolve a command by name or alias (case-insensitive). */
-  resolve(nameOrAlias: string): SlashCommandDefinition | undefined {
+    resolve(nameOrAlias: string): SlashCommandDefinition | undefined {
     const key = nameOrAlias.toLowerCase()
     const direct = this.byName.get(key)
     if (direct) return direct
@@ -166,17 +110,12 @@ export class SlashCommandRegistry {
     return aliased ? this.byName.get(aliased) : undefined
   }
 
-  /** List commands available on the given surface, sorted by name. */
-  list(surface: SlashCommandSurface): SlashCommandDefinition[] {
+    list(surface: SlashCommandSurface): SlashCommandDefinition[] {
     return [...this.byName.values()]
       .filter((c) => c.surfaces.includes(surface))
       .sort((a, b) => a.name.localeCompare(b.name))
   }
 
-  /**
-   * Try to dispatch a chat input. Returns a discriminated result describing
-   * what happened. Surfaces use the result to decide how to respond.
-   */
   async dispatch(
     input: string,
     ctxBase: Omit<SlashCommandContext, 'args' | 'command'>,
@@ -200,11 +139,7 @@ export class SlashCommandRegistry {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Built-in commands
-// ---------------------------------------------------------------------------
 
-/** Internal helper: render the help reply for a given surface. */
 export function renderHelp(registry: SlashCommandRegistry, surface: SlashCommandSurface): string {
   const cmds = registry.list(surface)
   if (cmds.length === 0) return 'No slash commands are available on this surface.'
@@ -217,12 +152,6 @@ export function renderHelp(registry: SlashCommandRegistry, surface: SlashCommand
   return lines.join('\n')
 }
 
-/**
- * Register the built-in read-only commands (`/help`, `/tasks`, `/cronjobs`,
- * `/settings`). Surfaces compose this with their own surface-specific
- * metadata-only entries (e.g. `/new`, `/stop`) to get a single source of
- * truth for `/help` and the Telegram menu.
- */
 export function registerBuiltInSlashCommands(registry: SlashCommandRegistry): void {
   registry.register({
     name: 'help',
@@ -252,7 +181,7 @@ export function registerBuiltInSlashCommands(registry: SlashCommandRegistry): vo
       if (!ctx.scheduledTaskStore) return 'Cronjob store is not available on this surface.'
       const jobs = ctx.scheduledTaskStore.list().map((j) => ({
         id: j.id,
-        name: j.name,
+      name: j.name,
         cronExpression: j.schedule,
         enabled: j.enabled,
         nextRunAt: computeNextRunAt(j.schedule),
@@ -269,11 +198,54 @@ export function registerBuiltInSlashCommands(registry: SlashCommandRegistry): vo
     surfaces: ['web', 'telegram'],
     handler: () => formatSettingsReply(),
   })
+
+  registry.register({
+    name: 'thinking',
+    description: 'Show or set the main chat thinking level.',
+  usage: '/thinking <off|minimal|low|medium|high|xhigh>',
+    surfaces: ['web', 'telegram'],
+    handler: (ctx) => handleThinkingCommand(ctx),
+  })
 }
 
-// ---------------------------------------------------------------------------
-// Reply formatters (pure functions, exported for tests)
-// ---------------------------------------------------------------------------
+function handleThinkingCommand(ctx: SlashCommandContext): string {
+  const args = ctx.args.trim().toLowerCase()
+  if (!args) {
+    const current = readConfiguredThinkingLevel() ?? 'off'
+    return `Current thinking level: ${current}\nUsage: /thinking ${SETTINGS_THINKING_LEVELS.join('|')}`
+  }
+
+  const [level, ...rest] = args.split(/\s+/)
+  if (rest.length > 0 || !level) {
+    return `Usage: /thinking ${SETTINGS_THINKING_LEVELS.join('|')}`
+  }
+
+  const normalized = normalizeThinkingLevel(level)
+  if (!normalized) {
+    return `Unknown thinking level: ${level}\nValid levels: ${SETTINGS_THINKING_LEVELS.join(', ')}`
+  }
+
+  writeConfiguredThinkingLevel(normalized)
+  ctx.onThinkingLevelChanged?.(normalized)
+  return `Thinking level set to: ${normalized}`
+}
+
+function readConfiguredThinkingLevel(): SettingsThinkingLevel | undefined {
+  try {
+    const settings = loadConfig<{ thinkingLevel?: string }>('settings.json')
+    return normalizeThinkingLevel(settings.thinkingLevel)
+  } catch {
+    return undefined
+  }
+}
+
+function writeConfiguredThinkingLevel(level: SettingsThinkingLevel): void {
+  const settingsPath = path.join(getConfigDir(), 'settings.json')
+  const settings = loadConfig<Record<string, unknown>>('settings.json')
+  settings.thinkingLevel = level
+  fs.writeFileSync(settingsPath, `${JSON.stringify(settings, null, 2)}\n`, 'utf-8')
+}
+
 
 interface TaskLike {
   id: string

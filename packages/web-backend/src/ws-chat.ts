@@ -43,10 +43,6 @@ interface ChatResponse {
   source?: string
   /** Sender display name (for external_user_message) */
   senderName?: string
-  /**
-   * Excerpt of the message the user replied to (Telegram reply-to), truncated to 500 chars.
-   * Rendered as a quote bubble above the user message. Only set for `external_user_message`.
-   */
   replyContext?: string
   /** Task ID (for task events) */
   taskId?: string
@@ -70,10 +66,6 @@ interface ChatResponse {
   telegramDelivered?: boolean
   /** Whether this is a task injection response */
   isTaskInjection?: boolean
-  /**
-   * Human-readable single-line summary for `task_status_update` events,
-   * matching the value persisted in `chat_messages.content`.
-   */
   taskStatusContent?: string
   /** How long the task has been running, in minutes. */
   taskStatusRuntimeMinutes?: number
@@ -116,9 +108,6 @@ export function setupWebSocketChat(
   const resolveAgentCore = typeof getAgentCore === 'function' ? getAgentCore : () => getAgentCore
   const wss = new WebSocketServer({ noServer: true })
 
-  // Shared slash-command registry. Surface-owned commands (`/new`, `/stop`)
-  // are registered as metadata-only so they appear in `/help` even though
-  // their behaviour stays inline below.
   const slashRegistry: SlashCommandRegistry = buildWebChatSlashCommandRegistry()
   const taskStore = new TaskStore(db)
   const scheduledTaskStore = new ScheduledTaskStore(db)
@@ -220,11 +209,6 @@ export function setupWebSocketChat(
 
       // Handle commands
       if (parsed.type === 'command' || parsed.content.startsWith('/')) {
-        // Bare `/`-prefixed input goes through the shared slash-command registry.
-        // Surface-owned commands (`/new`, `/stop`/`/kill`) keep their custom
-        // behaviour because they need to abort an active stream / reset session
-        // state on this transport — they are registered as metadata-only so
-        // they still appear in `/help` and the Telegram menu.
         const dispatch = await slashRegistry.dispatch(parsed.content, {
           surface: 'web',
           userId: String(currentUser.userId),
@@ -232,6 +216,7 @@ export function setupWebSocketChat(
           db,
           taskStore,
           scheduledTaskStore,
+          onThinkingLevelChanged: (level) => resolveAgentCore()?.setThinkingLevel(level),
         })
         if (dispatch.kind === 'handled') {
           if (dispatch.reply !== null) {
@@ -253,10 +238,6 @@ export function setupWebSocketChat(
           })
           return
         }
-        // dispatch.kind === 'external' or 'no_command': fall through to legacy handling.
-        // For 'external' we trust the registry's resolved command name; for 'no_command'
-        // (e.g. `//foo` literal escape, `/foo-bar` invalid name) we mirror the original
-        // pre-registry regex so existing behaviour is preserved exactly.
         const command = dispatch.kind === 'external'
           ? dispatch.command.name
           : parsed.content.replace(/^\//, '').trim().toLowerCase()

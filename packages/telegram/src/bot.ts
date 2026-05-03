@@ -58,11 +58,6 @@ export interface TelegramChatEvent {
   senderName?: string
   /** Uploaded file attached to the current assistant turn (for type='attachment') */
   attachment?: UploadDescriptor
-  /**
-   * Excerpt of the message the user replied to in Telegram (truncated to 500 chars).
-   * Forwarded to the web UI so it can render a quote bubble above the user
-   * message. Absent for non-reply messages.
-   */
   replyContext?: string
 }
 
@@ -92,16 +87,6 @@ interface QueuedMessage {
   ctx: Context
   text: string
   attachments?: UploadDescriptor[]
-  /**
-   * Plain-text excerpt of the message the user replied to (`reply_to_message`),
-   * already truncated to REPLY_CONTEXT_MAX_LENGTH. Present only when the incoming
-   * Telegram update carried a `reply_to_message` with extractable text/caption.
-   * Used to:
-   *   1. wrap the agent-facing prompt with `<reply-context>…</reply-context>`,
-   *   2. persist alongside the user's message in `chat_messages.metadata` so the
-   *      web UI can render a quote bubble on reload,
-   *   3. ship to live web clients via the `user_message` chat event.
-   */
   replyContext?: string
 }
 
@@ -392,9 +377,6 @@ export class TelegramBot {
     this.onQueueDepthChanged?.(this.getQueueDepth())
   }
 
-  /**
-   * Total queue depth across all chats, including pending batches and active work.
-   */
   getQueueDepth(): number {
     let total = 0
 
@@ -407,9 +389,6 @@ export class TelegramBot {
     return total
   }
 
-  /**
-   * Set up command and message handlers
-   */
   private setupHandlers(): void {
     // /start command - welcome message
     this.bot.command('start', async (ctx) => {
@@ -455,7 +434,6 @@ export class TelegramBot {
       await this.handleKillSwitch(ctx)
     })
 
-    // Read-only commands routed through the shared slash-command registry.
     this.bot.command('help', async (ctx) => {
       await this.handleRegistryCommand(ctx, 'help')
     })
@@ -467,6 +445,9 @@ export class TelegramBot {
     })
     this.bot.command('settings', async (ctx) => {
       await this.handleRegistryCommand(ctx, 'settings')
+    })
+    this.bot.command('thinking', async (ctx) => {
+      await this.handleRegistryCommand(ctx, 'thinking')
     })
     this.bot.command('model', async (ctx) => {
       await this.handleRegistryCommand(ctx, 'model')
@@ -489,10 +470,6 @@ export class TelegramBot {
     })
   }
 
-  /**
-   * Ensure a telegram user record exists in the database.
-   * Returns the row or null if no db is configured.
-   */
   private ensureTelegramUser(ctx: Context): TelegramUserRow | null {
     if (!this.db || !ctx.from) return null
 
@@ -533,9 +510,6 @@ export class TelegramBot {
     ).get(result.lastInsertRowid) as TelegramUserRow
   }
 
-  /**
-   * Check if an avatar file exists for a given telegram user.
-   */
   private hasAvatarFile(telegramId: string): boolean {
     const avatarDir = path.join(process.env.DATA_DIR ?? '/data', 'avatars')
     try {
@@ -546,9 +520,6 @@ export class TelegramBot {
     }
   }
 
-  /**
-   * Fetch a user's Telegram profile photo and save it locally.
-   */
   private async fetchAndSaveAvatar(telegramId: number): Promise<void> {
     try {
       const photos = await this.bot.api.getUserProfilePhotos(telegramId, { limit: 1 })
@@ -579,10 +550,6 @@ export class TelegramBot {
     }
   }
 
-  /**
-   * Check if a telegram user is authorized. If not, sends a status message.
-   * Returns true if the user may proceed.
-   */
   private async checkAuthorized(ctx: Context): Promise<boolean> {
     if (!this.db) return true // No db = no access control
 
@@ -600,11 +567,6 @@ export class TelegramBot {
     return false
   }
 
-  /**
-   * Resolve the user ID for session management.
-   * If the telegram user is linked to an Axiom user, use that user's ID
-   * in the same format as the web backend (plain string number).
-   */
   private resolveUserId(ctx: Context): string {
     if (!this.db || !ctx.from) return getUserId(ctx)
 
@@ -620,10 +582,6 @@ export class TelegramBot {
     return getUserId(ctx)
   }
 
-  /**
-   * Resolve the numeric Axiom user ID for a Telegram user.
-   * Returns null if unlinked.
-   */
   private resolveNumericUserId(ctx: Context): number | null {
     if (!this.db || !ctx.from) return null
 
@@ -635,9 +593,6 @@ export class TelegramBot {
     return row?.user_id ?? null
   }
 
-  /**
-   * Get a display name for the Telegram user.
-   */
   private getSenderName(ctx: Context): string {
     const from = ctx.from
     if (!from) return 'Unknown'
@@ -645,9 +600,6 @@ export class TelegramBot {
     return [from.first_name, from.last_name].filter(Boolean).join(' ') || 'Unknown'
   }
 
-  /**
-   * Handle an incoming text message
-   */
   private async handleMessage(ctx: Context): Promise<void> {
     const text = ctx.message?.text
     if (!text) return
@@ -735,22 +687,6 @@ export class TelegramBot {
     }
   }
 
-  /**
-   * Synthesize the assistant's text response via the configured TTS provider
-   * and upload it as a Telegram voice/audio message. No-op when the
-   * Telegram-side `sendVoiceReply` toggle is off. Errors propagate so the
-   * caller can log them — the text reply has already been sent.
-   *
-   * Provider is whatever `settings.tts.provider` says (OpenAI, Mistral, or
-   * Deepgram). The toggle lives in `telegram.json` because it controls a
-   * Telegram delivery channel, not synthesis behavior; the synthesis config
-   * (provider/voice/format) stays under `settings.tts`.
-   *
-   * Telegram requires OGG/Opus for the native voice-bubble UI; any other
-   * audio format falls back to `sendAudio` (regular file player). Deepgram
-   * users get the voice bubble by picking `opus` encoding; OpenAI/Mistral
-   * default to `mp3` so they show as a regular audio attachment.
-   */
   private async maybeSendVoiceReply(chatId: string | number, text: string): Promise<void> {
     const telegramConfig = loadConfig<{ sendVoiceReply?: boolean }>('telegram.json')
     if (!telegramConfig.sendVoiceReply) return
@@ -951,10 +887,6 @@ export class TelegramBot {
     }
   }
 
-  /**
-   * Resolve the username from the users table for a linked Telegram user.
-   * Returns null if unlinked or not found.
-   */
   private resolveUsername(ctx: Context): string | null {
     if (!this.db || !ctx.from) return null
 
@@ -968,9 +900,6 @@ export class TelegramBot {
     return row?.username ?? null
   }
 
-  /**
-   * Check if this is a DM (private) chat as opposed to a group chat.
-   */
   private isDMChat(ctx: Context): boolean {
     return ctx.chat?.type === 'private'
   }
@@ -1146,11 +1075,6 @@ export class TelegramBot {
     }
   }
 
-  /**
-   * Dispatch a typed slash command through the shared registry and reply with
-   * its rendered markdown text. Used for read-only commands (/help, /tasks,
-   * /cronjobs, /settings, /model).
-   */
   private async handleRegistryCommand(ctx: Context, name: string): Promise<void> {
     if (!await this.checkAuthorized(ctx)) return
     const text = ctx.message?.text ?? `/${name}`
@@ -1162,6 +1086,7 @@ export class TelegramBot {
       db: this.db ?? undefined,
       taskStore: this.taskStore ?? undefined,
       scheduledTaskStore: this.scheduledTaskStore ?? undefined,
+      onThinkingLevelChanged: (level) => this.agentCore.setThinkingLevel(level),
     })
     if (result.kind === 'handled') {
       if (result.reply) await ctx.reply(result.reply)
@@ -1175,8 +1100,6 @@ export class TelegramBot {
       await ctx.reply(`/${result.command.name} is not available on Telegram.`)
       return
     }
-    // 'external' or 'no_command' should not happen here since we route only
-    // registered commands, but fall back gracefully.
     await ctx.reply(`Cannot handle /${name}.`)
   }
 
@@ -1213,9 +1136,6 @@ export class TelegramBot {
     this.cleanupChatState(chatKey)
   }
 
-  /**
-   * Send a potentially long message, splitting if necessary
-   */
   private async sendLongMessage(ctx: Context, text: string): Promise<void> {
     const parts = splitMessage(text)
 
@@ -1224,10 +1144,6 @@ export class TelegramBot {
     }
   }
 
-  /**
-   * Send a message with error handling for Telegram API issues.
-   * Attempts to send as HTML (converted from Markdown) first, then falls back to plain text.
-   */
   private async safeSendMessage(ctx: Context, text: string, retries = 2): Promise<void> {
     // Try sending with HTML formatting first
     const htmlText = markdownToTelegramHtml(text)
@@ -1283,9 +1199,6 @@ export class TelegramBot {
     }
   }
 
-  /**
-   * Set up global error handler for the bot
-   */
   private setupErrorHandler(): void {
     this.bot.catch((err) => {
       const ctx = err.ctx
@@ -1303,9 +1216,6 @@ export class TelegramBot {
     })
   }
 
-  /**
-   * Start the bot in polling mode
-   */
   async start(): Promise<void> {
     if (this.running) {
       console.warn('Telegram bot is already running')
@@ -1317,11 +1227,6 @@ export class TelegramBot {
       const me = await this.bot.api.getMe()
       console.log(`✅ Telegram bot connected: @${me.username} (${me.first_name})`)
 
-      // Publish the slash-command menu to Telegram so users see autocomplete
-      // suggestions. Telegram limits each command name to 1–32 chars and the
-      // total list to 100 entries, with a description of up to 256 chars
-      // (BotCommand). Failures are non-fatal — the bot still works without
-      // the menu.
       try {
         const menu = this.slashRegistry
           .list('telegram')
@@ -1348,9 +1253,6 @@ export class TelegramBot {
     }
   }
 
-  /**
-   * Stop the bot gracefully
-   */
   async stop(): Promise<void> {
     if (!this.running) return
 
@@ -1364,9 +1266,6 @@ export class TelegramBot {
     console.log('🛑 Telegram bot stopped')
   }
 
-  /**
-   * Check if the bot is currently running
-   */
   isRunning(): boolean {
     return this.running
   }
@@ -1407,10 +1306,6 @@ export class TelegramBot {
     })
   }
 
-  /**
-   * Send a message directly to a Telegram chat by chat ID.
-   * Used by the web backend for admin-triggered approval/rejection notifications.
-   */
   // fallow-ignore-next-line unused-class-member
   async sendDirectMessage(chatId: string | number, text: string): Promise<boolean> {
     try {
@@ -1423,11 +1318,6 @@ export class TelegramBot {
     }
   }
 
-  /**
-   * Send a task notification to a Telegram chat with HTML formatting.
-   * Automatically splits long messages to stay within Telegram's 4096 char limit.
-   * Used for proactive task result notifications.
-   */
   // Public cross-workspace API used by web-backend; Fallow cannot see this in clean CI before workspace dist files exist.
   // fallow-ignore-next-line unused-class-member
   async sendTaskNotification(chatId: string | number, html: string): Promise<boolean> {
@@ -1453,10 +1343,6 @@ export class TelegramBot {
     return true
   }
 
-  /**
-   * Get the Telegram chat ID for a given Axiom user ID.
-   * Returns null if no linked & approved Telegram user exists.
-   */
   // Public cross-workspace API used by web-backend; Fallow cannot see this in clean CI before workspace dist files exist.
   // fallow-ignore-next-line unused-class-member
   getTelegramChatIdForUser(userId: number): string | null {
@@ -1469,11 +1355,6 @@ export class TelegramBot {
     return row?.telegram_id ?? null
   }
 
-  /**
-   * Send a Markdown-formatted message to a Telegram chat.
-   * Converts Markdown to Telegram HTML and sends with fallback to plain text.
-   * Does NOT sync back to web chat (intended for task injection responses).
-   */
   // Public cross-workspace API used by web-backend; Fallow cannot see this in clean CI before workspace dist files exist.
   // fallow-ignore-next-line unused-class-member
   async sendFormattedMessage(chatId: string | number, markdown: string): Promise<boolean> {
@@ -1496,9 +1377,6 @@ export class TelegramBot {
     return true
   }
 
-  /**
-   * Get the underlying grammy Bot instance (for advanced usage)
-   */
   getBot(): Bot {
     return this.bot
   }
@@ -1538,12 +1416,6 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
-/**
- * Build the slash-command registry used by the Telegram surface.
- * Adds metadata-only entries for surface-owned commands (`/start`, `/new`,
- * `/stop`, `/kill`) so they appear in `/help` and the Telegram command menu
- * even though their behaviour stays inline in `setupHandlers()`.
- */
 function buildTelegramSlashCommandRegistry(): SlashCommandRegistry {
   const registry = new SlashCommandRegistryCtor()
   registerBuiltInSlashCommands(registry)

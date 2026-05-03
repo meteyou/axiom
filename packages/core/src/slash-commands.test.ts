@@ -1,3 +1,6 @@
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import {
   parseSlashCommand,
@@ -160,6 +163,7 @@ describe('built-in slash commands', () => {
     expect(names).toContain('tasks')
     expect(names).toContain('cronjobs')
     expect(names).toContain('settings')
+    expect(names).toContain('thinking')
     expect(registry.list('telegram').map((c) => c.name)).toEqual(names)
   })
 
@@ -171,6 +175,46 @@ describe('built-in slash commands', () => {
       expect(r.reply).toContain('/tasks')
       expect(r.reply).toContain('/settings')
     }
+  })
+
+  it('/thinking shows and updates the configured thinking level', async () => {
+    const previousDataDir = process.env.DATA_DIR
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'axiom-thinking-command-'))
+    process.env.DATA_DIR = dataDir
+    try {
+      fs.mkdirSync(path.join(dataDir, 'config'), { recursive: true })
+      fs.writeFileSync(
+        path.join(dataDir, 'config', 'settings.json'),
+        `${JSON.stringify({ thinkingLevel: 'off' }, null, 2)}\n`,
+        'utf-8',
+      )
+
+      const onThinkingLevelChanged = vi.fn()
+      const show = await registry.dispatch('/thinking', { surface: 'web', userId: '1', registry })
+      expect(show.kind).toBe('handled')
+      if (show.kind === 'handled') expect(show.reply).toContain('Current thinking level: off')
+
+      const set = await registry.dispatch('/thinking medium', {
+        surface: 'web',
+        userId: '1',
+        registry,
+        onThinkingLevelChanged,
+      })
+      expect(set.kind).toBe('handled')
+      if (set.kind === 'handled') expect(set.reply).toBe('Thinking level set to: medium')
+      expect(onThinkingLevelChanged).toHaveBeenCalledWith('medium')
+      expect(JSON.parse(fs.readFileSync(path.join(dataDir, 'config', 'settings.json'), 'utf-8')).thinkingLevel).toBe('medium')
+    } finally {
+      if (previousDataDir === undefined) delete process.env.DATA_DIR
+      else process.env.DATA_DIR = previousDataDir
+      fs.rmSync(dataDir, { recursive: true, force: true })
+    }
+  })
+
+  it('/thinking rejects invalid levels', async () => {
+    const r = await registry.dispatch('/thinking extreme', { surface: 'web', userId: '1', registry })
+    expect(r.kind).toBe('handled')
+    if (r.kind === 'handled') expect(r.reply).toContain('Unknown thinking level: extreme')
   })
 
   it('/tasks falls back gracefully without a task store', async () => {
