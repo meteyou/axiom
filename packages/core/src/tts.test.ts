@@ -63,21 +63,40 @@ beforeEach(() => {
 })
 
 describe('synthesizeTts (Deepgram chunking)', () => {
-  it('does not reject 2000-char opus input even though the chunker would split it', async () => {
+  it('sends 2000-char opus input in a single Deepgram call (no concat-unsafe chunking)', async () => {
     mockSettings('opus')
     const text = 'a'.repeat(2000)
     await expect(synthesizeTts(text)).resolves.toMatchObject({ extension: 'ogg' })
-    // 2000 chars > 1900 chunk limit, so the chunker produced multiple
-    // pieces — but Deepgram's hard cap is 2000, so the rejection must
-    // not fire.
-    expect(synthesizeDeepgramMock).toHaveBeenCalled()
+    // opus pages don't survive naive Buffer.concat(), so even though the
+    // internal chunker (1900-char limit) would split this, we must call
+    // Deepgram exactly once for inputs ≤2000 chars.
+    expect(synthesizeDeepgramMock).toHaveBeenCalledTimes(1)
   })
 
-  it('does not reject 1901-char flac input (boundary just past chunk limit)', async () => {
+  it('sends 1901-char flac input in a single Deepgram call (boundary just past chunk limit)', async () => {
     mockSettings('flac')
     const text = 'a'.repeat(1901)
     await expect(synthesizeTts(text)).resolves.toMatchObject({ extension: 'flac' })
-    expect(synthesizeDeepgramMock).toHaveBeenCalled()
+    expect(synthesizeDeepgramMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('never chunks opus/flac at or below the Deepgram hard limit (regression)', async () => {
+    // Same multi-sentence text that *does* split for mp3/wav. Proves
+    // opus/flac follow the single-call path purely on encoding, not
+    // length.
+    const sentence = `${'word '.repeat(76).trim()}. `
+    const text = sentence.repeat(5) // > 1900 chunk limit but ≤ 2000
+    expect(text.length).toBeGreaterThan(1900)
+    expect(text.length).toBeLessThanOrEqual(2000)
+
+    mockSettings('opus')
+    await synthesizeTts(text)
+    expect(synthesizeDeepgramMock).toHaveBeenCalledTimes(1)
+
+    synthesizeDeepgramMock.mockClear()
+    mockSettings('flac')
+    await synthesizeTts(text)
+    expect(synthesizeDeepgramMock).toHaveBeenCalledTimes(1)
   })
 
   it('rejects opus input strictly longer than 2000 chars', async () => {
