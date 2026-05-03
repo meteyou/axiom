@@ -84,13 +84,12 @@ export function useTts() {
    * If the same index is already playing, stop it (toggle behavior).
    */
   async function play(text: string, messageIndex: number) {
-    // Toggle off if already playing this message
+    // Toggle behavior: clicking the speaker on an already-playing message stops it.
     if (playingIndex.value === messageIndex) {
       stop()
       return
     }
 
-    // Stop any existing playback
     stop()
     error.value = null
 
