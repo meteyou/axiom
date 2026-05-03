@@ -396,7 +396,15 @@ async function synthesizeDeepgramWrapped(
       + `\`mp3\` and \`wav\` — switch “Response format” in Settings → Text-to-Speech.`,
     )
   }
-  const chunks = chunkTextForDeepgram(text)
+
+  // `opus` and `flac` use container/page/frame structures that don't
+  // survive naive `Buffer.concat()`. For those encodings, only chunk
+  // when the response format is concatenation-safe — otherwise send the
+  // whole (≤2000-char) text in a single Deepgram call.
+  const supportsChunkConcatenation = deepgramEncoding === 'mp3' || deepgramEncoding === 'linear16'
+  const chunks = supportsChunkConcatenation
+    ? chunkTextForDeepgram(text)
+    : [text.trim()]
 
   const parts: Buffer[] = []
   for (const chunk of chunks) {
