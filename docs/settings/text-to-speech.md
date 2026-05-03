@@ -109,13 +109,35 @@ A text field + play button at the bottom of each provider block. Enter any text,
 
 Output container format used for the synthesized audio in the web chat.
 
-| Value  | Notes                |
-|--------|----------------------|
-| `mp3`  | Universal default.   |
-| `wav`  | Uncompressed, large. |
-| `opus` | Small.               |
-| `flac` | Lossless.            |
+| Value  | Notes                                                                                                                                |
+|--------|--------------------------------------------------------------------------------------------------------------------------------------|
+| `mp3`  | Universal default. Supports long-text chunking with Deepgram (see below).                                                            |
+| `wav`  | Uncompressed, large. Supports long-text chunking with Deepgram (PCM is concatenated and wrapped in a single WAV header).             |
+| `opus` | Small. Deepgram only — limited to 2000 characters per request (see below).                                                           |
+| `flac` | Lossless. Deepgram only — limited to 2000 characters per request (see below).                                                        |
 
 ```json
 { "tts": { "responseFormat": "mp3" } }
 ```
+
+### Deepgram long-text behavior
+
+Deepgram's `/v1/speak` endpoint rejects any single request longer than
+**2000 characters**. To make the “Read message aloud” button work for long
+assistant replies, Axiom transparently splits the input on sentence
+boundaries and synthesizes each chunk separately, then concatenates the
+result.
+
+Which formats this works for depends on whether the audio container can be
+safely concatenated byte-for-byte:
+
+- **`mp3`** — frame-aligned; chunked output is concatenated directly.
+- **`wav`** — Deepgram returns headerless PCM (`linear16`); chunks are
+  concatenated as raw samples and wrapped in a single WAV header.
+- **`opus`** and **`flac`** — use page/frame containers that **do not**
+  survive naive concatenation. Inputs **≤ 2000 characters** still work
+  normally; longer inputs are rejected with an actionable error asking you
+  to switch to `mp3` or `wav` in **Settings → Text-to-Speech**.
+
+The OpenAI and Mistral providers don't have this 2000-character limit and
+are unaffected.

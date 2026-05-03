@@ -48,6 +48,9 @@ const DEEPGRAM_LINEAR16_BITS_PER_SAMPLE = 16
  */
 const DEEPGRAM_TTS_CHUNK_LIMIT = 1900
 
+/** Deepgram's documented hard cap on `/v1/speak` input length. */
+const DEEPGRAM_TTS_HARD_LIMIT = 2000
+
 /**
  * Split `text` into chunks of at most `maxLen` characters, preferring
  * paragraph → sentence → word boundaries before falling back to a hard
@@ -55,13 +58,13 @@ const DEEPGRAM_TTS_CHUNK_LIMIT = 1900
  * `. ` / `! ` / `? ` / `\n\n` produces audibly smoother joins than
  * mid-sentence splits.
  */
-export function chunkTextForDeepgram(text: string, maxLen = DEEPGRAM_TTS_CHUNK_LIMIT): string[] {
+function chunkTextForDeepgram(text: string, maxLen = DEEPGRAM_TTS_CHUNK_LIMIT): string[] {
   const trimmed = text.trim()
   if (trimmed.length <= maxLen) return [trimmed]
 
-  // First pass: split on sentence-ish boundaries while keeping the
-  // delimiter attached to the preceding piece (so the synthesized audio
-  // still ends on the punctuation).
+  // Split on sentence-ish boundaries while keeping the delimiter attached
+  // to the preceding piece, so the synthesized audio still ends on the
+  // punctuation.
   const pieces = trimmed.split(/(?<=[.!?\n])\s+/)
 
   const chunks: string[] = []
@@ -73,7 +76,7 @@ export function chunkTextForDeepgram(text: string, maxLen = DEEPGRAM_TTS_CHUNK_L
 
   for (const piece of pieces) {
     if (piece.length > maxLen) {
-      // A single “sentence” that's still too long — fall back to a
+      // A single “sentence” still longer than `maxLen` — fall back to a
       // word-boundary slice so we don't chop a word in half.
       flush()
       let remaining = piece
@@ -375,25 +378,25 @@ async function synthesizeDeepgramWrapped(
     throw new Error('Deepgram TTS: API key is not configured. Set it in Settings \u2192 Text-to-Speech.')
   }
 
-  // Map the unified `responseFormat` to Deepgram's `encoding`. `wav` becomes
-  // `linear16` (raw PCM) which we wrap in a WAV header below so the user
-  // gets a playable file.
   const deepgramEncoding = DEEPGRAM_FORMAT_MAP[settings.responseFormat]
   const model = options.voice || settings.deepgramModel
 
-  // Deepgram caps `/v1/speak` at 2000 chars per call. Split longer texts
-  // and concatenate the audio. Safe for `mp3` (frame-aligned) and
-  // `linear16` (raw PCM — just bytes); `opus`/`flac` use page/frame
-  // containers that don't survive naive concatenation, so we refuse those
-  // explicitly with an actionable error rather than producing a corrupt
-  // file.
-  const chunks = chunkTextForDeepgram(text)
-  if (chunks.length > 1 && (deepgramEncoding === 'opus' || deepgramEncoding === 'flac')) {
+  // Deepgram caps `/v1/speak` at 2000 chars per call. For longer texts we
+  // split the input and concatenate the audio. Safe for `mp3` (frame-
+  // aligned) and `linear16` (raw PCM — just bytes); `opus`/`flac` use
+  // page/frame containers that don't survive naive concatenation, so we
+  // refuse only when the input actually exceeds the per-call limit and
+  // would therefore require multiple Deepgram calls. Inputs at or below
+  // 2000 chars stay valid for every format even if our internal chunker
+  // (which works under the limit for prosody headroom) would split them.
+  const inputLength = text.length
+  if (inputLength > DEEPGRAM_TTS_HARD_LIMIT && (deepgramEncoding === 'opus' || deepgramEncoding === 'flac')) {
     throw new Error(
-      `Deepgram TTS: text is ${text.length} chars (>2000). Long-text chunking is only supported for `
+      `Deepgram TTS: text is ${inputLength} chars (>${DEEPGRAM_TTS_HARD_LIMIT}). Long-text chunking is only supported for `
       + `\`mp3\` and \`wav\` — switch “Response format” in Settings → Text-to-Speech.`,
     )
   }
+  const chunks = chunkTextForDeepgram(text)
 
   const parts: Buffer[] = []
   for (const chunk of chunks) {
