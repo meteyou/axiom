@@ -91,6 +91,10 @@ a minute — Telegram caches the command list per device. Failures during
 `setMyCommands` are non-fatal: typing a slash command still works, the menu
 just stays empty until the next successful start.
 
+## Files and photos
+
+Telegram photos are forwarded to the agent as images. Documents are stored as chat attachments; for text-based files, Axiom also extracts the content when possible and includes it in the next agent turn. Plain text, Markdown, CSV, JSON, and PDF documents are supported. Extraction is best-effort: if parsing fails, the file is still stored and shown in chat history as a downloadable attachment.
+
 ## Voice messages
 
 Axiom can transcribe incoming Telegram voice messages and optionally reply with synthesized speech. Configuration lives in two places:
