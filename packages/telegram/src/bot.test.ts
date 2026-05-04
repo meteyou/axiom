@@ -242,7 +242,7 @@ describe('TelegramBot', () => {
       const handler = underlying._commandHandlers.get('help')!
 
       const ctx = createMockContext()
-      ctx.message = { text: '/help' }
+      ctx.message = { text: '/help', message_id: 1 }
       await handler(ctx)
 
       expect(ctx.reply).toHaveBeenCalledTimes(1)
@@ -264,7 +264,7 @@ describe('TelegramBot', () => {
       const handler = underlying._commandHandlers.get('cron')!
 
       const ctx = createMockContext()
-      ctx.message = { text: '/cron' }
+      ctx.message = { text: '/cron', message_id: 1 }
       await handler(ctx)
 
       expect(ctx.reply).toHaveBeenCalledTimes(1)
@@ -280,7 +280,7 @@ describe('TelegramBot', () => {
       const handler = underlying._commandHandlers.get('settings')!
 
       const ctx = createMockContext()
-      ctx.message = { text: '/settings' }
+      ctx.message = { text: '/settings', message_id: 1 }
       await handler(ctx)
 
       expect(ctx.reply).toHaveBeenCalledTimes(1)
