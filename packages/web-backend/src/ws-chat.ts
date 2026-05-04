@@ -316,6 +316,52 @@ export function setupWebSocketChat(
       activeStreams.set(ws, abortController)
       runtimeMetrics?.startRequest()
 
+      // Inactivity watchdog: detects silently dead provider streams (e.g. zombie
+      // websocket-cached sockets, halted SSE readers behind dropped HTTP/2
+      // streams). Without this, the for-await below blocks forever — pi-ai's
+      // parseSSE/parseWebSocket never throw on idle, so no error reaches the
+      // runtime, no log line is written, and the frontend stays stuck on
+      // "streaming" without ever receiving a `done`. Resets on every chunk;
+      // warns at 30s, hard-aborts at 90s. Transport-agnostic — sits one layer
+      // above SSE/WS so it covers both.
+      const STALL_WARN_MS = 30_000
+      const STALL_ABORT_MS = 90_000
+      let lastActivityAt = Date.now()
+      let stallWarned = false
+      const watchdog = setInterval(() => {
+        if (abortController.signal.aborted) return
+        const idleMs = Date.now() - lastActivityAt
+
+        if (idleMs >= STALL_ABORT_MS) {
+          console.error(
+            `[ws-chat] Provider stalled ${idleMs}ms (user=${currentUser.userId}, `
+            + `session=${resolvedSessionId}). Aborting stream.`,
+          )
+          sendMessage(ws, {
+            type: 'error',
+            error: `Provider stopped responding after ${Math.round(idleMs / 1000)}s. `
+              + `Connection aborted — please retry.`,
+          })
+          abortController.abort()
+          // Propagate abort into pi-agent-core so the underlying SSE fetch /
+          // WebSocket gets cancelled (mirrors the /stop command handler).
+          agentCore.abort()
+          return
+        }
+
+        if (idleMs >= STALL_WARN_MS && !stallWarned) {
+          stallWarned = true
+          console.warn(
+            `[ws-chat] Provider slow: ${idleMs}ms idle (user=${currentUser.userId}, `
+            + `session=${resolvedSessionId}).`,
+          )
+          sendMessage(ws, {
+            type: 'system',
+            text: `\u23F3 Provider has not responded for ${Math.round(idleMs / 1000)}s\u2026`,
+          })
+        }
+      }, 5_000)
+
       let fullResponse = ''
       let doneSent = false
       // Track pending tool calls to save input+output together
@@ -355,6 +401,9 @@ export function setupWebSocketChat(
 
       try {
         for await (const chunk of agentCore.sendMessage(String(currentUser.userId), parsed.content, 'web', parsed.attachments)) {
+          // Reset inactivity watchdog on every chunk (text, thinking, tool_*, done).
+          lastActivityAt = Date.now()
+          stallWarned = false
           if (abortController.signal.aborted) break
 
           if (chunk.type === 'text' && chunk.text) {
@@ -459,6 +508,7 @@ export function setupWebSocketChat(
           sendMessage(ws, { type: 'error', error: `Agent error: ${(err as Error).message}` })
         }
       } finally {
+        clearInterval(watchdog)
         // Flush any trailing thinking that wasn't closed by text/tool/done (e.g.
         // aborted/errored streams) so reload shows the partial reasoning.
         flushThinking()
