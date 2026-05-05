@@ -6,6 +6,26 @@ export interface ToolCallData {
   toolIsError?: boolean
 }
 
+/**
+ * One option in a slash-command-driven picker (e.g. /model). When the user
+ * clicks the corresponding button the frontend re-sends `command` as a
+ * verbatim slash-command, which the backend dispatches through the same
+ * registry to produce the next picker (or final confirmation).
+ */
+export interface ChatPickerOption {
+  command: string
+  label: string
+  description?: string
+  badge?: string
+}
+
+export interface ChatPicker {
+  pickerId: string
+  title?: string
+  description?: string
+  options: ChatPickerOption[]
+}
+
 export interface ChatAttachment {
   kind: 'image' | 'file'
   originalName: string
@@ -69,11 +89,22 @@ export interface ChatMessage {
    * message body with `[Replying to: "…"]`. Only set for `role: 'user'`.
    */
   replyContext?: string
+  /**
+   * Interactive picker (button group) attached to a system message.
+   * Set on `role: 'system'`. Once the user picks an option we mark the
+   * picker as resolved (see `pickerResolvedCommand`) so the buttons are
+   * disabled and a single “selected” indicator is shown.
+   */
+  picker?: ChatPicker
+  /** The picker option command the user picked (disables the buttons). */
+  pickerResolvedCommand?: string
 }
 
 interface WsMessage {
   type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'reminder' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'pong' | 'attachment'
   text?: string
+  /** Picker payload for interactive slash-command replies (e.g. /model). */
+  picker?: ChatPicker
   /** Uploaded file the agent sent for the current turn (for type='attachment') */
   attachment?: ChatAttachment
   /** Thinking delta (for type='thinking') */
@@ -310,7 +341,16 @@ export function useChat() {
         if (msg.sessionId) {
           sessionId.value = msg.sessionId
         }
-        if (msg.text && msg.text !== 'Authenticated') {
+        if (msg.picker) {
+          // Interactive slash-command reply. Always rendered — the frontend
+          // shows title + description (msg.text fallback) above the buttons.
+          messages.value = [...messages.value, {
+            role: 'system',
+            content: msg.text ?? '',
+            timestamp: new Date().toISOString(),
+            picker: msg.picker,
+          }]
+        } else if (msg.text && msg.text !== 'Authenticated') {
           // Show system messages (like session reset)
           messages.value = [...messages.value, {
             role: 'system',
@@ -630,6 +670,31 @@ export function useChat() {
     ws.send(JSON.stringify({ type: 'command', content: `/${command}` }))
   }
 
+  /**
+   * Send a verbatim slash command (must include the leading `/`). Used by
+   * picker buttons that already carry a fully-formed command from the
+   * backend, e.g. `/model <providerId> <modelId>`.
+   */
+  function sendRawCommand(command: string) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return
+    if (!command.startsWith('/')) return
+    ws.send(JSON.stringify({ type: 'command', content: command }))
+  }
+
+  /**
+   * Mark a picker message as resolved (button clicked). Disables the buttons
+   * and records which option fired so the UI can highlight it.
+   */
+  function resolvePicker(messageIndex: number, command: string) {
+    const list = messages.value
+    const target = list[messageIndex]
+    if (!target || !target.picker || target.pickerResolvedCommand) return
+    const updated = [...list]
+    updated[messageIndex] = { ...target, pickerResolvedCommand: command }
+    messages.value = updated
+    sendRawCommand(command)
+  }
+
   function newSession() {
     sendCommand('new')
   }
@@ -664,6 +729,8 @@ export function useChat() {
     connect,
     disconnect,
     sendMessage,
+    sendRawCommand,
+    resolvePicker,
     newSession,
     stopTask,
     clearMessages,
