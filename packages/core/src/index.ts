@@ -343,7 +343,7 @@ export {
   renderHelp,
   formatTasksReply,
   formatCronjobsReply,
-  formatSettingsReply,
+  isSlashCommandPicker,
 } from './slash-commands.js'
 export type {
   SlashCommandSurface,
@@ -352,4 +352,7 @@ export type {
   SlashCommandContext,
   ParsedSlashCommand,
   SlashCommandDispatchResult,
+  SlashCommandPicker,
+  SlashCommandPickerOption,
+  SlashCommandReply,
 } from './slash-commands.js'

@@ -5,7 +5,11 @@ import type { Database } from './database.js'
 import type { TaskStore } from './task-store.js'
 import type { ScheduledTaskStore } from './scheduled-task-store.js'
 import { parseCronExpression, getNextRunTime } from './cron-parser.js'
-import { getActiveProvider, getActiveModelId } from './provider-config.js'
+import {
+  loadProviders,
+  setActiveProvider,
+} from './provider-config.js'
+import type { ProviderConfig } from './provider-config.js'
 import { getConfigDir, loadConfig } from './config.js'
 import { SETTINGS_THINKING_LEVELS, type SettingsThinkingLevel } from './contracts/settings.js'
 import { normalizeThinkingLevel } from './thinking-level.js'
@@ -20,8 +24,43 @@ export interface SlashCommandMetadata {
   surfaces: SlashCommandSurface[]
 }
 
+/**
+ * Structured reply for surfaces that can render interactive UI (web buttons,
+ * Telegram inline keyboards). Each option carries a verbatim slash-command
+ * string the surface should re-dispatch when picked, so the same handler
+ * runs again and produces the next picker / final confirmation.
+ */
+export interface SlashCommandPickerOption {
+  /** Slash-command text to re-dispatch on selection (must start with `/`). */
+  command: string
+  /** Primary label shown on the button. */
+  label: string
+  /** Optional secondary line shown beneath the label (web only). */
+  description?: string
+  /** Optional short tag rendered next to the label (e.g. "active", "default"). */
+  badge?: string
+}
+
+export interface SlashCommandPicker {
+  kind: 'picker'
+  /** Stable id for this picker step (e.g. "model:providers"). */
+  pickerId: string
+  /** Optional title shown above the buttons. */
+  title?: string
+  /** Optional explanatory text shown above the buttons. */
+  description?: string
+  options: SlashCommandPickerOption[]
+}
+
+export function isSlashCommandPicker(value: unknown): value is SlashCommandPicker {
+  return typeof value === 'object' && value !== null
+    && (value as { kind?: unknown }).kind === 'picker'
+}
+
+export type SlashCommandReply = string | SlashCommandPicker | null
+
 export interface SlashCommandDefinition extends SlashCommandMetadata {
-  handler?: (ctx: SlashCommandContext) => Promise<string | null> | string | null
+  handler?: (ctx: SlashCommandContext) => Promise<SlashCommandReply> | SlashCommandReply
 }
 
 export interface SlashCommandContext {
@@ -67,7 +106,7 @@ export type SlashCommandDispatchResult =
   | { kind: 'not_found'; name: string }
   | { kind: 'wrong_surface'; command: SlashCommandDefinition }
   | { kind: 'external'; command: SlashCommandDefinition; args: string }
-  | { kind: 'handled'; command: SlashCommandDefinition; reply: string | null }
+  | { kind: 'handled'; command: SlashCommandDefinition; reply: SlashCommandReply }
   | { kind: 'error'; command: SlashCommandDefinition; error: Error }
 
 export class SlashCommandRegistry {
@@ -192,11 +231,12 @@ export function registerBuiltInSlashCommands(registry: SlashCommandRegistry): vo
   })
 
   registry.register({
-    name: 'settings',
-    aliases: ['model'],
-    description: 'Show the active provider and model.',
+    name: 'model',
+    aliases: ['provider'],
+    description: 'Show or switch the active provider and model.',
+    usage: '/model [<provider> [<model>]]',
     surfaces: ['web', 'telegram'],
-    handler: () => formatSettingsReply(),
+    handler: (ctx) => handleModelCommand(ctx.args),
   })
 
   registry.register({
@@ -297,18 +337,135 @@ export function formatCronjobsReply(jobs: CronjobLike[]): string {
   return lines.join('\n')
 }
 
-export function formatSettingsReply(): string {
+/**
+ * Multi-step `/model` command. Returns either a structured picker (interactive
+ * surfaces render this as buttons / inline keyboards) or a plain text reply
+ * (terminal confirmation, errors).
+ *
+ * - `/model`                     → picker with provider buttons
+ * - `/model <provider>`          → picker with model buttons (+ "Back")
+ * - `/model <provider> <model>`  → text confirmation after switching
+ *
+ * Provider/model identifiers are resolved case-insensitively against both
+ * `id` and `name`, so picker callbacks can use ids while users typing the
+ * command directly can use names.
+ */
+export function handleModelCommand(rawArgs: string): SlashCommandReply {
+  const args = rawArgs.trim()
+  let file
   try {
-    const provider = getActiveProvider()
-    if (!provider) return 'No active provider is configured.'
-    const modelId = getActiveModelId() ?? provider.defaultModel ?? '(none)'
-    const lines = [
-      `Active provider: ${provider.name} (${provider.providerType})`,
-      `Active model: ${modelId}`,
-    ]
-    return lines.join('\n')
+    file = loadProviders()
   } catch (err) {
     return `Could not read provider settings: ${(err as Error).message}`
+  }
+  const providers = file.providers
+  if (providers.length === 0) {
+    return 'No providers are configured. Add one in the settings UI first.'
+  }
+
+  const tokens = args.length === 0 ? [] : args.split(/\s+/)
+
+  // No args → provider picker
+  if (tokens.length === 0) {
+    return buildProviderPicker(providers, file.activeProvider, file.activeModel)
+  }
+
+  const providerKey = tokens[0]!
+  const provider = findProvider(providers, providerKey)
+  if (!provider) {
+    return `Unknown provider: ${providerKey}\n\nUse /model to choose from the list.`
+  }
+
+  // 1 arg → model picker for the chosen provider
+  if (tokens.length === 1) {
+    return buildModelPicker(provider, file.activeProvider, file.activeModel)
+  }
+
+  // 2 args → switch active provider + model (terminal step)
+  if (tokens.length === 2) {
+    const modelKey = tokens[1]!
+    const enabled = enabledModelIds(provider)
+    const modelId = enabled.find((m) => m.toLowerCase() === modelKey.toLowerCase())
+    if (!modelId) {
+      return `Model "${modelKey}" is not enabled for provider "${provider.name}".`
+    }
+    try {
+      setActiveProvider(provider.id, modelId)
+    } catch (err) {
+      return `Could not switch model: ${(err as Error).message}`
+    }
+    return `\u2705 Active provider: ${provider.name} (${provider.providerType})\nActive model: ${modelId}`
+  }
+
+  return `Usage: /model [<provider> [<model>]]`
+}
+
+function findProvider(providers: ProviderConfig[], key: string): ProviderConfig | undefined {
+  const k = key.toLowerCase()
+  return providers.find((p) => p.id.toLowerCase() === k || p.name.toLowerCase() === k)
+}
+
+function enabledModelIds(provider: ProviderConfig): string[] {
+  return provider.enabledModels && provider.enabledModels.length > 0
+    ? provider.enabledModels
+    : [provider.defaultModel]
+}
+
+function buildProviderPicker(
+  providers: ProviderConfig[],
+  activeProviderId: string | undefined,
+  activeModelId: string | undefined,
+): SlashCommandPicker {
+  const active = providers.find((p) => p.id === activeProviderId) ?? providers[0]!
+  const activeModel = activeModelId ?? active.defaultModel ?? '(none)'
+  const options: SlashCommandPickerOption[] = providers.map((p) => {
+    const isActive = p.id === activeProviderId
+    return {
+      // Use provider id (always set, never collides) for the callback
+      command: `/model ${p.id}`,
+      label: p.name,
+      description: p.providerType,
+      badge: isActive ? 'active' : (p.status === 'error' ? 'error' : undefined),
+    }
+  })
+  return {
+    kind: 'picker',
+    pickerId: 'model:providers',
+    title: 'Choose a provider',
+    description: `Active: ${active.name} \u00b7 ${activeModel}`,
+    options,
+  }
+}
+
+function buildModelPicker(
+  provider: ProviderConfig,
+  activeProviderId: string | undefined,
+  activeModelId: string | undefined,
+): SlashCommandPicker {
+  const enabled = enabledModelIds(provider)
+  const isActiveProvider = provider.id === activeProviderId
+  const options: SlashCommandPickerOption[] = enabled.map((m) => {
+    const flags: string[] = []
+    if (isActiveProvider && m === activeModelId) flags.push('active')
+    if (m === provider.defaultModel) flags.push('default')
+    const status = provider.modelStatuses?.[m]
+    if (status && status !== 'untested') flags.push(status)
+    const overrideName = provider.models?.find((mm) => mm.id === m)?.name
+    return {
+      command: `/model ${provider.id} ${m}`,
+      label: overrideName ?? m,
+      description: overrideName ? m : undefined,
+      badge: flags[0],
+    }
+  })
+  // Back button → re-show provider picker
+  options.push({ command: '/model', label: '\u2190 Back to providers' })
+  return {
+    kind: 'picker',
+    pickerId: `model:models:${provider.id}`,
+    title: `Choose a model for ${provider.name}`,
+    description: provider.providerType,
+    options,
   }
 }
 
