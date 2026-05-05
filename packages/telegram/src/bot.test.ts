@@ -1,4 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-function-type, @typescript-eslint/no-explicit-any */
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { AgentCore, ResponseChunk, Database } from '@axiom/core'
 
@@ -34,8 +37,31 @@ vi.mock('grammy', () => {
     _commandHandlers: commandHandlers,
   }))
 
+  // Minimal InlineKeyboard stand-in: enough surface area for our picker
+  // builder (text + row) and for the test to inspect the resulting layout
+  // via the expected `{ inline_keyboard: ... }` shape. Mirrors grammY's
+  // serialization which strips trailing empty rows.
+  class MockInlineKeyboard {
+    private rows: { text: string; callback_data: string }[][] = [[]]
+    text(label: string, callback_data: string): this {
+      this.rows[this.rows.length - 1]!.push({ text: label, callback_data })
+      return this
+    }
+    row(): this {
+      this.rows.push([])
+      return this
+    }
+    get inline_keyboard(): { text: string; callback_data: string }[][] {
+      // Drop trailing empty rows so callers see exactly one row per option.
+      const out = this.rows.slice()
+      while (out.length > 0 && out[out.length - 1]!.length === 0) out.pop()
+      return out
+    }
+  }
+
   return {
     Bot: MockBot,
+    InlineKeyboard: MockInlineKeyboard,
     GrammyError: class GrammyError extends Error {
       error_code: number
       description: string
@@ -252,7 +278,7 @@ describe('TelegramBot', () => {
       expect(msg).toContain('/stop')
       expect(msg).toContain('/tasks')
       expect(msg).toContain('/cronjobs')
-      expect(msg).toContain('/settings')
+      expect(msg).toContain('/model')
       expect(msg).toContain('/thinking')
     })
   })
@@ -273,20 +299,187 @@ describe('TelegramBot', () => {
     })
   })
 
-  describe('/settings command', () => {
-    it('replies with active provider/model summary', async () => {
+  describe('/model and /provider commands', () => {
+    let dataDir: string
+    let previousDataDir: string | undefined
+
+    function writeProviders(providers: unknown): void {
+      fs.mkdirSync(path.join(dataDir, 'config'), { recursive: true })
+      fs.writeFileSync(
+        path.join(dataDir, 'config', 'providers.json'),
+        `${JSON.stringify(providers, null, 2)}\n`,
+        'utf-8',
+      )
+    }
+
+    beforeEach(() => {
+      previousDataDir = process.env.DATA_DIR
+      dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'axiom-tg-model-'))
+      process.env.DATA_DIR = dataDir
+      writeProviders({
+        activeProvider: 'p1',
+        activeModel: 'gpt-4o',
+        providers: [
+          {
+            id: 'p1', name: 'OpenAI', type: 'openai-completions', providerType: 'openai',
+            provider: 'openai', baseUrl: '', apiKey: '',
+            defaultModel: 'gpt-4o', enabledModels: ['gpt-4o', 'gpt-4o-mini'],
+          },
+          {
+            id: 'p2', name: 'Anthropic', type: 'anthropic-messages', providerType: 'anthropic',
+            provider: 'anthropic', baseUrl: '', apiKey: '',
+            defaultModel: 'claude-sonnet-4-20250514',
+            enabledModels: ['claude-sonnet-4-20250514', 'claude-3-5-sonnet-20241022'],
+          },
+        ],
+      })
+    })
+
+    afterEach(() => {
+      if (previousDataDir === undefined) delete process.env.DATA_DIR
+      else process.env.DATA_DIR = previousDataDir
+      fs.rmSync(dataDir, { recursive: true, force: true })
+    })
+
+    it('does not register a /settings command anymore', () => {
       const bot = new TelegramBot({ agentCore, config: defaultConfig })
       const underlying = bot.getBot() as unknown as MockBotInternals
-      const handler = underlying._commandHandlers.get('settings')!
+      expect(underlying._commandHandlers.has('settings')).toBe(false)
+      expect(underlying._commandHandlers.has('model')).toBe(true)
+      expect(underlying._commandHandlers.has('provider')).toBe(true)
+    })
+
+    it('/model sends an inline keyboard with one button per provider', async () => {
+      const bot = new TelegramBot({ agentCore, config: defaultConfig })
+      const underlying = bot.getBot() as unknown as MockBotInternals
+      const handler = underlying._commandHandlers.get('model')!
 
       const ctx = createMockContext()
-      ctx.message = { text: '/settings', message_id: 1 }
+      ctx.message = { text: '/model', message_id: 1 }
       await handler(ctx)
 
       expect(ctx.reply).toHaveBeenCalledTimes(1)
-      const msg = ctx.reply.mock.calls[0][0] as string
-      expect(typeof msg).toBe('string')
-      expect(msg.length).toBeGreaterThan(0)
+      const [text, opts] = ctx.reply.mock.calls[0] as [string, { reply_markup: { inline_keyboard: { text: string; callback_data: string }[][] } }]
+      expect(text).toContain('Choose a provider')
+      const rows = opts.reply_markup.inline_keyboard
+      expect(rows).toHaveLength(2)
+      expect(rows[0]![0]!.text).toMatch(/OpenAI/)
+      expect(rows[1]![0]!.text).toMatch(/Anthropic/)
+      // All callback_data values should fit Telegram's 64-byte limit and use
+      // the picker prefix, not the raw slash command (which contains UUIDs).
+      for (const row of rows) {
+        const cb = row[0]!.callback_data
+        expect(cb.startsWith('pick:')).toBe(true)
+        expect(Buffer.byteLength(cb, 'utf-8')).toBeLessThanOrEqual(64)
+      }
+    })
+
+    it('/provider alias produces the same provider picker', async () => {
+      const bot = new TelegramBot({ agentCore, config: defaultConfig })
+      const underlying = bot.getBot() as unknown as MockBotInternals
+      const handler = underlying._commandHandlers.get('provider')!
+
+      const ctx = createMockContext()
+      ctx.message = { text: '/provider', message_id: 1 }
+      await handler(ctx)
+
+      expect(ctx.reply).toHaveBeenCalledTimes(1)
+      const [text] = ctx.reply.mock.calls[0] as [string, unknown]
+      expect(text).toContain('Choose a provider')
+    })
+
+    it('button tap drills down to the model picker (edits the message in place)', async () => {
+      const bot = new TelegramBot({ agentCore, config: defaultConfig })
+      const underlying = bot.getBot() as unknown as MockBotInternals
+
+      // Step 1: send /model to get the provider picker + collect tokens
+      const cmdCtx = createMockContext()
+      cmdCtx.message = { text: '/model', message_id: 1 }
+      await underlying._commandHandlers.get('model')!(cmdCtx)
+      const rows = (cmdCtx.reply.mock.calls[0] as [string, { reply_markup: { inline_keyboard: { text: string; callback_data: string }[][] } }])[1].reply_markup.inline_keyboard
+      const openaiCallback = rows[0]![0]!.callback_data
+
+      // Step 2: simulate the callback for the OpenAI button
+      const callbackHandler = underlying._handlers.get('callback_query:data')!
+      const cbCtx = createMockContext({
+        callbackQuery: { data: openaiCallback, message: { message_id: 1 } },
+        answerCallbackQuery: vi.fn().mockResolvedValue(true),
+        editMessageText: vi.fn().mockResolvedValue(true),
+        editMessageReplyMarkup: vi.fn().mockResolvedValue(true),
+      })
+      await callbackHandler(cbCtx as any)
+
+      expect((cbCtx as any).answerCallbackQuery).toHaveBeenCalled()
+      expect((cbCtx as any).editMessageText).toHaveBeenCalledTimes(1)
+      const [editedText, editedOpts] = (cbCtx as any).editMessageText.mock.calls[0] as [string, { reply_markup: { inline_keyboard: { text: string; callback_data: string }[][] } }]
+      expect(editedText).toContain('OpenAI')
+      const modelRows = editedOpts.reply_markup.inline_keyboard
+      // 2 enabled models + 1 back button
+      expect(modelRows).toHaveLength(3)
+      expect(modelRows[0]![0]!.text).toMatch(/gpt-4o/)
+      expect(modelRows[modelRows.length - 1]![0]!.text).toMatch(/back/i)
+    })
+
+    it('selecting a model edits the message with a confirmation and updates providers.json', async () => {
+      const bot = new TelegramBot({ agentCore, config: defaultConfig })
+      const underlying = bot.getBot() as unknown as MockBotInternals
+      const callbackHandler = underlying._handlers.get('callback_query:data')!
+
+      // Step 1: /model → provider picker
+      const ctx1 = createMockContext()
+      ctx1.message = { text: '/model', message_id: 1 }
+      await underlying._commandHandlers.get('model')!(ctx1)
+      const providerRows = (ctx1.reply.mock.calls[0] as [string, { reply_markup: { inline_keyboard: { text: string; callback_data: string }[][] } }])[1].reply_markup.inline_keyboard
+      const anthropicCb = providerRows[1]![0]!.callback_data
+
+      // Step 2: tap Anthropic → model picker (in cb editMessageText)
+      const ctx2 = createMockContext({
+        callbackQuery: { data: anthropicCb, message: { message_id: 1 } },
+        answerCallbackQuery: vi.fn().mockResolvedValue(true),
+        editMessageText: vi.fn().mockResolvedValue(true),
+      })
+      await callbackHandler(ctx2 as any)
+      const modelKeyboard = ((ctx2 as any).editMessageText.mock.calls[0] as [string, { reply_markup: { inline_keyboard: { text: string; callback_data: string }[][] } }])[1]
+      // Find the non-default model button (claude-3-5-sonnet-20241022)
+      const modelRows = modelKeyboard.reply_markup.inline_keyboard
+      const targetRow = modelRows.find((r) => /claude-3-5-sonnet-20241022/.test(r[0]!.text))
+      expect(targetRow).toBeDefined()
+      const modelCb = targetRow![0]!.callback_data
+
+      // Step 3: tap that model → confirmation text, no keyboard
+      const ctx3 = createMockContext({
+        callbackQuery: { data: modelCb, message: { message_id: 1 } },
+        answerCallbackQuery: vi.fn().mockResolvedValue(true),
+        editMessageText: vi.fn().mockResolvedValue(true),
+      })
+      await callbackHandler(ctx3 as any)
+      const [confirmText, confirmOpts] = (ctx3 as any).editMessageText.mock.calls[0] as [string, { reply_markup?: unknown }]
+      expect(confirmText).toContain('Active provider')
+      expect(confirmText).toContain('Anthropic')
+      expect(confirmText).toContain('claude-3-5-sonnet-20241022')
+      expect(confirmOpts.reply_markup).toBeUndefined()
+
+      // providers.json was actually mutated
+      const stored = JSON.parse(fs.readFileSync(path.join(dataDir, 'config', 'providers.json'), 'utf-8'))
+      expect(stored.activeProvider).toBe('p2')
+      expect(stored.activeModel).toBe('claude-3-5-sonnet-20241022')
+    })
+
+    it('expired or unknown picker tokens show an alert and strip the keyboard', async () => {
+      const bot = new TelegramBot({ agentCore, config: defaultConfig })
+      const underlying = bot.getBot() as unknown as MockBotInternals
+      const callbackHandler = underlying._handlers.get('callback_query:data')!
+
+      const ctx = createMockContext({
+        callbackQuery: { data: 'pick:deadbeef', message: { message_id: 1 } },
+        answerCallbackQuery: vi.fn().mockResolvedValue(true),
+        editMessageReplyMarkup: vi.fn().mockResolvedValue(true),
+      })
+      await callbackHandler(ctx as any)
+      expect((ctx as any).answerCallbackQuery).toHaveBeenCalledWith(
+        expect.objectContaining({ show_alert: true }),
+      )
+      expect((ctx as any).editMessageReplyMarkup).toHaveBeenCalled()
     })
   })
 

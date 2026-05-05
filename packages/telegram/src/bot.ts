@@ -1,8 +1,14 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { Bot, GrammyError, HttpError, InputFile } from 'grammy'
+import crypto from 'node:crypto'
+import { Bot, GrammyError, HttpError, InlineKeyboard, InputFile } from 'grammy'
 import type { Context } from 'grammy'
-import type { AgentCore, Database, SlashCommandRegistry } from '@axiom/core'
+import type {
+  AgentCore,
+  Database,
+  SlashCommandRegistry,
+  SlashCommandPicker,
+} from '@axiom/core'
 import {
   loadConfig,
   saveUpload,
@@ -14,10 +20,21 @@ import {
   synthesizeTts,
   SlashCommandRegistry as SlashCommandRegistryCtor,
   registerBuiltInSlashCommands,
+  isSlashCommandPicker,
   TaskStore,
   ScheduledTaskStore,
 } from '@axiom/core'
 import type { UploadDescriptor } from '@axiom/core'
+
+/**
+ * Inline-keyboard callbacks live under this prefix. Telegram limits
+ * `callback_data` to 64 bytes, so we can't ship the full slash command in
+ * the payload — instead we generate a short opaque token, stash the
+ * verbatim slash command in `pickerTokenStore`, and resolve it back on
+ * the callback. Tokens auto-expire (see `PICKER_TOKEN_TTL_MS`).
+ */
+const PICKER_CALLBACK_PREFIX = 'pick:'
+const PICKER_TOKEN_TTL_MS = 10 * 60 * 1000 // 10 minutes
 
 /**
  * Telegram config stored in /data/config/telegram.json
@@ -144,6 +161,17 @@ export function buildAgentMessage(text: string, replyContext?: string): string {
   return `<reply-context>${replyContext}</reply-context>\n${text}`
 }
 const STOP_COMMANDS = new Set(['/stop', '/kill'])
+
+/**
+ * Render a picker's title + description as the message body. The buttons
+ * themselves live in `reply_markup`, so this only handles the lead text.
+ */
+function formatPickerMessage(picker: SlashCommandPicker): string {
+  const lines: string[] = []
+  if (picker.title) lines.push(picker.title)
+  if (picker.description) lines.push(picker.description)
+  return lines.join('\n') || 'Choose an option:'
+}
 
 /**
  * Convert standard Markdown to Telegram-compatible HTML.
@@ -327,6 +355,13 @@ export class TelegramBot {
   private slashRegistry: SlashCommandRegistry
   private taskStore: TaskStore | null
   private scheduledTaskStore: ScheduledTaskStore | null
+  /**
+   * Map of `pick:<token>` callback-data tokens to the verbatim slash command
+   * they should re-dispatch when clicked. Bounded by `PICKER_TOKEN_TTL_MS`;
+   * pruned opportunistically before each new picker is created so the map
+   * doesn't grow unbounded for chats that abandon pickers mid-flow.
+   */
+  private pickerTokenStore = new Map<string, { command: string; expiresAt: number }>()
 
   constructor(options: TelegramBotOptions) {
     this.agentCore = options.agentCore
@@ -446,14 +481,23 @@ export class TelegramBot {
     this.bot.command('cron', async (ctx) => {
       await this.handleRegistryCommand(ctx, 'cron')
     })
-    this.bot.command('settings', async (ctx) => {
-      await this.handleRegistryCommand(ctx, 'settings')
-    })
     this.bot.command('thinking', async (ctx) => {
       await this.handleRegistryCommand(ctx, 'thinking')
     })
     this.bot.command('model', async (ctx) => {
       await this.handleRegistryCommand(ctx, 'model')
+    })
+    this.bot.command('provider', async (ctx) => {
+      await this.handleRegistryCommand(ctx, 'provider')
+    })
+
+    // Inline-keyboard button taps from picker messages (e.g. /model).
+    // The original message is edited in place to either show the next
+    // picker step or the final text confirmation.
+    this.bot.on('callback_query:data', async (ctx) => {
+      const data = ctx.callbackQuery.data
+      if (!data.startsWith(PICKER_CALLBACK_PREFIX)) return
+      await this.handlePickerCallback(ctx, data.slice(PICKER_CALLBACK_PREFIX.length))
     })
 
     this.bot.on('message:text', async (ctx) => {
@@ -1092,6 +1136,10 @@ export class TelegramBot {
       onThinkingLevelChanged: (level) => this.agentCore.setThinkingLevel(level),
     })
     if (result.kind === 'handled') {
+      if (isSlashCommandPicker(result.reply)) {
+        await this.sendPicker(ctx, result.reply)
+        return
+      }
       if (result.reply) await ctx.reply(result.reply)
       return
     }
@@ -1104,6 +1152,127 @@ export class TelegramBot {
       return
     }
     await ctx.reply(`Cannot handle /${name}.`)
+  }
+
+  /**
+   * Render a slash-command picker as an inline keyboard. Each option becomes
+   * one button row; clicking re-dispatches its verbatim slash command via
+   * `handlePickerCallback`.
+   */
+  private async sendPicker(ctx: Context, picker: SlashCommandPicker): Promise<void> {
+    const text = formatPickerMessage(picker)
+    const keyboard = this.buildPickerKeyboard(picker)
+    await ctx.reply(text, { reply_markup: keyboard })
+  }
+
+  /**
+   * Build a fresh inline keyboard for `picker`, registering each option's
+   * slash command under a short token in `pickerTokenStore`.
+   */
+  private buildPickerKeyboard(picker: SlashCommandPicker): InlineKeyboard {
+    this.prunePickerTokens()
+    const keyboard = new InlineKeyboard()
+    for (const opt of picker.options) {
+      const token = this.registerPickerToken(opt.command)
+      const label = opt.badge ? `${opt.label} \u2022 ${opt.badge}` : opt.label
+      keyboard.text(label, `${PICKER_CALLBACK_PREFIX}${token}`).row()
+    }
+    return keyboard
+  }
+
+  private registerPickerToken(command: string): string {
+    // 8 hex chars = 4 bytes of entropy. Plenty for short-lived per-user tokens
+    // and well under Telegram's 64-byte callback-data limit.
+    let token = crypto.randomBytes(4).toString('hex')
+    // Vanishingly unlikely collision, but be robust anyway.
+    while (this.pickerTokenStore.has(token)) {
+      token = crypto.randomBytes(4).toString('hex')
+    }
+    this.pickerTokenStore.set(token, { command, expiresAt: Date.now() + PICKER_TOKEN_TTL_MS })
+    return token
+  }
+
+  private prunePickerTokens(): void {
+    const now = Date.now()
+    for (const [token, entry] of this.pickerTokenStore) {
+      if (entry.expiresAt <= now) this.pickerTokenStore.delete(token)
+    }
+  }
+
+  /**
+   * Resolve a `pick:<token>` callback into a re-dispatch of the original
+   * slash command. Edits the source message in place to show the next
+   * picker (or final text), so the chat doesn't accumulate stale keyboards.
+   */
+  private async handlePickerCallback(ctx: Context, token: string): Promise<void> {
+    const entry = this.pickerTokenStore.get(token)
+    if (!entry || entry.expiresAt <= Date.now()) {
+      await ctx.answerCallbackQuery({ text: 'This menu has expired. Run the command again.', show_alert: true })
+      // Best-effort: strip the keyboard so the user can't re-tap stale buttons.
+      try { await ctx.editMessageReplyMarkup({ reply_markup: undefined }) } catch { /* ignore */ }
+      return
+    }
+
+    if (!await this.checkAuthorized(ctx)) {
+      await ctx.answerCallbackQuery({ text: 'Not authorized.', show_alert: true })
+      return
+    }
+
+    // One-shot: each token is consumed on first use. The next picker step
+    // generates a fresh batch of tokens.
+    this.pickerTokenStore.delete(token)
+    await ctx.answerCallbackQuery()
+
+    const userId = this.resolveUserId(ctx)
+    const result = await this.slashRegistry.dispatch(entry.command, {
+      surface: 'telegram',
+      userId,
+      registry: this.slashRegistry,
+      db: this.db ?? undefined,
+      taskStore: this.taskStore ?? undefined,
+      scheduledTaskStore: this.scheduledTaskStore ?? undefined,
+      onThinkingLevelChanged: (level) => this.agentCore.setThinkingLevel(level),
+    })
+
+    if (result.kind !== 'handled') {
+      await this.editPickerMessage(ctx, `\u26A0\uFE0F Could not handle that selection.`)
+      return
+    }
+
+    if (isSlashCommandPicker(result.reply)) {
+      // Next step — swap the message in place with a fresh keyboard.
+      await this.editPickerMessage(
+        ctx,
+        formatPickerMessage(result.reply),
+        this.buildPickerKeyboard(result.reply),
+      )
+      return
+    }
+
+    // Final text reply (confirmation, error, no-op). Drop the keyboard.
+    await this.editPickerMessage(ctx, result.reply ?? '\u2705 Done.')
+  }
+
+  /**
+   * Edit the source message of a callback query, falling back to a new
+   * message if Telegram refuses (e.g. message too old, content unchanged).
+   */
+  private async editPickerMessage(
+    ctx: Context,
+    text: string,
+    keyboard?: InlineKeyboard,
+  ): Promise<void> {
+    try {
+      await ctx.editMessageText(text, { reply_markup: keyboard })
+    } catch (err) {
+      // "message is not modified" is harmless and shouldn't be a fallback trigger.
+      if (err instanceof GrammyError && /message is not modified/i.test(err.description)) return
+      try {
+        await ctx.reply(text, keyboard ? { reply_markup: keyboard } : undefined)
+      } catch (replyErr) {
+        console.error('Failed to deliver picker reply:', replyErr)
+      }
+    }
   }
 
   private async handleKillSwitch(ctx: Context): Promise<void> {
