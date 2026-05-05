@@ -350,7 +350,7 @@ export function formatCronjobsReply(jobs: CronjobLike[]): string {
  * `id` and `name`, so picker callbacks can use ids while users typing the
  * command directly can use names.
  */
-export function handleModelCommand(rawArgs: string): SlashCommandReply {
+function handleModelCommand(rawArgs: string): SlashCommandReply {
   const args = rawArgs.trim()
   let file
   try {
