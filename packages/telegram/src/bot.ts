@@ -1,10 +1,40 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { Bot, GrammyError, HttpError, InputFile } from 'grammy'
+import crypto from 'node:crypto'
+import { Bot, GrammyError, HttpError, InlineKeyboard, InputFile } from 'grammy'
 import type { Context } from 'grammy'
-import type { AgentCore, Database } from '@axiom/core'
-import { loadConfig, saveUpload, serializeUploadsMetadata, parseUploadsMetadata, loadSttSettings, transcribeAudio, extractUploadsFromToolResult, synthesizeTts } from '@axiom/core'
+import type {
+  AgentCore,
+  Database,
+  SlashCommandRegistry,
+  SlashCommandPicker,
+} from '@axiom/core'
+import {
+  loadConfig,
+  saveUpload,
+  serializeUploadsMetadata,
+  parseUploadsMetadata,
+  loadSttSettings,
+  transcribeAudio,
+  extractUploadsFromToolResult,
+  synthesizeTts,
+  SlashCommandRegistry as SlashCommandRegistryCtor,
+  registerBuiltInSlashCommands,
+  isSlashCommandPicker,
+  TaskStore,
+  ScheduledTaskStore,
+} from '@axiom/core'
 import type { UploadDescriptor } from '@axiom/core'
+
+/**
+ * Inline-keyboard callbacks live under this prefix. Telegram limits
+ * `callback_data` to 64 bytes, so we can't ship the full slash command in
+ * the payload — instead we generate a short opaque token, stash the
+ * verbatim slash command in `pickerTokenStore`, and resolve it back on
+ * the callback. Tokens auto-expire (see `PICKER_TOKEN_TTL_MS`).
+ */
+const PICKER_CALLBACK_PREFIX = 'pick:'
+const PICKER_TOKEN_TTL_MS = 10 * 60 * 1000 // 10 minutes
 
 /**
  * Telegram config stored in /data/config/telegram.json
@@ -45,11 +75,6 @@ export interface TelegramChatEvent {
   senderName?: string
   /** Uploaded file attached to the current assistant turn (for type='attachment') */
   attachment?: UploadDescriptor
-  /**
-   * Excerpt of the message the user replied to in Telegram (truncated to 500 chars).
-   * Forwarded to the web UI so it can render a quote bubble above the user
-   * message. Absent for non-reply messages.
-   */
   replyContext?: string
 }
 
@@ -79,16 +104,6 @@ interface QueuedMessage {
   ctx: Context
   text: string
   attachments?: UploadDescriptor[]
-  /**
-   * Plain-text excerpt of the message the user replied to (`reply_to_message`),
-   * already truncated to REPLY_CONTEXT_MAX_LENGTH. Present only when the incoming
-   * Telegram update carried a `reply_to_message` with extractable text/caption.
-   * Used to:
-   *   1. wrap the agent-facing prompt with `<reply-context>…</reply-context>`,
-   *   2. persist alongside the user's message in `chat_messages.metadata` so the
-   *      web UI can render a quote bubble on reload,
-   *   3. ship to live web clients via the `user_message` chat event.
-   */
   replyContext?: string
 }
 
@@ -146,6 +161,17 @@ export function buildAgentMessage(text: string, replyContext?: string): string {
   return `<reply-context>${replyContext}</reply-context>\n${text}`
 }
 const STOP_COMMANDS = new Set(['/stop', '/kill'])
+
+/**
+ * Render a picker's title + description as the message body. The buttons
+ * themselves live in `reply_markup`, so this only handles the lead text.
+ */
+function formatPickerMessage(picker: SlashCommandPicker): string {
+  const lines: string[] = []
+  if (picker.title) lines.push(picker.title)
+  if (picker.description) lines.push(picker.description)
+  return lines.join('\n') || 'Choose an option:'
+}
 
 /**
  * Convert standard Markdown to Telegram-compatible HTML.
@@ -326,6 +352,16 @@ export class TelegramBot {
   private chatStates = new Map<string, ChatState>()
   private onQueueDepthChanged?: (queueDepth: number) => void
   private onChatEvent?: (event: TelegramChatEvent) => void
+  private slashRegistry: SlashCommandRegistry
+  private taskStore: TaskStore | null
+  private scheduledTaskStore: ScheduledTaskStore | null
+  /**
+   * Map of `pick:<token>` callback-data tokens to the verbatim slash command
+   * they should re-dispatch when clicked. Bounded by `PICKER_TOKEN_TTL_MS`;
+   * pruned opportunistically before each new picker is created so the map
+   * doesn't grow unbounded for chats that abandon pickers mid-flow.
+   */
+  private pickerTokenStore = new Map<string, { command: string; expiresAt: number }>()
 
   constructor(options: TelegramBotOptions) {
     this.agentCore = options.agentCore
@@ -333,6 +369,9 @@ export class TelegramBot {
     this.config = options.config ?? loadTelegramRuntimeConfig()
     this.onQueueDepthChanged = options.onQueueDepthChanged
     this.onChatEvent = options.onChatEvent
+    this.slashRegistry = buildTelegramSlashCommandRegistry()
+    this.taskStore = this.db ? new TaskStore(this.db) : null
+    this.scheduledTaskStore = this.db ? new ScheduledTaskStore(this.db) : null
 
     if (!this.config.botToken) {
       throw new Error(
@@ -373,9 +412,6 @@ export class TelegramBot {
     this.onQueueDepthChanged?.(this.getQueueDepth())
   }
 
-  /**
-   * Total queue depth across all chats, including pending batches and active work.
-   */
   getQueueDepth(): number {
     let total = 0
 
@@ -388,9 +424,6 @@ export class TelegramBot {
     return total
   }
 
-  /**
-   * Set up command and message handlers
-   */
   private setupHandlers(): void {
     // /start command - welcome message
     this.bot.command('start', async (ctx) => {
@@ -400,11 +433,7 @@ export class TelegramBot {
       const welcomeText = [
         '👋 *Welcome to Axiom!*',
         '',
-        'I\'m your AI assistant. You can chat with me directly or use these commands:',
-        '',
-        '`/new` — Start a fresh conversation (summarizes & resets current session)',
-        '`/start` — Show this welcome message',
-        '`/stop` — Abort the current task and clear queued work',
+        'I\'m your AI assistant. You can chat with me directly or type /help to see all available commands.',
         '',
         'Just send me a message to get started!',
       ].join('\n')
@@ -440,6 +469,37 @@ export class TelegramBot {
       await this.handleKillSwitch(ctx)
     })
 
+    this.bot.command('help', async (ctx) => {
+      await this.handleRegistryCommand(ctx, 'help')
+    })
+    this.bot.command('tasks', async (ctx) => {
+      await this.handleRegistryCommand(ctx, 'tasks')
+    })
+    this.bot.command('cronjobs', async (ctx) => {
+      await this.handleRegistryCommand(ctx, 'cronjobs')
+    })
+    this.bot.command('cron', async (ctx) => {
+      await this.handleRegistryCommand(ctx, 'cron')
+    })
+    this.bot.command('thinking', async (ctx) => {
+      await this.handleRegistryCommand(ctx, 'thinking')
+    })
+    this.bot.command('model', async (ctx) => {
+      await this.handleRegistryCommand(ctx, 'model')
+    })
+    this.bot.command('provider', async (ctx) => {
+      await this.handleRegistryCommand(ctx, 'provider')
+    })
+
+    // Inline-keyboard button taps from picker messages (e.g. /model).
+    // The original message is edited in place to either show the next
+    // picker step or the final text confirmation.
+    this.bot.on('callback_query:data', async (ctx) => {
+      const data = ctx.callbackQuery.data
+      if (!data.startsWith(PICKER_CALLBACK_PREFIX)) return
+      await this.handlePickerCallback(ctx, data.slice(PICKER_CALLBACK_PREFIX.length))
+    })
+
     this.bot.on('message:text', async (ctx) => {
       await this.handleMessage(ctx)
     })
@@ -457,10 +517,6 @@ export class TelegramBot {
     })
   }
 
-  /**
-   * Ensure a telegram user record exists in the database.
-   * Returns the row or null if no db is configured.
-   */
   private ensureTelegramUser(ctx: Context): TelegramUserRow | null {
     if (!this.db || !ctx.from) return null
 
@@ -501,9 +557,6 @@ export class TelegramBot {
     ).get(result.lastInsertRowid) as TelegramUserRow
   }
 
-  /**
-   * Check if an avatar file exists for a given telegram user.
-   */
   private hasAvatarFile(telegramId: string): boolean {
     const avatarDir = path.join(process.env.DATA_DIR ?? '/data', 'avatars')
     try {
@@ -514,9 +567,6 @@ export class TelegramBot {
     }
   }
 
-  /**
-   * Fetch a user's Telegram profile photo and save it locally.
-   */
   private async fetchAndSaveAvatar(telegramId: number): Promise<void> {
     try {
       const photos = await this.bot.api.getUserProfilePhotos(telegramId, { limit: 1 })
@@ -547,10 +597,6 @@ export class TelegramBot {
     }
   }
 
-  /**
-   * Check if a telegram user is authorized. If not, sends a status message.
-   * Returns true if the user may proceed.
-   */
   private async checkAuthorized(ctx: Context): Promise<boolean> {
     if (!this.db) return true // No db = no access control
 
@@ -568,11 +614,6 @@ export class TelegramBot {
     return false
   }
 
-  /**
-   * Resolve the user ID for session management.
-   * If the telegram user is linked to an Axiom user, use that user's ID
-   * in the same format as the web backend (plain string number).
-   */
   private resolveUserId(ctx: Context): string {
     if (!this.db || !ctx.from) return getUserId(ctx)
 
@@ -588,10 +629,6 @@ export class TelegramBot {
     return getUserId(ctx)
   }
 
-  /**
-   * Resolve the numeric Axiom user ID for a Telegram user.
-   * Returns null if unlinked.
-   */
   private resolveNumericUserId(ctx: Context): number | null {
     if (!this.db || !ctx.from) return null
 
@@ -603,9 +640,6 @@ export class TelegramBot {
     return row?.user_id ?? null
   }
 
-  /**
-   * Get a display name for the Telegram user.
-   */
   private getSenderName(ctx: Context): string {
     const from = ctx.from
     if (!from) return 'Unknown'
@@ -613,9 +647,6 @@ export class TelegramBot {
     return [from.first_name, from.last_name].filter(Boolean).join(' ') || 'Unknown'
   }
 
-  /**
-   * Handle an incoming text message
-   */
   private async handleMessage(ctx: Context): Promise<void> {
     const text = ctx.message?.text
     if (!text) return
@@ -703,22 +734,6 @@ export class TelegramBot {
     }
   }
 
-  /**
-   * Synthesize the assistant's text response via the configured TTS provider
-   * and upload it as a Telegram voice/audio message. No-op when the
-   * Telegram-side `sendVoiceReply` toggle is off. Errors propagate so the
-   * caller can log them — the text reply has already been sent.
-   *
-   * Provider is whatever `settings.tts.provider` says (OpenAI, Mistral, or
-   * Deepgram). The toggle lives in `telegram.json` because it controls a
-   * Telegram delivery channel, not synthesis behavior; the synthesis config
-   * (provider/voice/format) stays under `settings.tts`.
-   *
-   * Telegram requires OGG/Opus for the native voice-bubble UI; any other
-   * audio format falls back to `sendAudio` (regular file player). Deepgram
-   * users get the voice bubble by picking `opus` encoding; OpenAI/Mistral
-   * default to `mp3` so they show as a regular audio attachment.
-   */
   private async maybeSendVoiceReply(chatId: string | number, text: string): Promise<void> {
     const telegramConfig = loadConfig<{ sendVoiceReply?: boolean }>('telegram.json')
     if (!telegramConfig.sendVoiceReply) return
@@ -919,10 +934,6 @@ export class TelegramBot {
     }
   }
 
-  /**
-   * Resolve the username from the users table for a linked Telegram user.
-   * Returns null if unlinked or not found.
-   */
   private resolveUsername(ctx: Context): string | null {
     if (!this.db || !ctx.from) return null
 
@@ -936,9 +947,6 @@ export class TelegramBot {
     return row?.username ?? null
   }
 
-  /**
-   * Check if this is a DM (private) chat as opposed to a group chat.
-   */
   private isDMChat(ctx: Context): boolean {
     return ctx.chat?.type === 'private'
   }
@@ -1114,6 +1122,159 @@ export class TelegramBot {
     }
   }
 
+  private async handleRegistryCommand(ctx: Context, name: string): Promise<void> {
+    if (!await this.checkAuthorized(ctx)) return
+    const text = ctx.message?.text ?? `/${name}`
+    const userId = this.resolveUserId(ctx)
+    const result = await this.slashRegistry.dispatch(text, {
+      surface: 'telegram',
+      userId,
+      registry: this.slashRegistry,
+      db: this.db ?? undefined,
+      taskStore: this.taskStore ?? undefined,
+      scheduledTaskStore: this.scheduledTaskStore ?? undefined,
+      onThinkingLevelChanged: (level) => this.agentCore.setThinkingLevel(level),
+    })
+    if (result.kind === 'handled') {
+      if (isSlashCommandPicker(result.reply)) {
+        await this.sendPicker(ctx, result.reply)
+        return
+      }
+      if (result.reply) await ctx.reply(result.reply)
+      return
+    }
+    if (result.kind === 'not_found') {
+      await ctx.reply(`Unknown command: /${result.name}. Try /help.`)
+      return
+    }
+    if (result.kind === 'wrong_surface') {
+      await ctx.reply(`/${result.command.name} is not available on Telegram.`)
+      return
+    }
+    await ctx.reply(`Cannot handle /${name}.`)
+  }
+
+  /**
+   * Render a slash-command picker as an inline keyboard. Each option becomes
+   * one button row; clicking re-dispatches its verbatim slash command via
+   * `handlePickerCallback`.
+   */
+  private async sendPicker(ctx: Context, picker: SlashCommandPicker): Promise<void> {
+    const text = formatPickerMessage(picker)
+    const keyboard = this.buildPickerKeyboard(picker)
+    await ctx.reply(text, { reply_markup: keyboard })
+  }
+
+  /**
+   * Build a fresh inline keyboard for `picker`, registering each option's
+   * slash command under a short token in `pickerTokenStore`.
+   */
+  private buildPickerKeyboard(picker: SlashCommandPicker): InlineKeyboard {
+    this.prunePickerTokens()
+    const keyboard = new InlineKeyboard()
+    for (const opt of picker.options) {
+      const token = this.registerPickerToken(opt.command)
+      const label = opt.badge ? `${opt.label} \u2022 ${opt.badge}` : opt.label
+      keyboard.text(label, `${PICKER_CALLBACK_PREFIX}${token}`).row()
+    }
+    return keyboard
+  }
+
+  private registerPickerToken(command: string): string {
+    // 8 hex chars = 4 bytes of entropy. Plenty for short-lived per-user tokens
+    // and well under Telegram's 64-byte callback-data limit.
+    let token = crypto.randomBytes(4).toString('hex')
+    // Vanishingly unlikely collision, but be robust anyway.
+    while (this.pickerTokenStore.has(token)) {
+      token = crypto.randomBytes(4).toString('hex')
+    }
+    this.pickerTokenStore.set(token, { command, expiresAt: Date.now() + PICKER_TOKEN_TTL_MS })
+    return token
+  }
+
+  private prunePickerTokens(): void {
+    const now = Date.now()
+    for (const [token, entry] of this.pickerTokenStore) {
+      if (entry.expiresAt <= now) this.pickerTokenStore.delete(token)
+    }
+  }
+
+  /**
+   * Resolve a `pick:<token>` callback into a re-dispatch of the original
+   * slash command. Edits the source message in place to show the next
+   * picker (or final text), so the chat doesn't accumulate stale keyboards.
+   */
+  private async handlePickerCallback(ctx: Context, token: string): Promise<void> {
+    const entry = this.pickerTokenStore.get(token)
+    if (!entry || entry.expiresAt <= Date.now()) {
+      await ctx.answerCallbackQuery({ text: 'This menu has expired. Run the command again.', show_alert: true })
+      // Best-effort: strip the keyboard so the user can't re-tap stale buttons.
+      try { await ctx.editMessageReplyMarkup({ reply_markup: undefined }) } catch { /* ignore */ }
+      return
+    }
+
+    if (!await this.checkAuthorized(ctx)) {
+      await ctx.answerCallbackQuery({ text: 'Not authorized.', show_alert: true })
+      return
+    }
+
+    // One-shot: each token is consumed on first use. The next picker step
+    // generates a fresh batch of tokens.
+    this.pickerTokenStore.delete(token)
+    await ctx.answerCallbackQuery()
+
+    const userId = this.resolveUserId(ctx)
+    const result = await this.slashRegistry.dispatch(entry.command, {
+      surface: 'telegram',
+      userId,
+      registry: this.slashRegistry,
+      db: this.db ?? undefined,
+      taskStore: this.taskStore ?? undefined,
+      scheduledTaskStore: this.scheduledTaskStore ?? undefined,
+      onThinkingLevelChanged: (level) => this.agentCore.setThinkingLevel(level),
+    })
+
+    if (result.kind !== 'handled') {
+      await this.editPickerMessage(ctx, `\u26A0\uFE0F Could not handle that selection.`)
+      return
+    }
+
+    if (isSlashCommandPicker(result.reply)) {
+      // Next step — swap the message in place with a fresh keyboard.
+      await this.editPickerMessage(
+        ctx,
+        formatPickerMessage(result.reply),
+        this.buildPickerKeyboard(result.reply),
+      )
+      return
+    }
+
+    // Final text reply (confirmation, error, no-op). Drop the keyboard.
+    await this.editPickerMessage(ctx, result.reply ?? '\u2705 Done.')
+  }
+
+  /**
+   * Edit the source message of a callback query, falling back to a new
+   * message if Telegram refuses (e.g. message too old, content unchanged).
+   */
+  private async editPickerMessage(
+    ctx: Context,
+    text: string,
+    keyboard?: InlineKeyboard,
+  ): Promise<void> {
+    try {
+      await ctx.editMessageText(text, { reply_markup: keyboard })
+    } catch (err) {
+      // "message is not modified" is harmless and shouldn't be a fallback trigger.
+      if (err instanceof GrammyError && /message is not modified/i.test(err.description)) return
+      try {
+        await ctx.reply(text, keyboard ? { reply_markup: keyboard } : undefined)
+      } catch (replyErr) {
+        console.error('Failed to deliver picker reply:', replyErr)
+      }
+    }
+  }
+
   private async handleKillSwitch(ctx: Context): Promise<void> {
     const chatKey = getChatKey(ctx)
     const state = this.getOrCreateChatState(chatKey)
@@ -1147,9 +1308,6 @@ export class TelegramBot {
     this.cleanupChatState(chatKey)
   }
 
-  /**
-   * Send a potentially long message, splitting if necessary
-   */
   private async sendLongMessage(ctx: Context, text: string): Promise<void> {
     const parts = splitMessage(text)
 
@@ -1158,10 +1316,6 @@ export class TelegramBot {
     }
   }
 
-  /**
-   * Send a message with error handling for Telegram API issues.
-   * Attempts to send as HTML (converted from Markdown) first, then falls back to plain text.
-   */
   private async safeSendMessage(ctx: Context, text: string, retries = 2): Promise<void> {
     // Try sending with HTML formatting first
     const htmlText = markdownToTelegramHtml(text)
@@ -1217,9 +1371,6 @@ export class TelegramBot {
     }
   }
 
-  /**
-   * Set up global error handler for the bot
-   */
   private setupErrorHandler(): void {
     this.bot.catch((err) => {
       const ctx = err.ctx
@@ -1237,9 +1388,6 @@ export class TelegramBot {
     })
   }
 
-  /**
-   * Start the bot in polling mode
-   */
   async start(): Promise<void> {
     if (this.running) {
       console.warn('Telegram bot is already running')
@@ -1250,6 +1398,15 @@ export class TelegramBot {
       // Verify the bot token by fetching bot info
       const me = await this.bot.api.getMe()
       console.log(`✅ Telegram bot connected: @${me.username} (${me.first_name})`)
+
+      try {
+        const menu = this.slashRegistry
+          .list('telegram')
+          .map((c) => ({ command: c.name, description: c.description.slice(0, 256) }))
+        if (menu.length > 0) await this.bot.api.setMyCommands(menu)
+      } catch (err) {
+        console.warn('[telegram] setMyCommands failed (menu may be missing):', (err as Error).message)
+      }
 
       // Start polling
       this.running = true
@@ -1268,9 +1425,6 @@ export class TelegramBot {
     }
   }
 
-  /**
-   * Stop the bot gracefully
-   */
   async stop(): Promise<void> {
     if (!this.running) return
 
@@ -1284,9 +1438,6 @@ export class TelegramBot {
     console.log('🛑 Telegram bot stopped')
   }
 
-  /**
-   * Check if the bot is currently running
-   */
   isRunning(): boolean {
     return this.running
   }
@@ -1327,10 +1478,6 @@ export class TelegramBot {
     })
   }
 
-  /**
-   * Send a message directly to a Telegram chat by chat ID.
-   * Used by the web backend for admin-triggered approval/rejection notifications.
-   */
   // fallow-ignore-next-line unused-class-member
   async sendDirectMessage(chatId: string | number, text: string): Promise<boolean> {
     try {
@@ -1343,11 +1490,6 @@ export class TelegramBot {
     }
   }
 
-  /**
-   * Send a task notification to a Telegram chat with HTML formatting.
-   * Automatically splits long messages to stay within Telegram's 4096 char limit.
-   * Used for proactive task result notifications.
-   */
   // Public cross-workspace API used by web-backend; Fallow cannot see this in clean CI before workspace dist files exist.
   // fallow-ignore-next-line unused-class-member
   async sendTaskNotification(chatId: string | number, html: string): Promise<boolean> {
@@ -1373,10 +1515,6 @@ export class TelegramBot {
     return true
   }
 
-  /**
-   * Get the Telegram chat ID for a given Axiom user ID.
-   * Returns null if no linked & approved Telegram user exists.
-   */
   // Public cross-workspace API used by web-backend; Fallow cannot see this in clean CI before workspace dist files exist.
   // fallow-ignore-next-line unused-class-member
   getTelegramChatIdForUser(userId: number): string | null {
@@ -1389,11 +1527,6 @@ export class TelegramBot {
     return row?.telegram_id ?? null
   }
 
-  /**
-   * Send a Markdown-formatted message to a Telegram chat.
-   * Converts Markdown to Telegram HTML and sends with fallback to plain text.
-   * Does NOT sync back to web chat (intended for task injection responses).
-   */
   // Public cross-workspace API used by web-backend; Fallow cannot see this in clean CI before workspace dist files exist.
   // fallow-ignore-next-line unused-class-member
   async sendFormattedMessage(chatId: string | number, markdown: string): Promise<boolean> {
@@ -1416,9 +1549,6 @@ export class TelegramBot {
     return true
   }
 
-  /**
-   * Get the underlying grammy Bot instance (for advanced usage)
-   */
   getBot(): Bot {
     return this.bot
   }
@@ -1456,4 +1586,26 @@ export function createTelegramBot(
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function buildTelegramSlashCommandRegistry(): SlashCommandRegistry {
+  const registry = new SlashCommandRegistryCtor()
+  registerBuiltInSlashCommands(registry)
+  registry.register({
+    name: 'start',
+    description: 'Welcome message and bot introduction.',
+    surfaces: ['telegram'],
+  })
+  registry.register({
+    name: 'new',
+    description: 'Summarize the current session and start a fresh conversation.',
+    surfaces: ['web', 'telegram'],
+  })
+  registry.register({
+    name: 'stop',
+    aliases: ['kill'],
+    description: 'Abort the current agent turn and clear queued work.',
+    surfaces: ['web', 'telegram'],
+  })
+  return registry
 }

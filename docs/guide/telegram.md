@@ -60,15 +60,35 @@ From now on, anything you send to the bot is processed by the agent. Anyone else
 
 ## Bot commands
 
-The bot understands a handful of slash commands inside Telegram:
+The bot understands a handful of slash commands inside Telegram. They are
+shared with the web chat — same names, same descriptions — so muscle memory
+carries between surfaces. Telegram's native command menu (the `/` button next
+to the input field) is populated automatically on bot startup via
+`setMyCommands`, so you get autocomplete for every entry below.
 
-| Command  | What it does                                                               |
-|----------|----------------------------------------------------------------------------|
-| `/start` | Welcome message. Registers you as `pending` on first use.                  |
-| `/new`   | Summarize the current session, persist it, and start a fresh conversation. |
-| `/stop`  | Abort the current agent turn and clear queued messages. (alias `/kill`)    |
+| Command     | What it does                                                                |
+|-------------|-----------------------------------------------------------------------------|
+| `/start`    | Welcome message. Registers you as `pending` on first use.                   |
+| `/help`     | List all available slash commands.                                          |
+| `/new`      | Summarize the current session, persist it, and start a fresh conversation.  |
+| `/stop`     | Abort the current agent turn and clear queued messages. (alias `/kill`)     |
+| `/tasks`    | Show running and recent background tasks (read-only).                       |
+| `/cronjobs` | Show configured cronjobs and their next run time. (alias `/cron`)           |
+| `/model`    | Show or switch the active provider and model. (alias `/provider`)           |
+| `/thinking` | Show or set the global main-agent thinking level.                           |
+
+On Telegram, `/model` (and its alias `/provider`) renders as an inline
+keyboard: provider picker → model picker → confirmation. The same message is
+edited in place between steps. Selecting a model writes `providers.json` and
+switches the active model for the next turn. The picker auto-expires after
+10 minutes if untouched, so scrolling back to an old picker and tapping a
+button will return an "expired" notice instead of switching models.
 
 Everything else is treated as a normal message and forwarded to the agent.
+If the menu does not appear in your Telegram client, restart the chat or wait
+a minute — Telegram caches the command list per device. Failures during
+`setMyCommands` are non-fatal: typing a slash command still works, the menu
+just stays empty until the next successful start.
 
 ## Voice messages
 

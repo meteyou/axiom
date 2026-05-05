@@ -104,11 +104,11 @@
             // Mobile: messages fill the available width (minus avatar + gap
             // or the pl-11 offset for tool cards). On sm+ screens we cap them
             // so bubbles don't span edge-to-edge on wider viewports.
-            msg.role === 'divider' ? 'w-full' : (msg.role === 'tool' || (msg.role === 'system' && (msg.isTaskResult || msg.isTaskStatusUpdate)) || msg.isThinking) ? 'self-start w-full max-w-full sm:max-w-[75%] pl-11' : 'flex max-w-full gap-3 sm:max-w-[75%]',
+            msg.role === 'divider' ? 'w-full' : (msg.role === 'tool' || (msg.role === 'system' && (msg.isTaskResult || msg.isTaskStatusUpdate || msg.picker)) || msg.isThinking) ? 'self-start w-full max-w-full sm:max-w-[75%] pl-11' : 'flex max-w-full gap-3 sm:max-w-[75%]',
             {
               'self-end flex-row-reverse': msg.role === 'user',
               'self-start': msg.role === 'assistant' && !msg.isThinking,
-              'self-center max-w-full sm:max-w-[85%]': msg.role === 'system' && !msg.isTaskResult && !msg.isTaskStatusUpdate,
+              'self-center max-w-full sm:max-w-[85%]': msg.role === 'system' && !msg.isTaskResult && !msg.isTaskStatusUpdate && !msg.picker,
             },
           ]"
         >
@@ -258,6 +258,55 @@
                 <div class="max-h-60 overflow-y-auto px-3 py-2">
                   <div class="prose-chat break-words text-xs text-foreground" v-html="renderMarkdown(taskResultBody(msg.content))" />
                 </div>
+              </div>
+            </div>
+          </template>
+
+          <!-- Slash-command picker (e.g. /model). Renders the title +
+               description plus a button group; clicking a button sends the
+               option's verbatim slash command back to the server, which
+               re-dispatches it through the registry to produce the next
+               picker (or final confirmation). -->
+          <template v-else-if="msg.role === 'system' && msg.picker">
+            <div class="w-full overflow-hidden rounded-lg border border-border bg-muted/30">
+              <div v-if="msg.picker.title || msg.picker.description" class="border-b border-border/60 px-3 py-2 text-xs">
+                <p v-if="msg.picker.title" class="font-medium text-foreground">{{ msg.picker.title }}</p>
+                <p v-if="msg.picker.description" class="mt-0.5 text-muted-foreground">{{ msg.picker.description }}</p>
+              </div>
+              <div class="flex flex-col gap-1 p-1.5">
+                <button
+                  v-for="opt in msg.picker.options"
+                  :key="opt.command"
+                  type="button"
+                  class="group flex w-full items-center gap-2 rounded-md border border-transparent px-2.5 py-1.5 text-left text-xs transition-colors"
+                  :class="msg.pickerResolvedCommand
+                    ? (opt.command === msg.pickerResolvedCommand
+                        ? 'border-primary/30 bg-primary/10 text-foreground'
+                        : 'cursor-not-allowed text-muted-foreground/60')
+                    : 'text-foreground hover:border-border hover:bg-muted'"
+                  :disabled="!!msg.pickerResolvedCommand"
+                  @click="handlePickerSelect(msg, opt.command)"
+                >
+                  <span class="min-w-0 flex-1 truncate font-medium">{{ opt.label }}</span>
+                  <span
+                    v-if="opt.description"
+                    class="shrink-0 truncate text-[10px] text-muted-foreground/80"
+                  >{{ opt.description }}</span>
+                  <span
+                    v-if="opt.badge"
+                    class="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium"
+                    :class="opt.badge === 'active'
+                      ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                      : opt.badge === 'error'
+                        ? 'bg-destructive/10 text-destructive'
+                        : 'bg-muted text-muted-foreground'"
+                  >{{ opt.badge }}</span>
+                  <AppIcon
+                    v-if="opt.command === msg.pickerResolvedCommand"
+                    name="check"
+                    class="h-3 w-3 shrink-0 text-primary"
+                  />
+                </button>
               </div>
             </div>
           </template>
@@ -635,7 +684,19 @@ function formatTokenCount(count: number): string {
   if (count >= 1000) return `${(count / 1000).toFixed(1)}k`
   return String(count)
 }
-const { messages, connectionStatus, isStreaming, connect, disconnect, sendMessage, newSession, stopTask } = useChat()
+const { messages, connectionStatus, isStreaming, connect, disconnect, sendMessage, newSession, stopTask, resolvePicker } = useChat()
+
+/**
+ * Map a clicked picker option back to the position of its message inside
+ * `messages.value`. We can't use the `i` from the v-for directly because
+ * `filteredMessages` filters out e.g. tool calls / task injections, so its
+ * indices don't line up with the underlying array.
+ */
+function handlePickerSelect(msg: ChatMessage, command: string) {
+  const idx = messages.value.indexOf(msg)
+  if (idx === -1) return
+  resolvePicker(idx, command)
+}
 const { playingIndex: ttsPlayingIndex, loading: ttsLoading, ttsEnabled, error: ttsError, fetchTtsSettings, play: ttsPlay, stop: ttsStop, clearError: clearTtsError } = useTts()
 const { recording: sttRecording, transcribing: sttTranscribing, error: sttError, sttEnabled, fetchSttSettings, startRecording: sttStartRecording, stopAndTranscribe: sttStopAndTranscribe, cleanup: sttCleanup } = useStt()
 
