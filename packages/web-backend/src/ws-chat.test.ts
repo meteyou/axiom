@@ -391,7 +391,8 @@ describe('setupWebSocketChat kill switch', () => {
       expect(text).toContain('/stop')
       expect(text).toContain('/tasks')
       expect(text).toContain('/cronjobs')
-      expect(text).toContain('/settings')
+      expect(text).toContain('/model')
+      expect(text).not.toContain('/settings')
       expect(agentCore.sendMessage).not.toHaveBeenCalled()
       ws.close()
     } finally {

@@ -1,6 +1,12 @@
 import { WebSocketServer, WebSocket } from 'ws'
 import type { Server } from 'node:http'
-import type { Database, UploadDescriptor, SlashCommandRegistry } from '@axiom/core'
+import type {
+  Database,
+  UploadDescriptor,
+  SlashCommandRegistry,
+  SlashCommandPicker,
+} from '@axiom/core'
+import { isSlashCommandPicker } from '@axiom/core'
 import type { AgentCore, ResponseChunk } from '@axiom/core'
 import {
   extractUploadsFromToolResult,
@@ -28,6 +34,14 @@ interface ChatMessage {
 interface ChatResponse {
   type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'reminder' | 'pong' | 'attachment'
   text?: string
+  /**
+   * Interactive picker payload (slash-command driven). When present on a
+   * `system` message the frontend renders a button group; clicking a button
+   * sends back `{ type: 'command', content: <option.command> }`, which the
+   * server re-dispatches through the slash registry to produce the next
+   * picker (or final confirmation).
+   */
+  picker?: SlashCommandPicker
   /** Uploaded file attached to the current assistant turn (for type='attachment') */
   attachment?: UploadDescriptor
   /** Streamed thinking delta (for type='thinking') */
@@ -219,7 +233,15 @@ export function setupWebSocketChat(
           onThinkingLevelChanged: (level) => resolveAgentCore()?.setThinkingLevel(level),
         })
         if (dispatch.kind === 'handled') {
-          if (dispatch.reply !== null) {
+          if (isSlashCommandPicker(dispatch.reply)) {
+            sendMessage(ws, {
+              type: 'system',
+              // Title/description rendered as the bubble's text; buttons live
+              // alongside via the `picker` field.
+              text: formatPickerText(dispatch.reply),
+              picker: dispatch.reply,
+            })
+          } else if (dispatch.reply !== null) {
             sendMessage(ws, { type: 'system', text: dispatch.reply })
           }
           return
@@ -674,6 +696,18 @@ export function setupWebSocketChat(
       return !!clients && clients.size > 0
     },
   }
+}
+
+/**
+ * Render a picker's title + description as the bubble's body text. The
+ * frontend always renders the buttons separately, but we still want the
+ * fallback text so old clients (or history reloads) see something.
+ */
+function formatPickerText(picker: SlashCommandPicker): string {
+  const parts: string[] = []
+  if (picker.title) parts.push(picker.title)
+  if (picker.description) parts.push(picker.description)
+  return parts.join('\n') || ''
 }
 
 function sendMessage(ws: WebSocket, msg: ChatResponse): void {
