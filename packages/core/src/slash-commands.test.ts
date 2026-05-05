@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   parseSlashCommand,
   SlashCommandRegistry,
@@ -9,7 +9,19 @@ import {
   formatTasksReply,
   formatCronjobsReply,
   renderHelp,
+  isSlashCommandPicker,
 } from './slash-commands.js'
+import type { SlashCommandPicker, SlashCommandReply } from './slash-commands.js'
+
+function asText(reply: SlashCommandReply): string {
+  expect(typeof reply).toBe('string')
+  return reply as string
+}
+
+function asPicker(reply: SlashCommandReply): SlashCommandPicker {
+  expect(isSlashCommandPicker(reply)).toBe(true)
+  return reply as SlashCommandPicker
+}
 
 describe('parseSlashCommand', () => {
   it('parses a bare command', () => {
@@ -157,23 +169,31 @@ describe('built-in slash commands', () => {
     registerBuiltInSlashCommands(registry)
   })
 
-  it('registers help / tasks / cronjobs / settings on both surfaces', () => {
+  it('registers help / tasks / cronjobs / model on both surfaces', () => {
     const names = registry.list('web').map((c) => c.name)
     expect(names).toContain('help')
     expect(names).toContain('tasks')
     expect(names).toContain('cronjobs')
-    expect(names).toContain('settings')
+    expect(names).toContain('model')
     expect(names).toContain('thinking')
     expect(registry.list('telegram').map((c) => c.name)).toEqual(names)
+  })
+
+  it('exposes /provider as an alias of /model and does not register /settings', () => {
+    expect(registry.resolve('provider')?.name).toBe('model')
+    expect(registry.resolve('model')?.name).toBe('model')
+    expect(registry.resolve('settings')).toBeUndefined()
   })
 
   it('/help renders all commands for the surface', async () => {
     const r = await registry.dispatch('/help', { surface: 'web', userId: '1', registry })
     expect(r.kind).toBe('handled')
     if (r.kind === 'handled') {
-      expect(r.reply).toContain('/help')
-      expect(r.reply).toContain('/tasks')
-      expect(r.reply).toContain('/settings')
+      const text = asText(r.reply)
+      expect(text).toContain('/help')
+      expect(text).toContain('/tasks')
+      expect(text).toContain('/model')
+      expect(text).not.toContain('/settings')
     }
   })
 
@@ -192,7 +212,7 @@ describe('built-in slash commands', () => {
       const onThinkingLevelChanged = vi.fn()
       const show = await registry.dispatch('/thinking', { surface: 'web', userId: '1', registry })
       expect(show.kind).toBe('handled')
-      if (show.kind === 'handled') expect(show.reply).toContain('Current thinking level: off')
+      if (show.kind === 'handled') expect(asText(show.reply)).toContain('Current thinking level: off')
 
       const set = await registry.dispatch('/thinking medium', {
         surface: 'web',
@@ -201,7 +221,7 @@ describe('built-in slash commands', () => {
         onThinkingLevelChanged,
       })
       expect(set.kind).toBe('handled')
-      if (set.kind === 'handled') expect(set.reply).toBe('Thinking level set to: medium')
+      if (set.kind === 'handled') expect(asText(set.reply)).toBe('Thinking level set to: medium')
       expect(onThinkingLevelChanged).toHaveBeenCalledWith('medium')
       expect(JSON.parse(fs.readFileSync(path.join(dataDir, 'config', 'settings.json'), 'utf-8')).thinkingLevel).toBe('medium')
     } finally {
@@ -214,13 +234,13 @@ describe('built-in slash commands', () => {
   it('/thinking rejects invalid levels', async () => {
     const r = await registry.dispatch('/thinking extreme', { surface: 'web', userId: '1', registry })
     expect(r.kind).toBe('handled')
-    if (r.kind === 'handled') expect(r.reply).toContain('Unknown thinking level: extreme')
+    if (r.kind === 'handled') expect(asText(r.reply)).toContain('Unknown thinking level: extreme')
   })
 
   it('/tasks falls back gracefully without a task store', async () => {
     const r = await registry.dispatch('/tasks', { surface: 'web', userId: '1', registry })
     expect(r.kind).toBe('handled')
-    if (r.kind === 'handled') expect(r.reply).toMatch(/not available/)
+    if (r.kind === 'handled') expect(asText(r.reply)).toMatch(/not available/)
   })
 
   it('/tasks renders running and recent tasks', async () => {
@@ -257,10 +277,11 @@ describe('built-in slash commands', () => {
     })
     expect(r.kind).toBe('handled')
     if (r.kind === 'handled') {
-      expect(r.reply).toContain('Running tasks: 1')
-      expect(r.reply).toContain('do thing')
-      expect(r.reply).toContain('[completed]')
-      expect(r.reply).toContain('old thing')
+      const text = asText(r.reply)
+      expect(text).toContain('Running tasks: 1')
+      expect(text).toContain('do thing')
+      expect(text).toContain('[completed]')
+      expect(text).toContain('old thing')
     }
     expect(taskStore.list).toHaveBeenCalledTimes(2)
   })
@@ -268,7 +289,7 @@ describe('built-in slash commands', () => {
   it('/cronjobs falls back gracefully without a store', async () => {
     const r = await registry.dispatch('/cronjobs', { surface: 'web', userId: '1', registry })
     expect(r.kind).toBe('handled')
-    if (r.kind === 'handled') expect(r.reply).toMatch(/not available/)
+    if (r.kind === 'handled') expect(asText(r.reply)).toMatch(/not available/)
   })
 
   it('/cronjobs renders enabled state and next run', async () => {
@@ -290,5 +311,186 @@ describe('built-in slash commands', () => {
   it('renderHelp returns a helpful message for empty surfaces', () => {
     const empty = new SlashCommandRegistry()
     expect(renderHelp(empty, 'web')).toMatch(/No slash commands/)
+  })
+
+  describe('/model', () => {
+    let dataDir: string
+    let previousDataDir: string | undefined
+
+    function writeProviders(providers: unknown): void {
+      fs.mkdirSync(path.join(dataDir, 'config'), { recursive: true })
+      fs.writeFileSync(
+        path.join(dataDir, 'config', 'providers.json'),
+        `${JSON.stringify(providers, null, 2)}\n`,
+        'utf-8',
+      )
+    }
+
+    beforeEach(() => {
+      previousDataDir = process.env.DATA_DIR
+      dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'axiom-model-command-'))
+      process.env.DATA_DIR = dataDir
+    })
+
+    afterEach(() => {
+      if (previousDataDir === undefined) delete process.env.DATA_DIR
+      else process.env.DATA_DIR = previousDataDir
+      fs.rmSync(dataDir, { recursive: true, force: true })
+    })
+
+    it('reports when no providers are configured', async () => {
+      writeProviders({ providers: [] })
+      const r = await registry.dispatch('/model', { surface: 'web', userId: '1', registry })
+      expect(r.kind).toBe('handled')
+      if (r.kind === 'handled') expect(asText(r.reply)).toMatch(/No providers are configured/)
+    })
+
+    it('returns a provider picker with no args', async () => {
+      writeProviders({
+        activeProvider: 'p1',
+        activeModel: 'gpt-4o',
+        providers: [
+          {
+            id: 'p1', name: 'OpenAI', type: 'openai-completions', providerType: 'openai',
+            provider: 'openai', baseUrl: 'https://api.openai.com', apiKey: '',
+            defaultModel: 'gpt-4o', enabledModels: ['gpt-4o', 'gpt-4o-mini'],
+          },
+          {
+            id: 'p2', name: 'Anthropic', type: 'anthropic-messages', providerType: 'anthropic',
+            provider: 'anthropic', baseUrl: 'https://api.anthropic.com', apiKey: '',
+            defaultModel: 'claude-sonnet-4-20250514',
+          },
+        ],
+      })
+      const r = await registry.dispatch('/model', { surface: 'web', userId: '1', registry })
+      expect(r.kind).toBe('handled')
+      if (r.kind !== 'handled') return
+      const picker = asPicker(r.reply)
+      expect(picker.pickerId).toBe('model:providers')
+      expect(picker.options).toHaveLength(2)
+      expect(picker.options[0]).toMatchObject({ command: '/model p1', label: 'OpenAI', badge: 'active' })
+      expect(picker.options[1]).toMatchObject({ command: '/model p2', label: 'Anthropic' })
+      expect(picker.description).toContain('OpenAI')
+      expect(picker.description).toContain('gpt-4o')
+    })
+
+    it('also exposes the picker via the /provider alias', async () => {
+      writeProviders({
+        activeProvider: 'p1',
+        providers: [{
+          id: 'p1', name: 'OpenAI', type: 'openai-completions', providerType: 'openai',
+          provider: 'openai', baseUrl: '', apiKey: '', defaultModel: 'gpt-4o',
+        }],
+      })
+      const r = await registry.dispatch('/provider', { surface: 'web', userId: '1', registry })
+      expect(r.kind).toBe('handled')
+      if (r.kind !== 'handled') return
+      expect(asPicker(r.reply).pickerId).toBe('model:providers')
+    })
+
+    it('returns a model picker with active/default badges and a back button', async () => {
+      writeProviders({
+        activeProvider: 'p1',
+        activeModel: 'gpt-4o-mini',
+        providers: [{
+          id: 'p1', name: 'OpenAI', type: 'openai-completions', providerType: 'openai',
+          provider: 'openai', baseUrl: '', apiKey: '',
+          defaultModel: 'gpt-4o', enabledModels: ['gpt-4o', 'gpt-4o-mini'],
+        }],
+      })
+      const r = await registry.dispatch('/model p1', { surface: 'web', userId: '1', registry })
+      expect(r.kind).toBe('handled')
+      if (r.kind !== 'handled') return
+      const picker = asPicker(r.reply)
+      expect(picker.pickerId).toBe('model:models:p1')
+      // gpt-4o, gpt-4o-mini, plus a back button
+      expect(picker.options).toHaveLength(3)
+      const byCmd = Object.fromEntries(picker.options.map((o) => [o.command, o]))
+      expect(byCmd['/model p1 gpt-4o']?.badge).toBe('default')
+      expect(byCmd['/model p1 gpt-4o-mini']?.badge).toBe('active')
+      // Back button is last
+      expect(picker.options[picker.options.length - 1]).toMatchObject({
+        command: '/model',
+        label: expect.stringMatching(/back/i),
+      })
+    })
+
+    it('resolves provider also by name (case-insensitive)', async () => {
+      writeProviders({
+        activeProvider: 'p1',
+        providers: [{
+          id: 'p1', name: 'OpenAI', type: 'openai-completions', providerType: 'openai',
+          provider: 'openai', baseUrl: '', apiKey: '',
+          defaultModel: 'gpt-4o', enabledModels: ['gpt-4o'],
+        }],
+      })
+      const r = await registry.dispatch('/model openai', { surface: 'web', userId: '1', registry })
+      expect(r.kind).toBe('handled')
+      if (r.kind !== 'handled') return
+      expect(asPicker(r.reply).pickerId).toBe('model:models:p1')
+    })
+
+    it('rejects unknown providers with a hint to use /model', async () => {
+      writeProviders({
+        activeProvider: 'p1',
+        providers: [{
+          id: 'p1', name: 'OpenAI', type: 'openai-completions', providerType: 'openai',
+          provider: 'openai', baseUrl: '', apiKey: '', defaultModel: 'gpt-4o',
+        }],
+      })
+      const r = await registry.dispatch('/model nope', { surface: 'web', userId: '1', registry })
+      expect(r.kind).toBe('handled')
+      if (r.kind !== 'handled') return
+      const text = asText(r.reply)
+      expect(text).toContain('Unknown provider: nope')
+      expect(text).toContain('/model')
+    })
+
+    it('switches active provider and model when both are valid', async () => {
+      writeProviders({
+        activeProvider: 'p1',
+        activeModel: 'gpt-4o',
+        providers: [
+          {
+            id: 'p1', name: 'OpenAI', type: 'openai-completions', providerType: 'openai',
+            provider: 'openai', baseUrl: '', apiKey: '', defaultModel: 'gpt-4o',
+            enabledModels: ['gpt-4o', 'gpt-4o-mini'],
+          },
+          {
+            id: 'p2', name: 'Anthropic', type: 'anthropic-messages', providerType: 'anthropic',
+            provider: 'anthropic', baseUrl: '', apiKey: '',
+            defaultModel: 'claude-sonnet-4-20250514',
+            enabledModels: ['claude-sonnet-4-20250514', 'claude-3-5-sonnet-20241022'],
+          },
+        ],
+      })
+      const r = await registry.dispatch(
+        '/model p2 claude-3-5-sonnet-20241022',
+        { surface: 'web', userId: '1', registry },
+      )
+      expect(r.kind).toBe('handled')
+      if (r.kind !== 'handled') return
+      const text = asText(r.reply)
+      expect(text).toContain('Active provider: Anthropic')
+      expect(text).toContain('Active model: claude-3-5-sonnet-20241022')
+      const stored = JSON.parse(fs.readFileSync(path.join(dataDir, 'config', 'providers.json'), 'utf-8'))
+      expect(stored.activeProvider).toBe('p2')
+      expect(stored.activeModel).toBe('claude-3-5-sonnet-20241022')
+    })
+
+    it('rejects models that are not enabled for the provider', async () => {
+      writeProviders({
+        activeProvider: 'p1',
+        providers: [{
+          id: 'p1', name: 'OpenAI', type: 'openai-completions', providerType: 'openai',
+          provider: 'openai', baseUrl: '', apiKey: '', defaultModel: 'gpt-4o',
+          enabledModels: ['gpt-4o'],
+        }],
+      })
+      const r = await registry.dispatch('/model p1 gpt-3.5-turbo', { surface: 'web', userId: '1', registry })
+      expect(r.kind).toBe('handled')
+      if (r.kind !== 'handled') return
+      expect(asText(r.reply)).toContain('not enabled')
+    })
   })
 })
