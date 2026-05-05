@@ -1,12 +1,12 @@
 ---
 name: wiki
 version: 1.0.0
-description: Maintain and search the personal LLM-Wiki (knowledge base of Markdown pages). Use this skill for ingesting new sources, querying the wiki, and wiki maintenance/linting.
+description: Maintain and search the user's LLM wiki (knowledge base of Markdown pages). Use this skill for ingesting new sources, querying the wiki, and wiki maintenance/linting.
 ---
 
 # Wiki Skill
 
-The wiki lives at `/data/memory/wiki/`. It is a collection of LLM-maintained Markdown files — a personal knowledge base following the Karpathy pattern.
+The wiki lives at `/data/memory/wiki/`. It is a collection of LLM-maintained Markdown files — a user knowledge base following the Karpathy pattern.
 
 ## Three-Layer Architecture
 
@@ -36,13 +36,13 @@ updated: 2026-05-05
 Page content...
 ```
 
-## Frontmatter-Spezifikation
+## Frontmatter Specification
 
 Supported frontmatter fields:
 
 | Field | Type | Required | Description |
 |---|---|---:|---|
-| `aliases` | list | no | Alternativer Dateiname / Suchwörter |
+| `aliases` | list | no | Alternative filename / search terms |
 | `type` | string | yes | One of `project`, `concept`, `source-summary`, `synthesis`, `comparison`, `redirect`, `index`, `log` |
 | `status` | string | no | One of `active`, `stale`, `archived` |
 | `created` | date | no | ISO 8601 creation date |
@@ -51,20 +51,20 @@ Supported frontmatter fields:
 
 Migration rule: all existing pages should be migrated to this schema gradually when they are touched for normal maintenance. Do **not** mass-update every existing page solely to satisfy the schema unless explicitly asked.
 
-## Seitentypen
+## Page Types
 
-- `project`: Projektseite (z.B. Axiom, Pi Agent, Mainsail).
-- `concept`: Konzept/Technologie (z.B. LLM Ökosystem, Produktivität).
-- `source-summary`: Zusammenfassung einer einzelnen Quelle.
-- `synthesis`: Antwort auf eine Query / Quer-Synthese mehrerer Quellen.
-- `comparison`: Direkter Vergleich zweier oder mehrerer Themen.
-- `redirect`: Alias/Weiterleitung auf eine andere Seite.
-- `index`: Wiki-Index (genau eine Seite: `index.md`).
-- `log`: Audit-Trail (genau eine Seite: `log.md`).
+- `project`: Project page (e.g., Axiom, Pi Agent, Mainsail).
+- `concept`: Concept/technology (e.g., LLM ecosystem, productivity).
+- `source-summary`: Summary of a single source.
+- `synthesis`: Answer to a query / cross-synthesis of multiple sources.
+- `comparison`: Direct comparison of two or more topics.
+- `redirect`: Alias/redirect to another page.
+- `index`: Wiki index (exactly one page: `index.md`).
+- `log`: Audit trail (exactly one page: `log.md`).
 
-## Query-to-Wiki-Promotion
+## Query-to-Wiki Promotion
 
-Wertvolle Antworten sollen nicht im Chat verschwinden. If a query answer contains a synthesis, comparison, analysis, or new insight that goes beyond isolated facts, save it as a new wiki page with `type: synthesis` or `type: comparison`.
+Valuable answers should not disappear in chat. If a query answer contains a synthesis, comparison, analysis, or new insight that goes beyond isolated facts, save it as a new wiki page with `type: synthesis` or `type: comparison`.
 
 Promote an answer when **both** conditions hold:
 
@@ -79,7 +79,7 @@ Promotion workflow:
 4. Add cross-links to relevant existing wiki pages and sources.
 5. Update `index.md` and append an `update` or `create` entry to `log.md`.
 
-## Seitengröße und Splitting
+## Page Size and Splitting
 
 When a page grows beyond **500 lines**, evaluate whether some subsections should become their own pages. Do not split mechanically; split only when the extracted material is a reusable unit of knowledge.
 
@@ -93,13 +93,13 @@ Splitting process:
 4. Update `index.md`.
 5. Append a `create` or `update` entry to `log.md`.
 
-## Schema-Pflege
+## Schema Maintenance
 
 Update this `SKILL.md` when wiki conventions evolve. Good triggers:
 
 - A new convention has been applied manually several times and proved useful.
 - Lint repeatedly flags the same structural problem.
-- Stefan explicitly asks for a new rule.
+- The user explicitly asks for a new rule.
 
 How to update the schema/rules:
 
@@ -142,7 +142,7 @@ Goal: extract knowledge from an external source (URL, file, conversation context
    - First heading `# Title` (clear and precise)
    - Structure: headings, bullet lists, code blocks where appropriate
    - Cross-links: reference related wiki pages (`[Page Name](page-name.md)`)
-   - **Add a `## Quellen` / `## Sources` section** citing the `sources/...` file you just archived, so the page remains verifiable.
+   - **Add a `## Sources` section** citing the `sources/...` file you just archived, so the page remains verifiable.
 
 **Example — ingest a web article:**
 ```
@@ -150,7 +150,7 @@ Goal: extract knowledge from an external source (URL, file, conversation context
 2. write_file /data/memory/sources/articles/2026-04-17-<slug>.md (raw text, with frontmatter)
 3. list_files /data/memory/wiki/
 4. Extract relevant knowledge, identify duplicates
-5. write_file or edit_file /data/memory/wiki/topic.md with distilled knowledge + ## Quellen pointing to the archived source
+5. write_file or edit_file /data/memory/wiki/topic.md with distilled knowledge + ## Sources pointing to the archived source
 ```
 
 **Example — ingest context from a conversation:**
@@ -219,7 +219,7 @@ Goal: audit the wiki for quality — find contradictions, orphaned pages, missin
    - List these as **suggested next research directions** — do not auto-create pages, just propose.
 
 6. **Check source coverage:**
-   - Wiki pages that make factual claims but have no `## Quellen` / `## Sources` section — flag them.
+   - Wiki pages that make factual claims but have no `## Sources` section — flag them.
    - `sources/` files with no inbound wiki reference — either unused raw material or candidate for ingest.
 
 7. **Write a lint report:**
@@ -254,11 +254,11 @@ Goal: audit the wiki for quality — find contradictions, orphaned pages, missin
 - `setup.md` still references Node 16, current version is Node 20
 
 ### Content gaps (suggested next research)
-- `llm-oekosystem.md` mentions Qwen3.6 repeatedly but no dedicated `qwen.md`
+- `llm-ecosystem.md` mentions Qwen3.6 repeatedly but no dedicated `qwen.md`
 - Multiple daily entries reference "news crawler" but no wiki page exists
 
 ### Source coverage
-- `project-x.md` makes release-date claims but has no ## Quellen section
+- `project-x.md` makes release-date claims but has no ## Sources section
 - `sources/articles/2026-04-17-foo.md` archived but not cited from any wiki page
 ```
 
