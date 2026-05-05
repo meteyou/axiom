@@ -74,8 +74,15 @@ to the input field) is populated automatically on bot startup via
 | `/stop`     | Abort the current agent turn and clear queued messages. (alias `/kill`)     |
 | `/tasks`    | Show running and recent background tasks (read-only).                       |
 | `/cronjobs` | Show configured cronjobs and their next run time. (alias `/cron`)           |
-| `/settings` | Show the active provider and model. (alias `/model`)                        |
+| `/model`    | Show or switch the active provider and model. (alias `/provider`)           |
 | `/thinking` | Show or set the global main-agent thinking level.                           |
+
+On Telegram, `/model` (and its alias `/provider`) renders as an inline
+keyboard: provider picker → model picker → confirmation. The same message is
+edited in place between steps. Selecting a model writes `providers.json` and
+switches the active model for the next turn. The picker auto-expires after
+10 minutes if untouched, so scrolling back to an old picker and tapping a
+button will return an "expired" notice instead of switching models.
 
 Everything else is treated as a normal message and forwarded to the agent.
 If the menu does not appear in your Telegram client, restart the chat or wait

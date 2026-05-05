@@ -115,8 +115,13 @@ carries between surfaces.
 | `/stop`     | Abort the current agent turn and clear queued work. (alias `/kill`)         |
 | `/tasks`    | Show running and recent background tasks (read-only).                       |
 | `/cronjobs` | Show configured cronjobs and their next run time. (alias `/cron`)           |
-| `/settings` | Show the active provider and model. (alias `/model`)                        |
+| `/model`    | Show or switch the active provider and model. (alias `/provider`)           |
 | `/thinking` | Show or set the global main-agent thinking level.                           |
+
+On the web chat, `/model` (and its alias `/provider`) responds as an
+interactive button group: provider picker → model picker → confirmation.
+Selecting a model writes `providers.json` and switches the active model for
+the next turn.
 
 `/thinking` accepts `off`, `minimal`, `low`, `medium`, `high`, or `xhigh`.
 Like the brain-icon selector, it changes the global main-agent setting and
