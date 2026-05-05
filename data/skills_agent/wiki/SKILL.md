@@ -1,12 +1,12 @@
 ---
 name: wiki
-version: 1.0.0
-description: Maintain and search the personal LLM-Wiki (knowledge base of Markdown pages). Use this skill for ingesting new sources, querying the wiki, and wiki maintenance/linting.
+version: 1.1.0
+description: Maintain and search the user's LLM wiki (knowledge base of Markdown pages). Use this skill for ingesting new sources, querying the wiki, and wiki maintenance/linting.
 ---
 
 # Wiki Skill
 
-The wiki lives at `/data/memory/wiki/`. It is a collection of LLM-maintained Markdown files — a personal knowledge base following the Karpathy pattern.
+The wiki lives at `/data/memory/wiki/`. It is a collection of LLM-maintained Markdown files — a user knowledge base following the Karpathy pattern.
 
 ## Three-Layer Architecture
 
@@ -20,17 +20,92 @@ Rule of thumb: **Sources are what you read. Wiki is what you learned.** Never ed
 
 ## Wiki Structure
 
-Each wiki page is a `.md` file under `/data/memory/wiki/`. Pages can have optional YAML frontmatter with aliases:
+Each wiki page is a `.md` file under `/data/memory/wiki/`. Pages can have YAML frontmatter. Existing pages may still use partial frontmatter and should be migrated gradually when touched.
 
 ```markdown
 ---
 aliases: [short-name, abbreviation]
+type: concept
+status: active
+created: 2026-05-05
+updated: 2026-05-05
 ---
 
 # Page Title
 
 Page content...
 ```
+
+## Frontmatter Specification
+
+Supported frontmatter fields:
+
+| Field | Type | Required | Description |
+|---|---|---:|---|
+| `aliases` | list | no | Alternative filename / search terms |
+| `type` | string | yes | One of `project`, `concept`, `source-summary`, `synthesis`, `comparison`, `redirect`, `index`, `log` |
+| `status` | string | no | One of `active`, `stale`, `archived` |
+| `created` | date | no | ISO 8601 creation date |
+| `updated` | date | no | ISO 8601 date; update on every substantive page change |
+| `redirect` | string | no | For redirect pages: target page filename |
+
+Migration rule: all existing pages should be migrated to this schema gradually when they are touched for normal maintenance. Do **not** mass-update every existing page solely to satisfy the schema unless explicitly asked.
+
+## Page Types
+
+- `project`: Project page (e.g., Axiom, Pi Agent, Mainsail).
+- `concept`: Concept/technology (e.g., LLM ecosystem, productivity).
+- `source-summary`: Summary of a single source.
+- `synthesis`: Answer to a query / cross-synthesis of multiple sources.
+- `comparison`: Direct comparison of two or more topics.
+- `redirect`: Alias/redirect to another page.
+- `index`: Wiki index (exactly one page: `index.md`).
+- `log`: Audit trail (exactly one page: `log.md`).
+
+## Query-to-Wiki Promotion
+
+Valuable answers should not disappear in chat. If a query answer contains a synthesis, comparison, analysis, or new insight that goes beyond isolated facts, save it as a new wiki page with `type: synthesis` or `type: comparison`.
+
+Promote an answer when **both** conditions hold:
+
+1. The answer is at least 3 paragraphs long.
+2. It synthesizes multiple sources/pages **or** contains an explicit new insight that should remain useful later.
+
+Promotion workflow:
+
+1. Choose a descriptive filename (`lowercase-hyphenated.md`).
+2. Add frontmatter (`type: synthesis` or `comparison`, `status: active`, `created`, `updated`, aliases if useful).
+3. Preserve the core answer as a concise evergreen page; remove chat-only phrasing.
+4. Add cross-links to relevant existing wiki pages and sources.
+5. Update `index.md` and append an `update` or `create` entry to `log.md`.
+
+## Page Size and Splitting
+
+When a page grows beyond **500 lines**, evaluate whether some subsections should become their own pages. Do not split mechanically; split only when the extracted material is a reusable unit of knowledge.
+
+Good split candidates are repeated, standalone concepts that are linked or referenced from many other pages.
+
+Splitting process:
+
+1. Create the new page with complete frontmatter.
+2. Move the detailed content to the new page.
+3. Keep a short summary on the original page and link to the new page.
+4. Update `index.md`.
+5. Append a `create` or `update` entry to `log.md`.
+
+## Schema Maintenance
+
+Update this `SKILL.md` when wiki conventions evolve. Good triggers:
+
+- A new convention has been applied manually several times and proved useful.
+- Lint repeatedly flags the same structural problem.
+- The user explicitly asks for a new rule.
+
+How to update the schema/rules:
+
+1. Edit `SKILL.md` directly with `edit_file` (or equivalent focused file editing).
+2. Keep the change narrow and operational.
+3. Append an `update` entry to `/data/memory/wiki/log.md` describing the rule change.
 
 ## Operations
 
@@ -67,7 +142,7 @@ Goal: extract knowledge from an external source (URL, file, conversation context
    - First heading `# Title` (clear and precise)
    - Structure: headings, bullet lists, code blocks where appropriate
    - Cross-links: reference related wiki pages (`[Page Name](page-name.md)`)
-   - **Add a `## Quellen` / `## Sources` section** citing the `sources/...` file you just archived, so the page remains verifiable.
+   - **Add a `## Sources` section** citing the `sources/...` file you just archived, so the page remains verifiable.
 
 **Example — ingest a web article:**
 ```
@@ -75,7 +150,7 @@ Goal: extract knowledge from an external source (URL, file, conversation context
 2. write_file /data/memory/sources/articles/2026-04-17-<slug>.md (raw text, with frontmatter)
 3. list_files /data/memory/wiki/
 4. Extract relevant knowledge, identify duplicates
-5. write_file or edit_file /data/memory/wiki/topic.md with distilled knowledge + ## Quellen pointing to the archived source
+5. write_file or edit_file /data/memory/wiki/topic.md with distilled knowledge + ## Sources pointing to the archived source
 ```
 
 **Example — ingest context from a conversation:**
@@ -144,14 +219,17 @@ Goal: audit the wiki for quality — find contradictions, orphaned pages, missin
    - List these as **suggested next research directions** — do not auto-create pages, just propose.
 
 6. **Check source coverage:**
-   - Wiki pages that make factual claims but have no `## Quellen` / `## Sources` section — flag them.
+   - Wiki pages that make factual claims but have no `## Sources` section — flag them.
    - `sources/` files with no inbound wiki reference — either unused raw material or candidate for ingest.
 
 7. **Write a lint report:**
-   - Append findings to today's daily file:
+   - Append findings to `/data/memory/wiki/log.md` (never to daily files; daily logs are read-only source material):
      ```
-     append to /data/memory/daily/YYYY-MM-DD.md
-     ## Wiki Lint Report — YYYY-MM-DD\n\n### Findings\n- ...
+     append to /data/memory/wiki/log.md
+     ## [YYYY-MM-DD] lint | Wiki Lint Report — YYYY-MM-DD
+
+     ### Findings
+     - ...
      ```
 
 8. **Apply fixes:**
@@ -159,9 +237,9 @@ Goal: audit the wiki for quality — find contradictions, orphaned pages, missin
    - Only when certain — no speculative changes
    - Gap suggestions are reported only, not auto-resolved
 
-**Lint report format:**
+**Lint report format (append to `wiki/log.md`):**
 ```markdown
-## Wiki Lint Report — 2025-01-15
+## [2025-01-15] lint | Wiki Lint Report — 2025-01-15
 
 ### Contradictions
 - `project-x.md` and `architecture.md` describe the database structure differently
@@ -176,11 +254,11 @@ Goal: audit the wiki for quality — find contradictions, orphaned pages, missin
 - `setup.md` still references Node 16, current version is Node 20
 
 ### Content gaps (suggested next research)
-- `llm-oekosystem.md` mentions Qwen3.6 repeatedly but no dedicated `qwen.md`
+- `llm-ecosystem.md` mentions Qwen3.6 repeatedly but no dedicated `qwen.md`
 - Multiple daily entries reference "news crawler" but no wiki page exists
 
 ### Source coverage
-- `project-x.md` makes release-date claims but has no ## Quellen section
+- `project-x.md` makes release-date claims but has no ## Sources section
 - `sources/articles/2026-04-17-foo.md` archived but not cited from any wiki page
 ```
 
@@ -205,5 +283,7 @@ Goal: audit the wiki for quality — find contradictions, orphaned pages, missin
 
 - Wiki directory: `/data/memory/wiki/`
 - Sources directory (immutable raw material): `/data/memory/sources/`
-- Today's daily file (for lint reports): `/data/memory/daily/YYYY-MM-DD.md`
+- Wiki index: `/data/memory/wiki/index.md`
+- Wiki log / lint reports: `/data/memory/wiki/log.md`
+- Today's daily file: `/data/memory/daily/YYYY-MM-DD.md` (read-only source material; do not write lint reports there)
 - Always use absolute paths
