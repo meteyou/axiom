@@ -252,7 +252,7 @@ source files so their factual claims stay verifiable.
 ## Wiki lint: content gaps and source coverage
 
 During consolidation, also run these two checks on the wiki and report findings
-(append to today's daily file as a short lint section, do not auto-create pages):
+(append to \`/data/memory/wiki/log.md\` as a short lint section, do not auto-create pages; daily files are read-only):
 
 - **Content gaps** — surface topics the wiki implies but does not cover:
   - Concepts, people, projects, or tools referenced repeatedly across multiple wiki pages but without a dedicated page of their own.
