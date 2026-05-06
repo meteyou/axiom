@@ -88,7 +88,7 @@
       </template>
     </PageHeader>
 
-    <div ref="messagesContainer" class="relative flex flex-1 flex-col gap-4 overflow-y-auto p-4" @scroll="onMessagesScroll" @copy="handleCopyAsMarkdown">
+    <div ref="messagesContainer" class="relative flex flex-1 flex-col gap-4 overflow-y-auto p-4" @scroll="onMessagesScroll" @copy="handleCopyAsMarkdown" @click="handleMarkdownCodeCopy">
       <div v-if="loadingHistory" class="flex flex-col gap-3">
         <div class="flex items-start gap-3 self-start"><Skeleton class="h-8 w-8 shrink-0 rounded-full" /><div class="space-y-2"><Skeleton class="h-4 w-48 rounded-xl" /><Skeleton class="h-4 w-64 rounded-xl" /></div></div>
       </div>
@@ -552,7 +552,7 @@ async function handleThinkingLevelChange(level: SettingsThinkingLevel) {
   }
 }
 const { userAvatarUrl, avatarFailed, userInitial, onAvatarError } = useUserAvatar()
-const { renderMarkdown, handleCopyAsMarkdown } = useMarkdown()
+const { renderMarkdown, handleCopyAsMarkdown, handleMarkdownCodeCopy } = useMarkdown()
 const { isSkillLoad, getSkillName } = useSkillDetection()
 function isToolSkillLoad(toolData: ToolCallData): boolean { return isSkillLoad(toolData.toolName, toolData.toolArgs) }
 function getToolMemoryInfo(toolData: ToolCallData) { return detectMemoryFile(toolData.toolName, toolData.toolArgs) }
