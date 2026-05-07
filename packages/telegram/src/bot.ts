@@ -11,6 +11,7 @@ import type {
 } from '@axiom/core'
 import {
   loadConfig,
+  getConfigDir,
   saveUpload,
   serializeUploadsMetadata,
   parseUploadsMetadata,
@@ -46,6 +47,7 @@ export interface TelegramConfig {
   pollingMode: boolean
   webhookUrl: string
   batchingDelayMs: number
+  sendVoiceReply?: boolean
 }
 
 /**
@@ -307,7 +309,7 @@ function getChatKey(ctx: Context): string {
 }
 
 function isHandledCommand(text: string): boolean {
-  return /^\/(start|new|stop|kill)(?:@[\w_]+)?\b/i.test(text.trim())
+  return /^\/(start|new|stop|kill|tts|voice)(?:@[\w_]+)?\b/i.test(text.trim())
 }
 
 function normalizeCommand(text: string): string {
@@ -489,6 +491,12 @@ export class TelegramBot {
     })
     this.bot.command('provider', async (ctx) => {
       await this.handleRegistryCommand(ctx, 'provider')
+    })
+    this.bot.command('tts', async (ctx) => {
+      await this.handleRegistryCommand(ctx, 'tts')
+    })
+    this.bot.command('voice', async (ctx) => {
+      await this.handleRegistryCommand(ctx, 'voice')
     })
 
     // Inline-keyboard button taps from picker messages (e.g. /model).
@@ -1607,5 +1615,42 @@ function buildTelegramSlashCommandRegistry(): SlashCommandRegistry {
     description: 'Abort the current agent turn and clear queued work.',
     surfaces: ['web', 'telegram'],
   })
+  registry.register({
+    name: 'tts',
+    aliases: ['voice'],
+    description: 'Toggle automatic Telegram voice replies.',
+    surfaces: ['telegram'],
+    handler: (ctx) => handleTelegramVoiceCommand(ctx.args),
+  })
   return registry
+}
+
+function handleTelegramVoiceCommand(args: string): string {
+  const config = loadConfig<Record<string, unknown>>('telegram.json')
+  const current = config.sendVoiceReply === true
+  const arg = args.trim().toLowerCase()
+
+  if (arg === 'status') {
+    return `🔊 Telegram voice replies are ${current ? 'enabled' : 'disabled'}. Global TTS settings are unchanged.`
+  }
+
+  let next: boolean
+  if (!arg) {
+    next = !current
+  } else if (['on', 'enable', 'enabled', 'true', '1', 'yes'].includes(arg)) {
+    next = true
+  } else if (['off', 'disable', 'disabled', 'false', '0', 'no'].includes(arg)) {
+    next = false
+  } else {
+    return 'Usage: /tts [on|off|status]'
+  }
+
+  const nextConfig = { ...config, sendVoiceReply: next }
+  const filePath = path.join(getConfigDir(), 'telegram.json')
+  fs.mkdirSync(path.dirname(filePath), { recursive: true })
+  fs.writeFileSync(filePath, JSON.stringify(nextConfig, null, 2) + '\n', 'utf-8')
+
+  return next
+    ? '🔊 Telegram voice replies enabled. Text replies will still be sent first.'
+    : '🔇 Telegram voice replies disabled. Global TTS settings are unchanged.'
 }

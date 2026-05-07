@@ -280,6 +280,54 @@ describe('TelegramBot', () => {
       expect(msg).toContain('/cronjobs')
       expect(msg).toContain('/model')
       expect(msg).toContain('/thinking')
+      expect(msg).toContain('/tts')
+    })
+  })
+
+  describe('/tts command', () => {
+    let dataDir: string
+    let previousDataDir: string | undefined
+
+    beforeEach(() => {
+      previousDataDir = process.env.DATA_DIR
+      dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'axiom-tg-voice-'))
+      process.env.DATA_DIR = dataDir
+      fs.mkdirSync(path.join(dataDir, 'config'), { recursive: true })
+      fs.writeFileSync(path.join(dataDir, 'config', 'telegram.json'), JSON.stringify({
+        enabled: true,
+        botToken: 'test-token-123',
+        adminUserIds: [],
+        pollingMode: true,
+        webhookUrl: '',
+        batchingDelayMs: 2500,
+        sendVoiceReply: false,
+      }, null, 2) + '\n', 'utf-8')
+      vi.mocked(loadConfig).mockImplementation((filename: string) => {
+        if (filename === 'telegram.json') {
+          return JSON.parse(fs.readFileSync(path.join(dataDir, 'config', 'telegram.json'), 'utf-8'))
+        }
+        return { batchingDelayMs: 2500 }
+      })
+    })
+
+    afterEach(() => {
+      if (previousDataDir === undefined) delete process.env.DATA_DIR
+      else process.env.DATA_DIR = previousDataDir
+      fs.rmSync(dataDir, { recursive: true, force: true })
+    })
+
+    it('toggles automatic Telegram voice replies without changing global TTS', async () => {
+      const bot = new TelegramBot({ agentCore, config: defaultConfig })
+      const underlying = bot.getBot() as unknown as MockBotInternals
+      const handler = underlying._commandHandlers.get('tts')!
+
+      const ctx = createMockContext()
+      ctx.message = { text: '/tts', message_id: 1 }
+      await handler(ctx)
+
+      expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('enabled'))
+      const saved = JSON.parse(fs.readFileSync(path.join(dataDir, 'config', 'telegram.json'), 'utf-8'))
+      expect(saved.sendVoiceReply).toBe(true)
     })
   })
 

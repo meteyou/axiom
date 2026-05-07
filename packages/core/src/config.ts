@@ -95,6 +95,7 @@ const TEMPLATES: Record<string, object> = {
     pollingMode: true,
     webhookUrl: '',
     batchingDelayMs: 2500,
+    sendVoiceReply: false,
   },
 }
 
