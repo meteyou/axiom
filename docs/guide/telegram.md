@@ -76,6 +76,7 @@ to the input field) is populated automatically on bot startup via
 | `/cronjobs` | Show configured cronjobs and their next run time. (alias `/cron`)           |
 | `/model`    | Show or switch the active provider and model. (alias `/provider`)           |
 | `/thinking` | Show or set the global main-agent thinking level.                           |
+| `/tts`      | Toggle automatic Telegram voice replies. (alias `/voice`)                   |
 
 On Telegram, `/model` (and its alias `/provider`) renders as an inline
 keyboard: provider picker → model picker → confirmation. The same message is
@@ -95,7 +96,7 @@ just stays empty until the next successful start.
 Axiom can transcribe incoming Telegram voice messages and optionally reply with synthesized speech. Configuration lives in two places:
 
 - **Speech-to-Text** — pick a provider and model under [Settings → Speech-to-Text](../settings/speech-to-text). Voice messages sent to the bot are transcribed and forwarded to the agent as text.
-- **Text-to-Speech (optional)** — pick a provider and voice under [Settings → Text-to-Speech](../settings/text-to-speech), then enable [Send voice reply](../settings/telegram#send-voice-reply) on the Telegram settings page. Each agent reply is then also synthesized and uploaded as a voice/audio message.
+- **Text-to-Speech (optional)** — pick a provider and voice under [Settings → Text-to-Speech](../settings/text-to-speech), then enable [Send voice reply](../settings/telegram#send-voice-reply) on the Telegram settings page or run `/tts` (alias `/voice`) directly in the Telegram chat. Each agent reply is then also synthesized and uploaded as a voice/audio message. `/tts on`, `/tts off`, and `/tts status` are also accepted; the toggle persists to `telegram.json` and is independent of the global TTS settings.
 
 If TTS synthesis fails for a given reply, the text reply is still delivered — voice is best-effort.
 
