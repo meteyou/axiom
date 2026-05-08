@@ -336,3 +336,23 @@ export type {
   DeepgramTtsEncoding,
   DeepgramTtsPresetModel,
 } from './deepgram.js'
+export {
+  parseSlashCommand,
+  SlashCommandRegistry,
+  registerBuiltInSlashCommands,
+  renderHelp,
+  formatTasksReply,
+  formatCronjobsReply,
+  isSlashCommandPicker,
+} from './slash-commands.js'
+export type {
+  SlashCommandSurface,
+  SlashCommandMetadata,
+  SlashCommandDefinition,
+  SlashCommandContext,
+  ParsedSlashCommand,
+  SlashCommandDispatchResult,
+  SlashCommandPicker,
+  SlashCommandPickerOption,
+  SlashCommandReply,
+} from './slash-commands.js'

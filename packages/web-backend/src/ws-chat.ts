@@ -1,8 +1,20 @@
 import { WebSocketServer, WebSocket } from 'ws'
 import type { Server } from 'node:http'
-import type { Database, UploadDescriptor } from '@axiom/core'
+import type {
+  Database,
+  UploadDescriptor,
+  SlashCommandRegistry,
+  SlashCommandPicker,
+} from '@axiom/core'
+import { isSlashCommandPicker } from '@axiom/core'
 import type { AgentCore, ResponseChunk } from '@axiom/core'
-import { extractUploadsFromToolResult, serializeUploadsMetadata } from '@axiom/core'
+import {
+  extractUploadsFromToolResult,
+  serializeUploadsMetadata,
+  TaskStore,
+  ScheduledTaskStore,
+} from '@axiom/core'
+import { buildWebChatSlashCommandRegistry } from './slash-commands.js'
 import { verifyToken } from './auth.js'
 import type { JwtPayload } from './auth.js'
 import { URL } from 'node:url'
@@ -22,6 +34,14 @@ interface ChatMessage {
 interface ChatResponse {
   type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'reminder' | 'pong' | 'attachment'
   text?: string
+  /**
+   * Interactive picker payload (slash-command driven). When present on a
+   * `system` message the frontend renders a button group; clicking a button
+   * sends back `{ type: 'command', content: <option.command> }`, which the
+   * server re-dispatches through the slash registry to produce the next
+   * picker (or final confirmation).
+   */
+  picker?: SlashCommandPicker
   /** Uploaded file attached to the current assistant turn (for type='attachment') */
   attachment?: UploadDescriptor
   /** Streamed thinking delta (for type='thinking') */
@@ -37,10 +57,6 @@ interface ChatResponse {
   source?: string
   /** Sender display name (for external_user_message) */
   senderName?: string
-  /**
-   * Excerpt of the message the user replied to (Telegram reply-to), truncated to 500 chars.
-   * Rendered as a quote bubble above the user message. Only set for `external_user_message`.
-   */
   replyContext?: string
   /** Task ID (for task events) */
   taskId?: string
@@ -64,10 +80,6 @@ interface ChatResponse {
   telegramDelivered?: boolean
   /** Whether this is a task injection response */
   isTaskInjection?: boolean
-  /**
-   * Human-readable single-line summary for `task_status_update` events,
-   * matching the value persisted in `chat_messages.content`.
-   */
   taskStatusContent?: string
   /** How long the task has been running, in minutes. */
   taskStatusRuntimeMinutes?: number
@@ -109,6 +121,10 @@ export function setupWebSocketChat(
   // Support both getter function and direct reference (backward compat)
   const resolveAgentCore = typeof getAgentCore === 'function' ? getAgentCore : () => getAgentCore
   const wss = new WebSocketServer({ noServer: true })
+
+  const slashRegistry: SlashCommandRegistry = buildWebChatSlashCommandRegistry()
+  const taskStore = new TaskStore(db)
+  const scheduledTaskStore = new ScheduledTaskStore(db)
 
   // Handle upgrade requests for /ws/chat path
   server.on('upgrade', (request, socket, head) => {
@@ -207,7 +223,46 @@ export function setupWebSocketChat(
 
       // Handle commands
       if (parsed.type === 'command' || parsed.content.startsWith('/')) {
-        const command = parsed.content.replace(/^\//, '').trim().toLowerCase()
+        const dispatch = await slashRegistry.dispatch(parsed.content, {
+          surface: 'web',
+          userId: String(currentUser.userId),
+          registry: slashRegistry,
+          db,
+          taskStore,
+          scheduledTaskStore,
+          onThinkingLevelChanged: (level) => resolveAgentCore()?.setThinkingLevel(level),
+        })
+        if (dispatch.kind === 'handled') {
+          if (isSlashCommandPicker(dispatch.reply)) {
+            sendMessage(ws, {
+              type: 'system',
+              // Title/description rendered as the bubble's text; buttons live
+              // alongside via the `picker` field.
+              text: formatPickerText(dispatch.reply),
+              picker: dispatch.reply,
+            })
+          } else if (dispatch.reply !== null) {
+            sendMessage(ws, { type: 'system', text: dispatch.reply })
+          }
+          return
+        }
+        if (dispatch.kind === 'not_found') {
+          sendMessage(ws, {
+            type: 'system',
+            text: `Unknown command: /${dispatch.name}. Type /help for a list of commands.`,
+          })
+          return
+        }
+        if (dispatch.kind === 'wrong_surface') {
+          sendMessage(ws, {
+            type: 'system',
+            text: `/${dispatch.command.name} is not available on the web chat.`,
+          })
+          return
+        }
+        const command = dispatch.kind === 'external'
+          ? dispatch.command.name
+          : parsed.content.replace(/^\//, '').trim().toLowerCase()
 
         if (command === 'new') {
           // Abort any active stream
@@ -641,6 +696,18 @@ export function setupWebSocketChat(
       return !!clients && clients.size > 0
     },
   }
+}
+
+/**
+ * Render a picker's title + description as the bubble's body text. The
+ * frontend always renders the buttons separately, but we still want the
+ * fallback text so old clients (or history reloads) see something.
+ */
+function formatPickerText(picker: SlashCommandPicker): string {
+  const parts: string[] = []
+  if (picker.title) parts.push(picker.title)
+  if (picker.description) parts.push(picker.description)
+  return parts.join('\n') || ''
 }
 
 function sendMessage(ws: WebSocket, msg: ChatResponse): void {

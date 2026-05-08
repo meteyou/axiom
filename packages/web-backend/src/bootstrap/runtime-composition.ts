@@ -1114,7 +1114,10 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
 
       const activeModelId = getActiveModelId()
       const model = buildModel(provider, activeModelId ?? undefined)
-      const apiKey = await getApiKeyForProvider(provider)
+      const apiKey = await getApiKeyForProvider(provider).catch((err) => {
+        logger.error('[axiom] Failed to resolve active provider API key; chat may be unavailable until provider auth is fixed, but Telegram commands will still start:', err)
+        return provider.apiKey || 'no-key'
+      })
       const fallbackProvider = getFallbackProvider()
 
       providerManager = new ProviderManager(provider, fallbackProvider)

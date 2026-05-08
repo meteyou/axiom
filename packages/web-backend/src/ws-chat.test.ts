@@ -358,6 +358,95 @@ describe('setupWebSocketChat kill switch', () => {
     }
   })
 
+  it('responds to /help with a system message listing slash commands', async () => {
+    const db = initDatabase(':memory:')
+    const mockSessionManager3 = {
+      getOrCreateSession: vi.fn(() => ({ id: 'session-1-mock', userId: '1', source: 'web', startedAt: Date.now(), lastActivity: Date.now(), messageCount: 0, summaryWritten: false, restored: false })),
+    }
+    const agentCore = {
+      sendMessage: vi.fn(),
+      abort: vi.fn(),
+      resetSession: vi.fn(),
+      getSessionManager: vi.fn(() => mockSessionManager3),
+    } as unknown as AgentCore
+
+    const app = createApp({ db })
+    const server = http.createServer(app)
+    const { wss } = setupWebSocketChat(server, db, agentCore)
+
+    await new Promise<void>((resolve) => server.listen(0, resolve))
+    const port = (server.address() as { port: number }).port
+    const token = generateAccessToken({ userId: 1, username: 'admin', role: 'admin' })
+
+    try {
+      const { ws, waitForMessage } = await connectWs(port, token)
+      await waitForMessage() // authenticated
+
+      ws.send(JSON.stringify({ type: 'command', content: '/help' }))
+      const helpMessage = await waitForMessage()
+      expect(helpMessage.type).toBe('system')
+      const text = (helpMessage.text as string) ?? ''
+      expect(text).toContain('/help')
+      expect(text).toContain('/new')
+      expect(text).toContain('/stop')
+      expect(text).toContain('/tasks')
+      expect(text).toContain('/cronjobs')
+      expect(text).toContain('/model')
+      expect(text).not.toContain('/settings')
+      expect(agentCore.sendMessage).not.toHaveBeenCalled()
+      ws.close()
+    } finally {
+      for (const client of wss.clients) {
+        client.terminate()
+      }
+      wss.close()
+      await new Promise<void>((resolve, reject) =>
+        server.close((err) => (err ? reject(err) : resolve()))
+      )
+    }
+  })
+
+  it('responds to /unknown with a system message and does not forward to the agent', async () => {
+    const db = initDatabase(':memory:')
+    const mockSessionManager4 = {
+      getOrCreateSession: vi.fn(() => ({ id: 'session-1-mock', userId: '1', source: 'web', startedAt: Date.now(), lastActivity: Date.now(), messageCount: 0, summaryWritten: false, restored: false })),
+    }
+    const agentCore = {
+      sendMessage: vi.fn(),
+      abort: vi.fn(),
+      resetSession: vi.fn(),
+      getSessionManager: vi.fn(() => mockSessionManager4),
+    } as unknown as AgentCore
+
+    const app = createApp({ db })
+    const server = http.createServer(app)
+    const { wss } = setupWebSocketChat(server, db, agentCore)
+
+    await new Promise<void>((resolve) => server.listen(0, resolve))
+    const port = (server.address() as { port: number }).port
+    const token = generateAccessToken({ userId: 1, username: 'admin', role: 'admin' })
+
+    try {
+      const { ws, waitForMessage } = await connectWs(port, token)
+      await waitForMessage() // authenticated
+
+      ws.send(JSON.stringify({ type: 'command', content: '/doesnotexist' }))
+      const reply = await waitForMessage()
+      expect(reply.type).toBe('system')
+      expect(reply.text).toContain('Unknown command')
+      expect(agentCore.sendMessage).not.toHaveBeenCalled()
+      ws.close()
+    } finally {
+      for (const client of wss.clients) {
+        client.terminate()
+      }
+      wss.close()
+      await new Promise<void>((resolve, reject) =>
+        server.close((err) => (err ? reject(err) : resolve()))
+      )
+    }
+  })
+
   it('treats /kill as an alias for /stop over web chat', async () => {
     const db = initDatabase(':memory:')
     const mockSessionManager2 = {
