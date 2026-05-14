@@ -32,7 +32,7 @@ interface ChatMessage {
 }
 
 interface ChatResponse {
-  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'reminder' | 'pong' | 'attachment'
+  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'session_summary' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'reminder' | 'pong' | 'attachment'
   text?: string
   /**
    * Interactive picker payload (slash-command driven). When present on a
@@ -612,6 +612,17 @@ export function setupWebSocketChat(
           clientSessions.delete(client)
           sendMessage(client, {
             type: 'session_end',
+            text: event.text,
+          })
+        } else if (event.type === 'session_summary') {
+          // Late-arriving summary for a session that was ended
+          // non-blockingly (e.g. via /new). The carried `sessionId` is
+          // the id of the session that just got summarized so the
+          // client can match it to the previously rendered (empty)
+          // divider and fill it in.
+          sendMessage(client, {
+            type: 'session_summary',
+            sessionId: event.sessionId,
             text: event.text,
           })
         } else if (event.type === 'task_completed' || event.type === 'task_failed' || event.type === 'task_question') {

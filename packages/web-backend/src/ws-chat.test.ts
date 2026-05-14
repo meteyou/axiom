@@ -196,6 +196,74 @@ describe('setupWebSocketChat kill switch', () => {
     }
   })
 
+  it('forwards a late session_summary chat-event-bus broadcast to the connected client', async () => {
+    const db = initDatabase(':memory:')
+    const chatEventBus = new ChatEventBus()
+    const newSession = {
+      id: 'new-session-id',
+      userId: '1',
+      source: 'web',
+      startedAt: Date.now(),
+      lastActivity: Date.now(),
+      messageCount: 0,
+      summaryWritten: false,
+      restored: false,
+    }
+    const mockSessionManager = {
+      getOrCreateSession: vi.fn(() => newSession),
+    }
+    const agentCore = {
+      sendMessage: vi.fn(),
+      abort: vi.fn(),
+      resetSessionAsync: vi.fn(() => newSession),
+      getSessionManager: vi.fn(() => mockSessionManager),
+    } as unknown as AgentCore
+
+    const app = createApp({ db })
+    const server = http.createServer(app)
+    const { wss } = setupWebSocketChat(server, db, agentCore, undefined, chatEventBus)
+
+    await new Promise<void>((resolve) => server.listen(0, resolve))
+    const port = (server.address() as { port: number }).port
+    const token = generateAccessToken({ userId: 1, username: 'admin', role: 'admin' })
+
+    try {
+      const { ws, waitForMessage } = await connectWs(port, token)
+      await waitForMessage() // authenticated
+
+      // Trigger /new so the client switches to the new session.
+      ws.send(JSON.stringify({ type: 'command', content: '/new' }))
+      const sessionEnd = await waitForMessage()
+      expect(sessionEnd.type).toBe('session_end')
+      expect(sessionEnd.sessionId).toBe('new-session-id')
+      expect(sessionEnd.text).toBeUndefined()
+
+      // Simulate the background summary completing and being broadcast
+      // by runtime-composition's onSessionEnd handler.
+      chatEventBus.broadcast({
+        type: 'session_summary',
+        userId: 1,
+        source: 'web',
+        sessionId: 'old-session-id',
+        text: 'Late-arriving background summary.',
+      })
+
+      const summaryEvent = await waitForMessage()
+      expect(summaryEvent.type).toBe('session_summary')
+      expect(summaryEvent.sessionId).toBe('old-session-id')
+      expect(summaryEvent.text).toBe('Late-arriving background summary.')
+      ws.close()
+    } finally {
+      for (const client of wss.clients) {
+        client.terminate()
+      }
+      wss.close()
+      await new Promise<void>((resolve, reject) =>
+        server.close((err) => (err ? reject(err) : resolve()))
+      )
+    }
+  })
+
   it('streams thinking chunks, persists them with metadata.kind=thinking, and broadcasts them', async () => {
     const db = initDatabase(':memory:')
     const chatEventBus = new ChatEventBus()

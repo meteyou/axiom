@@ -938,15 +938,39 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
         'INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)'
       ).run(sessionId, numericUserId, 'system', summary ?? '', dividerMetadata)
 
-      // Skip re-broadcasting for background-path ends: the originating client already
-      // received a session_end divider when it clicked "New Session".
-      if (numericUserId !== null && !isBackground) {
-        chatEventBus.broadcast({
-          type: 'session_end',
-          userId: numericUserId,
-          source: 'web',
-          text: summary ?? undefined,
-        })
+      if (numericUserId !== null) {
+        if (isBackground) {
+          // Background path: the originating client already received a
+          // `session_end` (without text) the moment it clicked
+          // "New Session". Re-broadcasting `session_end` here would
+          // render a duplicate divider, so we instead emit a dedicated
+          // `session_summary` event. The carried `sessionId` is the
+          // *ended* session's id so clients can match it back to the
+          // empty divider they already rendered and fill in the
+          // summary in place. Clients that hadn't seen the immediate
+          // `session_end` (e.g. another browser tab) treat the event
+          // as a signal to render a fresh divider for the old
+          // session.
+          if (summary) {
+            chatEventBus.broadcast({
+              type: 'session_summary',
+              userId: numericUserId,
+              source: 'web',
+              sessionId,
+              text: summary,
+            })
+          }
+        } else {
+          // Synchronous path (timeout, provider_change): broadcast
+          // `session_end` with the summary so every connected client
+          // renders a divider in one shot.
+          chatEventBus.broadcast({
+            type: 'session_end',
+            userId: numericUserId,
+            source: 'web',
+            text: summary ?? undefined,
+          })
+        }
       }
 
       triggerFactExtractionForSessionEnd({
