@@ -47,8 +47,21 @@ export interface SessionManagerOptions {
    * conversationHistory is built from chat_messages in the DB (single source of truth).
    */
   onSummarize?: (sessionId: string, userId: string, conversationHistory?: string) => Promise<string>
-  /** Called when a session is disposed (after summary if applicable) */
-  onSessionEnd?: (session: SessionInfo, summary: string | null) => void
+  /**
+   * Called when a session is disposed (after summary if applicable).
+   *
+   * `options.background` is true when the session was ended via
+   * `handleNewCommandAsync()` and the summary was generated asynchronously
+   * after the new session had already been announced to the client.
+   * Listeners use this to deliver the summary as a *late* update event
+   * instead of a fresh session_end divider that would duplicate the one
+   * already rendered when the new session was opened.
+   */
+  onSessionEnd?: (
+    session: SessionInfo,
+    summary: string | null,
+    options?: { background?: boolean },
+  ) => void
 }
 
 export type SessionEndReason = 'timeout' | 'manual' | 'provider_change'
@@ -66,7 +79,18 @@ export class SessionManager {
   private timeoutMs: number
   private memoryDir?: string
   private onSummarize?: (sessionId: string, userId: string, conversationHistory?: string) => Promise<string>
-  private onSessionEnd?: (session: SessionInfo, summary: string | null) => void
+  private onSessionEnd?: (
+    session: SessionInfo,
+    summary: string | null,
+    options?: { background?: boolean },
+  ) => void
+  /**
+   * Tracks pending background summary jobs spawned by
+   * `handleNewCommandAsync` so `dispose()` can drain them on shutdown
+   * and tests can deterministically await completion via
+   * `awaitBackgroundJobs()`.
+   */
+  private backgroundJobs: Set<Promise<void>> = new Set()
 
   constructor(options: SessionManagerOptions) {
     this.db = options.db
@@ -502,7 +526,12 @@ export class SessionManager {
   }
 
   /**
-   * Handle /new command: immediately summarize and reset
+   * Handle /new command: immediately summarize and reset (blocking).
+   *
+   * The returned Promise resolves only AFTER the summary has been
+   * generated and persisted. Prefer `handleNewCommandAsync()` for
+   * interactive UIs where blocking on summary generation is
+   * user-visible.
    */
   async handleNewCommand(userId: string): Promise<string | null> {
     const session = this.sessions.get(userId)
@@ -511,6 +540,122 @@ export class SessionManager {
     }
 
     return this.endSession(userId, 'manual')
+  }
+
+  /**
+   * Non-blocking variant of `handleNewCommand`. Detaches the current
+   * interactive session synchronously (clears the timer + removes it
+   * from the active-session map + clears in-memory agent state via the
+   * onSessionEnd callback in the next tick), creates a fresh session
+   * for the user, and returns it immediately.
+   *
+   * Summary generation and persistence (daily log + DB UPDATE + tool
+   * call log + onSessionEnd callback) run in the background. When the
+   * summary is ready, `onSessionEnd` fires with `options.background = true`
+   * so the listener can deliver the summary as a follow-up event without
+   * duplicating the divider that was already rendered when the new
+   * session was opened.
+   */
+  // Used by the websocket chat /new command handler for instant session switch.
+  // fallow-ignore-next-line unused-class-member
+  handleNewCommandAsync(userId: string, source: string = 'web'): SessionInfo {
+    const oldSession = this.sessions.get(userId)
+
+    if (oldSession) {
+      this.clearTimer(userId)
+      this.sessions.delete(userId)
+
+      const job = this.finalizeDetachedSession(oldSession, userId, 'manual').catch((err) => {
+        console.error(
+          `[session] Background finalize failed for session ${oldSession.id}:`,
+          err,
+        )
+      })
+      this.backgroundJobs.add(job)
+      job.finally(() => {
+        this.backgroundJobs.delete(job)
+      })
+    }
+
+    return this.getOrCreateSession(userId, source)
+  }
+
+  /**
+   * Run the summary-and-persist tail of a session that has already been
+   * detached from `this.sessions` (timer cleared, map entry removed).
+   * Mirrors `endSession`'s tail but is callable without holding the
+   * session in the active map.
+   */
+  private async finalizeDetachedSession(
+    session: SessionInfo,
+    userId: string,
+    reason: SessionEndReason,
+  ): Promise<void> {
+    console.log(
+      `[session] Finalizing detached session ${session.id} for user ${userId} `
+      + `(${session.messageCount} messages, background)`,
+    )
+
+    let summary: string | null = null
+
+    if (session.messageCount > 0 && this.onSummarize) {
+      try {
+        const history = this.buildConversationHistory(session.id) ?? undefined
+        summary = await this.onSummarize(session.id, userId, history)
+        if (summary) {
+          this.writeSummaryToDailyFile(summary, session.lastActivity)
+          session.summaryWritten = true
+          console.log(
+            `[session] Background summary written to daily log for session ${session.id}`,
+          )
+        }
+      } catch (err) {
+        console.error('[session] Failed to generate background session summary:', err)
+      }
+    } else {
+      console.log(
+        `[session] Skipping background summary: messageCount=${session.messageCount}, `
+        + `onSummarize=${!!this.onSummarize}`,
+      )
+    }
+
+    this.db.prepare(
+      `UPDATE sessions SET ended_at = datetime('now'), message_count = ?, summary_written = ? WHERE id = ?`
+    ).run(session.messageCount, session.summaryWritten ? 1 : 0, session.id)
+
+    const durationMs = Date.now() - session.startedAt
+    logToolCall(this.db, {
+      sessionId: session.id,
+      toolName: reason === 'timeout' ? 'session_timeout' : 'session_end',
+      input: JSON.stringify({
+        userId,
+        reason,
+        messageCount: session.messageCount,
+        durationMinutes: Math.round(durationMs / 60000),
+        background: true,
+      }),
+      output: JSON.stringify({
+        summaryWritten: session.summaryWritten,
+        summary: summary ?? null,
+      }),
+      durationMs,
+      status: 'success',
+    })
+
+    if (this.onSessionEnd) {
+      this.onSessionEnd(session, summary, { background: true })
+    }
+  }
+
+  /**
+   * Await all in-flight background summary jobs. Useful for tests that
+   * need to deterministically observe the post-summary state after
+   * calling `handleNewCommandAsync`.
+   */
+  // fallow-ignore-next-line unused-class-member
+  async awaitBackgroundJobs(): Promise<void> {
+    if (this.backgroundJobs.size === 0) return
+    await Promise.allSettled(Array.from(this.backgroundJobs))
   }
 
   /**
@@ -634,11 +779,17 @@ export class SessionManager {
   }
 
   /**
-   * Dispose all sessions and timers (for shutdown)
+   * Dispose all sessions and timers (for shutdown). Drains any
+   * fire-and-forget background summary jobs first so daily-log writes
+   * and DB updates settle before we tear down.
    */
   async dispose(): Promise<void> {
     for (const [userId] of this.timers) {
       this.clearTimer(userId)
+    }
+
+    if (this.backgroundJobs.size > 0) {
+      await Promise.allSettled(Array.from(this.backgroundJobs))
     }
 
     // End all active sessions without summarizing

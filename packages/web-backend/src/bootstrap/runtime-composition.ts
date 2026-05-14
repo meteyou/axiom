@@ -924,15 +924,23 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
   function wireAgentCoreEvents(): void {
     if (!agentCore) return
 
-    agentCore.setOnSessionEnd((userId: string, sessionId: string, summary: string | null) => {
+    agentCore.setOnSessionEnd((
+      userId: string,
+      sessionId: string,
+      summary: string | null,
+      opts,
+    ) => {
       const numericUserId = parseNumericUserId(userId)
+      const isBackground = !!opts?.background
 
       const dividerMetadata = JSON.stringify({ type: 'session_divider', summary: summary ?? null })
       db.prepare(
         'INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)'
       ).run(sessionId, numericUserId, 'system', summary ?? '', dividerMetadata)
 
-      if (numericUserId !== null) {
+      // Skip re-broadcasting for background-path ends: the originating client already
+      // received a session_end divider when it clicked "New Session".
+      if (numericUserId !== null && !isBackground) {
         chatEventBus.broadcast({
           type: 'session_end',
           userId: numericUserId,

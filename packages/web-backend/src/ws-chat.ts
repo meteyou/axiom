@@ -274,34 +274,13 @@ export function setupWebSocketChat(
 
           const agentCore = resolveAgentCore()
 
-          // Reset session (generates summary + writes daily log).
-          // When a chat event bus is available, the resulting session_end event is
-          // emitted centrally via onSessionEnd and broadcast from there to avoid
-          // duplicate dividers. Otherwise, emit the divider directly here.
           if (agentCore) {
-            try {
-              const summary = await agentCore.resetSession(String(currentUser.userId))
-              if (!chatEventBus) {
-                // After resetSession, the next getOrCreateSession() returns a fresh UUID.
-                const newSession = agentCore.getSessionManager().getOrCreateSession(String(currentUser.userId), 'web')
-                clientSessions.set(ws, newSession.id)
-                sendMessage(ws, {
-                  type: 'session_end',
-                  text: summary ?? undefined,
-                  sessionId: newSession.id,
-                })
-              }
-            } catch (err) {
-              console.error('Failed to reset session:', err)
-              if (!chatEventBus) {
-                const newSession = agentCore.getSessionManager().getOrCreateSession(String(currentUser.userId), 'web')
-                clientSessions.set(ws, newSession.id)
-                sendMessage(ws, {
-                  type: 'session_end',
-                  sessionId: newSession.id,
-                })
-              }
-            }
+            const newSession = agentCore.resetSessionAsync(String(currentUser.userId), 'web')
+            clientSessions.set(ws, newSession.id)
+            sendMessage(ws, {
+              type: 'session_end',
+              sessionId: newSession.id,
+            })
           } else {
             // No agent core: clear any cached session ID; next message will resolve a new one.
             clientSessions.delete(ws)
