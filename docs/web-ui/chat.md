@@ -21,7 +21,7 @@ The top of the page has a slim toolbar (`PageHeader`). On mobile its action butt
 **Right side — actions:**
 
 - **Stop** — aborts whatever the agent is currently doing (only enabled while a response is streaming). Equivalent to typing `/stop` in chat or hitting the Kill button on the parent task.
-- **New Session** — closes the current chat session and starts a fresh one. A *Session Summary* may be generated before the divider appears (see [Memory System → session summaries](../concepts/memory) for how that works). The next message you send opens a new session.
+- **New Session** — closes the current chat session and starts a fresh one. The divider appears immediately; a *Session Summary* card may fill in shortly after once background generation completes (see [Memory System → session summaries](../concepts/memory) for how that works). The next message you send opens a new session.
 - **Settings (gear icon)** — display filters, see below.
 
 ## Display filters
