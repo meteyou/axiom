@@ -21,6 +21,7 @@ These three must be set for any non-development deployment.
 | `HOST` | `0.0.0.0` | Interface the backend binds to. Inside Docker, leave at `0.0.0.0`. |
 | `PORT` | `3000` | Port the backend listens on inside the container. |
 | `HOST_PORT` | `3000` | (Compose-only) Host-side port mapped to the container's `3000`. Set this if `3000` is already taken on the host. |
+| `PUBLIC_URL` | _(unset)_ | External base URL Axiom is reachable under (e.g. `https://axiom.example.com`). When set, the OAuth provider login flow rewrites the `redirect_uri` of the upstream authorization URL to use this origin so reverse-proxied deployments can complete the callback. Leave unset for direct/localhost setups. |
 
 ## Storage
 

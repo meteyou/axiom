@@ -223,7 +223,7 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
 
     return {
       loginId,
-      authUrl: authInfo.url,
+      authUrl: rewriteAuthUrlWithPublicUrl(authInfo.url),
       instructions: authInfo.instructions,
       usesCallbackServer: oauthProvider.usesCallbackServer ?? false,
     }
@@ -540,6 +540,41 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
     requestOllamaProbePull,
     requestOllamaPull,
     deleteOllamaModel,
+  }
+}
+
+/**
+ * Rewrite the `redirect_uri` query parameter inside an OAuth provider's
+ * authorization URL so that it points at `PUBLIC_URL` (origin only) when set.
+ *
+ * pi-ai builds the auth URL with a hardcoded `http://localhost:<port>/...`
+ * redirect URI tied to its local callback server. When Axiom runs behind a
+ * reverse proxy with a different external hostname, the OAuth provider would
+ * redirect the user's browser to that localhost URL after sign-in, which
+ * fails on the user's machine. By rewriting only the scheme/host/port of
+ * `redirect_uri` to `PUBLIC_URL` (keeping the original callback path), the
+ * proxy can forward the callback request back to the local pi-ai callback
+ * server.
+ *
+ * If `PUBLIC_URL` is unset, malformed, or the auth URL does not contain a
+ * `redirect_uri`, the URL is returned unchanged (fallback to the previous
+ * behaviour).
+ */
+function rewriteAuthUrlWithPublicUrl(authUrl: string): string {
+  const publicUrl = process.env.PUBLIC_URL?.trim()
+  if (!publicUrl) return authUrl
+  try {
+    const parsedAuth = new URL(authUrl)
+    const redirectUri = parsedAuth.searchParams.get('redirect_uri')
+    if (!redirectUri) return authUrl
+    const parsedRedirect = new URL(redirectUri)
+    const parsedPublic = new URL(publicUrl)
+    parsedRedirect.protocol = parsedPublic.protocol
+    parsedRedirect.host = parsedPublic.host
+    parsedAuth.searchParams.set('redirect_uri', parsedRedirect.toString())
+    return parsedAuth.toString()
+  } catch {
+    return authUrl
   }
 }
 
