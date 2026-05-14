@@ -557,7 +557,6 @@ export class SessionManager {
    * session was opened.
    */
   // Used by the websocket chat /new command handler for instant session switch.
-  // fallow-ignore-next-line unused-class-member
   handleNewCommandAsync(userId: string, source: string = 'web'): SessionInfo {
     const oldSession = this.sessions.get(userId)
 
@@ -652,7 +651,6 @@ export class SessionManager {
    * need to deterministically observe the post-summary state after
    * calling `handleNewCommandAsync`.
    */
-  // fallow-ignore-next-line unused-class-member
   async awaitBackgroundJobs(): Promise<void> {
     if (this.backgroundJobs.size === 0) return
     await Promise.allSettled(Array.from(this.backgroundJobs))
