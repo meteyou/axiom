@@ -305,7 +305,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
   injectSecretsIntoEnv()
 
   const runtimeMetrics = new RuntimeMetrics()
-  const { sessionTimeoutMinutes, taskSettings, builtinToolsConfig } = loadRuntimeSettings()
+  const { sessionTimeoutMinutes, taskSettings } = loadRuntimeSettings()
 
   function getCurrentTaskSettings(): TaskSettings {
     return loadRuntimeSettings().taskSettings
@@ -639,7 +639,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
   // so adding a new base tool in one place automatically covers both paths.
   const backgroundTaskTools: AgentTool[] = createBaseAgentTools({
     db,
-    builtinToolsConfig,
+    builtinToolsConfig: () => loadRuntimeSettings().builtinToolsConfig,
     sttEnabled: backgroundSttEnabled,
     // Background tasks have no interactive session; search_memories will fall
     // back to the lowest-id user when getCurrentUserId is undefined.
