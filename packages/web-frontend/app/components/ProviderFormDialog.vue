@@ -585,6 +585,7 @@ const oauthInProgress = ref(false)
 const oauthError = ref<string | null>(null)
 const oauthLoginId = ref<string | null>(null)
 const oauthUsesCallback = ref(false)
+let oauthPopup: Window | null = null
 const manualCode = ref('')
 
 // Ollama state
@@ -1047,7 +1048,8 @@ async function startOAuthRenew() {
     oauthUsesCallback.value = response.usesCallbackServer
 
     if (response.authUrl) {
-      window.open(response.authUrl, '_blank')
+      if (oauthPopup && !oauthPopup.closed) oauthPopup.close()
+      oauthPopup = window.open(response.authUrl, 'axiom_oauth', 'noopener')
     }
 
     pollForCompletion(response.loginId)
@@ -1076,12 +1078,11 @@ async function startOAuth() {
     oauthLoginId.value = response.loginId
     oauthUsesCallback.value = response.usesCallbackServer
 
-    // Open auth URL in new tab
     if (response.authUrl) {
-      window.open(response.authUrl, '_blank')
+      if (oauthPopup && !oauthPopup.closed) oauthPopup.close()
+      oauthPopup = window.open(response.authUrl, 'axiom_oauth', 'noopener')
     }
 
-    // Start polling for completion
     pollForCompletion(response.loginId)
   } catch (err) {
     oauthError.value = (err as Error).message
@@ -1102,6 +1103,7 @@ async function pollForCompletion(loginId: string) {
       if (status.status === 'completed') {
         oauthInProgress.value = false
         oauthLoginId.value = null
+        if (oauthPopup && !oauthPopup.closed) { oauthPopup.close(); oauthPopup = null }
         await fetchProviders()
         emit('oauthComplete')
         emit('close')
