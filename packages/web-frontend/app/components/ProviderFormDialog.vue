@@ -586,6 +586,27 @@ const oauthError = ref<string | null>(null)
 const oauthLoginId = ref<string | null>(null)
 const oauthUsesCallback = ref(false)
 const manualCode = ref('')
+// Track the popup window opened for the OAuth flow so we can close it again
+// if the user clicks "New Token" while it is still open instead of stacking
+// up additional popups.
+const oauthPopup = ref<Window | null>(null)
+
+/**
+ * Open the OAuth provider's authorization URL in a popup window. If a popup
+ * from a previous attempt is still open, close it first so we never end up
+ * with two competing popups for the same login.
+ */
+function openOAuthPopup(authUrl: string): void {
+  if (oauthPopup.value && !oauthPopup.value.closed) {
+    try {
+      oauthPopup.value.close()
+    }
+    catch {
+      // ignore: cross-origin popups may refuse close, but reopening is still useful
+    }
+  }
+  oauthPopup.value = window.open(authUrl, '_blank')
+}
 
 // Ollama state
 const ollamaModels = ref<OllamaModel[]>([])
@@ -1047,7 +1068,7 @@ async function startOAuthRenew() {
     oauthUsesCallback.value = response.usesCallbackServer
 
     if (response.authUrl) {
-      window.open(response.authUrl, '_blank')
+      openOAuthPopup(response.authUrl)
     }
 
     pollForCompletion(response.loginId)
@@ -1076,9 +1097,11 @@ async function startOAuth() {
     oauthLoginId.value = response.loginId
     oauthUsesCallback.value = response.usesCallbackServer
 
-    // Open auth URL in new tab
+    // Open auth URL in new tab. If an earlier popup is still open (e.g. the
+    // user clicked "New Token" again without finishing the previous flow),
+    // openOAuthPopup() closes the stale one before opening a fresh popup.
     if (response.authUrl) {
-      window.open(response.authUrl, '_blank')
+      openOAuthPopup(response.authUrl)
     }
 
     // Start polling for completion
