@@ -174,15 +174,12 @@ describe('setupWebSocketChat kill switch', () => {
       const elapsed = Date.now() - before
 
       expect(sessionEnd.type).toBe('session_end')
-      // The new session id is delivered immediately…
       expect(sessionEnd.sessionId).toBe('session-new-async')
-      // …but the summary is not (it will arrive later via a separate event).
       expect(sessionEnd.text).toBeUndefined()
       // The response must arrive synchronously, well before the simulated
       // background summary completes.
       expect(elapsed).toBeLessThan(500)
       expect(summaryResolved).toBe(false)
-      // Exactly one session_end is emitted for the /new command itself.
       await expectNoMessageWithin(30)
       ws.close()
     } finally {
@@ -231,7 +228,6 @@ describe('setupWebSocketChat kill switch', () => {
       const { ws, waitForMessage } = await connectWs(port, token)
       await waitForMessage() // authenticated
 
-      // Trigger /new so the client switches to the new session.
       ws.send(JSON.stringify({ type: 'command', content: '/new' }))
       const sessionEnd = await waitForMessage()
       expect(sessionEnd.type).toBe('session_end')
