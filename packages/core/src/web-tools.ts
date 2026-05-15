@@ -549,15 +549,29 @@ export function resolveSearchProvider(config?: WebSearchConfig): ResolvedSearchP
 // ─── Tool Factories ──────────────────────────────────────────────────────────
 
 /**
- * Create the web_search AgentTool.
- * Supports DuckDuckGo, Brave Search, and SearXNG providers.
+ * Either a static `WebSearchConfig` or a getter that returns the current
+ * config on each invocation. The getter form lets callers wire the tool to a
+ * live settings source so that provider/API-key changes from Settings → Built-in
+ * Tools take effect on the next `web_search` call without requiring a server
+ * restart.
  */
-export function createWebSearchTool(config?: WebSearchConfig): AgentTool {
-  const resolved = resolveSearchProvider(config)
+export type WebSearchConfigSource = WebSearchConfig | (() => WebSearchConfig | undefined)
 
-  // Log warning if provider fallback occurred
-  if (resolved.warning) {
-    console.warn(`[web_search] ${resolved.warning}`)
+function resolveWebSearchConfig(source?: WebSearchConfigSource): WebSearchConfig | undefined {
+  return typeof source === 'function' ? source() : source
+}
+
+/**
+ * Create the web_search AgentTool.
+ * Supports DuckDuckGo, Brave Search, SearXNG, and Tavily providers.
+ */
+export function createWebSearchTool(config?: WebSearchConfigSource): AgentTool {
+  const isDynamic = typeof config === 'function'
+
+  const staticConfig = isDynamic ? undefined : config
+  const staticResolved = isDynamic ? null : resolveSearchProvider(staticConfig)
+  if (staticResolved?.warning) {
+    console.warn(`[web_search] ${staticResolved.warning}`)
   }
 
   return {
@@ -574,13 +588,19 @@ export function createWebSearchTool(config?: WebSearchConfig): AgentTool {
       const { query, count: rawCount } = params as { query: string; count?: number }
       const count = Math.min(Math.max(rawCount ?? 5, 1), 20)
 
+      const currentConfig = isDynamic ? resolveWebSearchConfig(config) : staticConfig
+      const resolved = isDynamic ? resolveSearchProvider(currentConfig) : staticResolved!
+      if (isDynamic && resolved.warning) {
+        console.warn(`[web_search] ${resolved.warning}`)
+      }
+
       const retryOpts: RetryOptions = {
-        maxRetries: resolved.provider !== 'duckduckgo' ? (config?.retry?.maxRetries ?? 2) : 0,
-        baseDelayMs: config?.retry?.baseDelayMs ?? 500,
+        maxRetries: resolved.provider !== 'duckduckgo' ? (currentConfig?.retry?.maxRetries ?? 2) : 0,
+        baseDelayMs: currentConfig?.retry?.baseDelayMs ?? 500,
         shouldRetry: (err: unknown) =>
           (err instanceof BraveSearchError && err.retryable) ||
           (err instanceof TavilySearchError && err.retryable),
-        delayFn: config?.retry?.delayFn,
+        delayFn: currentConfig?.retry?.delayFn,
       }
 
       let results: WebSearchResult[]
@@ -730,25 +750,54 @@ export function createWebFetchTool(_config?: WebFetchConfig): AgentTool {
 // ─── Builtin Tools Factory ───────────────────────────────────────────────────
 
 /**
+ * Either a static `BuiltinToolsConfig` or a getter that returns the current
+ * config on each invocation. When a getter is supplied, `web_search` resolves
+ * its provider/API-keys fresh on every call — enabling hot-reload of
+ * Settings > Built-in Tools without a server restart.
+ */
+export type BuiltinToolsConfigSource = BuiltinToolsConfig | (() => BuiltinToolsConfig | undefined)
+
+function resolveBuiltinToolsConfig(source?: BuiltinToolsConfigSource): BuiltinToolsConfig | undefined {
+  return typeof source === 'function' ? source() : source
+}
+
+/**
  * Create all enabled built-in web tools based on config.
  * This is the main entry point for AgentCore integration.
  */
-export function createBuiltinWebTools(config?: BuiltinToolsConfig): AgentTool[] {
+export function createBuiltinWebTools(config?: BuiltinToolsConfigSource): AgentTool[] {
+  const isDynamic = typeof config === 'function'
+  const initialConfig = resolveBuiltinToolsConfig(config)
+
   const tools: AgentTool[] = []
 
   // web_search — enabled by default
-  if (config?.webSearch?.enabled !== false) {
-    const provider = (config?.webSearch?.provider ?? 'duckduckgo') as SearchProvider
-    tools.push(createWebSearchTool({
-      provider,
-      braveSearchApiKey: config?.webSearch?.braveSearchApiKey,
-      searxngUrl: config?.webSearch?.searxngUrl,
-      tavilyApiKey: config?.webSearch?.tavilyApiKey,
-    }))
+  if (initialConfig?.webSearch?.enabled !== false) {
+    if (isDynamic) {
+      const getter = (): WebSearchConfig | undefined => {
+        const current = resolveBuiltinToolsConfig(config)
+        const provider = (current?.webSearch?.provider ?? 'duckduckgo') as SearchProvider
+        return {
+          provider,
+          braveSearchApiKey: current?.webSearch?.braveSearchApiKey,
+          searxngUrl: current?.webSearch?.searxngUrl,
+          tavilyApiKey: current?.webSearch?.tavilyApiKey,
+        }
+      }
+      tools.push(createWebSearchTool(getter))
+    } else {
+      const provider = (initialConfig?.webSearch?.provider ?? 'duckduckgo') as SearchProvider
+      tools.push(createWebSearchTool({
+        provider,
+        braveSearchApiKey: initialConfig?.webSearch?.braveSearchApiKey,
+        searxngUrl: initialConfig?.webSearch?.searxngUrl,
+        tavilyApiKey: initialConfig?.webSearch?.tavilyApiKey,
+      }))
+    }
   }
 
   // web_fetch — enabled by default
-  if (config?.webFetch?.enabled !== false) {
+  if (initialConfig?.webFetch?.enabled !== false) {
     tools.push(createWebFetchTool())
   }
 

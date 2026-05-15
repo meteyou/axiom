@@ -1530,4 +1530,56 @@ describe('createBuiltinWebTools', () => {
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Falling back to DuckDuckGo'))
     warnSpy.mockRestore()
   })
+
+  it('re-resolves web_search provider on every call when config is a getter (hot-reload)', async () => {
+    let currentProvider: 'duckduckgo' | 'tavily' = 'duckduckgo'
+    const tools = createBuiltinWebTools(() => ({
+      webSearch: {
+        enabled: true,
+        provider: currentProvider,
+        tavilyApiKey: 'tvly-test-key',
+      },
+      webFetch: { enabled: true },
+    }))
+    const webSearch = tools.find(t => t.name === 'web_search')!
+
+    const originalFetch = globalThis.fetch
+    const calls: string[] = []
+    globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+      calls.push(typeof url === 'string' ? url : String(url))
+      if (typeof url === 'string' && url.includes('api.tavily.com')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            results: [
+              { title: 'Tavily Hit', url: 'https://example.com/tav', content: 'tav snippet' },
+            ],
+          }),
+        })
+      }
+      // DuckDuckGo HTML lite response
+      return Promise.resolve({
+        ok: true,
+        text: async () => `
+          <a rel="nofollow" href="https://example.com/ddg" class="result-link">DDG Hit</a>
+          <td class="result-snippet">ddg snippet</td>
+        `,
+      })
+    }) as unknown as typeof fetch
+
+    try {
+      const r1 = await webSearch.execute('id-1', { query: 'test' })
+      expect(r1.details.provider).toBe('duckduckgo')
+      expect(calls.some(u => u.includes('duckduckgo.com'))).toBe(true)
+
+      // User "saves" a new provider in Settings.
+      currentProvider = 'tavily'
+
+      const r2 = await webSearch.execute('id-2', { query: 'test' })
+      expect(r2.details.provider).toBe('tavily')
+      expect(calls.some(u => u.includes('api.tavily.com'))).toBe(true)
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
 })

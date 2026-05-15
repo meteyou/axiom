@@ -18,7 +18,7 @@ import { getWorkspaceDir } from './workspace.js'
 import { loadConfig, ensureConfigTemplates } from './config.js'
 import { loadSkills, getSkillDecrypted } from './skill-config.js'
 import { createBuiltinWebTools } from './web-tools.js'
-import type { BuiltinToolsConfig } from './web-tools.js'
+import type { BuiltinToolsConfig, BuiltinToolsConfigSource } from './web-tools.js'
 import { createTranscribeAudioTool } from './stt-tool.js'
 import { loadSttSettings } from './stt.js'
 import { createAgentSkillTools, getAgentSkillsForPrompt, getAgentSkillsCount, getAgentSkillsDir, trackAgentSkillUsage, currentPlatform } from './agent-skills.js'
@@ -33,7 +33,7 @@ import type { AgentRuntimeStateSnapshot, ResponseChunk } from './agent-runtime-t
  */
 export interface BaseAgentToolsOptions {
   db: Database
-  builtinToolsConfig?: BuiltinToolsConfig
+  builtinToolsConfig?: BuiltinToolsConfigSource
   sttEnabled?: boolean
   /** Called by search_memories to scope results to the current user. */
   getCurrentUserId?: () => number | undefined
@@ -449,7 +449,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
     ensureMemoryStructure(options.memoryDir)
     ensureConfigStructure()
 
-    const { builtinToolsConfig, sttEnabled, thinkingLevel: storedThinkingLevel } = this.readRuntimeSettings()
+    const { sttEnabled, thinkingLevel: storedThinkingLevel } = this.readRuntimeSettings()
     const effectiveThinkingLevel = normalizeThinkingLevel(options.thinkingLevel) ?? storedThinkingLevel ?? 'off'
 
     const systemPrompt = options.systemPrompt ?? this.buildSystemPrompt()
@@ -458,7 +458,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
       ...(options.tools ?? []),
       ...createBaseAgentTools({
         db: this.db,
-        builtinToolsConfig,
+        builtinToolsConfig: () => this.readRuntimeSettings().builtinToolsConfig,
         sttEnabled,
         getCurrentUserId: () => this.getCurrentToolUserId(),
       }),

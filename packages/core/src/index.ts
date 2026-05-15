@@ -177,7 +177,7 @@ export {
   BraveSearchError,
   TavilySearchError,
 } from './web-tools.js'
-export type { WebSearchResult, WebSearchConfig, WebFetchConfig, BuiltinToolsConfig, SearchProvider, ResolvedSearchProvider, BraveErrorCategory, TavilyErrorCategory, RetryOptions } from './web-tools.js'
+export type { WebSearchResult, WebSearchConfig, WebSearchConfigSource, WebFetchConfig, BuiltinToolsConfig, BuiltinToolsConfigSource, SearchProvider, ResolvedSearchProvider, BraveErrorCategory, TavilyErrorCategory, RetryOptions } from './web-tools.js'
 export {
   listAgentSkills,
   trackAgentSkillUsage,
