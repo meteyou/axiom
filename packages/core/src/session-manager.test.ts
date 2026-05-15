@@ -183,6 +183,35 @@ describe('SessionManager', () => {
       expect(manager.hasActiveSession('user1')).toBe(false)
     })
 
+    it('sets the inactivity timer exactly once per incoming user message', async () => {
+      // Regression: `getOrCreateSession` used to call `resetTimer` itself, and
+      // every interactive entry point also calls `recordMessage` (which calls
+      // `resetTimer`) immediately afterwards. The result was two
+      // `[session] Timer set for user …` log lines — and two
+      // setTimeout/clearTimeout cycles — for every single user message.
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+      try {
+        const manager = new SessionManager({
+          db,
+          memoryDir,
+          timeoutMinutes: 15,
+        })
+        await manager.init()
+
+        manager.getOrCreateSession('user1', 'web')
+        manager.recordMessage('user1')
+
+        const timerSetLogs = logSpy.mock.calls
+          .map(args => String(args[0] ?? ''))
+          .filter(line => line.includes('Timer set for user user1'))
+
+        expect(timerSetLogs).toHaveLength(1)
+      }
+      finally {
+        logSpy.mockRestore()
+      }
+    })
+
     it('resets timer on new message', async () => {
       const onSessionEnd = vi.fn()
       const manager = new SessionManager({

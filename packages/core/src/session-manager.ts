@@ -387,11 +387,11 @@ export class SessionManager {
   }
 
   /**
-   * Get or create an interactive session for a user. Resets the inactivity
-   * timer. Always creates sessions with `type='interactive'` — background
-   * session types (task, heartbeat, consolidation, loop_detection) must use
-   * `createSession()` instead so they are not cached per-user and do not
-   * occupy the interactive-session lifecycle slot.
+   * Get or create an interactive session for a user. Always creates sessions
+   * with `type='interactive'` — background session types (task, heartbeat,
+   * consolidation, loop_detection) must use `createSession()` instead so they
+   * are not cached per-user and do not occupy the interactive-session
+   * lifecycle slot.
    */
   getOrCreateSession(userId: string, source: string = 'web'): SessionInfo {
     let session = this.sessions.get(userId)
@@ -426,9 +426,6 @@ export class SessionManager {
         durationMs: 0,
         status: 'success',
       })
-
-      // Start inactivity timer for the new session
-      this.resetTimer(userId)
     }
 
     return session
