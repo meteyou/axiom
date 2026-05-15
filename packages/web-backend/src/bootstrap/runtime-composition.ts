@@ -933,6 +933,14 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
       const numericUserId = parseNumericUserId(userId)
       const isBackground = !!opts?.background
 
+      // CRITICAL: `sessionId` is the id of the session that just ENDED,
+      // explicitly captured by SessionManager.handleNewCommandAsync at the
+      // moment the user clicked "New Session". Do NOT replace it with any
+      // "current session" lookup (e.g. `sessionManager.getSession(userId)`)
+      // — by the time a background summary lands, the user is already
+      // chatting in the new session and that lookup would return the
+      // wrong id, causing the divider row + summary to be written into
+      // the NEW session's transcript instead of the OLD one.
       const dividerMetadata = JSON.stringify({ type: 'session_divider', summary: summary ?? null })
       db.prepare(
         'INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)'

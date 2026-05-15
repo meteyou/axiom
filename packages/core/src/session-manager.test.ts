@@ -393,6 +393,10 @@ describe('SessionManager', () => {
       await manager.init()
 
       const oldSession = manager.getOrCreateSession('user1')
+      // 3 messages so we cross MIN_MESSAGES_FOR_SUMMARY and exercise the
+      // real summary path (not the short-session placeholder shortcut).
+      manager.recordMessage('user1')
+      manager.recordMessage('user1')
       manager.recordMessage('user1')
 
       const before = Date.now()
@@ -435,6 +439,10 @@ describe('SessionManager', () => {
       await manager.init()
 
       manager.getOrCreateSession('user1')
+      // 3 messages so the session crosses MIN_MESSAGES_FOR_SUMMARY and
+      // actually triggers the summarizer + daily-file write.
+      manager.recordMessage('user1')
+      manager.recordMessage('user1')
       manager.recordMessage('user1')
 
       manager.handleNewCommandAsync('user1')
@@ -456,6 +464,95 @@ describe('SessionManager', () => {
       expect(newSession).toBeDefined()
       expect(manager.hasActiveSession('user1')).toBe(true)
       expect(onSummarize).not.toHaveBeenCalled()
+    })
+
+    it('uses a placeholder divider and skips the summarizer for short ping/pong sessions', async () => {
+      const onSummarize = vi.fn().mockResolvedValue('SHOULD NOT BE USED')
+      const onSessionEnd = vi.fn()
+      const manager = new SessionManager({
+        db,
+        memoryDir,
+        timeoutMinutes: 15,
+        onSummarize,
+        onSessionEnd,
+      })
+      await manager.init()
+
+      manager.getOrCreateSession('user1')
+      // 2 messages = classic ping/pong (one user turn + one assistant reply).
+      // Calling the summarizer here would just yield "Empty session." — we
+      // expect the manager to short-circuit with an em-dash placeholder.
+      manager.recordMessage('user1')
+      manager.recordMessage('user1')
+
+      manager.handleNewCommandAsync('user1')
+      await manager.awaitBackgroundJobs()
+
+      expect(onSummarize).not.toHaveBeenCalled()
+      expect(onSessionEnd).toHaveBeenCalledTimes(1)
+      const [, summary, opts] = onSessionEnd.mock.calls[0] as [
+        SessionInfo,
+        string | null,
+        { background?: boolean } | undefined,
+      ]
+      expect(summary).toBe('—')
+      expect(opts?.background).toBe(true)
+
+      // No daily-log entry should be written for a short session.
+      const today = new Date().toISOString().split('T')[0]
+      const dailyPath = path.join(memoryDir, 'daily', `${today}.md`)
+      expect(fs.existsSync(dailyPath)).toBe(false)
+    })
+
+    it('writes divider + summary against the OLD session id, even after a new session was minted', async () => {
+      // Regression test for the bug where a slow background summary
+      // resolved AFTER the new session had become "the current session",
+      // causing the divider to be associated with the new session id.
+      let resolveSummary: ((value: string) => void) | undefined
+      const summaryPromise = new Promise<string>((resolve) => {
+        resolveSummary = resolve
+      })
+      const onSummarize = vi.fn().mockReturnValue(summaryPromise)
+      const onSessionEnd = vi.fn()
+      const manager = new SessionManager({
+        db,
+        memoryDir,
+        timeoutMinutes: 15,
+        onSummarize,
+        onSessionEnd,
+      })
+      await manager.init()
+
+      const oldSession = manager.getOrCreateSession('user1')
+      manager.recordMessage('user1')
+      manager.recordMessage('user1')
+      manager.recordMessage('user1')
+
+      const newSession = manager.handleNewCommandAsync('user1')
+      // User keeps chatting in the new session while the summary is in flight.
+      manager.recordMessage('user1')
+      manager.recordMessage('user1')
+
+      // Only NOW does the slow summary resolve.
+      resolveSummary!('Old session summary.')
+      await manager.awaitBackgroundJobs()
+
+      expect(onSessionEnd).toHaveBeenCalledTimes(1)
+      const [endedSession, summary] = onSessionEnd.mock.calls[0] as [
+        SessionInfo,
+        string | null,
+        { background?: boolean } | undefined,
+      ]
+      // The callback MUST see the OLD session's id, not the freshly-minted
+      // new session that is now sitting under the same userId key.
+      expect(endedSession.id).toBe(oldSession.id)
+      expect(endedSession.id).not.toBe(newSession.id)
+      expect(summary).toBe('Old session summary.')
+
+      // And the summarizer must have been asked to summarize the OLD
+      // session's transcript — not the new one.
+      expect(onSummarize).toHaveBeenCalledTimes(1)
+      expect(onSummarize.mock.calls[0][0]).toBe(oldSession.id)
     })
   })
 

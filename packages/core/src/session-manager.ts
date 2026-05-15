@@ -91,6 +91,15 @@ export class SessionManager {
    * `awaitBackgroundJobs()`.
    */
   private backgroundJobs: Set<Promise<void>> = new Set()
+  /**
+   * Sessions with fewer than this many messages are too short to be worth
+   * a summary LLM round-trip (typical: ping/pong = 2 messages). For these
+   * we still emit a divider so the user sees a visual session boundary,
+   * but we use an em-dash placeholder instead of calling the summarizer
+   * (which would just return "Empty session." anyway and waste a model call).
+   */
+  private static readonly MIN_MESSAGES_FOR_SUMMARY = 3
+  private static readonly SHORT_SESSION_PLACEHOLDER = '—'
 
   constructor(options: SessionManagerOptions) {
     this.db = options.db
@@ -559,14 +568,28 @@ export class SessionManager {
   // Used by the websocket chat /new command handler for instant session switch.
   handleNewCommandAsync(userId: string, source: string = 'web'): SessionInfo {
     const oldSession = this.sessions.get(userId)
+    // Snapshot the OLD session's id as a primitive *before* we mint the new
+    // one, so every downstream write (daily-log, chat_messages divider,
+    // tool_calls row, onSessionEnd callback) is unambiguously bound to the
+    // session the user just left — never to the freshly-created session
+    // that replaces it. The previous code threaded the captured object
+    // reference through, but it's easier to reason about (and impossible
+    // to accidentally re-resolve via `this.sessions.get(userId)` at
+    // callback time) when the id is also passed explicitly.
+    const oldSessionId = oldSession?.id
 
-    if (oldSession) {
+    if (oldSession && oldSessionId) {
       this.clearTimer(userId)
       this.sessions.delete(userId)
 
-      const job = this.finalizeDetachedSession(oldSession, userId, 'manual').catch((err) => {
+      const job = this.finalizeDetachedSession(
+        oldSession,
+        oldSessionId,
+        userId,
+        'manual',
+      ).catch((err) => {
         console.error(
-          `[session] Background finalize failed for session ${oldSession.id}:`,
+          `[session] Background finalize failed for session ${oldSessionId}:`,
           err,
         )
       })
@@ -587,25 +610,50 @@ export class SessionManager {
    */
   private async finalizeDetachedSession(
     session: SessionInfo,
+    oldSessionId: string,
     userId: string,
     reason: SessionEndReason,
   ): Promise<void> {
+    // `oldSessionId` is the primitive id captured at trigger time in
+    // `handleNewCommandAsync` (or wherever this method is called from).
+    // We deliberately do NOT re-resolve the session via
+    // `this.sessions.get(userId)` here — by the time the awaited summary
+    // resolves, the user is already chatting in a new session under that
+    // map key, and writing the divider / daily-log entry against the
+    // current session would clobber the new session instead of the one
+    // that actually ended.
     console.log(
-      `[session] Finalizing detached session ${session.id} for user ${userId} `
+      `[session] Finalizing detached session ${oldSessionId} for user ${userId} `
       + `(${session.messageCount} messages, background)`,
     )
 
     let summary: string | null = null
 
-    if (session.messageCount > 0 && this.onSummarize) {
+    if (
+      session.messageCount > 0
+      && session.messageCount < SessionManager.MIN_MESSAGES_FOR_SUMMARY
+    ) {
+      // Ping/pong session (typically 2 messages: one user turn + one
+      // assistant reply). Calling the summarizer for this just produces
+      // "Empty session." — wasting an LLM round-trip and cluttering the
+      // daily activity log. Substitute an em-dash placeholder so the
+      // divider still renders in place of the old session, but don't
+      // write a daily-log entry.
+      summary = SessionManager.SHORT_SESSION_PLACEHOLDER
+      console.log(
+        `[session] Skipping summary for short session ${oldSessionId} `
+        + `(${session.messageCount} < ${SessionManager.MIN_MESSAGES_FOR_SUMMARY} messages); `
+        + `using placeholder divider`,
+      )
+    } else if (session.messageCount > 0 && this.onSummarize) {
       try {
-        const history = this.buildConversationHistory(session.id) ?? undefined
-        summary = await this.onSummarize(session.id, userId, history)
+        const history = this.buildConversationHistory(oldSessionId) ?? undefined
+        summary = await this.onSummarize(oldSessionId, userId, history)
         if (summary) {
           this.writeSummaryToDailyFile(summary, session.lastActivity)
           session.summaryWritten = true
           console.log(
-            `[session] Background summary written to daily log for session ${session.id}`,
+            `[session] Background summary written to daily log for session ${oldSessionId}`,
           )
         }
       } catch (err) {
@@ -620,11 +668,11 @@ export class SessionManager {
 
     this.db.prepare(
       `UPDATE sessions SET ended_at = datetime('now'), message_count = ?, summary_written = ? WHERE id = ?`
-    ).run(session.messageCount, session.summaryWritten ? 1 : 0, session.id)
+    ).run(session.messageCount, session.summaryWritten ? 1 : 0, oldSessionId)
 
     const durationMs = Date.now() - session.startedAt
     logToolCall(this.db, {
-      sessionId: session.id,
+      sessionId: oldSessionId,
       toolName: reason === 'timeout' ? 'session_timeout' : 'session_end',
       input: JSON.stringify({
         userId,
@@ -642,7 +690,16 @@ export class SessionManager {
     })
 
     if (this.onSessionEnd) {
-      this.onSessionEnd(session, summary, { background: true })
+      // Defensive: ensure the session object handed to the callback
+      // carries the captured old id, in case anything later in the
+      // callback chain reads `session.id` instead of the explicit
+      // sessionId argument. The captured object reference IS already
+      // the old session, but pinning the id here makes the intent
+      // impossible to misread.
+      const endedSession: SessionInfo = session.id === oldSessionId
+        ? session
+        : { ...session, id: oldSessionId }
+      this.onSessionEnd(endedSession, summary, { background: true })
     }
   }
 
