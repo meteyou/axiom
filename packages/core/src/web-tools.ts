@@ -564,12 +564,6 @@ function resolveWebSearchConfig(source?: WebSearchConfigSource): WebSearchConfig
 /**
  * Create the web_search AgentTool.
  * Supports DuckDuckGo, Brave Search, SearXNG, and Tavily providers.
- *
- * `config` may be a static object (snapshot at construction time) or a getter
- * function. When a getter is supplied, the provider, API keys, and retry
- * settings are resolved fresh on every `execute()` call — so saving a new
- * provider in Settings > Built-in Tools takes effect on the next tool call
- * without a server restart.
  */
 export function createWebSearchTool(config?: WebSearchConfigSource): AgentTool {
   const isDynamic = typeof config === 'function'
@@ -760,11 +754,6 @@ export function createWebFetchTool(_config?: WebFetchConfig): AgentTool {
  * config on each invocation. When a getter is supplied, `web_search` resolves
  * its provider/API-keys fresh on every call — enabling hot-reload of
  * Settings > Built-in Tools without a server restart.
- *
- * Note: the `enabled` flags are still read once at registration time, because
- * adding/removing a tool changes the agent's tool inventory and requires a
- * separate rebuild path. Provider switching is the common case and is what
- * this hot-reload path supports.
  */
 export type BuiltinToolsConfigSource = BuiltinToolsConfig | (() => BuiltinToolsConfig | undefined)
 
@@ -775,9 +764,6 @@ function resolveBuiltinToolsConfig(source?: BuiltinToolsConfigSource): BuiltinTo
 /**
  * Create all enabled built-in web tools based on config.
  * This is the main entry point for AgentCore integration.
- *
- * Pass a function as `config` to make `web_search` re-read provider settings
- * on every invocation (hot-reload after Settings save).
  */
 export function createBuiltinWebTools(config?: BuiltinToolsConfigSource): AgentTool[] {
   const isDynamic = typeof config === 'function'

@@ -33,13 +33,6 @@ import type { AgentRuntimeStateSnapshot, ResponseChunk } from './agent-runtime-t
  */
 export interface BaseAgentToolsOptions {
   db: Database
-  /**
-   * Built-in tools (web_search / web_fetch) config. Pass a function to enable
-   * hot-reload of the web_search provider/API-keys after Settings > Built-in
-   * Tools is saved — the getter is called on every `web_search` invocation,
-   * so the next tool call uses the freshly persisted provider without a
-   * server restart.
-   */
   builtinToolsConfig?: BuiltinToolsConfigSource
   sttEnabled?: boolean
   /** Called by search_memories to scope results to the current user. */
