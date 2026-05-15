@@ -387,11 +387,17 @@ export class SessionManager {
   }
 
   /**
-   * Get or create an interactive session for a user. Resets the inactivity
-   * timer. Always creates sessions with `type='interactive'` — background
-   * session types (task, heartbeat, consolidation, loop_detection) must use
-   * `createSession()` instead so they are not cached per-user and do not
-   * occupy the interactive-session lifecycle slot.
+   * Get or create an interactive session for a user. Always creates sessions
+   * with `type='interactive'` — background session types (task, heartbeat,
+   * consolidation, loop_detection) must use `createSession()` instead so they
+   * are not cached per-user and do not occupy the interactive-session
+   * lifecycle slot.
+   *
+   * The inactivity timer is NOT (re)set here; that is the responsibility of
+   * `recordMessage`, which is invoked by every interactive entry point
+   * immediately after `getOrCreateSession`. Centralising the timer in
+   * `recordMessage` avoids the duplicate-`setTimer` bug where a single user
+   * message produced two `[session] Timer set for user …` log lines.
    */
   getOrCreateSession(userId: string, source: string = 'web'): SessionInfo {
     let session = this.sessions.get(userId)
@@ -427,8 +433,13 @@ export class SessionManager {
         status: 'success',
       })
 
-      // Start inactivity timer for the new session
-      this.resetTimer(userId)
+      // NOTE: The inactivity timer is intentionally NOT started here.
+      // All real callers (`Agent.processUserMessage`, `Agent.processTaskInjection`,
+      // web/Telegram entry points) follow `getOrCreateSession` immediately with
+      // `recordMessage`, which is the canonical place where the timer is
+      // (re)set. Starting the timer here as well caused two `[session] Timer
+      // set for user …` log lines per user message and two redundant
+      // setTimeout/clearTimeout cycles per interaction.
     }
 
     return session
