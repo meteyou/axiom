@@ -565,13 +565,9 @@ function statusVariant(status: string): 'default' | 'success' | 'destructive' | 
 }
 
 function formatTimestamp(ts: string | undefined): string {
-  if (!ts) return ''
-  try {
-    const date = new Date(ts.includes('T') ? ts : ts.replace(' ', 'T') + 'Z')
-    return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-  } catch {
-    return ts
-  }
+  const date = parseBackendTimestamp(ts)
+  if (!date) return ts ?? ''
+  return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
 function formatDurationMs(ms: number): string {

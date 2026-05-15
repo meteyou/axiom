@@ -895,6 +895,10 @@ watch(sttError, (val) => {
     sttErrorTimeout.value = setTimeout(() => { sttError.value = null }, 3000)
   }
 })
-function formatMessageTime(timestamp: string): string { const d = new Date(timestamp); if (isNaN(d.getTime())) return ''; return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) }
+function formatMessageTime(timestamp: string): string {
+  const date = parseBackendTimestamp(timestamp)
+  if (!date) return ''
+  return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+}
 
 </script>
