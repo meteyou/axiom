@@ -327,17 +327,14 @@ function lastRunStatusVariant(status: string | null): 'default' | 'success' | 'd
 }
 
 function formatCreatedAt(dateStr: string): string {
-  try {
-    const date = new Date(dateStr.replace(' ', 'T') + 'Z')
-    return new Intl.DateTimeFormat(locale.value, {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(date)
-  } catch {
-    return dateStr
-  }
+  const date = parseBackendTimestamp(dateStr)
+  if (!date) return dateStr
+  return new Intl.DateTimeFormat(locale.value, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date)
 }
 
 onMounted(async () => {
