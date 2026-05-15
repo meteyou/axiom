@@ -1,8 +1,12 @@
+import { parseBackendTimestamp } from '~/utils/datetime'
+
 /**
  * Shared formatting utilities.
  *
  * Centralises Intl-based formatters so every page uses the same locale-aware
- * output without duplicating the logic.
+ * output without duplicating the logic. Backend timestamps are parsed via
+ * `parseBackendTimestamp` so naked SQLite UTC strings render in the user's
+ * local timezone rather than being misread as local time.
  */
 export function useFormat() {
   const { locale } = useI18n()
@@ -24,24 +28,28 @@ export function useFormat() {
 
   /** Medium date + short time: "Mar 28, 2026, 2:30 PM" */
   function formatDateTime(value: string): string {
+    const date = parseBackendTimestamp(value)
+    if (!date) return ''
     return new Intl.DateTimeFormat(locale.value, {
       dateStyle: 'medium',
       timeStyle: 'short',
-    }).format(new Date(value))
+    }).format(date)
   }
 
   /** Medium date only: "Mar 28, 2026" */
   function formatDate(value: string): string {
+    const date = parseBackendTimestamp(value)
+    if (!date) return ''
     return new Intl.DateTimeFormat(locale.value, {
       dateStyle: 'medium',
-    }).format(new Date(value))
+    }).format(date)
   }
 
   /** Compact timestamp for log rows: "Mar 28, 14:30:05" */
   function formatTimestamp(ts: string): string {
-    if (!ts) return ''
-    const d = new Date(ts + (ts.includes('Z') || ts.includes('+') ? '' : 'Z'))
-    return d.toLocaleString(locale.value, {
+    const date = parseBackendTimestamp(ts)
+    if (!date) return ''
+    return date.toLocaleString(locale.value, {
       month: 'short',
       day: 'numeric',
       hour: '2-digit',

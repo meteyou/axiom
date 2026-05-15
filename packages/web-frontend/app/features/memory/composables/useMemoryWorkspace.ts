@@ -199,10 +199,12 @@ export function useMemoryWorkspace() {
   }
 
   function formatDate(value: string): string {
+    const date = parseBackendTimestamp(value)
+    if (!date) return ''
     return new Intl.DateTimeFormat(undefined, {
       dateStyle: 'medium',
       timeStyle: 'short',
-    }).format(new Date(value))
+    }).format(date)
   }
 
   async function switchTab(tab: MemoryTab) {
