@@ -32,7 +32,7 @@ interface ChatMessage {
 }
 
 interface ChatResponse {
-  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'reminder' | 'pong' | 'attachment'
+  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'session_summary' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'reminder' | 'pong' | 'attachment'
   text?: string
   /**
    * Interactive picker payload (slash-command driven). When present on a
@@ -274,34 +274,13 @@ export function setupWebSocketChat(
 
           const agentCore = resolveAgentCore()
 
-          // Reset session (generates summary + writes daily log).
-          // When a chat event bus is available, the resulting session_end event is
-          // emitted centrally via onSessionEnd and broadcast from there to avoid
-          // duplicate dividers. Otherwise, emit the divider directly here.
           if (agentCore) {
-            try {
-              const summary = await agentCore.resetSession(String(currentUser.userId))
-              if (!chatEventBus) {
-                // After resetSession, the next getOrCreateSession() returns a fresh UUID.
-                const newSession = agentCore.getSessionManager().getOrCreateSession(String(currentUser.userId), 'web')
-                clientSessions.set(ws, newSession.id)
-                sendMessage(ws, {
-                  type: 'session_end',
-                  text: summary ?? undefined,
-                  sessionId: newSession.id,
-                })
-              }
-            } catch (err) {
-              console.error('Failed to reset session:', err)
-              if (!chatEventBus) {
-                const newSession = agentCore.getSessionManager().getOrCreateSession(String(currentUser.userId), 'web')
-                clientSessions.set(ws, newSession.id)
-                sendMessage(ws, {
-                  type: 'session_end',
-                  sessionId: newSession.id,
-                })
-              }
-            }
+            const newSession = agentCore.resetSessionAsync(String(currentUser.userId), 'web')
+            clientSessions.set(ws, newSession.id)
+            sendMessage(ws, {
+              type: 'session_end',
+              sessionId: newSession.id,
+            })
           } else {
             // No agent core: clear any cached session ID; next message will resolve a new one.
             clientSessions.delete(ws)
@@ -633,6 +612,17 @@ export function setupWebSocketChat(
           clientSessions.delete(client)
           sendMessage(client, {
             type: 'session_end',
+            text: event.text,
+          })
+        } else if (event.type === 'session_summary') {
+          // Late-arriving summary for a session that was ended
+          // non-blockingly (e.g. via /new). The carried `sessionId` is
+          // the id of the session that just got summarized so the
+          // client can match it to the previously rendered (empty)
+          // divider and fill it in.
+          sendMessage(client, {
+            type: 'session_summary',
+            sessionId: event.sessionId,
             text: event.text,
           })
         } else if (event.type === 'task_completed' || event.type === 'task_failed' || event.type === 'task_question') {

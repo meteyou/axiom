@@ -924,21 +924,61 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
   function wireAgentCoreEvents(): void {
     if (!agentCore) return
 
-    agentCore.setOnSessionEnd((userId: string, sessionId: string, summary: string | null) => {
+    agentCore.setOnSessionEnd((
+      userId: string,
+      sessionId: string,
+      summary: string | null,
+      opts,
+    ) => {
       const numericUserId = parseNumericUserId(userId)
+      const isBackground = !!opts?.background
 
+      // CRITICAL: `sessionId` is the id of the session that just ENDED,
+      // explicitly captured by SessionManager.handleNewCommandAsync at the
+      // moment the user clicked "New Session". Do NOT replace it with any
+      // "current session" lookup (e.g. `sessionManager.getSession(userId)`)
+      // — by the time a background summary lands, the user is already
+      // chatting in the new session and that lookup would return the
+      // wrong id, causing the divider row + summary to be written into
+      // the NEW session's transcript instead of the OLD one.
       const dividerMetadata = JSON.stringify({ type: 'session_divider', summary: summary ?? null })
       db.prepare(
         'INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)'
       ).run(sessionId, numericUserId, 'system', summary ?? '', dividerMetadata)
 
       if (numericUserId !== null) {
-        chatEventBus.broadcast({
-          type: 'session_end',
-          userId: numericUserId,
-          source: 'web',
-          text: summary ?? undefined,
-        })
+        if (isBackground) {
+          // Background path: the originating client already received a
+          // `session_end` (without text) the moment it clicked
+          // "New Session". Re-broadcasting `session_end` here would
+          // render a duplicate divider, so we instead emit a dedicated
+          // `session_summary` event. The carried `sessionId` is the
+          // *ended* session's id so clients can match it back to the
+          // empty divider they already rendered and fill in the
+          // summary in place. Clients that hadn't seen the immediate
+          // `session_end` (e.g. another browser tab) treat the event
+          // as a signal to render a fresh divider for the old
+          // session.
+          if (summary) {
+            chatEventBus.broadcast({
+              type: 'session_summary',
+              userId: numericUserId,
+              source: 'web',
+              sessionId,
+              text: summary,
+            })
+          }
+        } else {
+          // Synchronous path (timeout, provider_change): broadcast
+          // `session_end` with the summary so every connected client
+          // renders a divider in one shot.
+          chatEventBus.broadcast({
+            type: 'session_end',
+            userId: numericUserId,
+            source: 'web',
+            text: summary ?? undefined,
+          })
+        }
       }
 
       triggerFactExtractionForSessionEnd({

@@ -33,8 +33,20 @@ export interface AgentCoreOptions {
   baseInstructions?: string
   providerConfig?: ProviderConfig // For OAuth token refresh
   providerManager?: ProviderManager // For fallback retry support
-  /** Called when a session ends (timeout or /new command) with the summary text */
-  onSessionEnd?: (userId: string, sessionId: string, summary: string | null) => void
+  /**
+   * Called when a session ends (timeout, /new command, or provider change)
+   * with the summary text. `options.background` is true when the session
+   * was ended non-blockingly (`resetSessionAsync`) and the summary became
+   * available asynchronously after the new session had already been
+   * announced — listeners can use this to emit a follow-up update event
+   * rather than a duplicate session_end divider.
+   */
+  onSessionEnd?: (
+    userId: string,
+    sessionId: string,
+    summary: string | null,
+    options?: { background?: boolean },
+  ) => void
 }
 
 // Re-export for backward compatibility
@@ -49,7 +61,12 @@ export class AgentCore {
   private sessionManager: SessionManager
   private memoryDir?: string
   private baseInstructions?: string
-  private onSessionEndCallback?: (userId: string, sessionId: string, summary: string | null) => void
+  private onSessionEndCallback?: (
+    userId: string,
+    sessionId: string,
+    summary: string | null,
+    options?: { background?: boolean },
+  ) => void
   private onTaskInjectionChunkCallback?: (chunk: ResponseChunk) => void
   private messageQueue: MessageQueue
   private currentToolUserId?: number
@@ -86,13 +103,16 @@ export class AgentCore {
       onSummarize: async (_sessionId: string, userId: string, conversationHistory?: string) => {
         return this.generateSessionSummary(userId, conversationHistory)
       },
-      onSessionEnd: (session: SessionInfo, summary: string | null) => {
-        this.runtime.clearMessages()
-        this.refreshSystemPrompt()
-
-        // Notify external listener (e.g. ws-chat)
+      onSessionEnd: (session: SessionInfo, summary: string | null, opts) => {
+        // For background ends (resetSessionAsync), runtime state was already
+        // cleared synchronously when the new session was created — skip here
+        // to avoid wiping the new session's accumulated messages.
+        if (!opts?.background) {
+          this.runtime.clearMessages()
+          this.refreshSystemPrompt()
+        }
         if (this.onSessionEndCallback) {
-          this.onSessionEndCallback(session.userId, session.id, summary)
+          this.onSessionEndCallback(session.userId, session.id, summary, opts)
         }
       },
     })
@@ -570,7 +590,12 @@ Do NOT add this section if everything discussed was resolved or if there is noth
    */
   // Used by backend runtime composition to stream session-end events to clients.
   // fallow-ignore-next-line unused-class-member
-  setOnSessionEnd(callback: (userId: string, sessionId: string, summary: string | null) => void): void {
+  setOnSessionEnd(callback: (
+    userId: string,
+    sessionId: string,
+    summary: string | null,
+    options?: { background?: boolean },
+  ) => void): void {
     this.onSessionEndCallback = callback
   }
 
@@ -592,13 +617,37 @@ Do NOT add this section if everything discussed was resolved or if there is noth
   }
 
   /**
-   * Reset a user's session (async - generates summary before reset).
+   * Reset a user's session (blocking — awaits summary generation before
+   * returning). Prefer `resetSessionAsync` for interactive UIs where
+   * users should not wait for the LLM summary call to finish.
    */
-  // Used by the websocket chat /new command handler.
   // fallow-ignore-next-line unused-class-member
   async resetSession(userId: string): Promise<string | null> {
     const summary = await this.sessionManager.handleNewCommand(userId)
     return summary
+  }
+
+  /**
+   * Non-blocking variant: detaches the current session synchronously and
+   * returns the freshly minted session. Summary generation runs in the
+   * background; when it completes, the configured `onSessionEnd`
+   * callback fires with `options.background = true`.
+   *
+   * Also clears the runtime's in-memory message buffer synchronously so
+   * the new session starts clean, without waiting for the (slow)
+   * summary LLM call.
+   */
+  // Used by the websocket chat /new command handler for instant session switch.
+  // fallow-ignore-next-line unused-class-member
+  resetSessionAsync(userId: string, source: string = 'web'): SessionInfo {
+    // Clear the in-memory agent messages immediately so the new session
+    // is not contaminated by the previous session's context. The DB-side
+    // summary still uses `buildConversationHistory()` (sourced from the
+    // `chat_messages` table), so we don't lose anything by clearing the
+    // in-memory copy here.
+    this.runtime.clearMessages()
+    this.refreshSystemPrompt()
+    return this.sessionManager.handleNewCommandAsync(userId, source)
   }
 
   /**
