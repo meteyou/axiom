@@ -1049,7 +1049,7 @@ async function startOAuthRenew() {
 
     if (response.authUrl) {
       if (oauthPopup && !oauthPopup.closed) oauthPopup.close()
-      oauthPopup = window.open(response.authUrl, 'axiom_oauth', 'noopener')
+      oauthPopup = window.open(response.authUrl, 'axiom_oauth')
     }
 
     pollForCompletion(response.loginId)
@@ -1080,7 +1080,7 @@ async function startOAuth() {
 
     if (response.authUrl) {
       if (oauthPopup && !oauthPopup.closed) oauthPopup.close()
-      oauthPopup = window.open(response.authUrl, 'axiom_oauth', 'noopener')
+      oauthPopup = window.open(response.authUrl, 'axiom_oauth')
     }
 
     pollForCompletion(response.loginId)
