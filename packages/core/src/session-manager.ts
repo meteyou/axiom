@@ -582,12 +582,19 @@ export class SessionManager {
       this.clearTimer(userId)
       this.sessions.delete(userId)
 
-      const job = this.finalizeDetachedSession(
+      // Defer the finalize one microtask so that `onSessionEnd` (and any
+      // resulting broadcast) NEVER fires on the synchronous stack of this
+      // call. The short-session placeholder branch has no `await` before
+      // `onSessionEnd`, so without this it would fire synchronously here —
+      // before the caller (ws-chat) has had a chance to emit the immediate
+      // `session_end`, causing the late `session_summary` to overtake it and
+      // render a duplicate divider on the originating client.
+      const job = Promise.resolve().then(() => this.finalizeDetachedSession(
         oldSession,
         oldSessionId,
         userId,
         'manual',
-      ).catch((err) => {
+      )).catch((err) => {
         console.error(
           `[session] Background finalize failed for session ${oldSessionId}:`,
           err,
