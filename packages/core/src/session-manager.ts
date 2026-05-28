@@ -99,7 +99,7 @@ export class SessionManager {
    * (which would just return "Empty session." anyway and waste a model call).
    */
   private static readonly MIN_MESSAGES_FOR_SUMMARY = 3
-  private static readonly SHORT_SESSION_PLACEHOLDER = '—'
+  private static readonly SHORT_SESSION_PLACEHOLDER = 'Empty session.'
 
   constructor(options: SessionManagerOptions) {
     this.db = options.db
