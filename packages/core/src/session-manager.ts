@@ -47,8 +47,21 @@ export interface SessionManagerOptions {
    * conversationHistory is built from chat_messages in the DB (single source of truth).
    */
   onSummarize?: (sessionId: string, userId: string, conversationHistory?: string) => Promise<string>
-  /** Called when a session is disposed (after summary if applicable) */
-  onSessionEnd?: (session: SessionInfo, summary: string | null) => void
+  /**
+   * Called when a session is disposed (after summary if applicable).
+   *
+   * `options.background` is true when the session was ended via
+   * `handleNewCommandAsync()` and the summary was generated asynchronously
+   * after the new session had already been announced to the client.
+   * Listeners use this to deliver the summary as a *late* update event
+   * instead of a fresh session_end divider that would duplicate the one
+   * already rendered when the new session was opened.
+   */
+  onSessionEnd?: (
+    session: SessionInfo,
+    summary: string | null,
+    options?: { background?: boolean },
+  ) => void
 }
 
 export type SessionEndReason = 'timeout' | 'manual' | 'provider_change'
@@ -66,7 +79,27 @@ export class SessionManager {
   private timeoutMs: number
   private memoryDir?: string
   private onSummarize?: (sessionId: string, userId: string, conversationHistory?: string) => Promise<string>
-  private onSessionEnd?: (session: SessionInfo, summary: string | null) => void
+  private onSessionEnd?: (
+    session: SessionInfo,
+    summary: string | null,
+    options?: { background?: boolean },
+  ) => void
+  /**
+   * Tracks pending background summary jobs spawned by
+   * `handleNewCommandAsync` so `dispose()` can drain them on shutdown
+   * and tests can deterministically await completion via
+   * `awaitBackgroundJobs()`.
+   */
+  private backgroundJobs: Set<Promise<void>> = new Set()
+  /**
+   * Sessions with fewer than this many messages are too short to be worth
+   * a summary LLM round-trip (typical: ping/pong = 2 messages). For these
+   * we still emit a divider so the user sees a visual session boundary,
+   * but we use an em-dash placeholder instead of calling the summarizer
+   * (which would just return "Empty session." anyway and waste a model call).
+   */
+  private static readonly MIN_MESSAGES_FOR_SUMMARY = 3
+  private static readonly SHORT_SESSION_PLACEHOLDER = 'Empty session.'
 
   constructor(options: SessionManagerOptions) {
     this.db = options.db
@@ -499,7 +532,12 @@ export class SessionManager {
   }
 
   /**
-   * Handle /new command: immediately summarize and reset
+   * Handle /new command: immediately summarize and reset (blocking).
+   *
+   * The returned Promise resolves only AFTER the summary has been
+   * generated and persisted. Prefer `handleNewCommandAsync()` for
+   * interactive UIs where blocking on summary generation is
+   * user-visible.
    */
   async handleNewCommand(userId: string): Promise<string | null> {
     const session = this.sessions.get(userId)
@@ -508,6 +546,175 @@ export class SessionManager {
     }
 
     return this.endSession(userId, 'manual')
+  }
+
+  /**
+   * Non-blocking variant of `handleNewCommand`. Detaches the current
+   * interactive session synchronously (clears the timer + removes it
+   * from the active-session map + clears in-memory agent state via the
+   * onSessionEnd callback in the next tick), creates a fresh session
+   * for the user, and returns it immediately.
+   *
+   * Summary generation and persistence (daily log + DB UPDATE + tool
+   * call log + onSessionEnd callback) run in the background. When the
+   * summary is ready, `onSessionEnd` fires with `options.background = true`
+   * so the listener can deliver the summary as a follow-up event without
+   * duplicating the divider that was already rendered when the new
+   * session was opened.
+   */
+  // Used by the websocket chat /new command handler for instant session switch.
+  handleNewCommandAsync(userId: string, source: string = 'web'): SessionInfo {
+    const oldSession = this.sessions.get(userId)
+    // Snapshot the OLD session's id as a primitive *before* we mint the new
+    // one, so every downstream write (daily-log, chat_messages divider,
+    // tool_calls row, onSessionEnd callback) is unambiguously bound to the
+    // session the user just left — never to the freshly-created session
+    // that replaces it. The previous code threaded the captured object
+    // reference through, but it's easier to reason about (and impossible
+    // to accidentally re-resolve via `this.sessions.get(userId)` at
+    // callback time) when the id is also passed explicitly.
+    const oldSessionId = oldSession?.id
+
+    if (oldSession && oldSessionId) {
+      this.clearTimer(userId)
+      this.sessions.delete(userId)
+
+      // Defer the finalize one microtask so that `onSessionEnd` (and any
+      // resulting broadcast) NEVER fires on the synchronous stack of this
+      // call. The short-session placeholder branch has no `await` before
+      // `onSessionEnd`, so without this it would fire synchronously here —
+      // before the caller (ws-chat) has had a chance to emit the immediate
+      // `session_end`, causing the late `session_summary` to overtake it and
+      // render a duplicate divider on the originating client.
+      const job = Promise.resolve().then(() => this.finalizeDetachedSession(
+        oldSession,
+        oldSessionId,
+        userId,
+        'manual',
+      )).catch((err) => {
+        console.error(
+          `[session] Background finalize failed for session ${oldSessionId}:`,
+          err,
+        )
+      })
+      this.backgroundJobs.add(job)
+      job.finally(() => {
+        this.backgroundJobs.delete(job)
+      })
+    }
+
+    return this.getOrCreateSession(userId, source)
+  }
+
+  /**
+   * Run the summary-and-persist tail of a session that has already been
+   * detached from `this.sessions` (timer cleared, map entry removed).
+   * Mirrors `endSession`'s tail but is callable without holding the
+   * session in the active map.
+   */
+  private async finalizeDetachedSession(
+    session: SessionInfo,
+    oldSessionId: string,
+    userId: string,
+    reason: SessionEndReason,
+  ): Promise<void> {
+    // `oldSessionId` is the primitive id captured at trigger time in
+    // `handleNewCommandAsync` (or wherever this method is called from).
+    // We deliberately do NOT re-resolve the session via
+    // `this.sessions.get(userId)` here — by the time the awaited summary
+    // resolves, the user is already chatting in a new session under that
+    // map key, and writing the divider / daily-log entry against the
+    // current session would clobber the new session instead of the one
+    // that actually ended.
+    console.log(
+      `[session] Finalizing detached session ${oldSessionId} for user ${userId} `
+      + `(${session.messageCount} messages, background)`,
+    )
+
+    let summary: string | null = null
+
+    if (
+      session.messageCount > 0
+      && session.messageCount < SessionManager.MIN_MESSAGES_FOR_SUMMARY
+    ) {
+      // Ping/pong session (typically 2 messages: one user turn + one
+      // assistant reply). Calling the summarizer for this just produces
+      // "Empty session." — wasting an LLM round-trip and cluttering the
+      // daily activity log. Substitute an em-dash placeholder so the
+      // divider still renders in place of the old session, but don't
+      // write a daily-log entry.
+      summary = SessionManager.SHORT_SESSION_PLACEHOLDER
+      console.log(
+        `[session] Skipping summary for short session ${oldSessionId} `
+        + `(${session.messageCount} < ${SessionManager.MIN_MESSAGES_FOR_SUMMARY} messages); `
+        + `using placeholder divider`,
+      )
+    } else if (session.messageCount > 0 && this.onSummarize) {
+      try {
+        const history = this.buildConversationHistory(oldSessionId) ?? undefined
+        summary = await this.onSummarize(oldSessionId, userId, history)
+        if (summary) {
+          this.writeSummaryToDailyFile(summary, session.lastActivity)
+          session.summaryWritten = true
+          console.log(
+            `[session] Background summary written to daily log for session ${oldSessionId}`,
+          )
+        }
+      } catch (err) {
+        console.error('[session] Failed to generate background session summary:', err)
+      }
+    } else {
+      console.log(
+        `[session] Skipping background summary: messageCount=${session.messageCount}, `
+        + `onSummarize=${!!this.onSummarize}`,
+      )
+    }
+
+    this.db.prepare(
+      `UPDATE sessions SET ended_at = datetime('now'), message_count = ?, summary_written = ? WHERE id = ?`
+    ).run(session.messageCount, session.summaryWritten ? 1 : 0, oldSessionId)
+
+    const durationMs = Date.now() - session.startedAt
+    logToolCall(this.db, {
+      sessionId: oldSessionId,
+      toolName: reason === 'timeout' ? 'session_timeout' : 'session_end',
+      input: JSON.stringify({
+        userId,
+        reason,
+        messageCount: session.messageCount,
+        durationMinutes: Math.round(durationMs / 60000),
+        background: true,
+      }),
+      output: JSON.stringify({
+        summaryWritten: session.summaryWritten,
+        summary: summary ?? null,
+      }),
+      durationMs,
+      status: 'success',
+    })
+
+    if (this.onSessionEnd) {
+      // Defensive: ensure the session object handed to the callback
+      // carries the captured old id, in case anything later in the
+      // callback chain reads `session.id` instead of the explicit
+      // sessionId argument. The captured object reference IS already
+      // the old session, but pinning the id here makes the intent
+      // impossible to misread.
+      const endedSession: SessionInfo = session.id === oldSessionId
+        ? session
+        : { ...session, id: oldSessionId }
+      this.onSessionEnd(endedSession, summary, { background: true })
+    }
+  }
+
+  /**
+   * Await all in-flight background summary jobs. Useful for tests that
+   * need to deterministically observe the post-summary state after
+   * calling `handleNewCommandAsync`.
+   */
+  async awaitBackgroundJobs(): Promise<void> {
+    if (this.backgroundJobs.size === 0) return
+    await Promise.allSettled(Array.from(this.backgroundJobs))
   }
 
   /**
@@ -631,11 +838,17 @@ export class SessionManager {
   }
 
   /**
-   * Dispose all sessions and timers (for shutdown)
+   * Dispose all sessions and timers (for shutdown). Drains any
+   * fire-and-forget background summary jobs first so daily-log writes
+   * and DB updates settle before we tear down.
    */
   async dispose(): Promise<void> {
     for (const [userId] of this.timers) {
       this.clearTimer(userId)
+    }
+
+    if (this.backgroundJobs.size > 0) {
+      await Promise.allSettled(Array.from(this.backgroundJobs))
     }
 
     // End all active sessions without summarizing

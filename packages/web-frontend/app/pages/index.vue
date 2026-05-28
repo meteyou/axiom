@@ -744,10 +744,15 @@ async function loadHistory() {
           } as ChatMessage
         }
 
-        // Parse system messages with session_divider metadata as dividers
+        // Parse system messages with session_divider metadata as dividers.
+        // The chat_messages row is inserted with the ended session as
+        // `session_id`; tag the divider with `endedSessionId` so a
+        // late-arriving `session_summary` event can locate and update
+        // it in place after a reload.
         if (m.role === 'system' && meta.type === 'session_divider') {
           return {
             id: m.id, role: 'divider' as const, content: meta.summary ?? '', timestamp: m.timestamp, source,
+            endedSessionId: m.session_id,
           } as ChatMessage
         }
 

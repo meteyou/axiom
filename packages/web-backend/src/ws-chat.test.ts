@@ -123,23 +123,35 @@ describe('setupWebSocketChat kill switch', () => {
     }
   })
 
-  it('emits only one session_end for /new when the backend broadcasts the divider', async () => {
+  it('immediately announces the new session on /new without waiting for the background summary', async () => {
     const db = initDatabase(':memory:')
     const chatEventBus = new ChatEventBus()
+    const newSession = {
+      id: 'session-new-async',
+      userId: '1',
+      source: 'web',
+      startedAt: Date.now(),
+      lastActivity: Date.now(),
+      messageCount: 0,
+      summaryWritten: false,
+      restored: false,
+    }
+    let summaryResolved = false
     const mockSessionManager = {
-      getOrCreateSession: vi.fn(() => ({ id: 'session-1-mock', userId: '1', source: 'web', startedAt: Date.now(), lastActivity: Date.now(), messageCount: 0, summaryWritten: false, restored: false })),
+      getOrCreateSession: vi.fn(() => newSession),
     }
     const agentCore = {
       sendMessage: vi.fn(),
       abort: vi.fn(),
-      resetSession: vi.fn(async () => {
-        chatEventBus.broadcast({
-          type: 'session_end',
-          userId: 1,
-          source: 'web',
-          text: 'Summary once.',
-        })
-        return 'Summary once.'
+      // The new code path: resetSessionAsync returns synchronously with the
+      // newly minted session. It must NOT block on summary generation.
+      resetSessionAsync: vi.fn(() => {
+        // Pretend the background summary completes 1 second later. The
+        // /new handler must respond well before that.
+        setTimeout(() => {
+          summaryResolved = true
+        }, 1000)
+        return newSession
       }),
       getSessionManager: vi.fn(() => mockSessionManager),
     } as unknown as AgentCore
@@ -156,11 +168,86 @@ describe('setupWebSocketChat kill switch', () => {
       const { ws, waitForMessage, expectNoMessageWithin } = await connectWs(port, token)
       await waitForMessage() // authenticated
 
+      const before = Date.now()
+      ws.send(JSON.stringify({ type: 'command', content: '/new' }))
+      const sessionEnd = await waitForMessage()
+      const elapsed = Date.now() - before
+
+      expect(sessionEnd.type).toBe('session_end')
+      expect(sessionEnd.sessionId).toBe('session-new-async')
+      expect(sessionEnd.text).toBeUndefined()
+      // The response must arrive synchronously, well before the simulated
+      // background summary completes.
+      expect(elapsed).toBeLessThan(500)
+      expect(summaryResolved).toBe(false)
+      await expectNoMessageWithin(30)
+      ws.close()
+    } finally {
+      for (const client of wss.clients) {
+        client.terminate()
+      }
+      wss.close()
+      await new Promise<void>((resolve, reject) =>
+        server.close((err) => (err ? reject(err) : resolve()))
+      )
+    }
+  })
+
+  it('forwards a late session_summary chat-event-bus broadcast to the connected client', async () => {
+    const db = initDatabase(':memory:')
+    const chatEventBus = new ChatEventBus()
+    const newSession = {
+      id: 'new-session-id',
+      userId: '1',
+      source: 'web',
+      startedAt: Date.now(),
+      lastActivity: Date.now(),
+      messageCount: 0,
+      summaryWritten: false,
+      restored: false,
+    }
+    const mockSessionManager = {
+      getOrCreateSession: vi.fn(() => newSession),
+    }
+    const agentCore = {
+      sendMessage: vi.fn(),
+      abort: vi.fn(),
+      resetSessionAsync: vi.fn(() => newSession),
+      getSessionManager: vi.fn(() => mockSessionManager),
+    } as unknown as AgentCore
+
+    const app = createApp({ db })
+    const server = http.createServer(app)
+    const { wss } = setupWebSocketChat(server, db, agentCore, undefined, chatEventBus)
+
+    await new Promise<void>((resolve) => server.listen(0, resolve))
+    const port = (server.address() as { port: number }).port
+    const token = generateAccessToken({ userId: 1, username: 'admin', role: 'admin' })
+
+    try {
+      const { ws, waitForMessage } = await connectWs(port, token)
+      await waitForMessage() // authenticated
+
       ws.send(JSON.stringify({ type: 'command', content: '/new' }))
       const sessionEnd = await waitForMessage()
       expect(sessionEnd.type).toBe('session_end')
-      expect(sessionEnd.text).toBe('Summary once.')
-      await expectNoMessageWithin(30)
+      expect(sessionEnd.sessionId).toBe('new-session-id')
+      expect(sessionEnd.text).toBeUndefined()
+
+      // Simulate the background summary completing and being broadcast
+      // by runtime-composition's onSessionEnd handler.
+      chatEventBus.broadcast({
+        type: 'session_summary',
+        userId: 1,
+        source: 'web',
+        sessionId: 'old-session-id',
+        text: 'Late-arriving background summary.',
+      })
+
+      const summaryEvent = await waitForMessage()
+      expect(summaryEvent.type).toBe('session_summary')
+      expect(summaryEvent.sessionId).toBe('old-session-id')
+      expect(summaryEvent.text).toBe('Late-arriving background summary.')
       ws.close()
     } finally {
       for (const client of wss.clients) {

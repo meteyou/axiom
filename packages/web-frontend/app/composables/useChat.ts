@@ -98,10 +98,17 @@ export interface ChatMessage {
   picker?: ChatPicker
   /** The picker option command the user picked (disables the buttons). */
   pickerResolvedCommand?: string
+  /**
+   * For `role: 'divider'` messages: the id of the session that ended at
+   * this divider. Used to match late-arriving `session_summary` events
+   * (from the non-blocking /new flow) to the right divider so its
+   * `content` can be filled in in place.
+   */
+  endedSessionId?: string
 }
 
 interface WsMessage {
-  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'reminder' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'pong' | 'attachment'
+  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'session_summary' | 'reminder' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'pong' | 'attachment'
   text?: string
   /** Picker payload for interactive slash-command replies (e.g. /model). */
   picker?: ChatPicker
@@ -116,6 +123,13 @@ interface WsMessage {
   toolIsError?: boolean
   error?: string
   sessionId?: string
+  /**
+   * For `session_end`: the id of the session that just ended (sent explicitly
+   * by the backend). Used to tag the divider so a late `session_summary` can
+   * be matched to it, since the frontend's own `sessionId` is not reliably
+   * up to date (not set by normal messages or history load).
+   */
+  endedSessionId?: string
   /** The source channel */
   source?: string
   /** Sender display name */
@@ -361,7 +375,13 @@ export function useChat() {
         isStreaming.value = false
         break
 
-      case 'session_end':
+      case 'session_end': {
+        // Prefer the ended session id the backend sent explicitly
+        // (`clientSessions`-backed, reliable across reloads). Fall back to
+        // our own tracked sessionId only if absent, then mutate
+        // sessionId.value. The divider is tagged with this so a later
+        // `session_summary` event can be matched against it.
+        const endedSessionId = msg.endedSessionId ?? sessionId.value ?? undefined
         if (msg.sessionId) {
           sessionId.value = msg.sessionId
         }
@@ -370,9 +390,50 @@ export function useChat() {
           role: 'divider',
           content: msg.text ?? '',
           timestamp: new Date().toISOString(),
+          endedSessionId,
         }]
         isStreaming.value = false
         break
+      }
+
+      case 'session_summary': {
+        // Late-arriving summary for a session that was ended
+        // non-blockingly via /new. Find the matching divider (by
+        // endedSessionId) and fill in its content in place, so the
+        // user sees the same divider expand from "— New Session —" to
+        // include the collapsible summary card without spawning a new
+        // divider. Falls back to appending a divider if no match exists
+        // (e.g. another browser tab that never received the immediate
+        // session_end).
+        if (!msg.text) break
+        const list = messages.value
+        let realIdx = -1
+        if (msg.sessionId) {
+          for (let k = list.length - 1; k >= 0; k--) {
+            const m = list[k]
+            if (m && m.role === 'divider' && m.endedSessionId === msg.sessionId) {
+              realIdx = k
+              break
+            }
+          }
+        }
+        if (realIdx >= 0) {
+          const updated = [...list]
+          const target = updated[realIdx]
+          if (target) {
+            updated[realIdx] = { ...target, content: msg.text }
+            messages.value = updated
+          }
+        } else {
+          messages.value = [...list, {
+            role: 'divider',
+            content: msg.text,
+            timestamp: new Date().toISOString(),
+            endedSessionId: msg.sessionId,
+          }]
+        }
+        break
+      }
 
       case 'external_user_message':
         // A message from another channel (e.g. Telegram) for the same user
