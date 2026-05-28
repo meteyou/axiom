@@ -123,6 +123,13 @@ interface WsMessage {
   toolIsError?: boolean
   error?: string
   sessionId?: string
+  /**
+   * For `session_end`: the id of the session that just ended (sent explicitly
+   * by the backend). Used to tag the divider so a late `session_summary` can
+   * be matched to it, since the frontend's own `sessionId` is not reliably
+   * up to date (not set by normal messages or history load).
+   */
+  endedSessionId?: string
   /** The source channel */
   source?: string
   /** Sender display name */
@@ -369,10 +376,12 @@ export function useChat() {
         break
 
       case 'session_end': {
-        // Capture the session id that just ended BEFORE we mutate
-        // sessionId.value, so the divider can be tagged with it and
-        // matched against a later `session_summary` event.
-        const endedSessionId = sessionId.value ?? undefined
+        // Prefer the ended session id the backend sent explicitly
+        // (`clientSessions`-backed, reliable across reloads). Fall back to
+        // our own tracked sessionId only if absent, then mutate
+        // sessionId.value. The divider is tagged with this so a later
+        // `session_summary` event can be matched against it.
+        const endedSessionId = msg.endedSessionId ?? sessionId.value ?? undefined
         if (msg.sessionId) {
           sessionId.value = msg.sessionId
         }

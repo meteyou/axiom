@@ -53,6 +53,14 @@ interface ChatResponse {
   toolIsError?: boolean
   error?: string
   sessionId?: string
+  /**
+   * For `session_end`: the id of the session that just ended. The frontend
+   * tags the rendered divider with this so a late-arriving `session_summary`
+   * (background /new flow) can be matched back to the correct divider. Sent
+   * explicitly because the frontend cannot reliably know the active session
+   * id on its own (it is not updated by normal messages or history load).
+   */
+  endedSessionId?: string
   /** The source channel (for external_user_message) */
   source?: string
   /** Sender display name (for external_user_message) */
@@ -275,11 +283,17 @@ export function setupWebSocketChat(
           const agentCore = resolveAgentCore()
 
           if (agentCore) {
+            // Capture the session id that is about to end BEFORE we reset.
+            // `clientSessions` is the authoritative active-session id for this
+            // connection (set on every message), so it stays correct across
+            // reloads where the frontend's own session id would be null.
+            const endedSessionId = clientSessions.get(ws)
             const newSession = agentCore.resetSessionAsync(String(currentUser.userId), 'web')
             clientSessions.set(ws, newSession.id)
             sendMessage(ws, {
               type: 'session_end',
               sessionId: newSession.id,
+              endedSessionId,
             })
           } else {
             // No agent core: clear any cached session ID; next message will resolve a new one.
