@@ -196,6 +196,12 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
           return prompt.placeholder ?? ''
         },
         onProgress: () => {},
+        onDeviceCode: (info) => {
+          loginState.authUrl = info.verificationUri
+          loginState.instructions = info.userCode
+          resolveAuthInfo({ url: info.verificationUri, instructions: info.userCode })
+        },
+        onSelect: async () => undefined,
         onManualCodeInput: oauthProvider.usesCallbackServer
           ? () =>
               new Promise<string>((resolve) => {
