@@ -495,7 +495,7 @@ describe('SessionManager', () => {
         string | null,
         { background?: boolean } | undefined,
       ]
-      expect(summary).toBe('—')
+      expect(summary).toBe('Empty session.')
       expect(opts?.background).toBe(true)
 
       // No daily-log entry should be written for a short session.
