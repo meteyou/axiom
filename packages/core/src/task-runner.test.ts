@@ -39,7 +39,7 @@ function getCapturedAgentOptions(): CapturedAgentOptions {
 }
 
 // Mock the PiAgent to avoid actual LLM calls
-vi.mock('@mariozechner/pi-agent-core', () => {
+vi.mock('@earendil-works/pi-agent-core', () => {
   return {
     Agent: vi.fn().mockImplementation((options: CapturedAgentOptions) => {
       recordAgentOptions(options)
@@ -221,7 +221,7 @@ describe('TaskRunner', () => {
   describe('task lifecycle: create → run → fail', () => {
     it('marks task as failed when agent throws', async () => {
       // Override mock to throw
-      const { Agent } = await import('@mariozechner/pi-agent-core')
+      const { Agent } = await import('@earendil-works/pi-agent-core')
       const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
       MockAgent.mockImplementationOnce(() => {
         return {
@@ -257,7 +257,7 @@ describe('TaskRunner', () => {
 
   describe('max duration timeout', () => {
     it('aborts task via abortTask method', async () => {
-      const { Agent } = await import('@mariozechner/pi-agent-core')
+      const { Agent } = await import('@earendil-works/pi-agent-core')
       const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
 
       let resolvePrompt: (() => void) | null = null
@@ -349,7 +349,7 @@ describe('TaskRunner', () => {
 
   describe('getRunningTaskIds', () => {
     it('tracks running tasks', async () => {
-      const { Agent } = await import('@mariozechner/pi-agent-core')
+      const { Agent } = await import('@earendil-works/pi-agent-core')
       const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
 
       let resolvePrompt: (() => void) | null = null
@@ -463,7 +463,7 @@ describe('TaskRunner', () => {
 
   describe('pause/resume lifecycle', () => {
     it('pauses a task when agent outputs STATUS: question', async () => {
-      const { Agent } = await import('@mariozechner/pi-agent-core')
+      const { Agent } = await import('@earendil-works/pi-agent-core')
       const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
 
       MockAgent.mockImplementationOnce(() => {
@@ -512,7 +512,7 @@ describe('TaskRunner', () => {
     })
 
     it('resumes a paused task and completes', async () => {
-      const { Agent } = await import('@mariozechner/pi-agent-core')
+      const { Agent } = await import('@earendil-works/pi-agent-core')
       const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
 
       let promptCount = 0
@@ -577,7 +577,7 @@ describe('TaskRunner', () => {
     })
 
     it('status transitions: running → paused → running → completed', async () => {
-      const { Agent } = await import('@mariozechner/pi-agent-core')
+      const { Agent } = await import('@earendil-works/pi-agent-core')
       const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
 
       let promptCount = 0
@@ -634,7 +634,7 @@ describe('TaskRunner', () => {
 
   describe('24h cleanup of stale paused tasks', () => {
     it('cleans up tasks paused for >24h', async () => {
-      const { Agent } = await import('@mariozechner/pi-agent-core')
+      const { Agent } = await import('@earendil-works/pi-agent-core')
       const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
 
       MockAgent.mockImplementationOnce(() => {
@@ -687,7 +687,7 @@ describe('TaskRunner', () => {
     })
 
     it('does not clean up tasks paused for <24h', async () => {
-      const { Agent } = await import('@mariozechner/pi-agent-core')
+      const { Agent } = await import('@earendil-works/pi-agent-core')
       const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
 
       MockAgent.mockImplementationOnce(() => {
@@ -730,7 +730,7 @@ describe('TaskRunner', () => {
     // resumed run is observably long.
     function mockPauseThenSlowComplete(resumeDelayMs: number) {
       return async () => {
-        const { Agent } = await import('@mariozechner/pi-agent-core')
+        const { Agent } = await import('@earendil-works/pi-agent-core')
         const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
         let callCount = 0
         let resumeAbort: (() => void) | null = null
@@ -827,7 +827,7 @@ describe('TaskRunner', () => {
         defaultMaxDurationMinutes: 1, // 1-minute fallback
       })
 
-      const { Agent } = await import('@mariozechner/pi-agent-core')
+      const { Agent } = await import('@earendil-works/pi-agent-core')
       const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
       let resolvePrompt: (() => void) | null = null
       MockAgent.mockImplementationOnce(() => ({
@@ -971,7 +971,7 @@ describe('TaskRunner', () => {
     })
 
     it('marks running task as failed when provider is not found and resume fails', async () => {
-      const { Agent } = await import('@mariozechner/pi-agent-core')
+      const { Agent } = await import('@earendil-works/pi-agent-core')
       const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
 
       MockAgent.mockImplementationOnce(() => {
@@ -1009,7 +1009,7 @@ describe('TaskRunner', () => {
 
   describe('task overrides', () => {
     it('excludes tools listed in toolsOverride', async () => {
-      const { Agent } = await import('@mariozechner/pi-agent-core')
+      const { Agent } = await import('@earendil-works/pi-agent-core')
       const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
 
       let capturedOptions: { initialState: { tools: Array<{ name: string }>; systemPrompt: string } } | null = null
@@ -1087,7 +1087,7 @@ describe('TaskRunner', () => {
     })
 
     it('uses system prompt override when set', async () => {
-      const { Agent } = await import('@mariozechner/pi-agent-core')
+      const { Agent } = await import('@earendil-works/pi-agent-core')
       const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
 
       let capturedOptions: { initialState: { tools: Array<{ name: string }>; systemPrompt: string } } | null = null
@@ -1131,7 +1131,7 @@ describe('TaskRunner', () => {
     })
 
     it('uses default system prompt when systemPromptOverride is null', async () => {
-      const { Agent } = await import('@mariozechner/pi-agent-core')
+      const { Agent } = await import('@earendil-works/pi-agent-core')
       const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
 
       let capturedOptions: { initialState: { tools: Array<{ name: string }>; systemPrompt: string } } | null = null
@@ -1224,7 +1224,7 @@ describe('TaskRunner', () => {
     })
 
     async function captureSystemPrompt(overrides: TaskOverrides): Promise<string> {
-      const { Agent } = await import('@mariozechner/pi-agent-core')
+      const { Agent } = await import('@earendil-works/pi-agent-core')
       const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
 
       type Captured = { initialState: { systemPrompt: string } }
@@ -1350,7 +1350,7 @@ describe('TaskRunner', () => {
      * timers advance.
      */
     async function stubLongRunningAgent(): Promise<void> {
-      const { Agent } = await import('@mariozechner/pi-agent-core')
+      const { Agent } = await import('@earendil-works/pi-agent-core')
       const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
       MockAgent.mockImplementationOnce(() => {
         return {
@@ -1481,7 +1481,7 @@ describe('TaskRunner', () => {
         onStatusUpdate,
       })
 
-      const { Agent } = await import('@mariozechner/pi-agent-core')
+      const { Agent } = await import('@earendil-works/pi-agent-core')
       const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
 
       // First prompt pauses with a question; second (after resume) never
@@ -1560,7 +1560,7 @@ describe('TaskRunner', () => {
 
   describe('task injection duration uses real elapsed time', () => {
     it('reports duration based on actual elapsed time, not a TZ-offset artefact', async () => {
-      const { Agent } = await import('@mariozechner/pi-agent-core')
+      const { Agent } = await import('@earendil-works/pi-agent-core')
       const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
       MockAgent.mockImplementationOnce(() => {
         let subscribeFn: ((event: unknown) => void) | null = null
@@ -1613,7 +1613,7 @@ describe('TaskRunner', () => {
 
   describe('live metric persistence during execution', () => {
     it('persists token / cost counters to the task row on message_end', async () => {
-      const { Agent } = await import('@mariozechner/pi-agent-core')
+      const { Agent } = await import('@earendil-works/pi-agent-core')
       const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
 
       let subscribeFn: ((event: unknown) => void) | null = null
@@ -1729,7 +1729,7 @@ describe('TaskRunner', () => {
     })
 
     async function captureSystemPromptForTask(): Promise<string> {
-      const { Agent } = await import('@mariozechner/pi-agent-core')
+      const { Agent } = await import('@earendil-works/pi-agent-core')
       const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
 
       type Captured = { initialState: { systemPrompt: string } }
@@ -1812,7 +1812,7 @@ describe('TaskRunner', () => {
 
   describe('OAuth token refresh during long-running tasks', () => {
     async function restoreCapturingAgentMock(): Promise<void> {
-      const { Agent } = await import('@mariozechner/pi-agent-core')
+      const { Agent } = await import('@earendil-works/pi-agent-core')
       const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
       MockAgent.mockReset()
       MockAgent.mockImplementation((options: CapturedAgentOptions) => {

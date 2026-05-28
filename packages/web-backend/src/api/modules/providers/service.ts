@@ -27,8 +27,8 @@ import type {
   ProviderOAuthLoginStartPayloadContract,
   ProviderUpdatePayloadContract,
 } from '@axiom/core/contracts'
-import { getOAuthProvider } from '@mariozechner/pi-ai/oauth'
-import type { OAuthCredentials } from '@mariozechner/pi-ai/oauth'
+import { getOAuthProvider } from '@earendil-works/pi-ai/oauth'
+import type { OAuthCredentials } from '@earendil-works/pi-ai/oauth'
 import {
   normalizeOllamaBaseUrl,
   OLLAMA_REQUEST_TIMEOUT_MS,

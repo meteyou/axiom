@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { AgentTool } from '@mariozechner/pi-agent-core'
+import type { AgentTool } from '@earendil-works/pi-agent-core'
 import { createSendFileTool, extractUploadsFromToolResult } from './send-file-tool.js'
 import type { UploadDescriptor } from './uploads.js'
 

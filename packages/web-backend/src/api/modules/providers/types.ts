@@ -1,4 +1,4 @@
-import type { OAuthCredentials } from '@mariozechner/pi-ai/oauth'
+import type { OAuthCredentials } from '@earendil-works/pi-ai/oauth'
 
 export interface ProvidersRouterOptions {
   onActiveProviderChanged?: () => void

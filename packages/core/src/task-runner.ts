@@ -1,8 +1,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { Agent as PiAgent } from '@mariozechner/pi-agent-core'
-import type { AgentEvent, AgentTool } from '@mariozechner/pi-agent-core'
-import type { AssistantMessage, Message, Model, Api } from '@mariozechner/pi-ai'
+import { Agent as PiAgent } from '@earendil-works/pi-agent-core'
+import type { AgentEvent, AgentTool } from '@earendil-works/pi-agent-core'
+import type { AssistantMessage, Message, Model, Api } from '@earendil-works/pi-ai'
 
 import type { Database } from './database.js'
 import { getAgentSkillsDir } from './agent-skills.js'

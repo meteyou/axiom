@@ -18,7 +18,7 @@ vi.mock('./provider-config.js', async (importOriginal) => {
   return { ...original, estimateCost: vi.fn(() => 0.001) }
 })
 
-vi.mock('@mariozechner/pi-agent-core', () => {
+vi.mock('@earendil-works/pi-agent-core', () => {
   return {
     Agent: vi.fn().mockImplementation((_options: unknown) => {
       const messages: unknown[] = []

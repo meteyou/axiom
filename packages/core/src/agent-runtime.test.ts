@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createAgentRuntime } from './agent-runtime.js'
 import { initDatabase } from './database.js'
-import type { AgentTool } from '@mariozechner/pi-agent-core'
+import type { AgentTool } from '@earendil-works/pi-agent-core'
 import { assembleSystemPrompt } from './memory.js'
 import { logToolCall } from './token-logger.js'
 
@@ -9,7 +9,7 @@ const runtimeHarness = vi.hoisted(() => ({
   promptBehaviors: [] as Array<(agent: { emit: (event: unknown) => void }, text: string) => Promise<void>>,
 }))
 
-vi.mock('@mariozechner/pi-agent-core', () => {
+vi.mock('@earendil-works/pi-agent-core', () => {
   class MockAgent {
     public state: { systemPrompt: string; model: unknown; tools: AgentTool[]; messages: unknown[] }
     private listeners = new Set<(event: unknown) => void>()
