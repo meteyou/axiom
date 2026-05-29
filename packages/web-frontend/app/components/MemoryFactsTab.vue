@@ -113,7 +113,7 @@
                   {{ fact.source }}
                 </TableCell>
                 <TableCell class="whitespace-nowrap text-sm text-muted-foreground">
-                  {{ formatDate(fact.timestamp) }}
+                  {{ formatDateTime(fact.timestamp) }}
                 </TableCell>
                 <TableCell class="text-right">
                   <div class="flex items-center justify-end gap-1">
@@ -190,6 +190,7 @@
 import type { MemoryFact } from '~/composables/useMemoryFacts'
 
 const { t } = useI18n()
+const { formatDateTime } = useFormat()
 
 const { users, error: usersError, fetchUsers } = useUsers()
 const {
@@ -309,15 +310,6 @@ function handleUserFilterChange() {
 function getUserLabel(userId: number | null): string {
   if (userId === null) return '—'
   return usersById.value.get(userId) ?? `#${userId}`
-}
-
-function formatDate(value: string): string {
-  const date = parseBackendTimestamp(value)
-  if (!date) return ''
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(date)
 }
 
 function startEditing(fact: MemoryFact) {

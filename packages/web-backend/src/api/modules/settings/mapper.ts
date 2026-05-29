@@ -1,4 +1,4 @@
-import { DEFAULT_HEALTH_MONITOR_NOTIFICATION_TOGGLES, maskApiKey } from '@axiom/core'
+import { DEFAULT_HEALTH_MONITOR_NOTIFICATION_TOGGLES, getDefaultTimezone, maskApiKey } from '@axiom/core'
 import type { HealthMonitorNotificationToggles, SettingsData, TelegramData } from './types.js'
 
 const DEFAULT_NOTIFICATIONS: HealthMonitorNotificationToggles = {
@@ -161,7 +161,7 @@ export function mapSettingsResponse(context: SettingsResponseContext) {
     sessionTimeoutMinutes: context.settings.sessionTimeoutMinutes ?? 30,
     sessionSummaryProviderId: (settingsRaw.sessionSummaryProviderId as string) ?? '',
     language: context.settings.language ?? 'match',
-    timezone: context.settings.timezone ?? 'UTC',
+    timezone: context.settings.timezone ?? getDefaultTimezone(),
     thinkingLevel: (settingsRaw.thinkingLevel as string) ?? 'off',
     healthMonitorIntervalMinutes:
       context.settings.healthMonitorIntervalMinutes

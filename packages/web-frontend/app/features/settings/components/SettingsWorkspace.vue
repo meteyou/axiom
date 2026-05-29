@@ -446,7 +446,7 @@
                     <div class="flex flex-col gap-3 rounded-lg bg-muted/50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                       <div v-if="consolidationStatus" class="text-xs text-muted-foreground">
                         <span class="font-medium">{{ $t('settings.consolidationLastRun') }}:</span>
-                        {{ consolidationStatus.lastRun ? new Date(consolidationStatus.lastRun).toLocaleString() : $t('settings.consolidationNeverRun') }}
+                        {{ consolidationStatus.lastRun ? formatDateTime(consolidationStatus.lastRun) : $t('settings.consolidationNeverRun') }}
                         <template v-if="consolidationStatus.lastResult">
                           · <span :class="consolidationStatus.lastResult.updated ? 'text-green-600 dark:text-green-400' : ''">
                             {{ consolidationStatus.lastResult.updated ? $t('settings.consolidationResultUpdated') : $t('settings.consolidationResultNoChange') }}
@@ -1894,6 +1894,7 @@ import type { MemoryConsolidationSettings, FactExtractionSettings, HealthMonitor
 import type { TelegramUser } from '~/composables/useTelegramUsers'
 
 /* ── Auth ── */
+const { formatDateTime } = useFormat()
 const { user } = useAuth()
 const isAdmin = computed(() => user.value?.role === 'admin')
 

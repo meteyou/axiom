@@ -2,6 +2,27 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+/**
+ * Resolve the default timezone for new installs and runtime fallbacks.
+ *
+ * Seeds from the `TZ` environment variable (e.g. Docker
+ * `environment: - TZ=Europe/Vienna`) so the agent, memory and heartbeat
+ * scheduling inherit the deployment timezone out of the box. Falls back to
+ * `UTC` when `TZ` is unset or not a valid IANA zone. The in-app
+ * `Settings → Agent → timezone` always overrides this.
+ */
+export function getDefaultTimezone(): string {
+  const tz = process.env.TZ?.trim()
+  if (!tz) return 'UTC'
+  try {
+    // Throws RangeError for invalid IANA zone identifiers.
+    new Intl.DateTimeFormat('en-US', { timeZone: tz })
+    return tz
+  } catch {
+    return 'UTC'
+  }
+}
+
 const TEMPLATES: Record<string, object> = {
   'providers.json': {
     providers: [],
@@ -11,7 +32,7 @@ const TEMPLATES: Record<string, object> = {
     sessionTimeoutMinutes: 30,
     sessionSummaryProviderId: '',
     language: 'en',
-    timezone: 'UTC',
+    timezone: getDefaultTimezone(),
     thinkingLevel: 'off',
     heartbeat: {
       intervalMinutes: 5,

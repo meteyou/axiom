@@ -251,7 +251,7 @@
                       @click="openDailyFile(file.date)"
                     >
                       <TableCell class="font-semibold">{{ file.date }}</TableCell>
-                      <TableCell class="text-muted-foreground">{{ formatDate(file.modifiedAt) }}</TableCell>
+                      <TableCell class="text-muted-foreground">{{ formatDateTime(file.modifiedAt) }}</TableCell>
                       <TableCell class="text-right text-muted-foreground">{{ formatSize(file.size) }}</TableCell>
                     </TableRow>
                   </TableBody>
@@ -380,6 +380,6 @@ const {
   openDailyFile,
   closeDailyFile,
   formatSize,
-  formatDate,
 } = useMemoryWorkspace()
+const { formatDateTime } = useFormat()
 </script>

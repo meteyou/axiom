@@ -9,6 +9,9 @@ services:
       - axiom-data:/data
       - axiom-workspace:/workspace
     environment:
+      # Seeds the default agent timezone (system prompt, memory, heartbeat
+      # scheduling) and the container's OS clock. Overridable at runtime via
+      # Settings → Agent → Timezone.
       - TZ=Europe/Vienna
       - NODE_ENV=production
       - DATA_DIR=/data

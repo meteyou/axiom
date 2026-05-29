@@ -94,7 +94,7 @@
                         </Badge>
                       </div>
                       <span class="text-xs text-muted-foreground">
-                        {{ $t('users.updatedAt', { date: formatDate(entry.updatedAt) }) }}
+                        {{ $t('users.updatedAt', { date: formatDateTime(entry.updatedAt) }) }}
                       </span>
                     </div>
                   </div>
@@ -115,7 +115,7 @@
 
                 <!-- Created -->
                 <TableCell class="text-sm text-muted-foreground">
-                  {{ formatDate(entry.createdAt) }}
+                  {{ formatDateTime(entry.createdAt) }}
                 </TableCell>
 
                 <!-- Row actions (dropdown) -->
@@ -178,6 +178,7 @@
 import type { User } from '~/composables/useUsers'
 
 const { t } = useI18n()
+const { formatDateTime } = useFormat()
 const { user } = useAuth()
 const isAdmin = computed(() => user.value?.role === 'admin')
 const currentUserId = computed(() => user.value?.id ?? -1)
@@ -213,15 +214,6 @@ function clearMessages() {
   localError.value = null
   successMessage.value = null
   error.value = null
-}
-
-function formatDate(value: string): string {
-  const date = parseBackendTimestamp(value)
-  if (!date) return ''
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(date)
 }
 
 function autoHideSuccess() {

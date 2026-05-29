@@ -370,7 +370,7 @@
                   <AppIcon v-else-if="ttsPlayingIndex === i" name="square" size="sm" />
                   <AppIcon v-else name="volume" size="sm" />
                 </button>
-                <span class="text-[10px] leading-none text-muted-foreground/70">{{ formatMessageTime(msg.timestamp) }}</span>
+                <span class="text-[10px] leading-none text-muted-foreground/70">{{ formatTimeShort(msg.timestamp) }}</span>
               </div>
             </div>
           </template>
@@ -541,6 +541,7 @@ import type { ChatMessage, ToolCallData } from '~/composables/useChat'
 import { SETTINGS_THINKING_LEVELS, type SettingsThinkingLevel } from '@axiom/core/contracts'
 import { useSettingsApi } from '~/api/settings'
 const { t } = useI18n()
+const { formatTimeShort } = useFormat()
 const { apiFetch } = useApi()
 const { user } = useAuth()
 const isAdmin = computed(() => user.value?.role === 'admin')
@@ -895,10 +896,5 @@ watch(sttError, (val) => {
     sttErrorTimeout.value = setTimeout(() => { sttError.value = null }, 3000)
   }
 })
-function formatMessageTime(timestamp: string): string {
-  const date = parseBackendTimestamp(timestamp)
-  if (!date) return ''
-  return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
-}
 
 </script>

@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { getWorkspaceDir } from './workspace.js'
-import { getConfigDir, getDocsPath, getReadmePath } from './config.js'
+import { getConfigDir, getDefaultTimezone, getDocsPath, getReadmePath } from './config.js'
 
 const SOUL_TEMPLATE = `# Soul
 
@@ -1010,7 +1010,7 @@ When you receive a <task_injection> block (signalling a background-task result w
   sections.push(`<workspace>\nYour working directory is ${workspaceDir}. All shell commands execute in this directory by default.\nAll relative paths in read_file, write_file, and list_files resolve against this directory.\nUse this directory for cloning repos, creating files, and all file operations.\n</workspace>`)
 
   // 14. Current date & time
-  const tz = options?.timezone || 'UTC'
+  const tz = options?.timezone || getDefaultTimezone()
   const now = new Date()
   const date = now.toLocaleDateString('en-CA', { timeZone: tz })
   const time = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: tz })
