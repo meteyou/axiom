@@ -165,6 +165,31 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
       throw new ProvidersValidationError(`OAuth provider "${preset.oauthProviderId}" not found`)
     }
 
+    // Resume an already-running login for the same target instead of starting
+    // a second one. Callback-server flows (e.g. Anthropic) bind a fixed local
+    // port that stays open until the flow completes; spawning a fresh login
+    // while the previous one is still pending would fail with EADDRINUSE. This
+    // also lets the UI recover the flow after a page refresh.
+    for (const [existingId, existing] of pendingOAuthLogins) {
+      const sameTarget = payload.providerId
+        ? existing.existingProviderId === payload.providerId
+        : existing.existingProviderId == null
+          && existing.providerType === payload.providerType
+          && existing.name === payload.name
+      if (!sameTarget) continue
+      if (existing.status === 'pending' && existing.authUrl) {
+        return {
+          loginId: existingId,
+          authUrl: existing.authUrl,
+          instructions: existing.instructions,
+          usesCallbackServer: oauthProvider.usesCallbackServer ?? false,
+        }
+      }
+      // Stale completed/errored entry for this target — drop it and start fresh.
+      pendingOAuthLogins.delete(existingId)
+    }
+    maybeStopOAuthCleanupTimer()
+
     const loginId = crypto.randomUUID()
     const loginState: PendingOAuthLogin = {
       status: 'pending',
