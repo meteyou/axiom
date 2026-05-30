@@ -144,7 +144,7 @@
                       {{ cj.lastRunStatus ?? '—' }}
                     </Badge>
                   </div>
-                  <span class="text-xs text-muted-foreground">{{ formatCreatedAt(cj.lastRunAt) }}</span>
+                  <span class="text-xs text-muted-foreground">{{ formatTimestamp(cj.lastRunAt) }}</span>
                 </div>
                 <span v-else class="text-sm text-muted-foreground">—</span>
               </TableCell>
@@ -205,7 +205,8 @@
 <script setup lang="ts">
 import type { Cronjob } from '~/composables/useCronjobs'
 
-const { t, locale } = useI18n()
+const { t } = useI18n()
+const { formatTimestamp } = useFormat()
 const { user } = useAuth()
 const isAdmin = computed(() => user.value?.role === 'admin')
 
@@ -323,20 +324,6 @@ function lastRunStatusVariant(status: string | null): 'default' | 'success' | 'd
     case 'completed': return 'success'
     case 'failed': return 'destructive'
     default: return 'muted'
-  }
-}
-
-function formatCreatedAt(dateStr: string): string {
-  try {
-    const date = new Date(dateStr.replace(' ', 'T') + 'Z')
-    return new Intl.DateTimeFormat(locale.value, {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(date)
-  } catch {
-    return dateStr
   }
 }
 

@@ -218,7 +218,7 @@
                 {{ formatCurrency(task.estimatedCost) }}
               </TableCell>
               <TableCell class="text-right text-sm text-muted-foreground">
-                {{ formatCreatedAt(task.createdAt) }}
+                {{ formatTimestamp(task.createdAt) }}
               </TableCell>
               <TableCell class="text-right">
                 <Button
@@ -289,8 +289,8 @@ import {
   useTasksList,
 } from '~/features/tasks/composables/useTasksList'
 
-const { locale, t } = useI18n()
-const { formatNumber, formatCurrency } = useFormat()
+const { t } = useI18n()
+const { formatNumber, formatCurrency, formatTimestamp } = useFormat()
 
 const selectedTaskId = ref<string | null>(null)
 
@@ -420,20 +420,6 @@ function formatDuration(task: Task): string {
   const hours = Math.floor(minutes / 60)
   const remainingMinutes = minutes % 60
   return `${hours}h ${remainingMinutes}m`
-}
-
-function formatCreatedAt(dateStr: string): string {
-  try {
-    const date = new Date(dateStr.replace(' ', 'T') + 'Z')
-    return new Intl.DateTimeFormat(locale.value, {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(date)
-  } catch {
-    return dateStr
-  }
 }
 
 onMounted(async () => {

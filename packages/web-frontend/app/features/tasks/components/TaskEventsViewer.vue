@@ -168,7 +168,7 @@
             <p class="text-sm text-foreground whitespace-pre-wrap">{{ taskInfo.prompt }}</p>
           </div>
           <span v-if="firstEventTimestamp" class="flex-shrink-0 text-xs text-muted-foreground">
-            {{ formatTimestamp(firstEventTimestamp) }}
+            {{ formatTime(firstEventTimestamp) }}
           </span>
         </div>
       </div>
@@ -200,7 +200,7 @@
             </span>
             <span class="flex-1" />
             <span class="text-xs text-muted-foreground">
-              {{ formatTimestamp(event.timestamp) }}
+              {{ formatTime(event.timestamp) }}
             </span>
             <AppIcon
               :name="expandedItems.has(idx) ? 'chevronDown' : 'chevronRight'"
@@ -273,7 +273,7 @@
                 <div class="prose-chat text-sm" v-html="renderMarkdown(parseStructuredResponse(event.text)!.summary)" />
               </div>
               <span class="flex-shrink-0 text-xs text-muted-foreground">
-                {{ formatTimestamp(event.timestamp) }}
+                {{ formatTime(event.timestamp) }}
               </span>
             </template>
             <template v-else>
@@ -284,7 +284,7 @@
                     {{ $t('taskViewer.agentResponse') }}
                   </span>
                   <span class="text-xs text-muted-foreground">
-                    {{ formatTimestamp(event.timestamp) }}
+                    {{ formatTime(event.timestamp) }}
                   </span>
                 </div>
                 <!-- eslint-disable-next-line vue/no-v-html -->
@@ -306,7 +306,7 @@
             </span>
             <span class="flex-1" />
             <span class="text-xs text-muted-foreground">
-              {{ formatTimestamp(event.timestamp) }}
+              {{ formatTime(event.timestamp) }}
             </span>
           </div>
         </div>
@@ -336,6 +336,7 @@ const emit = defineEmits<{
 }>()
 
 const { renderMarkdown } = useMarkdown()
+const { formatTime } = useFormat()
 const tasksApi = useTasksApi()
 const { providers, fetchProviders } = useProviders()
 
@@ -561,16 +562,6 @@ function statusVariant(status: string): 'default' | 'success' | 'destructive' | 
     case 'failed': return 'destructive'
     case 'paused': return 'warning'
     default: return 'muted'
-  }
-}
-
-function formatTimestamp(ts: string | undefined): string {
-  if (!ts) return ''
-  try {
-    const date = new Date(ts.includes('T') ? ts : ts.replace(' ', 'T') + 'Z')
-    return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-  } catch {
-    return ts
   }
 }
 

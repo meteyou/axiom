@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { ensureConfigTemplates, loadConfig } from './config.js'
+import { ensureConfigTemplates, getDefaultTimezone, loadConfig } from './config.js'
 import type { Task } from './task-store.js'
 import type { ProviderConfig } from './provider-config.js'
 import type { TaskRuntimeTaskBoundary } from './task-runtime.js'
@@ -254,9 +254,9 @@ export class AgentHeartbeatService {
     try {
       ensureConfigTemplates()
       const config = loadConfig<{ timezone?: string }>('settings.json')
-      return config.timezone || 'UTC'
+      return config.timezone || getDefaultTimezone()
     } catch {
-      return 'UTC'
+      return getDefaultTimezone()
     }
   }
 

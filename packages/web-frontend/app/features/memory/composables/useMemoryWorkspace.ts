@@ -198,13 +198,6 @@ export function useMemoryWorkspace() {
     return `${(bytes / 1024).toFixed(1)} KB`
   }
 
-  function formatDate(value: string): string {
-    return new Intl.DateTimeFormat(undefined, {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    }).format(new Date(value))
-  }
-
   async function switchTab(tab: MemoryTab) {
     clearMessages()
     activeTab.value = tab
@@ -347,6 +340,5 @@ export function useMemoryWorkspace() {
     openDailyFile,
     closeDailyFile,
     formatSize,
-    formatDate,
   }
 }

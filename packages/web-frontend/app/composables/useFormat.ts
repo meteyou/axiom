@@ -1,20 +1,26 @@
+import { parseBackendTimestamp } from '~/utils/datetime'
+
 /**
  * Shared formatting utilities.
  *
- * Centralises Intl-based formatters so every page uses the same locale-aware
- * output without duplicating the logic.
+ * Centralises Intl-based formatters so every page uses the same output
+ * without duplicating the logic. Backend timestamps are parsed via
+ * `parseBackendTimestamp` so naked SQLite UTC strings render in the user's
+ * local timezone rather than being misread as local time.
+ *
+ * Formatting follows the user's browser/OS regional settings (the `undefined`
+ * locale), intentionally decoupled from the i18n UI language: the displayed
+ * language and the number/date/time format are separate concerns.
  */
 export function useFormat() {
-  const { locale } = useI18n()
-
-  /** Locale-aware number: 1 234 567 */
+  /** Browser-locale number: 1,234,567 */
   function formatNumber(value: number): string {
-    return new Intl.NumberFormat(locale.value).format(value)
+    return new Intl.NumberFormat(undefined).format(value)
   }
 
-  /** Locale-aware currency (USD): $1,234.56 */
+  /** Browser-locale currency (USD): $1,234.56 */
   function formatCurrency(value: number): string {
-    return new Intl.NumberFormat(locale.value, {
+    return new Intl.NumberFormat(undefined, {
       style: 'currency',
       currency: 'USD',
       minimumFractionDigits: 2,
@@ -24,24 +30,49 @@ export function useFormat() {
 
   /** Medium date + short time: "Mar 28, 2026, 2:30 PM" */
   function formatDateTime(value: string): string {
-    return new Intl.DateTimeFormat(locale.value, {
+    const date = parseBackendTimestamp(value)
+    if (!date) return ''
+    return new Intl.DateTimeFormat(undefined, {
       dateStyle: 'medium',
       timeStyle: 'short',
-    }).format(new Date(value))
+    }).format(date)
   }
 
   /** Medium date only: "Mar 28, 2026" */
   function formatDate(value: string): string {
-    return new Intl.DateTimeFormat(locale.value, {
+    const date = parseBackendTimestamp(value)
+    if (!date) return ''
+    return new Intl.DateTimeFormat(undefined, {
       dateStyle: 'medium',
-    }).format(new Date(value))
+    }).format(date)
+  }
+
+  /** Time only: "14:30:05" */
+  function formatTime(value: string | undefined): string {
+    const date = parseBackendTimestamp(value)
+    if (!date) return value ?? ''
+    return date.toLocaleTimeString(undefined, {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    })
+  }
+
+  /** Short time without seconds: "14:30" */
+  function formatTimeShort(value: string): string {
+    const date = parseBackendTimestamp(value)
+    if (!date) return ''
+    return date.toLocaleTimeString(undefined, {
+      hour: '2-digit',
+      minute: '2-digit',
+    })
   }
 
   /** Compact timestamp for log rows: "Mar 28, 14:30:05" */
   function formatTimestamp(ts: string): string {
-    if (!ts) return ''
-    const d = new Date(ts + (ts.includes('Z') || ts.includes('+') ? '' : 'Z'))
-    return d.toLocaleString(locale.value, {
+    const date = parseBackendTimestamp(ts)
+    if (!date) return ''
+    return date.toLocaleString(undefined, {
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
@@ -62,6 +93,8 @@ export function useFormat() {
     formatCurrency,
     formatDateTime,
     formatDate,
+    formatTime,
+    formatTimeShort,
     formatTimestamp,
     formatDuration,
   }
