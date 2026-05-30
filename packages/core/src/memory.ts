@@ -745,7 +745,7 @@ export function readRecentDailyFiles(days: number = 3, memoryDir?: string): stri
  * minute. The minute-level time is appended to each user message instead (see
  * `formatCurrentTimeContext`).
  */
-export function getCurrentDateTimeParts(timezone?: string): { date: string; time: string; tz: string } {
+function getCurrentDateTimeParts(timezone?: string): { date: string; time: string; tz: string } {
   const tz = timezone || getDefaultTimezone()
   const now = new Date()
   const date = now.toLocaleDateString('en-CA', { timeZone: tz })
