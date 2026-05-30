@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawn, spawnSync } from 'node:child_process'
+import { createRequire } from 'node:module'
 import process from 'node:process'
 
 const rootDir = process.cwd()
@@ -23,12 +24,50 @@ process.env.JWT_SECRET ||= 'axiom-dev-secret-change-me'
 
 fs.mkdirSync(resolvedDataDir, { recursive: true })
 
+const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm'
+
+// Self-healing guard: native modules (e.g. better-sqlite3) are compiled against a
+// specific Node.js ABI (NODE_MODULE_VERSION). If they were installed under a different
+// Node version than the one running dev, loading them throws ERR_DLOPEN_FAILED.
+// Detect that up-front and rebuild automatically instead of crashing on first DB access.
+//
+// NOTE: better-sqlite3 loads its .node binary lazily on first `new Database()`, so just
+// requiring the package is not enough to surface an ABI mismatch — we must instantiate it.
+function ensureNativeModules() {
+  const require = createRequire(import.meta.url)
+  const probes = [
+    { mod: 'better-sqlite3', exercise: (m) => new m(':memory:').close() },
+  ]
+  for (const { mod, exercise } of probes) {
+    try {
+      exercise(require(mod))
+    } catch (err) {
+      const abiMismatch =
+        err?.code === 'ERR_DLOPEN_FAILED' || /NODE_MODULE_VERSION/.test(err?.message ?? '')
+      if (!abiMismatch) continue
+      console.log(
+        `[axiom] '${mod}' was built for a different Node.js version (running ${process.version}). Rebuilding...`,
+      )
+      const res = spawnSync(npmCmd, ['rebuild', mod], {
+        cwd: rootDir,
+        env: process.env,
+        stdio: 'inherit',
+      })
+      if (res.status !== 0) {
+        console.error(`[axiom] Failed to rebuild '${mod}'. Run: npm rebuild ${mod}`)
+        process.exit(res.status ?? 1)
+      }
+    }
+  }
+}
+
+ensureNativeModules()
+
 console.log('[axiom] Starting local dev environment...')
 console.log(`[axiom] DATA_DIR=${process.env.DATA_DIR}`)
 console.log(`[axiom] Backend:  http://localhost:${process.env.PORT}`)
 console.log('[axiom] Frontend: http://localhost:3001')
 
-const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm'
 const baseOpts = {
   cwd: rootDir,
   env: process.env,
