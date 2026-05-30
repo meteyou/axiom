@@ -379,7 +379,7 @@
         </div>
 
         <!-- OAuth Login Section -->
-        <div v-if="isOAuthProvider && (mode === 'create' || oauthInProgress)" class="flex flex-col gap-3">
+        <div v-if="isOAuthProvider && (mode === 'create' || oauthInProgress || oauthError)" class="flex flex-col gap-3">
           <!-- OAuth status messages -->
           <div v-if="oauthInProgress" class="rounded-md border border-border bg-muted/50 p-4">
             <div class="flex items-center gap-3">
@@ -424,20 +424,28 @@
 
         <DialogFooter class="!flex-row !justify-start items-center">
           <!-- Renew token button (left-aligned, only for OAuth edit mode) -->
-          <Button
-            v-if="isOAuthProvider && mode === 'edit'"
-            type="button"
-            variant="outline"
-            :disabled="oauthInProgress"
-            @click="startOAuthRenew"
-          >
-            <span
-              v-if="oauthInProgress"
-              class="mr-1.5 h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground"
-              aria-hidden="true"
-            />
-            {{ oauthInProgress ? $t('providers.oauthRenewing') : $t('providers.oauthRenewToken') }}
-          </Button>
+          <template v-if="isOAuthProvider && mode === 'edit'">
+            <Button
+              v-if="!oauthInProgress"
+              type="button"
+              variant="outline"
+              @click="startOAuthRenew"
+            >
+              {{ $t('providers.oauthRenewToken') }}
+            </Button>
+            <Button
+              v-else
+              type="button"
+              variant="outline"
+              @click="cancelOAuthRenew"
+            >
+              <span
+                class="mr-1.5 h-4 w-4 animate-spin rounded-full border-2 border-primary/30 border-t-primary"
+                aria-hidden="true"
+              />
+              {{ $t('providers.oauthCancelRenew') }}
+            </Button>
+          </template>
           <div class="flex-1" />
           <div class="flex items-center gap-2">
             <Button type="button" variant="outline" :disabled="oauthInProgress" @click="emit('close')">
@@ -1024,6 +1032,15 @@ function handleSubmit() {
     transport: normalizeTransportPayload(),
     enabledModels,
   })
+}
+
+function cancelOAuthRenew() {
+  // Stop the polling loop (it bails out on the next tick when this is false)
+  // and reset local OAuth state so the user can trigger a fresh renewal.
+  oauthInProgress.value = false
+  oauthLoginId.value = null
+  manualCode.value = ''
+  oauthError.value = null
 }
 
 async function startOAuthRenew() {

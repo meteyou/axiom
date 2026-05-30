@@ -169,6 +169,7 @@
     "oauthSubmitCode": "Submit",
     "oauthRenewToken": "Renew Token",
     "oauthRenewing": "Renewing...",
+    "oauthCancelRenew": "Cancel",
     "statusConnected": "Connected",
     "statusError": "Error",
     "statusUntested": "Untested",
