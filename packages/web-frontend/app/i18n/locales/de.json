@@ -169,6 +169,7 @@
     "oauthSubmitCode": "Absenden",
     "oauthRenewToken": "Token erneuern",
     "oauthRenewing": "Erneuere...",
+    "oauthCancelRenew": "Abbrechen",
     "statusConnected": "Verbunden",
     "statusError": "Fehler",
     "statusUntested": "Ungetestet",
