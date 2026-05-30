@@ -8,12 +8,12 @@ This page documents exactly how that prompt is built, what each block contains, 
 
 The prompt is rebuilt from scratch on **every turn** by [`assembleSystemPrompt()` in `packages/core/src/memory.ts`](https://github.com/meteyou/axiom/blob/main/packages/core/src/memory.ts). Each section is wrapped in an XML-style tag (`<personality>`, `<agent_rules>`, `<core_memory>`, …) so the model can clearly distinguish what each block is for.
 
-Most layers come straight from a Markdown file under `/data/memory/` or `/data/config/` (see [Container file paths](./../reference/file-paths)). A few are computed at request time (current datetime, the active tool list, the configured language). All of them are concatenated, separated by blank lines, and handed to the LLM as the `system` message.
+Most layers come straight from a Markdown file under `/data/memory/` or `/data/config/` (see [Container file paths](./../reference/file-paths)). A few are computed at request time (current date, the active tool list, the configured language). All of them are concatenated, separated by blank lines, and handed to the LLM as the `system` message.
 
 Because the prompt is rebuilt every turn:
 
 - **File edits take effect on the next message** — no restart, no reload step.
-- **The current date and time are always accurate** — `<current_datetime>` reflects "now" in the configured timezone.
+- **The current date is always accurate** — `<current_date>` reflects "today" in the configured timezone.
 - **Per-user blocks only appear when that user is talking** — multi-user setups stay clean.
 - **Disabled features drop out entirely** — if you have no skills installed, there is no `<available_skills>` block; if no provider is configured yet, there is no `<available_providers>` block.
 
@@ -118,11 +118,13 @@ See [Tasks & Cronjobs](./tasks-and-cronjobs).
 
 A one-liner declaring `/workspace` as the working directory for shell commands and relative paths. Anchors all file operations so they don't accidentally land in `/data` or the OS root. See [Container file paths → `/workspace`](./../reference/file-paths).
 
-### 16. `<current_datetime>`: current date and time
+### 16. `<current_date>`: current date
 
 *Always present.*
 
-The current date and time, formatted in the configured timezone. Computed at request time, so the agent always knows "now" — useful for cron creation, daily-note naming, "what day is it" questions, and any time-relative reasoning.
+The current **date** (day-granular), formatted in the configured timezone. Computed at request time, so the agent always knows "today" — useful for cron creation, daily-note naming, "what day is it" questions, and any date-relative reasoning.
+
+The minute-level **time** is deliberately *not* in the system prompt. It is appended to each **user message** as a small `<current_time>` block instead. Why: the system prompt is handed to the provider as a single cached prefix (Anthropic / OpenAI prompt caching). A minute-granular timestamp *inside* that prefix would change every minute and invalidate the whole cached block — system prompt, tool definitions, and conversation history — forcing an expensive cache re-write on almost every turn. Keeping the date (which only rolls over once per day) in the prompt and moving the precise time into the always-fresh user message preserves the cache while still giving the agent an accurate "now".
 
 ### 17. `<language>`: reply language
 

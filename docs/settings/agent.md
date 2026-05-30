@@ -29,7 +29,7 @@ Applies immediately on the next turn.
 
 ## Timezone
 
-The current date and time in this timezone are injected into the system prompt so the agent always knows "now". Also used for cron evaluation (Tasks & Heartbeat) and the naming of `memory/daily/<date>.md` files.
+The current date in this timezone is injected into the system prompt, and the minute-level time is appended to each user message, so the agent always knows "now" (the time is kept out of the system prompt to avoid invalidating provider prompt caches every minute — see [System Prompt → layer 16](../concepts/system-prompt#_16-current-date-current-date)). Also used for cron evaluation (Tasks & Heartbeat) and the naming of `memory/daily/<date>.md` files.
 
 Default: `UTC`. Mirrors the container's `TZ` env var if set.
 
