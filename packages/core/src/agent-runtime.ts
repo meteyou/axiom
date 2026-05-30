@@ -12,7 +12,7 @@ import type { ProviderConfig } from './provider-config.js'
 import type { ProviderManager } from './provider-manager.js'
 import type { SettingsThinkingLevel } from './contracts/settings.js'
 import { normalizeThinkingLevel } from './thinking-level.js'
-import { assembleSystemPrompt, ensureMemoryStructure, ensureConfigStructure } from './memory.js'
+import { assembleSystemPrompt, ensureMemoryStructure, ensureConfigStructure, formatCurrentTimeContext } from './memory.js'
 import type { SkillPromptEntry } from './memory.js'
 import { getWorkspaceDir } from './workspace.js'
 import { loadConfig, ensureConfigTemplates } from './config.js'
@@ -79,6 +79,7 @@ export interface AgentRuntimeOptions {
 export interface AgentRuntimeBoundary {
   streamPrompt(text: string, sessionId: string, images?: ImageContent[]): AsyncIterable<ResponseChunk>
   refreshSystemPrompt(channel?: string, currentUser?: { username: string }): void
+  getCurrentTimeContext(): string
   swapProvider(provider: ProviderConfig, apiKey: string, modelId?: string): void
   getProviderManager(): ProviderManager | undefined
   clearMessages(): void
@@ -502,6 +503,11 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
 
   refreshSystemPrompt(channel?: string, currentUser?: { username: string }): void {
     this.agent.state.systemPrompt = this.buildSystemPrompt(channel, currentUser)
+  }
+
+  getCurrentTimeContext(): string {
+    const { timezone } = this.readRuntimeSettings()
+    return formatCurrentTimeContext(timezone)
   }
 
   setThinkingLevel(level: SettingsThinkingLevel | string): void {

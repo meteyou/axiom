@@ -737,6 +737,34 @@ export function readRecentDailyFiles(days: number = 3, memoryDir?: string): stri
 }
 
 /**
+ * Compute the current date, time and timezone for prompt injection.
+ *
+ * Split intentionally: the `date` is day-granular and safe to embed in the
+ * cached system-prompt prefix, whereas `time` is minute-granular and must NOT
+ * go into the system prompt — it would invalidate provider prompt caches every
+ * minute. The minute-level time is appended to each user message instead (see
+ * `formatCurrentTimeContext`).
+ */
+export function getCurrentDateTimeParts(timezone?: string): { date: string; time: string; tz: string } {
+  const tz = timezone || getDefaultTimezone()
+  const now = new Date()
+  const date = now.toLocaleDateString('en-CA', { timeZone: tz })
+  const time = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: tz })
+  return { date, time, tz }
+}
+
+/**
+ * Build the per-message current-time context appended to each user message.
+ * Kept out of the (cached) system prompt so the prompt-cache prefix stays
+ * stable across turns — only this small, always-fresh block changes per turn,
+ * which the providers treat as new (uncached) content anyway.
+ */
+export function formatCurrentTimeContext(timezone?: string): string {
+  const { time, tz } = getCurrentDateTimeParts(timezone)
+  return `<current_time>Current time: ${time} (${tz})</current_time>`
+}
+
+/**
  * Assemble the full system prompt from all memory tiers
  */
 /**
@@ -1009,12 +1037,12 @@ When you receive a <task_injection> block (signalling a background-task result w
   const workspaceDir = getWorkspaceDir()
   sections.push(`<workspace>\nYour working directory is ${workspaceDir}. All shell commands execute in this directory by default.\nAll relative paths in read_file, write_file, and list_files resolve against this directory.\nUse this directory for cloning repos, creating files, and all file operations.\n</workspace>`)
 
-  // 14. Current date & time
-  const tz = options?.timezone || getDefaultTimezone()
-  const now = new Date()
-  const date = now.toLocaleDateString('en-CA', { timeZone: tz })
-  const time = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: tz })
-  sections.push(`<current_datetime>\nCurrent date: ${date}\nCurrent time: ${time} (${tz})\n</current_datetime>`)
+  // 14. Current date (date only — kept at day-granularity so the cached
+  // system-prompt prefix stays stable across turns. The precise minute-level
+  // time is appended to each user message instead via formatCurrentTimeContext(),
+  // which avoids invalidating provider prompt caches every minute.)
+  const { date, tz } = getCurrentDateTimeParts(options?.timezone)
+  sections.push(`<current_date>\nCurrent date: ${date} (${tz})\n</current_date>`)
 
   // 15. Language setting (placed near the end for recency: "respond in X" hits
   // the model right before it processes the user message).

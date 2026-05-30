@@ -262,7 +262,9 @@ export class AgentCore {
       }
     }
 
-    const enrichedText = fileHints.length > 0 ? `${text}\n\n${fileHints.join('\n')}` : text
+    const timeContext = this.runtime.getCurrentTimeContext()
+    const baseText = fileHints.length > 0 ? `${text}\n\n${fileHints.join('\n')}` : text
+    const enrichedText = `${baseText}\n\n${timeContext}`
     const parsedUserId = Number.parseInt(userId, 10)
     this.currentToolUserId = Number.isFinite(parsedUserId) ? parsedUserId : undefined
 
