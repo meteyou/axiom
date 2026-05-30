@@ -27,8 +27,8 @@ import type {
   ProviderOAuthLoginStartPayloadContract,
   ProviderUpdatePayloadContract,
 } from '@axiom/core/contracts'
-import { getOAuthProvider } from '@mariozechner/pi-ai/oauth'
-import type { OAuthCredentials } from '@mariozechner/pi-ai/oauth'
+import { getOAuthProvider } from '@earendil-works/pi-ai/oauth'
+import type { OAuthCredentials } from '@earendil-works/pi-ai/oauth'
 import {
   normalizeOllamaBaseUrl,
   OLLAMA_REQUEST_TIMEOUT_MS,
@@ -196,6 +196,12 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
           return prompt.placeholder ?? ''
         },
         onProgress: () => {},
+        onDeviceCode: (info) => {
+          loginState.authUrl = info.verificationUri
+          loginState.instructions = info.userCode
+          resolveAuthInfo({ url: info.verificationUri, instructions: info.userCode })
+        },
+        onSelect: async () => undefined,
         onManualCodeInput: oauthProvider.usesCallbackServer
           ? () =>
               new Promise<string>((resolve) => {

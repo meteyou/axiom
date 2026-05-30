@@ -1,4 +1,4 @@
-import type { ThinkingLevel as PiAiThinkingLevel } from '@mariozechner/pi-ai'
+import type { ThinkingLevel as PiAiThinkingLevel } from '@earendil-works/pi-ai'
 import { loadConfig } from './config.js'
 import { SETTINGS_THINKING_LEVELS } from './contracts/settings.js'
 import type { SettingsThinkingLevel } from './contracts/settings.js'

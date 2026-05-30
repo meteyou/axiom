@@ -1,8 +1,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { completeSimple } from '@mariozechner/pi-ai'
+import { completeSimple } from '@earendil-works/pi-ai'
 import { resolveBackgroundReasoning } from './thinking-level.js'
-import type { Api, Model, Context } from '@mariozechner/pi-ai'
+import type { Api, Model, Context } from '@earendil-works/pi-ai'
 import { getMemoryDir, ensureMemoryStructure, readMemoryFile, writeMemoryFile, readConsolidationFile } from './memory.js'
 
 export interface MemoryConsolidationOptions {

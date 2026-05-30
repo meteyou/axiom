@@ -44,7 +44,7 @@ import type {
   TaskRuntimeBoundary,
   TaskRuntimeTaskBoundary,
 } from '@axiom/core'
-import type { AgentTool } from '@mariozechner/pi-agent-core'
+import type { AgentTool } from '@earendil-works/pi-agent-core'
 import { randomUUID } from 'node:crypto'
 import { createTelegramBot } from '@axiom/telegram'
 import type { TelegramBot, TelegramChatEvent } from '@axiom/telegram'

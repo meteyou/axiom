@@ -13,7 +13,7 @@ vi.mock('./provider-config.js', async (importOriginal) => {
   }
 })
 
-vi.mock('@mariozechner/pi-agent-core', () => {
+vi.mock('@earendil-works/pi-agent-core', () => {
   return {
     Agent: vi.fn().mockImplementation(() => {
       let listener: ((event: unknown) => void) | null = null

@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach } from 'vitest'
 import { createReadChatHistoryTool } from './chat-history-tools.js'
 import { initDatabase } from './database.js'
 import type { Database } from './database.js'
-import type { AgentTool } from '@mariozechner/pi-agent-core'
+import type { AgentTool } from '@earendil-works/pi-agent-core'
 
 function insertMessage(
   db: Database,

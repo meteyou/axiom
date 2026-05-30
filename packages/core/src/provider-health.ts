@@ -1,7 +1,7 @@
 import type { Database } from './database.js'
 import type { ProviderConfig } from './provider-config.js'
 import { buildModel, getApiKeyForProvider, PROVIDER_TYPE_PRESETS, resolveModelTemperature } from './provider-config.js'
-import { completeSimple } from '@mariozechner/pi-ai'
+import { completeSimple } from '@earendil-works/pi-ai'
 
 export type ProviderHealthStatus = 'healthy' | 'degraded' | 'down' | 'unconfigured'
 

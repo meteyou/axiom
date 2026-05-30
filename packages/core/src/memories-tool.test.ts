@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import type { AgentTool } from '@mariozechner/pi-agent-core'
+import type { AgentTool } from '@earendil-works/pi-agent-core'
 import { initDatabase } from './database.js'
 import type { Database } from './database.js'
 import { createMemory } from './memories-store.js'

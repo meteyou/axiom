@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import nodePath from 'node:path'
-import type { Agent as PiAgent } from '@mariozechner/pi-agent-core'
-import type { Api, ImageContent, Model } from '@mariozechner/pi-ai'
-import { completeSimple } from '@mariozechner/pi-ai'
+import type { Agent as PiAgent } from '@earendil-works/pi-agent-core'
+import type { Api, ImageContent, Model } from '@earendil-works/pi-ai'
+import { completeSimple } from '@earendil-works/pi-ai'
 import type { Database } from './database.js'
 import { getApiKeyForProvider, buildModel, resolveModelTemperature } from './provider-config.js'
 import type { ProviderConfig } from './provider-config.js'
@@ -27,7 +27,7 @@ export interface AgentCoreOptions {
   apiKey: string
   db: Database
   systemPrompt?: string
-  tools?: import('@mariozechner/pi-agent-core').AgentTool[]
+  tools?: import('@earendil-works/pi-agent-core').AgentTool[]
   memoryDir?: string
   sessionTimeoutMinutes?: number
   baseInstructions?: string

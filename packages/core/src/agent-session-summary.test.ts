@@ -73,7 +73,7 @@ vi.mock('./token-logger.js', () => ({
 }))
 
 // Mock pi-ai completeSimple so we can control LLM responses
-vi.mock('@mariozechner/pi-ai', async (importOriginal) => {
+vi.mock('@earendil-works/pi-ai', async (importOriginal) => {
   const original = await importOriginal() as Record<string, unknown>
   return {
     ...original,
@@ -87,7 +87,7 @@ vi.mock('@mariozechner/pi-ai', async (importOriginal) => {
 import { AgentCore } from './agent.js'
 import { initDatabase } from './database.js'
 import type { Database } from './database.js'
-import { completeSimple } from '@mariozechner/pi-ai'
+import { completeSimple } from '@earendil-works/pi-ai'
 import { appendToDailyFile } from './memory.js'
 
 const mockCompleteSimple = vi.mocked(completeSimple)

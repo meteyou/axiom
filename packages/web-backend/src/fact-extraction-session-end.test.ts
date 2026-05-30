@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { Api, Model } from '@mariozechner/pi-ai'
+import type { Api, Model } from '@earendil-works/pi-ai'
 import { initDatabase } from '@axiom/core'
 import type { Database, ProviderConfig } from '@axiom/core'
 import {
