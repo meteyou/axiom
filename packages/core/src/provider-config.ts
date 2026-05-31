@@ -145,10 +145,6 @@ export const PROVIDER_TYPE_PRESETS: Record<ProviderType, ProviderTypePreset> = {
     baseUrl: 'https://api.moonshot.ai/v1',
     requiresApiKey: true,
     urlEditable: false,
-    // The Moonshot Platform catalog is maintained locally in
-    // PROVIDER_TYPE_MODEL_OVERRIDES below because pi-ai's `kimi-coding`
-    // provider targets a different endpoint (api.kimi.com/coding,
-    // anthropic-messages) and does not list the platform models.
     piAiProvider: null,
     authMethod: 'api-key',
   },
@@ -174,10 +170,6 @@ export const PROVIDER_TYPE_PRESETS: Record<ProviderType, ProviderTypePreset> = {
     piAiProvider: 'zai',
     authMethod: 'api-key',
   },
-  // xAI (Grok). OpenAI-compatible wire format; the model catalog (Grok 4.3,
-  // Grok Build 0.1, Grok 3, …) is resolved from pi-ai's maintained `xai`
-  // provider so it tracks xAI's releases and retirements without a frozen
-  // local list.
   xai: {
     type: 'xai',
     label: 'xAI (Grok)',
@@ -200,20 +192,6 @@ export const PROVIDER_TYPE_PRESETS: Record<ProviderType, ProviderTypePreset> = {
     piAiProvider: null,
     authMethod: 'api-key',
   },
-  // Generic OpenAI-compatible endpoint. Lets users plug in any service that
-  // speaks the OpenAI chat-completions wire format (NVIDIA NIM, LM Studio,
-  // vLLM, Cloudflare AI Gateway, custom deployments, …) without requiring a
-  // dedicated preset in source. The user supplies a base URL, display name,
-  // optional API key, and free-text model ids.
-  //
-  // Notes:
-  //  - `piAiProvider: null` so we never try to resolve a model catalog from
-  //    pi-ai; the UI renders a free-text model input instead.
-  //  - `requiresApiKey: false` because some self-hosted compatible servers
-  //    (LM Studio, vLLM, local proxies) accept any/no key; users that need
-  //    one (e.g. NVIDIA NIM) just enter it manually.
-  //  - `urlEditable: true` because the entire point of this type is a
-  //    user-supplied endpoint.
   'openai-compatible': {
     type: 'openai-compatible',
     label: 'OpenAI-compatible (custom)',
@@ -314,7 +292,6 @@ export const PROVIDER_TYPE_MODEL_OVERRIDES: Partial<Record<ProviderType, Provide
   ],
   // Moonshot Platform API (https://platform.moonshot.ai)
   // Confirmed via GET https://api.moonshot.ai/v1/models and official pricing docs.
-  // Pricing in USD per 1M tokens.
   kimi: [
     // Current K2 family
     // Note: K2 reasoning models only accept `temperature: 1` (the upstream API
