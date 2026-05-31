@@ -14,6 +14,20 @@
 - When changing module structure or refactoring boundaries, align with this document and run:
   - `npm run baseline:parity`
 
+## Code Comments
+
+Prefer self-documenting code. Keep inline comments rare.
+
+Do **not** add comments that merely restate what the code/configuration already says, explain straightforward provider presets, list obvious field meanings, or pre-justify ordinary implementation choices. If a detail is clear from names, types, tests, docs, or the PR description, omit the comment.
+
+Only add a code comment when it prevents a likely bug or preserves non-obvious operational knowledge, for example:
+
+- a temporary hack/workaround, with why it exists and when it can be removed
+- a security, data-loss, migration, concurrency, caching, or compatibility invariant that is not obvious from the code
+- an upstream API quirk/bug/constraint that would otherwise look wrong and be “cleaned up” incorrectly
+
+Comments should explain **why**, not **what**. Keep them short, and remove stale comments when touching nearby code. When in doubt, do not add a comment; put broader rationale in the PR description or `agent_docs/` instead.
+
 ## Code-Quality Tooling: Fallow
 
 This repo uses [Fallow](https://github.com/fallow-rs/fallow) — a Rust-native, zero-config
