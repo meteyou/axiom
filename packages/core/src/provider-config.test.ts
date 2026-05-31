@@ -645,6 +645,19 @@ describe('provider CRUD', () => {
     expect(provider.baseUrl).toBe('https://api.moonshot.ai/v1')
   })
 
+  it('addProvider sets xai base URL and OpenAI-compatible api type', () => {
+    setupEmpty()
+    const provider = addProvider({
+      name: 'Grok',
+      providerType: 'xai',
+      apiKey: 'xai-key',
+      defaultModel: 'grok-4.3',
+    })
+    expect(provider.baseUrl).toBe('https://api.x.ai/v1')
+    expect(provider.type).toBe('openai-completions')
+    expect(provider.provider).toBe('xai')
+  })
+
   it('addProvider rejects duplicate name', () => {
     setupEmpty()
     addProvider({ name: 'test', providerType: 'openai', apiKey: 'sk-1', defaultModel: 'gpt-4o' })
@@ -950,6 +963,17 @@ describe('getAvailableModels', () => {
     const models = getAvailableModels('minimax')
     expect(models.length).toBeGreaterThan(0)
     expect(models.some(m => m.id.startsWith('MiniMax-M2.'))).toBe(true)
+  })
+
+  it('returns Grok models for xai provider type', () => {
+    const models = getAvailableModels('xai')
+    expect(models.length).toBeGreaterThan(0)
+    // The catalog is sourced from pi-ai's maintained `xai` provider, so we
+    // assert on stable family ids rather than a frozen list.
+    expect(models.every(m => m.id.startsWith('grok-'))).toBe(true)
+    const ids = models.map(m => m.id)
+    expect(ids).toContain('grok-3')
+    expect(ids).toContain('grok-4.3')
   })
 
   it('returns Moonshot platform models for kimi (local override, not pi-ai)', () => {

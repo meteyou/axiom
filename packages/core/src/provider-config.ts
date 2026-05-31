@@ -18,7 +18,7 @@ const CLAUDE_CODE_VERSION = '2.1.96'
  * Supported provider types with presets
  */
 export type ProviderType =
-  | 'openai' | 'anthropic' | 'mistral' | 'ollama' | 'openrouter' | 'deepseek' | 'kimi' | 'minimax' | 'zai' | 'opencode-go' | 'openai-compatible' | 'google'
+  | 'openai' | 'anthropic' | 'mistral' | 'ollama' | 'openrouter' | 'deepseek' | 'kimi' | 'minimax' | 'zai' | 'xai' | 'opencode-go' | 'openai-compatible' | 'google'
   // Legacy aliases kept for migration
   | 'ollama-local' | 'ollama-cloud'
   | 'openai-codex' | 'github-copilot' | 'anthropic-oauth'
@@ -145,10 +145,6 @@ export const PROVIDER_TYPE_PRESETS: Record<ProviderType, ProviderTypePreset> = {
     baseUrl: 'https://api.moonshot.ai/v1',
     requiresApiKey: true,
     urlEditable: false,
-    // The Moonshot Platform catalog is maintained locally in
-    // PROVIDER_TYPE_MODEL_OVERRIDES below because pi-ai's `kimi-coding`
-    // provider targets a different endpoint (api.kimi.com/coding,
-    // anthropic-messages) and does not list the platform models.
     piAiProvider: null,
     authMethod: 'api-key',
   },
@@ -174,6 +170,17 @@ export const PROVIDER_TYPE_PRESETS: Record<ProviderType, ProviderTypePreset> = {
     piAiProvider: 'zai',
     authMethod: 'api-key',
   },
+  xai: {
+    type: 'xai',
+    label: 'xAI (Grok)',
+    apiType: 'openai-completions',
+    providerName: 'xai',
+    baseUrl: 'https://api.x.ai/v1',
+    requiresApiKey: true,
+    urlEditable: false,
+    piAiProvider: 'xai',
+    authMethod: 'api-key',
+  },
   'opencode-go': {
     type: 'opencode-go',
     label: 'OpenCode Go',
@@ -185,20 +192,6 @@ export const PROVIDER_TYPE_PRESETS: Record<ProviderType, ProviderTypePreset> = {
     piAiProvider: null,
     authMethod: 'api-key',
   },
-  // Generic OpenAI-compatible endpoint. Lets users plug in any service that
-  // speaks the OpenAI chat-completions wire format (NVIDIA NIM, LM Studio,
-  // vLLM, Cloudflare AI Gateway, custom deployments, …) without requiring a
-  // dedicated preset in source. The user supplies a base URL, display name,
-  // optional API key, and free-text model ids.
-  //
-  // Notes:
-  //  - `piAiProvider: null` so we never try to resolve a model catalog from
-  //    pi-ai; the UI renders a free-text model input instead.
-  //  - `requiresApiKey: false` because some self-hosted compatible servers
-  //    (LM Studio, vLLM, local proxies) accept any/no key; users that need
-  //    one (e.g. NVIDIA NIM) just enter it manually.
-  //  - `urlEditable: true` because the entire point of this type is a
-  //    user-supplied endpoint.
   'openai-compatible': {
     type: 'openai-compatible',
     label: 'OpenAI-compatible (custom)',
@@ -299,7 +292,6 @@ export const PROVIDER_TYPE_MODEL_OVERRIDES: Partial<Record<ProviderType, Provide
   ],
   // Moonshot Platform API (https://platform.moonshot.ai)
   // Confirmed via GET https://api.moonshot.ai/v1/models and official pricing docs.
-  // Pricing in USD per 1M tokens.
   kimi: [
     // Current K2 family
     // Note: K2 reasoning models only accept `temperature: 1` (the upstream API
