@@ -18,7 +18,7 @@ const CLAUDE_CODE_VERSION = '2.1.96'
  * Supported provider types with presets
  */
 export type ProviderType =
-  | 'openai' | 'anthropic' | 'mistral' | 'ollama' | 'openrouter' | 'deepseek' | 'kimi' | 'minimax' | 'zai' | 'opencode-go' | 'openai-compatible' | 'google'
+  | 'openai' | 'anthropic' | 'mistral' | 'ollama' | 'openrouter' | 'deepseek' | 'kimi' | 'minimax' | 'zai' | 'xai' | 'opencode-go' | 'openai-compatible' | 'google'
   // Legacy aliases kept for migration
   | 'ollama-local' | 'ollama-cloud'
   | 'openai-codex' | 'github-copilot' | 'anthropic-oauth'
@@ -172,6 +172,21 @@ export const PROVIDER_TYPE_PRESETS: Record<ProviderType, ProviderTypePreset> = {
     requiresApiKey: true,
     urlEditable: false,
     piAiProvider: 'zai',
+    authMethod: 'api-key',
+  },
+  // xAI (Grok). OpenAI-compatible wire format; the model catalog (Grok 4.3,
+  // Grok Build 0.1, Grok 3, …) is resolved from pi-ai's maintained `xai`
+  // provider so it tracks xAI's releases and retirements without a frozen
+  // local list.
+  xai: {
+    type: 'xai',
+    label: 'xAI (Grok)',
+    apiType: 'openai-completions',
+    providerName: 'xai',
+    baseUrl: 'https://api.x.ai/v1',
+    requiresApiKey: true,
+    urlEditable: false,
+    piAiProvider: 'xai',
     authMethod: 'api-key',
   },
   'opencode-go': {
