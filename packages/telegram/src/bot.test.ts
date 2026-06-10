@@ -18,6 +18,8 @@ vi.mock('grammy', () => {
       username: 'test_bot',
     }),
     sendMessage: vi.fn().mockResolvedValue({ message_id: 1 }),
+    deleteWebhook: vi.fn().mockResolvedValue(true),
+    setMyCommands: vi.fn().mockResolvedValue(true),
   }
 
   const MockBot = vi.fn().mockImplementation(() => ({

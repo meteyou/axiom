@@ -37,6 +37,9 @@ import type { UploadDescriptor } from '@axiom/core'
 const PICKER_CALLBACK_PREFIX = 'pick:'
 const PICKER_TOKEN_TTL_MS = 10 * 60 * 1000 // 10 minutes
 
+const POLLING_RETRY_INITIAL_MS = 5_000
+const POLLING_RETRY_MAX_MS = 60_000
+
 /**
  * Telegram config stored in /data/config/telegram.json
  */
@@ -351,6 +354,8 @@ export class TelegramBot {
   private db: Database | null
   private config: TelegramConfig
   private running = false
+  private pollingRetryTimer: ReturnType<typeof setTimeout> | null = null
+  private pollingRetryDelayMs = POLLING_RETRY_INITIAL_MS
   private chatStates = new Map<string, ChatState>()
   private onQueueDepthChanged?: (queueDepth: number) => void
   private onChatEvent?: (event: TelegramChatEvent) => void
@@ -1416,14 +1421,16 @@ export class TelegramBot {
         console.warn('[telegram] setMyCommands failed (menu may be missing):', (err as Error).message)
       }
 
-      // Start polling
+      // A leftover webhook registration makes getUpdates fail with 409,
+      // so always clear it before switching to polling.
+      try {
+        await this.bot.api.deleteWebhook({ drop_pending_updates: true })
+      } catch (err) {
+        console.warn('[telegram] deleteWebhook failed (continuing):', (err as Error).message)
+      }
+
       this.running = true
-      this.bot.start({
-        onStart: () => {
-          console.log('🤖 Telegram bot started in polling mode')
-        },
-        drop_pending_updates: true,
-      })
+      this.startPolling()
     } catch (err) {
       this.running = false
       if (err instanceof GrammyError) {
@@ -1433,10 +1440,58 @@ export class TelegramBot {
     }
   }
 
+  /**
+   * grammY rethrows 401/409 out of its polling loop instead of retrying, and
+   * `bot.start()` resolves only when the bot stops — so its rejection must be
+   * handled here or it crashes the whole process as an unhandled rejection.
+   * 409 Conflict is usually transient (the previous instance's long poll is
+   * still open right after a restart), so we retry with backoff instead of
+   * letting the server die and crash-loop the container.
+   */
+  private startPolling(): void {
+    Promise.resolve(
+      this.bot.start({
+        onStart: () => {
+          this.pollingRetryDelayMs = POLLING_RETRY_INITIAL_MS
+          console.log('🤖 Telegram bot started in polling mode')
+        },
+        drop_pending_updates: true,
+      }),
+    ).catch((err: unknown) => this.handlePollingFailure(err))
+  }
+
+  private handlePollingFailure(err: unknown): void {
+    if (!this.running) return
+
+    if (err instanceof GrammyError && err.error_code === 401) {
+      this.running = false
+      console.error('[telegram] Bot token rejected (401 Unauthorized) — Telegram bot stopped. Update the token in Settings.')
+      return
+    }
+
+    const reason = err instanceof GrammyError
+      ? `${err.error_code}: ${err.description}`
+      : (err as Error)?.message ?? String(err)
+    const delayMs = this.pollingRetryDelayMs
+    this.pollingRetryDelayMs = Math.min(this.pollingRetryDelayMs * 2, POLLING_RETRY_MAX_MS)
+    console.warn(`[telegram] Polling stopped (${reason}) — restarting in ${Math.round(delayMs / 1000)}s...`)
+
+    this.pollingRetryTimer = setTimeout(() => {
+      this.pollingRetryTimer = null
+      if (!this.running) return
+      this.startPolling()
+    }, delayMs)
+    this.pollingRetryTimer.unref?.()
+  }
+
   async stop(): Promise<void> {
     if (!this.running) return
 
     this.running = false
+    if (this.pollingRetryTimer) {
+      clearTimeout(this.pollingRetryTimer)
+      this.pollingRetryTimer = null
+    }
     try {
       await this.bot.stop()
     } catch (err) {
