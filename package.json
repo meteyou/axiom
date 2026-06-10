@@ -28,7 +28,7 @@
     "verify:critical-flows": "npm run baseline:smoke && vitest run packages/web-backend/src/api/modules/tasks/route.test.ts packages/web-backend/src/cronjobs.test.ts",
     "baseline:parity": "npm run lint:boundaries && npm run baseline:unit && npm run baseline:api && npm run verify:critical-flows",
     "smoke:agent": "tsx packages/core/test-agent.ts",
-    "clean": "rm -rf packages/*/dist",
+    "clean": "rm -rf packages/*/dist packages/*/*.tsbuildinfo",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs"

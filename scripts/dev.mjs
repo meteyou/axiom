@@ -130,6 +130,17 @@ const distHasJs = (dir) => {
 for (const pkg of ['packages/core', 'packages/telegram']) {
   const pkgDist = path.join(rootDir, pkg, 'dist')
   if (distHasJs(pkgDist)) continue
+
+  // A stale .tsbuildinfo with an empty dist/ (e.g. after `npm run clean`) makes
+  // tsc believe everything is up to date and emit nothing — the "build" then
+  // succeeds but dist/ stays empty and the backend crashes on import.
+  for (const entry of fs.readdirSync(path.join(rootDir, pkg))) {
+    if (entry.endsWith('.tsbuildinfo')) {
+      fs.rmSync(path.join(rootDir, pkg, entry), { force: true })
+      console.log(`[axiom] Removed stale ${pkg}/${entry}`)
+    }
+  }
+
   console.log(`[axiom] Initial build: ${pkg}`)
   const res = spawnSync(npmCmd, ['run', 'build', `--workspace=${pkg}`], {
     cwd: rootDir,
@@ -139,6 +150,10 @@ for (const pkg of ['packages/core', 'packages/telegram']) {
   if (res.status !== 0) {
     console.error(`[axiom] Initial build failed for ${pkg}`)
     process.exit(res.status ?? 1)
+  }
+  if (!distHasJs(pkgDist)) {
+    console.error(`[axiom] Build of ${pkg} produced no JS in dist/. Try: npm run clean && npm run dev`)
+    process.exit(1)
   }
 }
 
