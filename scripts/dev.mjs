@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import net from 'node:net'
 import path from 'node:path'
 import { spawn, spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
@@ -62,6 +63,38 @@ function ensureNativeModules() {
 }
 
 ensureNativeModules()
+
+// Children are spawned detached (own process groups); if a previous dev run was
+// killed hard (SIGKILL, terminal crash), orphans can survive and keep holding
+// the ports — the next start then fails with confusing EADDRINUSE errors deep
+// inside backend/Nuxt. Fail fast with an actionable message instead.
+function checkPortFree(port) {
+  return new Promise((resolve) => {
+    const probe = net.createServer()
+    probe.unref()
+    probe.once('error', () => resolve(false))
+    // Bind 0.0.0.0 like the real services do — a 127.0.0.1 probe misses
+    // listeners bound to all interfaces.
+    probe.listen({ port, host: '0.0.0.0' }, () => {
+      probe.close(() => resolve(true))
+    })
+  })
+}
+
+const requiredPorts = [
+  { port: Number(process.env.PORT), name: 'backend' },
+  { port: 3001, name: 'frontend' },
+]
+for (const { port, name } of requiredPorts) {
+  if (await checkPortFree(port)) continue
+  console.error(`[axiom] Port ${port} (${name}) is already in use — probably a leftover dev process.`)
+  const lsof = spawnSync('lsof', ['-nP', `-iTCP:${port}`], { encoding: 'utf8' })
+  if (lsof.stdout?.trim()) {
+    console.error(lsof.stdout.trim())
+    console.error(`[axiom] Kill it with: kill $(lsof -t -iTCP:${port})`)
+  }
+  process.exit(1)
+}
 
 console.log('[axiom] Starting local dev environment...')
 console.log(`[axiom] DATA_DIR=${process.env.DATA_DIR}`)
