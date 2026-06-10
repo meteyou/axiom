@@ -47,6 +47,7 @@ export async function startBackendServer(options: StartBackendServerOptions = {}
   }
 
   if (options.installSignalHandlers ?? true) {
+    installUnhandledRejectionGuard(logger)
     installShutdownSignalHandlers({
       stop,
       logger,
@@ -60,6 +61,15 @@ export async function startBackendServer(options: StartBackendServerOptions = {}
     port: httpBoundary.port,
     stop,
   }
+}
+
+// Node's default since v15 is to exit on unhandled rejections, which turns any
+// missed `.catch()` in a background service into a container crash-loop
+// (restart: unless-stopped). Log loudly and keep serving instead.
+function installUnhandledRejectionGuard(logger: Pick<typeof console, 'error'>): void {
+  process.on('unhandledRejection', (reason) => {
+    logger.error('[axiom] Unhandled promise rejection (continuing):', reason)
+  })
 }
 
 interface InstallShutdownSignalHandlersOptions {
