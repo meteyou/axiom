@@ -62,8 +62,19 @@ export async function startHttpBoundary(
   const { wss: _logsWss, broadcast: broadcastLog } = setupWebSocketLogs(server)
   void broadcastLog
 
-  await new Promise<void>((resolve) => {
-    server.listen(options.port, options.host, resolve)
+  await new Promise<void>((resolve, reject) => {
+    const onError = (err: NodeJS.ErrnoException) => {
+      if (err.code === 'EADDRINUSE') {
+        reject(new Error(`Port ${options.port} on ${options.host} is already in use — is another Axiom instance running?`))
+        return
+      }
+      reject(err)
+    }
+    server.once('error', onError)
+    server.listen(options.port, options.host, () => {
+      server.off('error', onError)
+      resolve()
+    })
   })
 
   const address = server.address()
