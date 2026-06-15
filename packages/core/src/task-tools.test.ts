@@ -98,7 +98,9 @@ describe('createTaskTool', () => {
     runner.dispose()
     db.close()
     for (const f of tmpFiles) {
-      try { fs.unlinkSync(f) } catch { }
+      try { fs.unlinkSync(f) } catch {
+        // Cleanup failures should not mask the test result.
+      }
     }
     tmpFiles.length = 0
   })

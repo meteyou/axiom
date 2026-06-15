@@ -1725,7 +1725,9 @@ describe('TaskRunner', () => {
       } else {
         process.env.DATA_DIR = originalDataDir
       }
-      try { fs.rmSync(configTmpDir, { recursive: true, force: true }) } catch {}
+      try { fs.rmSync(configTmpDir, { recursive: true, force: true }) } catch {
+        // Cleanup failures should not mask the test result.
+      }
     })
 
     async function captureSystemPromptForTask(): Promise<string> {
