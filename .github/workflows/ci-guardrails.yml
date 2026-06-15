@@ -34,11 +34,8 @@ jobs:
       - name: Install dependencies
         run: npm ci --include=dev
 
-      - name: Lint (full eslint)
+      - name: Lint
         run: npm run lint
-
-      - name: Lint boundaries
-        run: npm run lint:boundaries
 
       - name: Baseline unit checks
         run: npm run baseline:unit

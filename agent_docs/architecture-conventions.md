@@ -52,7 +52,7 @@ route -> controller -> service -> schema/mapper
 
 ## 5) Enforceable Rules
 
-Rules are enforced via `eslint.boundaries.config.js`:
+Rules are enforced by the default ESLint config (`eslint.config.js`):
 
 - Package boundaries
 - Backend layer boundaries (`route/controller/service/schema|mapper`)
@@ -62,7 +62,7 @@ Rules are enforced via `eslint.boundaries.config.js`:
 Lint command:
 
 ```bash
-npm run lint:boundaries
+npm run lint
 ```
 
 ## 6) Verification Baseline
@@ -93,7 +93,7 @@ Workflow: `.github/workflows/ci-guardrails.yml`
 
 The workflow runs on `pull_request` (against `main`) and `push` to `main` and executes:
 
-1. `npm run lint:boundaries`
+1. `npm run lint`
 2. `npm run baseline:unit`
 3. `npm run baseline:api`
 4. `npm run verify:critical-flows`
