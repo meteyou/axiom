@@ -173,6 +173,13 @@
     "statusConnected": "Verbunden",
     "statusError": "Fehler",
     "statusUntested": "Ungetestet",
+    "quota": {
+      "unavailable": "Kontingent nicht verfügbar",
+      "rateLimited": "Rate-Limit — bitte gleich erneut versuchen",
+      "refresh": "Kontingent aktualisieren",
+      "refreshing": "Aktualisiere...",
+      "refreshSuccess": "Kontingent aktualisiert"
+    },
     "testConnection": "Verbindung testen",
     "testing": "Teste...",
     "testSuccess": "Verbindung erfolgreich",

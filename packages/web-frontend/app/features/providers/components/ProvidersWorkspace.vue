@@ -92,7 +92,36 @@
                     </div>
                   </TableCell>
                   <TableCell />
-                  <TableCell />
+                  <TableCell>
+                    <div v-if="isRefreshingQuota(provider.id)" class="flex items-center gap-1.5">
+                      <span
+                        class="h-3.5 w-3.5 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent"
+                        aria-hidden="true"
+                      />
+                      <span class="text-xs text-muted-foreground">{{ $t('providers.quota.refreshing') }}</span>
+                    </div>
+                    <div v-else-if="getQuota(provider)" class="flex flex-col gap-0.5 text-xs">
+                      <span
+                        v-if="getQuota(provider)!.error"
+                        class="text-muted-foreground"
+                        :title="getQuota(provider)!.error ?? undefined"
+                      >
+                        {{ quotaErrorLabel(getQuota(provider)!.error) }}
+                      </span>
+                      <template v-else>
+                        <div
+                          v-for="part in quotaParts(getQuota(provider)!)"
+                          :key="part.label"
+                          class="flex items-center gap-1 whitespace-nowrap"
+                        >
+                          <span class="font-medium" :class="quotaColorClass(part.utilization)">
+                            {{ part.label }} {{ part.utilization }}%
+                          </span>
+                          <span v-if="part.reset" class="text-muted-foreground">({{ part.reset }})</span>
+                        </div>
+                      </template>
+                    </div>
+                  </TableCell>
                   <TableCell class="text-right" @click.stop>
                     <DropdownMenu>
                       <DropdownMenuTrigger as-child>
@@ -104,6 +133,14 @@
                         <DropdownMenuItem @click="openEdit(provider)">
                           <AppIcon name="edit" class="h-4 w-4" />
                           {{ $t('users.edit') }}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                            v-if="isAnthropicOAuth(provider)"
+                            :disabled="isRefreshingQuota(provider.id)"
+                            @click="handleRefreshQuota(provider.id)"
+                        >
+                          <AppIcon name="refresh" class="h-4 w-4" />
+                          {{ $t('providers.quota.refresh') }}
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
@@ -263,6 +300,7 @@ import type { ProviderFormPayload } from '~/components/ProviderFormDialog.vue'
 import { useProviders } from '~/features/providers/composables/useProviders'
 
 const { t } = useI18n()
+const { quotaColorClass, formatQuotaResetRelative, formatQuotaResetNice } = useQuotaFormat()
 
 const {
   providers,
@@ -280,8 +318,11 @@ const {
   deleteProvider,
   testProvider,
   activateProvider,
+  refreshQuota,
   setFallbackProvider,
 } = useProviders()
+
+const refreshingQuotaIds = ref<Set<string>>(new Set())
 
 /* ── State ── */
 const showForm = ref(false)
@@ -295,14 +336,91 @@ const sortedProviders = computed(() =>
   [...providers.value].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })),
 )
 
+const QUOTA_REFRESH_MS = 60_000
+let quotaRefreshTimer: ReturnType<typeof setInterval> | null = null
+
 onMounted(() => {
   fetchProviders()
+  quotaRefreshTimer = setInterval(() => {
+    fetchProviders()
+  }, QUOTA_REFRESH_MS)
+})
+
+onUnmounted(() => {
+  if (quotaRefreshTimer) {
+    clearInterval(quotaRefreshTimer)
+    quotaRefreshTimer = null
+  }
 })
 
 /* ── Helpers ── */
 function getTypeLabel(providerType: string): string {
   const preset = presets.value[providerType]
   return preset?.label ?? providerType
+}
+
+type QuotaBucket = { utilization: number; resetsAt: string | null }
+type ProviderQuota = NonNullable<Provider['quota']>
+
+function isAnthropicOAuth(provider: Provider): boolean {
+  return provider.authMethod === 'oauth' && provider.providerType === 'anthropic-oauth'
+}
+
+function getQuota(provider: Provider): ProviderQuota | null {
+  if (!isAnthropicOAuth(provider)) {
+    return null
+  }
+  return provider.quota ?? null
+}
+
+function isRefreshingQuota(providerId: string): boolean {
+  return refreshingQuotaIds.value.has(providerId)
+}
+
+function quotaErrorLabel(rawError?: string): string {
+  if (rawError && /\b429\b/.test(rawError)) {
+    return t('providers.quota.rateLimited')
+  }
+  return t('providers.quota.unavailable')
+}
+
+async function handleRefreshQuota(providerId: string) {
+  if (refreshingQuotaIds.value.has(providerId)) return
+  refreshingQuotaIds.value = new Set(refreshingQuotaIds.value).add(providerId)
+  try {
+    const ok = await refreshQuota(providerId)
+    if (ok) {
+      const refreshed = providers.value.find(p => p.id === providerId)
+      const quotaError = refreshed?.quota?.error
+      if (quotaError) {
+        error.value = quotaErrorLabel(quotaError)
+      } else {
+        successMessage.value = t('providers.quota.refreshSuccess')
+        autoHideSuccess()
+      }
+    }
+  } finally {
+    const next = new Set(refreshingQuotaIds.value)
+    next.delete(providerId)
+    refreshingQuotaIds.value = next
+  }
+}
+
+type QuotaBucketSpec = { label: string; bucket: QuotaBucket | null; format: (resetsAt: string | null) => string }
+
+function quotaParts(quota: ProviderQuota): Array<{ label: string; utilization: number; reset: string }> {
+  const buckets: QuotaBucketSpec[] = [
+    { label: '5h:', bucket: quota.fiveHour, format: formatQuotaResetRelative },
+    { label: '7d:', bucket: quota.sevenDay, format: formatQuotaResetNice },
+    { label: 'Opus:', bucket: quota.sevenDayOpus, format: () => '' },
+  ]
+  return buckets
+    .filter((entry): entry is QuotaBucketSpec & { bucket: QuotaBucket } => entry.bucket != null)
+    .map((entry) => ({
+      label: entry.label,
+      utilization: entry.bucket.utilization,
+      reset: entry.format(entry.bucket.resetsAt),
+    }))
 }
 
 function getStatusVariant(status?: string): 'success' | 'destructive' | 'muted' {
