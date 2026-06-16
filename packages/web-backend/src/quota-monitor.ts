@@ -61,6 +61,8 @@ export class QuotaMonitorService {
     }
   }
 
+  // Consumed via the http-boundary `getQuotaSnapshot` arrow wrapper, which Fallow cannot trace statically.
+  // fallow-ignore-next-line unused-class-member
   getSnapshot(): Record<string, AnthropicQuotaContract> {
     return Object.fromEntries(this.cache)
   }
@@ -69,7 +71,10 @@ export class QuotaMonitorService {
    * Force an immediate, on-demand usage fetch for a single provider, bypassing
    * the rate-limit backoff. Returns the resulting cached snapshot (or null if
    * the provider no longer exists / is not an Anthropic OAuth subscriber).
+   *
+   * Consumed via the http-boundary `refreshQuota` arrow wrapper, which Fallow cannot trace statically.
    */
+  // fallow-ignore-next-line unused-class-member
   async refreshProvider(providerId: string): Promise<AnthropicQuotaContract | null> {
     const provider = this.loadOAuthProviders().find((p) => p.id === providerId)
     if (!provider) return null
