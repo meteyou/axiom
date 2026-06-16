@@ -1,10 +1,21 @@
+import type { ProviderQuotaWindowContract } from '@axiom/core/contracts'
+
+export interface QuotaDisplayPart {
+  key: string
+  label: string
+  utilization: number
+  colorClass: string
+  reset: string
+}
+
 /**
- * Shared formatting helpers for Anthropic subscriber quota display.
+ * Shared formatting helpers for subscriber usage quota display.
  *
  * Centralises the colour thresholds and reset-time formatting used by both the
- * providers table and the global top bar so the two views stay consistent.
- * Date/time output follows the user's browser/OS regional settings (the
- * `undefined` locale), matching `useFormat`.
+ * providers table and the global top bar so the two views stay consistent
+ * across every quota provider (Anthropic, OpenAI Codex, …). Date/time output
+ * follows the user's browser/OS regional settings (the `undefined` locale),
+ * matching `useFormat`.
  */
 export function useQuotaFormat() {
   function quotaColorClass(utilization: number): string {
@@ -38,9 +49,28 @@ export function useQuotaFormat() {
     return `${weekday} ${time}`
   }
 
+  /**
+   * Map a normalized quota snapshot into ready-to-render display parts. Each
+   * window renders its own reset time according to its `resetDisplay` hint
+   * (relative countdown vs. absolute weekday/time).
+   */
+  function quotaWindowParts(quota: { windows: readonly ProviderQuotaWindowContract[] }): QuotaDisplayPart[] {
+    return quota.windows.map((window) => ({
+      key: window.key,
+      label: window.label,
+      utilization: window.utilization,
+      colorClass: quotaColorClass(window.utilization),
+      reset:
+        window.resetDisplay === 'absolute'
+          ? formatQuotaResetNice(window.resetsAt)
+          : formatQuotaResetRelative(window.resetsAt),
+    }))
+  }
+
   return {
     quotaColorClass,
     formatQuotaResetRelative,
     formatQuotaResetNice,
+    quotaWindowParts,
   }
 }

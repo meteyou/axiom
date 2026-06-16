@@ -8,7 +8,7 @@
  *   - 'healthy'   → backend OK and provider healthy (green dot)
  */
 
-import type { AnthropicQuotaContract } from '@axiom/core/contracts'
+import type { ProviderQuotaContract } from '@axiom/core/contracts'
 
 export type GlobalStatus = 'offline' | 'degraded' | 'healthy'
 type OperatingMode = 'normal' | 'fallback'
@@ -24,7 +24,7 @@ interface HealthSnapshot {
     name: string
     model: string
   } | null
-  quota?: AnthropicQuotaContract | null
+  quota?: ProviderQuotaContract | null
 }
 
 const POLL_INTERVAL_MS = 30_000
@@ -38,7 +38,7 @@ export function useConnectionStatus() {
   const operatingMode = useState<OperatingMode>('global_operating_mode', () => 'normal')
   const fallbackProviderName = useState<string | null>('global_fallback_provider_name', () => null)
   const healthMonitorEnabled = useState<boolean>('global_health_monitor_enabled', () => true)
-  const quota = useState<AnthropicQuotaContract | null>('global_quota', () => null)
+  const quota = useState<ProviderQuotaContract | null>('global_quota', () => null)
 
   let timer: ReturnType<typeof setInterval> | null = null
   let polling = false
