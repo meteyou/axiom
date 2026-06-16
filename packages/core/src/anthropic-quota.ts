@@ -41,12 +41,17 @@ function toWindow(
   label: string,
   resetDisplay: 'relative' | 'absolute',
   bucket: RawUsageBucket | null | undefined,
+  options: { hideWhenZero?: boolean } = {},
 ): ProviderQuotaWindowContract | null {
   if (!bucket || typeof bucket.utilization !== 'number') return null
+  const utilization = normalizeUtilization(bucket.utilization)
+  // Model-specific 7d windows (Opus/Sonnet) only exist on some plans and are
+  // pure noise at 0% — drop them unless they carry real usage.
+  if (options.hideWhenZero && utilization === 0) return null
   return {
     key,
     label,
-    utilization: normalizeUtilization(bucket.utilization),
+    utilization,
     resetsAt: bucket.resets_at ?? null,
     resetDisplay,
   }
@@ -90,7 +95,8 @@ export async function fetchAnthropicQuota(
     const windows = [
       toWindow('five_hour', '5h', 'relative', data.five_hour),
       toWindow('seven_day', '7d', 'absolute', data.seven_day),
-      toWindow('seven_day_opus', 'Opus', 'absolute', data.seven_day_opus),
+      toWindow('seven_day_opus', 'Opus', 'absolute', data.seven_day_opus, { hideWhenZero: true }),
+      toWindow('seven_day_sonnet', 'Sonnet', 'absolute', data.seven_day_sonnet, { hideWhenZero: true }),
     ].filter((window): window is ProviderQuotaWindowContract => window !== null)
 
     return {
