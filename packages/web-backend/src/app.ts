@@ -23,6 +23,7 @@ import { createTtsRouter } from './routes/tts.js'
 import { createSttRouter } from './routes/stt.js'
 import { createDeepgramRouter } from './routes/deepgram.js'
 import type { ProviderConfig, TaskRuntimeBoundary, TaskEventBus, AgentHeartbeatService } from '@axiom/core'
+import type { AnthropicQuotaContract } from '@axiom/core/contracts'
 import { ensureAdminUser } from './auth.js'
 import type { HealthMonitorService } from './health-monitor.js'
 import type { RuntimeMetrics } from './runtime-metrics.js'
@@ -62,6 +63,13 @@ export interface AppOptions {
    */
   getBackgroundTaskToolNames?: () => string[]
   taskEventBus?: TaskEventBus | null
+  /**
+   * Returns the latest cached Anthropic subscriber usage snapshots keyed by
+   * provider id. Used by the providers list endpoint to surface quota in the
+   * UI without blocking the request on a live usage fetch.
+   */
+  getQuotaSnapshot?: () => Record<string, AnthropicQuotaContract>
+  refreshQuota?: (providerId: string) => Promise<AnthropicQuotaContract | null>
 }
 
 export function createApp(options?: AppOptions): express.Express {
@@ -107,6 +115,8 @@ export function createApp(options?: AppOptions): express.Express {
     app.use('/api/chat', createChatRouter({ db: options.db, getAgentCore }))
     app.use('/api/logs', createLogsRouter(options.db))
     app.use('/api/providers', createProvidersRouter({
+      getQuotaSnapshot: options.getQuotaSnapshot,
+      refreshQuota: options.refreshQuota,
       onActiveProviderChanged: () => {
         options.healthMonitorService?.restart({ resetState: true })
         options.onActiveProviderChanged?.()
@@ -163,6 +173,7 @@ export function createApp(options?: AppOptions): express.Express {
         db: options.db,
         healthMonitorService: options.healthMonitorService,
         runtimeMetrics: options.runtimeMetrics,
+        getQuotaSnapshot: options.getQuotaSnapshot,
       }))
     }
   }

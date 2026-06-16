@@ -50,6 +50,7 @@ export interface ProvidersController {
   deleteProvider: (req: AuthenticatedRequest, res: ExpressResponse) => void
   postProviderTest: (req: AuthenticatedRequest, res: ExpressResponse) => Promise<void>
   postProviderActivate: (req: AuthenticatedRequest, res: ExpressResponse) => void
+  postRefreshQuota: (req: AuthenticatedRequest, res: ExpressResponse) => Promise<void>
 }
 
 export function createProvidersController(options: ProvidersRouterOptions = {}): ProvidersController {
@@ -84,7 +85,7 @@ export function createProvidersController(options: ProvidersRouterOptions = {}):
     getProviders(_req, res) {
       try {
         const data = service.listProviders()
-        res.json(mapProvidersListResponse(data.masked, data.decrypted))
+        res.json(mapProvidersListResponse(data.masked, data.decrypted, options.getQuotaSnapshot?.()))
       } catch (err) {
         res.status(500).json({ error: `Failed to load providers: ${(err as Error).message}` })
       }
@@ -396,6 +397,20 @@ export function createProvidersController(options: ProvidersRouterOptions = {}):
           return
         }
 
+        res.status(500).json({ error: (err as Error).message })
+      }
+    },
+
+    async postRefreshQuota(req, res) {
+      if (!options.refreshQuota) {
+        res.status(501).json({ error: 'Quota refresh is not available' })
+        return
+      }
+
+      try {
+        const quota = await options.refreshQuota(String(req.params.id ?? ''))
+        res.json({ quota })
+      } catch (err) {
         res.status(500).json({ error: (err as Error).message })
       }
     },

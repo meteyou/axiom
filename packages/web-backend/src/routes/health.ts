@@ -5,11 +5,30 @@ import { jwtMiddleware } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
 import type { HealthMonitorService } from '../health-monitor.js'
 import type { RuntimeMetrics } from '../runtime-metrics.js'
+import type { AnthropicQuotaContract } from '@axiom/core/contracts'
 
 export interface HealthRouterOptions {
   db: Database
   healthMonitorService: HealthMonitorService
   runtimeMetrics: RuntimeMetrics
+  getQuotaSnapshot?: () => Record<string, AnthropicQuotaContract>
+}
+
+/**
+ * Pick the most relevant Anthropic subscriber quota for the global top-bar
+ * indicator: prefer the active provider's quota, then any provider with valid
+ * (non-error) data, then any available entry. The snapshot only ever contains
+ * anthropic-oauth providers (the quota monitor filters them).
+ */
+function selectTopBarQuota(
+  snapshot: Record<string, AnthropicQuotaContract>,
+  activeProviderId: string | null | undefined,
+): AnthropicQuotaContract | null {
+  if (activeProviderId && snapshot[activeProviderId] && !snapshot[activeProviderId].error) {
+    return snapshot[activeProviderId]
+  }
+  const entries = Object.values(snapshot)
+  return entries.find((entry) => !entry.error) ?? entries[0] ?? null
 }
 
 export function createHealthRouter(options: HealthRouterOptions): Router {
@@ -28,6 +47,10 @@ export function createHealthRouter(options: HealthRouterOptions): Router {
     try {
       const snapshot = options.healthMonitorService.getSnapshot()
       const activity = getActivitySummary(options.db)
+      const quota = selectTopBarQuota(
+        options.getQuotaSnapshot?.() ?? {},
+        snapshot.activeProvider?.id,
+      )
 
       res.json({
         agent: {
@@ -42,6 +65,7 @@ export function createHealthRouter(options: HealthRouterOptions): Router {
         queueDepth: options.runtimeMetrics.getQueueDepth(),
         activity,
         intervalMinutes: snapshot.intervalMinutes,
+        quota,
       })
     } catch (err) {
       res.status(500).json({ error: `Failed to load health snapshot: ${(err as Error).message}` })

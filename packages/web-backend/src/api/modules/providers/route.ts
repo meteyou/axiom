@@ -42,6 +42,7 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
   router.delete('/:id', controller.deleteProvider)
   router.post('/:id/test', controller.postProviderTest)
   router.post('/:id/activate', controller.postProviderActivate)
+  router.post('/:id/refresh-quota', controller.postRefreshQuota)
 
   return router
 }
