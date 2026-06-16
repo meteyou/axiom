@@ -3,7 +3,7 @@ import type { ProviderType } from '../provider-config.js'
 export type ProviderStatusContract = 'connected' | 'error' | 'untested'
 
 /** Provider families that expose a subscriber usage quota endpoint. */
-export type ProviderQuotaKindContract = 'anthropic' | 'openai-codex'
+export type ProviderQuotaKindContract = 'anthropic' | 'openai-codex' | 'opencode-go'
 
 /**
  * A single normalized usage window, provider-agnostic. Each window carries its

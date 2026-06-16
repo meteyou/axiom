@@ -222,8 +222,18 @@ For **subscription (OAuth)** providers that expose a usage endpoint, the provide
 
 - **Anthropic Claude Pro/Max** (`anthropic-oauth`)
 - **OpenAI ChatGPT Plus/Pro (Codex)** (`openai-codex`)
+- **OpenCode Go** (`opencode-go`) — see the credential note below
 
 Other provider types never show quota — they have no usage endpoint.
+
+::: warning OpenCode Go is a special case
+OpenCode Go has no official usage API. Its quota is read by scraping the authenticated web dashboard, which requires two environment variables on the Axiom backend:
+
+- `OPENCODE_GO_WORKSPACE_ID` — your OpenCode workspace id
+- `OPENCODE_GO_AUTH_COOKIE` — a valid dashboard auth cookie (the `auth=` prefix is optional)
+
+Quota is only shown once **both** are set. Because it parses dashboard markup rather than a stable API, this integration can break if the dashboard layout changes; in that case the Status column falls back to *"Quota unavailable"* and inference is unaffected.
+:::
 
 Each usage window appears on its own line as `<window>: <utilization>% (<reset>)`. The exact windows depend on the provider:
 
@@ -231,6 +241,7 @@ Each usage window appears on its own line as `<window>: <utilization>% (<reset>)
 |-----------------------|------------------------------------------------------------------------|-----------------------------------------|
 | Anthropic Claude      | `5h` (rolling 5h), `7d` (rolling 7d), `Opus` / `Sonnet` (7d model-specific windows; only shown when above 0%). | `5h` relative (e.g. `2h 14m`); `7d`/`Opus`/`Sonnet` weekday + time (e.g. `Mon 3:00PM`). |
 | OpenAI ChatGPT (Codex)| Primary + secondary rate-limit windows (labelled by their length, e.g. `5h`, `7d`). | Primary relative; secondary weekday + time. |
+| OpenCode Go           | `5h` (rolling), `7d` (weekly), `30d` (monthly). | `5h` relative; `7d`/`30d` weekday + time. |
 
 The percentage is colour-coded: green below 70%, amber at 70–89%, red at 90%+. Reset times follow your browser's regional settings.
 

@@ -107,6 +107,14 @@ export {
   openaiCodexQuotaAdapter,
 } from './openai-codex-quota.js'
 export {
+  fetchOpenCodeGoQuota,
+  getOpenCodeGoQuotaForProvider,
+  isOpenCodeGoQuotaProvider,
+  parseOpenCodeGoQuotaHtml,
+  resolveOpenCodeGoQuotaCredentials,
+  opencodeGoQuotaAdapter,
+} from './opencode-go-quota.js'
+export {
   getQuotaAdapter,
   isQuotaProvider,
 } from './quota-registry.js'
