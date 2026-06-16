@@ -1,5 +1,12 @@
 import type { ProviderConfig } from './provider-config.js'
 import { CLAUDE_CODE_VERSION, getApiKeyForProvider } from './provider-config.js'
+import type { ProviderQuotaWindowContract } from './contracts/providers.js'
+import {
+  normalizeUtilization,
+  parseRetryAfterMs,
+  type ProviderQuotaFetchResult,
+  type QuotaProviderAdapter,
+} from './provider-quota.js'
 
 const USAGE_ENDPOINT = 'https://api.anthropic.com/api/oauth/usage'
 
@@ -20,26 +27,6 @@ interface RawUsageLimits {
   seven_day_sonnet?: RawUsageBucket | null
 }
 
-export interface AnthropicQuotaBucket {
-  utilization: number
-  resetsAt: string | null
-}
-
-export interface AnthropicQuota {
-  fiveHour: AnthropicQuotaBucket | null
-  sevenDay: AnthropicQuotaBucket | null
-  sevenDayOpus: AnthropicQuotaBucket | null
-  sevenDaySonnet: AnthropicQuotaBucket | null
-  fetchedAt: string
-}
-
-export interface AnthropicQuotaFetchResult {
-  quota: AnthropicQuota | null
-  status?: number
-  retryAfterMs?: number
-  error?: string
-}
-
 /** Only Anthropic subscriber (OAuth) credentials can query the usage endpoint. */
 export function isAnthropicOAuthProvider(provider: ProviderConfig): boolean {
   return (
@@ -49,26 +36,20 @@ export function isAnthropicOAuthProvider(provider: ProviderConfig): boolean {
   )
 }
 
-function parseRetryAfterMs(header: string | null): number | undefined {
-  if (!header) return undefined
-
-  const seconds = Number(header)
-  if (!Number.isNaN(seconds) && seconds > 0) {
-    return Math.round(seconds * 1000)
-  }
-
-  const retryAt = new Date(header).getTime()
-  if (!Number.isNaN(retryAt)) {
-    const diff = retryAt - Date.now()
-    if (diff > 0) return diff
-  }
-
-  return undefined
-}
-
-function toBucket(bucket: RawUsageBucket | null | undefined): AnthropicQuotaBucket | null {
+function toWindow(
+  key: string,
+  label: string,
+  resetDisplay: 'relative' | 'absolute',
+  bucket: RawUsageBucket | null | undefined,
+): ProviderQuotaWindowContract | null {
   if (!bucket || typeof bucket.utilization !== 'number') return null
-  return { utilization: bucket.utilization, resetsAt: bucket.resets_at ?? null }
+  return {
+    key,
+    label,
+    utilization: normalizeUtilization(bucket.utilization),
+    resetsAt: bucket.resets_at ?? null,
+    resetDisplay,
+  }
 }
 
 /**
@@ -81,7 +62,7 @@ function toBucket(bucket: RawUsageBucket | null | undefined): AnthropicQuotaBuck
 export async function fetchAnthropicQuota(
   accessToken: string,
   fetchImpl: typeof fetch = fetch,
-): Promise<AnthropicQuotaFetchResult> {
+): Promise<ProviderQuotaFetchResult> {
   try {
     const response = await fetchImpl(USAGE_ENDPOINT, {
       method: 'GET',
@@ -106,12 +87,17 @@ export async function fetchAnthropicQuota(
     }
 
     const data = (await response.json()) as RawUsageLimits
+    const windows = [
+      toWindow('five_hour', '5h', 'relative', data.five_hour),
+      toWindow('seven_day', '7d', 'absolute', data.seven_day),
+      toWindow('seven_day_opus', 'Opus', 'absolute', data.seven_day_opus),
+    ].filter((window): window is ProviderQuotaWindowContract => window !== null)
+
     return {
       quota: {
-        fiveHour: toBucket(data.five_hour),
-        sevenDay: toBucket(data.seven_day),
-        sevenDayOpus: toBucket(data.seven_day_opus),
-        sevenDaySonnet: toBucket(data.seven_day_sonnet),
+        kind: 'anthropic',
+        windows,
+        plan: null,
         fetchedAt: new Date().toISOString(),
       },
       status: response.status,
@@ -129,7 +115,7 @@ export async function fetchAnthropicQuota(
 export async function getAnthropicQuotaForProvider(
   provider: ProviderConfig,
   fetchImpl: typeof fetch = fetch,
-): Promise<AnthropicQuotaFetchResult> {
+): Promise<ProviderQuotaFetchResult> {
   if (!isAnthropicOAuthProvider(provider)) {
     return { quota: null, error: 'Provider is not an Anthropic OAuth subscriber' }
   }
@@ -146,4 +132,10 @@ export async function getAnthropicQuotaForProvider(
   }
 
   return fetchAnthropicQuota(accessToken, fetchImpl)
+}
+
+export const anthropicQuotaAdapter: QuotaProviderAdapter = {
+  kind: 'anthropic',
+  matches: isAnthropicOAuthProvider,
+  fetch: getAnthropicQuotaForProvider,
 }

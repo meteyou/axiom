@@ -2,16 +2,33 @@ import type { ProviderType } from '../provider-config.js'
 
 export type ProviderStatusContract = 'connected' | 'error' | 'untested'
 
-export interface AnthropicQuotaBucketContract {
+/** Provider families that expose a subscriber usage quota endpoint. */
+export type ProviderQuotaKindContract = 'anthropic' | 'openai-codex'
+
+/**
+ * A single normalized usage window, provider-agnostic. Each window carries its
+ * own display hints so the UI can render any provider's quota without knowing
+ * the provider's bucket naming.
+ */
+export interface ProviderQuotaWindowContract {
+  /** Stable identifier within the provider (e.g. 'five_hour', 'primary'). */
+  key: string
+  /** Short display label (e.g. '5h', '7d', 'Opus'). */
+  label: string
+  /** Integer 0–100 percentage of the window consumed. */
   utilization: number
+  /** ISO-8601 timestamp when the window resets, or null if unknown. */
   resetsAt: string | null
+  /** Preferred reset rendering: relative countdown or absolute weekday/time. */
+  resetDisplay: 'relative' | 'absolute'
 }
 
-export interface AnthropicQuotaContract {
-  fiveHour: AnthropicQuotaBucketContract | null
-  sevenDay: AnthropicQuotaBucketContract | null
-  sevenDayOpus: AnthropicQuotaBucketContract | null
-  sevenDaySonnet: AnthropicQuotaBucketContract | null
+export interface ProviderQuotaContract {
+  kind: ProviderQuotaKindContract
+  /** Normalized usage windows in display order. */
+  windows: ProviderQuotaWindowContract[]
+  /** Optional human-readable plan label (e.g. 'Plus', 'Pro', 'Max'). */
+  plan?: string | null
   fetchedAt: string
   error?: string
 }
@@ -39,8 +56,10 @@ export interface ProviderContract {
   oauthCredentials?: { expires: number }
   cost?: { input: number; output: number } | null
   modelCosts?: Record<string, { input: number; output: number }>
-  /** Anthropic subscriber usage snapshot (only for anthropic-oauth providers). */
-  quota?: AnthropicQuotaContract | null
+  /** True when this provider exposes a subscriber usage quota endpoint. */
+  supportsQuota?: boolean
+  /** Subscriber usage snapshot (only for quota-capable OAuth providers). */
+  quota?: ProviderQuotaContract | null
 }
 
 export interface ProviderTypePresetContract {
@@ -101,7 +120,7 @@ export interface ProviderMutationResponseContract {
 }
 
 export interface ProviderQuotaRefreshResponseContract {
-  quota: AnthropicQuotaContract | null
+  quota: ProviderQuotaContract | null
 }
 
 export interface ProviderTestResultContract {
