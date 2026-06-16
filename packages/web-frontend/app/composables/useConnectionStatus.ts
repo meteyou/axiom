@@ -8,6 +8,8 @@
  *   - 'healthy'   → backend OK and provider healthy (green dot)
  */
 
+import type { AnthropicQuotaContract } from '@axiom/core/contracts'
+
 export type GlobalStatus = 'offline' | 'degraded' | 'healthy'
 type OperatingMode = 'normal' | 'fallback'
 
@@ -22,6 +24,7 @@ interface HealthSnapshot {
     name: string
     model: string
   } | null
+  quota?: AnthropicQuotaContract | null
 }
 
 const POLL_INTERVAL_MS = 30_000
@@ -35,6 +38,7 @@ export function useConnectionStatus() {
   const operatingMode = useState<OperatingMode>('global_operating_mode', () => 'normal')
   const fallbackProviderName = useState<string | null>('global_fallback_provider_name', () => null)
   const healthMonitorEnabled = useState<boolean>('global_health_monitor_enabled', () => true)
+  const quota = useState<AnthropicQuotaContract | null>('global_quota', () => null)
 
   let timer: ReturnType<typeof setInterval> | null = null
   let polling = false
@@ -45,6 +49,7 @@ export function useConnectionStatus() {
       providerName.value = null
       operatingMode.value = 'normal'
       fallbackProviderName.value = null
+      quota.value = null
       return
     }
 
@@ -54,6 +59,7 @@ export function useConnectionStatus() {
       healthMonitorEnabled.value = data.enabled ?? true
       operatingMode.value = data.operatingMode ?? 'normal'
       fallbackProviderName.value = data.fallbackProvider?.name ?? null
+      quota.value = data.quota ?? null
 
       if (!data.provider) {
         // Backend reachable but no provider configured
@@ -80,6 +86,7 @@ export function useConnectionStatus() {
       providerName.value = null
       operatingMode.value = 'normal'
       fallbackProviderName.value = null
+      quota.value = null
     }
   }
 
@@ -104,6 +111,7 @@ export function useConnectionStatus() {
     operatingMode: readonly(operatingMode),
     fallbackProviderName: readonly(fallbackProviderName),
     healthMonitorEnabled: readonly(healthMonitorEnabled),
+    quota: readonly(quota),
     start,
     stop,
     poll,
