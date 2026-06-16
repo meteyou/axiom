@@ -229,7 +229,7 @@ Each usage window appears on its own line as `<window>: <utilization>% (<reset>)
 
 | Provider              | Windows                                                                 | Reset shown as                          |
 |-----------------------|------------------------------------------------------------------------|-----------------------------------------|
-| Anthropic Claude      | `5h` (rolling 5h), `7d` (rolling 7d), `Opus` (7d Opus, when your plan has one). | `5h` relative (e.g. `2h 14m`); `7d`/`Opus` weekday + time (e.g. `Mon 3:00PM`). |
+| Anthropic Claude      | `5h` (rolling 5h), `7d` (rolling 7d), `Opus` / `Sonnet` (7d model-specific windows; only shown when above 0%). | `5h` relative (e.g. `2h 14m`); `7d`/`Opus`/`Sonnet` weekday + time (e.g. `Mon 3:00PM`). |
 | OpenAI ChatGPT (Codex)| Primary + secondary rate-limit windows (labelled by their length, e.g. `5h`, `7d`). | Primary relative; secondary weekday + time. |
 
 The percentage is colour-coded: green below 70%, amber at 70–89%, red at 90%+. Reset times follow your browser's regional settings.
