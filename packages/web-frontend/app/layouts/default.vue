@@ -272,6 +272,17 @@
           </TooltipContent>
         </Tooltip>
 
+        <!-- Anthropic quota (desktop, wide viewports only) -->
+        <div v-if="quotaTopBarParts.length > 0" class="hidden items-center gap-2 lg:flex">
+          <template v-for="(part, idx) in quotaTopBarParts" :key="part.label">
+            <span v-if="idx > 0" class="text-muted-foreground/40">·</span>
+            <span class="text-xs">
+              <span class="font-medium" :class="part.colorClass">{{ part.label }}: {{ part.utilization }}%</span>
+              <span v-if="part.reset" class="text-muted-foreground"> ({{ part.reset }})</span>
+            </span>
+          </template>
+        </div>
+
         <!-- Spacer -->
         <div class="flex-1" />
 
@@ -318,7 +329,7 @@ const route = useRoute()
 const runtimeConfig = useRuntimeConfig()
 const appVersion = runtimeConfig.public.appVersion as string
 const { user, logout } = useAuth()
-const { status: globalStatus, providerName: globalProviderName, operatingMode: globalOperatingMode, fallbackProviderName: globalFallbackProviderName, healthMonitorEnabled: globalHealthMonitorEnabled, start: startStatusPolling, stop: stopStatusPolling } = useConnectionStatus()
+const { status: globalStatus, providerName: globalProviderName, operatingMode: globalOperatingMode, fallbackProviderName: globalFallbackProviderName, healthMonitorEnabled: globalHealthMonitorEnabled, quota: globalQuota, start: startStatusPolling, stop: stopStatusPolling } = useConnectionStatus()
 
 const isInFallbackMode = computed(() => globalOperatingMode.value === 'fallback')
 const { isDark, toggle: toggleTheme, mode: themeMode } = useTheme()
@@ -363,6 +374,26 @@ const statusText = computed(() => {
     default:
       return t('status.offline')
   }
+})
+
+const { quotaColorClass, formatQuotaResetRelative, formatQuotaResetNice } = useQuotaFormat()
+
+const quotaTopBarParts = computed(() => {
+  const q = globalQuota.value
+  if (!q || q.error) return []
+  const specs = [
+    { label: '5h', bucket: q.fiveHour, format: formatQuotaResetRelative },
+    { label: '7d', bucket: q.sevenDay, format: formatQuotaResetNice },
+    { label: 'Opus', bucket: q.sevenDayOpus, format: formatQuotaResetNice },
+  ]
+  return specs
+    .filter((s) => s.bucket != null)
+    .map((s) => ({
+      label: s.label,
+      utilization: s.bucket!.utilization,
+      reset: s.format(s.bucket!.resetsAt),
+      colorClass: quotaColorClass(s.bucket!.utilization),
+    }))
 })
 
 onMounted(() => {

@@ -1,0 +1,149 @@
+import type { ProviderConfig } from './provider-config.js'
+import { CLAUDE_CODE_VERSION, getApiKeyForProvider } from './provider-config.js'
+
+const USAGE_ENDPOINT = 'https://api.anthropic.com/api/oauth/usage'
+
+// OAuth beta header expected by the Anthropic usage endpoint (matches the
+// header pi-ai sends for OAuth inference requests).
+const OAUTH_BETA_HEADER = 'oauth-2025-04-20'
+
+interface RawUsageBucket {
+  utilization: number
+  resets_at: string | null
+}
+
+/** Shape returned by /api/oauth/usage (only the fields we consume). */
+interface RawUsageLimits {
+  five_hour?: RawUsageBucket | null
+  seven_day?: RawUsageBucket | null
+  seven_day_opus?: RawUsageBucket | null
+  seven_day_sonnet?: RawUsageBucket | null
+}
+
+export interface AnthropicQuotaBucket {
+  utilization: number
+  resetsAt: string | null
+}
+
+export interface AnthropicQuota {
+  fiveHour: AnthropicQuotaBucket | null
+  sevenDay: AnthropicQuotaBucket | null
+  sevenDayOpus: AnthropicQuotaBucket | null
+  sevenDaySonnet: AnthropicQuotaBucket | null
+  fetchedAt: string
+}
+
+export interface AnthropicQuotaFetchResult {
+  quota: AnthropicQuota | null
+  status?: number
+  retryAfterMs?: number
+  error?: string
+}
+
+/** Only Anthropic subscriber (OAuth) credentials can query the usage endpoint. */
+export function isAnthropicOAuthProvider(provider: ProviderConfig): boolean {
+  return (
+    provider.providerType === 'anthropic-oauth' &&
+    provider.authMethod === 'oauth' &&
+    !!provider.oauthCredentials
+  )
+}
+
+function parseRetryAfterMs(header: string | null): number | undefined {
+  if (!header) return undefined
+
+  const seconds = Number(header)
+  if (!Number.isNaN(seconds) && seconds > 0) {
+    return Math.round(seconds * 1000)
+  }
+
+  const retryAt = new Date(header).getTime()
+  if (!Number.isNaN(retryAt)) {
+    const diff = retryAt - Date.now()
+    if (diff > 0) return diff
+  }
+
+  return undefined
+}
+
+function toBucket(bucket: RawUsageBucket | null | undefined): AnthropicQuotaBucket | null {
+  if (!bucket || typeof bucket.utilization !== 'number') return null
+  return { utilization: bucket.utilization, resetsAt: bucket.resets_at ?? null }
+}
+
+/**
+ * Fetch Anthropic usage limits using a raw OAuth access token.
+ *
+ * Headers mirror what pi-ai sends for OAuth Anthropic requests so the usage
+ * call is attributed to the same client identity as inference and token
+ * refresh — a single consistent caller for Anthropic.
+ */
+export async function fetchAnthropicQuota(
+  accessToken: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<AnthropicQuotaFetchResult> {
+  try {
+    const response = await fetchImpl(USAGE_ENDPOINT, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'User-Agent': `claude-cli/${CLAUDE_CODE_VERSION}`,
+        Authorization: `Bearer ${accessToken}`,
+        'anthropic-beta': OAUTH_BETA_HEADER,
+        'anthropic-dangerous-direct-browser-access': 'true',
+        'x-app': 'cli',
+      },
+    })
+
+    if (!response.ok) {
+      return {
+        quota: null,
+        status: response.status,
+        retryAfterMs: parseRetryAfterMs(response.headers.get('retry-after')),
+        error: `HTTP ${response.status}`,
+      }
+    }
+
+    const data = (await response.json()) as RawUsageLimits
+    return {
+      quota: {
+        fiveHour: toBucket(data.five_hour),
+        sevenDay: toBucket(data.seven_day),
+        sevenDayOpus: toBucket(data.seven_day_opus),
+        sevenDaySonnet: toBucket(data.seven_day_sonnet),
+        fetchedAt: new Date().toISOString(),
+      },
+      status: response.status,
+    }
+  } catch (err) {
+    return { quota: null, error: (err as Error).message || 'Network error' }
+  }
+}
+
+/**
+ * Resolve an OAuth access token for an Anthropic subscriber provider and fetch
+ * its usage. Works regardless of whether the provider is the active one — the
+ * usage endpoint is read-only and does not affect provider activation.
+ */
+export async function getAnthropicQuotaForProvider(
+  provider: ProviderConfig,
+  fetchImpl: typeof fetch = fetch,
+): Promise<AnthropicQuotaFetchResult> {
+  if (!isAnthropicOAuthProvider(provider)) {
+    return { quota: null, error: 'Provider is not an Anthropic OAuth subscriber' }
+  }
+
+  let accessToken: string
+  try {
+    accessToken = await getApiKeyForProvider(provider)
+  } catch (err) {
+    return { quota: null, error: (err as Error).message || 'Failed to resolve OAuth token' }
+  }
+
+  if (!accessToken) {
+    return { quota: null, error: 'No OAuth access token available' }
+  }
+
+  return fetchAnthropicQuota(accessToken, fetchImpl)
+}

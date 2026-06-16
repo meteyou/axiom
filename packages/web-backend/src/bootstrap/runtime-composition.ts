@@ -52,6 +52,7 @@ import { ChatEventBus } from '../chat-event-bus.js'
 import { triggerFactExtractionForSessionEnd } from '../fact-extraction-session-end.js'
 import { HealthMonitorService } from '../health-monitor.js'
 import { MemoryConsolidationScheduler } from '../memory-consolidation-scheduler.js'
+import { QuotaMonitorService } from '../quota-monitor.js'
 import { RuntimeMetrics } from '../runtime-metrics.js'
 import { UploadCleanupService } from '../upload-cleanup.js'
 
@@ -104,6 +105,7 @@ export interface RuntimeComposition {
   db: Database
   runtimeMetrics: RuntimeMetrics
   healthMonitorService: HealthMonitorService
+  quotaMonitorService: QuotaMonitorService
   consolidationScheduler: MemoryConsolidationScheduler
   agentHeartbeatService: AgentHeartbeatService
   uploadCleanupService: UploadCleanupService
@@ -883,6 +885,9 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
   const healthMonitorService = new HealthMonitorService({ db, providerManager: null })
   healthMonitorService.start()
 
+  const quotaMonitorService = new QuotaMonitorService()
+  quotaMonitorService.start()
+
   const consolidationScheduler = new MemoryConsolidationScheduler({
     db,
     agentCore: null,
@@ -1229,6 +1234,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
     db,
     runtimeMetrics,
     healthMonitorService,
+    quotaMonitorService,
     consolidationScheduler,
     agentHeartbeatService,
     uploadCleanupService,
@@ -1255,6 +1261,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
     },
     stopBackgroundServices: async () => {
       healthMonitorService.stop()
+      quotaMonitorService.stop()
       consolidationScheduler.stop()
       agentHeartbeatService.stop()
       uploadCleanupService.stop()

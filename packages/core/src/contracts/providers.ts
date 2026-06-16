@@ -1,6 +1,20 @@
 import type { ProviderType } from '../provider-config.js'
 
 export type ProviderStatusContract = 'connected' | 'error' | 'untested'
+
+export interface AnthropicQuotaBucketContract {
+  utilization: number
+  resetsAt: string | null
+}
+
+export interface AnthropicQuotaContract {
+  fiveHour: AnthropicQuotaBucketContract | null
+  sevenDay: AnthropicQuotaBucketContract | null
+  sevenDayOpus: AnthropicQuotaBucketContract | null
+  sevenDaySonnet: AnthropicQuotaBucketContract | null
+  fetchedAt: string
+  error?: string
+}
 export type ProviderAuthMethodContract = 'api-key' | 'oauth'
 export type ProviderTextVerbosityContract = 'low' | 'medium' | 'high'
 export type ProviderTransportContract = 'sse' | 'websocket' | 'websocket-cached' | 'auto'
@@ -25,6 +39,8 @@ export interface ProviderContract {
   oauthCredentials?: { expires: number }
   cost?: { input: number; output: number } | null
   modelCosts?: Record<string, { input: number; output: number }>
+  /** Anthropic subscriber usage snapshot (only for anthropic-oauth providers). */
+  quota?: AnthropicQuotaContract | null
 }
 
 export interface ProviderTypePresetContract {
@@ -82,6 +98,10 @@ export interface ProvidersListResponseContract {
 
 export interface ProviderMutationResponseContract {
   provider: ProviderContract
+}
+
+export interface ProviderQuotaRefreshResponseContract {
+  quota: AnthropicQuotaContract | null
 }
 
 export interface ProviderTestResultContract {

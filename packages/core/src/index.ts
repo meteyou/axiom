@@ -90,8 +90,15 @@ export {
   getConfiguredPriceTable,
   PROVIDER_TYPE_PRESETS,
   PROVIDER_TYPE_MODEL_OVERRIDES,
+  CLAUDE_CODE_VERSION,
 } from './provider-config.js'
 export type { ProviderConfig, ProviderModelConfig, ProvidersFile, ProviderType, ProviderTypePreset, AuthMethod, TextVerbosity, AvailableModel, OAuthCredentialsStored, TokenPriceTable } from './provider-config.js'
+export {
+  fetchAnthropicQuota,
+  getAnthropicQuotaForProvider,
+  isAnthropicOAuthProvider,
+} from './anthropic-quota.js'
+export type { AnthropicQuota, AnthropicQuotaBucket, AnthropicQuotaFetchResult } from './anthropic-quota.js'
 export { encrypt, decrypt, isEncrypted, maskApiKey } from './encryption.js'
 export {
   logTokenUsage,

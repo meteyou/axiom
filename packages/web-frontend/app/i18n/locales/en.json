@@ -173,6 +173,13 @@
     "statusConnected": "Connected",
     "statusError": "Error",
     "statusUntested": "Untested",
+    "quota": {
+      "unavailable": "Quota unavailable",
+      "rateLimited": "Rate-limited — try again shortly",
+      "refresh": "Refresh quota",
+      "refreshing": "Refreshing...",
+      "refreshSuccess": "Quota updated"
+    },
     "testConnection": "Test Connection",
     "testing": "Testing...",
     "testSuccess": "Connection successful",

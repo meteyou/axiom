@@ -5,6 +5,7 @@ import type {
   ProvidersFile,
 } from '@axiom/core'
 import type {
+  AnthropicQuotaContract,
   OllamaModelContract,
   ProviderActivationResponseContract,
   ProviderContract,
@@ -48,7 +49,11 @@ function resolveModelCost(provider: ProviderConfig, modelId: string): { input: n
   return null
 }
 
-export function mapProvidersListResponse(masked: ProvidersFile, decrypted: ProvidersFile): ProvidersListResponseContract {
+export function mapProvidersListResponse(
+  masked: ProvidersFile,
+  decrypted: ProvidersFile,
+  quotaSnapshot?: Record<string, AnthropicQuotaContract>,
+): ProvidersListResponseContract {
   const providers = masked.providers.map((provider) => {
     const fullProvider = decrypted.providers.find((candidate) => candidate.id === provider.id)
     let cost: { input: number; output: number } | null = null
@@ -71,6 +76,7 @@ export function mapProvidersListResponse(masked: ProvidersFile, decrypted: Provi
       apiKeyMasked: (provider as unknown as { apiKeyMasked?: string }).apiKeyMasked ?? provider.apiKey,
       cost,
       modelCosts,
+      quota: quotaSnapshot?.[provider.id] ?? null,
     } as ProviderContract
   })
 

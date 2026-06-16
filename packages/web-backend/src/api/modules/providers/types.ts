@@ -1,8 +1,11 @@
 import type { OAuthCredentials } from '@earendil-works/pi-ai/oauth'
+import type { AnthropicQuotaContract } from '@axiom/core/contracts'
 
 export interface ProvidersRouterOptions {
   onActiveProviderChanged?: () => void
   onFallbackProviderChanged?: () => void
+  getQuotaSnapshot?: () => Record<string, AnthropicQuotaContract>
+  refreshQuota?: (providerId: string) => Promise<AnthropicQuotaContract | null>
 }
 
 export interface PendingOAuthLogin {

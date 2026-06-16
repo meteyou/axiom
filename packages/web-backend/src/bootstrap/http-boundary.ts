@@ -28,6 +28,8 @@ export async function startHttpBoundary(
     db: runtimeComposition.db,
     getAgentCore: runtimeComposition.getAgentCore,
     healthMonitorService: runtimeComposition.healthMonitorService,
+    getQuotaSnapshot: () => runtimeComposition.quotaMonitorService.getSnapshot(),
+    refreshQuota: (providerId) => runtimeComposition.quotaMonitorService.refreshProvider(providerId),
     runtimeMetrics: runtimeComposition.runtimeMetrics,
     consolidationScheduler: runtimeComposition.consolidationScheduler,
     agentHeartbeatService: runtimeComposition.agentHeartbeatService,

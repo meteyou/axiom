@@ -103,6 +103,18 @@ export function useProviders() {
     }
   }
 
+  async function refreshQuota(id: string): Promise<boolean> {
+    error.value = null
+    try {
+      await providersApi.refreshQuota(id)
+      await fetchProviders()
+      return true
+    } catch (err) {
+      error.value = (err as Error).message
+      return false
+    }
+  }
+
   async function activateProvider(id: string, modelId?: string): Promise<boolean> {
     error.value = null
     try {
@@ -212,6 +224,7 @@ export function useProviders() {
     deleteProvider,
     testProvider,
     activateProvider,
+    refreshQuota,
     setFallbackProvider,
     startOAuthLogin,
     pollOAuthStatus,

@@ -9,6 +9,7 @@ import type {
   ProviderCreatePayloadContract,
   ProviderFallbackResponseContract,
   ProviderMutationResponseContract,
+  ProviderQuotaRefreshResponseContract,
   ProviderTestResultContract,
   ProviderTypePresetContract,
   ProviderUpdatePayloadContract,
@@ -58,6 +59,11 @@ export function useProvidersApi() {
     apiFetch<ProviderActivationResponseContract>(`/api/providers/${id}/activate`, {
       method: 'POST',
       body: JSON.stringify({ modelId }),
+    })
+
+  const refreshQuota = (id: string) =>
+    apiFetch<ProviderQuotaRefreshResponseContract>(`/api/providers/${id}/refresh-quota`, {
+      method: 'POST',
     })
 
   const setFallbackProvider = (providerId: string | null, modelId?: string | null) =>
@@ -158,6 +164,7 @@ export function useProvidersApi() {
     removeProvider,
     testProvider,
     activateProvider,
+    refreshQuota,
     setFallbackProvider,
     getModels,
     getOllamaModels,
