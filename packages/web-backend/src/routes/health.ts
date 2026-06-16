@@ -5,26 +5,26 @@ import { jwtMiddleware } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
 import type { HealthMonitorService } from '../health-monitor.js'
 import type { RuntimeMetrics } from '../runtime-metrics.js'
-import type { AnthropicQuotaContract } from '@axiom/core/contracts'
+import type { ProviderQuotaContract } from '@axiom/core/contracts'
 
 export interface HealthRouterOptions {
   db: Database
   healthMonitorService: HealthMonitorService
   runtimeMetrics: RuntimeMetrics
-  getQuotaSnapshot?: () => Record<string, AnthropicQuotaContract>
+  getQuotaSnapshot?: () => Record<string, ProviderQuotaContract>
 }
 
 /**
- * Resolve the Anthropic subscriber quota for the global top-bar indicator.
+ * Resolve the subscriber quota for the global top-bar indicator.
  *
  * Only the active provider's own snapshot is returned: the indicator sits next
  * to the active provider's health, so falling back to another provider would
  * show a different subscription's usage and mislead the user.
  */
 function selectTopBarQuota(
-  snapshot: Record<string, AnthropicQuotaContract>,
+  snapshot: Record<string, ProviderQuotaContract>,
   activeProviderId: string | null | undefined,
-): AnthropicQuotaContract | null {
+): ProviderQuotaContract | null {
   if (!activeProviderId) return null
   return snapshot[activeProviderId] ?? null
 }

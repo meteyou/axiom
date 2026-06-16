@@ -23,7 +23,7 @@ import { createTtsRouter } from './routes/tts.js'
 import { createSttRouter } from './routes/stt.js'
 import { createDeepgramRouter } from './routes/deepgram.js'
 import type { ProviderConfig, TaskRuntimeBoundary, TaskEventBus, AgentHeartbeatService } from '@axiom/core'
-import type { AnthropicQuotaContract } from '@axiom/core/contracts'
+import type { ProviderQuotaContract } from '@axiom/core/contracts'
 import { ensureAdminUser } from './auth.js'
 import type { HealthMonitorService } from './health-monitor.js'
 import type { RuntimeMetrics } from './runtime-metrics.js'
@@ -64,12 +64,12 @@ export interface AppOptions {
   getBackgroundTaskToolNames?: () => string[]
   taskEventBus?: TaskEventBus | null
   /**
-   * Returns the latest cached Anthropic subscriber usage snapshots keyed by
-   * provider id. Used by the providers list endpoint to surface quota in the
-   * UI without blocking the request on a live usage fetch.
+   * Returns the latest cached subscriber usage snapshots keyed by provider id.
+   * Used by the providers list endpoint to surface quota in the UI without
+   * blocking the request on a live usage fetch.
    */
-  getQuotaSnapshot?: () => Record<string, AnthropicQuotaContract>
-  refreshQuota?: (providerId: string) => Promise<AnthropicQuotaContract | null>
+  getQuotaSnapshot?: () => Record<string, ProviderQuotaContract>
+  refreshQuota?: (providerId: string) => Promise<ProviderQuotaContract | null>
 }
 
 export function createApp(options?: AppOptions): express.Express {
