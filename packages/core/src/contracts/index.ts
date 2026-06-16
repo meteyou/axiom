@@ -57,6 +57,8 @@ export type {
 export type {
   ProviderStatusContract,
   ProviderAuthMethodContract,
+  AnthropicQuotaBucketContract,
+  AnthropicQuotaContract,
   ProviderContract,
   ProviderTypePresetContract,
   AvailableModelContract,
@@ -64,6 +66,7 @@ export type {
   OllamaPullEventContract,
   ProvidersListResponseContract,
   ProviderMutationResponseContract,
+  ProviderQuotaRefreshResponseContract,
   ProviderTestResultContract,
   ProviderActivationResponseContract,
   ProviderFallbackResponseContract,
