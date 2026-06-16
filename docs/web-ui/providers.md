@@ -29,8 +29,8 @@ Providers are sorted alphabetically by display name; sub-rows follow the order c
 |-------------|------------------------------------------------------------------------------------------------------|
 | **Name**    | Bold display name; below it, the provider type label (e.g. *"Anthropic"*, *"Anthropic (Claude Pro/Max) · OAuth"*). |
 | **Cost**    | Empty — costs live on the model rows.                                                                |
-| **Status**  | Empty — status lives on the model rows.                                                              |
-| **⋮**       | Edit, Delete. *Delete* is disabled for the provider that owns the currently active model.            |
+| **Status**  | Empty for most providers (status lives on the model rows). For **Anthropic Claude Pro/Max (OAuth)** providers it shows the live [subscriber usage quota](#subscriber-usage-quota-claude-pro-max). |
+| **⋮**       | Edit, Delete, and — for Anthropic OAuth providers — **Refresh quota**. *Delete* is disabled for the provider that owns the currently active model. |
 
 Clicking anywhere on a header row opens the [Edit dialog](#add-edit-dialog).
 
@@ -215,6 +215,33 @@ The full flow:
 4. Once the redirect comes back, the dialog closes and the provider appears in the list.
 
 **Remote server fallback.** If your Axiom instance runs on a remote box where the OAuth callback URL can't reach you, a manual-code field appears below the spinner: *"Or paste the redirect URL here (for remote servers)"*. Complete the login locally, copy the full redirect URL from the browser, paste it in, and click **Submit**.
+
+### Subscriber usage quota (Claude Pro/Max)
+
+For **Anthropic Claude Pro/Max (OAuth)** providers, the provider header row's **Status** column shows how much of your subscription allowance is left, polled in the background (no manual action needed). Other provider types never show quota — the endpoint only exists for Anthropic subscriptions.
+
+Each configured bucket appears on its own line as `<bucket> <utilization>% (<reset>)`:
+
+| Bucket | Meaning                                              | Reset shown as                        |
+|--------|------------------------------------------------------|---------------------------------------|
+| `5h`   | Rolling 5-hour usage window.                         | Relative countdown, e.g. `2h 14m`.    |
+| `7d`   | Rolling 7-day usage window.                          | Weekday + time, e.g. `Mon 3:00PM`.    |
+| `Opus` | 7-day Opus-specific window (when your plan has one). | —                                     |
+
+The percentage is colour-coded: green below 70%, amber at 70–89%, red at 90%+. Reset times follow your browser's regional settings.
+
+The same active-provider quota is mirrored in the **top bar** next to the health status — but only on wide (`lg`) viewports, and only for the *active* provider. It is hidden on smaller screens and for non-active providers.
+
+#### Refresh quota
+
+The ⋮ menu on an Anthropic OAuth provider header carries a **Refresh quota** item that forces an immediate, on-demand fetch (bypassing the background poll's backoff). While it runs, the Status column shows a spinner with *"Refreshing…"*; on success a *"Quota updated"* banner appears briefly.
+
+#### When quota is unavailable
+
+The Anthropic usage endpoint is aggressively rate-limited. Axiom applies a per-provider backoff on `429` responses and **keeps the last good snapshot** during transient failures instead of flapping to "unavailable". When there is no usable data, the Status column shows:
+
+- *"Rate-limited — try again shortly"* — a `429` was hit and no earlier snapshot exists yet. Wait a bit, or use **Refresh quota** later.
+- *"Quota unavailable"* — any other failure (auth error, network, …). Hover the text for the underlying error.
 
 ### Renewing OAuth tokens
 

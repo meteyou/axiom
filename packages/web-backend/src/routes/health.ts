@@ -15,20 +15,18 @@ export interface HealthRouterOptions {
 }
 
 /**
- * Pick the most relevant Anthropic subscriber quota for the global top-bar
- * indicator: prefer the active provider's quota, then any provider with valid
- * (non-error) data, then any available entry. The snapshot only ever contains
- * anthropic-oauth providers (the quota monitor filters them).
+ * Resolve the Anthropic subscriber quota for the global top-bar indicator.
+ *
+ * Only the active provider's own snapshot is returned: the indicator sits next
+ * to the active provider's health, so falling back to another provider would
+ * show a different subscription's usage and mislead the user.
  */
 function selectTopBarQuota(
   snapshot: Record<string, AnthropicQuotaContract>,
   activeProviderId: string | null | undefined,
 ): AnthropicQuotaContract | null {
-  if (activeProviderId && snapshot[activeProviderId] && !snapshot[activeProviderId].error) {
-    return snapshot[activeProviderId]
-  }
-  const entries = Object.values(snapshot)
-  return entries.find((entry) => !entry.error) ?? entries[0] ?? null
+  if (!activeProviderId) return null
+  return snapshot[activeProviderId] ?? null
 }
 
 export function createHealthRouter(options: HealthRouterOptions): Router {
