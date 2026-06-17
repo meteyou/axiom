@@ -33,41 +33,35 @@ const provider: ProviderConfig = {
   authMethod: 'api-key',
 }
 
+const providerWithQuota: ProviderConfig = {
+  ...provider,
+  extraFields: { workspaceId: 'workspace-1', authCookie: 'cookie-1' },
+}
+
 describe('OpenCode Go quota credentials', () => {
-  it('resolves the dashboard workspace id and auth cookie from env', () => {
+  it('resolves the workspace id and auth cookie from the provider extra fields', () => {
     expect(
       resolveOpenCodeGoQuotaCredentials({
-        OPENCODE_GO_WORKSPACE_ID: ' workspace-1 ',
-        OPENCODE_GO_AUTH_COOKIE: ' cookie-1 ',
+        ...provider,
+        extraFields: { workspaceId: ' workspace-1 ', authCookie: ' cookie-1 ' },
       }),
     ).toEqual({ workspaceId: 'workspace-1', authCookie: 'cookie-1' })
   })
 
-  it('returns null when either dashboard credential is missing', () => {
-    expect(resolveOpenCodeGoQuotaCredentials({ OPENCODE_GO_WORKSPACE_ID: 'workspace-1' })).toBeNull()
-    expect(resolveOpenCodeGoQuotaCredentials({ OPENCODE_GO_AUTH_COOKIE: 'cookie-1' })).toBeNull()
+  it('returns null when either credential is missing', () => {
+    expect(resolveOpenCodeGoQuotaCredentials({ ...provider, extraFields: { workspaceId: 'workspace-1' } })).toBeNull()
+    expect(resolveOpenCodeGoQuotaCredentials({ ...provider, extraFields: { authCookie: 'cookie-1' } })).toBeNull()
+    expect(resolveOpenCodeGoQuotaCredentials(provider)).toBeNull()
   })
 })
 
 describe('isOpenCodeGoQuotaProvider', () => {
-  const previousEnv = { ...process.env }
-
-  afterEach(() => {
-    process.env = { ...previousEnv }
-  })
-
   it('matches OpenCode Go providers when dashboard credentials are configured', () => {
-    process.env.OPENCODE_GO_WORKSPACE_ID = 'workspace-1'
-    process.env.OPENCODE_GO_AUTH_COOKIE = 'cookie-1'
-
-    expect(isOpenCodeGoQuotaProvider(provider)).toBe(true)
-    expect(isOpenCodeGoQuotaProvider({ ...provider, providerType: 'openai' })).toBe(false)
+    expect(isOpenCodeGoQuotaProvider(providerWithQuota)).toBe(true)
+    expect(isOpenCodeGoQuotaProvider({ ...providerWithQuota, providerType: 'openai' })).toBe(false)
   })
 
-  it('does not enable quota UI for OpenCode Go when no dashboard credentials are configured', () => {
-    delete process.env.OPENCODE_GO_WORKSPACE_ID
-    delete process.env.OPENCODE_GO_AUTH_COOKIE
-
+  it('does not enable quota for OpenCode Go without credentials', () => {
     expect(isOpenCodeGoQuotaProvider(provider)).toBe(false)
   })
 })

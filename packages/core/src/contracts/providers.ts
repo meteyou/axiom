@@ -60,6 +60,20 @@ export interface ProviderContract {
   supportsQuota?: boolean
   /** Subscriber usage snapshot (only for quota-capable OAuth providers). */
   quota?: ProviderQuotaContract | null
+  /** Non-secret provider-specific extra field values (secret values are omitted). */
+  extraFields?: Record<string, string>
+  /** Presence flags for secret extra fields (the values themselves are never returned). */
+  extraFieldsSet?: Record<string, boolean>
+}
+
+/** Declarative definition of one provider-specific extra configuration field. */
+export interface ProviderExtraFieldDefContract {
+  key: string
+  label: string
+  secret?: boolean
+  required?: boolean
+  placeholder?: string
+  hint?: string
 }
 
 export interface ProviderTypePresetContract {
@@ -83,6 +97,13 @@ export interface ProviderTypePresetContract {
   hasKnownModels: boolean
   authMethod: ProviderAuthMethodContract
   oauthProviderId?: string
+  /**
+   * Display-only hint: the UI groups this preset under "Subscription / OAuth"
+   * even though it authenticates with an API key (e.g. OpenCode Go).
+   */
+  subscription?: boolean
+  /** Provider-specific extra fields the UI should render generically. */
+  extraFields?: ProviderExtraFieldDefContract[]
 }
 
 export interface AvailableModelContract {
@@ -162,6 +183,7 @@ export interface ProviderCreatePayloadContract {
   degradedThresholdMs?: number
   textVerbosity?: ProviderTextVerbosityContract | null
   transport?: ProviderTransportContract | null
+  extraFields?: Record<string, string>
 }
 
 export interface ProviderUpdatePayloadContract {
@@ -174,6 +196,7 @@ export interface ProviderUpdatePayloadContract {
   degradedThresholdMs?: number
   textVerbosity?: ProviderTextVerbosityContract | null
   transport?: ProviderTransportContract | null
+  extraFields?: Record<string, string>
 }
 
 export interface ProviderFallbackUpdatePayloadContract {

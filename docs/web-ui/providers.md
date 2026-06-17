@@ -105,7 +105,7 @@ The dialog keeps connection details first, then model selection, then advanced h
 | Field                  | Notes                                                                                                |
 |------------------------|------------------------------------------------------------------------------------------------------|
 | **Name**               | Free text, your label for this provider — appears in the table, in `<task_injection>` blocks, on the Dashboard. |
-| **Type**               | Dropdown grouped into two sections: **API Key** (OpenAI, Anthropic, Mistral, OpenRouter, DeepSeek, Kimi / Moonshot, MiniMax, xAI (Grok), Google Gemini, Ollama, generic OpenAI-compatible, …) and **Subscription / OAuth** (Anthropic Claude Pro/Max, OpenAI ChatGPT Plus/Pro, GitHub Copilot, …). |
+| **Type**               | Dropdown grouped into two sections: **API Key** (OpenAI, Anthropic, Mistral, OpenRouter, DeepSeek, Kimi / Moonshot, MiniMax, xAI (Grok), Google Gemini, OpenCode Zen, OpenCode Go, Ollama, generic OpenAI-compatible, …) and **Subscription / OAuth** (Anthropic Claude Pro/Max, OpenAI ChatGPT Plus/Pro, GitHub Copilot, …). |
 | **Base URL**           | Shown directly after Type when the preset has an editable URL (Ollama, generic OpenAI-compatible, …). |
 | **API Key**            | Shown after Base URL for API-key providers. Required for most hosted presets, optional for local/custom providers that do not need auth. |
 | **Enabled Models**     | Model selector or model-id entry for this provider. The exact control depends on the provider type. |
@@ -131,7 +131,7 @@ Stored encrypted at rest in `/data/config/providers.json` using `ENCRYPTION_KEY`
 
 The model selector adapts to the preset:
 
-- **Curated providers (OpenAI, Anthropic, Mistral, OpenRouter, DeepSeek, Kimi / Moonshot, MiniMax, xAI (Grok), …)** — a checkbox list of known models. Tick the ones you want to enable; the first enabled becomes the provider's internal default/fallback model.
+- **Curated providers (OpenAI, Anthropic, Mistral, OpenRouter, DeepSeek, Kimi / Moonshot, MiniMax, xAI (Grok), OpenCode Zen, OpenCode Go, …)** — a checkbox list of known models. Tick the ones you want to enable; the first enabled becomes the provider's internal default/fallback model. OpenCode Zen and Go source their catalog (models, per-token costs, per-model API type) directly from the bundled `@earendil-works/pi-ai` registry, so they stay in sync with [OpenCode Zen](https://opencode.ai/docs/zen) whenever that dependency is updated — no manual price table to maintain.
 - **Generic OpenAI-compatible** — free-text model-id entry plus an optional **Load models** button for providers that implement OpenAI's `/models` endpoint.
 - **Ollama** — a separate panel with its own controls (see below).
 
@@ -216,9 +216,9 @@ The full flow:
 
 **Remote server fallback.** If your Axiom instance runs on a remote box where the OAuth callback URL can't reach you, a manual-code field appears below the spinner: *"Or paste the redirect URL here (for remote servers)"*. Complete the login locally, copy the full redirect URL from the browser, paste it in, and click **Submit**.
 
-### Subscriber usage quota (OAuth plans)
+### Subscriber usage quota
 
-For **subscription (OAuth)** providers that expose a usage endpoint, the provider header row's **Status** column shows how much of your subscription allowance is left, polled in the background (no manual action needed). Quota is currently supported for:
+For subscription-style providers that expose a usage endpoint, the provider header row's **Status** column shows how much of your subscription allowance is left, polled in the background (no manual action needed). Quota is currently supported for:
 
 - **Anthropic Claude Pro/Max** (`anthropic-oauth`)
 - **OpenAI ChatGPT Plus/Pro (Codex)** (`openai-codex`)
@@ -227,12 +227,12 @@ For **subscription (OAuth)** providers that expose a usage endpoint, the provide
 Other provider types never show quota — they have no usage endpoint.
 
 ::: warning OpenCode Go is a special case
-OpenCode Go has no official usage API. Its quota is read by scraping the authenticated web dashboard, which requires two environment variables on the Axiom backend:
+OpenCode Go has no official usage API. Its quota is read by scraping the authenticated web dashboard. Configure the provider's extra fields in the provider dialog:
 
-- `OPENCODE_GO_WORKSPACE_ID` — your OpenCode workspace id
-- `OPENCODE_GO_AUTH_COOKIE` — a valid dashboard auth cookie (the `auth=` prefix is optional)
+- **Workspace ID** — the id from `opencode.ai/workspace/<id>/go`
+- **Dashboard Auth Cookie** — a valid dashboard auth cookie (the `auth=` prefix is optional)
 
-Quota is only shown once **both** are set. Because it parses dashboard markup rather than a stable API, this integration can break if the dashboard layout changes; in that case the Status column falls back to *"Quota unavailable"* and inference is unaffected.
+Quota is only shown once **both** fields are set. Because it parses dashboard markup rather than a stable API, this integration can break if the dashboard layout changes; in that case the Status column falls back to *"Quota unavailable"* and inference is unaffected.
 :::
 
 Each usage window appears on its own line as `<window>: <utilization>% (<reset>)`. The exact windows depend on the provider:

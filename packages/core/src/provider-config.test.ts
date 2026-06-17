@@ -735,6 +735,53 @@ describe('provider CRUD', () => {
     expect(masked.providers[0].apiKeyMasked).not.toContain('sk-test1234567890')
   })
 
+  it('stores provider extra fields generically and masks secret entries', () => {
+    setupEmpty()
+    const created = addProvider({
+      name: 'OpenCode Go',
+      providerType: 'opencode-go',
+      apiKey: 'oc-key',
+      defaultModel: 'glm-5.1',
+      extraFields: {
+        workspaceId: ' workspace-1 ',
+        authCookie: ' auth-cookie-1 ',
+        unknown: 'ignored',
+      },
+    })
+
+    const stored = loadProviders().providers.find(p => p.id === created.id)!
+    expect(stored.extraFields).toEqual({
+      workspaceId: 'workspace-1',
+      authCookie: expect.any(String),
+    })
+    expect(stored.extraFields!.authCookie).not.toBe('auth-cookie-1')
+    expect(decrypt(stored.extraFields!.authCookie)).toBe('auth-cookie-1')
+
+    const decrypted = loadProvidersDecrypted().providers.find(p => p.id === created.id)!
+    expect(decrypted.extraFields).toEqual({ workspaceId: 'workspace-1', authCookie: 'auth-cookie-1' })
+
+    const masked = loadProvidersMasked().providers.find(p => p.id === created.id)!
+    expect(masked.extraFields).toEqual({ workspaceId: 'workspace-1' })
+    expect(masked.extraFieldsSet).toEqual({ authCookie: true })
+  })
+
+  it('keeps secret extra fields on blank update and clears blank non-secret fields', () => {
+    setupEmpty()
+    const created = addProvider({
+      name: 'OpenCode Go',
+      providerType: 'opencode-go',
+      apiKey: 'oc-key',
+      defaultModel: 'glm-5.1',
+      extraFields: { workspaceId: 'workspace-1', authCookie: 'auth-cookie-1' },
+    })
+
+    updateProvider(created.id, { extraFields: { workspaceId: '', authCookie: '' } })
+    expect(loadProvidersDecrypted().providers[0]!.extraFields).toEqual({ authCookie: 'auth-cookie-1' })
+
+    updateProvider(created.id, { extraFields: { authCookie: 'auth-cookie-2' } })
+    expect(loadProvidersDecrypted().providers[0]!.extraFields).toEqual({ authCookie: 'auth-cookie-2' })
+  })
+
   it('setFallbackProvider sets the fallback provider', () => {
     setupEmpty()
     addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-1', defaultModel: 'gpt-4o' })
@@ -1044,5 +1091,80 @@ describe('getAvailableModels', () => {
     expect(model.cost.cacheRead).toBe(0.15)
     expect(model.api).toBe('openai-completions')
     expect(model.baseUrl).toBe('https://api.moonshot.ai/v1')
+  })
+})
+
+describe('OpenCode Zen/Go catalog presets (sourced from pi-ai)', () => {
+  const makeProvider = (providerType: 'opencode-go' | 'opencode-zen', defaultModel: string) => ({
+    id: 'test-id',
+    name: providerType,
+    type: 'openai-completions',
+    providerType,
+    provider: providerType === 'opencode-zen' ? 'opencode' : 'opencode-go',
+    baseUrl: PROVIDER_TYPE_PRESETS[providerType].baseUrl,
+    apiKey: 'sk-test',
+    defaultModel,
+  })
+
+  it('groups OpenCode Go under Subscription (api-key auth, subscription flag) but not Zen', () => {
+    expect(PROVIDER_TYPE_PRESETS['opencode-go'].subscription).toBe(true)
+    expect(PROVIDER_TYPE_PRESETS['opencode-go'].authMethod).toBe('api-key')
+    expect(PROVIDER_TYPE_PRESETS['opencode-zen'].subscription).toBeUndefined()
+  })
+
+  it('getAvailableModels resolves the OpenCode Go catalog from pi-ai', () => {
+    const ids = getAvailableModels('opencode-go').map(m => m.id)
+    expect(ids.length).toBeGreaterThan(0)
+    expect(ids).toContain('glm-5.1')
+    expect(ids).toContain('kimi-k2.6')
+  })
+
+  it('getAvailableModels resolves the OpenCode Zen catalog from pi-ai', () => {
+    const ids = getAvailableModels('opencode-zen').map(m => m.id)
+    expect(ids.length).toBeGreaterThan(0)
+    expect(ids).toContain('claude-opus-4-5')
+    expect(ids).toContain('gemini-3.5-flash')
+    expect(ids).toContain('gpt-5.5')
+  })
+
+  it('buildModel uses real per-token costs for OpenCode Go (not the old zeroed override)', () => {
+    const model = buildModel(makeProvider('opencode-go', 'glm-5.1'))
+    expect(model.id).toBe('glm-5.1')
+    expect(model.api).toBe('openai-completions')
+    expect(model.baseUrl).toBe('https://opencode.ai/zen/go/v1')
+    expect(model.cost.input).toBeGreaterThan(0)
+    expect(model.cost.output).toBeGreaterThan(0)
+  })
+
+  it('buildModel resolves per-model api + baseUrl for OpenCode Zen models across wire APIs', () => {
+    const claude = buildModel(makeProvider('opencode-zen', 'claude-opus-4-5'))
+    expect(claude.api).toBe('anthropic-messages')
+    expect(claude.baseUrl).toContain('opencode.ai/zen')
+    expect(claude.cost.input).toBeGreaterThan(0)
+
+    const gemini = buildModel(makeProvider('opencode-zen', 'gemini-3.5-flash'))
+    expect(gemini.api).toBe('google-generative-ai')
+
+    const gpt = buildModel(makeProvider('opencode-zen', 'gpt-5.5'))
+    expect(gpt.api).toBe('openai-responses')
+
+    const glm = buildModel(makeProvider('opencode-zen', 'glm-5.1'))
+    expect(glm.api).toBe('openai-completions')
+  })
+
+  it('does not change api-key providers without resolveModelsFromCatalog (openai stays single-api)', () => {
+    const provider = {
+      id: 'test-id',
+      name: 'openai',
+      type: 'openai-completions',
+      providerType: 'openai' as const,
+      provider: 'openai',
+      baseUrl: 'https://api.openai.com/v1',
+      apiKey: 'sk-test',
+      defaultModel: 'gpt-4o',
+    }
+    const model = buildModel(provider)
+    expect(model.api).toBe('openai-completions')
+    expect(model.baseUrl).toBe('https://api.openai.com/v1')
   })
 })

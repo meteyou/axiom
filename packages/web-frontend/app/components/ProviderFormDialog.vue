@@ -42,7 +42,7 @@
               <SelectSeparator />
               <SelectGroup>
                 <SelectLabel>{{ $t('providers.groupSubscription') }}</SelectLabel>
-                <SelectItem v-for="(preset, key) in oauthPresets" :key="key" :value="String(key)">
+                <SelectItem v-for="(preset, key) in subscriptionPresets" :key="key" :value="String(key)">
                   {{ presetLabel(String(key), preset) }}
                 </SelectItem>
               </SelectGroup>
@@ -83,6 +83,24 @@
           <p v-if="mode === 'edit'" class="text-xs text-muted-foreground">{{ $t('providers.apiKeyHint') }}</p>
           <p v-if="!selectedPreset?.requiresApiKey && mode !== 'edit'" class="text-xs text-muted-foreground">{{ $t('providers.apiKeyOptionalHint') }}</p>
         </div>
+
+        <!-- Provider-specific extra fields declared by the selected preset -->
+        <template v-if="extraFieldDefs.length > 0">
+          <div v-for="field in extraFieldDefs" :key="field.key" class="flex flex-col gap-1.5">
+            <Label :for="`provider-extra-${field.key}`">
+              {{ extraFieldLabel(field) }}
+              <span v-if="!field.required" class="text-xs font-normal text-muted-foreground">({{ $t('providers.optional') }})</span>
+            </Label>
+            <Input
+              :id="`provider-extra-${field.key}`"
+              v-model="form.extraFields[field.key]"
+              :type="field.secret ? 'password' : 'text'"
+              :placeholder="extraFieldPlaceholder(field)"
+              :disabled="oauthInProgress"
+            />
+            <p v-if="extraFieldHint(field)" class="text-xs text-muted-foreground">{{ extraFieldHint(field) }}</p>
+          </div>
+        </template>
 
         <!-- Models (checkbox list for providers with pi-ai models) -->
         <div v-if="form.providerType && hasKnownModels" class="flex flex-col gap-1.5">
@@ -493,6 +511,7 @@ export interface ProviderFormPayload {
   degradedThresholdMs: number
   textVerbosity: null | 'low' | 'medium' | 'high'
   transport: null | 'sse' | 'websocket' | 'websocket-cached' | 'auto'
+  extraFields: Record<string, string>
 }
 
 const props = defineProps<{
@@ -532,6 +551,7 @@ const form = reactive({
   degradedThresholdMs: 5000,
   textVerbosity: 'default' as 'default' | 'low' | 'medium' | 'high',
   transport: 'default' as 'default' | 'sse' | 'websocket' | 'websocket-cached' | 'auto',
+  extraFields: {} as Record<string, string>,
 })
 
 const availableModels = ref<AvailableModel[]>([])
@@ -615,6 +635,10 @@ const selectedPreset = computed(() => {
   return props.presets[form.providerType] ?? null
 })
 
+type ExtraFieldDef = NonNullable<ProviderTypePreset['extraFields']>[number]
+
+const extraFieldDefs = computed<ExtraFieldDef[]>(() => selectedPreset.value?.extraFields ?? [])
+
 const hasKnownModels = computed(() => {
   // Prefer the backend-computed flag (covers presets with local overrides
   // like kimi/moonshot that don't have a pi-ai provider). Fall back to the
@@ -673,9 +697,36 @@ const openAiCompatibleBaseUrlHint = computed(() => translatedOr(
   'Required. Endpoint root that exposes /v1/chat/completions (e.g. NVIDIA NIM, LM Studio, vLLM).',
 ))
 
-const apiKeyPresets = computed(() => {
+function extraFieldTranslation(field: ExtraFieldDef, part: 'label' | 'placeholder' | 'hint', fallback: string): string {
+  return translatedOr(`providers.providerExtraFields.${form.providerType}.${field.key}.${part}`, fallback)
+}
+
+function extraFieldLabel(field: ExtraFieldDef): string {
+  return extraFieldTranslation(field, 'label', field.label)
+}
+
+function extraFieldHint(field: ExtraFieldDef): string {
+  return extraFieldTranslation(field, 'hint', field.hint ?? '')
+}
+
+function extraFieldPlaceholder(field: ExtraFieldDef): string {
+  if (field.secret && props.mode === 'edit' && props.provider?.extraFieldsSet?.[field.key]) {
+    return translatedOr('providers.extraFieldSecretKeep', 'Leave blank to keep the stored value')
+  }
+  return extraFieldTranslation(field, 'placeholder', field.placeholder ?? '')
+}
+
+function sortPresetsByLabel(entries: [string, ProviderTypePreset][]): Record<string, ProviderTypePreset> {
   return Object.fromEntries(
-    Object.entries(props.presets).filter(([, p]) => p.authMethod !== 'oauth')
+    [...entries].sort(([aKey, a], [bKey, b]) =>
+      presetLabel(aKey, a).localeCompare(presetLabel(bKey, b))
+    )
+  )
+}
+
+const apiKeyPresets = computed(() => {
+  return sortPresetsByLabel(
+    Object.entries(props.presets).filter(([, p]) => p.authMethod !== 'oauth' && !p.subscription)
   )
 })
 
@@ -694,9 +745,13 @@ function presetLabel(key: string, preset: ProviderTypePreset): string {
   return translated && translated !== translationKey ? translated : preset.label
 }
 
-const oauthPresets = computed(() => {
-  return Object.fromEntries(
-    Object.entries(props.presets).filter(([, p]) => p.authMethod === 'oauth')
+// Grouped under "Subscription / OAuth" in the dropdown. Includes OAuth
+// providers plus API-key providers flagged as subscriptions (e.g. OpenCode
+// Go). The flag only affects this visual grouping; `isOAuthProvider` still
+// drives the actual auth flow.
+const subscriptionPresets = computed(() => {
+  return sortPresetsByLabel(
+    Object.entries(props.presets).filter(([, p]) => p.authMethod === 'oauth' || p.subscription)
   )
 })
 
@@ -712,6 +767,7 @@ watch(() => [props.open, props.provider] as const, ([isOpen, entry]) => {
     form.degradedThresholdMs = entry.degradedThresholdMs ?? 5000
     form.textVerbosity = entry.textVerbosity ?? 'default'
     form.transport = entry.transport ?? 'default'
+    form.extraFields = { ...(entry.extraFields ?? {}) }
     customModelInput.value = ''
     customDiscoveredModels.value = []
     customModelsError.value = null
@@ -732,6 +788,7 @@ watch(() => [props.open, props.provider] as const, ([isOpen, entry]) => {
     form.degradedThresholdMs = 5000
     form.textVerbosity = 'default'
     form.transport = 'default'
+    form.extraFields = {}
     customModelInput.value = ''
     availableModels.value = []
     customDiscoveredModels.value = []
@@ -1003,8 +1060,8 @@ function onTypeChange() {
     form.baseUrl = preset.baseUrl
     form.defaultModel = ''
     form.enabledModels = []
+    form.extraFields = {}
     customModelInput.value = ''
-    customDiscoveredModels.value = []
     customModelsError.value = null
   }
   oauthError.value = null
@@ -1014,6 +1071,12 @@ function onTypeChange() {
   } else {
     loadModelsForType(form.providerType)
   }
+}
+
+function normalizeExtraFieldsPayload(): Record<string, string> {
+  return Object.fromEntries(
+    extraFieldDefs.value.map(field => [field.key, form.extraFields[field.key]?.trim() ?? '']),
+  )
 }
 
 function handleSubmit() {
@@ -1031,6 +1094,7 @@ function handleSubmit() {
     textVerbosity: normalizeTextVerbosityPayload(),
     transport: normalizeTransportPayload(),
     enabledModels,
+    extraFields: normalizeExtraFieldsPayload(),
   })
 }
 

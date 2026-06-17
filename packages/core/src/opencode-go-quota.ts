@@ -27,31 +27,32 @@ interface OpenCodeGoQuotaCredentials {
   authCookie: string
 }
 
+/** Keys of the OpenCode Go preset's `extraFields` that hold quota credentials. */
+const WORKSPACE_ID_FIELD = 'workspaceId'
+const AUTH_COOKIE_FIELD = 'authCookie'
+
 interface RawOpenCodeGoUsageWindow {
   usagePercent: number
   resetInSec: number
 }
 
-function envValue(name: string, env: NodeJS.ProcessEnv): string {
-  return env[name]?.trim() ?? ''
-}
-
+/**
+ * Resolve dashboard credentials from the provider's `extraFields`. Expects the
+ * decrypted record (the auth cookie is encrypted at rest). Returns `null` when
+ * either credential is missing.
+ */
 export function resolveOpenCodeGoQuotaCredentials(
-  env: NodeJS.ProcessEnv = process.env,
+  provider: ProviderConfig,
 ): OpenCodeGoQuotaCredentials | null {
-  const workspaceId = envValue('OPENCODE_GO_WORKSPACE_ID', env)
-  const authCookie = envValue('OPENCODE_GO_AUTH_COOKIE', env)
+  const workspaceId = provider.extraFields?.[WORKSPACE_ID_FIELD]?.trim() ?? ''
+  const authCookie = provider.extraFields?.[AUTH_COOKIE_FIELD]?.trim() ?? ''
   if (!workspaceId || !authCookie) return null
   return { workspaceId, authCookie }
 }
 
-function hasOpenCodeGoQuotaCredentials(env: NodeJS.ProcessEnv = process.env): boolean {
-  return Boolean(envValue('OPENCODE_GO_WORKSPACE_ID', env) || envValue('OPENCODE_GO_AUTH_COOKIE', env))
-}
-
 /** OpenCode Go quota is read from the web dashboard, not from the inference API key. */
 export function isOpenCodeGoQuotaProvider(provider: ProviderConfig): boolean {
-  return provider.providerType === 'opencode-go' && hasOpenCodeGoQuotaCredentials()
+  return provider.providerType === 'opencode-go' && resolveOpenCodeGoQuotaCredentials(provider) !== null
 }
 
 function escapeRegExp(value: string): string {
@@ -216,14 +217,15 @@ export async function getOpenCodeGoQuotaForProvider(
     return { quota: null, error: 'Provider is not an OpenCode Go provider' }
   }
 
-  const workspaceId = envValue('OPENCODE_GO_WORKSPACE_ID', process.env)
-  const authCookie = envValue('OPENCODE_GO_AUTH_COOKIE', process.env)
-  if (!workspaceId || !authCookie) {
-    const missing = !workspaceId ? 'OPENCODE_GO_WORKSPACE_ID' : 'OPENCODE_GO_AUTH_COOKIE'
-    return { quota: null, error: `Missing ${missing}` }
+  const credentials = resolveOpenCodeGoQuotaCredentials(provider)
+  if (!credentials) {
+    return {
+      quota: null,
+      error: 'Missing OpenCode Go Workspace ID / Dashboard Auth Cookie. Configure them on the provider.',
+    }
   }
 
-  return fetchOpenCodeGoQuota(workspaceId, authCookie, fetchImpl)
+  return fetchOpenCodeGoQuota(credentials.workspaceId, credentials.authCookie, fetchImpl)
 }
 
 export const opencodeGoQuotaAdapter: QuotaProviderAdapter = {
