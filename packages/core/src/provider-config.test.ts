@@ -1054,6 +1054,13 @@ describe('getAvailableModels', () => {
     expect(resolveModelTemperature(provider, 'some-other-model', 0.7)).toBe(0.7)
   })
 
+  it('resolveModelTemperature applies pi-ai catalog Kimi K2 constraints for OpenCode presets', () => {
+    expect(resolveModelTemperature({ providerType: 'opencode-go' as const }, 'kimi-k2.7-code', 0)).toBe(1)
+    expect(resolveModelTemperature({ providerType: 'opencode-go' as const }, 'kimi-k2.6', 0)).toBe(1)
+    expect(resolveModelTemperature({ providerType: 'opencode-zen' as const }, 'kimi-k2.5', 0)).toBe(1)
+    expect(resolveModelTemperature({ providerType: 'opencode-go' as const }, 'glm-5.1', 0)).toBe(0)
+  })
+
   it('presetSupportsTextVerbosity is true only for openai-codex-responses presets', () => {
     expect(presetSupportsTextVerbosity('openai-codex')).toBe(true)
     expect(presetSupportsTextVerbosity('openai')).toBe(false)

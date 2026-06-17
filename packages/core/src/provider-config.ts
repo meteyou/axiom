@@ -494,6 +494,22 @@ function findOverrideModel(providerType: ProviderType | undefined, modelId: stri
   return overrides?.find(m => m.id === modelId)
 }
 
+function findPiAiCatalogModel(providerType: ProviderType | undefined, modelId: string): Model<Api> | undefined {
+  if (!providerType) return undefined
+  const preset = PROVIDER_TYPE_PRESETS[providerType]
+  if (!preset?.piAiProvider) return undefined
+  try {
+    return (getPiAiModels(preset.piAiProvider as KnownProvider) as Model<Api>[]).find(m => m.id === modelId)
+  } catch {
+    return undefined
+  }
+}
+
+function catalogModelRequiresTemperatureOne(providerType: ProviderType | undefined, modelId: string): boolean {
+  const catalogModel = findPiAiCatalogModel(providerType, modelId)
+  return Boolean(catalogModel?.reasoning && /^kimi-k2(?:[.-]|$)/.test(catalogModel.id))
+}
+
 /**
  * Resolve the effective sampling temperature for a given provider+model.
  *
@@ -506,6 +522,7 @@ function findOverrideModel(providerType: ProviderType | undefined, modelId: stri
  * Resolution order for the constraint:
  *   1. `provider.models[].fixedTemperature` (per-provider user override)
  *   2. `PROVIDER_TYPE_MODEL_OVERRIDES[...].fixedTemperature` (local catalog)
+ *   3. pi-ai catalog metadata for known Kimi K2 reasoning models
  *
  * If no constraint applies, the `requested` value is returned unchanged.
  */
@@ -521,6 +538,9 @@ export function resolveModelTemperature(
   const override = findOverrideModel(provider.providerType, modelId)
   if (override?.fixedTemperature !== undefined) {
     return override.fixedTemperature
+  }
+  if (catalogModelRequiresTemperatureOne(provider.providerType, modelId)) {
+    return 1
   }
   return requested
 }

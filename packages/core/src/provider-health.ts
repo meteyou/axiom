@@ -234,7 +234,7 @@ export async function performProviderHealthCheck(
     // use pi-ai's completeSimple for proper API-type-aware health check
     const preset = PROVIDER_TYPE_PRESETS[provider.providerType as keyof typeof PROVIDER_TYPE_PRESETS]
     const hasCustomRequestBuilder = provider.type === 'anthropic-messages' || provider.type === 'openai-completions'
-    if (preset?.authMethod === 'oauth' || !hasCustomRequestBuilder) {
+    if (preset?.authMethod === 'oauth' || preset?.resolveModelsFromCatalog || !hasCustomRequestBuilder) {
       return await performPiAiHealthCheck(provider, startedAt, checkedAt, timeoutMs, degradedThresholdMs)
     }
 
