@@ -782,6 +782,53 @@ describe('provider CRUD', () => {
     expect(loadProvidersDecrypted().providers[0]!.extraFields).toEqual({ authCookie: 'auth-cookie-2' })
   })
 
+  it('clears provider extra fields when provider type changes', () => {
+    setupEmpty()
+    const created = addProvider({
+      name: 'OpenCode Go',
+      providerType: 'opencode-go',
+      apiKey: 'oc-key',
+      defaultModel: 'glm-5.1',
+      extraFields: { workspaceId: 'workspace-1', authCookie: 'auth-cookie-1' },
+    })
+
+    updateProvider(created.id, { providerType: 'openai', defaultModel: 'gpt-4o', enabledModels: ['gpt-4o'] })
+
+    const stored = loadProviders().providers.find(p => p.id === created.id)!
+    expect(stored.extraFields).toBeUndefined()
+
+    const masked = loadProvidersMasked().providers.find(p => p.id === created.id)!
+    expect(masked.extraFields).toEqual({})
+    expect(masked.extraFieldsSet).toEqual({})
+  })
+
+  it('omits stale unknown extra fields from masked providers', () => {
+    setupEmpty()
+    fs.writeFileSync(
+      path.join(tmpDir, 'config', 'providers.json'),
+      JSON.stringify({
+        providers: [{
+          id: 'stale-openai',
+          name: 'Stale OpenAI',
+          type: 'openai-completions',
+          providerType: 'openai',
+          provider: 'openai',
+          baseUrl: 'https://api.openai.com/v1',
+          apiKey: encrypt('sk-test'),
+          defaultModel: 'gpt-4o',
+          extraFields: { workspaceId: 'workspace-1', authCookie: encrypt('auth-cookie-1') },
+          status: 'untested',
+          authMethod: 'api-key',
+        }],
+      }, null, 2),
+      'utf-8',
+    )
+
+    const masked = loadProvidersMasked().providers[0]!
+    expect(masked.extraFields).toEqual({})
+    expect(masked.extraFieldsSet).toEqual({})
+  })
+
   it('setFallbackProvider sets the fallback provider', () => {
     setupEmpty()
     addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-1', defaultModel: 'gpt-4o' })

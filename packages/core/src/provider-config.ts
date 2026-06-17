@@ -724,10 +724,13 @@ export function maskProviderExtraFields(
   providerType: ProviderType | string,
   extraFields: Record<string, string> | undefined,
 ): { extraFields: Record<string, string>; extraFieldsSet: Record<string, boolean> } {
-  const secrets = secretExtraFieldKeys(providerType)
+  const defs = getProviderExtraFieldDefs(providerType)
+  const knownKeys = new Set(defs.map(f => f.key))
+  const secrets = new Set(defs.filter(f => f.secret).map(f => f.key))
   const masked: Record<string, string> = {}
   const set: Record<string, boolean> = {}
   for (const [key, value] of Object.entries(extraFields ?? {})) {
+    if (!knownKeys.has(key)) continue
     if (secrets.has(key)) set[key] = Boolean(value)
     else masked[key] = value
   }
@@ -1079,8 +1082,10 @@ export function updateProvider(id: string, input: {
     throw new Error(`Provider with name "${input.name}" already exists`)
   }
 
+  const providerTypeChanged = Boolean(input.providerType && input.providerType !== existing.providerType)
+
   // If providerType is being changed, update derived fields
-  if (input.providerType && input.providerType !== existing.providerType) {
+  if (providerTypeChanged && input.providerType) {
     const preset = PROVIDER_TYPE_PRESETS[input.providerType]
     if (!preset) {
       throw new Error(`Unknown provider type: ${input.providerType}`)
@@ -1089,6 +1094,7 @@ export function updateProvider(id: string, input: {
     existing.type = preset.apiType
     existing.provider = preset.providerName
     existing.authMethod = preset.authMethod
+    delete existing.extraFields
     if (!input.baseUrl) {
       existing.baseUrl = preset.baseUrl
     }
