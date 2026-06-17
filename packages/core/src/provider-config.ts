@@ -18,7 +18,7 @@ export const CLAUDE_CODE_VERSION = '2.1.96'
  * Supported provider types with presets
  */
 export type ProviderType =
-  | 'openai' | 'anthropic' | 'mistral' | 'ollama' | 'openrouter' | 'deepseek' | 'kimi' | 'minimax' | 'zai' | 'xai' | 'opencode-go' | 'openai-compatible' | 'google'
+  | 'openai' | 'anthropic' | 'mistral' | 'ollama' | 'openrouter' | 'deepseek' | 'kimi' | 'minimax' | 'zai' | 'xai' | 'opencode-go' | 'opencode-zen' | 'openai-compatible' | 'google'
   // Legacy aliases kept for migration
   | 'ollama-local' | 'ollama-cloud'
   | 'openai-codex' | 'github-copilot' | 'anthropic-oauth'
@@ -39,11 +39,52 @@ export interface ProviderTypePreset {
   piAiProvider: string | null // maps to pi-ai KnownProvider for model lookup
   authMethod: AuthMethod
   oauthProviderId?: string // pi-ai OAuth provider ID
+  /**
+   * Provider-specific extra configuration fields beyond the common ones
+   * (name/apiKey/baseUrl/models). Declared per preset so new providers can
+   * add bespoke inputs (e.g. OpenCode Go's quota-dashboard credentials)
+   * without growing `ProviderConfig` with provider-specific properties. The
+   * values are stored in `ProviderConfig.extraFields`; fields marked `secret`
+   * are encrypted at rest and never returned to the client.
+   */
+  extraFields?: ProviderExtraFieldDef[]
+  /**
+   * When true, `buildModel()` returns the pi-ai catalog model verbatim
+   * (per-model `api`, `baseUrl`, cost, limits) instead of the generic build
+   * that pins every model to the preset's single `apiType`. Required for
+   * gateways like OpenCode Zen/Go whose models span multiple wire APIs
+   * (openai-completions, anthropic-messages, google, responses) under one
+   * provider entry.
+   */
+  resolveModelsFromCatalog?: boolean
+  /**
+   * Display-only hint: group this preset under "Subscription / OAuth" in the
+   * UI even though it authenticates with an API key (e.g. OpenCode Go is a
+   * flat-fee subscription that issues an API key rather than using OAuth).
+   * Does not affect the auth flow — `authMethod` still drives that.
+   */
+  subscription?: boolean
 }
 
 export interface AvailableModel {
   id: string
   name: string
+}
+
+/**
+ * Declarative definition of one provider-specific extra configuration field.
+ * Rendered generically by the UI and persisted into `ProviderConfig.extraFields`.
+ */
+export interface ProviderExtraFieldDef {
+  /** Stable key within the provider type (also the storage key). */
+  key: string
+  /** Default English label (UIs may localize via an i18n override). */
+  label: string
+  /** Encrypt at rest and never return the value to the client. */
+  secret?: boolean
+  required?: boolean
+  placeholder?: string
+  hint?: string
 }
 
 export const PROVIDER_TYPE_PRESETS: Record<ProviderType, ProviderTypePreset> = {
@@ -189,8 +230,37 @@ export const PROVIDER_TYPE_PRESETS: Record<ProviderType, ProviderTypePreset> = {
     baseUrl: 'https://opencode.ai/zen/go/v1',
     requiresApiKey: true,
     urlEditable: false,
-    piAiProvider: null,
+    piAiProvider: 'opencode-go',
     authMethod: 'api-key',
+    resolveModelsFromCatalog: true,
+    subscription: true,
+    extraFields: [
+      {
+        key: 'workspaceId',
+        label: 'Workspace ID',
+        placeholder: 'e.g. 0a1b2c3d',
+        hint: 'From your dashboard URL: opencode.ai/workspace/[id]/go',
+      },
+      {
+        key: 'authCookie',
+        label: 'Dashboard Auth Cookie',
+        secret: true,
+        hint: 'The authenticated dashboard cookie (the `auth=` prefix is optional). Used only to read your usage quota.',
+      },
+    ],
+  },
+  'opencode-zen': {
+    type: 'opencode-zen',
+    label: 'OpenCode Zen',
+    description: 'Pay-as-you-go AI gateway by the OpenCode team',
+    apiType: 'openai-completions',
+    providerName: 'opencode',
+    baseUrl: 'https://opencode.ai/zen/v1',
+    requiresApiKey: true,
+    urlEditable: false,
+    piAiProvider: 'opencode',
+    authMethod: 'api-key',
+    resolveModelsFromCatalog: true,
   },
   'openai-compatible': {
     type: 'openai-compatible',
@@ -266,30 +336,6 @@ export const PROVIDER_TYPE_PRESETS: Record<ProviderType, ProviderTypePreset> = {
  * Keep this list in sync with the upstream provider's published catalog.
  */
 export const PROVIDER_TYPE_MODEL_OVERRIDES: Partial<Record<ProviderType, ProviderModelConfig[]>> = {
-  // OpenCode Go — subscription plan by the OpenCode team ($5 first month, $10/month)
-  // OpenAI-compatible endpoint: https://opencode.ai/zen/go/v1/chat/completions
-  // MiniMax M2.x use the Anthropic-compatible endpoint and are intentionally excluded here;
-  // they require a separate provider entry with apiType 'anthropic-messages'.
-  // Pricing is subscription-based (flat fee), so per-token costs are set to 0.
-  // Model IDs confirmed from https://opencode.ai/docs/go/ (April 2026).
-  'opencode-go': [
-    { id: 'glm-5.1', name: 'GLM-5.1', contextWindow: 131_072, maxTokens: 16_384, reasoning: true,
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } },
-    { id: 'glm-5', name: 'GLM-5', contextWindow: 131_072, maxTokens: 16_384, reasoning: false,
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } },
-    { id: 'kimi-k2.6', name: 'Kimi K2.6', contextWindow: 262_144, maxTokens: 32_768, reasoning: true,
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } },
-    { id: 'kimi-k2.5', name: 'Kimi K2.5', contextWindow: 262_144, maxTokens: 32_768, reasoning: true,
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } },
-    { id: 'mimo-v2-pro', name: 'MiMo-V2-Pro', contextWindow: 131_072, maxTokens: 16_384, reasoning: true,
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } },
-    { id: 'mimo-v2-omni', name: 'MiMo-V2-Omni', contextWindow: 131_072, maxTokens: 16_384, reasoning: false,
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } },
-    { id: 'qwen3.6-plus', name: 'Qwen3.6 Plus', contextWindow: 131_072, maxTokens: 16_384, reasoning: true,
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } },
-    { id: 'qwen3.5-plus', name: 'Qwen3.5 Plus', contextWindow: 131_072, maxTokens: 16_384, reasoning: false,
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } },
-  ],
   // Moonshot Platform API (https://platform.moonshot.ai)
   // Confirmed via GET https://api.moonshot.ai/v1/models and official pricing docs.
   kimi: [
@@ -448,6 +494,22 @@ function findOverrideModel(providerType: ProviderType | undefined, modelId: stri
   return overrides?.find(m => m.id === modelId)
 }
 
+function findPiAiCatalogModel(providerType: ProviderType | undefined, modelId: string): Model<Api> | undefined {
+  if (!providerType) return undefined
+  const preset = PROVIDER_TYPE_PRESETS[providerType]
+  if (!preset?.piAiProvider) return undefined
+  try {
+    return (getPiAiModels(preset.piAiProvider as KnownProvider) as Model<Api>[]).find(m => m.id === modelId)
+  } catch {
+    return undefined
+  }
+}
+
+function catalogModelRequiresTemperatureOne(providerType: ProviderType | undefined, modelId: string): boolean {
+  const catalogModel = findPiAiCatalogModel(providerType, modelId)
+  return Boolean(catalogModel?.reasoning && /^kimi-k2(?:[.-]|$)/.test(catalogModel.id))
+}
+
 /**
  * Resolve the effective sampling temperature for a given provider+model.
  *
@@ -460,6 +522,7 @@ function findOverrideModel(providerType: ProviderType | undefined, modelId: stri
  * Resolution order for the constraint:
  *   1. `provider.models[].fixedTemperature` (per-provider user override)
  *   2. `PROVIDER_TYPE_MODEL_OVERRIDES[...].fixedTemperature` (local catalog)
+ *   3. pi-ai catalog metadata for known Kimi K2 reasoning models
  *
  * If no constraint applies, the `requested` value is returned unchanged.
  */
@@ -475,6 +538,9 @@ export function resolveModelTemperature(
   const override = findOverrideModel(provider.providerType, modelId)
   if (override?.fixedTemperature !== undefined) {
     return override.fixedTemperature
+  }
+  if (catalogModelRequiresTemperatureOne(provider.providerType, modelId)) {
+    return 1
   }
   return requested
 }
@@ -500,6 +566,11 @@ export interface ProviderConfig {
   modelStatuses?: Record<string, 'connected' | 'error' | 'untested'>
   authMethod?: AuthMethod
   oauthCredentials?: OAuthCredentialsStored // encrypted at rest
+  /**
+   * Provider-specific extra field values (see `ProviderTypePreset.extraFields`).
+   * Values for fields declared `secret` are encrypted at rest.
+   */
+  extraFields?: Record<string, string>
 }
 
 /**
@@ -560,6 +631,113 @@ export const DEFAULT_PRICE_TABLE: TokenPriceTable = {
 }
 
 /**
+ * Extra-field definitions declared by a provider type's preset (empty when none).
+ */
+export function getProviderExtraFieldDefs(providerType: ProviderType | string): ProviderExtraFieldDef[] {
+  return PROVIDER_TYPE_PRESETS[providerType as ProviderType]?.extraFields ?? []
+}
+
+function secretExtraFieldKeys(providerType: ProviderType | string): Set<string> {
+  return new Set(getProviderExtraFieldDefs(providerType).filter(f => f.secret).map(f => f.key))
+}
+
+/**
+ * Decrypt the secret entries of a stored `extraFields` record, leaving
+ * non-secret values untouched. Returns `undefined`/the input as-is when empty.
+ */
+function decryptExtraFields(
+  providerType: ProviderType | string,
+  extraFields: Record<string, string> | undefined,
+  providerName: string,
+): Record<string, string> | undefined {
+  if (!extraFields) return extraFields
+  const secrets = secretExtraFieldKeys(providerType)
+  const out: Record<string, string> = {}
+  for (const [key, value] of Object.entries(extraFields)) {
+    out[key] = secrets.has(key)
+      ? (tryDecryptField(value, `extra field "${key}" for provider "${providerName}"`) ?? value)
+      : value
+  }
+  return out
+}
+
+/**
+ * Encrypt + sanitize an incoming `extraFields` record for storage: drops empty
+ * values and unknown keys, encrypts fields declared `secret`. Returns
+ * `undefined` when nothing remains.
+ */
+function sanitizeExtraFieldsForStorage(
+  providerType: ProviderType | string,
+  extraFields: Record<string, string> | undefined,
+): Record<string, string> | undefined {
+  if (!extraFields) return undefined
+  const defs = getProviderExtraFieldDefs(providerType)
+  const knownKeys = new Set(defs.map(f => f.key))
+  const secrets = new Set(defs.filter(f => f.secret).map(f => f.key))
+  const out: Record<string, string> = {}
+  for (const [key, raw] of Object.entries(extraFields)) {
+    if (!knownKeys.has(key)) continue
+    const trimmed = (raw ?? '').trim()
+    if (!trimmed) continue
+    out[key] = secrets.has(key) ? encrypt(trimmed) : trimmed
+  }
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
+/**
+ * Merge incoming extra-field edits into the currently-stored record. Secret
+ * fields left blank keep their existing (encrypted) value; non-secret fields
+ * set to blank are cleared. Unknown keys are pruned.
+ */
+function mergeExtraFieldsForUpdate(
+  providerType: ProviderType | string,
+  current: Record<string, string> | undefined,
+  incoming: Record<string, string>,
+): Record<string, string> | undefined {
+  const defs = getProviderExtraFieldDefs(providerType)
+  const knownKeys = new Set(defs.map(f => f.key))
+  const secrets = new Set(defs.filter(f => f.secret).map(f => f.key))
+  const out: Record<string, string> = {}
+  for (const [key, value] of Object.entries(current ?? {})) {
+    if (knownKeys.has(key)) out[key] = value
+  }
+  for (const [key, raw] of Object.entries(incoming)) {
+    if (!knownKeys.has(key)) continue
+    const trimmed = (raw ?? '').trim()
+    if (secrets.has(key)) {
+      if (trimmed) out[key] = encrypt(trimmed)
+    } else if (trimmed) {
+      out[key] = trimmed
+    } else {
+      delete out[key]
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
+/**
+ * Produce a client-safe view of a provider's extra fields: non-secret values
+ * pass through, secret values are omitted and reported as a presence boolean
+ * in `extraFieldsSet`. Expects the decrypted record.
+ */
+export function maskProviderExtraFields(
+  providerType: ProviderType | string,
+  extraFields: Record<string, string> | undefined,
+): { extraFields: Record<string, string>; extraFieldsSet: Record<string, boolean> } {
+  const defs = getProviderExtraFieldDefs(providerType)
+  const knownKeys = new Set(defs.map(f => f.key))
+  const secrets = new Set(defs.filter(f => f.secret).map(f => f.key))
+  const masked: Record<string, string> = {}
+  const set: Record<string, boolean> = {}
+  for (const [key, value] of Object.entries(extraFields ?? {})) {
+    if (!knownKeys.has(key)) continue
+    if (secrets.has(key)) set[key] = Boolean(value)
+    else masked[key] = value
+  }
+  return { extraFields: masked, extraFieldsSet: set }
+}
+
+/**
  * Load providers.json from config directory
  */
 export function loadProviders(): ProvidersFile {
@@ -617,6 +795,7 @@ export function loadProvidersDecrypted(): ProvidersFile {
       const baseUrl = (preset && !preset.urlEditable) ? preset.baseUrl : p.baseUrl
 
       const decryptedApiKey = tryDecryptField(p.apiKey, `API key for provider "${p.name}"`) ?? p.apiKey
+      const decryptedExtraFields = decryptExtraFields(p.providerType, p.extraFields, p.name)
 
       let decryptedOAuth: OAuthCredentialsStored | undefined
       if (p.oauthCredentials) {
@@ -632,6 +811,7 @@ export function loadProvidersDecrypted(): ProvidersFile {
         ...p,
         baseUrl,
         apiKey: decryptedApiKey,
+        extraFields: decryptedExtraFields,
         oauthCredentials: decryptedOAuth,
       }
     }),
@@ -641,16 +821,30 @@ export function loadProvidersDecrypted(): ProvidersFile {
 /**
  * Get providers with API keys masked for display
  */
-export function loadProvidersMasked(): ProvidersFile & { providers: (ProviderConfig & { apiKeyMasked: string })[] } {
+export type MaskedProviderConfig = ProviderConfig & {
+  apiKeyMasked: string
+  extraFieldsSet: Record<string, boolean>
+}
+
+export type MaskedProvidersFile = Omit<ProvidersFile, 'providers'> & {
+  providers: MaskedProviderConfig[]
+}
+
+export function loadProvidersMasked(): MaskedProvidersFile {
   const file = loadProvidersDecrypted() // Already syncs URLs from presets
   return {
     ...file,
-    providers: file.providers.map(p => ({
-      ...p,
-      apiKey: '', // Never send real key to frontend
-      apiKeyMasked: p.apiKey ? maskApiKey(p.apiKey) : '',
-      oauthCredentials: p.oauthCredentials ? { refresh: '', access: '', expires: p.oauthCredentials.expires } : undefined,
-    })),
+    providers: file.providers.map(p => {
+      const { extraFields, extraFieldsSet } = maskProviderExtraFields(p.providerType, p.extraFields)
+      return {
+        ...p,
+        apiKey: '', // Never send real key to frontend
+        apiKeyMasked: p.apiKey ? maskApiKey(p.apiKey) : '',
+        extraFields,
+        extraFieldsSet,
+        oauthCredentials: p.oauthCredentials ? { refresh: '', access: '', expires: p.oauthCredentials.expires } : undefined,
+      }
+    }),
   }
 }
 
@@ -738,6 +932,7 @@ export function addProvider(input: {
   degradedThresholdMs?: number
   textVerbosity?: TextVerbosity
   transport?: ProviderTransport
+  extraFields?: Record<string, string>
 }): ProviderConfig {
   const preset = PROVIDER_TYPE_PRESETS[input.providerType]
   if (!preset) {
@@ -773,6 +968,10 @@ export function addProvider(input: {
       && { textVerbosity: input.textVerbosity }),
     ...(input.transport && input.transport !== 'sse' && presetSupportsTransport(input.providerType)
       && { transport: input.transport }),
+    ...((() => {
+      const extra = sanitizeExtraFieldsForStorage(input.providerType, input.extraFields)
+      return extra ? { extraFields: extra } : {}
+    })()),
     status: 'untested',
     authMethod: preset.authMethod,
   }
@@ -868,6 +1067,7 @@ export function updateProvider(id: string, input: {
   degradedThresholdMs?: number
   textVerbosity?: TextVerbosity | null
   transport?: ProviderTransport | null
+  extraFields?: Record<string, string>
 }): ProviderConfig {
   const file = loadProviders()
   const index = file.providers.findIndex(p => p.id === id)
@@ -882,8 +1082,10 @@ export function updateProvider(id: string, input: {
     throw new Error(`Provider with name "${input.name}" already exists`)
   }
 
+  const providerTypeChanged = Boolean(input.providerType && input.providerType !== existing.providerType)
+
   // If providerType is being changed, update derived fields
-  if (input.providerType && input.providerType !== existing.providerType) {
+  if (providerTypeChanged && input.providerType) {
     const preset = PROVIDER_TYPE_PRESETS[input.providerType]
     if (!preset) {
       throw new Error(`Unknown provider type: ${input.providerType}`)
@@ -892,6 +1094,7 @@ export function updateProvider(id: string, input: {
     existing.type = preset.apiType
     existing.provider = preset.providerName
     existing.authMethod = preset.authMethod
+    delete existing.extraFields
     if (!input.baseUrl) {
       existing.baseUrl = preset.baseUrl
     }
@@ -909,6 +1112,9 @@ export function updateProvider(id: string, input: {
       : [dm, ...input.enabledModels]
   }
   if (input.degradedThresholdMs !== undefined) existing.degradedThresholdMs = input.degradedThresholdMs
+  if (input.extraFields !== undefined) {
+    existing.extraFields = mergeExtraFieldsForUpdate(existing.providerType, existing.extraFields, input.extraFields)
+  }
   if (input.textVerbosity !== undefined) {
     if (input.textVerbosity === null || !presetSupportsTextVerbosity(existing.providerType)) {
       // Either the caller explicitly cleared the value or the (possibly
@@ -1201,8 +1407,10 @@ export function buildModel(provider: ProviderConfig, modelId?: string): Model<Ap
   const id = modelId ?? provider.defaultModel
   const preset = PROVIDER_TYPE_PRESETS[provider.providerType]
 
-  // For OAuth providers, look up the model from pi-ai to get correct api type and metadata
-  if (preset?.authMethod === 'oauth' && preset.piAiProvider) {
+  // Look up the model from pi-ai to get the correct per-model api type and
+  // metadata. This path covers OAuth providers as well as api-key gateways
+  // (OpenCode Zen/Go) whose catalog spans multiple wire APIs under one entry.
+  if (preset?.piAiProvider && (preset.authMethod === 'oauth' || preset.resolveModelsFromCatalog)) {
     try {
       const piAiModels = getPiAiModels(preset.piAiProvider as KnownProvider)
 

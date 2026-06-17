@@ -91,8 +91,10 @@ export {
   PROVIDER_TYPE_PRESETS,
   PROVIDER_TYPE_MODEL_OVERRIDES,
   CLAUDE_CODE_VERSION,
+  getProviderExtraFieldDefs,
+  maskProviderExtraFields,
 } from './provider-config.js'
-export type { ProviderConfig, ProviderModelConfig, ProvidersFile, ProviderType, ProviderTypePreset, AuthMethod, TextVerbosity, AvailableModel, OAuthCredentialsStored, TokenPriceTable } from './provider-config.js'
+export type { ProviderConfig, MaskedProviderConfig, MaskedProvidersFile, ProviderModelConfig, ProvidersFile, ProviderType, ProviderTypePreset, ProviderExtraFieldDef, AuthMethod, TextVerbosity, AvailableModel, OAuthCredentialsStored, TokenPriceTable } from './provider-config.js'
 export {
   fetchAnthropicQuota,
   getAnthropicQuotaForProvider,
@@ -106,6 +108,14 @@ export {
   extractCodexAccountId,
   openaiCodexQuotaAdapter,
 } from './openai-codex-quota.js'
+export {
+  fetchOpenCodeGoQuota,
+  getOpenCodeGoQuotaForProvider,
+  isOpenCodeGoQuotaProvider,
+  parseOpenCodeGoQuotaHtml,
+  resolveOpenCodeGoQuotaCredentials,
+  opencodeGoQuotaAdapter,
+} from './opencode-go-quota.js'
 export {
   getQuotaAdapter,
   isQuotaProvider,

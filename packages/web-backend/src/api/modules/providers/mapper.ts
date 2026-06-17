@@ -1,4 +1,4 @@
-import { buildModel, isQuotaProvider, PROVIDER_TYPE_MODEL_OVERRIDES, PROVIDER_TYPE_PRESETS } from '@axiom/core'
+import { buildModel, isQuotaProvider, maskProviderExtraFields, PROVIDER_TYPE_MODEL_OVERRIDES, PROVIDER_TYPE_PRESETS } from '@axiom/core'
 import type {
   ProviderConfig,
   ProviderType,
@@ -102,21 +102,27 @@ export function mapProvidersListResponse(
 }
 
 export function mapCreatedProviderResponse(provider: ProviderConfig, rawApiKey?: string): ProviderMutationResponseContract {
+  const { extraFields, extraFieldsSet } = maskProviderExtraFields(provider.providerType, provider.extraFields)
   return {
     provider: {
       ...provider,
       apiKey: '',
       apiKeyMasked: rawApiKey ? maskApiKey(rawApiKey) : '',
+      extraFields,
+      extraFieldsSet,
     } as ProviderContract,
   }
 }
 
 export function mapUpdatedProviderResponse(provider: ProviderConfig, rawApiKey?: string): ProviderMutationResponseContract {
+  const { extraFields, extraFieldsSet } = maskProviderExtraFields(provider.providerType, provider.extraFields)
   return {
     provider: {
       ...provider,
       apiKey: '',
       apiKeyMasked: rawApiKey ? maskApiKey(rawApiKey) : '(unchanged)',
+      extraFields,
+      extraFieldsSet,
     } as ProviderContract,
   }
 }

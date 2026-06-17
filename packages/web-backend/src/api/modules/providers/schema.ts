@@ -52,6 +52,15 @@ function normalizeDegradedThresholdMs(value: unknown): number | undefined {
   return Math.max(1, Math.round(value as number))
 }
 
+function normalizeExtraFields(value: unknown): Record<string, string> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const out: Record<string, string> = {}
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof raw === 'string') out[key] = raw.trim()
+  }
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
 function normalizeTextVerbosity(value: unknown): 'low' | 'medium' | 'high' | null | undefined {
   if (value === null || value === '') return null
   if (value === 'low' || value === 'medium' || value === 'high') return value
@@ -204,6 +213,7 @@ export function parseProviderCreatePayload(
       degradedThresholdMs: normalizeDegradedThresholdMs(body.degradedThresholdMs),
       textVerbosity: normalizeTextVerbosity(body.textVerbosity),
       transport: normalizeTransport(body.transport),
+      extraFields: normalizeExtraFields(body.extraFields),
     },
   }
 }
@@ -231,6 +241,7 @@ export function parseProviderUpdatePayload(payload: unknown): ParseResult<Provid
       degradedThresholdMs: normalizeDegradedThresholdMs(body.degradedThresholdMs),
       textVerbosity: normalizeTextVerbosity(body.textVerbosity),
       transport: normalizeTransport(body.transport),
+      extraFields: normalizeExtraFields(body.extraFields),
     },
   }
 }

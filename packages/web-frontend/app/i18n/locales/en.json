@@ -252,7 +252,21 @@
     "ollamaPullError": "Pull failed",
     "ollamaDeleteConfirm": "Delete model {model}?",
     "ollamaDeleteSuccess": "Model deleted",
-    "ollamaNoModelsHint": "Load the model list from your Ollama instance, then select models to enable."
+    "ollamaNoModelsHint": "Load the model list from your Ollama instance, then select models to enable.",
+    "extraFieldSecretKeep": "Leave blank to keep the stored value",
+    "providerExtraFields": {
+      "opencode-go": {
+        "workspaceId": {
+          "label": "Workspace ID",
+          "placeholder": "e.g. 0a1b2c3d",
+          "hint": "From your dashboard URL: opencode.ai/workspace/[id]/go"
+        },
+        "authCookie": {
+          "label": "Dashboard Auth Cookie",
+          "hint": "The authenticated dashboard cookie (the `auth=` prefix is optional). Used only to read your Go usage quota."
+        }
+      }
+    }
   },
   "logs": {
     "title": "Activity Logs",
@@ -624,7 +638,6 @@
     "ttsProviderDeepgram": "Deepgram Aura",
     "ttsDeepgramModel": "Deepgram Voice",
     "ttsDeepgramModelHint": "Deepgram Aura voice model used for synthesis.",
-
     "deepgramApiKey": "Deepgram API Key",
     "deepgramApiKeyPlaceholder": "Enter Deepgram API key",
     "deepgramApiKeyHint": "Leave the masked value to keep the existing key.",

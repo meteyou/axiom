@@ -42,10 +42,20 @@ export function useQuotaFormat() {
     if (Number.isNaN(reset.getTime())) return ''
 
     const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
-    const weekday = reset.toLocaleDateString(undefined, { weekday: 'short', timeZone })
     const time = reset
       .toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', timeZone })
       .replace(' ', '')
+
+    // The bare weekday is only unambiguous within the next week. For resets
+    // further out (e.g. the 30d window) add the date so "Fr" can't refer to an
+    // arbitrary Friday weeks away.
+    const aWeekMs = 7 * 24 * 60 * 60 * 1000
+    if (reset.getTime() - Date.now() >= aWeekMs) {
+      const date = reset.toLocaleDateString(undefined, { day: '2-digit', month: '2-digit', timeZone })
+      return `${date} ${time}`
+    }
+
+    const weekday = reset.toLocaleDateString(undefined, { weekday: 'short', timeZone })
     return `${weekday} ${time}`
   }
 

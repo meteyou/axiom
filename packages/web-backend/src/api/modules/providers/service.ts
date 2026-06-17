@@ -350,6 +350,7 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
         degradedThresholdMs: payload.degradedThresholdMs,
         textVerbosity: payload.textVerbosity ?? undefined,
         transport: payload.transport ?? undefined,
+        extraFields: payload.extraFields,
       })
 
       const afterActiveProvider = loadProviders().activeProvider ?? null
@@ -376,6 +377,7 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
         degradedThresholdMs: payload.degradedThresholdMs,
         textVerbosity: payload.textVerbosity,
         transport: payload.transport,
+        extraFields: payload.extraFields,
       })
 
       if (activeProvider === id) {

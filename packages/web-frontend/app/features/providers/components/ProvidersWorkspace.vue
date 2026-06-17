@@ -295,6 +295,7 @@
 </template>
 
 <script setup lang="ts">
+import type { ProviderUpdatePayloadContract } from '@axiom/core/contracts'
 import type { Provider } from '~/features/providers/composables/useProviders'
 import type { ProviderFormPayload } from '~/components/ProviderFormDialog.vue'
 import { useProviders } from '~/features/providers/composables/useProviders'
@@ -503,7 +504,7 @@ function closeForm() {
 
 async function handleSubmit(payload: ProviderFormPayload) {
   if (formMode.value === 'edit' && editingProvider.value) {
-    const input: Record<string, string | number | string[] | null | undefined> = {
+    const input: ProviderUpdatePayloadContract = {
       name: payload.name,
       providerType: payload.providerType,
       baseUrl: payload.baseUrl,
@@ -512,6 +513,7 @@ async function handleSubmit(payload: ProviderFormPayload) {
       degradedThresholdMs: payload.degradedThresholdMs,
       textVerbosity: payload.textVerbosity,
       transport: payload.transport,
+      extraFields: payload.extraFields,
     }
     if (payload.apiKey) {
       input.apiKey = payload.apiKey
@@ -529,6 +531,7 @@ async function handleSubmit(payload: ProviderFormPayload) {
       degradedThresholdMs: payload.degradedThresholdMs,
       textVerbosity: payload.textVerbosity,
       transport: payload.transport,
+      extraFields: payload.extraFields,
     })
     if (result) closeForm()
   }

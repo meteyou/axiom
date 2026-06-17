@@ -98,6 +98,22 @@ describe('providers schema', () => {
     if (cleared.ok) expect(cleared.value.transport).toBeNull()
   })
 
+  it('parses provider extra fields on create and update payloads', () => {
+    const create = parseProviderCreatePayload({
+      name: 'OpenCode Go',
+      providerType: 'opencode-go',
+      apiKey: 'oc-key',
+      defaultModel: 'glm-5.1',
+      extraFields: { workspaceId: ' workspace-1 ', authCookie: ' cookie-1 ', ignoredNumber: 123 },
+    }, PROVIDER_TYPE_PRESETS as unknown as typeof PROVIDER_TYPE_PRESETS)
+    expect(create.ok).toBe(true)
+    if (create.ok) expect(create.value.extraFields).toEqual({ workspaceId: 'workspace-1', authCookie: 'cookie-1' })
+
+    const update = parseProviderUpdatePayload({ extraFields: { workspaceId: '', authCookie: ' cookie-2 ' } })
+    expect(update.ok).toBe(true)
+    if (update.ok) expect(update.value.extraFields).toEqual({ workspaceId: '', authCookie: 'cookie-2' })
+  })
+
   it('validates ollama probe payload and url format', () => {
     expect(parseOllamaProbePayload({ providerType: 'ollama' })).toEqual({
       ok: true,
