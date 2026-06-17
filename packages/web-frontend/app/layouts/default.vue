@@ -272,9 +272,9 @@
           </TooltipContent>
         </Tooltip>
 
-        <!-- Anthropic quota (desktop, wide viewports only) -->
+        <!-- Subscriber quota (desktop, wide viewports only) -->
         <div v-if="quotaTopBarParts.length > 0" class="hidden items-center gap-2 lg:flex">
-          <template v-for="(part, idx) in quotaTopBarParts" :key="part.label">
+          <template v-for="(part, idx) in quotaTopBarParts" :key="part.key">
             <span v-if="idx > 0" class="text-muted-foreground/40">·</span>
             <span class="text-xs">
               <span class="font-medium" :class="part.colorClass">{{ part.label }}: {{ part.utilization }}%</span>
@@ -376,24 +376,12 @@ const statusText = computed(() => {
   }
 })
 
-const { quotaColorClass, formatQuotaResetRelative, formatQuotaResetNice } = useQuotaFormat()
+const { quotaWindowParts } = useQuotaFormat()
 
 const quotaTopBarParts = computed(() => {
   const q = globalQuota.value
   if (!q || q.error) return []
-  const specs = [
-    { label: '5h', bucket: q.fiveHour, format: formatQuotaResetRelative },
-    { label: '7d', bucket: q.sevenDay, format: formatQuotaResetNice },
-    { label: 'Opus', bucket: q.sevenDayOpus, format: formatQuotaResetNice },
-  ]
-  return specs
-    .filter((s) => s.bucket != null)
-    .map((s) => ({
-      label: s.label,
-      utilization: s.bucket!.utilization,
-      reset: s.format(s.bucket!.resetsAt),
-      colorClass: quotaColorClass(s.bucket!.utilization),
-    }))
+  return quotaWindowParts(q)
 })
 
 onMounted(() => {

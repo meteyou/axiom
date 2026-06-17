@@ -97,8 +97,25 @@ export {
   fetchAnthropicQuota,
   getAnthropicQuotaForProvider,
   isAnthropicOAuthProvider,
+  anthropicQuotaAdapter,
 } from './anthropic-quota.js'
-export type { AnthropicQuota, AnthropicQuotaBucket, AnthropicQuotaFetchResult } from './anthropic-quota.js'
+export {
+  fetchOpenAiCodexQuota,
+  getOpenAiCodexQuotaForProvider,
+  isOpenAiCodexOAuthProvider,
+  extractCodexAccountId,
+  openaiCodexQuotaAdapter,
+} from './openai-codex-quota.js'
+export {
+  getQuotaAdapter,
+  isQuotaProvider,
+} from './quota-registry.js'
+export {
+  parseRetryAfterMs,
+  normalizeUtilization,
+  limitWindowLabel,
+} from './provider-quota.js'
+export type { ProviderQuotaFetchResult, QuotaProviderAdapter } from './provider-quota.js'
 export { encrypt, decrypt, isEncrypted, maskApiKey } from './encryption.js'
 export {
   logTokenUsage,

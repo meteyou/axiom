@@ -1,11 +1,11 @@
-import { buildModel, PROVIDER_TYPE_MODEL_OVERRIDES, PROVIDER_TYPE_PRESETS } from '@axiom/core'
+import { buildModel, isQuotaProvider, PROVIDER_TYPE_MODEL_OVERRIDES, PROVIDER_TYPE_PRESETS } from '@axiom/core'
 import type {
   ProviderConfig,
   ProviderType,
   ProvidersFile,
 } from '@axiom/core'
 import type {
-  AnthropicQuotaContract,
+  ProviderQuotaContract,
   OllamaModelContract,
   ProviderActivationResponseContract,
   ProviderContract,
@@ -52,7 +52,7 @@ function resolveModelCost(provider: ProviderConfig, modelId: string): { input: n
 export function mapProvidersListResponse(
   masked: ProvidersFile,
   decrypted: ProvidersFile,
-  quotaSnapshot?: Record<string, AnthropicQuotaContract>,
+  quotaSnapshot?: Record<string, ProviderQuotaContract>,
 ): ProvidersListResponseContract {
   const providers = masked.providers.map((provider) => {
     const fullProvider = decrypted.providers.find((candidate) => candidate.id === provider.id)
@@ -76,6 +76,7 @@ export function mapProvidersListResponse(
       apiKeyMasked: (provider as unknown as { apiKeyMasked?: string }).apiKeyMasked ?? provider.apiKey,
       cost,
       modelCosts,
+      supportsQuota: fullProvider ? isQuotaProvider(fullProvider) : false,
       quota: quotaSnapshot?.[provider.id] ?? null,
     } as ProviderContract
   })

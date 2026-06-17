@@ -110,12 +110,12 @@
                       </span>
                       <template v-else>
                         <div
-                          v-for="part in quotaParts(getQuota(provider)!)"
-                          :key="part.label"
+                          v-for="part in quotaWindowParts(getQuota(provider)!)"
+                          :key="part.key"
                           class="flex items-center gap-1 whitespace-nowrap"
                         >
-                          <span class="font-medium" :class="quotaColorClass(part.utilization)">
-                            {{ part.label }} {{ part.utilization }}%
+                          <span class="font-medium" :class="part.colorClass">
+                            {{ part.label }}: {{ part.utilization }}%
                           </span>
                           <span v-if="part.reset" class="text-muted-foreground">({{ part.reset }})</span>
                         </div>
@@ -135,7 +135,7 @@
                           {{ $t('users.edit') }}
                         </DropdownMenuItem>
                         <DropdownMenuItem
-                            v-if="isAnthropicOAuth(provider)"
+                            v-if="providerSupportsQuota(provider)"
                             :disabled="isRefreshingQuota(provider.id)"
                             @click="handleRefreshQuota(provider.id)"
                         >
@@ -300,7 +300,7 @@ import type { ProviderFormPayload } from '~/components/ProviderFormDialog.vue'
 import { useProviders } from '~/features/providers/composables/useProviders'
 
 const { t } = useI18n()
-const { quotaColorClass, formatQuotaResetRelative, formatQuotaResetNice } = useQuotaFormat()
+const { quotaWindowParts } = useQuotaFormat()
 
 const {
   providers,
@@ -359,15 +359,14 @@ function getTypeLabel(providerType: string): string {
   return preset?.label ?? providerType
 }
 
-type QuotaBucket = { utilization: number; resetsAt: string | null }
 type ProviderQuota = NonNullable<Provider['quota']>
 
-function isAnthropicOAuth(provider: Provider): boolean {
-  return provider.authMethod === 'oauth' && provider.providerType === 'anthropic-oauth'
+function providerSupportsQuota(provider: Provider): boolean {
+  return provider.supportsQuota === true
 }
 
 function getQuota(provider: Provider): ProviderQuota | null {
-  if (!isAnthropicOAuth(provider)) {
+  if (!providerSupportsQuota(provider)) {
     return null
   }
   return provider.quota ?? null
@@ -404,23 +403,6 @@ async function handleRefreshQuota(providerId: string) {
     next.delete(providerId)
     refreshingQuotaIds.value = next
   }
-}
-
-type QuotaBucketSpec = { label: string; bucket: QuotaBucket | null; format: (resetsAt: string | null) => string }
-
-function quotaParts(quota: ProviderQuota): Array<{ label: string; utilization: number; reset: string }> {
-  const buckets: QuotaBucketSpec[] = [
-    { label: '5h:', bucket: quota.fiveHour, format: formatQuotaResetRelative },
-    { label: '7d:', bucket: quota.sevenDay, format: formatQuotaResetNice },
-    { label: 'Opus:', bucket: quota.sevenDayOpus, format: () => '' },
-  ]
-  return buckets
-    .filter((entry): entry is QuotaBucketSpec & { bucket: QuotaBucket } => entry.bucket != null)
-    .map((entry) => ({
-      label: entry.label,
-      utilization: entry.bucket.utilization,
-      reset: entry.format(entry.bucket.resetsAt),
-    }))
 }
 
 function getStatusVariant(status?: string): 'success' | 'destructive' | 'muted' {

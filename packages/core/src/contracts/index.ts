@@ -57,8 +57,9 @@ export type {
 export type {
   ProviderStatusContract,
   ProviderAuthMethodContract,
-  AnthropicQuotaBucketContract,
-  AnthropicQuotaContract,
+  ProviderQuotaKindContract,
+  ProviderQuotaWindowContract,
+  ProviderQuotaContract,
   ProviderContract,
   ProviderTypePresetContract,
   AvailableModelContract,
