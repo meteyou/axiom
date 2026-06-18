@@ -55,7 +55,9 @@ export interface ProviderContract {
   authMethod?: ProviderAuthMethodContract
   oauthCredentials?: { expires: number }
   cost?: { input: number; output: number } | null
-  modelCosts?: Record<string, { input: number; output: number }>
+  modelCosts?: Record<string, { input: number; output: number; cacheRead?: number; cacheWrite?: number }>
+  /** Per-model user overrides (description, cost, limits). Not masked. */
+  models?: ProviderModelContract[]
   /** True when this provider exposes a subscriber usage quota endpoint. */
   supportsQuota?: boolean
   /** Subscriber usage snapshot (only for quota-capable OAuth providers). */
@@ -64,6 +66,21 @@ export interface ProviderContract {
   extraFields?: Record<string, string>
   /** Presence flags for secret extra fields (the values themselves are never returned). */
   extraFieldsSet?: Record<string, boolean>
+}
+
+/**
+ * Per-model user override entry stored in `ProviderConfig.models[]`. Exposed
+ * via the API so the UI can edit a model's description and cost.
+ */
+export interface ProviderModelContract {
+  id: string
+  name?: string
+  description?: string
+  contextWindow?: number
+  maxTokens?: number
+  reasoning?: boolean
+  fixedTemperature?: number
+  cost?: { input: number; output: number; cacheRead?: number; cacheWrite?: number }
 }
 
 /** Declarative definition of one provider-specific extra configuration field. */
@@ -219,6 +236,21 @@ export interface ProviderOAuthCodePayloadContract {
 
 export interface ProviderModelSelectionPayloadContract {
   modelId?: string
+}
+
+/**
+ * Body for `PATCH /api/providers/:providerId/models/:modelId`. Only the
+ * supplied fields are applied; omitted fields keep their existing (or
+ * catalog-default) value.
+ */
+export interface ProviderModelUpdatePayloadContract {
+  description?: string
+  cost?: {
+    input?: number
+    output?: number
+    cacheRead?: number
+    cacheWrite?: number
+  }
 }
 
 export interface ProviderReferenceContract {

@@ -586,6 +586,13 @@ export interface OAuthCredentialsStored {
 export interface ProviderModelConfig {
   id: string
   name?: string
+  /**
+   * Free-form note describing what this model is suited for. Surfaced in the
+   * system prompt's `<available_providers>` block so the agent can route
+   * background tasks to it. A model without a description (and that is not
+   * the active/task default) is hidden from the agent's routing list.
+   */
+  description?: string
   contextWindow?: number
   maxTokens?: number
   reasoning?: boolean
@@ -1156,6 +1163,72 @@ export function updateProvider(id: string, input: {
   file.providers[index] = existing
   saveProviders(file)
   return existing
+}
+
+/**
+ * Patch a single model entry within a provider's `models[]` array, creating
+ * the entry on the fly when it does not exist yet. Default metadata
+ * (name, context window, reasoning, cost) is populated from the local
+ * `PROVIDER_TYPE_MODEL_OVERRIDES` catalog or the pi-ai catalog so a freshly
+ * created entry is usable by `buildModel()` immediately; only the fields
+ * supplied in `patch` are overwritten.
+ */
+export function updateProviderModel(
+  providerId: string,
+  modelId: string,
+  patch: {
+    description?: string
+    cost?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number }
+  },
+): ProviderConfig {
+  const file = loadProviders()
+  const provider = file.providers.find(p => p.id === providerId)
+  if (!provider) {
+    throw new Error(`Provider not found: ${providerId}`)
+  }
+
+  if (!provider.models) provider.models = []
+  let entry = provider.models.find(m => m.id === modelId)
+  if (!entry) {
+    const override = findOverrideModel(provider.providerType, modelId)
+    if (override) {
+      entry = { ...override }
+    } else {
+      const piModel = findPiAiCatalogModel(provider.providerType, modelId)
+      entry = piModel
+        ? {
+            id: modelId,
+            name: piModel.name,
+            contextWindow: piModel.contextWindow,
+            maxTokens: piModel.maxTokens,
+            reasoning: piModel.reasoning,
+            cost: {
+              input: piModel.cost.input,
+              output: piModel.cost.output,
+              cacheRead: piModel.cost.cacheRead,
+              cacheWrite: piModel.cost.cacheWrite,
+            },
+          }
+        : { id: modelId }
+    }
+    provider.models.push(entry)
+  }
+
+  if (patch.description !== undefined) {
+    const trimmed = patch.description.trim()
+    entry.description = trimmed ? trimmed : undefined
+  }
+
+  if (patch.cost) {
+    if (!entry.cost) entry.cost = { input: 0, output: 0 }
+    if (patch.cost.input !== undefined) entry.cost.input = patch.cost.input
+    if (patch.cost.output !== undefined) entry.cost.output = patch.cost.output
+    if (patch.cost.cacheRead !== undefined) entry.cost.cacheRead = patch.cost.cacheRead
+    if (patch.cost.cacheWrite !== undefined) entry.cost.cacheWrite = patch.cost.cacheWrite
+  }
+
+  saveProviders(file)
+  return provider
 }
 
 /**

@@ -79,5 +79,7 @@ export type {
   ProviderOAuthLoginStartPayloadContract,
   ProviderOAuthCodePayloadContract,
   ProviderModelSelectionPayloadContract,
+  ProviderModelUpdatePayloadContract,
+  ProviderModelContract,
   ProviderReferenceContract,
 } from './providers.js'

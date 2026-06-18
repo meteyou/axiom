@@ -252,4 +252,97 @@ describe('providers route module', () => {
     expect(testMissing.status).toBe(404)
     expect(await testMissing.json()).toEqual({ error: 'Provider not found' })
   })
+
+  it('patches a model description and cost via the model edit endpoint', async () => {
+    const create = await fetch(`${baseUrl}/api/providers`, {
+      method: 'POST',
+      headers: {
+        ...authHeaders(adminToken),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: 'Model Edit Provider',
+        providerType: 'openai',
+        apiKey: 'sk-model-edit',
+        defaultModel: 'gpt-4o-mini',
+        enabledModels: ['gpt-4o-mini', 'gpt-4o'],
+      }),
+    })
+    expect(create.status).toBe(201)
+    const created = await create.json() as { provider: { id: string } }
+
+    const patch = await fetch(
+      `${baseUrl}/api/providers/${created.provider.id}/models/${encodeURIComponent('gpt-4o')}`,
+      {
+        method: 'PATCH',
+        headers: {
+          ...authHeaders(adminToken),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          description: 'Strong model for complex analysis',
+          cost: { input: 2.5, output: 10, cacheRead: 1.25 },
+        }),
+      },
+    )
+    expect(patch.status).toBe(200)
+    const patched = await patch.json() as {
+      provider: { models?: Array<{ id: string; description?: string; cost?: { input: number; output: number; cacheRead?: number } }> }
+    }
+    const entry = patched.provider.models?.find(m => m.id === 'gpt-4o')
+    expect(entry).toBeDefined()
+    expect(entry?.description).toBe('Strong model for complex analysis')
+    expect(entry?.cost?.input).toBe(2.5)
+    expect(entry?.cost?.output).toBe(10)
+    expect(entry?.cost?.cacheRead).toBe(1.25)
+
+    // Clearing the description and leaving cost untouched
+    const clearPatch = await fetch(
+      `${baseUrl}/api/providers/${created.provider.id}/models/${encodeURIComponent('gpt-4o')}`,
+      {
+        method: 'PATCH',
+        headers: {
+          ...authHeaders(adminToken),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ description: '   ' }),
+      },
+    )
+    expect(clearPatch.status).toBe(200)
+    const cleared = await clearPatch.json() as {
+      provider: { models?: Array<{ id: string; description?: string; cost?: { input: number } }> }
+    }
+    const clearedEntry = cleared.provider.models?.find(m => m.id === 'gpt-4o')
+    expect(clearedEntry?.description).toBeUndefined()
+    // Cost persisted from the previous patch
+    expect(clearedEntry?.cost?.input).toBe(2.5)
+
+    // Empty payload is rejected
+    const empty = await fetch(
+      `${baseUrl}/api/providers/${created.provider.id}/models/${encodeURIComponent('gpt-4o')}`,
+      {
+        method: 'PATCH',
+        headers: {
+          ...authHeaders(adminToken),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({}),
+      },
+    )
+    expect(empty.status).toBe(400)
+
+    // Unknown provider → 404
+    const missing = await fetch(
+      `${baseUrl}/api/providers/no-such-provider/models/gpt-4o`,
+      {
+        method: 'PATCH',
+        headers: {
+          ...authHeaders(adminToken),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ description: 'x' }),
+      },
+    )
+    expect(missing.status).toBe(404)
+  })
 })

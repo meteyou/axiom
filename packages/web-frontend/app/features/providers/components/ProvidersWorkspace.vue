@@ -241,6 +241,10 @@
                           <AppIcon name="close" class="h-4 w-4" />
                           {{ $t('providers.removeFallback') }}
                         </DropdownMenuItem>
+                        <DropdownMenuItem @click="openEditModel(provider, modelId)">
+                          <AppIcon name="edit" class="h-4 w-4" />
+                          {{ $t('providers.editModelMenu') }}
+                        </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           destructive
@@ -279,6 +283,15 @@
     :provider="addModelTarget"
     @close="closeAddModel"
     @added="handleModelsAdded"
+  />
+
+  <!-- Edit Model dialog -->
+  <EditModelDialog
+    :open="showEditModel"
+    :provider="editModelTarget?.provider ?? null"
+    :model-id="editModelTarget?.modelId ?? null"
+    @close="closeEditModel"
+    @saved="handleModelSaved"
   />
 
   <!-- Delete confirmation dialog -->
@@ -347,6 +360,9 @@ const successMessage = ref<string | null>(null)
 
 const showAddModel = ref(false)
 const addModelTarget = ref<Provider | null>(null)
+
+const showEditModel = ref(false)
+const editModelTarget = ref<{ provider: Provider; modelId: string } | null>(null)
 
 const sortedProviders = computed(() =>
   [...providers.value].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })),
@@ -529,6 +545,21 @@ function closeAddModel() {
 
 function handleModelsAdded() {
   successMessage.value = t('providers.addModelSuccess')
+  autoHideSuccess()
+}
+
+function openEditModel(provider: Provider, modelId: string) {
+  editModelTarget.value = { provider, modelId }
+  showEditModel.value = true
+}
+
+function closeEditModel() {
+  showEditModel.value = false
+  editModelTarget.value = null
+}
+
+function handleModelSaved() {
+  successMessage.value = t('providers.editModelSuccess')
   autoHideSuccess()
 }
 

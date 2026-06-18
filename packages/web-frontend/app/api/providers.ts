@@ -8,6 +8,7 @@ import type {
   ProviderContract,
   ProviderCreatePayloadContract,
   ProviderFallbackResponseContract,
+  ProviderModelUpdatePayloadContract,
   ProviderMutationResponseContract,
   ProviderQuotaRefreshResponseContract,
   ProviderTestResultContract,
@@ -45,6 +46,16 @@ export function useProvidersApi() {
       method: 'PUT',
       body: JSON.stringify(input),
     })
+
+  const updateProviderModel = (
+    providerId: string,
+    modelId: string,
+    input: ProviderModelUpdatePayloadContract,
+  ) =>
+    apiFetch<ProviderMutationResponseContract>(
+      `/api/providers/${providerId}/models/${encodeURIComponent(modelId)}`,
+      { method: 'PATCH', body: JSON.stringify(input) },
+    )
 
   const removeProvider = (id: string) =>
     apiFetch(`/api/providers/${id}`, { method: 'DELETE' })
@@ -161,6 +172,7 @@ export function useProvidersApi() {
     getProviders,
     createProvider,
     updateProvider,
+    updateProviderModel,
     removeProvider,
     testProvider,
     activateProvider,

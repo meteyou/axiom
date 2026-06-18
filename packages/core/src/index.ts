@@ -64,6 +64,7 @@ export {
   saveProviders,
   addProvider,
   updateProvider,
+  updateProviderModel,
   deleteProvider,
   setActiveProvider,
   setActiveModel,

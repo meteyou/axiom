@@ -6,6 +6,7 @@ import {
   parseOAuthLoginPayload,
   parseOllamaProbePayload,
   parseProviderCreatePayload,
+  parseProviderModelUpdatePayload,
   parseProviderTypeParam,
   parseProviderUpdatePayload,
   validateOllamaUrl,
@@ -130,5 +131,33 @@ describe('providers schema', () => {
 
     expect(() => validateOllamaUrl('ftp://localhost')).toThrowError('Only http/https URLs are allowed')
     expect(() => validateOllamaUrl('http://localhost:11434')).not.toThrow()
+  })
+
+  it('parses model update payload and rejects empty / invalid input', () => {
+    const descriptionOnly = parseProviderModelUpdatePayload({ description: 'Fast model for digests' })
+    expect(descriptionOnly.ok).toBe(true)
+    if (descriptionOnly.ok) {
+      expect(descriptionOnly.value.description).toBe('Fast model for digests')
+      expect(descriptionOnly.value.cost).toBeUndefined()
+    }
+
+    const costOnly = parseProviderModelUpdatePayload({ cost: { input: 0.6, output: 2.5, cacheRead: 0.15 } })
+    expect(costOnly.ok).toBe(true)
+    if (costOnly.ok) {
+      expect(costOnly.value.cost).toEqual({ input: 0.6, output: 2.5, cacheRead: 0.15 })
+      expect(costOnly.value.description).toBeUndefined()
+    }
+
+    const empty = parseProviderModelUpdatePayload({})
+    expect(empty.ok).toBe(false)
+    if (!empty.ok) expect(empty.error).toContain('description or cost')
+
+    const negativeCost = parseProviderModelUpdatePayload({ cost: { input: -1 } })
+    expect(negativeCost.ok).toBe(false)
+    if (!negativeCost.ok) expect(negativeCost.error).toContain('No valid fields')
+
+    const nonStringDescription = parseProviderModelUpdatePayload({ description: 42 })
+    expect(nonStringDescription.ok).toBe(false)
+    if (!nonStringDescription.ok) expect(nonStringDescription.error).toContain('description must be a string')
   })
 })
