@@ -134,6 +134,10 @@
                           <AppIcon name="edit" class="h-4 w-4" />
                           {{ $t('users.edit') }}
                         </DropdownMenuItem>
+                        <DropdownMenuItem @click="openAddModel(provider)">
+                          <AppIcon name="add" class="h-4 w-4" />
+                          {{ $t('providers.addModelMenu') }}
+                        </DropdownMenuItem>
                         <DropdownMenuItem
                             v-if="providerSupportsQuota(provider)"
                             :disabled="isRefreshingQuota(provider.id)"
@@ -269,6 +273,14 @@
     @oauth-complete="closeForm"
   />
 
+  <!-- Add Model dialog -->
+  <AddModelDialog
+    :open="showAddModel"
+    :provider="addModelTarget"
+    @close="closeAddModel"
+    @added="handleModelsAdded"
+  />
+
   <!-- Delete confirmation dialog -->
   <ConfirmDialog
     :open="!!deleteTarget"
@@ -332,6 +344,9 @@ const editingProvider = ref<Provider | null>(null)
 const deleteTarget = ref<Provider | null>(null)
 const removeModelTarget = ref<{ provider: Provider; modelId: string } | null>(null)
 const successMessage = ref<string | null>(null)
+
+const showAddModel = ref(false)
+const addModelTarget = ref<Provider | null>(null)
 
 const sortedProviders = computed(() =>
   [...providers.value].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })),
@@ -500,6 +515,21 @@ function openEdit(provider: Provider) {
 function closeForm() {
   showForm.value = false
   editingProvider.value = null
+}
+
+function openAddModel(provider: Provider) {
+  addModelTarget.value = provider
+  showAddModel.value = true
+}
+
+function closeAddModel() {
+  showAddModel.value = false
+  addModelTarget.value = null
+}
+
+function handleModelsAdded() {
+  successMessage.value = t('providers.addModelSuccess')
+  autoHideSuccess()
 }
 
 async function handleSubmit(payload: ProviderFormPayload) {
