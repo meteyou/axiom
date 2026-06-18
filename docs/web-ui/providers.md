@@ -30,7 +30,7 @@ Providers are sorted alphabetically by display name; sub-rows follow the order c
 | **Name**    | Bold display name; below it, the provider type label (e.g. *"Anthropic"*, *"Anthropic (Claude Pro/Max) · OAuth"*). |
 | **Cost**    | Empty — costs live on the model rows.                                                                |
 | **Status**  | Empty for most providers (status lives on the model rows). For **subscription (OAuth)** providers it shows the live [subscriber usage quota](#subscriber-usage-quota-oauth-plans). |
-| **⋮**       | Edit, Delete, and — for quota-capable OAuth providers — **Refresh quota**. *Delete* is disabled for the provider that owns the currently active model. |
+| **⋮**       | **Add Model**, Edit, Delete, and — for quota-capable OAuth providers — **Refresh quota**. *Delete* is disabled for the provider that owns the currently active model. |
 
 Clicking anywhere on a header row opens the [Edit dialog](#add-edit-dialog).
 
@@ -41,7 +41,7 @@ Clicking anywhere on a header row opens the [Edit dialog](#add-edit-dialog).
 | **Model**   | Indented model id; small badges for `Active` (green) and `Fallback` (outline). Both can appear on the same row in theory, but the active model is never also the fallback. |
 | **Cost**    | `$<input>` / `$<output>` per million tokens. Shown as `—` when no cost is configured for that model. |
 | **Status**  | One of `Untested`, `Connected`, `Error` — see [Statuses](#statuses).                                 |
-| **⋮**       | Test Connection, Set Active, Set Fallback, Remove Fallback, Remove Model — context-aware (see [Per-model actions](#per-model-actions)). |
+| **⋮**       | Test Connection, Set Active, Set Fallback, Remove Fallback, **Edit Model**, Remove Model — context-aware (see [Per-model actions](#per-model-actions)). |
 
 ### Statuses
 
@@ -68,7 +68,7 @@ You set both from the row menu — see [Per-model actions](#per-model-actions). 
 
 ## Per-model actions
 
-The ⋮ menu on each model row carries up to five items, shown only when relevant:
+The ⋮ menu on each model row carries up to six items, shown only when relevant:
 
 | Item                  | When it appears                                                                  |
 |-----------------------|----------------------------------------------------------------------------------|
@@ -76,6 +76,7 @@ The ⋮ menu on each model row carries up to five items, shown only when relevan
 | **Set Active**        | When this model is *not* already active. Promotes it to the global active model.  |
 | **Set Fallback**      | When this model is neither active nor the current fallback.                       |
 | **Remove Fallback**   | Only on the current fallback model. Clears the fallback selection.                |
+| **Edit Model**        | Always. Opens the [Edit Model dialog](#edit-model-dialog) to set or clear a description and per-token costs. |
 | **Remove Model**      | Always (but disabled in two cases — see below).                                   |
 
 ### Removing a model
@@ -108,7 +109,7 @@ The dialog keeps connection details first, then model selection, then advanced h
 | **Type**               | Dropdown grouped into two sections: **API Key** (OpenAI, Anthropic, Mistral, OpenRouter, DeepSeek, Kimi / Moonshot, MiniMax, xAI (Grok), Google Gemini, OpenCode Zen, OpenCode Go, Ollama, generic OpenAI-compatible, …) and **Subscription / OAuth** (Anthropic Claude Pro/Max, OpenAI ChatGPT Plus/Pro, GitHub Copilot, …). |
 | **Base URL**           | Shown directly after Type when the preset has an editable URL (Ollama, generic OpenAI-compatible, …). |
 | **API Key**            | Shown after Base URL for API-key providers. Required for most hosted presets, optional for local/custom providers that do not need auth. |
-| **Enabled Models**     | Model selector or model-id entry for this provider. The exact control depends on the provider type. |
+| **Default Model**      | Model selector for this provider. Shown **only in create mode** — after creation, models are managed via [Add Model](#add-model-dialog) and [Edit Model](#edit-model-dialog) from the row menus. The exact control depends on the provider type. |
 | **Degraded Threshold** | Last field in the form. Latency in ms above which the provider is marked *Degraded* in health checks. Default `5000`. Lower = more sensitive. |
 | **Text verbosity**     | Shown for supported OpenAI Codex/Responses-style providers. `Default` leaves the value unset so pi-ai's provider default applies; `Low`, `Medium`, `High` override response verbosity. |
 | **Transport**          | Shown for the same OpenAI Codex/Responses-style providers as **Text verbosity**. Selects the wire-level streaming protocol: `Default (SSE)` leaves the value unset, `SSE`, `WebSocket`, `WebSocket (cached)`, or `Auto`. `WebSocket (cached)` keeps a persistent connection open and ships only delta context items per turn — noticeably faster on long agent sessions. Ignored (and dropped on save) for every other provider type. See [`providers.json` → Transport modes](../reference/settings#transport-modes) for the full table. |
@@ -127,11 +128,11 @@ A password field. Required for most presets, optional for ones that don't strict
 
 Stored encrypted at rest in `/data/config/providers.json` using `ENCRYPTION_KEY`. See [Configuration](../guide/configuration#why-encryption-key-matters).
 
-#### Enabled Models
+#### Default Model
 
-The model selector adapts to the preset:
+The model selector adapts to the preset. It is shown **only in create mode** — after a provider exists, you add and remove models via the [Add Model dialog](#add-model-dialog) and the row-menu actions instead. The Ollama panel (below) is the exception: it stays available in edit mode because pulling and managing local models is Ollama-specific.
 
-- **Curated providers (OpenAI, Anthropic, Mistral, OpenRouter, DeepSeek, Kimi / Moonshot, MiniMax, xAI (Grok), OpenCode Zen, OpenCode Go, …)** — a checkbox list of known models. Tick the ones you want to enable; the first enabled becomes the provider's internal default/fallback model. OpenCode Zen and Go source their catalog (models, per-token costs, per-model API type) directly from the bundled `@earendil-works/pi-ai` registry, so they stay in sync with [OpenCode Zen](https://opencode.ai/docs/zen) whenever that dependency is updated — no manual price table to maintain.
+- **Curated providers (OpenAI, Anthropic, Mistral, OpenRouter, DeepSeek, Kimi / Moonshot, MiniMax, xAI (Grok), OpenCode Zen, OpenCode Go, …)** — a dropdown of known models. Pick the one you want as the default; it becomes the provider's initial enabled model. If the model you need isn't in the catalog, type its id in the custom-model field below the dropdown and click **Add**. OpenCode Zen and Go source their catalog (models, per-token costs, per-model API type) directly from the bundled `@earendil-works/pi-ai` registry, so they stay in sync with [OpenCode Zen](https://opencode.ai/docs/zen) whenever that dependency is updated — no manual price table to maintain.
 - **Generic OpenAI-compatible** — free-text model-id entry plus an optional **Load models** button for providers that implement OpenAI's `/models` endpoint.
 - **Ollama** — a separate panel with its own controls (see below).
 
@@ -151,7 +152,7 @@ Unlike the curated presets, this type carries no model catalog and no fixed endp
 | **Type**           | `OpenAI-compatible (custom)`.                                                                              |
 | **Base URL**       | The endpoint root that exposes `/v1/chat/completions`. Required.                                           |
 | **API Key**        | Optional. Leave blank for unauthenticated local servers; paste the upstream key for hosted services.       |
-| **Enabled Models** | Add one or more exact model ids the upstream API expects (e.g. `meta/llama-3.1-405b-instruct`, `qwen2.5-coder-32b`). Use **Load models** when the provider supports OpenAI's `/models` endpoint. No prefix is stripped. |
+| **Default Model** | Add one or more exact model ids the upstream API expects (e.g. `meta/llama-3.1-405b-instruct`, `qwen2.5-coder-32b`). Use **Load models** when the provider supports OpenAI's `/models` endpoint. No prefix is stripped. Shown only in create mode; after creation, use [Add Model](#add-model-dialog) from the provider menu. |
 | **Degraded Threshold** | Optional latency threshold override; defaults to `5000` ms.                                           |
 
 The provider is wired through pi-ai's `openai-completions` API, so streaming, tool-calling, and reasoning capture work the same way they do for the regular `openai` preset.
@@ -261,6 +262,26 @@ These usage endpoints are aggressively rate-limited. Axiom applies a per-provide
 ### Renewing OAuth tokens
 
 In **edit** mode for an OAuth provider, the dialog footer shows a **Renew Token** button on the left. OAuth refresh tokens have a fixed lifetime — when they expire, the model status flips to `Error` with an authentication failure. Click **Renew Token** to start the OAuth flow again with the existing provider record (no new row, no lost configuration).
+
+## Add Model dialog
+
+Opened from the provider header row's ⋮ menu → **Add Model**. Lets you enable additional models on an existing provider without reopening the provider form.
+
+- **Search** — filters the provider's model catalog by name or id. The catalog is fetched from the bundled `@earendil-works/pi-ai` registry (same source as the create-mode dropdown).
+- **Model list** — scrollable, multi-select. Models already enabled on this provider appear greyed out with an *"already enabled"* label. Tick the ones you want to add.
+- **Custom model fallback** — when your search text doesn't match any catalog entry, a button appears to add the typed id as a custom model (e.g. a manually published model not yet in pi-ai).
+- **Add** — merges the selected models into the provider's enabled list. The footer shows the number selected.
+
+If the catalog fetch fails, an error message with a retry link is shown.
+
+## Edit Model dialog
+
+Opened from a model sub-row's ⋮ menu → **Edit Model**. Sets two things per model:
+
+- **Description** — a free-form note describing what this model is suited for (e.g. *"Fast model for text processing like Twitter/Reddit Digest"*). The description is surfaced in the system prompt's [`<available_providers>` block](../concepts/system-prompt#_8-available_providers-configured-llm-providers) and doubles as the opt-in gate for agent model routing: a model without a description (and that isn't the active or default task model) is hidden from the agent's routing list. Clear the field to remove a model from the routing list.
+- **Cost** — per-million-token input and output costs in USD. **Cache read** and **cache write** fields appear only for models whose resolved cost already carries cache values, or for Anthropic providers (which always support prompt caching). Leave any field empty to keep the existing value; enter `0` for a free model.
+
+Costs entered here override the catalog defaults. The dialog pre-fills with the model's existing entry (or catalog defaults if no entry exists yet).
 
 ## Delete provider
 

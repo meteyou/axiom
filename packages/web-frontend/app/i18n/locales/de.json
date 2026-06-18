@@ -277,7 +277,6 @@
     "editModelCostHint": "Leer lassen, um bestehende Werte beizubehalten. 0 bedeutet kostenlos.",
     "editModelSave": "Speichern",
     "editModelSuccess": "Modell gespeichert",
-    "editModelSupportsCache": "Cache-Kosten anzeigen",
     "extraFieldSecretKeep": "Leer lassen, um den gespeicherten Wert beizubehalten",
     "providerExtraFields": {
       "opencode-go": {

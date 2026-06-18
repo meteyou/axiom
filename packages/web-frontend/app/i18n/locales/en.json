@@ -277,7 +277,6 @@
     "editModelCostHint": "Leave empty to keep existing values. 0 means free.",
     "editModelSave": "Save",
     "editModelSuccess": "Model saved",
-    "editModelSupportsCache": "Show cache costs",
     "extraFieldSecretKeep": "Leave blank to keep the stored value",
     "providerExtraFields": {
       "opencode-go": {

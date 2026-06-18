@@ -185,8 +185,8 @@ function parseCostField(value: string): number | undefined {
 }
 
 const canSave = computed(() => {
-  // Always allow saving a description (including clearing it). Require at
-  // least one changed field so we don't fire no-op PATCHes.
+  // Gates on the dialog having a target provider and model. The server
+  // enforces non-empty patches (at least a description or cost field).
   return Boolean(props.provider && props.modelId)
 })
 
