@@ -793,6 +793,19 @@ export interface BuiltinToolsPromptConfig {
   stt?: { enabled?: boolean }
 }
 
+/**
+ * Per-model entry surfaced in the system prompt's `<available_providers>`
+ * block. Only models that carry a description or are the active/task default
+ * are rendered, so the description doubles as the opt-in gate for agent
+ * model routing.
+ */
+export interface AvailableProviderModelPromptEntry {
+  id: string
+  description?: string
+  isDefaultAgentModel?: boolean
+  isDefaultTaskModel?: boolean
+}
+
 export function assembleSystemPrompt(options?: {
   memoryDir?: string
   configDir?: string
@@ -807,11 +820,12 @@ export function assembleSystemPrompt(options?: {
   builtinTools?: BuiltinToolsPromptConfig
   agentSkillsDir?: string
   /**
-   * List of configured LLM providers and their enabled models. Surfaced to
-   * the agent so it can map natural-language model requests ("kimi-k2.6")
-   * onto the correct provider when creating tasks/cronjobs.
+   * Configured LLM providers and their enabled models with per-model
+   * metadata (description, default flags). Only models that carry a
+   * description or are the active/task default are rendered, so the agent
+   * can route background tasks to annotated models.
    */
-  availableProviders?: Array<{ name: string; models: string[] }>
+  availableProviders?: Array<{ name: string; models: AvailableProviderModelPromptEntry[] }>
 }): string {
   const memoryDir = options?.memoryDir
   const recentDays = options?.recentDays ?? 3
@@ -905,19 +919,40 @@ ${dailyContext}
     sections.push(`<available_tools>\nYou have the following tools available. Use the right tool for the job.\n\n${toolLines.join('\n')}\n</available_tools>`)
   }
 
-  // 7b. Configured LLM providers — lets the agent map a user-specified
-  // model name (e.g. "kimi-k2.6") onto the correct provider when calling
-  // create_task / create_cronjob / edit_cronjob.
+  // 7b. Configured LLM providers — lets the agent route background tasks to
+  // an annotated model. Only models with a description or the active/task
+  // default are listed; the description is the user's opt-in gate for agent
+  // autonomy (no description + not a default → hidden from the agent).
   if (options?.availableProviders && options.availableProviders.length > 0) {
-    const providerLines = options.availableProviders.map(p => {
-      const modelsStr = p.models.length > 0 ? p.models.join(', ') : '(no models configured)'
-      return `- **${p.name}**: ${modelsStr}`
-    }).join('\n')
-    sections.push(`<available_providers>
+    const providerLines: string[] = []
+    for (const provider of options.availableProviders) {
+      for (const model of provider.models) {
+        const isRoutable =
+          Boolean(model.description) ||
+          model.isDefaultAgentModel === true ||
+          model.isDefaultTaskModel === true
+        if (!isRoutable) continue
+
+        const labels: string[] = []
+        if (model.isDefaultAgentModel) labels.push('default agent model')
+        if (model.isDefaultTaskModel) labels.push('default task model')
+        if (model.description) labels.push(model.description)
+        const suffix = labels.join('. ')
+        providerLines.push(
+          suffix ? `- ${provider.name} — ${model.id}: ${suffix}` : `- ${provider.name} — ${model.id}`,
+        )
+      }
+    }
+
+    if (providerLines.length > 0) {
+      sections.push(`<available_providers>
 Configured LLM providers and their enabled models. When the user asks for a task or cronjob with a specific model or provider, pass it through to \`create_task\` / \`create_cronjob\` / \`edit_cronjob\` via their \`provider\` and/or \`model\` parameters. If the user names only a model (e.g. "run this with kimi-k2.6"), pass it as \`model\` — the tool will auto-detect the provider from this list.
 
-${providerLines}
+For background tasks, you may choose the most appropriate model based on the descriptions below. Prefer cost-effective models for simple work; use stronger models for complex coding or research. When a description indicates a model is suited for a specific task type (e.g. "Textverarbeitung wie Twitter/Reddit Digest"), prefer that model for matching tasks.
+
+${providerLines.join('\n')}
 </available_providers>`)
+    }
   }
 
   // 8. Wiki pages (LLM-maintained knowledge base)
