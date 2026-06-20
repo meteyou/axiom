@@ -109,7 +109,7 @@ The dialog keeps connection details first, then model selection, then advanced h
 | **Type**               | Dropdown grouped into two sections: **API Key** (OpenAI, Anthropic, Mistral, OpenRouter, DeepSeek, Kimi / Moonshot, MiniMax, xAI (Grok), Google Gemini, OpenCode Zen, OpenCode Go, Ollama, generic OpenAI-compatible, …) and **Subscription / OAuth** (Anthropic Claude Pro/Max, OpenAI ChatGPT Plus/Pro, GitHub Copilot, z.ai (GLM Coding Plan), …). |
 | **Base URL**           | Shown directly after Type when the preset has an editable URL (Ollama, generic OpenAI-compatible, …). |
 | **API Key**            | Shown after Base URL for API-key providers. Required for most hosted presets, optional for local/custom providers that do not need auth. |
-| **Default Model**      | Model selector for this provider. Shown **only in create mode** — after creation, models are managed via [Add Model](#add-model-dialog) and [Edit Model](#edit-model-dialog) from the row menus. The exact control depends on the provider type. |
+| **Model**              | Model selector for this provider. Shown **only in create mode** — after creation, models are managed via [Add Model](#add-model-dialog) and [Edit Model](#edit-model-dialog) from the row menus. The exact control depends on the provider type. The first enabled model acts as the provider's default/primary model. |
 | **Degraded Threshold** | Last field in the form. Latency in ms above which the provider is marked *Degraded* in health checks. Default `5000`. Lower = more sensitive. |
 | **Text verbosity**     | Shown for supported OpenAI Codex/Responses-style providers. `Default` leaves the value unset so pi-ai's provider default applies; `Low`, `Medium`, `High` override response verbosity. |
 | **Transport**          | Shown for the same OpenAI Codex/Responses-style providers as **Text verbosity**. Selects the wire-level streaming protocol: `Default (SSE)` leaves the value unset, `SSE`, `WebSocket`, `WebSocket (cached)`, or `Auto`. `WebSocket (cached)` keeps a persistent connection open and ships only delta context items per turn — noticeably faster on long agent sessions. Ignored (and dropped on save) for every other provider type. See [`providers.json` → Transport modes](../reference/settings#transport-modes) for the full table. |
@@ -128,11 +128,11 @@ A password field. Required for most presets, optional for ones that don't strict
 
 Stored encrypted at rest in `/data/config/providers.json` using `ENCRYPTION_KEY`. See [Configuration](../guide/configuration#why-encryption-key-matters).
 
-#### Default Model
+#### Model
 
 The model selector adapts to the preset. It is shown **only in create mode** — after a provider exists, you add and remove models via the [Add Model dialog](#add-model-dialog) and the row-menu actions instead. The Ollama panel (below) is the exception: it stays available in edit mode because pulling and managing local models is Ollama-specific.
 
-- **Curated providers (OpenAI, Anthropic, Mistral, OpenRouter, DeepSeek, Kimi / Moonshot, MiniMax, xAI (Grok), OpenCode Zen, OpenCode Go, …)** — a dropdown of known models. Pick the one you want as the default; it becomes the provider's initial enabled model. If the model you need isn't in the catalog, type its id in the custom-model field below the dropdown and click **Add**. OpenCode Zen and Go source their catalog (models, per-token costs, per-model API type) directly from the bundled `@earendil-works/pi-ai` registry, so they stay in sync with [OpenCode Zen](https://opencode.ai/docs/zen) whenever that dependency is updated — no manual price table to maintain.
+- **Curated providers (OpenAI, Anthropic, Mistral, OpenRouter, DeepSeek, Kimi / Moonshot, MiniMax, xAI (Grok), OpenCode Zen, OpenCode Go, …)** — a dropdown of known models. Pick the one you want; it becomes the provider's initial enabled model and acts as its default until you enable more. If the model you need isn't in the catalog, type its id in the custom-model field below the dropdown and click **Add**. OpenCode Zen and Go source their catalog (models, per-token costs, per-model API type) directly from the bundled `@earendil-works/pi-ai` registry, so they stay in sync with [OpenCode Zen](https://opencode.ai/docs/zen) whenever that dependency is updated — no manual price table to maintain.
 - **Generic OpenAI-compatible** — free-text model-id entry plus an optional **Load models** button for providers that implement OpenAI's `/models` endpoint.
 - **Ollama** — a separate panel with its own controls (see below).
 
@@ -152,7 +152,7 @@ Unlike the curated presets, this type carries no model catalog and no fixed endp
 | **Type**           | `OpenAI-compatible (custom)`.                                                                              |
 | **Base URL**       | The endpoint root that exposes `/v1/chat/completions`. Required.                                           |
 | **API Key**        | Optional. Leave blank for unauthenticated local servers; paste the upstream key for hosted services.       |
-| **Default Model** | Add one or more exact model ids the upstream API expects (e.g. `meta/llama-3.1-405b-instruct`, `qwen2.5-coder-32b`). Use **Load models** when the provider supports OpenAI's `/models` endpoint. No prefix is stripped. Shown only in create mode; after creation, use [Add Model](#add-model-dialog) from the provider menu. |
+| **Model**          | Add one or more exact model ids the upstream API expects (e.g. `meta/llama-3.1-405b-instruct`, `qwen2.5-coder-32b`). Use **Load models** when the provider supports OpenAI's `/models` endpoint. No prefix is stripped. Shown only in create mode; after creation, use [Add Model](#add-model-dialog) from the provider menu. The first model added acts as the provider's default. |
 | **Degraded Threshold** | Optional latency threshold override; defaults to `5000` ms.                                           |
 
 The provider is wired through pi-ai's `openai-completions` API, so streaming, tool-calling, and reasoning capture work the same way they do for the regular `openai` preset.
