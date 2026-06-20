@@ -78,7 +78,7 @@ describe('provider-config', () => {
           provider: 'openai',
           baseUrl: 'https://api.openai.com/v1',
           apiKey: 'sk-test',
-          defaultModel: 'gpt-4o',
+          enabledModels: ['gpt-4o'],
         },
       ],
     })
@@ -89,6 +89,49 @@ describe('provider-config', () => {
     expect(result.providers[0].apiKey).toBe('sk-test')
   })
 
+  it('loadProviders migrates legacy defaultModel to the front of enabledModels', () => {
+    setupTmpConfig({
+      providers: [
+        {
+          id: 'legacy-1',
+          name: 'legacy',
+          type: 'openai-completions',
+          providerType: 'openai',
+          provider: 'openai',
+          baseUrl: 'https://api.openai.com/v1',
+          apiKey: 'sk-test',
+          defaultModel: 'gpt-4o-mini',
+          enabledModels: ['gpt-4o', 'gpt-4o-mini'],
+        },
+      ],
+    })
+
+    const provider = loadProviders().providers[0] as unknown as Record<string, unknown>
+    expect(provider.enabledModels).toEqual(['gpt-4o-mini', 'gpt-4o'])
+    expect(provider.defaultModel).toBeUndefined()
+  })
+
+  it('loadProviders migrates legacy defaultModel when enabledModels is missing', () => {
+    setupTmpConfig({
+      providers: [
+        {
+          id: 'legacy-2',
+          name: 'legacy',
+          type: 'openai-completions',
+          providerType: 'openai',
+          provider: 'openai',
+          baseUrl: 'https://api.openai.com/v1',
+          apiKey: 'sk-test',
+          defaultModel: 'gpt-4o',
+        },
+      ],
+    })
+
+    const provider = loadProviders().providers[0] as unknown as Record<string, unknown>
+    expect(provider.enabledModels).toEqual(['gpt-4o'])
+    expect(provider.defaultModel).toBeUndefined()
+  })
+
   it('getActiveProvider returns null when no providers configured', () => {
     setupTmpConfig({ providers: [] })
     expect(getActiveProvider()).toBeNull()
@@ -97,8 +140,8 @@ describe('provider-config', () => {
   it('getActiveProvider returns first provider by default', () => {
     setupTmpConfig({
       providers: [
-        { id: 'id-1', name: 'first', type: 'openai-completions', providerType: 'openai', provider: 'openai', baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-1', defaultModel: 'gpt-4o' },
-        { id: 'id-2', name: 'second', type: 'anthropic-messages', providerType: 'anthropic', provider: 'anthropic', baseUrl: 'https://api.anthropic.com', apiKey: 'sk-2', defaultModel: 'claude-3-5-sonnet-20241022' },
+        { id: 'id-1', name: 'first', type: 'openai-completions', providerType: 'openai', provider: 'openai', baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-1', enabledModels: ['gpt-4o'] },
+        { id: 'id-2', name: 'second', type: 'anthropic-messages', providerType: 'anthropic', provider: 'anthropic', baseUrl: 'https://api.anthropic.com', apiKey: 'sk-2', enabledModels: ['claude-3-5-sonnet-20241022'] },
       ],
     })
 
@@ -109,8 +152,8 @@ describe('provider-config', () => {
   it('getActiveProvider respects activeProvider field', () => {
     setupTmpConfig({
       providers: [
-        { id: 'id-1', name: 'first', type: 'openai-completions', providerType: 'openai', provider: 'openai', baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-1', defaultModel: 'gpt-4o' },
-        { id: 'id-2', name: 'second', type: 'anthropic-messages', providerType: 'anthropic', provider: 'anthropic', baseUrl: 'https://api.anthropic.com', apiKey: 'sk-2', defaultModel: 'claude-3-5-sonnet-20241022' },
+        { id: 'id-1', name: 'first', type: 'openai-completions', providerType: 'openai', provider: 'openai', baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-1', enabledModels: ['gpt-4o'] },
+        { id: 'id-2', name: 'second', type: 'anthropic-messages', providerType: 'anthropic', provider: 'anthropic', baseUrl: 'https://api.anthropic.com', apiKey: 'sk-2', enabledModels: ['claude-3-5-sonnet-20241022'] },
       ],
       activeProvider: 'id-2',
     })
@@ -128,7 +171,7 @@ describe('provider-config', () => {
       provider: 'openai',
       baseUrl: 'https://api.openai.com/v1',
       apiKey: 'sk-test',
-      defaultModel: 'gpt-4o',
+      enabledModels: ['gpt-4o'],
     }
 
     const model = buildModel(provider)
@@ -156,7 +199,7 @@ describe('provider-config', () => {
       provider: 'openai',
       baseUrl: 'https://api.openai.com/v1',
       apiKey: 'sk-test',
-      defaultModel: 'custom-priced-model',
+      enabledModels: ['custom-priced-model'],
     }
 
     const priceTable = getConfiguredPriceTable()
@@ -175,7 +218,7 @@ describe('provider-config', () => {
       provider: 'openai',
       baseUrl: 'https://api.openai.com/v1',
       apiKey: 'sk-test',
-      defaultModel: 'custom-model',
+      enabledModels: ['custom-model'],
       models: [
         {
           id: 'custom-model',
@@ -207,7 +250,7 @@ describe('provider-config', () => {
       provider: 'openai',
       baseUrl: 'https://api.openai.com/v1',
       apiKey: 'sk-test',
-      defaultModel: 'gpt-4o',
+      enabledModels: ['gpt-4o'],
     }
 
     const model = buildModel(provider, 'gpt-4o-mini')
@@ -224,7 +267,7 @@ describe('provider-config', () => {
       provider: 'openai',
       baseUrl: 'https://api.openai.com/v1',
       apiKey: 'sk-test',
-      defaultModel: 'gpt-4o',
+      enabledModels: ['gpt-4o'],
     })
 
     const cost = estimateCost(model, 1000, 500)
@@ -240,7 +283,7 @@ describe('provider-config', () => {
       provider: 'openai',
       baseUrl: 'https://api.openai.com/v1',
       apiKey: 'sk-test',
-      defaultModel: 'custom',
+      enabledModels: ['custom'],
       models: [
         {
           id: 'custom',
@@ -265,7 +308,6 @@ describe('provider-config', () => {
           provider: 'moonshot',
           baseUrl: 'https://api.moonshot.ai/v1',
           apiKey: 'sk-kimi',
-          defaultModel: 'kimi-k2.6',
           enabledModels: ['kimi-k2.6', 'kimi-latest'],
         },
       ],
@@ -437,7 +479,7 @@ describe('textVerbosity persistence guard', () => {
       name: 'openai-noop',
       providerType: 'openai',
       apiKey: 'sk-1',
-      defaultModel: 'gpt-4o',
+      enabledModels: ['gpt-4o'],
       textVerbosity: 'medium',
     })
     expect(provider.textVerbosity).toBeUndefined()
@@ -446,11 +488,11 @@ describe('textVerbosity persistence guard', () => {
   it('updateProvider strips textVerbosity when switching to a non-supporting providerType', () => {
     setupEmpty()
     // Need a non-active provider so we can mutate freely without re-pointing active
-    addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-a', defaultModel: 'gpt-4o' })
+    addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-a', enabledModels: ['gpt-4o'] })
     const codex = addProvider({
       name: 'codex',
       providerType: 'openai-codex',
-      defaultModel: 'gpt-5-codex',
+      enabledModels: ['gpt-5-codex'],
       textVerbosity: 'high',
     })
     // codex preset is OAuth + openai-codex-responses — textVerbosity is honoured
@@ -463,11 +505,11 @@ describe('textVerbosity persistence guard', () => {
 
   it('updateProvider clears textVerbosity when explicitly set to null', () => {
     setupEmpty()
-    addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-a', defaultModel: 'gpt-4o' })
+    addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-a', enabledModels: ['gpt-4o'] })
     const codex = addProvider({
       name: 'codex',
       providerType: 'openai-codex',
-      defaultModel: 'gpt-5-codex',
+      enabledModels: ['gpt-5-codex'],
       textVerbosity: 'low',
     })
     expect(codex.textVerbosity).toBe('low')
@@ -477,7 +519,7 @@ describe('textVerbosity persistence guard', () => {
 
   it('updateProvider ignores textVerbosity on providers whose preset does not support it', () => {
     setupEmpty()
-    const provider = addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-a', defaultModel: 'gpt-4o' })
+    const provider = addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-a', enabledModels: ['gpt-4o'] })
     const updated = updateProvider(provider.id, { textVerbosity: 'high' })
     expect(updated.textVerbosity).toBeUndefined()
   })
@@ -510,7 +552,7 @@ describe('transport persistence guard', () => {
     const codex = addProvider({
       name: 'codex-ws',
       providerType: 'openai-codex',
-      defaultModel: 'gpt-5-codex',
+      enabledModels: ['gpt-5-codex'],
       transport: 'websocket-cached',
     })
     expect(codex.transport).toBe('websocket-cached')
@@ -522,7 +564,7 @@ describe('transport persistence guard', () => {
       name: 'openai-noop',
       providerType: 'openai',
       apiKey: 'sk-1',
-      defaultModel: 'gpt-4o',
+      enabledModels: ['gpt-4o'],
       transport: 'websocket-cached',
     })
     expect(provider.transport).toBeUndefined()
@@ -533,7 +575,7 @@ describe('transport persistence guard', () => {
     const codex = addProvider({
       name: 'codex-sse',
       providerType: 'openai-codex',
-      defaultModel: 'gpt-5-codex',
+      enabledModels: ['gpt-5-codex'],
       transport: 'sse',
     })
     // We never persist the no-op default — absence == "sse".
@@ -545,18 +587,18 @@ describe('transport persistence guard', () => {
     const codex = addProvider({
       name: 'codex-default',
       providerType: 'openai-codex',
-      defaultModel: 'gpt-5-codex',
+      enabledModels: ['gpt-5-codex'],
     })
     expect(codex.transport).toBeUndefined()
   })
 
   it('updateProvider persists transport on supported provider', () => {
     setupEmpty()
-    addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-a', defaultModel: 'gpt-4o' })
+    addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-a', enabledModels: ['gpt-4o'] })
     const codex = addProvider({
       name: 'codex',
       providerType: 'openai-codex',
-      defaultModel: 'gpt-5-codex',
+      enabledModels: ['gpt-5-codex'],
     })
     const updated = updateProvider(codex.id, { transport: 'websocket-cached' })
     expect(updated.transport).toBe('websocket-cached')
@@ -564,11 +606,11 @@ describe('transport persistence guard', () => {
 
   it('updateProvider strips transport when switching to a non-supporting providerType', () => {
     setupEmpty()
-    addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-a', defaultModel: 'gpt-4o' })
+    addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-a', enabledModels: ['gpt-4o'] })
     const codex = addProvider({
       name: 'codex',
       providerType: 'openai-codex',
-      defaultModel: 'gpt-5-codex',
+      enabledModels: ['gpt-5-codex'],
       transport: 'websocket-cached',
     })
     expect(codex.transport).toBe('websocket-cached')
@@ -580,11 +622,11 @@ describe('transport persistence guard', () => {
 
   it('updateProvider clears transport when explicitly set to null', () => {
     setupEmpty()
-    addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-a', defaultModel: 'gpt-4o' })
+    addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-a', enabledModels: ['gpt-4o'] })
     const codex = addProvider({
       name: 'codex',
       providerType: 'openai-codex',
-      defaultModel: 'gpt-5-codex',
+      enabledModels: ['gpt-5-codex'],
       transport: 'websocket-cached',
     })
     expect(codex.transport).toBe('websocket-cached')
@@ -594,11 +636,11 @@ describe('transport persistence guard', () => {
 
   it('updateProvider clears transport when explicitly set to "sse" (the default)', () => {
     setupEmpty()
-    addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-a', defaultModel: 'gpt-4o' })
+    addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-a', enabledModels: ['gpt-4o'] })
     const codex = addProvider({
       name: 'codex',
       providerType: 'openai-codex',
-      defaultModel: 'gpt-5-codex',
+      enabledModels: ['gpt-5-codex'],
       transport: 'websocket-cached',
     })
     const updated = updateProvider(codex.id, { transport: 'sse' })
@@ -607,7 +649,7 @@ describe('transport persistence guard', () => {
 
   it('updateProvider ignores transport on providers whose preset does not support it', () => {
     setupEmpty()
-    const provider = addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-a', defaultModel: 'gpt-4o' })
+    const provider = addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-a', enabledModels: ['gpt-4o'] })
     const updated = updateProvider(provider.id, { transport: 'websocket-cached' })
     expect(updated.transport).toBeUndefined()
   })
@@ -664,7 +706,7 @@ describe('provider CRUD', () => {
       name: 'My OpenAI',
       providerType: 'openai',
       apiKey: 'sk-test123',
-      defaultModel: 'gpt-4o',
+      enabledModels: ['gpt-4o'],
     })
 
     expect(provider.id).toBeDefined()
@@ -692,7 +734,7 @@ describe('provider CRUD', () => {
       name: 'Kimi',
       providerType: 'kimi',
       apiKey: 'sk-kimi',
-      defaultModel: 'moonshot-v1-8k',
+      enabledModels: ['moonshot-v1-8k'],
     })
     expect(provider.baseUrl).toBe('https://api.moonshot.ai/v1')
   })
@@ -703,7 +745,7 @@ describe('provider CRUD', () => {
       name: 'Grok',
       providerType: 'xai',
       apiKey: 'xai-key',
-      defaultModel: 'grok-4.3',
+      enabledModels: ['grok-4.3'],
     })
     expect(provider.baseUrl).toBe('https://api.x.ai/v1')
     expect(provider.type).toBe('openai-completions')
@@ -712,25 +754,25 @@ describe('provider CRUD', () => {
 
   it('addProvider rejects duplicate name', () => {
     setupEmpty()
-    addProvider({ name: 'test', providerType: 'openai', apiKey: 'sk-1', defaultModel: 'gpt-4o' })
-    expect(() => addProvider({ name: 'test', providerType: 'openai', apiKey: 'sk-2', defaultModel: 'gpt-4o' }))
+    addProvider({ name: 'test', providerType: 'openai', apiKey: 'sk-1', enabledModels: ['gpt-4o'] })
+    expect(() => addProvider({ name: 'test', providerType: 'openai', apiKey: 'sk-2', enabledModels: ['gpt-4o'] }))
       .toThrow('already exists')
   })
 
   it('addProvider rejects invalid provider type', () => {
     setupEmpty()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    expect(() => addProvider({ name: 'test', providerType: 'invalid' as any, apiKey: 'sk-1', defaultModel: 'gpt-4o' }))
+    expect(() => addProvider({ name: 'test', providerType: 'invalid' as any, apiKey: 'sk-1', enabledModels: ['gpt-4o'] }))
       .toThrow('Unknown provider type')
   })
 
   it('updateProvider updates fields', () => {
     setupEmpty()
-    const provider = addProvider({ name: 'test', providerType: 'openai', apiKey: 'sk-1', defaultModel: 'gpt-4o' })
+    const provider = addProvider({ name: 'test', providerType: 'openai', apiKey: 'sk-1', enabledModels: ['gpt-4o'] })
 
-    const updated = updateProvider(provider.id, { name: 'Updated Name', defaultModel: 'gpt-4o-mini' })
+    const updated = updateProvider(provider.id, { name: 'Updated Name', enabledModels: ['gpt-4o-mini'] })
     expect(updated.name).toBe('Updated Name')
-    expect(updated.defaultModel).toBe('gpt-4o-mini')
+    expect(updated.enabledModels?.[0]).toBe('gpt-4o-mini')
     expect(updated.status).toBe('untested') // reset on update
   })
 
@@ -741,8 +783,8 @@ describe('provider CRUD', () => {
 
   it('deleteProvider removes provider', () => {
     setupEmpty()
-    const p1 = addProvider({ name: 'first', providerType: 'openai', apiKey: 'sk-1', defaultModel: 'gpt-4o' })
-    const p2 = addProvider({ name: 'second', providerType: 'anthropic', apiKey: 'sk-2', defaultModel: 'claude-3-5-sonnet-20241022' })
+    const p1 = addProvider({ name: 'first', providerType: 'openai', apiKey: 'sk-1', enabledModels: ['gpt-4o'] })
+    const p2 = addProvider({ name: 'second', providerType: 'anthropic', apiKey: 'sk-2', enabledModels: ['claude-3-5-sonnet-20241022'] })
 
     // p1 is active (first added), delete p2
     deleteProvider(p2.id)
@@ -753,14 +795,14 @@ describe('provider CRUD', () => {
 
   it('deleteProvider cannot delete active provider', () => {
     setupEmpty()
-    const p1 = addProvider({ name: 'first', providerType: 'openai', apiKey: 'sk-1', defaultModel: 'gpt-4o' })
+    const p1 = addProvider({ name: 'first', providerType: 'openai', apiKey: 'sk-1', enabledModels: ['gpt-4o'] })
     expect(() => deleteProvider(p1.id)).toThrow('Cannot delete the active provider')
   })
 
   it('setActiveProvider changes active provider', () => {
     setupEmpty()
-    const p1 = addProvider({ name: 'first', providerType: 'openai', apiKey: 'sk-1', defaultModel: 'gpt-4o' })
-    const p2 = addProvider({ name: 'second', providerType: 'anthropic', apiKey: 'sk-2', defaultModel: 'claude-3-5-sonnet-20241022' })
+    const p1 = addProvider({ name: 'first', providerType: 'openai', apiKey: 'sk-1', enabledModels: ['gpt-4o'] })
+    const p2 = addProvider({ name: 'second', providerType: 'anthropic', apiKey: 'sk-2', enabledModels: ['claude-3-5-sonnet-20241022'] })
 
     expect(loadProviders().activeProvider).toBe(p1.id)
 
@@ -770,7 +812,7 @@ describe('provider CRUD', () => {
 
   it('updateProviderStatus updates status', () => {
     setupEmpty()
-    const provider = addProvider({ name: 'test', providerType: 'openai', apiKey: 'sk-1', defaultModel: 'gpt-4o' })
+    const provider = addProvider({ name: 'test', providerType: 'openai', apiKey: 'sk-1', enabledModels: ['gpt-4o'] })
 
     updateProviderStatus(provider.id, 'connected')
     const file = loadProviders()
@@ -779,7 +821,7 @@ describe('provider CRUD', () => {
 
   it('loadProvidersMasked returns masked keys and empty apiKey', () => {
     setupEmpty()
-    addProvider({ name: 'test', providerType: 'openai', apiKey: 'sk-test1234567890', defaultModel: 'gpt-4o' })
+    addProvider({ name: 'test', providerType: 'openai', apiKey: 'sk-test1234567890', enabledModels: ['gpt-4o'] })
 
     const masked = loadProvidersMasked()
     expect(masked.providers[0].apiKey).toBe('')
@@ -793,7 +835,7 @@ describe('provider CRUD', () => {
       name: 'OpenCode Go',
       providerType: 'opencode-go',
       apiKey: 'oc-key',
-      defaultModel: 'glm-5.1',
+      enabledModels: ['glm-5.1'],
       extraFields: {
         workspaceId: ' workspace-1 ',
         authCookie: ' auth-cookie-1 ',
@@ -823,7 +865,7 @@ describe('provider CRUD', () => {
       name: 'OpenCode Go',
       providerType: 'opencode-go',
       apiKey: 'oc-key',
-      defaultModel: 'glm-5.1',
+      enabledModels: ['glm-5.1'],
       extraFields: { workspaceId: 'workspace-1', authCookie: 'auth-cookie-1' },
     })
 
@@ -840,11 +882,11 @@ describe('provider CRUD', () => {
       name: 'OpenCode Go',
       providerType: 'opencode-go',
       apiKey: 'oc-key',
-      defaultModel: 'glm-5.1',
+      enabledModels: ['glm-5.1'],
       extraFields: { workspaceId: 'workspace-1', authCookie: 'auth-cookie-1' },
     })
 
-    updateProvider(created.id, { providerType: 'openai', defaultModel: 'gpt-4o', enabledModels: ['gpt-4o'] })
+    updateProvider(created.id, { providerType: 'openai', enabledModels: ['gpt-4o'] })
 
     const stored = loadProviders().providers.find(p => p.id === created.id)!
     expect(stored.extraFields).toBeUndefined()
@@ -867,7 +909,7 @@ describe('provider CRUD', () => {
           provider: 'openai',
           baseUrl: 'https://api.openai.com/v1',
           apiKey: encrypt('sk-test'),
-          defaultModel: 'gpt-4o',
+          enabledModels: ['gpt-4o'],
           extraFields: { workspaceId: 'workspace-1', authCookie: encrypt('auth-cookie-1') },
           status: 'untested',
           authMethod: 'api-key',
@@ -883,8 +925,8 @@ describe('provider CRUD', () => {
 
   it('setFallbackProvider sets the fallback provider', () => {
     setupEmpty()
-    addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-1', defaultModel: 'gpt-4o' })
-    const p2 = addProvider({ name: 'fallback', providerType: 'anthropic', apiKey: 'sk-2', defaultModel: 'claude-3-5-sonnet-20241022' })
+    addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-1', enabledModels: ['gpt-4o'] })
+    const p2 = addProvider({ name: 'fallback', providerType: 'anthropic', apiKey: 'sk-2', enabledModels: ['claude-3-5-sonnet-20241022'] })
 
     setFallbackProvider(p2.id)
     const file = loadProviders()
@@ -893,8 +935,8 @@ describe('provider CRUD', () => {
 
   it('getFallbackProvider returns the decrypted fallback provider config', () => {
     setupEmpty()
-    addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-1', defaultModel: 'gpt-4o' })
-    const p2 = addProvider({ name: 'fallback', providerType: 'anthropic', apiKey: 'sk-fb-key', defaultModel: 'claude-3-5-sonnet-20241022' })
+    addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-1', enabledModels: ['gpt-4o'] })
+    const p2 = addProvider({ name: 'fallback', providerType: 'anthropic', apiKey: 'sk-fb-key', enabledModels: ['claude-3-5-sonnet-20241022'] })
 
     setFallbackProvider(p2.id)
     const fb = getFallbackProvider()
@@ -906,26 +948,26 @@ describe('provider CRUD', () => {
 
   it('getFallbackProvider returns null when no fallback set', () => {
     setupEmpty()
-    addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-1', defaultModel: 'gpt-4o' })
+    addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-1', enabledModels: ['gpt-4o'] })
     expect(getFallbackProvider()).toBeNull()
   })
 
   it('setFallbackProvider rejects non-existent provider', () => {
     setupEmpty()
-    addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-1', defaultModel: 'gpt-4o' })
+    addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-1', enabledModels: ['gpt-4o'] })
     expect(() => setFallbackProvider('nonexistent')).toThrow('not found')
   })
 
   it('setFallbackProvider rejects active provider with same model', () => {
     setupEmpty()
-    const p1 = addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-1', defaultModel: 'gpt-4o' })
+    const p1 = addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-1', enabledModels: ['gpt-4o'] })
     expect(() => setFallbackProvider(p1.id)).toThrow('Fallback cannot be the same provider and model as the active selection')
   })
 
   it('clearFallbackProvider removes the fallback provider setting', () => {
     setupEmpty()
-    addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-1', defaultModel: 'gpt-4o' })
-    const p2 = addProvider({ name: 'fallback', providerType: 'anthropic', apiKey: 'sk-2', defaultModel: 'claude-3-5-sonnet-20241022' })
+    addProvider({ name: 'primary', providerType: 'openai', apiKey: 'sk-1', enabledModels: ['gpt-4o'] })
+    const p2 = addProvider({ name: 'fallback', providerType: 'anthropic', apiKey: 'sk-2', enabledModels: ['claude-3-5-sonnet-20241022'] })
 
     setFallbackProvider(p2.id)
     expect(loadProviders().fallbackProvider).toBe(p2.id)
@@ -1016,7 +1058,7 @@ describe('openai-compatible provider type', () => {
       providerType: 'openai-compatible',
       baseUrl: 'https://integrate.api.nvidia.com/v1',
       apiKey: 'nvapi-secret-token',
-      defaultModel: 'meta/llama-3.1-405b-instruct',
+      enabledModels: ['meta/llama-3.1-405b-instruct'],
     })
 
     // Stored config should track exactly what the user typed (not a preset URL)
@@ -1024,7 +1066,7 @@ describe('openai-compatible provider type', () => {
     expect(created.type).toBe('openai-completions')
     expect(created.provider).toBe('openai-compatible')
     expect(created.baseUrl).toBe('https://integrate.api.nvidia.com/v1')
-    expect(created.defaultModel).toBe('meta/llama-3.1-405b-instruct')
+    expect(created.enabledModels?.[0]).toBe('meta/llama-3.1-405b-instruct')
 
     // On disk the API key must be encrypted, never plaintext
     const onDisk = loadProviders().providers[0]!
@@ -1045,7 +1087,7 @@ describe('openai-compatible provider type', () => {
       name: 'Local LM Studio',
       providerType: 'openai-compatible',
       baseUrl: 'http://localhost:1234/v1',
-      defaultModel: 'qwen2.5-coder-32b',
+      enabledModels: ['qwen2.5-coder-32b'],
     })
 
     expect(created.apiKey).toBe('')
@@ -1060,7 +1102,7 @@ describe('openai-compatible provider type', () => {
       providerType: 'openai-compatible',
       baseUrl: 'https://integrate.api.nvidia.com/v1',
       apiKey: 'nvapi-key',
-      defaultModel: 'meta/llama-3.1-70b-instruct',
+      enabledModels: ['meta/llama-3.1-70b-instruct'],
     })
     // Use the decrypted record so buildModel sees the user's plaintext key
     const decrypted = loadProvidersDecrypted().providers.find(p => p.id === provider.id)!
@@ -1196,7 +1238,7 @@ describe('getAvailableModels', () => {
       provider: 'moonshot',
       baseUrl: 'https://api.moonshot.ai/v1',
       apiKey: 'sk-test',
-      defaultModel: 'kimi-k2-thinking',
+      enabledModels: ['kimi-k2-thinking'],
     }
     const model = buildModel(provider)
     expect(model.id).toBe('kimi-k2-thinking')
@@ -1220,7 +1262,7 @@ describe('OpenCode Zen/Go catalog presets (sourced from pi-ai)', () => {
     provider: providerType === 'opencode-zen' ? 'opencode' : 'opencode-go',
     baseUrl: PROVIDER_TYPE_PRESETS[providerType].baseUrl,
     apiKey: 'sk-test',
-    defaultModel,
+    enabledModels: [defaultModel],
   })
 
   it('groups OpenCode Go under Subscription (api-key auth, subscription flag) but not Zen', () => {
@@ -1278,7 +1320,7 @@ describe('OpenCode Zen/Go catalog presets (sourced from pi-ai)', () => {
       provider: 'openai',
       baseUrl: 'https://api.openai.com/v1',
       apiKey: 'sk-test',
-      defaultModel: 'gpt-4o',
+      enabledModels: ['gpt-4o'],
     }
     const model = buildModel(provider)
     expect(model.api).toBe('openai-completions')

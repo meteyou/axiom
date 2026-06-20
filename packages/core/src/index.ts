@@ -83,6 +83,7 @@ export {
   encryptOAuthCredentials,
   storedToOAuthCredentials,
   buildModel,
+  getProviderDefaultModel,
   estimateCost,
   parseProviderModelId,
   resolveProviderModelId,

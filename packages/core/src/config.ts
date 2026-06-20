@@ -26,7 +26,7 @@ export function getDefaultTimezone(): string {
 const TEMPLATES: Record<string, object> = {
   'providers.json': {
     providers: [],
-    _comment: 'Add LLM provider configurations here. Each provider needs: name, type, baseUrl, apiKey, defaultModel',
+    _comment: 'Add LLM provider configurations here. Each provider needs: name, type, baseUrl, apiKey, enabledModels',
   },
   'settings.json': {
     sessionTimeoutMinutes: 30,

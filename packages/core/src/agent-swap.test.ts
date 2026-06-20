@@ -27,7 +27,7 @@ function makeProvider(overrides: Partial<ProviderConfig> = {}): ProviderConfig {
     provider: 'openai',
     baseUrl: 'https://api.openai.com/v1',
     apiKey: 'sk-primary',
-    defaultModel: 'gpt-4o',
+    enabledModels: ['gpt-4o'],
     ...overrides,
   }
 }
@@ -41,7 +41,7 @@ function makeFallbackProvider(): ProviderConfig {
     provider: 'anthropic',
     baseUrl: 'https://api.anthropic.com',
     apiKey: 'sk-fallback',
-    defaultModel: 'claude-sonnet-4-20250514',
+    enabledModels: ['claude-sonnet-4-20250514'],
   })
 }
 

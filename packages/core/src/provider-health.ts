@@ -1,6 +1,6 @@
 import type { Database } from './database.js'
 import type { ProviderConfig } from './provider-config.js'
-import { buildModel, getApiKeyForProvider, PROVIDER_TYPE_PRESETS, resolveModelTemperature } from './provider-config.js'
+import { buildModel, getApiKeyForProvider, PROVIDER_TYPE_PRESETS, resolveModelTemperature, getProviderDefaultModel } from './provider-config.js'
 import { completeSimple } from '@earendil-works/pi-ai'
 
 export type ProviderHealthStatus = 'healthy' | 'degraded' | 'down' | 'unconfigured'
@@ -76,9 +76,9 @@ function buildOpenAiCompatibleRequest(provider: ProviderConfig): {
     url: `${provider.baseUrl}/chat/completions`,
     headers,
     body: {
-      model: provider.defaultModel,
+      model: getProviderDefaultModel(provider),
       ...tokenLimitField,
-      temperature: resolveModelTemperature(provider, provider.defaultModel, 0),
+      temperature: resolveModelTemperature(provider, getProviderDefaultModel(provider), 0),
       messages: [{ role: 'user', content: 'Respond with OK only.' }],
     },
   }
@@ -97,7 +97,7 @@ function buildAnthropicRequest(provider: ProviderConfig): {
       'anthropic-version': '2023-06-01',
     },
     body: {
-      model: provider.defaultModel,
+      model: getProviderDefaultModel(provider),
       max_tokens: 5,
       messages: [{ role: 'user', content: 'Respond with OK only.' }],
     },
@@ -162,7 +162,7 @@ async function performPiAiHealthCheck(
       }, {
         apiKey,
         maxTokens: 5,
-        temperature: resolveModelTemperature(provider, provider.defaultModel, 0),
+        temperature: resolveModelTemperature(provider, getProviderDefaultModel(provider), 0),
         signal: controller.signal,
       })
 
@@ -172,7 +172,7 @@ async function performPiAiHealthCheck(
         providerId: provider.id,
         providerName: provider.name,
         providerType: provider.providerType,
-        model: provider.defaultModel,
+        model: getProviderDefaultModel(provider),
         status: latencyMs > degradedThresholdMs ? 'degraded' : 'healthy',
         latencyMs,
         errorMessage: null,
@@ -193,7 +193,7 @@ async function performPiAiHealthCheck(
       providerId: provider.id,
       providerName: provider.name,
       providerType: provider.providerType,
-      model: provider.defaultModel,
+      model: getProviderDefaultModel(provider),
       status: 'down',
       latencyMs: Date.now() - startedAt,
       errorMessage,
@@ -258,7 +258,7 @@ export async function performProviderHealthCheck(
         providerId: provider.id,
         providerName: provider.name,
         providerType: provider.providerType,
-        model: provider.defaultModel,
+        model: getProviderDefaultModel(provider),
         status: 'down',
         latencyMs,
         errorMessage: parseErrorMessage(body) ?? `HTTP ${response.status}`,
@@ -271,7 +271,7 @@ export async function performProviderHealthCheck(
       providerId: provider.id,
       providerName: provider.name,
       providerType: provider.providerType,
-      model: provider.defaultModel,
+      model: getProviderDefaultModel(provider),
       status: latencyMs > degradedThresholdMs ? 'degraded' : 'healthy',
       latencyMs,
       errorMessage: null,
@@ -288,7 +288,7 @@ export async function performProviderHealthCheck(
       providerId: provider.id,
       providerName: provider.name,
       providerType: provider.providerType,
-      model: provider.defaultModel,
+      model: getProviderDefaultModel(provider),
       status: 'down',
       latencyMs: Date.now() - startedAt,
       errorMessage,

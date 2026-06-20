@@ -29,7 +29,7 @@ const provider: ProviderConfig = {
   provider: 'opencode-go',
   baseUrl: 'https://opencode.ai/zen/go/v1',
   apiKey: 'oc-go-key',
-  defaultModel: 'kimi-k2.7-code',
+  enabledModels: ['kimi-k2.7-code'],
   authMethod: 'api-key',
 }
 

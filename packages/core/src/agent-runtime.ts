@@ -7,7 +7,7 @@ import type { Api, AssistantMessage, Message, ImageContent, Model } from '@earen
 import { Type } from '@earendil-works/pi-ai'
 import type { Database } from './database.js'
 import { logTokenUsage, logToolCall } from './token-logger.js'
-import { estimateCost, getApiKeyForProvider, buildModel, buildStreamFn, loadProvidersDecrypted, parseProviderModelId } from './provider-config.js'
+import { estimateCost, getApiKeyForProvider, buildModel, buildStreamFn, loadProvidersDecrypted, parseProviderModelId, getProviderDefaultModel } from './provider-config.js'
 import type { ProviderConfig } from './provider-config.js'
 import type { ProviderManager } from './provider-manager.js'
 import type { SettingsThinkingLevel } from './contracts/settings.js'
@@ -654,12 +654,12 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
       }
 
       availableProviders = file.providers.map(p => {
-        const enabled = p.enabledModels && p.enabledModels.length > 0 ? p.enabledModels : [p.defaultModel]
-        const activeModelForProvider = p.id === activeProviderId ? (file.activeModel ?? p.defaultModel) : null
+        const enabled = p.enabledModels ?? []
+        const activeModelForProvider = p.id === activeProviderId ? (file.activeModel ?? getProviderDefaultModel(p)) : null
         const models: AvailableProviderModelPromptEntry[] = enabled.map(id => {
           const entry = p.models?.find(m => m.id === id)
           const isDefaultAgentModel = p.id === activeProviderId && id === activeModelForProvider
-          const isDefaultTaskModel = p.id === taskProviderId && id === (taskModelId ?? p.defaultModel)
+          const isDefaultTaskModel = p.id === taskProviderId && id === (taskModelId ?? getProviderDefaultModel(p))
           return {
             id,
             description: entry?.description,

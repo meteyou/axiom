@@ -3,8 +3,8 @@ import { canonicalizeProviderModelRef } from './providers.js'
 
 describe('provider contracts', () => {
   const providers = [
-    { id: 'prov-1', defaultModel: 'gpt-4o-mini' },
-    { id: 'prov-2', defaultModel: 'claude-sonnet-4' },
+    { id: 'prov-1', enabledModels: ['gpt-4o-mini'] },
+    { id: 'prov-2', enabledModels: ['claude-sonnet-4'] },
   ]
 
   it('keeps composite provider:model refs unchanged', () => {

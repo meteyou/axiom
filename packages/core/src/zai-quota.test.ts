@@ -24,7 +24,7 @@ const provider: ProviderConfig = {
   provider: 'zai',
   baseUrl: 'https://api.z.ai/api/coding/paas/v4',
   apiKey: 'zai-coding-key',
-  defaultModel: 'glm-4.7',
+  enabledModels: ['glm-4.7'],
   authMethod: 'api-key',
 }
 

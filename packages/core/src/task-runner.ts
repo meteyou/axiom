@@ -14,7 +14,7 @@ import { TaskStore } from './task-store.js'
 import type { Task, TaskResultStatus, TaskTriggerType } from './task-store.js'
 import type { SessionManager, SessionType } from './session-manager.js'
 import { logTokenUsage, logToolCall } from './token-logger.js'
-import { estimateCost, parseProviderModelId, buildStreamFn } from './provider-config.js'
+import { estimateCost, parseProviderModelId, buildStreamFn, getProviderDefaultModel } from './provider-config.js'
 import type { ProviderConfig } from './provider-config.js'
 import {
   ToolCallTracker,
@@ -511,7 +511,7 @@ export class TaskRunner {
       this.store.update(taskId, {
         startedAt: now,
         provider: provider.name,
-        model: provider.defaultModel,
+        model: getProviderDefaultModel(provider),
       })
 
       // Subscribe to agent events for token/tool tracking
@@ -874,7 +874,7 @@ export class TaskRunner {
     if (!resolvedProvider) return
 
     // Apply specific model override if provided
-    const provider = modelId ? { ...resolvedProvider, defaultModel: modelId } : resolvedProvider
+    const provider = modelId ? { ...resolvedProvider, enabledModels: [modelId] } : resolvedProvider
 
     try {
       const model = this.options.buildModel(provider)

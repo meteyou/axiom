@@ -5,7 +5,7 @@ import type { TaskStore } from './task-store.js'
 import type { TaskRunner } from './task-runner.js'
 import type { TaskOverrides } from './task-runner.js'
 import type { ProviderConfig } from './provider-config.js'
-import { parseProviderModelId } from './provider-config.js'
+import { parseProviderModelId, getProviderDefaultModel } from './provider-config.js'
 import { parseCronExpression, getNextRunTime } from './cron-parser.js'
 
 export interface TaskSchedulerOptions {
@@ -360,7 +360,7 @@ export class TaskScheduler {
     // task runner via a cloned provider config (matches the pattern used by
     // `getTaskDefaultProvider` in runtime-composition).
     if (modelOverride) {
-      provider = { ...provider, defaultModel: modelOverride }
+      provider = { ...provider, enabledModels: [modelOverride] }
     }
 
     // Create task in the task store — sessionId is created by the
@@ -375,7 +375,7 @@ export class TaskScheduler {
       triggerType: 'cronjob',
       triggerSourceId: scheduledTask.id,
       provider: provider.name,
-      model: provider.defaultModel,
+      model: getProviderDefaultModel(provider),
       isDefaultModel: !scheduledTask.provider,
     })
 

@@ -500,13 +500,13 @@ export class AgentCore {
       const summarySettings = loadConfig<{ sessionSummaryProviderId?: string }>('settings.json')
       const summaryProviderId = summarySettings.sessionSummaryProviderId
       if (summaryProviderId) {
-        const { parseProviderModelId, loadProvidersDecrypted } = await import('./provider-config.js')
+        const { parseProviderModelId, loadProvidersDecrypted, getProviderDefaultModel } = await import('./provider-config.js')
         const { providerId, modelId } = parseProviderModelId(summaryProviderId)
         if (providerId) {
           const file = loadProvidersDecrypted()
           const summaryProvider = file.providers.find(p => p.id === providerId)
           if (summaryProvider) {
-            const resolvedModelId = modelId ?? summaryProvider.defaultModel
+            const resolvedModelId = modelId ?? getProviderDefaultModel(summaryProvider)
             summaryModel = buildModel(summaryProvider, resolvedModelId)
             summaryApiKey = await getApiKeyForProvider(summaryProvider)
             summaryProviderForTemp = summaryProvider

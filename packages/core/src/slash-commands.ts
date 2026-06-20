@@ -8,6 +8,7 @@ import { parseCronExpression, getNextRunTime } from './cron-parser.js'
 import {
   loadProviders,
   setActiveProvider,
+  getProviderDefaultModel,
 } from './provider-config.js'
 import type { ProviderConfig } from './provider-config.js'
 import { getConfigDir, loadConfig } from './config.js'
@@ -406,9 +407,7 @@ function findProvider(providers: ProviderConfig[], key: string): ProviderConfig 
 }
 
 function enabledModelIds(provider: ProviderConfig): string[] {
-  return provider.enabledModels && provider.enabledModels.length > 0
-    ? provider.enabledModels
-    : [provider.defaultModel]
+  return provider.enabledModels ?? []
 }
 
 function buildProviderPicker(
@@ -417,7 +416,7 @@ function buildProviderPicker(
   activeModelId: string | undefined,
 ): SlashCommandPicker {
   const active = providers.find((p) => p.id === activeProviderId) ?? providers[0]!
-  const activeModel = activeModelId ?? active.defaultModel ?? '(none)'
+  const activeModel = activeModelId ?? (getProviderDefaultModel(active) || '(none)')
   const options: SlashCommandPickerOption[] = providers.map((p) => {
     const isActive = p.id === activeProviderId
     return {
@@ -447,7 +446,7 @@ function buildModelPicker(
   const options: SlashCommandPickerOption[] = enabled.map((m) => {
     const flags: string[] = []
     if (isActiveProvider && m === activeModelId) flags.push('active')
-    if (m === provider.defaultModel) flags.push('default')
+    if (m === getProviderDefaultModel(provider)) flags.push('default')
     const status = provider.modelStatuses?.[m]
     if (status && status !== 'untested') flags.push(status)
     const overrideName = provider.models?.find((mm) => mm.id === m)?.name

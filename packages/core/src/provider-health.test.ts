@@ -16,7 +16,7 @@ const provider = {
   provider: 'openai',
   baseUrl: 'https://example.com/v1',
   apiKey: 'sk-test',
-  defaultModel: 'gpt-4o-mini',
+  enabledModels: ['gpt-4o-mini'],
 }
 
 describe('provider-health', () => {

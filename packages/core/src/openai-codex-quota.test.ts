@@ -34,7 +34,7 @@ const codexProvider: ProviderConfig = {
   provider: 'openai-codex',
   baseUrl: '',
   apiKey: '',
-  defaultModel: 'gpt-5-codex',
+  enabledModels: ['gpt-5-codex'],
   authMethod: 'oauth',
   oauthCredentials: { refresh: 'r', access: 'a', expires: Date.now() + 60_000 },
 }

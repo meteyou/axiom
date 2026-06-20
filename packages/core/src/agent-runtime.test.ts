@@ -102,7 +102,7 @@ vi.mock('./provider-config.js', async (importOriginal) => {
     ...original,
     estimateCost: vi.fn(() => 0),
     getApiKeyForProvider: vi.fn().mockResolvedValue('fallback-key'),
-    buildModel: vi.fn((provider: { defaultModel: string }) => ({ id: provider.defaultModel })),
+    buildModel: vi.fn((provider: { enabledModels?: string[] }) => ({ id: provider.enabledModels?.[0] })),
   }
 })
 

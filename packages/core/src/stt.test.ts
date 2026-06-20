@@ -590,7 +590,7 @@ describe('transcribeOllama', () => {
 describe('rewriteTranscript', () => {
   it('calls completeSimple with correct context and returns cleaned text', async () => {
     mockLoadProvidersDecrypted.mockReturnValue({
-      providers: [{ id: 'oai-1', baseUrl: 'https://api.openai.com/v1', providerType: 'openai', defaultModel: 'gpt-4o' }],
+      providers: [{ id: 'oai-1', baseUrl: 'https://api.openai.com/v1', providerType: 'openai', enabledModels: ['gpt-4o'] }],
     } as ReturnType<typeof loadProvidersDecrypted>)
     mockGetApiKeyForProvider.mockResolvedValue('sk-test')
     mockBuildModel.mockReturnValue({ id: 'gpt-4o' } as ReturnType<typeof buildModel>)
@@ -613,7 +613,7 @@ describe('rewriteTranscript', () => {
 
   it('trims whitespace from rewritten response', async () => {
     mockLoadProvidersDecrypted.mockReturnValue({
-      providers: [{ id: 'oai-1', baseUrl: 'https://api.openai.com/v1', providerType: 'openai', defaultModel: 'gpt-4o' }],
+      providers: [{ id: 'oai-1', baseUrl: 'https://api.openai.com/v1', providerType: 'openai', enabledModels: ['gpt-4o'] }],
     } as ReturnType<typeof loadProvidersDecrypted>)
     mockGetApiKeyForProvider.mockResolvedValue('sk-test')
     mockBuildModel.mockReturnValue({ id: 'gpt-4o' } as ReturnType<typeof buildModel>)
@@ -637,7 +637,7 @@ describe('rewriteTranscript', () => {
 
   it('throws when completeSimple fails', async () => {
     mockLoadProvidersDecrypted.mockReturnValue({
-      providers: [{ id: 'oai-1', baseUrl: 'https://api.openai.com/v1', providerType: 'openai', defaultModel: 'gpt-4o' }],
+      providers: [{ id: 'oai-1', baseUrl: 'https://api.openai.com/v1', providerType: 'openai', enabledModels: ['gpt-4o'] }],
     } as ReturnType<typeof loadProvidersDecrypted>)
     mockGetApiKeyForProvider.mockResolvedValue('sk-test')
     mockBuildModel.mockReturnValue({ id: 'gpt-4o' } as ReturnType<typeof buildModel>)
@@ -650,7 +650,7 @@ describe('rewriteTranscript', () => {
 
   it('throws when response has no text content', async () => {
     mockLoadProvidersDecrypted.mockReturnValue({
-      providers: [{ id: 'oai-1', baseUrl: 'https://api.openai.com/v1', providerType: 'openai', defaultModel: 'gpt-4o' }],
+      providers: [{ id: 'oai-1', baseUrl: 'https://api.openai.com/v1', providerType: 'openai', enabledModels: ['gpt-4o'] }],
     } as ReturnType<typeof loadProvidersDecrypted>)
     mockGetApiKeyForProvider.mockResolvedValue('sk-test')
     mockBuildModel.mockReturnValue({ id: 'gpt-4o' } as ReturnType<typeof buildModel>)
@@ -903,7 +903,7 @@ describe('transcribeAudio', () => {
       },
     })
     mockLoadProvidersDecrypted.mockReturnValue({
-      providers: [{ id: 'oai-1', baseUrl: 'https://api.openai.com/v1', providerType: 'openai', defaultModel: 'gpt-4o' }],
+      providers: [{ id: 'oai-1', baseUrl: 'https://api.openai.com/v1', providerType: 'openai', enabledModels: ['gpt-4o'] }],
     } as ReturnType<typeof loadProvidersDecrypted>)
     mockGetApiKeyForProvider.mockResolvedValue('sk-test')
     mockBuildModel.mockReturnValue({ id: 'gpt-4o' } as ReturnType<typeof buildModel>)
@@ -956,7 +956,7 @@ describe('transcribeAudio', () => {
       },
     })
     mockLoadProvidersDecrypted.mockReturnValue({
-      providers: [{ id: 'oai-1', baseUrl: 'https://api.openai.com/v1', providerType: 'openai', defaultModel: 'gpt-4o' }],
+      providers: [{ id: 'oai-1', baseUrl: 'https://api.openai.com/v1', providerType: 'openai', enabledModels: ['gpt-4o'] }],
     } as ReturnType<typeof loadProvidersDecrypted>)
     mockGetApiKeyForProvider.mockResolvedValue('sk-test')
     mockBuildModel.mockReturnValue({ id: 'gpt-4o' } as ReturnType<typeof buildModel>)

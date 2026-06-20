@@ -40,14 +40,14 @@ async function main() {
         provider: 'openai',
         baseUrl: 'https://api.openai.com/v1',
         apiKey: 'sk-your-key-here',
-        defaultModel: 'gpt-4o-mini',
+        enabledModels: ['gpt-4o-mini'],
       }],
     }, null, 2))
     process.exit(1)
   }
 
   console.log(`✅ Provider: ${provider.name} (${provider.provider})`)
-  console.log(`✅ Model: ${provider.defaultModel}`)
+  console.log(`✅ Model: ${provider.enabledModels?.[0]}`)
   console.log(`✅ Base URL: ${provider.baseUrl}\n`)
 
   // Build model and init database

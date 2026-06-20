@@ -17,7 +17,7 @@ const mockProvider: ProviderConfig = {
   type: 'openai',
   baseUrl: 'https://api.openai.com/v1',
   apiKey: 'test-key',
-  defaultModel: 'gpt-4o',
+  enabledModels: ['gpt-4o'],
 } as ProviderConfig
 
 describe('TaskScheduler', () => {

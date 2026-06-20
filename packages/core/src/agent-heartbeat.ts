@@ -3,6 +3,7 @@ import path from 'node:path'
 import { ensureConfigTemplates, getDefaultTimezone, loadConfig } from './config.js'
 import type { Task } from './task-store.js'
 import type { ProviderConfig } from './provider-config.js'
+import { getProviderDefaultModel } from './provider-config.js'
 import type { TaskRuntimeTaskBoundary } from './task-runtime.js'
 
 export interface AgentHeartbeatNightMode {
@@ -192,7 +193,7 @@ export class AgentHeartbeatService {
       triggerType: 'heartbeat',
       triggerSourceId: 'agent-heartbeat',
       provider: provider.name,
-      model: provider.defaultModel,
+      model: getProviderDefaultModel(provider),
       isDefaultModel: true,
     })
 

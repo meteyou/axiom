@@ -24,7 +24,7 @@ const anthropicProvider: ProviderConfig = {
   provider: 'anthropic',
   baseUrl: 'https://api.anthropic.com',
   apiKey: '',
-  defaultModel: 'claude-sonnet-4',
+  enabledModels: ['claude-sonnet-4'],
   authMethod: 'oauth',
   oauthCredentials: { refresh: 'r', access: 'a', expires: Date.now() + 60_000 },
 }

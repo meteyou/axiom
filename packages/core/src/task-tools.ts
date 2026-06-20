@@ -2,7 +2,7 @@ import type { AgentTool } from '@earendil-works/pi-agent-core'
 import { Type } from '@earendil-works/pi-ai'
 import type { TaskStatus, TaskTriggerType } from './task-store.js'
 import type { ProviderConfig } from './provider-config.js'
-import { resolveProviderModelInput } from './provider-config.js'
+import { resolveProviderModelInput, getProviderDefaultModel } from './provider-config.js'
 import type { TaskRuntimeTaskBoundary } from './task-runtime.js'
 
 export interface TaskToolsOptions {
@@ -170,9 +170,9 @@ export function createTaskTool(options: TaskToolsOptions): AgentTool {
           }
           // Pin the requested model by cloning the provider config (same
           // pattern as `getTaskDefaultProvider` and the cron scheduler).
-          provider = resolved.modelId === base.defaultModel
+          provider = resolved.modelId === getProviderDefaultModel(base)
             ? base
-            : { ...base, defaultModel: resolved.modelId }
+            : { ...base, enabledModels: [resolved.modelId] }
         } else {
           provider = options.getDefaultProvider()
         }
@@ -193,7 +193,7 @@ export function createTaskTool(options: TaskToolsOptions): AgentTool {
           prompt,
           triggerType: 'agent',
           provider: provider.name,
-          model: provider.defaultModel,
+          model: getProviderDefaultModel(provider),
           isDefaultModel,
           maxDurationMinutes: maxDuration,
         })

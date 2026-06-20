@@ -569,8 +569,7 @@ export interface ProviderConfig {
   provider: string // e.g., 'openai', 'anthropic', 'xai'
   baseUrl: string
   apiKey: string // encrypted at rest
-  defaultModel: string
-  enabledModels?: string[] // list of model IDs enabled for this provider
+  enabledModels?: string[] // list of model IDs enabled for this provider; first entry is the default/primary model
   degradedThresholdMs?: number
   textVerbosity?: TextVerbosity
   transport?: ProviderTransport
@@ -780,6 +779,19 @@ export function loadProviders(): ProvidersFile {
       p.provider = 'ollama'
       migrated = true
     }
+
+    // Migrate legacy `defaultModel` into enabledModels. The dedicated field is
+    // gone; the default is now enabledModels[0]. Older configs may store the
+    // default at a non-zero index (or omit enabledModels entirely), so fold it
+    // to the front to preserve the previously selected default.
+    const legacy = p as ProviderConfig & { defaultModel?: string }
+    if (legacy.defaultModel !== undefined) {
+      const defaultModel = legacy.defaultModel
+      const rest = (legacy.enabledModels ?? []).filter(m => m !== defaultModel)
+      legacy.enabledModels = defaultModel ? [defaultModel, ...rest] : rest
+      delete legacy.defaultModel
+      migrated = true
+    }
   }
   if (migrated) {
     // Persist the migration so it only runs once
@@ -947,8 +959,7 @@ export function addProvider(input: {
   providerType: ProviderType
   baseUrl?: string
   apiKey?: string
-  defaultModel: string
-  enabledModels?: string[]
+  enabledModels: string[]
   degradedThresholdMs?: number
   textVerbosity?: TextVerbosity
   transport?: ProviderTransport
@@ -966,12 +977,9 @@ export function addProvider(input: {
     throw new Error(`Provider with name "${input.name}" already exists`)
   }
 
-  // Ensure defaultModel is included in enabledModels
-  const enabledModels = input.enabledModels && input.enabledModels.length > 0
-    ? (input.enabledModels.includes(input.defaultModel)
-        ? input.enabledModels
-        : [input.defaultModel, ...input.enabledModels])
-    : [input.defaultModel]
+  // Models may be added after creation via the "Add Model" flow, so a provider
+  // can be created with no enabled models yet.
+  const enabledModels = input.enabledModels ?? []
 
   const provider: ProviderConfig = {
     id: generateProviderId(),
@@ -981,7 +989,6 @@ export function addProvider(input: {
     provider: preset.providerName,
     baseUrl: input.baseUrl || preset.baseUrl,
     apiKey: input.apiKey ? encrypt(input.apiKey) : '',
-    defaultModel: input.defaultModel,
     enabledModels,
     degradedThresholdMs: input.degradedThresholdMs ?? 5000,
     ...(input.textVerbosity && presetSupportsTextVerbosity(input.providerType)
@@ -1001,7 +1008,7 @@ export function addProvider(input: {
   // If this is the first provider, make it active
   if (file.providers.length === 1) {
     file.activeProvider = provider.id
-    file.activeModel = input.defaultModel
+    if (enabledModels[0]) file.activeModel = enabledModels[0]
   }
 
   saveProviders(file)
@@ -1014,8 +1021,7 @@ export function addProvider(input: {
 export function addOAuthProvider(input: {
   name: string
   providerType: ProviderType
-  defaultModel: string
-  enabledModels?: string[]
+  enabledModels: string[]
   degradedThresholdMs?: number
   textVerbosity?: TextVerbosity
   transport?: ProviderTransport
@@ -1036,12 +1042,7 @@ export function addOAuthProvider(input: {
     throw new Error(`Provider with name "${input.name}" already exists`)
   }
 
-  // Ensure defaultModel is included in enabledModels
-  const enabledModels = input.enabledModels && input.enabledModels.length > 0
-    ? (input.enabledModels.includes(input.defaultModel)
-        ? input.enabledModels
-        : [input.defaultModel, ...input.enabledModels])
-    : [input.defaultModel]
+  const enabledModels = input.enabledModels ?? []
 
   const provider: ProviderConfig = {
     id: generateProviderId(),
@@ -1051,7 +1052,6 @@ export function addOAuthProvider(input: {
     provider: preset.providerName,
     baseUrl: preset.baseUrl,
     apiKey: '',
-    defaultModel: input.defaultModel,
     enabledModels,
     degradedThresholdMs: input.degradedThresholdMs ?? 5000,
     ...(input.textVerbosity && presetSupportsTextVerbosity(input.providerType)
@@ -1067,7 +1067,7 @@ export function addOAuthProvider(input: {
 
   if (file.providers.length === 1) {
     file.activeProvider = provider.id
-    file.activeModel = input.defaultModel
+    if (enabledModels[0]) file.activeModel = enabledModels[0]
   }
 
   saveProviders(file)
@@ -1082,7 +1082,6 @@ export function updateProvider(id: string, input: {
   providerType?: ProviderType
   baseUrl?: string
   apiKey?: string
-  defaultModel?: string
   enabledModels?: string[]
   degradedThresholdMs?: number
   textVerbosity?: TextVerbosity | null
@@ -1123,13 +1122,8 @@ export function updateProvider(id: string, input: {
   if (input.name !== undefined) existing.name = input.name
   if (input.baseUrl !== undefined) existing.baseUrl = input.baseUrl
   if (input.apiKey !== undefined) existing.apiKey = input.apiKey ? encrypt(input.apiKey) : ''
-  if (input.defaultModel !== undefined) existing.defaultModel = input.defaultModel
   if (input.enabledModels !== undefined) {
-    // Ensure defaultModel is always in enabledModels
-    const dm = input.defaultModel ?? existing.defaultModel
-    existing.enabledModels = input.enabledModels.includes(dm)
-      ? input.enabledModels
-      : [dm, ...input.enabledModels]
+    existing.enabledModels = input.enabledModels
   }
   if (input.degradedThresholdMs !== undefined) existing.degradedThresholdMs = input.degradedThresholdMs
   if (input.extraFields !== undefined) {
@@ -1301,7 +1295,7 @@ export function setActiveProvider(id: string, modelId?: string): void {
   if (modelId !== undefined) {
     file.activeModel = modelId
   } else {
-    file.activeModel = provider.defaultModel
+    file.activeModel = getProviderDefaultModel(provider)
   }
   saveProviders(file)
 }
@@ -1318,7 +1312,7 @@ export function setActiveModel(modelId: string): void {
   if (!provider) {
     throw new Error('Active provider not found')
   }
-  const enabled = provider.enabledModels ?? [provider.defaultModel]
+  const enabled = provider.enabledModels ?? []
   if (!enabled.includes(modelId)) {
     throw new Error(`Model "${modelId}" is not enabled for provider "${provider.name}"`)
   }
@@ -1334,7 +1328,7 @@ export function getActiveModelId(): string | null {
   if (!file.activeProvider) return null
   const provider = file.providers.find(p => p.id === file.activeProvider)
   if (!provider) return null
-  return file.activeModel ?? provider.defaultModel
+  return file.activeModel ?? (getProviderDefaultModel(provider) || null)
 }
 
 /**
@@ -1350,7 +1344,7 @@ export function updateProviderStatus(id: string, status: 'connected' | 'error' |
     if (!provider.modelStatuses) provider.modelStatuses = {}
     provider.modelStatuses[modelId] = status
     // Also derive overall provider status from model statuses
-    const enabled = provider.enabledModels ?? [provider.defaultModel]
+    const enabled = provider.enabledModels ?? []
     const statuses = enabled.map(m => provider.modelStatuses?.[m] ?? 'untested')
     if (statuses.every(s => s === 'connected')) provider.status = 'connected'
     else if (statuses.some(s => s === 'error')) provider.status = 'error'
@@ -1384,8 +1378,9 @@ export function setFallbackProvider(id: string, modelId?: string): void {
   }
   if (file.activeProvider === id) {
     // Only reject if both provider AND model match the active selection
-    const activeModel = file.activeModel ?? file.providers.find(p => p.id === file.activeProvider)?.defaultModel
-    const fbModel = modelId ?? provider.defaultModel
+    const activeProviderConfig = file.providers.find(p => p.id === file.activeProvider)
+    const activeModel = file.activeModel ?? (activeProviderConfig ? getProviderDefaultModel(activeProviderConfig) : undefined)
+    const fbModel = modelId ?? getProviderDefaultModel(provider)
     if (activeModel === fbModel) {
       throw new Error('Fallback cannot be the same provider and model as the active selection')
     }
@@ -1394,7 +1389,7 @@ export function setFallbackProvider(id: string, modelId?: string): void {
   if (modelId !== undefined) {
     file.fallbackModel = modelId
   } else {
-    file.fallbackModel = provider.defaultModel
+    file.fallbackModel = getProviderDefaultModel(provider)
   }
   saveProviders(file)
 }
@@ -1417,7 +1412,7 @@ export function getFallbackModelId(): string | null {
   if (!file.fallbackProvider) return null
   const provider = file.providers.find(p => p.id === file.fallbackProvider)
   if (!provider) return null
-  return file.fallbackModel ?? provider.defaultModel
+  return file.fallbackModel ?? (getProviderDefaultModel(provider) || null)
 }
 
 /**
@@ -1497,8 +1492,16 @@ export function getConfiguredPriceTable(): TokenPriceTable {
   }
 }
 
+/**
+ * The provider's default/primary model id. Historically a dedicated
+ * `defaultModel` field; now derived as the first enabled model.
+ */
+export function getProviderDefaultModel(provider: Pick<ProviderConfig, 'enabledModels'>): string {
+  return provider.enabledModels?.[0] ?? ''
+}
+
 export function buildModel(provider: ProviderConfig, modelId?: string): Model<Api> {
-  const id = modelId ?? provider.defaultModel
+  const id = modelId ?? getProviderDefaultModel(provider)
   const preset = PROVIDER_TYPE_PRESETS[provider.providerType]
 
   // Look up the model from pi-ai to get the correct per-model api type and
@@ -1575,7 +1578,7 @@ export function buildModel(provider: ProviderConfig, modelId?: string): Model<Ap
  *   - "providerId"         → { providerId, modelId: undefined }
  *   - "" / undefined        → { providerId: '', modelId: undefined }
  *
- * When modelId is undefined, callers should fall back to the provider's defaultModel.
+ * When modelId is undefined, callers should fall back to the provider's default model (the first enabled model).
  */
 export function parseProviderModelId(value?: string): { providerId: string; modelId?: string } {
   if (!value) return { providerId: '' }
@@ -1610,8 +1613,8 @@ export function resolveProviderModelId(value?: string): {
  *
  *   - both provider + model   → validate the model is enabled for that provider
  *   - provider only           → use the provider's default model
- *   - model only              → search providers for one whose enabledModels (or
- *                               defaultModel) contains the model; unique match wins
+ *   - model only              → search providers for one whose enabledModels
+ *                               contains the model; unique match wins
  *   - neither                 → `{ ok: false, error: 'none-specified' }`
  *
  * Provider lookup is case-insensitive on both `id` and `name`, matching the
@@ -1639,9 +1642,7 @@ export function resolveProviderModelInput(input: {
       return { ok: false, error: `Provider "${providerKey}" not found. Available providers: ${providers.map(p => p.name).join(', ') || '(none)'}.` }
     }
 
-    const enabledModels = match.enabledModels && match.enabledModels.length > 0
-      ? match.enabledModels
-      : [match.defaultModel]
+    const enabledModels = match.enabledModels ?? []
 
     let modelId: string
     if (modelKey) {
@@ -1651,7 +1652,7 @@ export function resolveProviderModelInput(input: {
       }
       modelId = modelMatch
     } else {
-      modelId = match.defaultModel
+      modelId = getProviderDefaultModel(match)
     }
 
     return { ok: true, providerId: match.id, providerName: match.name, modelId, composite: `${match.id}:${modelId}` }
@@ -1660,15 +1661,13 @@ export function resolveProviderModelInput(input: {
   // Case 3: model only — search all providers for any enabled model that matches
   const hits: Array<{ provider: ProviderConfig; modelId: string }> = []
   for (const p of providers) {
-    const enabledModels = p.enabledModels && p.enabledModels.length > 0
-      ? p.enabledModels
-      : [p.defaultModel]
+    const enabledModels = p.enabledModels ?? []
     const modelMatch = enabledModels.find(m => m.toLowerCase() === modelKey.toLowerCase())
     if (modelMatch) hits.push({ provider: p, modelId: modelMatch })
   }
 
   if (hits.length === 0) {
-    return { ok: false, error: `Model "${modelKey}" not found in any configured provider. Configured providers: ${providers.map(p => `${p.name} (${(p.enabledModels && p.enabledModels.length > 0 ? p.enabledModels : [p.defaultModel]).join(', ')})`).join('; ') || '(none)'}.` }
+    return { ok: false, error: `Model "${modelKey}" not found in any configured provider. Configured providers: ${providers.map(p => `${p.name} (${(p.enabledModels ?? []).join(', ')})`).join('; ') || '(none)'}.` }
   }
   if (hits.length > 1) {
     return { ok: false, error: `Model "${modelKey}" is ambiguous — enabled in multiple providers: ${hits.map(h => h.provider.name).join(', ')}. Specify the provider explicitly.` }

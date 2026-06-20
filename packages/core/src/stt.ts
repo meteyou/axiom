@@ -1,5 +1,5 @@
 import { loadConfig, ensureConfigTemplates } from './config.js'
-import { loadProvidersDecrypted, getApiKeyForProvider, buildModel, parseProviderModelId } from './provider-config.js'
+import { loadProvidersDecrypted, getApiKeyForProvider, buildModel, parseProviderModelId, getProviderDefaultModel } from './provider-config.js'
 import type { ProviderConfig } from './provider-config.js'
 import type { SttProvider } from './contracts/settings.js'
 import { completeSimple } from '@earendil-works/pi-ai'
@@ -252,7 +252,7 @@ export async function rewriteTranscript(
   }
 
   const apiKey = await getApiKeyForProvider(provider)
-  const model = buildModel(provider, modelId ?? provider.defaultModel)
+  const model = buildModel(provider, modelId ?? getProviderDefaultModel(provider))
 
   const response = await completeSimple(model, {
     systemPrompt: REWRITE_SYSTEM_PROMPT,

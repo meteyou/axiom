@@ -40,7 +40,7 @@ const mockProvider: ProviderConfig = {
   provider: 'openai',
   baseUrl: 'http://localhost:1234',
   apiKey: 'test-key',
-  defaultModel: 'test-model',
+  enabledModels: ['test-model'],
   models: [],
   status: 'connected',
   authMethod: 'api-key',

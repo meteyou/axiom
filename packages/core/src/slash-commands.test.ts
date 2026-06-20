@@ -353,12 +353,12 @@ describe('built-in slash commands', () => {
           {
             id: 'p1', name: 'OpenAI', type: 'openai-completions', providerType: 'openai',
             provider: 'openai', baseUrl: 'https://api.openai.com', apiKey: '',
-            defaultModel: 'gpt-4o', enabledModels: ['gpt-4o', 'gpt-4o-mini'],
+            enabledModels: ['gpt-4o', 'gpt-4o-mini'],
           },
           {
             id: 'p2', name: 'Anthropic', type: 'anthropic-messages', providerType: 'anthropic',
             provider: 'anthropic', baseUrl: 'https://api.anthropic.com', apiKey: '',
-            defaultModel: 'claude-sonnet-4-20250514',
+            enabledModels: ['claude-sonnet-4-20250514'],
           },
         ],
       })
@@ -379,7 +379,7 @@ describe('built-in slash commands', () => {
         activeProvider: 'p1',
         providers: [{
           id: 'p1', name: 'OpenAI', type: 'openai-completions', providerType: 'openai',
-          provider: 'openai', baseUrl: '', apiKey: '', defaultModel: 'gpt-4o',
+          provider: 'openai', baseUrl: '', apiKey: '', enabledModels: ['gpt-4o'],
         }],
       })
       const r = await registry.dispatch('/provider', { surface: 'web', userId: '1', registry })
@@ -395,7 +395,7 @@ describe('built-in slash commands', () => {
         providers: [{
           id: 'p1', name: 'OpenAI', type: 'openai-completions', providerType: 'openai',
           provider: 'openai', baseUrl: '', apiKey: '',
-          defaultModel: 'gpt-4o', enabledModels: ['gpt-4o', 'gpt-4o-mini'],
+          enabledModels: ['gpt-4o', 'gpt-4o-mini'],
         }],
       })
       const r = await registry.dispatch('/model p1', { surface: 'web', userId: '1', registry })
@@ -421,7 +421,7 @@ describe('built-in slash commands', () => {
         providers: [{
           id: 'p1', name: 'OpenAI', type: 'openai-completions', providerType: 'openai',
           provider: 'openai', baseUrl: '', apiKey: '',
-          defaultModel: 'gpt-4o', enabledModels: ['gpt-4o'],
+          enabledModels: ['gpt-4o'],
         }],
       })
       const r = await registry.dispatch('/model openai', { surface: 'web', userId: '1', registry })
@@ -435,7 +435,7 @@ describe('built-in slash commands', () => {
         activeProvider: 'p1',
         providers: [{
           id: 'p1', name: 'OpenAI', type: 'openai-completions', providerType: 'openai',
-          provider: 'openai', baseUrl: '', apiKey: '', defaultModel: 'gpt-4o',
+          provider: 'openai', baseUrl: '', apiKey: '', enabledModels: ['gpt-4o'],
         }],
       })
       const r = await registry.dispatch('/model nope', { surface: 'web', userId: '1', registry })
@@ -453,13 +453,11 @@ describe('built-in slash commands', () => {
         providers: [
           {
             id: 'p1', name: 'OpenAI', type: 'openai-completions', providerType: 'openai',
-            provider: 'openai', baseUrl: '', apiKey: '', defaultModel: 'gpt-4o',
-            enabledModels: ['gpt-4o', 'gpt-4o-mini'],
+            provider: 'openai', baseUrl: '', apiKey: '', enabledModels: ['gpt-4o', 'gpt-4o-mini'],
           },
           {
             id: 'p2', name: 'Anthropic', type: 'anthropic-messages', providerType: 'anthropic',
             provider: 'anthropic', baseUrl: '', apiKey: '',
-            defaultModel: 'claude-sonnet-4-20250514',
             enabledModels: ['claude-sonnet-4-20250514', 'claude-3-5-sonnet-20241022'],
           },
         ],
@@ -483,8 +481,7 @@ describe('built-in slash commands', () => {
         activeProvider: 'p1',
         providers: [{
           id: 'p1', name: 'OpenAI', type: 'openai-completions', providerType: 'openai',
-          provider: 'openai', baseUrl: '', apiKey: '', defaultModel: 'gpt-4o',
-          enabledModels: ['gpt-4o'],
+          provider: 'openai', baseUrl: '', apiKey: '', enabledModels: ['gpt-4o'],
         }],
       })
       const r = await registry.dispatch('/model p1 gpt-3.5-turbo', { surface: 'web', userId: '1', registry })

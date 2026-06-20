@@ -11,7 +11,7 @@ function provider(overrides: Partial<ProviderConfig>): ProviderConfig {
     provider: 'openai',
     baseUrl: '',
     apiKey: '',
-    defaultModel: 'm',
+    enabledModels: ['m'],
     ...overrides,
   }
 }

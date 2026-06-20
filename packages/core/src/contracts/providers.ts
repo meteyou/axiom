@@ -45,7 +45,6 @@ export interface ProviderContract {
   baseUrl: string
   apiKey: string
   apiKeyMasked: string
-  defaultModel: string
   enabledModels?: string[]
   degradedThresholdMs?: number
   textVerbosity?: ProviderTextVerbosityContract
@@ -195,8 +194,7 @@ export interface ProviderCreatePayloadContract {
   providerType: string
   baseUrl?: string
   apiKey?: string
-  defaultModel: string
-  enabledModels?: string[]
+  enabledModels: string[]
   degradedThresholdMs?: number
   textVerbosity?: ProviderTextVerbosityContract | null
   transport?: ProviderTransportContract | null
@@ -208,7 +206,6 @@ export interface ProviderUpdatePayloadContract {
   providerType?: string
   baseUrl?: string
   apiKey?: string
-  defaultModel?: string
   enabledModels?: string[]
   degradedThresholdMs?: number
   textVerbosity?: ProviderTextVerbosityContract | null
@@ -224,7 +221,7 @@ export interface ProviderFallbackUpdatePayloadContract {
 export interface ProviderOAuthLoginStartPayloadContract {
   providerType: string
   name: string
-  defaultModel: string
+  enabledModels: string[]
   providerId?: string
   textVerbosity?: ProviderTextVerbosityContract | null
   transport?: ProviderTransportContract | null
@@ -255,7 +252,7 @@ export interface ProviderModelUpdatePayloadContract {
 
 export interface ProviderReferenceContract {
   id: string
-  defaultModel: string
+  enabledModels?: string[]
 }
 
 /**
@@ -263,7 +260,7 @@ export interface ProviderReferenceContract {
  *
  * Compatibility behavior:
  * - "providerId:modelId" stays unchanged
- * - legacy "providerId" expands to "providerId:defaultModel" when provider is known
+ * - legacy "providerId" expands to "providerId:<first enabled model>" when provider is known
  * - unknown values are returned unchanged
  */
 export function canonicalizeProviderModelRef(
@@ -282,5 +279,6 @@ export function canonicalizeProviderModelRef(
   const provider = providers.find((candidate) => candidate.id === trimmed)
   if (!provider) return trimmed
 
-  return `${provider.id}:${provider.defaultModel}`
+  const firstModel = provider.enabledModels?.[0]
+  return firstModel ? `${provider.id}:${firstModel}` : trimmed
 }
