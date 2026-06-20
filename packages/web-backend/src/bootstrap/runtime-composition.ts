@@ -338,7 +338,18 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
       }
     }
 
-    return getActiveProvider()!
+    // "Active provider (default)": follow the live chat selection for BOTH
+    // provider and model. Downstream task creation derives the model via
+    // getProviderDefaultModel() (= enabledModels[0]), so we narrow the cloned
+    // provider to the active model. Without this, tasks would pick the
+    // provider's first enabled model instead of the user's active model — and
+    // if enabledModels is empty they'd run with no model at all and fail.
+    const active = getActiveProvider()!
+    const activeModelId = getActiveModelId()
+    if (activeModelId) {
+      return { ...active, enabledModels: [activeModelId] }
+    }
+    return active
   }
 
   const chatEventBus = new ChatEventBus()
