@@ -24,7 +24,7 @@ function makeProvider(overrides: Partial<ProviderConfig> = {}): ProviderConfig {
     provider: 'openai',
     baseUrl: 'https://api.openai.com/v1',
     apiKey: 'sk-primary',
-    defaultModel: 'gpt-4o',
+    enabledModels: ['gpt-4o'],
     ...overrides,
   }
 }
@@ -79,7 +79,7 @@ describe('HealthMonitorService', () => {
   it('runs on an interval in the background', async () => {
     vi.useFakeTimers()
     const db = initDatabase(':memory:')
-    addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', defaultModel: 'gpt-4o-mini' })
+    addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', enabledModels: ['gpt-4o-mini'] })
 
     const fetchImpl = vi.fn(async (input: string | URL) => {
       const url = String(input)
@@ -122,9 +122,9 @@ describe('HealthMonitorService', () => {
     })
 
     const db = initDatabase(':memory:')
-    addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', defaultModel: 'gpt-4o-mini' })
+    addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', enabledModels: ['gpt-4o-mini'] })
     const primary = makeProvider()
-    const fallback = makeProvider({ id: 'fb', name: 'FallbackModel', defaultModel: 'gpt-4o-mini' })
+    const fallback = makeProvider({ id: 'fb', name: 'FallbackModel', enabledModels: ['gpt-4o-mini'] })
     const pm = new ProviderManager(primary, fallback)
 
     const telegramBodies: Array<{ chat_id: number; text: string }> = []
@@ -182,7 +182,7 @@ describe('HealthMonitorService', () => {
     })
 
     const db = initDatabase(':memory:')
-    addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', defaultModel: 'gpt-4o-mini' })
+    addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', enabledModels: ['gpt-4o-mini'] })
 
     const fetchImpl = vi.fn(async (input: string | URL) => {
       const url = String(input)
@@ -223,8 +223,8 @@ describe('HealthMonitorService', () => {
     expect(unconfigured.status).toBe('unconfigured')
     expect(telegramBodies).toHaveLength(0)
 
-    const first = addProvider({ name: 'First', providerType: 'openai', apiKey: 'sk-1', defaultModel: 'gpt-4o-mini' })
-    const second = addProvider({ name: 'Second', providerType: 'openai', apiKey: 'sk-2', defaultModel: 'gpt-4o-mini' })
+    const first = addProvider({ name: 'First', providerType: 'openai', apiKey: 'sk-1', enabledModels: ['gpt-4o-mini'] })
+    const second = addProvider({ name: 'Second', providerType: 'openai', apiKey: 'sk-2', enabledModels: ['gpt-4o-mini'] })
 
     setActiveProvider(first.id)
     service.restart({ resetState: true })
@@ -276,7 +276,7 @@ describe('HealthMonitorService', () => {
   it('snapshot includes operatingMode, primaryProvider, and fallbackProvider', () => {
     const db = initDatabase(':memory:')
     const primary = makeProvider()
-    const fallback = makeProvider({ id: 'fb', name: 'Fallback', defaultModel: 'gpt-4o-mini' })
+    const fallback = makeProvider({ id: 'fb', name: 'Fallback', enabledModels: ['gpt-4o-mini'] })
     const pm = new ProviderManager(primary, fallback)
 
     const service = new HealthMonitorService({ db, providerManager: pm })
@@ -312,7 +312,7 @@ describe('HealthMonitorService', () => {
     })
 
     const db = initDatabase(':memory:')
-    addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', defaultModel: 'gpt-4o-mini' })
+    addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', enabledModels: ['gpt-4o-mini'] })
     const primary = makeProvider()
     const fallback = makeProvider({ id: 'fb', name: 'Fallback' })
     const pm = new ProviderManager(primary, fallback)
@@ -357,7 +357,7 @@ describe('HealthMonitorService', () => {
     })
 
     const db = initDatabase(':memory:')
-    addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', defaultModel: 'gpt-4o-mini' })
+    addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', enabledModels: ['gpt-4o-mini'] })
     const primary = makeProvider()
     const fallback = makeProvider({ id: 'fb', name: 'Fallback' })
     const pm = new ProviderManager(primary, fallback)
@@ -397,7 +397,7 @@ describe('HealthMonitorService', () => {
 
     const db = initDatabase(':memory:')
     // Add a real provider so getActiveProvider returns something
-    const added = addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', defaultModel: 'gpt-4o-mini', degradedThresholdMs: 1 })
+    const added = addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', enabledModels: ['gpt-4o-mini'], degradedThresholdMs: 1 })
     const primary = makeProvider({ id: added.id })
     const fallback = makeProvider({ id: 'fb', name: 'Fallback' })
     const pm = new ProviderManager(primary, fallback)
@@ -439,7 +439,7 @@ describe('HealthMonitorService', () => {
     })
 
     const db = initDatabase(':memory:')
-    addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', defaultModel: 'gpt-4o-mini' })
+    addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', enabledModels: ['gpt-4o-mini'] })
     const primary = makeProvider()
     const fallback = makeProvider({ id: 'fb', name: 'Fallback' })
     const pm = new ProviderManager(primary, fallback)
@@ -492,7 +492,7 @@ describe('HealthMonitorService', () => {
     })
 
     const db = initDatabase(':memory:')
-    addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', defaultModel: 'gpt-4o-mini' })
+    addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', enabledModels: ['gpt-4o-mini'] })
     const primary = makeProvider()
     const fallback = makeProvider({ id: 'fb', name: 'Fallback' })
     const pm = new ProviderManager(primary, fallback)
@@ -546,7 +546,7 @@ describe('HealthMonitorService', () => {
     })
 
     const db = initDatabase(':memory:')
-    addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', defaultModel: 'gpt-4o-mini' })
+    addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', enabledModels: ['gpt-4o-mini'] })
     const primary = makeProvider()
     const fallback = makeProvider({ id: 'fb', name: 'Fallback' })
     const pm = new ProviderManager(primary, fallback)
@@ -589,7 +589,7 @@ describe('HealthMonitorService', () => {
 
   it('restart with resetState resets ProviderManager to normal mode', async () => {
     const db = initDatabase(':memory:')
-    addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', defaultModel: 'gpt-4o-mini' })
+    addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', enabledModels: ['gpt-4o-mini'] })
     const primary = makeProvider()
     const fallback = makeProvider({ id: 'fb', name: 'Fallback' })
     const pm = new ProviderManager(primary, fallback)
@@ -632,7 +632,7 @@ describe('HealthMonitorService', () => {
     })
 
     const db = initDatabase(':memory:')
-    addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', defaultModel: 'gpt-4o-mini' })
+    addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', enabledModels: ['gpt-4o-mini'] })
     const primary = makeProvider()
     const fallback = makeProvider({ id: 'fb', name: 'Fallback' })
     const pm = new ProviderManager(primary, fallback)
@@ -681,7 +681,7 @@ describe('HealthMonitorService', () => {
 
   it('works without ProviderManager (backward compatible)', async () => {
     const db = initDatabase(':memory:')
-    addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', defaultModel: 'gpt-4o-mini' })
+    addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', enabledModels: ['gpt-4o-mini'] })
 
     const fetchImpl = vi.fn(async (input: string | URL) => {
       const url = String(input)
@@ -705,7 +705,7 @@ describe('HealthMonitorService', () => {
 
   it('snapshot includes operatingMode in fallback mode', async () => {
     const db = initDatabase(':memory:')
-    addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', defaultModel: 'gpt-4o-mini' })
+    addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', enabledModels: ['gpt-4o-mini'] })
     const primary = makeProvider()
     const fallback = makeProvider({ id: 'fb', name: 'Fallback' })
     const pm = new ProviderManager(primary, fallback)
@@ -780,7 +780,7 @@ describe('HealthMonitorService', () => {
 
     it('disabled healthyToDown does NOT send notification', async () => {
       const db = initDatabase(':memory:')
-      addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', defaultModel: 'gpt-4o-mini' })
+      addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', enabledModels: ['gpt-4o-mini'] })
 
       const { service, telegramBodies } = createServiceWithToggles(db, {
         healthyToDown: false,
@@ -797,7 +797,7 @@ describe('HealthMonitorService', () => {
 
     it('enabled healthyToDown sends notification', async () => {
       const db = initDatabase(':memory:')
-      addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', defaultModel: 'gpt-4o-mini' })
+      addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', enabledModels: ['gpt-4o-mini'] })
 
       const { service, telegramBodies } = createServiceWithToggles(db, {
         healthyToDown: true,
@@ -814,7 +814,7 @@ describe('HealthMonitorService', () => {
 
     it('disabled degradedToDown does NOT send notification', async () => {
       const db = initDatabase(':memory:')
-      addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', defaultModel: 'gpt-4o-mini', degradedThresholdMs: 1 })
+      addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', enabledModels: ['gpt-4o-mini'], degradedThresholdMs: 1 })
 
       const { service, telegramBodies } = createServiceWithToggles(db, {
         healthyToDegraded: false,
@@ -843,7 +843,7 @@ describe('HealthMonitorService', () => {
 
     it('enabled degradedToDown sends notification', async () => {
       const db = initDatabase(':memory:')
-      addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', defaultModel: 'gpt-4o-mini', degradedThresholdMs: 1 })
+      addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', enabledModels: ['gpt-4o-mini'], degradedThresholdMs: 1 })
 
       const { service, telegramBodies } = createServiceWithToggles(db, {
         healthyToDegraded: false,
@@ -868,7 +868,7 @@ describe('HealthMonitorService', () => {
 
     it('disabled healthyToDegraded does NOT send notification', async () => {
       const db = initDatabase(':memory:')
-      addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', defaultModel: 'gpt-4o-mini', degradedThresholdMs: 1 })
+      addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', enabledModels: ['gpt-4o-mini'], degradedThresholdMs: 1 })
 
       const { service, telegramBodies } = createServiceWithToggles(db, {
         healthyToDegraded: false,
@@ -884,7 +884,7 @@ describe('HealthMonitorService', () => {
 
     it('enabled healthyToDegraded sends notification', async () => {
       const db = initDatabase(':memory:')
-      addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', defaultModel: 'gpt-4o-mini', degradedThresholdMs: 1 })
+      addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', enabledModels: ['gpt-4o-mini'], degradedThresholdMs: 1 })
 
       const telegramBodies: Array<{ chat_id: number; text: string }> = []
 
@@ -923,7 +923,7 @@ describe('HealthMonitorService', () => {
 
     it('disabled degradedToHealthy does NOT send notification', async () => {
       const db = initDatabase(':memory:')
-      const added = addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', defaultModel: 'gpt-4o-mini', degradedThresholdMs: 1 })
+      const added = addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', enabledModels: ['gpt-4o-mini'], degradedThresholdMs: 1 })
 
       const { service, telegramBodies } = createServiceWithToggles(db, {
         healthyToDegraded: false,
@@ -950,7 +950,7 @@ describe('HealthMonitorService', () => {
 
     it('enabled degradedToHealthy sends notification', async () => {
       const db = initDatabase(':memory:')
-      const added = addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', defaultModel: 'gpt-4o-mini', degradedThresholdMs: 1 })
+      const added = addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', enabledModels: ['gpt-4o-mini'], degradedThresholdMs: 1 })
 
       const telegramBodies: Array<{ chat_id: number; text: string }> = []
 
@@ -1001,7 +1001,7 @@ describe('HealthMonitorService', () => {
 
     it('disabled downToFallback does NOT send fallback notification', async () => {
       const db = initDatabase(':memory:')
-      addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', defaultModel: 'gpt-4o-mini' })
+      addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', enabledModels: ['gpt-4o-mini'] })
       const primary = makeProvider()
       const fallback = makeProvider({ id: 'fb', name: 'Fallback' })
       const pm = new ProviderManager(primary, fallback)
@@ -1026,9 +1026,9 @@ describe('HealthMonitorService', () => {
 
     it('enabled downToFallback sends notification with fallback provider name', async () => {
       const db = initDatabase(':memory:')
-      addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', defaultModel: 'gpt-4o-mini' })
+      addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', enabledModels: ['gpt-4o-mini'] })
       const primary = makeProvider()
-      const fallback = makeProvider({ id: 'fb', name: 'MyFallback', defaultModel: 'gpt-3.5-turbo' })
+      const fallback = makeProvider({ id: 'fb', name: 'MyFallback', enabledModels: ['gpt-3.5-turbo'] })
       const pm = new ProviderManager(primary, fallback)
 
       const { service, telegramBodies } = createServiceWithToggles(db, {
@@ -1052,7 +1052,7 @@ describe('HealthMonitorService', () => {
 
     it('disabled fallbackToHealthy does NOT send recovery notification', async () => {
       const db = initDatabase(':memory:')
-      addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', defaultModel: 'gpt-4o-mini' })
+      addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', enabledModels: ['gpt-4o-mini'] })
       const primary = makeProvider()
       const fallback = makeProvider({ id: 'fb', name: 'Fallback' })
       const pm = new ProviderManager(primary, fallback)
@@ -1079,7 +1079,7 @@ describe('HealthMonitorService', () => {
 
     it('enabled fallbackToHealthy sends notification confirming primary restored', async () => {
       const db = initDatabase(':memory:')
-      addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', defaultModel: 'gpt-4o-mini' })
+      addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', enabledModels: ['gpt-4o-mini'] })
       const primary = makeProvider()
       const fallback = makeProvider({ id: 'fb', name: 'Fallback' })
       const pm = new ProviderManager(primary, fallback)
@@ -1118,7 +1118,7 @@ describe('HealthMonitorService', () => {
       })
 
       const db = initDatabase(':memory:')
-      addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', defaultModel: 'gpt-4o-mini' })
+      addProvider({ name: 'Primary', providerType: 'openai', apiKey: 'sk-test', enabledModels: ['gpt-4o-mini'] })
       const primary = makeProvider()
       const fallback = makeProvider({ id: 'fb', name: 'Fallback' })
       const pm = new ProviderManager(primary, fallback)

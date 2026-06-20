@@ -8,6 +8,7 @@ import type { SessionManager } from '@axiom/core'
 import { generateSessionId } from '@axiom/core'
 import {
   getActiveProvider,
+  getProviderDefaultModel,
   loadProvidersDecrypted,
   parseProviderModelId,
   ensureConfigTemplates,
@@ -359,7 +360,7 @@ export class MemoryConsolidationScheduler {
         triggerType: 'consolidation',
         triggerSourceId: 'memory-consolidation',
         provider: provider.name,
-        model: provider.defaultModel,
+        model: getProviderDefaultModel(provider),
         // Consolidation never accepts an explicit provider/model override
         // from the user or agent — it always uses the configured default.
         isDefaultModel: true,
@@ -395,7 +396,7 @@ export class MemoryConsolidationScheduler {
         input: JSON.stringify({
           lookbackDays: this.settings.lookbackDays,
           provider: provider.provider,
-          model: provider.defaultModel,
+          model: getProviderDefaultModel(provider),
           taskId: task.id,
         }),
         output: JSON.stringify({
@@ -522,9 +523,9 @@ export class MemoryConsolidationScheduler {
     let provider = file.providers.find(p => p.id === providerId) ?? null
     if (!provider) return getActiveProvider()
 
-    // Override defaultModel if a specific model was selected
+    // Pin a specific model by cloning the provider with a single enabled model
     if (modelId) {
-      provider = { ...provider, defaultModel: modelId }
+      provider = { ...provider, enabledModels: [modelId] }
     }
     return provider
   }

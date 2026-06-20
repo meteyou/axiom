@@ -53,12 +53,12 @@ describe('providers schema', () => {
   })
 
   it('parses oauth payloads and validates required code', () => {
-    expect(parseOAuthLoginPayload({ providerType: 'openai', name: 'OpenAI', defaultModel: 'gpt-4o-mini' })).toEqual({
+    expect(parseOAuthLoginPayload({ providerType: 'openai', name: 'OpenAI', enabledModels: ['gpt-4o-mini'] })).toEqual({
       ok: true,
       value: {
         providerType: 'openai',
         name: 'OpenAI',
-        defaultModel: 'gpt-4o-mini',
+        enabledModels: ['gpt-4o-mini'],
         providerId: undefined,
         textVerbosity: undefined,
         transport: undefined,
@@ -70,7 +70,7 @@ describe('providers schema', () => {
 
   it('parses transport field on create payload (sse / websocket / websocket-cached / auto / null)', () => {
     const presets = PROVIDER_TYPE_PRESETS as unknown as typeof PROVIDER_TYPE_PRESETS
-    const base = { name: 'codex', providerType: 'openai-codex', defaultModel: 'gpt-5-codex' }
+    const base = { name: 'codex', providerType: 'openai-codex', enabledModels: ['gpt-5-codex'] }
 
     for (const value of ['sse', 'websocket', 'websocket-cached', 'auto'] as const) {
       const result = parseProviderCreatePayload({ ...base, transport: value }, presets)
@@ -104,7 +104,7 @@ describe('providers schema', () => {
       name: 'OpenCode Go',
       providerType: 'opencode-go',
       apiKey: 'oc-key',
-      defaultModel: 'glm-5.1',
+      enabledModels: ['glm-5.1'],
       extraFields: { workspaceId: ' workspace-1 ', authCookie: ' cookie-1 ', ignoredNumber: 123 },
     }, PROVIDER_TYPE_PRESETS as unknown as typeof PROVIDER_TYPE_PRESETS)
     expect(create.ok).toBe(true)

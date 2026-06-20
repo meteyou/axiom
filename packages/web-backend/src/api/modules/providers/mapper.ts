@@ -1,4 +1,4 @@
-import { buildModel, isQuotaProvider, maskProviderExtraFields, PROVIDER_TYPE_MODEL_OVERRIDES, PROVIDER_TYPE_PRESETS } from '@axiom/core'
+import { buildModel, getProviderDefaultModel, isQuotaProvider, maskProviderExtraFields, PROVIDER_TYPE_MODEL_OVERRIDES, PROVIDER_TYPE_PRESETS } from '@axiom/core'
 import type {
   ProviderConfig,
   ProviderType,
@@ -72,9 +72,9 @@ export function mapProvidersListResponse(
     const modelCosts: Record<string, { input: number; output: number; cacheRead?: number; cacheWrite?: number }> = {}
 
     if (fullProvider) {
-      cost = resolveModelCost(fullProvider, fullProvider.defaultModel)
+      cost = resolveModelCost(fullProvider, getProviderDefaultModel(fullProvider))
 
-      const enabledModels = fullProvider.enabledModels ?? [fullProvider.defaultModel]
+      const enabledModels = fullProvider.enabledModels ?? []
       for (const modelId of enabledModels) {
         const modelCost = resolveModelCost(fullProvider, modelId)
         if (modelCost) {

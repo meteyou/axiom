@@ -23,7 +23,7 @@ function makeProvider(id: string, name: string): ProviderConfig {
     provider: 'openai',
     baseUrl: 'https://api.openai.com/v1',
     apiKey: 'sk-test',
-    defaultModel: 'gpt-4o-mini',
+    enabledModels: ['gpt-4o-mini'],
     status: 'connected',
     authMethod: 'api-key',
   }
@@ -53,7 +53,7 @@ describe('fact-extraction session-end trigger', () => {
   it('resolves a dedicated provider first and falls back to the active provider', async () => {
     const dedicatedProvider = makeProvider('dedicated', 'Dedicated')
     const activeProvider = makeProvider('active', 'Active')
-    const buildModel = vi.fn((provider: ProviderConfig) => makeModel(provider.defaultModel))
+    const buildModel = vi.fn((provider: ProviderConfig) => makeModel(provider.enabledModels?.[0]))
     const getApiKeyForProvider = vi.fn().mockResolvedValue('resolved-key')
 
     const dedicatedContext = await resolveFactExtractionExecutionContext(

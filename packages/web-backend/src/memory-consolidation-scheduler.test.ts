@@ -25,7 +25,7 @@ function makeProvider(overrides: Partial<ProviderConfig> = {}): ProviderConfig {
     provider: 'openai',
     baseUrl: 'https://api.openai.com/v1',
     apiKey: 'sk-test',
-    defaultModel: 'gpt-4o',
+    enabledModels: ['gpt-4o'],
     ...overrides,
   }
 }

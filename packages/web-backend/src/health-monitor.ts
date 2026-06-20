@@ -1,6 +1,7 @@
 import type { Database, ProviderConfig, ProviderHealthCheckResult, ProviderHealthStatus, OperatingMode } from '@axiom/core'
 import {
   getActiveProvider,
+  getProviderDefaultModel,
   performProviderHealthCheck,
   logHealthCheck,
   updateProviderStatus,
@@ -178,7 +179,7 @@ export class HealthMonitorService {
         id: primary.id,
         name: primary.name,
         type: primary.providerType,
-        model: primary.defaultModel,
+        model: getProviderDefaultModel(primary),
         lastHealthStatus: this.primaryLastHealthStatus,
       }
     }
@@ -191,7 +192,7 @@ export class HealthMonitorService {
         id: fallback.id,
         name: fallback.name,
         type: fallback.providerType,
-        model: fallback.defaultModel,
+        model: getProviderDefaultModel(fallback),
       }
     }
 
@@ -205,7 +206,7 @@ export class HealthMonitorService {
             id: provider.id,
             name: provider.name,
             type: provider.providerType,
-            model: provider.defaultModel,
+            model: getProviderDefaultModel(provider),
             status: this.lastCheck?.providerId === provider.id
               ? this.lastCheck.status
               : 'unconfigured',
@@ -501,13 +502,13 @@ export class HealthMonitorService {
     const lines = [
       `${emoji} ${title}`,
       `Provider: ${provider?.name ?? 'Not configured'}`,
-      `Model: ${provider?.defaultModel ?? '—'}`,
+      `Model: ${(provider ? getProviderDefaultModel(provider) : '') || '—'}`,
       `Status: ${result.status}`,
       `Checked at: ${result.checkedAt}`,
     ]
 
     if (transition === 'downToFallback' && fallbackProvider) {
-      lines.push(`Fallback: ${fallbackProvider.name} (${fallbackProvider.defaultModel})`)
+      lines.push(`Fallback: ${fallbackProvider.name} (${getProviderDefaultModel(fallbackProvider)})`)
     }
 
     if (transition === 'fallbackToHealthy') {

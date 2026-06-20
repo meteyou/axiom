@@ -1265,7 +1265,7 @@ describe('providers API', () => {
         name: 'Provider One',
         providerType: 'openai',
         apiKey: 'sk-provider-one',
-        defaultModel: 'gpt-4o-mini',
+        enabledModels: ['gpt-4o-mini'],
       }),
     })
     const firstBody = (await firstRes.json()) as { provider: { id: string } }
@@ -1282,7 +1282,7 @@ describe('providers API', () => {
         name: 'Provider Two',
         providerType: 'openai',
         apiKey: 'sk-provider-two',
-        defaultModel: 'gpt-4o-mini',
+        enabledModels: ['gpt-4o-mini'],
       }),
     })
     const secondBody = (await secondRes.json()) as { provider: { id: string } }

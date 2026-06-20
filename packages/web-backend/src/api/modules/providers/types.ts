@@ -12,7 +12,7 @@ export interface PendingOAuthLogin {
   status: 'pending' | 'completed' | 'error'
   providerType: string
   name: string
-  defaultModel: string
+  enabledModels: string[]
   textVerbosity?: 'low' | 'medium' | 'high' | null
   transport?: 'sse' | 'websocket' | 'websocket-cached' | 'auto' | null
   authUrl?: string

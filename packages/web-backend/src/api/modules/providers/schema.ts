@@ -179,7 +179,7 @@ export function parseOAuthLoginPayload(payload: unknown): ParseResult<ProviderOA
   const body = toRecord(payload)
   const providerType = asTrimmedString(body.providerType)
   const name = asTrimmedString(body.name)
-  const defaultModel = asTrimmedString(body.defaultModel)
+  const enabledModels = normalizeEnabledModels(body.enabledModels) ?? []
 
   if (!providerType || !isValidProviderType(providerType)) {
     return { ok: false, error: 'Invalid provider type' }
@@ -189,16 +189,12 @@ export function parseOAuthLoginPayload(payload: unknown): ParseResult<ProviderOA
     return { ok: false, error: 'Provider name is required' }
   }
 
-  if (!defaultModel) {
-    return { ok: false, error: 'Default model is required' }
-  }
-
   return {
     ok: true,
     value: {
       providerType,
       name,
-      defaultModel,
+      enabledModels,
       providerId: asTrimmedString(body.providerId),
       textVerbosity: normalizeTextVerbosity(body.textVerbosity),
       transport: normalizeTransport(body.transport),
@@ -226,7 +222,7 @@ export function parseProviderCreatePayload(
   const body = toRecord(payload)
   const name = asTrimmedString(body.name)
   const providerType = asTrimmedString(body.providerType)
-  const defaultModel = asTrimmedString(body.defaultModel)
+  const enabledModels = normalizeEnabledModels(body.enabledModels) ?? []
   const apiKey = asTrimmedString(body.apiKey)
 
   if (!name) {
@@ -238,10 +234,6 @@ export function parseProviderCreatePayload(
       ok: false,
       error: `Invalid provider type. Must be one of: ${VALID_PROVIDER_TYPES.join(', ')}`,
     }
-  }
-
-  if (!defaultModel) {
-    return { ok: false, error: 'Default model is required' }
   }
 
   const preset = presets[providerType]
@@ -256,8 +248,7 @@ export function parseProviderCreatePayload(
       providerType,
       baseUrl: asTrimmedString(body.baseUrl),
       apiKey,
-      defaultModel,
-      enabledModels: normalizeEnabledModels(body.enabledModels),
+      enabledModels,
       degradedThresholdMs: normalizeDegradedThresholdMs(body.degradedThresholdMs),
       textVerbosity: normalizeTextVerbosity(body.textVerbosity),
       transport: normalizeTransport(body.transport),
@@ -284,7 +275,6 @@ export function parseProviderUpdatePayload(payload: unknown): ParseResult<Provid
       providerType,
       baseUrl: asTrimmedString(body.baseUrl),
       apiKey: asTrimmedString(body.apiKey),
-      defaultModel: asTrimmedString(body.defaultModel),
       enabledModels: normalizeEnabledModels(body.enabledModels),
       degradedThresholdMs: normalizeDegradedThresholdMs(body.degradedThresholdMs),
       textVerbosity: normalizeTextVerbosity(body.textVerbosity),

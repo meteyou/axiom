@@ -2,6 +2,7 @@ import {
   buildModel,
   extractAndStoreFacts,
   getActiveProvider,
+  getProviderDefaultModel,
   getApiKeyForProvider,
   loadConfig,
   loadProvidersDecrypted,
@@ -110,7 +111,7 @@ export async function resolveFactExtractionExecutionContext(
   provider = provider ?? resolvedDeps.getActiveProvider()
   if (!provider) return null
 
-  const resolvedModelId = modelId ?? provider.defaultModel
+  const resolvedModelId = modelId ?? getProviderDefaultModel(provider)
 
   return {
     provider,

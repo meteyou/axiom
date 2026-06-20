@@ -82,7 +82,7 @@ describe('providers route module', () => {
         name: 'Provider One',
         providerType: 'openai',
         apiKey: 'sk-provider-one',
-        defaultModel: 'gpt-4o-mini',
+        enabledModels: ['gpt-4o-mini'],
       }),
     })
 
@@ -104,7 +104,7 @@ describe('providers route module', () => {
         name: 'Provider Two',
         providerType: 'openai',
         apiKey: 'sk-provider-two',
-        defaultModel: 'gpt-4o-mini',
+        enabledModels: ['gpt-4o-mini'],
       }),
     })
 
@@ -136,7 +136,7 @@ describe('providers route module', () => {
       },
       body: JSON.stringify({
         name: 'Provider Two Updated',
-        defaultModel: 'gpt-4o-mini',
+        enabledModels: ['gpt-4o-mini'],
       }),
     })
 
@@ -216,7 +216,7 @@ describe('providers route module', () => {
       body: JSON.stringify({
         name: 'Invalid Provider',
         providerType: 'invalid-provider',
-        defaultModel: 'model',
+        enabledModels: ['model'],
       }),
     })
 
@@ -264,7 +264,6 @@ describe('providers route module', () => {
         name: 'Model Edit Provider',
         providerType: 'openai',
         apiKey: 'sk-model-edit',
-        defaultModel: 'gpt-4o-mini',
         enabledModels: ['gpt-4o-mini', 'gpt-4o'],
       }),
     })

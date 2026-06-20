@@ -7,6 +7,7 @@ import {
   deleteProvider as deleteProviderConfig,
   getAvailableModels,
   getFallbackModelId,
+  getProviderDefaultModel,
   loadProviders,
   loadProvidersDecrypted,
   loadProvidersMasked,
@@ -199,7 +200,7 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
       status: 'pending',
       providerType: payload.providerType,
       name: payload.name,
-      defaultModel: payload.defaultModel,
+      enabledModels: payload.enabledModels,
       textVerbosity: payload.textVerbosity,
       transport: payload.transport,
       createdAt: Date.now(),
@@ -291,7 +292,7 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
           provider = addOAuthProvider({
             name: loginState.name,
             providerType: loginState.providerType as ProviderType,
-            defaultModel: loginState.defaultModel,
+            enabledModels: loginState.enabledModels,
             textVerbosity: loginState.textVerbosity ?? undefined,
             transport: loginState.transport ?? undefined,
             oauthCredentials: loginState.credentials,
@@ -349,7 +350,6 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
         providerType: payload.providerType as ProviderType,
         baseUrl: payload.baseUrl,
         apiKey: payload.apiKey,
-        defaultModel: payload.defaultModel,
         enabledModels: payload.enabledModels,
         degradedThresholdMs: payload.degradedThresholdMs,
         textVerbosity: payload.textVerbosity ?? undefined,
@@ -376,7 +376,6 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
         providerType: payload.providerType as ProviderType | undefined,
         baseUrl: payload.baseUrl,
         apiKey: payload.apiKey,
-        defaultModel: payload.defaultModel,
         enabledModels: payload.enabledModels,
         degradedThresholdMs: payload.degradedThresholdMs,
         textVerbosity: payload.textVerbosity,
@@ -439,8 +438,8 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
     }
 
     const modelId = payload.modelId
-    const testProviderConfig = modelId ? { ...provider, defaultModel: modelId } : provider
-    const testModelId = modelId ?? provider.defaultModel
+    const testProviderConfig = modelId ? { ...provider, enabledModels: [modelId] } : provider
+    const testModelId = modelId ?? getProviderDefaultModel(provider)
 
     const result = await performProviderHealthCheck(testProviderConfig, {
       // Hosted "free" endpoints (notably NVIDIA NIM partner/free models) can

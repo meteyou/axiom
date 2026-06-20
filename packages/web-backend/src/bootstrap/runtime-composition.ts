@@ -31,6 +31,7 @@ import {
   loadProvidersDecrypted,
   logToolCall,
   parseProviderModelId,
+  getProviderDefaultModel,
   ProviderManager,
   SessionManager,
   removeCronjobTool,
@@ -331,7 +332,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
       if (providerId) {
         let resolved = resolveProvider(providerId)
         if (resolved && modelId) {
-          resolved = { ...resolved, defaultModel: modelId }
+          resolved = { ...resolved, enabledModels: [modelId] }
         }
         if (resolved) return resolved
       }
@@ -1186,7 +1187,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
           const fbModelId = getFallbackModelId()
           const key = await getApiKeyForProvider(effectiveProvider)
           agentCore.swapProvider(effectiveProvider, key, fbModelId ?? undefined)
-          logger.log(`[axiom] Swapped to fallback provider: ${effectiveProvider.name} (${fbModelId ?? effectiveProvider.defaultModel})`)
+          logger.log(`[axiom] Swapped to fallback provider: ${effectiveProvider.name} (${fbModelId ?? getProviderDefaultModel(effectiveProvider)})`)
         } catch (err) {
           logger.error('[axiom] Failed to swap to fallback provider:', err)
         }
@@ -1201,7 +1202,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
           const actModelId = getActiveModelId()
           const key = await getApiKeyForProvider(effectiveProvider)
           agentCore.swapProvider(effectiveProvider, key, actModelId ?? undefined)
-          logger.log(`[axiom] Swapped back to primary provider: ${effectiveProvider.name} (${actModelId ?? effectiveProvider.defaultModel})`)
+          logger.log(`[axiom] Swapped back to primary provider: ${effectiveProvider.name} (${actModelId ?? getProviderDefaultModel(effectiveProvider)})`)
         } catch (err) {
           logger.error('[axiom] Failed to swap to primary provider:', err)
         }
@@ -1218,10 +1219,10 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
 
       await restartTelegramBot()
 
-      logger.log(`[axiom] Agent core initialized with provider: ${provider.name} (${activeModelId ?? provider.defaultModel})`)
+      logger.log(`[axiom] Agent core initialized with provider: ${provider.name} (${activeModelId ?? getProviderDefaultModel(provider)})`)
       if (fallbackProvider) {
         const fallbackModelId = getFallbackModelId()
-        logger.log(`[axiom] Fallback provider configured: ${fallbackProvider.name} (${fallbackModelId ?? fallbackProvider.defaultModel})`)
+        logger.log(`[axiom] Fallback provider configured: ${fallbackProvider.name} (${fallbackModelId ?? getProviderDefaultModel(fallbackProvider)})`)
       }
     } catch (err) {
       logger.error('[axiom] Failed to initialize agent core:', err)

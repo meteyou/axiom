@@ -1,4 +1,4 @@
-import { TaskStore, buildTaskFilterClause, getToolCalls, resolveProviderModelInput } from '@axiom/core'
+import { TaskStore, buildTaskFilterClause, getToolCalls, resolveProviderModelInput, getProviderDefaultModel } from '@axiom/core'
 import type {
   Database,
   ProviderConfig,
@@ -284,9 +284,9 @@ export class TasksService {
           `Provider "${resolved.providerName}" could not be loaded.`,
         )
       }
-      provider = resolved.modelId === base.defaultModel
+      provider = resolved.modelId === getProviderDefaultModel(base)
         ? base
-        : { ...base, defaultModel: resolved.modelId }
+        : { ...base, enabledModels: [resolved.modelId] }
       // Only treat as "default" when the client explicitly selected no
       // provider/model *and* we fell back to default above — which isn't
       // this branch.
@@ -309,7 +309,7 @@ export class TasksService {
       prompt: overrides.prompt ?? original.prompt,
       triggerType: 'user',
       provider: provider.name,
-      model: provider.defaultModel,
+      model: getProviderDefaultModel(provider),
       isDefaultModel,
       maxDurationMinutes: overrides.maxDurationMinutes
         ?? (original.maxDurationMinutes ?? undefined),
