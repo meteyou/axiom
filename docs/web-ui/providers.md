@@ -106,7 +106,7 @@ The dialog keeps connection details first, then model selection, then advanced h
 | Field                  | Notes                                                                                                |
 |------------------------|------------------------------------------------------------------------------------------------------|
 | **Name**               | Free text, your label for this provider — appears in the table, in `<task_injection>` blocks, on the Dashboard. |
-| **Type**               | Dropdown grouped into two sections: **API Key** (OpenAI, Anthropic, Mistral, OpenRouter, DeepSeek, Kimi / Moonshot, MiniMax, xAI (Grok), Google Gemini, OpenCode Zen, OpenCode Go, Ollama, generic OpenAI-compatible, …) and **Subscription / OAuth** (Anthropic Claude Pro/Max, OpenAI ChatGPT Plus/Pro, GitHub Copilot, …). |
+| **Type**               | Dropdown grouped into two sections: **API Key** (OpenAI, Anthropic, Mistral, OpenRouter, DeepSeek, Kimi / Moonshot, MiniMax, xAI (Grok), Google Gemini, OpenCode Zen, OpenCode Go, Ollama, generic OpenAI-compatible, …) and **Subscription / OAuth** (Anthropic Claude Pro/Max, OpenAI ChatGPT Plus/Pro, GitHub Copilot, z.ai (GLM Coding Plan), …). |
 | **Base URL**           | Shown directly after Type when the preset has an editable URL (Ollama, generic OpenAI-compatible, …). |
 | **API Key**            | Shown after Base URL for API-key providers. Required for most hosted presets, optional for local/custom providers that do not need auth. |
 | **Default Model**      | Model selector for this provider. Shown **only in create mode** — after creation, models are managed via [Add Model](#add-model-dialog) and [Edit Model](#edit-model-dialog) from the row menus. The exact control depends on the provider type. |
@@ -224,6 +224,7 @@ For subscription-style providers that expose a usage endpoint, the provider head
 - **Anthropic Claude Pro/Max** (`anthropic-oauth`)
 - **OpenAI ChatGPT Plus/Pro (Codex)** (`openai-codex`)
 - **OpenCode Go** (`opencode-go`) — see the credential note below
+- **z.ai (GLM Coding Plan)** (`zai-coding`) — read from the subscription API key; the pay-per-token `z.ai` (`zai`) provider has no quota endpoint
 
 Other provider types never show quota — they have no usage endpoint.
 
@@ -243,6 +244,7 @@ Each usage window appears on its own line as `<window>: <utilization>% (<reset>)
 | Anthropic Claude      | `5h` (rolling 5h), `7d` (rolling 7d), `Opus` / `Sonnet` (7d model-specific windows; only shown when above 0%). | `5h` relative (e.g. `2h 14m`); `7d`/`Opus`/`Sonnet` weekday + time (e.g. `Mon 3:00PM`). |
 | OpenAI ChatGPT (Codex)| Primary + secondary rate-limit windows (labelled by their length, e.g. `5h`, `7d`). | Primary relative; secondary weekday + time. |
 | OpenCode Go           | `5h` (rolling), `7d` (weekly), `30d` (monthly). | `5h` relative; `7d`/`30d` weekday + time. |
+| z.ai (GLM Coding Plan)| `5h` (rolling), `7d` (weekly). | `5h` relative; `7d` weekday + time. |
 
 The percentage is colour-coded: green below 70%, amber at 70–89%, red at 90%+. Reset times follow your browser's regional settings.
 
