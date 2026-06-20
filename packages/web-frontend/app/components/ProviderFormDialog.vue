@@ -102,64 +102,11 @@
           </div>
         </template>
 
-        <!-- Default model selector (create only). After creation, models are
-             managed separately via the provider's "Add Model" / "Edit Model"
-             menu actions, so the edit form exposes no model UI. -->
-        <div v-if="mode === 'create' && form.providerType && hasKnownModels" class="flex flex-col gap-1.5">
-          <Label for="provider-default-model">{{ $t('providers.model') }}</Label>
-          <Select
-            v-model="form.defaultModel"
-            :disabled="oauthInProgress"
-            @update:model-value="onDefaultModelSelect"
-          >
-            <SelectTrigger id="provider-default-model">
-              <SelectValue :placeholder="$t('providers.selectModel')" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem v-for="model in availableModels" :key="model.id" :value="model.id">
-                {{ formatKnownModelLabel(model) }}
-              </SelectItem>
-            </SelectContent>
-          </Select>
-          <div v-if="loadingModels" class="text-xs text-muted-foreground py-1">{{ $t('providers.loadingModels') }}</div>
-          <div v-else-if="modelsError" class="flex flex-col gap-1">
-            <span class="text-xs text-destructive">{{ $t('providers.modelsLoadError') }}</span>
-            <button
-              type="button"
-              class="self-start text-xs text-destructive hover:underline"
-              @click="loadModelsForType(form.providerType)"
-            >
-              {{ $t('providers.modelsRetry') }}
-            </button>
-          </div>
-          <!-- Custom model fallback: lets the user type a model id that is not
-               in the pi-ai catalog (e.g. a manually published model). -->
-          <div class="flex gap-2">
-            <Input
-              v-model="customModelInput"
-              type="text"
-              :placeholder="$t('providers.modelPlaceholderCustom')"
-              class="flex-1 font-mono text-xs"
-              :disabled="oauthInProgress"
-              @keydown.enter.prevent="setCustomDefaultModel"
-            />
-            <Button
-              type="button"
-              variant="outline"
-              :disabled="!customModelInput.trim() || oauthInProgress"
-              class="shrink-0"
-              @click="setCustomDefaultModel"
-            >
-              {{ $t('providers.addModel') }}
-            </Button>
-          </div>
-          <p class="text-xs text-muted-foreground">{{ $t('providers.defaultModelSelectHint') }}</p>
-        </div>
-
-        <!-- Ollama: model list from Ollama API + pull. Kept in both create and
-             edit modes because pulling models is Ollama-specific local-server
-             management that the catalog-based "Add Model" dialog cannot cover. -->
-        <div v-else-if="form.providerType && isOllamaProvider" class="flex flex-col gap-2">
+        <!-- Ollama: model list from Ollama API + pull. Shown in edit mode only:
+             providers are created without models and models are added afterwards
+             via the "Add Model" dialog. Ollama additionally supports local pulls
+             here, which the catalog-based "Add Model" dialog cannot cover. -->
+        <div v-if="mode === 'edit' && form.providerType && isOllamaProvider" class="flex flex-col gap-2">
           <div class="flex items-center justify-between">
             <Label>{{ $t('providers.ollamaModels') }}</Label>
             <button
@@ -284,82 +231,7 @@
           </div>
         </div>
 
-        <!-- Models (free text for OpenAI-compatible/custom providers — create only) -->
-        <div v-else-if="mode === 'create' && isFreeTextModelProvider" class="flex flex-col gap-2">
-          <Label for="provider-model-input">{{ $t('providers.enabledModels') }}</Label>
-          <div class="flex gap-2">
-            <Input
-              id="provider-model-input"
-              v-model="customModelInput"
-              type="text"
-              :placeholder="$t('providers.modelPlaceholderCustom')"
-              class="flex-1 font-mono text-xs"
-              @keydown.enter.prevent="addCustomModel"
-            />
-            <Button
-              type="button"
-              variant="outline"
-              :disabled="!customModelInput.trim()"
-              class="shrink-0"
-              @click="addCustomModel"
-            >
-              {{ $t('providers.addModel') }}
-            </Button>
-            <Button
-              v-if="isOpenAiCompatibleProvider"
-              type="button"
-              variant="outline"
-              :disabled="!form.baseUrl.trim() || customModelsLoading"
-              class="shrink-0"
-              @click="loadCustomModels"
-            >
-              <span
-                v-if="customModelsLoading"
-                class="mr-1.5 h-3 w-3 animate-spin rounded-full border-2 border-primary/30 border-t-primary"
-              />
-              {{ customModelsLoading ? $t('providers.loadingModels') : $t('providers.loadModels') }}
-            </Button>
-          </div>
-          <div v-if="customModelsError" class="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-            {{ customModelsError }}
-          </div>
-          <div v-if="customDiscoveredModels.length > 0" class="flex flex-col gap-0 rounded-md border border-border overflow-hidden max-h-52 overflow-y-auto">
-            <label
-              v-for="model in customDiscoveredModels"
-              :key="model.id"
-              :class="[
-                'flex items-center gap-3 px-3 py-2 text-sm cursor-pointer transition-colors hover:bg-accent/50',
-                form.enabledModels.includes(model.id) ? 'bg-accent/30' : '',
-              ]"
-            >
-              <input
-                type="checkbox"
-                :checked="form.enabledModels.includes(model.id)"
-                class="h-4 w-4 rounded border-border text-primary focus:ring-primary"
-                @change="toggleCustomModel(model.id)"
-              >
-              <span class="flex-1 truncate font-mono text-xs">{{ model.id }}</span>
-            </label>
-          </div>
-          <div v-if="form.enabledModels.length > 0" class="flex flex-col gap-0 rounded-md border border-border overflow-hidden">
-            <div
-              v-for="modelId in form.enabledModels"
-              :key="modelId"
-              class="flex items-center gap-3 px-3 py-2 text-sm transition-colors hover:bg-accent/40"
-            >
-              <span class="flex-1 truncate font-mono text-xs">{{ modelId }}</span>
-              <button
-                type="button"
-                class="text-xs text-muted-foreground hover:text-destructive disabled:pointer-events-none disabled:opacity-40"
-                :disabled="form.enabledModels.length <= 1"
-                @click="removeCustomModel(modelId)"
-              >
-                {{ $t('providers.removeModel') }}
-              </button>
-            </div>
-          </div>
-          <p class="text-xs text-muted-foreground">{{ $t('providers.customModelsHint') }}</p>
-        </div>
+
 
 
         <!-- Degraded Threshold -->
@@ -519,14 +391,13 @@
 </template>
 
 <script setup lang="ts">
-import type { Provider, ProviderTypePreset, AvailableModel, OllamaModel, OllamaPullEvent } from '~/features/providers/composables/useProviders'
+import type { Provider, ProviderTypePreset, OllamaModel, OllamaPullEvent } from '~/features/providers/composables/useProviders'
 
 export interface ProviderFormPayload {
   name: string
   providerType: string
   baseUrl: string
   apiKey: string
-  defaultModel: string
   enabledModels: string[]
   degradedThresholdMs: number
   textVerbosity: null | 'low' | 'medium' | 'high'
@@ -548,9 +419,7 @@ const emit = defineEmits<{
 }>()
 
 const {
-  fetchModels,
   fetchOllamaModels,
-  probeOpenAiCompatibleModels,
   probeOllamaModels,
   pullOllamaModel,
   probeOllamaPull,
@@ -566,7 +435,6 @@ const form = reactive({
   providerType: '',
   baseUrl: '',
   apiKey: '',
-  defaultModel: '',
   enabledModels: [] as string[],
   degradedThresholdMs: 5000,
   textVerbosity: 'default' as 'default' | 'low' | 'medium' | 'high',
@@ -574,61 +442,6 @@ const form = reactive({
   extraFields: {} as Record<string, string>,
 })
 
-const availableModels = ref<AvailableModel[]>([])
-const customModelInput = ref('')
-const customDiscoveredModels = ref<AvailableModel[]>([])
-const customModelsLoading = ref(false)
-const customModelsError = ref<string | null>(null)
-
-/**
- * Compute the disambiguation suffix for a model id (last `-`-separated
- * segment of the part after `/` or `:`). E.g. `mistral-medium-3.5` → `3.5`,
- * `openrouter/google/gemini-2.5-pro` → `pro`.
- */
-function modelIdSuffix(id: string): string {
-  const tail = id.split(/[/:]/).pop() ?? id
-  return tail.includes('-') ? (tail.split('-').pop() ?? tail) : tail
-}
-
-/**
- * Map of `model.id` → disambiguation label, populated only for models whose
- * `model.name` collides with another entry. When the per-id suffix is unique
- * within a duplicate-name group we render `"<name> (<suffix>)"`; when two
- * ids in the same group also share a suffix the suffix is useless, so we
- * fall back to the full `model.id` for those entries.
- */
-const duplicateModelLabels = computed(() => {
-  const groups = new Map<string, AvailableModel[]>()
-  for (const model of availableModels.value) {
-    const bucket = groups.get(model.name)
-    if (bucket) bucket.push(model)
-    else groups.set(model.name, [model])
-  }
-
-  const labels = new Map<string, string>()
-  for (const models of groups.values()) {
-    if (models.length <= 1) continue
-
-    // Count suffix occurrences within this duplicate-name group
-    const suffixes = models.map(m => modelIdSuffix(m.id))
-    const suffixCounts = new Map<string, number>()
-    for (const s of suffixes) suffixCounts.set(s, (suffixCounts.get(s) ?? 0) + 1)
-
-    for (let i = 0; i < models.length; i++) {
-      const model = models[i]!
-      const suffix = suffixes[i]!
-      // Suffix is useless when multiple ids in the group share it — fall back to the full id
-      if ((suffixCounts.get(suffix) ?? 0) > 1) {
-        labels.set(model.id, model.id)
-      } else {
-        labels.set(model.id, model.name.includes(`(${suffix})`) ? model.name : `${model.name} (${suffix})`)
-      }
-    }
-  }
-  return labels
-})
-const loadingModels = ref(false)
-const modelsError = ref<string | null>(null)
 const oauthInProgress = ref(false)
 const oauthError = ref<string | null>(null)
 const oauthLoginId = ref<string | null>(null)
@@ -659,24 +472,12 @@ type ExtraFieldDef = NonNullable<ProviderTypePreset['extraFields']>[number]
 
 const extraFieldDefs = computed<ExtraFieldDef[]>(() => selectedPreset.value?.extraFields ?? [])
 
-const hasKnownModels = computed(() => {
-  // Prefer the backend-computed flag (covers presets with local overrides
-  // like kimi/moonshot that don't have a pi-ai provider). Fall back to the
-  // legacy piAiProvider check for safety.
-  return selectedPreset.value?.hasKnownModels === true
-    || selectedPreset.value?.piAiProvider != null
-})
-
 const isOAuthProvider = computed(() => {
   return selectedPreset.value?.authMethod === 'oauth'
 })
 
 const isOpenAiCompatibleProvider = computed(() => {
   return form.providerType === 'openai-compatible' || selectedPreset.value?.type === 'openai-compatible'
-})
-
-const isFreeTextModelProvider = computed(() => {
-  return Boolean(form.providerType && !hasKnownModels.value && !isOllamaProvider.value && !isOAuthProvider.value)
 })
 
 const supportsTextVerbosity = computed(() => {
@@ -694,12 +495,11 @@ const supportsTransport = computed(() => {
 })
 
 const canStartOAuth = computed(() => {
-  return form.name.trim() && form.providerType && form.defaultModel
+  return Boolean(form.name.trim() && form.providerType)
 })
 
 const canSubmit = computed(() => {
-  const hasModel = form.defaultModel || (isFreeTextModelProvider.value && customModelInput.value.trim())
-  return Boolean(form.name.trim() && form.providerType && hasModel)
+  return Boolean(form.name.trim() && form.providerType)
 })
 
 function translatedOr(key: string, fallback: string): string {
@@ -782,38 +582,28 @@ watch(() => [props.open, props.provider] as const, ([isOpen, entry]) => {
     form.providerType = entry.providerType
     form.baseUrl = entry.baseUrl
     form.apiKey = ''
-    form.defaultModel = entry.defaultModel
-    form.enabledModels = entry.enabledModels?.length ? [...entry.enabledModels] : [entry.defaultModel]
+    form.enabledModels = [...(entry.enabledModels ?? [])]
     form.degradedThresholdMs = entry.degradedThresholdMs ?? 5000
     form.textVerbosity = entry.textVerbosity ?? 'default'
     form.transport = entry.transport ?? 'default'
     form.extraFields = { ...(entry.extraFields ?? {}) }
-    customModelInput.value = ''
-    customDiscoveredModels.value = []
-    customModelsError.value = null
     // Reset Ollama state
     resetOllamaState()
     if (entry.providerType === 'ollama') {
       loadOllamaModels()
     }
-    // Non-Ollama catalog is only needed in create mode (the default-model
-    // selector). Edit mode no longer shows model UI, so skip the fetch.
+    // Models for non-Ollama providers are managed via the "Add Model" dialog
+    // after creation, so the form itself shows no catalog UI.
   } else if (isOpen && props.mode === 'create') {
     form.name = ''
     form.providerType = ''
     form.baseUrl = ''
     form.apiKey = ''
-    form.defaultModel = ''
     form.enabledModels = []
     form.degradedThresholdMs = 5000
     form.textVerbosity = 'default'
     form.transport = 'default'
     form.extraFields = {}
-    customModelInput.value = ''
-    availableModels.value = []
-    customDiscoveredModels.value = []
-    customModelsError.value = null
-    modelsError.value = null
     resetOllamaState()
     oauthInProgress.value = false
     oauthError.value = null
@@ -847,9 +637,6 @@ async function loadOllamaModels() {
       // Filter enabledModels to only include models that exist in Ollama
       const ollamaNames = new Set(models.map(m => m.name))
       form.enabledModels = form.enabledModels.filter(m => ollamaNames.has(m))
-      if (form.defaultModel && !ollamaNames.has(form.defaultModel)) {
-        form.defaultModel = form.enabledModels[0] ?? ''
-      }
     } catch (err) {
       ollamaError.value = (err as Error).message
     } finally {
@@ -867,9 +654,6 @@ async function loadOllamaModels() {
       // Filter enabledModels to only include models that exist in Ollama
       const ollamaNames = new Set(models.map(m => m.name))
       form.enabledModels = form.enabledModels.filter(m => ollamaNames.has(m))
-      if (form.defaultModel && !ollamaNames.has(form.defaultModel)) {
-        form.defaultModel = form.enabledModels[0] ?? ''
-      }
     } catch (err) {
       ollamaError.value = (err as Error).message
     } finally {
@@ -883,14 +667,8 @@ function toggleOllamaModel(modelName: string) {
   if (idx >= 0) {
     if (form.enabledModels.length <= 1) return
     form.enabledModels.splice(idx, 1)
-    if (form.defaultModel === modelName) {
-      form.defaultModel = form.enabledModels[0] ?? ''
-    }
   } else {
     form.enabledModels.push(modelName)
-    if (!form.defaultModel) {
-      form.defaultModel = modelName
-    }
   }
 }
 
@@ -965,127 +743,15 @@ function normalizeTransportPayload(): null | 'sse' | 'websocket' | 'websocket-ca
   return form.transport === 'default' ? null : form.transport
 }
 
-function formatKnownModelLabel(model: AvailableModel): string {
-  return duplicateModelLabels.value.get(model.id) ?? model.name
-}
-
-async function loadModelsForType(providerType: string) {
-  const preset = props.presets[providerType]
-  // Fetch if the preset has either a pi-ai provider or a local override
-  // catalog (both are handled by the backend's getAvailableModels).
-  const hasCatalog = preset?.hasKnownModels === true || preset?.piAiProvider != null
-  if (!hasCatalog) {
-    availableModels.value = []
-    modelsError.value = null
-    return
-  }
-
-  loadingModels.value = true
-  modelsError.value = null
-  try {
-    const models = await fetchModels(providerType)
-    if (models.length === 0) {
-      modelsError.value = 'no_models'
-    } else {
-      availableModels.value = models
-    }
-  } catch {
-    modelsError.value = 'fetch_failed'
-    availableModels.value = []
-  } finally {
-    loadingModels.value = false
-  }
-}
-
-async function loadCustomModels() {
-  if (!form.baseUrl.trim()) return
-  customModelsLoading.value = true
-  customModelsError.value = null
-  try {
-    customDiscoveredModels.value = await probeOpenAiCompatibleModels(
-      form.baseUrl.trim(),
-      form.apiKey.trim() || undefined,
-      form.providerType,
-    )
-    if (customDiscoveredModels.value.length === 0) {
-      customModelsError.value = t('providers.modelsLoadEmpty')
-    }
-  } catch (err) {
-    customModelsError.value = `${t('providers.modelsLoadError')}: ${(err as Error).message}`
-    customDiscoveredModels.value = []
-  } finally {
-    customModelsLoading.value = false
-  }
-}
-
-function toggleCustomModel(modelId: string) {
-  const idx = form.enabledModels.indexOf(modelId)
-  if (idx >= 0) {
-    removeCustomModel(modelId)
-  } else {
-    form.enabledModels.push(modelId)
-    if (!form.defaultModel) {
-      form.defaultModel = modelId
-    }
-  }
-}
-
-function addCustomModel() {
-  const modelId = customModelInput.value.trim()
-  if (!modelId) return
-  if (!form.enabledModels.includes(modelId)) {
-    form.enabledModels.push(modelId)
-  }
-  // Kept internally for backwards compatibility with the provider contract.
-  // The UI no longer exposes a separate "default" concept for custom models.
-  if (!form.defaultModel) {
-    form.defaultModel = modelId
-  }
-  customModelInput.value = ''
-}
-
-function removeCustomModel(modelId: string) {
-  if (form.enabledModels.length <= 1) return
-  const idx = form.enabledModels.indexOf(modelId)
-  if (idx >= 0) {
-    form.enabledModels.splice(idx, 1)
-  }
-  if (form.defaultModel === modelId) {
-    form.defaultModel = form.enabledModels[0] ?? ''
-  }
-}
-
-function onDefaultModelSelect(modelId: string) {
-  if (!modelId) return
-  form.defaultModel = modelId
-  form.enabledModels = [modelId]
-}
-
-function setCustomDefaultModel() {
-  const modelId = customModelInput.value.trim()
-  if (!modelId) return
-  form.defaultModel = modelId
-  form.enabledModels = [modelId]
-  customModelInput.value = ''
-}
-
 function onTypeChange() {
   const preset = props.presets[form.providerType]
   if (preset && props.mode !== 'edit') {
     form.baseUrl = preset.baseUrl
-    form.defaultModel = ''
     form.enabledModels = []
     form.extraFields = {}
-    customModelInput.value = ''
-    customModelsError.value = null
   }
   oauthError.value = null
   resetOllamaState()
-  if (form.providerType === 'ollama') {
-    loadOllamaModels()
-  } else {
-    loadModelsForType(form.providerType)
-  }
 }
 
 function normalizeExtraFieldsPayload(): Record<string, string> {
@@ -1095,20 +761,11 @@ function normalizeExtraFieldsPayload(): Record<string, string> {
 }
 
 function handleSubmit() {
-  if (isFreeTextModelProvider.value && customModelInput.value.trim()) {
-    addCustomModel()
-  }
-
-  // Ensure enabledModels always includes the default model
-  const enabledModels = form.enabledModels.length > 0 ? [...form.enabledModels] : [form.defaultModel]
-  if (!enabledModels.includes(form.defaultModel) && form.defaultModel) {
-    enabledModels.unshift(form.defaultModel)
-  }
   emit('submit', {
     ...form,
     textVerbosity: normalizeTextVerbosityPayload(),
     transport: normalizeTransportPayload(),
-    enabledModels,
+    enabledModels: [...form.enabledModels],
     extraFields: normalizeExtraFieldsPayload(),
   })
 }
@@ -1133,7 +790,7 @@ async function startOAuthRenew() {
     const response = await startOAuthLogin({
       providerType: form.providerType,
       name: form.name.trim(),
-      defaultModel: form.defaultModel,
+      enabledModels: [...form.enabledModels],
       providerId: props.provider.id,
       textVerbosity: normalizeTextVerbosityPayload(),
       transport: normalizeTransportPayload(),
@@ -1164,7 +821,7 @@ async function startOAuth() {
     const response = await startOAuthLogin({
       providerType: form.providerType,
       name: form.name.trim(),
-      defaultModel: form.defaultModel,
+      enabledModels: [...form.enabledModels],
       textVerbosity: normalizeTextVerbosityPayload(),
       transport: normalizeTransportPayload(),
     })
