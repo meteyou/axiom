@@ -373,12 +373,11 @@ describe('TelegramBot', () => {
           {
             id: 'p1', name: 'OpenAI', type: 'openai-completions', providerType: 'openai',
             provider: 'openai', baseUrl: '', apiKey: '',
-            defaultModel: 'gpt-4o', enabledModels: ['gpt-4o', 'gpt-4o-mini'],
+            enabledModels: ['gpt-4o', 'gpt-4o-mini'],
           },
           {
             id: 'p2', name: 'Anthropic', type: 'anthropic-messages', providerType: 'anthropic',
             provider: 'anthropic', baseUrl: '', apiKey: '',
-            defaultModel: 'claude-sonnet-4-20250514',
             enabledModels: ['claude-sonnet-4-20250514', 'claude-3-5-sonnet-20241022'],
           },
         ],
