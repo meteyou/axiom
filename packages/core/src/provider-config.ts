@@ -18,7 +18,7 @@ export const CLAUDE_CODE_VERSION = '2.1.96'
  * Supported provider types with presets
  */
 export type ProviderType =
-  | 'openai' | 'anthropic' | 'mistral' | 'ollama' | 'openrouter' | 'deepseek' | 'kimi' | 'minimax' | 'zai' | 'xai' | 'opencode-go' | 'opencode-zen' | 'openai-compatible' | 'google'
+  | 'openai' | 'anthropic' | 'mistral' | 'ollama' | 'openrouter' | 'deepseek' | 'kimi' | 'minimax' | 'zai' | 'zai-coding' | 'xai' | 'opencode-go' | 'opencode-zen' | 'openai-compatible' | 'google'
   // Legacy aliases kept for migration
   | 'ollama-local' | 'ollama-cloud'
   | 'openai-codex' | 'github-copilot' | 'anthropic-oauth'
@@ -205,11 +205,24 @@ export const PROVIDER_TYPE_PRESETS: Record<ProviderType, ProviderTypePreset> = {
     label: 'z.ai',
     apiType: 'openai-completions',
     providerName: 'zai',
+    baseUrl: 'https://api.z.ai/api/paas/v4',
+    requiresApiKey: true,
+    urlEditable: false,
+    piAiProvider: 'zai',
+    authMethod: 'api-key',
+  },
+  'zai-coding': {
+    type: 'zai-coding',
+    label: 'z.ai (GLM Coding Plan)',
+    description: 'z.ai GLM Coding Plan subscription (flat-fee, API-key based)',
+    apiType: 'openai-completions',
+    providerName: 'zai',
     baseUrl: 'https://api.z.ai/api/coding/paas/v4',
     requiresApiKey: true,
     urlEditable: false,
     piAiProvider: 'zai',
     authMethod: 'api-key',
+    subscription: true,
   },
   xai: {
     type: 'xai',
