@@ -18,6 +18,7 @@ import {
   updateProvider as updateProviderConfig,
   updateProviderModel as updateProviderModelConfig,
   updateProviderStatus,
+  ProviderNotFoundError,
 } from '@axiom/core'
 import type { AvailableModel, ProviderConfig, ProviderType, ProvidersFile } from '@axiom/core'
 import type {
@@ -413,11 +414,10 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
     try {
       return updateProviderModelConfig(providerId, modelId, payload)
     } catch (err) {
-      const message = (err as Error).message
-      if (message.includes('not found')) {
-        throw new ProvidersNotFoundError(message)
+      if (err instanceof ProviderNotFoundError) {
+        throw new ProvidersNotFoundError(err.message)
       }
-      throw new ProvidersValidationError(message)
+      throw new ProvidersValidationError((err as Error).message)
     }
   }
 

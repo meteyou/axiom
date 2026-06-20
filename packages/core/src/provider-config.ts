@@ -1165,6 +1165,14 @@ export function updateProvider(id: string, input: {
   return existing
 }
 
+/** Thrown when a provider id does not resolve to a configured provider. */
+export class ProviderNotFoundError extends Error {
+  constructor(providerId: string) {
+    super(`Provider not found: ${providerId}`)
+    this.name = 'ProviderNotFoundError'
+  }
+}
+
 /**
  * Patch a single model entry within a provider's `models[]` array, creating
  * the entry on the fly when it does not exist yet. Default metadata
@@ -1184,7 +1192,7 @@ export function updateProviderModel(
   const file = loadProviders()
   const provider = file.providers.find(p => p.id === providerId)
   if (!provider) {
-    throw new Error(`Provider not found: ${providerId}`)
+    throw new ProviderNotFoundError(providerId)
   }
 
   if (!provider.models) provider.models = []
