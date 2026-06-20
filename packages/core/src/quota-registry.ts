@@ -3,6 +3,7 @@ import type { QuotaProviderAdapter } from './provider-quota.js'
 import { anthropicQuotaAdapter } from './anthropic-quota.js'
 import { openaiCodexQuotaAdapter } from './openai-codex-quota.js'
 import { opencodeGoQuotaAdapter } from './opencode-go-quota.js'
+import { zaiQuotaAdapter } from './zai-quota.js'
 
 /**
  * Registered subscriber-quota adapters. To add a new provider family, implement
@@ -13,6 +14,7 @@ const QUOTA_ADAPTERS: QuotaProviderAdapter[] = [
   anthropicQuotaAdapter,
   openaiCodexQuotaAdapter,
   opencodeGoQuotaAdapter,
+  zaiQuotaAdapter,
 ]
 
 /** Resolve the quota adapter that handles a provider, or null if none does. */

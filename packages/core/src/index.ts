@@ -119,6 +119,12 @@ export {
   opencodeGoQuotaAdapter,
 } from './opencode-go-quota.js'
 export {
+  fetchZaiQuota,
+  getZaiQuotaForProvider,
+  isZaiQuotaProvider,
+  zaiQuotaAdapter,
+} from './zai-quota.js'
+export {
   getQuotaAdapter,
   isQuotaProvider,
 } from './quota-registry.js'
