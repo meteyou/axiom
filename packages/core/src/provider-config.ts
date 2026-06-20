@@ -1192,7 +1192,7 @@ export function updateProviderModel(
   if (!entry) {
     const override = findOverrideModel(provider.providerType, modelId)
     if (override) {
-      entry = { ...override }
+      entry = { ...override, cost: override.cost ? { ...override.cost } : undefined }
     } else {
       const piModel = findPiAiCatalogModel(provider.providerType, modelId)
       entry = piModel
