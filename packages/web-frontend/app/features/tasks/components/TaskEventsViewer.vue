@@ -391,9 +391,7 @@ const showRetriggerNotice = computed(() => {
 const providerModelOptions = computed(() => {
   const options: { value: string; label: string }[] = []
   for (const p of providers.value) {
-    const models = p.enabledModels && p.enabledModels.length > 0
-      ? p.enabledModels
-      : [p.defaultModel]
+    const models = p.enabledModels ?? []
     for (const modelId of models) {
       options.push({
         value: `${p.id}:${modelId}`,
@@ -418,7 +416,7 @@ function deriveCompositeFromTask(): string {
   if (!match) return ''
   const modelId = model && match.enabledModels?.includes(model)
     ? model
-    : match.defaultModel
+    : match.enabledModels?.[0] ?? ''
   return `${match.id}:${modelId}`
 }
 

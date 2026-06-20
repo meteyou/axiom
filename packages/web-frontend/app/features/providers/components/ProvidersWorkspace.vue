@@ -452,17 +452,14 @@ function formatCost(value: number): string {
 }
 
 function getDisplayModels(provider: Provider): string[] {
-  if (provider.enabledModels && provider.enabledModels.length > 0) {
-    return provider.enabledModels
-  }
-  return [provider.defaultModel]
+  return provider.enabledModels ?? []
 }
 
 function getModelCost(provider: Provider, modelId: string): { input: number; output: number } | null {
   if (provider.modelCosts?.[modelId]) {
     return provider.modelCosts[modelId]
   }
-  if (provider.cost && modelId === provider.defaultModel) {
+  if (provider.cost && modelId === provider.enabledModels?.[0]) {
     return provider.cost
   }
   return null
@@ -488,7 +485,7 @@ function isActiveModel(providerId: string, modelId: string): boolean {
   const aModel = activeModelId.value
   if (!aModel) {
     const provider = providers.value.find(p => p.id === providerId)
-    return modelId === provider?.defaultModel
+    return modelId === provider?.enabledModels?.[0]
   }
   return aModel === modelId
 }
@@ -498,7 +495,7 @@ function isFallbackModel(providerId: string, modelId: string): boolean {
   const fbModel = fallbackModelId.value
   if (!fbModel) {
     const provider = providers.value.find(p => p.id === providerId)
-    return modelId === provider?.defaultModel
+    return modelId === provider?.enabledModels?.[0]
   }
   return fbModel === modelId
 }
@@ -569,7 +566,6 @@ async function handleSubmit(payload: ProviderFormPayload) {
       name: payload.name,
       providerType: payload.providerType,
       baseUrl: payload.baseUrl,
-      defaultModel: payload.defaultModel,
       enabledModels: payload.enabledModels,
       degradedThresholdMs: payload.degradedThresholdMs,
       textVerbosity: payload.textVerbosity,
@@ -587,7 +583,6 @@ async function handleSubmit(payload: ProviderFormPayload) {
       providerType: payload.providerType,
       baseUrl: payload.baseUrl || undefined,
       apiKey: payload.apiKey || undefined,
-      defaultModel: payload.defaultModel,
       enabledModels: payload.enabledModels,
       degradedThresholdMs: payload.degradedThresholdMs,
       textVerbosity: payload.textVerbosity,
@@ -664,13 +659,8 @@ async function handleRemoveModel() {
 
   const nextEnabled = getDisplayModels(provider).filter(m => m !== modelId)
 
-  // If we're removing the provider's default model, pick another one so the
-  // backend doesn't silently re-add it to enabledModels.
-  const payload: { enabledModels: string[]; defaultModel?: string } = {
+  const payload: { enabledModels: string[] } = {
     enabledModels: nextEnabled,
-  }
-  if (modelId === provider.defaultModel && nextEnabled.length > 0) {
-    payload.defaultModel = nextEnabled[0]
   }
 
   const result = await updateProvider(provider.id, payload)

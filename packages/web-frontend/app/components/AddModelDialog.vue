@@ -190,7 +190,7 @@ async function handleAdd() {
   if (!props.provider || selected.value.size === 0) return
   saving.value = true
   try {
-    const current = props.provider.enabledModels ?? [props.provider.defaultModel]
+    const current = props.provider.enabledModels ?? []
     const merged = Array.from(new Set([...current, ...selected.value]))
     const payload: ProviderUpdatePayloadContract = { enabledModels: merged }
     const result = await updateProvider(props.provider.id, payload)

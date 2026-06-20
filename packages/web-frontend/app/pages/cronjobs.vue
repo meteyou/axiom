@@ -228,7 +228,7 @@ function formatProvider(raw: string | null | undefined): string {
     p => p.id === providerKey || p.name.toLowerCase() === providerKey.toLowerCase(),
   )
   if (!match) return raw
-  const model = modelId ?? match.defaultModel
+  const model = modelId ?? match.enabledModels?.[0]
   return model ? `${match.name} (${model})` : match.name
 }
 

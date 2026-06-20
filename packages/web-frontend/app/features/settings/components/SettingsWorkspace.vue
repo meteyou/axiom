@@ -1979,7 +1979,7 @@ const { providers, fetchProviders, activateProvider, activeProviderId, activeMod
 const activeProviderModelValue = computed(() => {
   if (!activeProviderId.value) return ''
   const provider = providers.value.find(p => p.id === activeProviderId.value)
-  const model = activeModelId.value ?? provider?.defaultModel ?? ''
+  const model = activeModelId.value ?? provider?.enabledModels?.[0] ?? ''
   return `${activeProviderId.value}:${model}`
 })
 
@@ -1996,9 +1996,7 @@ async function handleActivateProvider(value: string) {
 const providerModelOptions = computed(() => {
   const options: { value: string; label: string }[] = []
   for (const p of providers.value) {
-    const models = p.enabledModels && p.enabledModels.length > 0
-      ? p.enabledModels
-      : [p.defaultModel]
+    const models = p.enabledModels ?? []
     for (const modelId of models) {
       options.push({
         value: `${p.id}:${modelId}`,
@@ -2218,12 +2216,12 @@ const form = ref<SettingsForm | null>(null)
 /**
  * Migrate a legacy provider-only ID to the composite "providerId:modelId" format.
  * If the value already contains ':', it is returned as-is.
- * If it matches a known provider, it is expanded to "providerId:defaultModel".
+ * If it matches a known provider, it is expanded to "providerId:<first enabled model>".
  */
 function migrateProviderValue(value: string): string {
   return canonicalizeProviderModelRef(
     value,
-    providers.value.map(provider => ({ id: provider.id, defaultModel: provider.defaultModel })),
+    providers.value.map(provider => ({ id: provider.id, enabledModels: provider.enabledModels })),
   )
 }
 

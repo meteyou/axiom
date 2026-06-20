@@ -302,7 +302,7 @@ const { fetchCronjobMeta } = useCronjobs()
  * Convert a stored cronjob provider value into the composite `providerId:modelId`
  * format used by the select. Accepts:
  *   - already-composite values (`providerId:modelId`) → returned as-is if provider exists
- *   - legacy plain provider name or id → expanded to `providerId:defaultModel`
+ *   - legacy plain provider name or id → expanded to `providerId:<first enabled model>`
  *   - empty/null → empty string (falls back to default provider)
  */
 function normalizeProviderValue(raw: string | null | undefined): string {
@@ -314,7 +314,7 @@ function normalizeProviderValue(raw: string | null | undefined): string {
       p => p.id === providerId || p.name.toLowerCase() === providerId.toLowerCase(),
     )
     if (match) {
-      const modelId = raw.slice(colonIdx + 1) || match.defaultModel
+      const modelId = raw.slice(colonIdx + 1) || match.enabledModels?.[0] || ''
       return `${match.id}:${modelId}`
     }
     return raw
@@ -323,7 +323,7 @@ function normalizeProviderValue(raw: string | null | undefined): string {
   const match = providers.value.find(
     p => p.id === raw || p.name.toLowerCase() === raw.toLowerCase(),
   )
-  if (match) return `${match.id}:${match.defaultModel}`
+  if (match) return `${match.id}:${match.enabledModels?.[0] ?? ''}`
   return ''
 }
 
@@ -331,9 +331,7 @@ function normalizeProviderValue(raw: string | null | undefined): string {
 const providerModelOptions = computed(() => {
   const options: { value: string; label: string }[] = []
   for (const p of providers.value) {
-    const models = p.enabledModels && p.enabledModels.length > 0
-      ? p.enabledModels
-      : [p.defaultModel]
+    const models = p.enabledModels ?? []
     for (const modelId of models) {
       options.push({
         value: `${p.id}:${modelId}`,

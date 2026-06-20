@@ -150,7 +150,7 @@ export function useProvidersApi() {
   const startOAuthLogin = (input: {
     providerType: string
     name: string
-    defaultModel: string
+    enabledModels: string[]
     providerId?: string
     textVerbosity?: 'low' | 'medium' | 'high' | null
     transport?: 'sse' | 'websocket' | 'websocket-cached' | 'auto' | null
