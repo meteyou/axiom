@@ -16,7 +16,9 @@ import {
   setFallbackProvider,
   updateOAuthCredentials,
   updateProvider as updateProviderConfig,
+  updateProviderModel as updateProviderModelConfig,
   updateProviderStatus,
+  ProviderNotFoundError,
 } from '@axiom/core'
 import type { AvailableModel, ProviderConfig, ProviderType, ProvidersFile } from '@axiom/core'
 import type {
@@ -24,6 +26,7 @@ import type {
   ProviderCreatePayloadContract,
   ProviderFallbackUpdatePayloadContract,
   ProviderModelSelectionPayloadContract,
+  ProviderModelUpdatePayloadContract,
   ProviderOAuthLoginStartPayloadContract,
   ProviderUpdatePayloadContract,
 } from '@axiom/core/contracts'
@@ -58,6 +61,7 @@ export interface ProvidersService {
   submitOAuthCode: (loginId: string, code: string) => void
   createProvider: (payload: ProviderCreatePayloadContract) => ProviderConfig
   updateProvider: (id: string, payload: ProviderUpdatePayloadContract) => ProviderConfig
+  updateProviderModel: (providerId: string, modelId: string, payload: ProviderModelUpdatePayloadContract) => ProviderConfig
   deleteProvider: (id: string) => void
   testProvider: (
     id: string,
@@ -406,6 +410,17 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
     }
   }
 
+  function updateProviderModel(providerId: string, modelId: string, payload: ProviderModelUpdatePayloadContract): ProviderConfig {
+    try {
+      return updateProviderModelConfig(providerId, modelId, payload)
+    } catch (err) {
+      if (err instanceof ProviderNotFoundError) {
+        throw new ProvidersNotFoundError(err.message)
+      }
+      throw new ProvidersValidationError((err as Error).message)
+    }
+  }
+
   async function testProvider(
     id: string,
     payload: ProviderModelSelectionPayloadContract,
@@ -564,6 +579,7 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
     submitOAuthCode,
     createProvider,
     updateProvider,
+    updateProviderModel,
     deleteProvider,
     testProvider,
     activateProvider,

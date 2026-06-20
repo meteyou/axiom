@@ -107,7 +107,7 @@ If both checks pass, the task transitions back to `running` and the next `<task_
 
 `create_task` accepts optional `provider`, `model`, and `max_duration_minutes`:
 
-- **`provider` + `model`** flow through the same resolver used for chat (`resolveProviderModelInput`). A bare `model: "kimi-k2.6"` auto-detects the provider when there's a unique match. When neither is set, the configured task default applies.
+- **`provider` + `model`** flow through the same resolver used for chat (`resolveProviderModelInput`). A bare `model: "kimi-k2.6"` auto-detects the provider when there's a unique match. When neither is set, the configured task default applies. The tool descriptions for `create_task` and `create_cronjob` instruct the agent to **autonomously choose** an appropriate model based on the descriptions in the system prompt's [`<available_providers>` block](./system-prompt#_8-available_providers-configured-llm-providers) — preferring cost-effective models for simple work and stronger models for complex coding or research. The agent only needs to pass these parameters when it has a specific reason to deviate from the default task model.
 - **`max_duration_minutes`** is hard-capped at the system maximum from Settings → Tasks → [Max duration](./../settings/tasks#max-duration). Hitting the cap aborts the task as `failed`, not `paused`.
 
 The flag `is_default_model` records whether the resulting `(provider, model)` pair came from the system default or was explicitly pinned — useful when you change the default later and want to know which historical tasks were on the old default.

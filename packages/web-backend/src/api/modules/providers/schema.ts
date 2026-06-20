@@ -4,6 +4,7 @@ import type {
   ProviderCreatePayloadContract,
   ProviderFallbackUpdatePayloadContract,
   ProviderModelSelectionPayloadContract,
+  ProviderModelUpdatePayloadContract,
   ProviderOAuthCodePayloadContract,
   ProviderOAuthLoginStartPayloadContract,
   ProviderTypePresetContract,
@@ -98,6 +99,53 @@ export function parseProviderModelSelectionPayload(payload: unknown): ProviderMo
   return {
     modelId: body.modelId as string | undefined,
   }
+}
+
+function asCostNumber(value: unknown): number | undefined {
+  if (value === null || value === '' || value === undefined) return undefined
+  const num = Number(value)
+  if (!Number.isFinite(num) || num < 0) return undefined
+  return num
+}
+
+export function parseProviderModelUpdatePayload(payload: unknown): ParseResult<ProviderModelUpdatePayloadContract> {
+  const body = toRecord(payload)
+  const costBody = toRecord(body.cost)
+
+  const hasDescription = Object.prototype.hasOwnProperty.call(body, 'description')
+  const hasCost = Object.prototype.hasOwnProperty.call(body, 'cost') && typeof body.cost === 'object'
+
+  if (!hasDescription && !hasCost) {
+    return { ok: false, error: 'Provide at least a description or cost to update.' }
+  }
+
+  const value: ProviderModelUpdatePayloadContract = {}
+
+  if (hasDescription) {
+    if (typeof body.description !== 'string') {
+      return { ok: false, error: 'description must be a string' }
+    }
+    value.description = body.description
+  }
+
+  if (hasCost) {
+    const cost: NonNullable<ProviderModelUpdatePayloadContract['cost']> = {}
+    const input = asCostNumber(costBody.input)
+    const output = asCostNumber(costBody.output)
+    const cacheRead = asCostNumber(costBody.cacheRead)
+    const cacheWrite = asCostNumber(costBody.cacheWrite)
+    if (input !== undefined) cost.input = input
+    if (output !== undefined) cost.output = output
+    if (cacheRead !== undefined) cost.cacheRead = cacheRead
+    if (cacheWrite !== undefined) cost.cacheWrite = cacheWrite
+    if (Object.keys(cost).length > 0) value.cost = cost
+  }
+
+  if (!value.description && !value.cost) {
+    return { ok: false, error: 'No valid fields to update.' }
+  }
+
+  return { ok: true, value }
 }
 
 export function parseFallbackPayload(payload: unknown): ParseResult<ProviderFallbackUpdatePayloadContract> {

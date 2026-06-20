@@ -20,6 +20,7 @@ import {
   parseOllamaPullPayload,
   parseProviderCreatePayload,
   parseProviderModelSelectionPayload,
+  parseProviderModelUpdatePayload,
   parseProviderTypeParam,
   parseProviderUpdatePayload,
 } from './schema.js'
@@ -47,6 +48,7 @@ export interface ProvidersController {
   postOllamaPull: (req: AuthenticatedRequest, res: ExpressResponse) => Promise<void>
   deleteOllamaModel: (req: AuthenticatedRequest, res: ExpressResponse) => Promise<void>
   putProvider: (req: AuthenticatedRequest, res: ExpressResponse) => void
+  patchProviderModel: (req: AuthenticatedRequest, res: ExpressResponse) => void
   deleteProvider: (req: AuthenticatedRequest, res: ExpressResponse) => void
   postProviderTest: (req: AuthenticatedRequest, res: ExpressResponse) => Promise<void>
   postProviderActivate: (req: AuthenticatedRequest, res: ExpressResponse) => void
@@ -324,6 +326,38 @@ export function createProvidersController(options: ProvidersRouterOptions = {}):
       try {
         const provider = service.updateProvider(String(req.params.id ?? ''), parsed.value)
         res.json(mapUpdatedProviderResponse(provider, parsed.value.apiKey))
+      } catch (err) {
+        if (err instanceof ProvidersNotFoundError) {
+          res.status(404).json({ error: err.message })
+          return
+        }
+
+        if (err instanceof ProvidersValidationError) {
+          res.status(400).json({ error: err.message })
+          return
+        }
+
+        res.status(500).json({ error: (err as Error).message })
+      }
+    },
+
+    patchProviderModel(req, res) {
+      const parsed = parseProviderModelUpdatePayload(req.body)
+      if (!parsed.ok) {
+        res.status(400).json({ error: parsed.error })
+        return
+      }
+
+      const providerId = String(req.params.id ?? '')
+      const modelId = String(req.params.modelId ?? '')
+      if (!providerId || !modelId) {
+        res.status(400).json({ error: 'providerId and modelId are required' })
+        return
+      }
+
+      try {
+        const provider = service.updateProviderModel(providerId, modelId, parsed.value)
+        res.json(mapUpdatedProviderResponse(provider))
       } catch (err) {
         if (err instanceof ProvidersNotFoundError) {
           res.status(404).json({ error: err.message })

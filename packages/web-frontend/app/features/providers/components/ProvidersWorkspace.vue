@@ -134,6 +134,10 @@
                           <AppIcon name="edit" class="h-4 w-4" />
                           {{ $t('users.edit') }}
                         </DropdownMenuItem>
+                        <DropdownMenuItem @click="openAddModel(provider)">
+                          <AppIcon name="add" class="h-4 w-4" />
+                          {{ $t('providers.addModelMenu') }}
+                        </DropdownMenuItem>
                         <DropdownMenuItem
                             v-if="providerSupportsQuota(provider)"
                             :disabled="isRefreshingQuota(provider.id)"
@@ -237,6 +241,10 @@
                           <AppIcon name="close" class="h-4 w-4" />
                           {{ $t('providers.removeFallback') }}
                         </DropdownMenuItem>
+                        <DropdownMenuItem @click="openEditModel(provider, modelId)">
+                          <AppIcon name="edit" class="h-4 w-4" />
+                          {{ $t('providers.editModelMenu') }}
+                        </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           destructive
@@ -267,6 +275,23 @@
     @close="closeForm"
     @submit="handleSubmit"
     @oauth-complete="closeForm"
+  />
+
+  <!-- Add Model dialog -->
+  <AddModelDialog
+    :open="showAddModel"
+    :provider="addModelTarget"
+    @close="closeAddModel"
+    @added="handleModelsAdded"
+  />
+
+  <!-- Edit Model dialog -->
+  <EditModelDialog
+    :open="showEditModel"
+    :provider="editModelTarget?.provider ?? null"
+    :model-id="editModelTarget?.modelId ?? null"
+    @close="closeEditModel"
+    @saved="handleModelSaved"
   />
 
   <!-- Delete confirmation dialog -->
@@ -332,6 +357,12 @@ const editingProvider = ref<Provider | null>(null)
 const deleteTarget = ref<Provider | null>(null)
 const removeModelTarget = ref<{ provider: Provider; modelId: string } | null>(null)
 const successMessage = ref<string | null>(null)
+
+const showAddModel = ref(false)
+const addModelTarget = ref<Provider | null>(null)
+
+const showEditModel = ref(false)
+const editModelTarget = ref<{ provider: Provider; modelId: string } | null>(null)
 
 const sortedProviders = computed(() =>
   [...providers.value].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })),
@@ -500,6 +531,36 @@ function openEdit(provider: Provider) {
 function closeForm() {
   showForm.value = false
   editingProvider.value = null
+}
+
+function openAddModel(provider: Provider) {
+  addModelTarget.value = provider
+  showAddModel.value = true
+}
+
+function closeAddModel() {
+  showAddModel.value = false
+  addModelTarget.value = null
+}
+
+function handleModelsAdded() {
+  successMessage.value = t('providers.addModelSuccess')
+  autoHideSuccess()
+}
+
+function openEditModel(provider: Provider, modelId: string) {
+  editModelTarget.value = { provider, modelId }
+  showEditModel.value = true
+}
+
+function closeEditModel() {
+  showEditModel.value = false
+  editModelTarget.value = null
+}
+
+function handleModelSaved() {
+  successMessage.value = t('providers.editModelSuccess')
+  autoHideSuccess()
 }
 
 async function handleSubmit(payload: ProviderFormPayload) {

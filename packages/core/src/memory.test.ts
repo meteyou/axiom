@@ -549,6 +549,72 @@ describe('memory', () => {
       expect(prompt).toContain('</user_profiles_path>')
       expect(prompt).not.toContain('<user_profile>')
     })
+
+    it('renders only annotated + default models in available_providers', () => {
+      const dir = makeTmpDir()
+      ensureMemoryStructure(dir)
+
+      const prompt = assembleSystemPrompt({
+        memoryDir: dir,
+        availableProviders: [
+          {
+            name: 'Anthropic OAuth',
+            models: [
+              { id: 'opus-4.8', isDefaultAgentModel: true, description: 'Starkes Modell für komplexe Analyse und Coding.' },
+              { id: 'claude-haiku' },
+            ],
+          },
+          {
+            name: 'OpenAI',
+            models: [
+              { id: 'gpt-5.5', isDefaultTaskModel: true },
+              { id: 'gpt-4o-mini' },
+            ],
+          },
+          {
+            name: 'OpenCode',
+            models: [
+              { id: 'glm-5.2', description: 'Schnelles aber leistungsfähiges Model für Textverarbeitung wie Twitter/Reddit Digest.' },
+            ],
+          },
+          {
+            name: 'Empty Provider',
+            models: [
+              { id: 'no-description-model' },
+            ],
+          },
+        ],
+      })
+
+      expect(prompt).toContain('<available_providers>')
+      // Annotated/default models are listed with the label/description suffix
+      expect(prompt).toContain('- Anthropic OAuth — opus-4.8: default agent model. Starkes Modell für komplexe Analyse und Coding.')
+      expect(prompt).toContain('- OpenAI — gpt-5.5: default task model')
+      expect(prompt).toContain('- OpenCode — glm-5.2: Schnelles aber leistungsfähiges Model für Textverarbeitung wie Twitter/Reddit Digest.')
+      // Models without a description and not a default are hidden
+      expect(prompt).not.toContain('claude-haiku')
+      expect(prompt).not.toContain('gpt-4o-mini')
+      expect(prompt).not.toContain('no-description-model')
+      // A provider with no routable models is omitted entirely
+      expect(prompt).not.toContain('Empty Provider')
+      // Routing guidance for the agent
+      expect(prompt).toContain('Prefer cost-effective models for simple work')
+      expect(prompt).toContain('auto-detect the provider from this list')
+    })
+
+    it('omits available_providers block when no model qualifies', () => {
+      const dir = makeTmpDir()
+      ensureMemoryStructure(dir)
+
+      const prompt = assembleSystemPrompt({
+        memoryDir: dir,
+        availableProviders: [
+          { name: 'Only Hidden', models: [{ id: 'mystery-model' }] },
+        ],
+      })
+
+      expect(prompt).not.toContain('<available_providers>')
+    })
   })
 
   describe('parseProjectAliases', () => {

@@ -13,10 +13,12 @@ import {
   resolveModelTemperature,
   addProvider,
   updateProvider,
+  updateProviderModel,
   deleteProvider,
   setActiveProvider,
   updateProviderStatus,
   PROVIDER_TYPE_PRESETS,
+  PROVIDER_TYPE_MODEL_OVERRIDES,
   getConfiguredPriceTable,
   applyTextVerbosity,
   applyTransport,
@@ -250,6 +252,56 @@ describe('provider-config', () => {
     const model = buildModel(provider)
     const cost = estimateCost(model, 1000, 500, 2000, 1000)
     expect(cost).toBeCloseTo(0.035, 6)
+  })
+
+  it('updateProviderModel creates an entry with catalog defaults and applies description/cost patches', () => {
+    setupTmpConfig({
+      providers: [
+        {
+          id: 'kimi-id',
+          name: 'Kimi',
+          type: 'openai-completions',
+          providerType: 'kimi',
+          provider: 'moonshot',
+          baseUrl: 'https://api.moonshot.ai/v1',
+          apiKey: 'sk-kimi',
+          defaultModel: 'kimi-k2.6',
+          enabledModels: ['kimi-k2.6', 'kimi-latest'],
+        },
+      ],
+    })
+
+    // No models[] entry yet → created on the fly from PROVIDER_TYPE_MODEL_OVERRIDES.
+    // Use a custom input price to ensure the shared catalog object is not mutated.
+    const patched = updateProviderModel('kimi-id', 'kimi-k2.6', {
+      description: 'Fast model for digests',
+      cost: { input: 1.5, output: 2.5 },
+    })
+    // The module-level catalog default must stay untouched (no shared reference).
+    const catalogDefault = PROVIDER_TYPE_MODEL_OVERRIDES.kimi?.find(m => m.id === 'kimi-k2.6')
+    expect(catalogDefault?.cost?.input).toBe(0.6)
+    const entry = patched.models?.find(m => m.id === 'kimi-k2.6')
+    expect(entry).toBeDefined()
+    expect(entry?.description).toBe('Fast model for digests')
+    // Catalog defaults populated (contextWindow, reasoning) …
+    expect(entry?.contextWindow).toBe(262_144)
+    expect(entry?.reasoning).toBe(true)
+    // … and the patched cost applied
+    expect(entry?.cost?.input).toBe(1.5)
+    expect(entry?.cost?.output).toBe(2.5)
+    // Catalog cache cost preserved when not overridden
+    expect(entry?.cost?.cacheRead).toBe(0.15)
+
+    // Clearing the description removes it; cost stays
+    const cleared = updateProviderModel('kimi-id', 'kimi-k2.6', { description: '   ' })
+    const clearedEntry = cleared.models?.find(m => m.id === 'kimi-k2.6')
+    expect(clearedEntry?.description).toBeUndefined()
+    expect(clearedEntry?.cost?.input).toBe(1.5)
+
+    // Unknown provider throws
+    expect(() => updateProviderModel('no-such', 'kimi-k2.6', { description: 'x' })).toThrowError(
+      'Provider not found: no-such',
+    )
   })
 })
 

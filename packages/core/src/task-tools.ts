@@ -122,12 +122,12 @@ export function createTaskTool(options: TaskToolsOptions): AgentTool {
       }),
       provider: Type.Optional(
         Type.String({
-          description: 'Provider name or id to use for this task (e.g. "Kimi.ai", "OpenAI"). Only specify if the user explicitly requests a specific provider. Can be combined with `model` to pin both. Otherwise the default task provider is used.',
+          description: 'Provider name or id to use for this task (e.g. "Kimi.ai", "OpenAI"). Choose the most appropriate provider based on the descriptions in `<available_providers>`. You may autonomously select a model that matches the task\'s needs. Only pass this if you have a specific reason to deviate from the default task model. Can be combined with `model` to pin both.',
         })
       ),
       model: Type.Optional(
         Type.String({
-          description: 'Specific model id to use for this task (e.g. "kimi-k2.6", "gpt-5", "claude-sonnet-4-5"). Only specify if the user explicitly requests a specific model. If `provider` is omitted, the provider is auto-detected from the configured providers (requires a unique match).',
+          description: 'Specific model id to use for this task (e.g. "kimi-k2.6", "gpt-5", "claude-sonnet-4-5"). Choose based on the descriptions in `<available_providers>` — prefer cost-effective models for simple work and stronger models for complex coding or research. Only pass this if you have a specific reason to deviate from the default task model. If `provider` is omitted, the provider is auto-detected from the configured providers (requires a unique match).',
         })
       ),
       max_duration_minutes: Type.Optional(

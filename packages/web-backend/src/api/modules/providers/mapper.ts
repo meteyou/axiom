@@ -21,11 +21,17 @@ function maskApiKey(apiKey: string): string {
   return `${apiKey.slice(0, 4)}••••••••${apiKey.slice(-4)}`
 }
 
-function resolveModelCost(provider: ProviderConfig, modelId: string): { input: number; output: number } | null {
+function resolveModelCost(provider: ProviderConfig, modelId: string): { input: number; output: number; cacheRead?: number; cacheWrite?: number } | null {
   try {
     const model = buildModel(provider, modelId)
     if (model.cost.input > 0 || model.cost.output > 0) {
-      return { input: model.cost.input, output: model.cost.output }
+      const cost: { input: number; output: number; cacheRead?: number; cacheWrite?: number } = {
+        input: model.cost.input,
+        output: model.cost.output,
+      }
+      if (model.cost.cacheRead > 0) cost.cacheRead = model.cost.cacheRead
+      if (model.cost.cacheWrite > 0) cost.cacheWrite = model.cost.cacheWrite
+      return cost
     }
   } catch {
     // ignore and try registry fallback
@@ -40,7 +46,13 @@ function resolveModelCost(provider: ProviderConfig, modelId: string): { input: n
     const models = getPiAiModels(preset.piAiProvider as PiAiKnownProvider)
     const match = models.find((entry) => entry.id === modelId)
     if (match && (match.cost.input > 0 || match.cost.output > 0)) {
-      return { input: match.cost.input, output: match.cost.output }
+      const cost: { input: number; output: number; cacheRead?: number; cacheWrite?: number } = {
+        input: match.cost.input,
+        output: match.cost.output,
+      }
+      if (match.cost.cacheRead > 0) cost.cacheRead = match.cost.cacheRead
+      if (match.cost.cacheWrite > 0) cost.cacheWrite = match.cost.cacheWrite
+      return cost
     }
   } catch {
     // ignore lookup errors
@@ -57,7 +69,7 @@ export function mapProvidersListResponse(
   const providers = masked.providers.map((provider) => {
     const fullProvider = decrypted.providers.find((candidate) => candidate.id === provider.id)
     let cost: { input: number; output: number } | null = null
-    const modelCosts: Record<string, { input: number; output: number }> = {}
+    const modelCosts: Record<string, { input: number; output: number; cacheRead?: number; cacheWrite?: number }> = {}
 
     if (fullProvider) {
       cost = resolveModelCost(fullProvider, fullProvider.defaultModel)

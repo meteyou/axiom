@@ -1,5 +1,6 @@
 import type {
   ProviderCreatePayloadContract,
+  ProviderModelUpdatePayloadContract,
   ProviderUpdatePayloadContract,
 } from '@axiom/core/contracts'
 import { useProvidersApi } from '~/api/providers'
@@ -70,6 +71,22 @@ export function useProviders() {
     error.value = null
     try {
       const data = await providersApi.updateProvider(id, input)
+      await fetchProviders()
+      return data.provider
+    } catch (err) {
+      error.value = (err as Error).message
+      return null
+    }
+  }
+
+  async function updateProviderModel(
+    providerId: string,
+    modelId: string,
+    input: ProviderModelUpdatePayloadContract,
+  ): Promise<Provider | null> {
+    error.value = null
+    try {
+      const data = await providersApi.updateProviderModel(providerId, modelId, input)
       await fetchProviders()
       return data.provider
     } catch (err) {
@@ -221,6 +238,7 @@ export function useProviders() {
     deleteOllamaModel,
     addProvider,
     updateProvider,
+    updateProviderModel,
     deleteProvider,
     testProvider,
     activateProvider,

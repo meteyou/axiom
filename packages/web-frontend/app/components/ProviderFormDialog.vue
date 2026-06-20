@@ -102,10 +102,26 @@
           </div>
         </template>
 
-        <!-- Models (checkbox list for providers with pi-ai models) -->
-        <div v-if="form.providerType && hasKnownModels" class="flex flex-col gap-1.5">
-          <Label>{{ $t('providers.enabledModels') }}</Label>
-          <div v-if="loadingModels" class="text-xs text-muted-foreground py-2">{{ $t('providers.loadingModels') }}</div>
+        <!-- Default model selector (create only). After creation, models are
+             managed separately via the provider's "Add Model" / "Edit Model"
+             menu actions, so the edit form exposes no model UI. -->
+        <div v-if="mode === 'create' && form.providerType && hasKnownModels" class="flex flex-col gap-1.5">
+          <Label for="provider-default-model">{{ $t('providers.model') }}</Label>
+          <Select
+            v-model="form.defaultModel"
+            :disabled="oauthInProgress"
+            @update:model-value="onDefaultModelSelect"
+          >
+            <SelectTrigger id="provider-default-model">
+              <SelectValue :placeholder="$t('providers.selectModel')" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem v-for="model in availableModels" :key="model.id" :value="model.id">
+                {{ formatKnownModelLabel(model) }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          <div v-if="loadingModels" class="text-xs text-muted-foreground py-1">{{ $t('providers.loadingModels') }}</div>
           <div v-else-if="modelsError" class="flex flex-col gap-1">
             <span class="text-xs text-destructive">{{ $t('providers.modelsLoadError') }}</span>
             <button
@@ -116,29 +132,33 @@
               {{ $t('providers.modelsRetry') }}
             </button>
           </div>
-          <div v-else class="flex flex-col gap-0 rounded-md border border-border overflow-hidden max-h-52 overflow-y-auto">
-            <label
-              v-for="model in availableModels"
-              :key="model.id"
-              :class="[
-                'flex items-center gap-3 px-3 py-2 text-sm cursor-pointer transition-colors hover:bg-accent/50',
-                form.enabledModels.includes(model.id) ? 'bg-accent/30' : '',
-              ]"
+          <!-- Custom model fallback: lets the user type a model id that is not
+               in the pi-ai catalog (e.g. a manually published model). -->
+          <div class="flex gap-2">
+            <Input
+              v-model="customModelInput"
+              type="text"
+              :placeholder="$t('providers.modelPlaceholderCustom')"
+              class="flex-1 font-mono text-xs"
+              :disabled="oauthInProgress"
+              @keydown.enter.prevent="setCustomDefaultModel"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              :disabled="!customModelInput.trim() || oauthInProgress"
+              class="shrink-0"
+              @click="setCustomDefaultModel"
             >
-              <input
-                type="checkbox"
-                :checked="form.enabledModels.includes(model.id)"
-                class="h-4 w-4 rounded border-border text-primary focus:ring-primary"
-                :disabled="oauthInProgress"
-                @change="toggleModel(model.id)"
-              >
-              <span class="flex-1 truncate">{{ formatKnownModelLabel(model) }}</span>
-            </label>
+              {{ $t('providers.addModel') }}
+            </Button>
           </div>
-          <p class="text-xs text-muted-foreground">{{ $t('providers.enabledModelsHint') }}</p>
+          <p class="text-xs text-muted-foreground">{{ $t('providers.defaultModelSelectHint') }}</p>
         </div>
 
-        <!-- Ollama: model list from Ollama API + pull -->
+        <!-- Ollama: model list from Ollama API + pull. Kept in both create and
+             edit modes because pulling models is Ollama-specific local-server
+             management that the catalog-based "Add Model" dialog cannot cover. -->
         <div v-else-if="form.providerType && isOllamaProvider" class="flex flex-col gap-2">
           <div class="flex items-center justify-between">
             <Label>{{ $t('providers.ollamaModels') }}</Label>
@@ -264,8 +284,8 @@
           </div>
         </div>
 
-        <!-- Models (free text for OpenAI-compatible/custom providers) -->
-        <div v-else-if="isFreeTextModelProvider" class="flex flex-col gap-2">
+        <!-- Models (free text for OpenAI-compatible/custom providers — create only) -->
+        <div v-else-if="mode === 'create' && isFreeTextModelProvider" class="flex flex-col gap-2">
           <Label for="provider-model-input">{{ $t('providers.enabledModels') }}</Label>
           <div class="flex gap-2">
             <Input
@@ -775,9 +795,9 @@ watch(() => [props.open, props.provider] as const, ([isOpen, entry]) => {
     resetOllamaState()
     if (entry.providerType === 'ollama') {
       loadOllamaModels()
-    } else if (entry.providerType) {
-      loadModelsForType(entry.providerType)
     }
+    // Non-Ollama catalog is only needed in create mode (the default-model
+    // selector). Edit mode no longer shows model UI, so skip the fetch.
   } else if (isOpen && props.mode === 'create') {
     form.name = ''
     form.providerType = ''
@@ -1035,23 +1055,18 @@ function removeCustomModel(modelId: string) {
   }
 }
 
-function toggleModel(modelId: string) {
-  const idx = form.enabledModels.indexOf(modelId)
-  if (idx >= 0) {
-    // Don't allow unchecking the last enabled model
-    if (form.enabledModels.length <= 1) return
-    form.enabledModels.splice(idx, 1)
-    // If we removed the default, reassign
-    if (form.defaultModel === modelId) {
-      form.defaultModel = form.enabledModels[0] ?? ''
-    }
-  } else {
-    form.enabledModels.push(modelId)
-    // If no default is set yet, set it
-    if (!form.defaultModel) {
-      form.defaultModel = modelId
-    }
-  }
+function onDefaultModelSelect(modelId: string) {
+  if (!modelId) return
+  form.defaultModel = modelId
+  form.enabledModels = [modelId]
+}
+
+function setCustomDefaultModel() {
+  const modelId = customModelInput.value.trim()
+  if (!modelId) return
+  form.defaultModel = modelId
+  form.enabledModels = [modelId]
+  customModelInput.value = ''
 }
 
 function onTypeChange() {

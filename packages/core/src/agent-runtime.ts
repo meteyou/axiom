@@ -7,13 +7,13 @@ import type { Api, AssistantMessage, Message, ImageContent, Model } from '@earen
 import { Type } from '@earendil-works/pi-ai'
 import type { Database } from './database.js'
 import { logTokenUsage, logToolCall } from './token-logger.js'
-import { estimateCost, getApiKeyForProvider, buildModel, buildStreamFn, loadProvidersDecrypted } from './provider-config.js'
+import { estimateCost, getApiKeyForProvider, buildModel, buildStreamFn, loadProvidersDecrypted, parseProviderModelId } from './provider-config.js'
 import type { ProviderConfig } from './provider-config.js'
 import type { ProviderManager } from './provider-manager.js'
 import type { SettingsThinkingLevel } from './contracts/settings.js'
 import { normalizeThinkingLevel } from './thinking-level.js'
 import { assembleSystemPrompt, ensureMemoryStructure, ensureConfigStructure, formatCurrentTimeContext } from './memory.js'
-import type { SkillPromptEntry } from './memory.js'
+import type { SkillPromptEntry, AvailableProviderModelPromptEntry } from './memory.js'
 import { getWorkspaceDir } from './workspace.js'
 import { loadConfig, ensureConfigTemplates } from './config.js'
 import { loadSkills, getSkillDecrypted } from './skill-config.js'
@@ -627,18 +627,48 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
 
     // Provider/model inventory — lets the agent translate user-facing
     // model names (e.g. "kimi-k2.6") into the right `provider`/`model`
-    // arguments for create_task / create_cronjob / edit_cronjob.
+    // arguments for create_task / create_cronjob / edit_cronjob, and route
+    // background tasks to models the user annotated with a description.
     // Failures here are non-fatal: the tools still work without this hint,
     // the agent just has to guess or ask.
-    let availableProviders: Array<{ name: string; models: string[] }> | undefined
+    let availableProviders: Array<{ name: string; models: AvailableProviderModelPromptEntry[] }> | undefined
     try {
       const file = loadProvidersDecrypted()
-      availableProviders = file.providers.map(p => ({
-        name: p.name,
-        models: p.enabledModels && p.enabledModels.length > 0
-          ? p.enabledModels
-          : [p.defaultModel],
-      }))
+      const activeProviderId = file.activeProvider ?? null
+
+      let taskProviderId: string | null = null
+      let taskModelId: string | undefined
+      try {
+        ensureConfigTemplates()
+        const settings = loadConfig<{ tasks?: { defaultProvider?: string } }>('settings.json')
+        const taskDefault = settings.tasks?.defaultProvider
+        if (taskDefault) {
+          const parsed = parseProviderModelId(taskDefault)
+          if (parsed.providerId) {
+            taskProviderId = parsed.providerId
+            taskModelId = parsed.modelId
+          }
+        }
+      } catch {
+        // settings not available yet — no task default label
+      }
+
+      availableProviders = file.providers.map(p => {
+        const enabled = p.enabledModels && p.enabledModels.length > 0 ? p.enabledModels : [p.defaultModel]
+        const activeModelForProvider = p.id === activeProviderId ? (file.activeModel ?? p.defaultModel) : null
+        const models: AvailableProviderModelPromptEntry[] = enabled.map(id => {
+          const entry = p.models?.find(m => m.id === id)
+          const isDefaultAgentModel = p.id === activeProviderId && id === activeModelForProvider
+          const isDefaultTaskModel = p.id === taskProviderId && id === (taskModelId ?? p.defaultModel)
+          return {
+            id,
+            description: entry?.description,
+            isDefaultAgentModel: isDefaultAgentModel || undefined,
+            isDefaultTaskModel: isDefaultTaskModel || undefined,
+          }
+        })
+        return { name: p.name, models }
+      })
     } catch {
       availableProviders = undefined
     }
