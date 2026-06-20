@@ -947,8 +947,19 @@ describe('provider CRUD', () => {
     expect(PROVIDER_TYPE_PRESETS).toHaveProperty('kimi')
     expect(PROVIDER_TYPE_PRESETS).toHaveProperty('minimax')
     expect(PROVIDER_TYPE_PRESETS).toHaveProperty('zai')
+    expect(PROVIDER_TYPE_PRESETS).toHaveProperty('zai-coding')
     expect(PROVIDER_TYPE_PRESETS).toHaveProperty('openai-compatible')
   })
+
+  it('zai is the pay-per-token General API, zai-coding the GLM Coding Plan subscription', () => {
+    expect(PROVIDER_TYPE_PRESETS['zai'].baseUrl).toBe('https://api.z.ai/api/paas/v4')
+    expect(PROVIDER_TYPE_PRESETS['zai'].subscription).toBeUndefined()
+    expect(PROVIDER_TYPE_PRESETS['zai-coding'].baseUrl).toBe('https://api.z.ai/api/coding/paas/v4')
+    expect(PROVIDER_TYPE_PRESETS['zai-coding'].subscription).toBe(true)
+    // Both reuse the pi-ai `zai` catalog for their model list.
+    expect(PROVIDER_TYPE_PRESETS['zai-coding'].piAiProvider).toBe('zai')
+  })
+
 })
 
 describe('openai-compatible provider type', () => {
