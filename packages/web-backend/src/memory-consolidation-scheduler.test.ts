@@ -269,6 +269,33 @@ describe('MemoryConsolidationScheduler', () => {
       expect(result1).toBe(result2)
     })
 
+    it('skips when another instance already started a recent consolidation', async () => {
+      const taskStore = new TaskStore(db)
+      const taskRuntime = createMockTaskRuntime(taskStore)
+      const provider = makeProvider()
+
+      // Simulate a second instance having just started its consolidation task.
+      taskStore.create({
+        name: 'Nightly Memory Consolidation',
+        prompt: 'p',
+        triggerType: 'consolidation',
+        triggerSourceId: 'memory-consolidation',
+      })
+
+      const scheduler = new MemoryConsolidationScheduler({
+        db,
+        taskRuntime,
+        getDefaultProvider: () => provider,
+      })
+
+      const result = await scheduler.runNow()
+
+      expect(result.updated).toBe(false)
+      expect(result.reason).toContain('Another instance already started consolidation recently')
+      expect(taskRuntime.create).not.toHaveBeenCalled()
+      expect(taskRuntime.start).not.toHaveBeenCalled()
+    })
+
     it('records lastRun and lastResult after execution', async () => {
       const taskStore = new TaskStore(db)
       const taskRuntime = createMockTaskRuntime(taskStore)

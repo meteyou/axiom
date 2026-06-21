@@ -165,6 +165,51 @@ describe('TaskScheduler', () => {
     })
   })
 
+  describe('multi-instance deduplication', () => {
+    it('skips firing when another instance already started a task for the same cronjob', async () => {
+      scheduler.start()
+      const scheduledTask = scheduledTaskStore.create({
+        name: 'Shared Job',
+        prompt: 'work',
+        schedule: '0 9 * * *',
+      })
+
+      // Simulate a second instance having just created the cronjob task.
+      taskStore.create({
+        name: 'Shared Job',
+        prompt: 'work',
+        triggerType: 'cronjob',
+        triggerSourceId: scheduledTask.id,
+      })
+
+      const result = await scheduler.triggerNow(scheduledTask.id)
+
+      expect(result).toBeNull()
+      expect(mockTaskRunner.startTask).not.toHaveBeenCalled()
+    })
+
+    it('still fires when the recent task belongs to a different cronjob', async () => {
+      scheduler.start()
+      const scheduledTask = scheduledTaskStore.create({
+        name: 'Job A',
+        prompt: 'work',
+        schedule: '0 9 * * *',
+      })
+
+      taskStore.create({
+        name: 'Job B',
+        prompt: 'work',
+        triggerType: 'cronjob',
+        triggerSourceId: 'other-cronjob-id',
+      })
+
+      const result = await scheduler.triggerNow(scheduledTask.id)
+
+      expect(result).toBeTruthy()
+      expect(mockTaskRunner.startTask).toHaveBeenCalled()
+    })
+  })
+
   describe('injection mode', () => {
     let injectionCallback: ReturnType<typeof vi.fn>
     let injectionScheduler: TaskScheduler

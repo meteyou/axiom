@@ -14,6 +14,7 @@ import {
   ensureConfigTemplates,
   loadConfig,
   logToolCall,
+  hasRecentActiveTask,
   readConsolidationFile,
   getMemoryDir,
 } from '@axiom/core'
@@ -27,6 +28,14 @@ export interface ConsolidationSettings {
   /** Provider ID to use. Empty string or 'default' = use active provider */
   providerId: string
 }
+
+/**
+ * Dedup window for cross-instance double-firing. Consolidation runs at most
+ * once per day, so a few minutes comfortably absorbs clock skew between two
+ * instances firing at the same scheduled hour without ever suppressing the
+ * next day's run.
+ */
+const CONSOLIDATION_DEDUP_WINDOW_MINUTES = 5
 
 export const DEFAULT_CONSOLIDATION_SETTINGS: ConsolidationSettings = {
   enabled: false,
@@ -278,6 +287,20 @@ export class MemoryConsolidationScheduler {
   }
 
   private async executeConsolidation(): Promise<ConsolidationResult> {
+    // Checked before allocating a session/task so a duplicate from a second
+    // instance sharing the database skips without leaving an orphan session row.
+    if (hasRecentActiveTask(this.db, 'consolidation', 'memory-consolidation', CONSOLIDATION_DEDUP_WINDOW_MINUTES)) {
+      const result: ConsolidationResult = {
+        updated: false,
+        dailyFilesReviewed: 0,
+        reason: 'Another instance already started consolidation recently',
+      }
+      this.lastRun = new Date().toISOString()
+      this.lastResult = result
+      console.log('[axiom] Memory consolidation skipped: another instance already started one recently')
+      return result
+    }
+
     console.log('[axiom] Starting memory consolidation...')
     const startTime = Date.now()
     // Create the consolidation session up-front so both the task and the

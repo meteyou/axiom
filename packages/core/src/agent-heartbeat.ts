@@ -1,7 +1,9 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { ensureConfigTemplates, getDefaultTimezone, loadConfig } from './config.js'
+import type { Database } from './database.js'
 import type { Task } from './task-store.js'
+import { hasRecentActiveTask } from './task-store.js'
 import type { ProviderConfig } from './provider-config.js'
 import { getProviderDefaultModel } from './provider-config.js'
 import type { TaskRuntimeTaskBoundary } from './task-runtime.js'
@@ -37,6 +39,12 @@ type HeartbeatTaskRuntime = Pick<TaskRuntimeTaskBoundary, 'create' | 'start'>
 export interface AgentHeartbeatServiceOptions {
   taskRuntime: HeartbeatTaskRuntime
   getDefaultProvider: () => ProviderConfig
+  /**
+   * Database handle used to deduplicate heartbeat task creation across
+   * instances that share one DATA_DIR. Optional so existing callers/tests
+   * that don't exercise the dedup path keep working.
+   */
+  db?: Database
   /** Override for testing — returns the current time */
   now?: () => Date
   /** Override for testing — returns the configured timezone */
@@ -64,6 +72,7 @@ export function isHeartbeatContentEffectivelyEmpty(content: string): boolean {
 export class AgentHeartbeatService {
   private taskRuntime: HeartbeatTaskRuntime
   private getDefaultProvider: () => ProviderConfig
+  private db: Database | null
   private nowFn: () => Date
   private getTimezoneFn: () => string
   private timer: ReturnType<typeof setTimeout> | null = null
@@ -77,6 +86,7 @@ export class AgentHeartbeatService {
 
     this.taskRuntime = options.taskRuntime
     this.getDefaultProvider = options.getDefaultProvider
+    this.db = options.db ?? null
     this.nowFn = options.now ?? (() => new Date())
     this.getTimezoneFn = options.getTimezone ?? (() => this.loadTimezone())
   }
@@ -180,6 +190,14 @@ export class AgentHeartbeatService {
     const provider = this.getDefaultProvider()
     if (!provider) {
       console.warn('[axiom] Agent heartbeat skipped: no provider available')
+      return null
+    }
+
+    // Window is shorter than the interval so a legitimately-spaced next
+    // heartbeat is never suppressed, only a near-simultaneous one from a
+    // second instance sharing the same database.
+    if (this.db && hasRecentActiveTask(this.db, 'heartbeat', 'agent-heartbeat', this.settings.intervalMinutes * 0.8)) {
+      console.log('[axiom] Heartbeat skipped: another instance already started one recently')
       return null
     }
 

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { initDatabase } from './database.js'
-import { buildTaskFilterClause, TaskStore } from './task-store.js'
+import { buildTaskFilterClause, hasRecentActiveTask, TaskStore } from './task-store.js'
 import type { Database } from './database.js'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -346,6 +346,54 @@ describe('TaskStore', () => {
       const heartbeatTasks = store.list({ triggerType: 'heartbeat' })
       expect(heartbeatTasks).toHaveLength(1)
       expect(heartbeatTasks[0].name).toBe('Heartbeat')
+    })
+  })
+
+  describe('hasRecentActiveTask', () => {
+    it('returns false when no matching task exists', () => {
+      expect(hasRecentActiveTask(db, 'heartbeat', 'agent-heartbeat', 48)).toBe(false)
+    })
+
+    it('detects a recent running task for the trigger type', () => {
+      store.create({ name: 'HB', prompt: 'p', triggerType: 'heartbeat', triggerSourceId: 'agent-heartbeat' })
+      expect(hasRecentActiveTask(db, 'heartbeat', 'agent-heartbeat', 48)).toBe(true)
+    })
+
+    it('detects a paused task as active', () => {
+      const t = store.create({ name: 'HB', prompt: 'p', triggerType: 'heartbeat', triggerSourceId: 'agent-heartbeat' })
+      store.update(t.id, { status: 'paused' })
+      expect(hasRecentActiveTask(db, 'heartbeat', 'agent-heartbeat', 48)).toBe(true)
+    })
+
+    it('ignores completed and failed tasks', () => {
+      const done = store.create({ name: 'HB', prompt: 'p', triggerType: 'heartbeat', triggerSourceId: 'agent-heartbeat' })
+      store.update(done.id, { status: 'completed' })
+      const failed = store.create({ name: 'HB', prompt: 'p', triggerType: 'heartbeat', triggerSourceId: 'agent-heartbeat' })
+      store.update(failed.id, { status: 'failed' })
+      expect(hasRecentActiveTask(db, 'heartbeat', 'agent-heartbeat', 48)).toBe(false)
+    })
+
+    it('ignores tasks created outside the window', () => {
+      const t = store.create({ name: 'HB', prompt: 'p', triggerType: 'heartbeat', triggerSourceId: 'agent-heartbeat' })
+      db.prepare("UPDATE tasks SET created_at = datetime('now', '-120 minutes') WHERE id = ?").run(t.id)
+      expect(hasRecentActiveTask(db, 'heartbeat', 'agent-heartbeat', 48)).toBe(false)
+    })
+
+    it('scopes the check to the matching trigger type', () => {
+      store.create({ name: 'Cron', prompt: 'p', triggerType: 'cronjob', triggerSourceId: 'job-1' })
+      expect(hasRecentActiveTask(db, 'heartbeat', 'agent-heartbeat', 48)).toBe(false)
+      expect(hasRecentActiveTask(db, 'cronjob', 'job-1', 1)).toBe(true)
+    })
+
+    it('scopes the check to the matching trigger source id when provided', () => {
+      store.create({ name: 'Cron A', prompt: 'p', triggerType: 'cronjob', triggerSourceId: 'job-a' })
+      expect(hasRecentActiveTask(db, 'cronjob', 'job-a', 1)).toBe(true)
+      expect(hasRecentActiveTask(db, 'cronjob', 'job-b', 1)).toBe(false)
+    })
+
+    it('matches any source id when triggerSourceId is null', () => {
+      store.create({ name: 'Cron', prompt: 'p', triggerType: 'cronjob', triggerSourceId: 'job-x' })
+      expect(hasRecentActiveTask(db, 'cronjob', null, 1)).toBe(true)
     })
   })
 

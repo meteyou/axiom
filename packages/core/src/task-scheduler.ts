@@ -2,6 +2,7 @@ import type { Database } from './database.js'
 import { ScheduledTaskStore } from './scheduled-task-store.js'
 import type { ScheduledTask } from './scheduled-task-store.js'
 import type { TaskStore } from './task-store.js'
+import { hasRecentActiveTask } from './task-store.js'
 import type { TaskRunner } from './task-runner.js'
 import type { TaskOverrides } from './task-runner.js'
 import type { ProviderConfig } from './provider-config.js'
@@ -156,6 +157,14 @@ export class TaskScheduler {
 
   /** Minimum cooldown between firings of the same cronjob (in ms) */
   private static readonly FIRE_COOLDOWN_MS = 55_000 // 55 seconds — prevents double-firing within the same cron minute
+
+  /**
+   * Dedup window for cross-instance double-firing. Scoped to a single cron
+   * minute so a duplicate from a second instance sharing the database is
+   * caught, while the next legitimately-scheduled run (≥ 1 minute later) is
+   * never suppressed.
+   */
+  private static readonly CRON_DEDUP_WINDOW_MINUTES = 1
 
   /**
    * Check whether a cronjob was already fired recently (deduplication guard).
@@ -341,6 +350,11 @@ export class TaskScheduler {
    * Fire a scheduled task — create a task via TaskRunner
    */
   private async fireTask(scheduledTask: ScheduledTask): Promise<string | null> {
+    if (hasRecentActiveTask(this.options.db, 'cronjob', scheduledTask.id, TaskScheduler.CRON_DEDUP_WINDOW_MINUTES)) {
+      console.log(`[axiom] Cronjob "${scheduledTask.name}" skipped: another instance already started one recently`)
+      return null
+    }
+
     // Resolve provider — the stored value is either a `providerId:modelId`
     // composite (same format used everywhere else in settings) or, for legacy
     // rows, a plain provider name/id. `parseProviderModelId` handles both:

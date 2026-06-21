@@ -129,6 +129,43 @@ export function buildTaskFilterClause(
   return { sql, params }
 }
 
+/**
+ * Returns true when an active (running or paused) task created within the last
+ * `windowMinutes` already exists for the given trigger type (and optional
+ * source id).
+ *
+ * Defense-in-depth against duplicate scheduler-driven task creation when two
+ * Axiom instances share one SQLite database: each instance runs its own
+ * heartbeat/cron/consolidation timers, so without this guard the same
+ * scheduled work is created twice. The query is bounded by the indexed
+ * `trigger_type` column, so it stays sub-millisecond on production-sized
+ * task tables.
+ */
+export function hasRecentActiveTask(
+  db: Database,
+  triggerType: TaskTriggerType,
+  triggerSourceId: string | null,
+  windowMinutes: number,
+): boolean {
+  const clauses = [
+    'trigger_type = ?',
+    "status IN ('running', 'paused')",
+    "created_at > datetime('now', ?)",
+  ]
+  const params: unknown[] = [triggerType, `-${windowMinutes} minutes`]
+
+  if (triggerSourceId !== null) {
+    clauses.push('trigger_source_id = ?')
+    params.push(triggerSourceId)
+  }
+
+  const row = db.prepare(
+    `SELECT COUNT(*) AS count FROM tasks WHERE ${clauses.join(' AND ')}`,
+  ).get(...params) as { count: number }
+
+  return row.count > 0
+}
+
 // Raw row from SQLite
 interface TaskRow {
   id: string

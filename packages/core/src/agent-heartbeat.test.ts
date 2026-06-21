@@ -1,8 +1,19 @@
 import fs from 'node:fs'
+import path from 'node:path'
+import os from 'node:os'
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { AgentHeartbeatService, DEFAULT_AGENT_HEARTBEAT_SETTINGS, isHeartbeatContentEffectivelyEmpty } from './agent-heartbeat.js'
 import type { AgentHeartbeatSettings, AgentHeartbeatServiceOptions } from './agent-heartbeat.js'
 import type { ProviderConfig } from './provider-config.js'
+import BetterSqlite3 from 'better-sqlite3'
+import { initDatabase } from './database.js'
+import { TaskStore } from './task-store.js'
+import type { Database } from './database.js'
+
+// Force-load the native better-sqlite3 addon before any test mocks
+// fs.readFileSync — the `bindings` loader reads files on first init and would
+// otherwise pick up the heartbeat-content mock and fail to open a database.
+new BetterSqlite3(':memory:').close()
 
 const mockProvider: ProviderConfig = {
   id: 'test-provider',
@@ -398,6 +409,62 @@ describe('AgentHeartbeatService', () => {
       await vi.advanceTimersByTimeAsync(120 * 60 * 1000)
 
       expect(mocks.mockTaskRuntime.create).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('multi-instance deduplication', () => {
+    let db: Database
+    let taskStore: TaskStore
+    const tmpFiles: string[] = []
+
+    function tmpDbPath(): string {
+      const p = path.join(os.tmpdir(), `axiom-heartbeat-test-${Date.now()}-${Math.random().toString(36).slice(2)}.db`)
+      tmpFiles.push(p)
+      return p
+    }
+
+    beforeEach(() => {
+      db = initDatabase(tmpDbPath())
+      taskStore = new TaskStore(db)
+    })
+
+    afterEach(() => {
+      db.close()
+      for (const f of tmpFiles) {
+        try { fs.unlinkSync(f) } catch { /* ignore */ }
+      }
+      tmpFiles.length = 0
+    })
+
+    it('skips when another instance already started a recent heartbeat', async () => {
+      taskStore.create({
+        name: 'Agent Heartbeat',
+        prompt: 'p',
+        triggerType: 'heartbeat',
+        triggerSourceId: 'agent-heartbeat',
+      })
+
+      service = createService({ db })
+
+      const taskId = await service.executeHeartbeat()
+      expect(taskId).toBeNull()
+      expect(mocks.mockTaskRuntime.create).not.toHaveBeenCalled()
+    })
+
+    it('proceeds when the only recent heartbeat already completed', async () => {
+      const done = taskStore.create({
+        name: 'Agent Heartbeat',
+        prompt: 'p',
+        triggerType: 'heartbeat',
+        triggerSourceId: 'agent-heartbeat',
+      })
+      taskStore.update(done.id, { status: 'completed' })
+
+      service = createService({ db })
+
+      const taskId = await service.executeHeartbeat()
+      expect(taskId).toBe('task-123')
+      expect(mocks.mockTaskRuntime.create).toHaveBeenCalled()
     })
   })
 

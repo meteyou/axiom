@@ -910,6 +910,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
   consolidationScheduler.start()
 
   const agentHeartbeatService = new AgentHeartbeatService({
+    db,
     taskRuntime: taskRuntime.tasks,
     getDefaultProvider: getTaskDefaultProvider,
   })
