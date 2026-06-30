@@ -18,14 +18,14 @@ vi.mock('./provider-config.js', async (importOriginal) => {
 })
 
 // Mock pi-ai completeSimple
-vi.mock('@earendil-works/pi-ai', () => ({
+vi.mock('@earendil-works/pi-ai/compat', () => ({
   completeSimple: vi.fn(),
 }))
 
 import { loadSttSettings, loadDeepgramApiKey, transcribeAudio, transcribeWhisperUrl, transcribeOpenAi, transcribeOllama, rewriteTranscript } from './stt.js'
 import { loadConfig } from './config.js'
 import { loadProvidersDecrypted, getApiKeyForProvider, buildModel } from './provider-config.js'
-import { completeSimple } from '@earendil-works/pi-ai'
+import { completeSimple } from '@earendil-works/pi-ai/compat'
 
 const mockLoadConfig = vi.mocked(loadConfig)
 const mockLoadProvidersDecrypted = vi.mocked(loadProvidersDecrypted)

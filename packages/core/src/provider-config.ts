@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import type { Api, KnownProvider, Model, Transport } from '@earendil-works/pi-ai'
-import { getModels as getPiAiModels, streamSimple } from '@earendil-works/pi-ai'
+import { getModels as getPiAiModels, streamSimple } from '@earendil-works/pi-ai/compat'
 import { getOAuthProvider, getOAuthApiKey } from '@earendil-works/pi-ai/oauth'
 import type { OAuthCredentials } from '@earendil-works/pi-ai/oauth'
 import { getConfigDir, ensureConfigTemplates, loadConfig } from './config.js'
@@ -349,6 +349,15 @@ export const PROVIDER_TYPE_PRESETS: Record<ProviderType, ProviderTypePreset> = {
  * Keep this list in sync with the upstream provider's published catalog.
  */
 export const PROVIDER_TYPE_MODEL_OVERRIDES: Partial<Record<ProviderType, ProviderModelConfig[]>> = {
+  // Anthropic API (https://docs.claude.com) — models newer than the pinned
+  // pi-ai release. Remove an entry once pi-ai's generated catalog picks it up.
+  anthropic: [
+    // Introductory pricing ($2 in / $10 out per MTok) runs through Aug 31, 2026;
+    // standard pricing afterwards is $3 in / $15 out (cacheRead $0.30, cacheWrite $3.75).
+    // https://docs.claude.com/en/docs/about-claude/pricing#claude-sonnet-5-introductory-pricing
+    { id: 'claude-sonnet-5', name: 'Claude Sonnet 5', contextWindow: 1_000_000, maxTokens: 128_000, reasoning: true,
+      cost: { input: 2, output: 10, cacheRead: 0.20, cacheWrite: 2.50 } },
+  ],
   // Moonshot Platform API (https://platform.moonshot.ai)
   // Confirmed via GET https://api.moonshot.ai/v1/models and official pricing docs.
   kimi: [
@@ -473,29 +482,28 @@ export function buildStreamFn(
 }
 
 /**
- * Get available models for a given provider type.
- *
- * Resolution order:
- *  1. PROVIDER_TYPE_MODEL_OVERRIDES (local catalog — takes precedence)
- *  2. pi-ai's generated model list for the preset's piAiProvider
+ * Get available models for a given provider type: pi-ai's generated catalog
+ * for the preset's piAiProvider, with PROVIDER_TYPE_MODEL_OVERRIDES entries
+ * layered on top (added, or replacing a catalog entry of the same id).
  */
 export function getAvailableModels(providerType: ProviderType): AvailableModel[] {
-  const overrides = PROVIDER_TYPE_MODEL_OVERRIDES[providerType]
-  if (overrides && overrides.length > 0) {
-    return overrides.map(m => ({ id: m.id, name: m.name ?? m.id }))
-  }
-
   const preset = PROVIDER_TYPE_PRESETS[providerType]
-  if (!preset?.piAiProvider) {
-    return []
-  }
+  const catalogModels: AvailableModel[] = preset?.piAiProvider
+    ? (() => {
+        try {
+          return getPiAiModels(preset.piAiProvider as KnownProvider).map(m => ({ id: m.id, name: m.name }))
+        } catch {
+          return []
+        }
+      })()
+    : []
 
-  try {
-    const models = getPiAiModels(preset.piAiProvider as KnownProvider)
-    return models.map(m => ({ id: m.id, name: m.name }))
-  } catch {
-    return []
+  const overrides = PROVIDER_TYPE_MODEL_OVERRIDES[providerType] ?? []
+  const merged = new Map(catalogModels.map(m => [m.id, m]))
+  for (const override of overrides) {
+    merged.set(override.id, { id: override.id, name: override.name ?? override.id })
   }
+  return Array.from(merged.values())
 }
 
 /**

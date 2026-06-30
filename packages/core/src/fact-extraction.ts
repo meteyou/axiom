@@ -1,5 +1,5 @@
 import type { Api, Model } from '@earendil-works/pi-ai'
-import { completeSimple } from '@earendil-works/pi-ai'
+import { completeSimple } from '@earendil-works/pi-ai/compat'
 import type { Database } from './database.js'
 import { createMemory } from './memories-store.js'
 import type { ProviderConfig } from './provider-config.js'
