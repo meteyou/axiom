@@ -2,7 +2,7 @@ import { loadConfig, ensureConfigTemplates } from './config.js'
 import { loadProvidersDecrypted, getApiKeyForProvider, buildModel, parseProviderModelId, getProviderDefaultModel } from './provider-config.js'
 import type { ProviderConfig } from './provider-config.js'
 import type { SttProvider } from './contracts/settings.js'
-import { completeSimple } from '@earendil-works/pi-ai/compat'
+import { completeSimple } from './pi-models.js'
 import { transcribeDeepgram, decryptDeepgramApiKey, DEEPGRAM_DEFAULT_STT_MODEL } from './deepgram.js'
 
 // ── Types ─────────────────────────────────────────────────────────────
