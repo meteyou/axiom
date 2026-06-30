@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import type { Database, AgentCore } from '@axiom/core'
-import { saveUpload, serializeUploadsMetadata } from '@axiom/core'
+import { saveUploadWithExtraction, serializeUploadsMetadata } from '@axiom/core'
 import { jwtMiddleware } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
 import { uploadMiddleware } from '../uploads.js'
@@ -20,7 +20,7 @@ export function createChatRouter(options: ChatRouterOptions): Router {
 
   router.use(jwtMiddleware)
 
-  router.post('/message', uploadMiddleware.array('files', 5), (req: AuthenticatedRequest, res) => {
+  router.post('/message', uploadMiddleware.array('files', 5), async (req: AuthenticatedRequest, res) => {
     const userId = req.user!.userId
     const text = typeof req.body?.content === 'string' ? req.body.content.trim() : ''
     const files = (req.files as Express.Multer.File[] | undefined) ?? []
@@ -44,14 +44,14 @@ export function createChatRouter(options: ChatRouterOptions): Router {
     const session = agentCore.getSessionManager().getOrCreateSession(String(userId), 'web')
     const sessionId = session.id
 
-    const uploads = files.map(file => saveUpload({
+    const uploads = await Promise.all(files.map(file => saveUploadWithExtraction({
       buffer: file.buffer,
       originalName: file.originalname,
       mimeType: file.mimetype,
       source: 'web',
       userId,
       sessionId,
-    }))
+    })))
 
     const metadata = uploads.length > 0 ? serializeUploadsMetadata(uploads) : null
     db.prepare(
