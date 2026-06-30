@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('@earendil-works/pi-ai/compat', async (importOriginal) => {
+vi.mock('./pi-models.js', async (importOriginal) => {
   const original = await importOriginal() as Record<string, unknown>
   return {
     ...original,
@@ -8,7 +8,7 @@ vi.mock('@earendil-works/pi-ai/compat', async (importOriginal) => {
   }
 })
 
-import { completeSimple } from '@earendil-works/pi-ai/compat'
+import { completeSimple } from './pi-models.js'
 import { initDatabase } from './database.js'
 import type { Database } from './database.js'
 import {
