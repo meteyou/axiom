@@ -646,6 +646,8 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
   // Background task tools are built as a mutable array so that
   // create_task / list_tasks can be pushed in after taskRuntime is
   // available (they need taskRuntime.tasks — resolved below).
+  const quotaMonitorService = new QuotaMonitorService()
+
   const backgroundSttEnabled = (() => { try { return loadSttSettings().enabled } catch { return false } })()
   // createBaseAgentTools builds the shared tool set (yolo, web, chat-history,
   // search-memories, agent-skills, transcribe-audio). Both the interactive
@@ -655,6 +657,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
     db,
     builtinToolsConfig: () => loadRuntimeSettings().builtinToolsConfig,
     sttEnabled: backgroundSttEnabled,
+    quotaService: quotaMonitorService,
     // Background tasks have no interactive session; search_memories will fall
     // back to the lowest-id user when getCurrentUserId is undefined.
   })
@@ -897,7 +900,6 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
   const healthMonitorService = new HealthMonitorService({ db, providerManager: null })
   healthMonitorService.start()
 
-  const quotaMonitorService = new QuotaMonitorService()
   quotaMonitorService.start()
 
   const consolidationScheduler = new MemoryConsolidationScheduler({
@@ -1187,6 +1189,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
         providerConfig: provider,
         providerManager,
         sessionTimeoutMinutes,
+        quotaService: quotaMonitorService,
       })
 
       providerManager.on('mode:fallback', async () => {

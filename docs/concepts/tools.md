@@ -42,6 +42,12 @@ The agent can spawn its own background workers and schedule recurring or one-sho
 | `get_cronjob` | Fetch a single cronjob's full configuration including its complete prompt. |
 | `create_reminder` | One-shot scheduled message delivered to the chat at a specific time. Lighter than a cronjob — no agent spawned, no recurrence. |
 
+## Provider quota
+
+| Tool | Notes |
+|---|---|
+| `provider_quota` | Returns the current subscriber usage quota for LLM providers (Anthropic Claude Pro/Max, ChatGPT Codex, OpenCode, z.ai, …). Accepts an optional `providerId` to scope to one provider and an optional `refresh` flag to force a live fetch before returning. Without `refresh`, returns the cached snapshot from the [subscriber usage quota](../web-ui/providers#subscriber-usage-quota) monitor (polled in the background). |
+
 ## User delivery
 
 | Tool | Notes |
@@ -114,4 +120,5 @@ Only the keys relevant to the chosen `provider` are read — the others are igno
 - [System Prompt → Available Tools](./system-prompt#_7-available-tools-built-in-tool-registry) — how the active tool list is rendered into the prompt every turn.
 - [Tasks & Cronjobs](./tasks-and-cronjobs) — the state machine behind `create_task` / `create_cronjob` / `create_reminder`.
 - [Memory System](./memory) — what `read_chat_history` and `search_memories` actually search.
+- [Provider Management → Subscriber usage quota](../web-ui/providers#subscriber-usage-quota) — how the quota monitor polls providers behind the scenes.
 - [Skills](./skills) — how to extend the agent beyond the built-in tool list.
