@@ -20,6 +20,12 @@ export function createMemoryRouter(options: MemoryRouterOptions): Router {
     next()
   })
 
+  // Generic memory file tree (whole /data/memory folder); file path passed via ?path=
+  router.get('/files', controller.getFileTree)
+  router.get('/file', controller.getFile)
+  router.put('/file', controller.putFile)
+  router.delete('/file', controller.deleteFile)
+
   router.get('/soul', controller.getSoul)
   router.put('/soul', controller.putSoul)
 

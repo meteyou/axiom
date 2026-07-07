@@ -1,286 +1,147 @@
-type MemoryTab = 'soul' | 'core' | 'facts' | 'profile' | 'daily' | 'wiki'
+import type { MemoryTreeNode } from '~/api/memory'
+import { useMemoryApi } from '~/api/memory'
 
-interface MemoryWikiFile {
-  filename: string
-  name: string
-  title: string
-  aliases: string[]
-  size: number
-  modifiedAt: string
-}
-
-interface MemoryDailyFile {
-  filename: string
-  date: string
-  size: number
-  modifiedAt: string
-}
+type MemoryTab = 'files' | 'facts'
 
 export function useMemoryWorkspace() {
-  const {
-    loading,
-    saving,
-    error,
-    successMessage,
-    loadSoul,
-    saveSoul,
-    loadCoreMemory,
-    saveCoreMemory,
-    loadProfile,
-    saveProfile,
-    loadDailyFiles,
-    loadDailyFile,
-    saveDailyFile,
-    clearMessages,
-  } = useMemory()
+  const memoryApi = useMemoryApi()
 
-  const {
-    loadWikiPages,
-    loadWikiPage,
-    saveWikiPage,
-    deleteWikiPage,
-  } = useWiki()
+  const loading = ref(false)
+  const saving = ref(false)
+  const error = ref<string | null>(null)
+  const successMessage = ref<string | null>(null)
 
-  const activeTab = ref<MemoryTab>('wiki')
-
-  // Wiki state
-  const wikiPages = ref<MemoryWikiFile[]>([])
-  const selectedPage = ref<string | null>(null)
-  const pageContent = ref('')
+  const activeTab = ref<MemoryTab>('files')
+  const tree = ref<MemoryTreeNode[]>([])
+  const selectedPath = ref<string | null>(null)
+  const fileContent = ref('')
   const searchQuery = ref('')
-  const creatingNewPage = ref(false)
-  const newPageName = ref('')
-  const newPageNameInput = ref<HTMLInputElement | null>(null)
+  const creatingNewFile = ref(false)
+  const newFilePath = ref('')
+  const newFileInput = ref<HTMLInputElement | null>(null)
   const deleteDialogOpen = ref(false)
 
-  const filteredPages = computed(() => {
-    if (!searchQuery.value.trim()) return wikiPages.value
-    const query = searchQuery.value.toLowerCase()
-
-    return wikiPages.value.filter(page =>
-      page.name.toLowerCase().includes(query)
-      || page.title.toLowerCase().includes(query)
-      || page.aliases.some(alias => alias.toLowerCase().includes(query)),
-    )
+  const filteredTree = computed(() => {
+    const query = searchQuery.value.trim().toLowerCase()
+    if (!query) return tree.value
+    return filterTree(tree.value, query)
   })
 
-  async function refreshPages() {
-    wikiPages.value = await loadWikiPages()
+  const fileCount = computed(() => countFiles(tree.value))
+
+  const fileTitle = computed(() => {
+    const frontmatter = fileContent.value.match(/^---\s*\n([\s\S]*?)\n---/)?.[1]
+    const frontmatterTitle = frontmatter?.match(/^title:\s*(.+)$/m)?.[1]?.trim().replace(/^(["'])(.*)\1$/, '$2')
+    const heading = fileContent.value.match(/^#\s+(.+)$/m)?.[1]?.trim()
+    return frontmatterTitle || heading || selectedPath.value?.split('/').pop() || ''
+  })
+
+  function clearMessages() {
+    error.value = null
+    successMessage.value = null
   }
 
-  async function openPage(name: string) {
-    clearMessages()
-    creatingNewPage.value = false
-    selectedPage.value = name
-    pageContent.value = await loadWikiPage(name)
+  async function refreshTree() {
+    loading.value = true
+    try {
+      tree.value = (await memoryApi.listFiles()).files
+    } catch (err) {
+      error.value = (err as Error).message
+    } finally {
+      loading.value = false
+    }
   }
 
-  function closePage() {
-    selectedPage.value = null
-    pageContent.value = ''
+  async function openFile(path: string) {
+    clearMessages()
+    creatingNewFile.value = false
+    selectedPath.value = path
+    loading.value = true
+    try {
+      fileContent.value = (await memoryApi.getFile(path)).content
+    } catch (err) {
+      error.value = (err as Error).message
+      fileContent.value = ''
+    } finally {
+      loading.value = false
+    }
+  }
+
+  function closeFile() {
+    selectedPath.value = null
+    fileContent.value = ''
     clearMessages()
   }
 
-  function startNewPage() {
+  async function handleSaveFile() {
+    if (!selectedPath.value) return
+
+    saving.value = true
     clearMessages()
-    creatingNewPage.value = true
-    newPageName.value = ''
-    selectedPage.value = null
-    pageContent.value = ''
+    try {
+      await memoryApi.updateFile(selectedPath.value, fileContent.value)
+      successMessage.value = 'saved'
+      await refreshTree()
+      autoHideSuccess()
+    } catch (err) {
+      error.value = (err as Error).message
+    } finally {
+      saving.value = false
+    }
+  }
+
+  function startNewFile() {
+    clearMessages()
+    creatingNewFile.value = true
+    newFilePath.value = ''
+    selectedPath.value = null
+    fileContent.value = ''
 
     nextTick(() => {
-      newPageNameInput.value?.focus()
+      newFileInput.value?.focus()
     })
   }
 
-  function cancelNewPage() {
-    creatingNewPage.value = false
-    newPageName.value = ''
+  function cancelNewFile() {
+    creatingNewFile.value = false
+    newFilePath.value = ''
   }
 
-  async function confirmNewPage() {
-    const name = newPageName.value.trim().replace(/\.md$/i, '').replace(/\s+/g, '-')
-    if (!name) return
+  async function confirmNewFile() {
+    let path = newFilePath.value.trim().replace(/^\/+/, '').replace(/\s+/g, '-')
+    if (!path) return
+    if (!path.endsWith('.md')) path += '.md'
 
-    if (!/^[\w.-]+$/.test(name)) {
-      error.value = 'Page name may only contain letters, digits, hyphens, underscores, and dots.'
+    const segments = path.split('/').filter((segment) => segment.length > 0)
+    if (!segments.every((segment) => /^[\w][\w.-]*$/.test(segment))) {
+      error.value = 'Path may only contain letters, digits, hyphens, underscores, and dots (no leading dots).'
       return
     }
 
-    creatingNewPage.value = false
-    newPageName.value = ''
-    selectedPage.value = name
-    pageContent.value = `# ${name}\n\n`
+    path = segments.join('/')
+    creatingNewFile.value = false
+    newFilePath.value = ''
+    selectedPath.value = path
+    fileContent.value = `# ${(segments.at(-1) ?? '').replace(/\.md$/, '')}\n\n`
 
-    const saved = await saveWikiPage(name, pageContent.value)
-    if (saved) {
-      await refreshPages()
-      autoHideSuccess()
-    }
-  }
-
-  async function handleSavePage() {
-    if (!selectedPage.value) return
-
-    const saved = await saveWikiPage(selectedPage.value, pageContent.value)
-    if (saved) {
-      const currentPageName = selectedPage.value
-      await refreshPages()
-      selectedPage.value = currentPageName
-      autoHideSuccess()
-    }
+    await handleSaveFile()
   }
 
   function confirmDelete() {
     deleteDialogOpen.value = true
   }
 
-  async function handleDeletePage() {
-    if (!selectedPage.value) return
-
-    const deleted = await deleteWikiPage(selectedPage.value)
-    if (deleted) {
-      selectedPage.value = null
-      pageContent.value = ''
-      await refreshPages()
-    }
-
+  async function handleDeleteFile() {
     deleteDialogOpen.value = false
-  }
+    if (!selectedPath.value) return
 
-  // Memory state
-  const soulContent = ref('')
-  const coreMemoryContent = ref('')
-  const profileContent = ref('')
-  const profileUsername = ref('')
-  const dailyContent = ref('')
-  const dailyFiles = ref<MemoryDailyFile[]>([])
-  const selectedDaily = ref<string | null>(null)
-
-  const formatIsoDate = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-
-  const today = new Date()
-  const sevenDaysAgo = new Date(today)
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6)
-
-  const dailyDateFrom = ref(formatIsoDate(sevenDaysAgo))
-  const dailyDateTo = ref(formatIsoDate(today))
-
-  const PAGE_SIZE = 10
-  const currentPage = ref(1)
-
-  const filteredDailyFiles = computed(() => {
-    if (!dailyDateFrom.value && !dailyDateTo.value) return dailyFiles.value
-
-    return dailyFiles.value.filter((file) => {
-      if (dailyDateFrom.value && file.date < dailyDateFrom.value) return false
-      if (dailyDateTo.value && file.date > dailyDateTo.value) return false
-      return true
-    })
-  })
-
-  const totalPages = computed(() => Math.max(1, Math.ceil(filteredDailyFiles.value.length / PAGE_SIZE)))
-
-  const paginatedDailyFiles = computed(() => {
-    const start = (currentPage.value - 1) * PAGE_SIZE
-    return filteredDailyFiles.value.slice(start, start + PAGE_SIZE)
-  })
-
-  const paginationFrom = computed(() => {
-    if (filteredDailyFiles.value.length === 0) return 0
-    return (currentPage.value - 1) * PAGE_SIZE + 1
-  })
-
-  const paginationTo = computed(() => Math.min(currentPage.value * PAGE_SIZE, filteredDailyFiles.value.length))
-
-  function formatSize(bytes: number): string {
-    if (bytes < 1024) return `${bytes} B`
-    return `${(bytes / 1024).toFixed(1)} KB`
-  }
-
-  async function switchTab(tab: MemoryTab) {
-    clearMessages()
-    activeTab.value = tab
-
-    if (tab === 'wiki') {
-      await refreshPages()
-      return
+    try {
+      await memoryApi.deleteFile(selectedPath.value)
+      closeFile()
+      await refreshTree()
+    } catch (err) {
+      error.value = (err as Error).message
     }
-
-    if (tab === 'soul') {
-      soulContent.value = await loadSoul()
-      return
-    }
-
-    if (tab === 'core') {
-      coreMemoryContent.value = await loadCoreMemory()
-      return
-    }
-
-    if (tab === 'profile') {
-      const profile = await loadProfile()
-      profileContent.value = profile.content
-      profileUsername.value = profile.username
-      return
-    }
-
-    if (tab === 'facts') {
-      return
-    }
-
-    if (tab === 'daily') {
-      await refreshDailyFiles()
-    }
-  }
-
-  async function refreshDailyFiles() {
-    selectedDaily.value = null
-    currentPage.value = 1
-    dailyFiles.value = await loadDailyFiles()
-  }
-
-  function onDailyRangeChange() {
-    currentPage.value = 1
-  }
-
-  async function handleSaveSoul() {
-    await saveSoul(soulContent.value)
-    autoHideSuccess()
-  }
-
-  async function handleSaveCoreMemory() {
-    await saveCoreMemory(coreMemoryContent.value)
-    autoHideSuccess()
-  }
-
-  async function handleSaveProfile() {
-    await saveProfile(profileContent.value)
-    autoHideSuccess()
-  }
-
-  async function handleSaveDaily() {
-    if (!selectedDaily.value) return
-
-    const saved = await saveDailyFile(selectedDaily.value, dailyContent.value)
-    if (saved) {
-      const currentDate = selectedDaily.value
-      await refreshDailyFiles()
-      selectedDaily.value = currentDate
-    }
-
-    autoHideSuccess()
-  }
-
-  async function openDailyFile(date: string) {
-    clearMessages()
-    selectedDaily.value = date
-    dailyContent.value = await loadDailyFile(date)
-  }
-
-  function closeDailyFile() {
-    selectedDaily.value = null
-    dailyContent.value = ''
-    clearMessages()
   }
 
   function autoHideSuccess() {
@@ -289,9 +150,7 @@ export function useMemoryWorkspace() {
     }, 3000)
   }
 
-  onMounted(async () => {
-    await refreshPages()
-  })
+  onMounted(refreshTree)
 
   return {
     loading,
@@ -300,45 +159,44 @@ export function useMemoryWorkspace() {
     successMessage,
     clearMessages,
     activeTab,
-    wikiPages,
-    selectedPage,
-    pageContent,
+    tree,
+    filteredTree,
+    fileCount,
+    selectedPath,
+    fileContent,
+    fileTitle,
     searchQuery,
-    creatingNewPage,
-    newPageName,
-    newPageNameInput,
+    creatingNewFile,
+    newFilePath,
+    newFileInput,
     deleteDialogOpen,
-    filteredPages,
-    selectedDaily,
-    soulContent,
-    coreMemoryContent,
-    profileContent,
-    profileUsername,
-    dailyContent,
-    dailyDateFrom,
-    dailyDateTo,
-    currentPage,
-    filteredDailyFiles,
-    totalPages,
-    paginatedDailyFiles,
-    paginationFrom,
-    paginationTo,
-    switchTab,
-    onDailyRangeChange,
-    openPage,
-    closePage,
-    startNewPage,
-    cancelNewPage,
-    confirmNewPage,
-    handleSavePage,
+    openFile,
+    closeFile,
+    handleSaveFile,
+    startNewFile,
+    cancelNewFile,
+    confirmNewFile,
     confirmDelete,
-    handleDeletePage,
-    handleSaveSoul,
-    handleSaveCoreMemory,
-    handleSaveProfile,
-    handleSaveDaily,
-    openDailyFile,
-    closeDailyFile,
-    formatSize,
+    handleDeleteFile,
   }
+}
+
+function filterTree(nodes: MemoryTreeNode[], query: string): MemoryTreeNode[] {
+  const result: MemoryTreeNode[] = []
+
+  for (const node of nodes) {
+    if (node.type === 'file') {
+      if (node.path.toLowerCase().includes(query)) result.push(node)
+      continue
+    }
+
+    const children = filterTree(node.children ?? [], query)
+    if (children.length > 0) result.push({ ...node, children })
+  }
+
+  return result
+}
+
+function countFiles(nodes: MemoryTreeNode[]): number {
+  return nodes.reduce((sum, node) => sum + (node.type === 'file' ? 1 : countFiles(node.children ?? [])), 0)
 }

@@ -10,6 +10,7 @@ import {
 import {
   parseContentBody,
   parseDateParam,
+  parseMemoryPathParam,
   parseFactIdParam,
   parseFactsQuery,
   parseProjectNameParam,
@@ -18,6 +19,10 @@ import {
 import type { MemoryModuleOptions } from './types.js'
 
 export interface MemoryController {
+  getFileTree: (req: AuthenticatedRequest, res: Response) => void
+  getFile: (req: AuthenticatedRequest, res: Response) => void
+  putFile: (req: AuthenticatedRequest, res: Response) => void
+  deleteFile: (req: AuthenticatedRequest, res: Response) => void
   getSoul: (req: AuthenticatedRequest, res: Response) => void
   putSoul: (req: AuthenticatedRequest, res: Response) => void
   getCoreMemory: (req: AuthenticatedRequest, res: Response) => void
@@ -57,6 +62,75 @@ export function createMemoryController(options: MemoryModuleOptions): MemoryCont
   const service = createMemoryService(options)
 
   return {
+    getFileTree(_req, res) {
+      try {
+        res.json({ files: service.listFileTree() })
+      } catch (err) {
+        res.status(500).json({ error: `Failed to list memory files: ${(err as Error).message}` })
+      }
+    },
+
+    getFile(req, res) {
+      const parsedPath = parseMemoryPathParam(req.query.path)
+      if (!parsedPath.ok) {
+        res.status(400).json({ error: parsedPath.error })
+        return
+      }
+
+      try {
+        const content = service.readFileByPath(parsedPath.value)
+        res.json({ path: parsedPath.value, content })
+      } catch (err) {
+        if (err instanceof MemoryFileNotFoundError) {
+          res.status(404).json({ error: err.message })
+          return
+        }
+
+        res.status(500).json({ error: `Failed to read memory file: ${(err as Error).message}` })
+      }
+    },
+
+    putFile(req, res) {
+      const parsedPath = parseMemoryPathParam(req.query.path)
+      if (!parsedPath.ok) {
+        res.status(400).json({ error: parsedPath.error })
+        return
+      }
+
+      const parsedContent = parseContentBody(req.body)
+      if (!parsedContent.ok) {
+        res.status(400).json({ error: parsedContent.error })
+        return
+      }
+
+      try {
+        service.writeFileByPath(parsedPath.value, parsedContent.value)
+        res.json({ message: `Memory file "${parsedPath.value}" updated`, path: parsedPath.value })
+      } catch (err) {
+        res.status(500).json({ error: `Failed to write memory file: ${(err as Error).message}` })
+      }
+    },
+
+    deleteFile(req, res) {
+      const parsedPath = parseMemoryPathParam(req.query.path)
+      if (!parsedPath.ok) {
+        res.status(400).json({ error: parsedPath.error })
+        return
+      }
+
+      try {
+        service.deleteFileByPath(parsedPath.value)
+        res.json({ message: `Memory file "${parsedPath.value}" deleted`, path: parsedPath.value })
+      } catch (err) {
+        if (err instanceof MemoryFileNotFoundError) {
+          res.status(404).json({ error: err.message })
+          return
+        }
+
+        res.status(500).json({ error: `Failed to delete memory file: ${(err as Error).message}` })
+      }
+    },
+
     getSoul(_req, res) {
       try {
         const content = service.readSoul()

@@ -30,6 +30,15 @@ export interface LegacyProjectFileSummary {
   modifiedAt: string
 }
 
+export interface MemoryTreeNode {
+  name: string
+  path: string
+  type: 'dir' | 'file'
+  size?: number
+  modifiedAt?: string
+  children?: MemoryTreeNode[]
+}
+
 export interface FactsQuery {
   query?: string
   userId?: number

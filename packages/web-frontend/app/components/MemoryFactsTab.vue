@@ -153,7 +153,7 @@
               variant="outline"
               size="sm"
               :disabled="currentPage <= 1 || loading"
-              :aria-label="$t('memory.dailyPrevPage')"
+              :aria-label="$t('memory.factsPrevPage')"
               @click="currentPage--"
             >
               <AppIcon name="arrowLeft" class="h-4 w-4" />
@@ -163,7 +163,7 @@
               variant="outline"
               size="sm"
               :disabled="currentPage >= totalPages || loading"
-              :aria-label="$t('memory.dailyNextPage')"
+              :aria-label="$t('memory.factsNextPage')"
               @click="currentPage++"
             >
               <AppIcon name="arrowRight" class="h-4 w-4" />

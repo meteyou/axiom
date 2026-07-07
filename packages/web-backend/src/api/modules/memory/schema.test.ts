@@ -4,6 +4,7 @@ import {
   parseDateParam,
   parseFactIdParam,
   parseFactsQuery,
+  parseMemoryPathParam,
   parseProjectNameParam,
   parseWikiFilenameParam,
 } from './schema.js'
@@ -40,6 +41,19 @@ describe('memory schema', () => {
       ok: false,
       error: 'Invalid project name. Use only alphanumeric characters, hyphens, and underscores.',
     })
+  })
+
+  it('validates memory file paths and rejects traversal', () => {
+    expect(parseMemoryPathParam('wiki/axiom.md')).toEqual({ ok: true, value: 'wiki/axiom.md' })
+    expect(parseMemoryPathParam('/SOUL.md')).toEqual({ ok: true, value: 'SOUL.md' })
+    expect(parseMemoryPathParam('daily//2026-01-01.md')).toEqual({ ok: true, value: 'daily/2026-01-01.md' })
+
+    expect(parseMemoryPathParam('../secrets.md').ok).toBe(false)
+    expect(parseMemoryPathParam('wiki/../../etc/passwd.md').ok).toBe(false)
+    expect(parseMemoryPathParam('wiki/.hidden.md').ok).toBe(false)
+    expect(parseMemoryPathParam('wiki/page.txt').ok).toBe(false)
+    expect(parseMemoryPathParam('').ok).toBe(false)
+    expect(parseMemoryPathParam(undefined).ok).toBe(false)
   })
 
   it('validates fact IDs and query pagination parameters', () => {

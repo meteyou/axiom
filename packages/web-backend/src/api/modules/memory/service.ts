@@ -32,6 +32,7 @@ import type {
   FactsQuery,
   LegacyProjectFileSummary,
   MemoryModuleOptions,
+  MemoryTreeNode,
   WikiFileSummary,
 } from './types.js'
 
@@ -85,6 +86,44 @@ class MemoryService {
 
   readDefaultAgentRules(): string {
     return getDefaultAgentsRulesContent()
+  }
+
+  // Path safety invariant: relPath must come from parseMemoryPathParam (no absolute paths, no '..').
+  listFileTree(): MemoryTreeNode[] {
+    const memoryDir = getMemoryDir()
+    ensureMemoryStructure(memoryDir)
+    return readTree(memoryDir, '')
+  }
+
+  readFileByPath(relPath: string): string {
+    const filePath = path.join(getMemoryDir(), relPath)
+
+    if (!fs.existsSync(filePath)) {
+      throw new MemoryFileNotFoundError(`Memory file "${relPath}" not found`)
+    }
+
+    return fs.readFileSync(filePath, 'utf-8')
+  }
+
+  writeFileByPath(relPath: string, content: string): void {
+    const memoryDir = getMemoryDir()
+    ensureMemoryStructure(memoryDir)
+
+    const filePath = path.join(memoryDir, relPath)
+    fs.mkdirSync(path.dirname(filePath), { recursive: true })
+    fs.writeFileSync(filePath, content, 'utf-8')
+    this.refreshAgentPrompt()
+  }
+
+  deleteFileByPath(relPath: string): void {
+    const filePath = path.join(getMemoryDir(), relPath)
+
+    if (!fs.existsSync(filePath)) {
+      throw new MemoryFileNotFoundError(`Memory file "${relPath}" not found`)
+    }
+
+    fs.unlinkSync(filePath)
+    this.refreshAgentPrompt()
   }
 
   listDailyFiles(): DailyFileSummary[] {
@@ -368,6 +407,37 @@ class MemoryService {
 
 export function createMemoryService(options: MemoryModuleOptions): MemoryService {
   return new MemoryService(options)
+}
+
+function readTree(dir: string, relPath: string): MemoryTreeNode[] {
+  const entries = fs.readdirSync(dir, { withFileTypes: true })
+    .filter((entry) => !entry.name.startsWith('.'))
+    .sort((a, b) => a.name.localeCompare(b.name))
+
+  const nodes: MemoryTreeNode[] = []
+
+  for (const entry of entries.filter((e) => e.isDirectory())) {
+    const childPath = relPath ? `${relPath}/${entry.name}` : entry.name
+    nodes.push({
+      name: entry.name,
+      path: childPath,
+      type: 'dir',
+      children: readTree(path.join(dir, entry.name), childPath),
+    })
+  }
+
+  for (const entry of entries.filter((e) => e.isFile() && e.name.endsWith('.md'))) {
+    const stats = fs.statSync(path.join(dir, entry.name))
+    nodes.push({
+      name: entry.name,
+      path: relPath ? `${relPath}/${entry.name}` : entry.name,
+      type: 'file',
+      size: stats.size,
+      modifiedAt: stats.mtime.toISOString(),
+    })
+  }
+
+  return nodes
 }
 
 function extractWikiTitle(content: string, fallbackName: string): string {

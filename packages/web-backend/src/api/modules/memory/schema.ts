@@ -61,6 +61,23 @@ export function parseWikiFilenameParam(rawFilename: unknown): ParseResult<{ name
   }
 }
 
+export function parseMemoryPathParam(rawPath: unknown): ParseResult<string> {
+  const raw = toSingleString(rawPath)
+  const segments = (raw ?? '').split('/').filter((segment) => segment.length > 0)
+
+  // Segments must not start with a dot — this blocks '.', '..' (path traversal) and hidden files.
+  const isValidSegment = (segment: string) => /^[\w][\w.-]*$/.test(segment)
+
+  if (segments.length === 0 || !segments.every(isValidSegment) || !segments[segments.length - 1].endsWith('.md')) {
+    return {
+      ok: false,
+      error: 'Invalid path. Use relative paths with alphanumeric segments ending in .md',
+    }
+  }
+
+  return { ok: true, value: segments.join('/') }
+}
+
 export function parseProjectNameParam(rawName: unknown): ParseResult<string> {
   const name = toSingleString(rawName)
   if (!name || !/^[\w-]+$/.test(name)) {
