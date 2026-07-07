@@ -163,7 +163,9 @@ describe('MemoryConsolidationScheduler', () => {
       expect(taskRuntime.start).toHaveBeenCalledOnce()
 
       const startedTask = taskRuntime.startedTasks[0]
-      expect(startedTask.task.name).toBe('Nightly Memory Consolidation')
+      // Manual runNow() always includes the compaction pass
+      expect(startedTask.task.name).toBe('Nightly Memory Consolidation + Compaction')
+      expect(startedTask.task.prompt).toContain('Weekly compaction run')
       expect(startedTask.task.triggerType).toBe('consolidation')
       expect(startedTask.task.triggerSourceId).toBe('memory-consolidation')
       expect(startedTask.task.sessionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)

@@ -196,6 +196,7 @@ The memory system has several tiers. Each piece of information should live in ex
 - General preferences that apply across all projects
 - Important facts that should persist across sessions
 - Corrections to previously stored information
+- Keep each entry a distilled rule of 1-2 lines. No incident narratives, dates, PR numbers, or step-by-step postmortems — move such detail to a wiki page and keep only the rule here.
 
 ## What to update in user profiles (users/*.md)
 
@@ -204,6 +205,7 @@ The memory system has several tiers. Each piece of information should live in ex
 - Personal details the user has shared (name, location, timezone)
 - Skills and expertise areas
 - Do NOT store language or timezone if they are already in the central settings
+- Profiles describe the CURRENT state, not history. Collapse resolved threads (finished applications, completed projects, fixed issues) to their end state; move chronological detail to a wiki page or drop it.
 
 ## What to update in wiki pages (wiki/*.md)
 
@@ -244,14 +246,16 @@ source files so their factual claims stay verifiable.
 - **No duplication**: Each fact lives in exactly one place. Move, don't copy.
 - **Merge & refine**: If similar information exists, update it rather than adding a duplicate.
 - **Remove outdated info**: If daily entries contradict existing memory, update or remove the old entry.
+- **Prune every run**: merge near-duplicate entries, collapse resolved threads to their end state, and delete lessons that are already covered by AGENTS.md or a wiki page.
+- **Size budgets**: MEMORY.md ≤ ~80 lines, each user profile ≤ ~60 lines. Both are injected into every system prompt. When a file exceeds its budget, compact it in the same run: move episodic detail to the wiki or delete it.
 - **Preserve structure**: Keep existing markdown structure. Add new sections if needed.
 - **Be concise**: Use bullet points and short descriptions. Core memory should be scannable.
 - **Daily files are read-only**: Never modify daily log files — they are append-only source material.
 - **Sources are read-only**: Never modify files under \`sources/\` — they are the immutable archival layer.
 
-## Wiki lint: content gaps and source coverage
+## Wiki lint: content gaps, source coverage, oversized pages
 
-During consolidation, also run these two checks on the wiki and report findings
+During consolidation, also run these checks on the wiki and report findings
 (append to \`/data/memory/wiki/log.md\` as a short lint section, do not auto-create pages; daily files are read-only):
 
 - **Content gaps** — surface topics the wiki implies but does not cover:
@@ -262,6 +266,7 @@ During consolidation, also run these two checks on the wiki and report findings
 - **Source coverage** — keep factual claims verifiable:
   - Wiki pages that make factual claims (dates, numbers, quotes, attributed statements) but have no \`## Sources\` / \`## Quellen\` section → flag them.
   - Files in \`sources/\` that are not cited by any wiki page → flag as orphaned source (either stale raw material or a candidate for ingest).
+- **Oversized pages** — flag wiki pages longer than ~500 lines as split candidates. Do NOT split during lint; splitting (hub page + subpages, see the wiki skill) is reserved for the weekly compaction run.
 `
 
 

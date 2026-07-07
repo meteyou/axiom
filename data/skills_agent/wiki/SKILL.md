@@ -1,6 +1,6 @@
 ---
 name: wiki
-version: 1.1.0
+version: 1.2.0
 description: Maintain and search the user's LLM wiki (knowledge base of Markdown pages). Use this skill for ingesting new sources, querying the wiki, and wiki maintenance/linting.
 ---
 
@@ -59,7 +59,7 @@ Migration rule: all existing pages should be migrated to this schema gradually w
 - `synthesis`: Answer to a query / cross-synthesis of multiple sources.
 - `comparison`: Direct comparison of two or more topics.
 - `redirect`: Alias/redirect to another page.
-- `index`: Wiki index (exactly one page: `index.md`).
+- `index`: Index/hub page: the wiki root `index.md` or the `index.md` of a topic folder.
 - `log`: Audit trail (exactly one page: `log.md`).
 
 ## Query-to-Wiki Promotion
@@ -92,6 +92,21 @@ Splitting process:
 3. Keep a short summary on the original page and link to the new page.
 4. Update `index.md`.
 5. Append a `create` or `update` entry to `log.md`.
+
+### Topic folders (hub + subpages)
+
+When a topic accumulates 2–3+ related pages, or one page keeps growing past the split threshold, convert it into a topic folder:
+
+- `wiki/<topic>/index.md` — hub page (`type: index`): short overview plus links to all subpages
+- `wiki/<topic>/<subtopic>.md` — the detailed subpages
+
+Rules:
+
+1. The hub is the single entry point: the root `wiki/index.md` links to `wiki/<topic>/index.md`, not to individual subpages.
+2. Subpages cross-link through the hub; the hub carries only summaries, never the full detail.
+3. When converting an existing flat page, leave a `type: redirect` page at the old filename pointing to the new hub so old links keep working.
+4. **Pages written to by other automation** (e.g. digest cronjobs appending inline comment blocks or tracking frontmatter): never move or rename the file. Keep it at its existing path as the hub — preserve frontmatter and automation-written blocks — and extract only the body sections into subpages.
+5. Log the conversion in `log.md`.
 
 ## Schema Maintenance
 
@@ -193,11 +208,13 @@ Goal: audit the wiki for quality — find contradictions, orphaned pages, missin
 
 **Steps:**
 
-1. **Read all pages:**
+1. **Triage before reading everything:**
    ```
+   read_file /data/memory/wiki/index.md
    list_files /data/memory/wiki/
-   read_file each page
+   shell: wc -l /data/memory/wiki/*.md /data/memory/wiki/*/*.md
    ```
+   For small wikis (< ~20 pages) read every page. For larger wikis read fully only the pages that are relevant to recent changes, oversized, or flagged by earlier lint reports — do not burn tokens re-reading the whole wiki every run.
 
 2. **Find contradictions:**
    - Same facts described differently across pages?
@@ -222,7 +239,12 @@ Goal: audit the wiki for quality — find contradictions, orphaned pages, missin
    - Wiki pages that make factual claims but have no `## Sources` section — flag them.
    - `sources/` files with no inbound wiki reference — either unused raw material or candidate for ingest.
 
-7. **Write a lint report:**
+7. **Check page size and staleness:**
+   - Pages longer than ~500 lines → flag as split candidates (see "Page Size and Splitting"; do not split during lint).
+   - Pages whose `updated` frontmatter is older than 6 months (or missing on a long-untouched page) → set `status: stale` so the next maintenance pass reviews them.
+   - Pages with `status: archived` → remove their entries from `index.md`.
+
+8. **Write a lint report:**
    - Append findings to `/data/memory/wiki/log.md` (never to daily files; daily logs are read-only source material):
      ```
      append to /data/memory/wiki/log.md
@@ -232,7 +254,7 @@ Goal: audit the wiki for quality — find contradictions, orphaned pages, missin
      - ...
      ```
 
-8. **Apply fixes:**
+9. **Apply fixes:**
    - Apply obvious corrections directly (edit_file)
    - Only when certain — no speculative changes
    - Gap suggestions are reported only, not auto-resolved
@@ -260,7 +282,13 @@ Goal: audit the wiki for quality — find contradictions, orphaned pages, missin
 ### Source coverage
 - `project-x.md` makes release-date claims but has no ## Sources section
 - `sources/articles/2026-04-17-foo.md` archived but not cited from any wiki page
+
+### Oversized / stale pages
+- `llm-ecosystem.md` — 780 lines, split candidate (topic folder?)
+- `old-tooling.md` — `updated` 8 months ago, marked `status: stale`
 ```
+
+**Log rotation:** `log.md` keeps only the ~10 most recent reports. When appending a new one, delete the oldest entries beyond that.
 
 ---
 
@@ -270,6 +298,12 @@ Goal: audit the wiki for quality — find contradictions, orphaned pages, missin
 - Hyphens instead of spaces: `api-design.md`
 - Descriptive and unambiguous: `axiom-deployment.md` rather than `deployment.md` when multiple projects exist
 - No special characters except `-` and `_`
+
+## Formatting conventions
+
+- Frontmatter uses only the fields from the specification above — do not invent fields; `type` is required
+- Exactly one `# Title` heading per page (the first line after the frontmatter); all sections use `##` and below
+- At most one consecutive blank line anywhere in the file
 
 ## Quality principles (after Karpathy)
 

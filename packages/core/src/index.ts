@@ -53,8 +53,7 @@ export {
 } from './memory.js'
 export { getUserProfileDir, ensureUserProfile, readUserProfile, ensureWikiDir, ensureProjectsDir, parseProjectAliases, listWikiPages, listProjectNotes } from './memory.js'
 export type { SkillPromptEntry } from './memory.js'
-export { consolidateMemory, readDailyFilesForConsolidation, buildConsolidationPrompt } from './memory-consolidation.js'
-export type { MemoryConsolidationOptions, ConsolidationResult } from './memory-consolidation.js'
+export type { ConsolidationResult } from './memory-consolidation.js'
 export { SessionManager, generateSessionId } from './session-manager.js'
 export type { SessionInfo, SessionManagerOptions, SessionType, CreateSessionOptions } from './session-manager.js'
 export {
