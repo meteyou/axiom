@@ -349,34 +349,30 @@ export const PROVIDER_TYPE_PRESETS: Record<ProviderType, ProviderTypePreset> = {
  * Keep this list in sync with the upstream provider's published catalog.
  */
 export const PROVIDER_TYPE_MODEL_OVERRIDES: Partial<Record<ProviderType, ProviderModelConfig[]>> = {
-  // Anthropic API (https://docs.claude.com) — models newer than the pinned
-  // pi-ai release. Remove an entry once pi-ai's generated catalog picks it up.
-  anthropic: [
-    // Introductory pricing ($2 in / $10 out per MTok) runs through Aug 31, 2026;
-    // standard pricing afterwards is $3 in / $15 out (cacheRead $0.30, cacheWrite $3.75).
-    // https://docs.claude.com/en/docs/about-claude/pricing#claude-sonnet-5-introductory-pricing
-    { id: 'claude-sonnet-5', name: 'Claude Sonnet 5', contextWindow: 1_000_000, maxTokens: 128_000, reasoning: true,
-      cost: { input: 2, output: 10, cacheRead: 0.20, cacheWrite: 2.50 } },
-  ],
   // Moonshot Platform API (https://platform.moonshot.ai)
-  // Confirmed via GET https://api.moonshot.ai/v1/models and official pricing docs.
+  // Confirmed current 2026-06-30 via official pricing docs + cross-provider
+  // listings (OpenRouter, TokenMix, getmaxim.ai). Pricing in USD per 1M tokens.
   kimi: [
     // Current K2 family
     // Note: K2 reasoning models only accept `temperature: 1` (the upstream API
     // returns "invalid temperature: only 1 is allowed for this model" otherwise).
-    { id: 'kimi-k2.6', name: 'Kimi K2.6', contextWindow: 262_144, maxTokens: 32_768, reasoning: true, fixedTemperature: 1,
+    { id: 'kimi-k2.7-code', name: 'Kimi K2.7 Code', contextWindow: 262_144, maxTokens: 262_144, reasoning: true, fixedTemperature: 1,
+      cost: { input: 0.95, output: 4.0, cacheRead: 0.19, cacheWrite: 0 } },
+    { id: 'kimi-k2.7-code-highspeed', name: 'Kimi K2.7 Code HighSpeed', contextWindow: 262_144, maxTokens: 262_144, reasoning: true, fixedTemperature: 1,
+      cost: { input: 1.9, output: 8.0, cacheRead: 0.38, cacheWrite: 0 } },
+    { id: 'kimi-k2.6', name: 'Kimi K2.6', contextWindow: 262_144, maxTokens: 262_144, reasoning: true, fixedTemperature: 1,
+      cost: { input: 0.95, output: 4.0, cacheRead: 0.16, cacheWrite: 0 } },
+    { id: 'kimi-k2.5', name: 'Kimi K2.5', contextWindow: 262_144, maxTokens: 262_144, reasoning: true, fixedTemperature: 1,
+      cost: { input: 0.6, output: 3.0, cacheRead: 0.1, cacheWrite: 0 } },
+    { id: 'kimi-k2-thinking', name: 'Kimi K2 Thinking', contextWindow: 262_144, maxTokens: 262_144, reasoning: true, fixedTemperature: 1,
       cost: { input: 0.6, output: 2.5, cacheRead: 0.15, cacheWrite: 0 } },
-    { id: 'kimi-k2.5', name: 'Kimi K2.5', contextWindow: 262_144, maxTokens: 32_768, reasoning: true, fixedTemperature: 1,
-      cost: { input: 0.6, output: 2.5, cacheRead: 0.15, cacheWrite: 0 } },
-    { id: 'kimi-k2-thinking', name: 'Kimi K2 Thinking', contextWindow: 262_144, maxTokens: 32_768, reasoning: true, fixedTemperature: 1,
-      cost: { input: 0.6, output: 2.5, cacheRead: 0.15, cacheWrite: 0 } },
-    { id: 'kimi-k2-thinking-turbo', name: 'Kimi K2 Thinking Turbo', contextWindow: 262_144, maxTokens: 32_768, reasoning: true, fixedTemperature: 1,
+    { id: 'kimi-k2-thinking-turbo', name: 'Kimi K2 Thinking Turbo', contextWindow: 262_144, maxTokens: 262_144, reasoning: true, fixedTemperature: 1,
+      cost: { input: 1.15, output: 8.0, cacheRead: 0.15, cacheWrite: 0 } },
+    { id: 'kimi-k2-turbo-preview', name: 'Kimi K2 Turbo (preview)', contextWindow: 262_144, maxTokens: 262_144, reasoning: false,
       cost: { input: 2.4, output: 10.0, cacheRead: 0.6, cacheWrite: 0 } },
-    { id: 'kimi-k2-turbo-preview', name: 'Kimi K2 Turbo (preview)', contextWindow: 262_144, maxTokens: 32_768, reasoning: false,
-      cost: { input: 2.4, output: 10.0, cacheRead: 0.6, cacheWrite: 0 } },
-    { id: 'kimi-k2-0905-preview', name: 'Kimi K2 0905 (preview)', contextWindow: 262_144, maxTokens: 32_768, reasoning: false,
+    { id: 'kimi-k2-0905-preview', name: 'Kimi K2 0905 (preview)', contextWindow: 262_144, maxTokens: 262_144, reasoning: false,
       cost: { input: 0.6, output: 2.5, cacheRead: 0.15, cacheWrite: 0 } },
-    { id: 'kimi-k2-0711-preview', name: 'Kimi K2 0711 (preview)', contextWindow: 131_072, maxTokens: 32_768, reasoning: false,
+    { id: 'kimi-k2-0711-preview', name: 'Kimi K2 0711 (preview)', contextWindow: 131_072, maxTokens: 16_384, reasoning: false,
       cost: { input: 0.6, output: 2.5, cacheRead: 0.15, cacheWrite: 0 } },
 
     // Convenience alias that always points at the latest stable
