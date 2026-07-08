@@ -143,8 +143,9 @@ export {
   queryToolCalls,
   getToolCallById,
   getDistinctToolNames,
+  getMemoryUsageStats,
 } from './token-logger.js'
-export type { TokenUsageRecord, ToolCallRecord, ToolCallQueryOptions, ToolCallQueryResult } from './token-logger.js'
+export type { TokenUsageRecord, ToolCallRecord, ToolCallQueryOptions, ToolCallQueryResult, MemoryFileReadStat, MemorySearchStat, MemoryUsageStats } from './token-logger.js'
 export { queryUsageStats, getUsageSummary } from './usage-stats.js'
 export type { UsageGroupBy, UsageStatsQueryOptions, UsageTotals, UsageStatsRow, UsageStatsResult, UsageSummary } from './usage-stats.js'
 export {

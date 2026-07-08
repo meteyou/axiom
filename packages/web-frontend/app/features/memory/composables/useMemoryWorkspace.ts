@@ -1,7 +1,7 @@
 import type { MemoryTreeNode } from '~/api/memory'
 import { useMemoryApi } from '~/api/memory'
 
-type MemoryTab = 'files' | 'facts'
+type MemoryTab = 'files' | 'facts' | 'stats'
 
 export function useMemoryWorkspace() {
   const memoryApi = useMemoryApi()

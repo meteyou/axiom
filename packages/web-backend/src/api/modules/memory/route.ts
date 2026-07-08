@@ -65,6 +65,7 @@ export function createMemoryRouter(options: MemoryRouterOptions): Router {
   router.put('/profile', controller.putProfile)
 
   router.get('/facts', controller.listFacts)
+  router.get('/usage-stats', controller.getUsageStats)
   router.put('/facts/:id', controller.putFact)
   router.delete('/facts/:id', controller.deleteFact)
 

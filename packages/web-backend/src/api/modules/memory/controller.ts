@@ -46,6 +46,7 @@ export interface MemoryController {
   getProfile: (req: AuthenticatedRequest, res: Response) => void
   putProfile: (req: AuthenticatedRequest, res: Response) => void
   listFacts: (req: AuthenticatedRequest, res: Response) => void
+  getUsageStats: (req: AuthenticatedRequest, res: Response) => void
   putFact: (req: AuthenticatedRequest, res: Response) => void
   deleteFact: (req: AuthenticatedRequest, res: Response) => void
   getConsolidationRules: (req: AuthenticatedRequest, res: Response) => void
@@ -475,6 +476,17 @@ export function createMemoryController(options: MemoryModuleOptions): MemoryCont
         }
 
         res.status(500).json({ error: `Failed to list facts: ${(err as Error).message}` })
+      }
+    },
+
+    getUsageStats(req, res) {
+      const rawDays = Number(req.query.days ?? 7)
+      const days = Number.isFinite(rawDays) && rawDays >= 1 ? Math.floor(rawDays) : 7
+
+      try {
+        res.json(service.getUsageStats(days))
+      } catch (err) {
+        res.status(500).json({ error: `Failed to load memory usage stats: ${(err as Error).message}` })
       }
     },
 

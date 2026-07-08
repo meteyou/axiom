@@ -25,6 +25,7 @@ import {
   listMemories,
   updateMemory,
   deleteMemory,
+  getMemoryUsageStats,
 } from '@axiom/core'
 import type { ConsolidationResult } from '@axiom/core'
 import type {
@@ -336,6 +337,10 @@ class MemoryService {
       limit: query.limit,
       offset: query.offset,
     })
+  }
+
+  getUsageStats(days: number) {
+    return getMemoryUsageStats(this.options.db, { memoryDir: getMemoryDir(), days })
   }
 
   updateFact(id: number, content: string): void {

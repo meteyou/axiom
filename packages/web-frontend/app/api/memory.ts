@@ -30,6 +30,25 @@ interface MemoryFactsResponse {
   total: number
 }
 
+export interface MemoryFileReadStat {
+  path: string
+  count: number
+  lastReadAt: string
+}
+
+export interface MemorySearchStat {
+  id: number
+  timestamp: string
+  query: string
+  resultCount: number
+  facts: { content: string; timestamp: string; source: string }[]
+}
+
+export interface MemoryUsageStats {
+  fileReads: MemoryFileReadStat[]
+  searches: MemorySearchStat[]
+}
+
 export function useMemoryApi() {
   const { apiFetch } = useApi()
 
@@ -94,6 +113,8 @@ export function useMemoryApi() {
     method: 'DELETE',
   })
 
+  const getUsageStats = (days: number) => apiFetch<MemoryUsageStats>(`/api/memory/usage-stats?days=${days}`)
+
   return {
     listFiles,
     getFile,
@@ -114,5 +135,6 @@ export function useMemoryApi() {
     listFacts,
     updateFact,
     deleteFact,
+    getUsageStats,
   }
 }

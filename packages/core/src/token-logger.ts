@@ -225,6 +225,83 @@ export function queryToolCalls(db: Database, options: ToolCallQueryOptions = {})
   }
 }
 
+export interface MemoryFileReadStat {
+  path: string
+  count: number
+  lastReadAt: string
+}
+
+export interface MemorySearchStat {
+  id: number
+  timestamp: string
+  query: string
+  resultCount: number
+  facts: { content: string; timestamp: string; source: string }[]
+}
+
+export interface MemoryUsageStats {
+  fileReads: MemoryFileReadStat[]
+  searches: MemorySearchStat[]
+}
+
+/**
+ * Aggregate memory usage from the tool_calls log: which files under the
+ * memory dir were read via read_file, and which search_memories calls ran.
+ */
+export function getMemoryUsageStats(db: Database, options: { memoryDir: string; days: number }): MemoryUsageStats {
+  const days = Math.min(Math.max(Math.floor(options.days), 1), 365)
+  const since = `-${days} days`
+  const prefix = options.memoryDir.endsWith('/') ? options.memoryDir : `${options.memoryDir}/`
+
+  const fileReads = (db.prepare(
+    `SELECT
+       json_extract(output, '$.details.path') AS path,
+       COUNT(*) AS count,
+       MAX(timestamp) AS lastReadAt
+     FROM tool_calls
+     WHERE tool_name = 'read_file'
+       AND status = 'success'
+       AND timestamp >= datetime('now', ?)
+       AND json_extract(output, '$.details.path') LIKE ?
+     GROUP BY path
+     ORDER BY count DESC, path ASC`
+  ).all(since, `${prefix}%`) as MemoryFileReadStat[]).map((row) => ({
+    ...row,
+    path: row.path.slice(prefix.length),
+  }))
+
+  const searchRows = db.prepare(
+    `SELECT id, timestamp, input, output
+     FROM tool_calls
+     WHERE tool_name = 'search_memories'
+       AND timestamp >= datetime('now', ?)
+     ORDER BY timestamp DESC
+     LIMIT 500`
+  ).all(since) as { id: number; timestamp: string; input: string; output: string }[]
+
+  const searches: MemorySearchStat[] = searchRows.map((row) => {
+    let query = ''
+    let resultCount = 0
+    let facts: MemorySearchStat['facts'] = []
+    try {
+      query = String((JSON.parse(row.input) as { query?: unknown }).query ?? '')
+    } catch { /* unparseable input, keep defaults */ }
+    try {
+      const details = (JSON.parse(row.output) as { details?: { count?: number; facts?: { content: string; timestamp: string; source: string }[] } }).details
+      resultCount = details?.count ?? 0
+      facts = (details?.facts ?? []).map((fact) => ({
+        content: fact.content,
+        timestamp: fact.timestamp,
+        source: fact.source,
+      }))
+    } catch { /* unparseable output, keep defaults */ }
+
+    return { id: row.id, timestamp: row.timestamp, query, resultCount, facts }
+  })
+
+  return { fileReads, searches }
+}
+
 /**
  * Get a single tool call by ID
  */

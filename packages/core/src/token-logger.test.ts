@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { initDatabase } from './database.js'
-import { logTokenUsage, logToolCall, getTokenUsage, getToolCalls, queryToolCalls, getToolCallById, getDistinctToolNames } from './token-logger.js'
+import { logTokenUsage, logToolCall, getTokenUsage, getToolCalls, queryToolCalls, getToolCallById, getDistinctToolNames, getMemoryUsageStats } from './token-logger.js'
 import type { Database } from './database.js'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -294,6 +294,50 @@ describe('token-logger', () => {
 
       const row = testDb.prepare('SELECT status FROM tool_calls WHERE id = ?').get(id) as { status: string }
       expect(row.status).toBe('success')
+    })
+  })
+
+  describe('getMemoryUsageStats', () => {
+    it('aggregates memory file reads and fact searches', () => {
+      const testDb = createDb()
+
+      const readOutput = (p: string) => JSON.stringify({ content: [], details: { path: p, size: 10 } })
+      logToolCall(testDb, { sessionId: 's1', toolName: 'read_file', input: '{"path":"MEMORY.md"}', output: readOutput('/data/memory/MEMORY.md'), durationMs: 5 })
+      logToolCall(testDb, { sessionId: 's1', toolName: 'read_file', input: '{"path":"/data/memory/MEMORY.md"}', output: readOutput('/data/memory/MEMORY.md'), durationMs: 5 })
+      logToolCall(testDb, { sessionId: 's1', toolName: 'read_file', input: '{"path":"wiki/foo.md"}', output: readOutput('/data/memory/wiki/foo.md'), durationMs: 5 })
+      // outside memory dir — must be ignored
+      logToolCall(testDb, { sessionId: 's1', toolName: 'read_file', input: '{"path":"/tmp/x"}', output: readOutput('/tmp/x'), durationMs: 5 })
+      // failed read — must be ignored
+      logToolCall(testDb, { sessionId: 's1', toolName: 'read_file', input: '{"path":"gone.md"}', output: '{"details":{"error":true}}', durationMs: 5, status: 'error' })
+
+      logToolCall(testDb, {
+        sessionId: 's1',
+        toolName: 'search_memories',
+        input: JSON.stringify({ query: 'postgres port' }),
+        output: JSON.stringify({ content: [], details: { count: 1, query: 'postgres port', facts: [{ content: 'Port is 5433', timestamp: '2026-07-01', source: 'session', sessionId: 'x' }] } }),
+        durationMs: 5,
+      })
+      logToolCall(testDb, {
+        sessionId: 's1',
+        toolName: 'search_memories',
+        input: JSON.stringify({ query: 'nothing' }),
+        output: JSON.stringify({ content: [], details: { count: 0, query: 'nothing' } }),
+        durationMs: 5,
+      })
+
+      const stats = getMemoryUsageStats(testDb, { memoryDir: '/data/memory', days: 7 })
+
+      expect(stats.fileReads).toEqual([
+        { path: 'MEMORY.md', count: 2, lastReadAt: expect.any(String) },
+        { path: 'wiki/foo.md', count: 1, lastReadAt: expect.any(String) },
+      ])
+
+      expect(stats.searches).toHaveLength(2)
+      const byQuery = Object.fromEntries(stats.searches.map((s) => [s.query, s]))
+      expect(byQuery['postgres port'].resultCount).toBe(1)
+      expect(byQuery['postgres port'].facts).toEqual([{ content: 'Port is 5433', timestamp: '2026-07-01', source: 'session' }])
+      expect(byQuery['nothing'].resultCount).toBe(0)
+      expect(byQuery['nothing'].facts).toEqual([])
     })
   })
 

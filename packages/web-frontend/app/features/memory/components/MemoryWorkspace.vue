@@ -26,6 +26,7 @@
         <TabsList class="mb-4 shrink-0 self-start">
           <TabsTrigger value="files">{{ $t('memory.filesTab') }}</TabsTrigger>
           <TabsTrigger value="facts">{{ $t('memory.factsTab') }}</TabsTrigger>
+          <TabsTrigger value="stats">{{ $t('memory.statsTab') }}</TabsTrigger>
         </TabsList>
 
         <!-- Files tab -->
@@ -151,6 +152,11 @@
         <!-- Facts tab -->
         <TabsContent value="facts" class="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden">
           <MemoryFactsTab />
+        </TabsContent>
+
+        <!-- Stats tab -->
+        <TabsContent value="stats" class="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden">
+          <MemoryStatsTab />
         </TabsContent>
       </Tabs>
     </div>
