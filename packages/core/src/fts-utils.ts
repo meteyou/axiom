@@ -8,10 +8,15 @@
 /**
  * Normalize plain-text queries into valid FTS5 syntax by stripping
  * non-word characters and preserving only letters, numbers, and underscores.
+ *
+ * With `join: 'OR'`, tokens are OR-joined: FTS5's implicit AND empties results
+ * on short atomic rows whenever a single query token is absent; bm25 ranking +
+ * LIMIT still surface rows matching more tokens first.
  */
-export function normalizePlainFtsQuery(query: string): string {
-  const sanitized = query.replace(/[^\p{L}\p{N}_]+/gu, ' ').trim()
-  return sanitized || '""'
+export function normalizePlainFtsQuery(query: string, join: 'AND' | 'OR' = 'AND'): string {
+  const tokens = query.replace(/[^\p{L}\p{N}_]+/gu, ' ').trim().split(/\s+/).filter(Boolean)
+  if (tokens.length === 0) return '""'
+  return tokens.map(token => `"${token}"`).join(join === 'OR' ? ' OR ' : ' ')
 }
 
 /**
@@ -21,7 +26,7 @@ export function normalizePlainFtsQuery(query: string): string {
  * Plain queries are sanitized; queries that already use FTS5 syntax are
  * passed through as-is.
  */
-export function normalizeFtsQuery(query: string): string {
+export function normalizeFtsQuery(query: string, join: 'AND' | 'OR' = 'AND'): string {
   const trimmed = query.trim()
   if (trimmed.length === 0) return '""'
 
@@ -35,5 +40,5 @@ export function normalizeFtsQuery(query: string): string {
     return trimmed
   }
 
-  return normalizePlainFtsQuery(trimmed)
+  return normalizePlainFtsQuery(trimmed, join)
 }

@@ -16,8 +16,10 @@ export function createSearchMemoriesTool(options: SearchMemoriesToolOptions): Ag
       'Search the agent\'s fact memory for previously learned information. ' +
       'Returns atomic facts extracted from past conversations. ' +
       'Use this when the user asks about past decisions, preferences, or details discussed in earlier sessions. ' +
-      'Supports FTS5 query syntax: word matching, prefix queries (e.g. "config*"), ' +
-      'phrase matching (e.g. "postgres port"), and boolean operators (e.g. "docker OR container").',
+      'Plain queries match facts containing ANY of the keywords, ranked by relevance — ' +
+      'so provide several related keywords (e.g. docker deployment server) rather than a full sentence. ' +
+      'For strict matching, FTS5 syntax is supported: prefix queries (e.g. config*), ' +
+      'quoted phrases (e.g. "postgres port"), and boolean operators (e.g. docker AND compose).',
     parameters: Type.Object({
       query: Type.String({
         description: 'Search query for finding relevant facts from memory.',

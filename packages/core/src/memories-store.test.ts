@@ -51,6 +51,54 @@ describe('memories-store', () => {
     expect(results[1].content).toBe('postgres quickstart guide')
   })
 
+  it('returns partial matches for multi-keyword plain queries', () => {
+    createMemory(db, 1, 'session-a', 'User prefers dark mode', 'session')
+
+    const results = searchMemories(db, 'dark mode terminal settings', { userId: 1 })
+
+    expect(results).toHaveLength(1)
+    expect(results[0].content).toBe('User prefers dark mode')
+  })
+
+  it('ranks facts matching more query tokens above facts matching fewer', () => {
+    createMemory(db, 1, 'session-a', 'Deploys with docker on the server', 'session')
+    createMemory(db, 1, 'session-b', 'Runs docker compose on the staging server', 'session')
+
+    const results = searchMemories(db, 'docker compose staging', { userId: 1 })
+
+    expect(results).toHaveLength(2)
+    expect(results[0].content).toBe('Runs docker compose on the staging server')
+  })
+
+  it('keeps explicit boolean operators as strict filters', () => {
+    createMemory(db, 1, 'session-a', 'postgres port is 5432', 'session')
+    createMemory(db, 1, 'session-b', 'postgres backup schedule', 'session')
+
+    const results = searchMemories(db, 'postgres AND port', { userId: 1 })
+
+    expect(results).toHaveLength(1)
+    expect(results[0].content).toBe('postgres port is 5432')
+  })
+
+  it('keeps quoted phrase queries strict', () => {
+    createMemory(db, 1, 'session-a', 'prefers dark mode', 'session')
+    createMemory(db, 1, 'session-b', 'dark roast coffee mode', 'session')
+
+    const results = searchMemories(db, '"dark mode"', { userId: 1 })
+
+    expect(results).toHaveLength(1)
+    expect(results[0].content).toBe('prefers dark mode')
+  })
+
+  it('keeps wildcard queries unchanged', () => {
+    createMemory(db, 1, 'session-a', 'postgresql tuning notes', 'session')
+
+    const results = searchMemories(db, 'postgre*', { userId: 1 })
+
+    expect(results).toHaveLength(1)
+    expect(results[0].content).toBe('postgresql tuning notes')
+  })
+
   it('respects user scoping in searchMemories', () => {
     createMemory(db, 1, 'session-a', 'postgres port is 5432', 'session')
     createMemory(db, 2, 'session-b', 'postgres port is 6432', 'session')

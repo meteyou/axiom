@@ -121,7 +121,7 @@ export function searchMemories(db: Database, query: string, options: SearchMemor
   }
 
   const limit = Math.max(1, Math.floor(options.limit ?? 10))
-  const ftsQuery = normalizeFtsQuery(trimmedQuery)
+  const ftsQuery = normalizeFtsQuery(trimmedQuery, 'OR')
   const { conditions, params } = buildMemoryFilters(options, 'm')
   const whereClause = conditions.length > 0 ? ` AND ${conditions.join(' AND ')}` : ''
 

@@ -55,7 +55,9 @@ describe('search_memories tool', () => {
     expect(text).toContain('[extracted_fact]')
     expect(text).toContain('Session: session-a')
     expect(text).toContain('Postgres runs on port 5432')
-    expect(details.count).toBe(1)
+    // OR semantics: 'port' also matches the Redis fact, but Postgres ranks first
+    expect(details.count).toBe(2)
+    expect(text.indexOf('Postgres')).toBeLessThan(text.indexOf('Redis'))
     expect(details.userId).toBe(1)
   })
 
