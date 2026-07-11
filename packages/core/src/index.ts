@@ -128,6 +128,8 @@ export {
   getQuotaAdapter,
   isQuotaProvider,
 } from './quota-registry.js'
+export { createProviderQuotaTool } from './quota-tool.js'
+export type { QuotaServiceLike, ProviderQuotaToolOptions } from './quota-tool.js'
 export {
   parseRetryAfterMs,
   normalizeUtilization,

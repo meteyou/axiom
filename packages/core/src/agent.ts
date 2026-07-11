@@ -33,6 +33,7 @@ export interface AgentCoreOptions {
   baseInstructions?: string
   providerConfig?: ProviderConfig // For OAuth token refresh
   providerManager?: ProviderManager // For fallback retry support
+  quotaService?: import('./quota-tool.js').QuotaServiceLike
   /**
    * Called when a session ends (timeout, /new command, or provider change)
    * with the summary text. `options.background` is true when the session
@@ -90,6 +91,7 @@ export class AgentCore {
       providerConfig: options.providerConfig,
       providerManager: options.providerManager,
       getCurrentToolUserId: () => this.currentToolUserId,
+      quotaService: options.quotaService,
     })
 
     // Initialize message queue for sequential processing
