@@ -291,6 +291,42 @@ function parseNumericUserId(userId: string): number | null {
   return Number.isSafeInteger(numericUserId) ? numericUserId : null
 }
 
+/**
+ * Resolve the provider (and its model, pinned as the sole `enabledModels`
+ * entry) that background tasks run on when no explicit provider/model is given
+ * at task creation.
+ *
+ * An explicitly configured task provider is only honored when it can actually
+ * run a model. Providers may be created without selecting a model upfront, so a
+ * configured provider with no enabled models would start tasks with an empty
+ * model; in that case we fall back to the active provider/model selection.
+ */
+export function resolveTaskDefaultProvider(deps: {
+  taskDefaultProvider: string
+  resolveProvider: (providerId: string) => ProviderConfig | null
+  getActiveProvider: () => ProviderConfig | null
+  getActiveModelId: () => string | null
+}): ProviderConfig | null {
+  const { taskDefaultProvider, resolveProvider, getActiveProvider, getActiveModelId } = deps
+
+  if (taskDefaultProvider) {
+    const { providerId, modelId } = parseProviderModelId(taskDefaultProvider)
+    if (providerId) {
+      const resolved = resolveProvider(providerId)
+      if (resolved && modelId) return { ...resolved, enabledModels: [modelId] }
+      if (resolved && getProviderDefaultModel(resolved)) return resolved
+    }
+  }
+
+  // "Active provider (default)": follow the live chat selection for both
+  // provider and model so tasks pick the user's active model instead of the
+  // provider's first enabled model.
+  const active = getActiveProvider()
+  if (!active) return null
+  const activeModelId = getActiveModelId()
+  return activeModelId ? { ...active, enabledModels: [activeModelId] } : active
+}
+
 export async function createRuntimeComposition(options: RuntimeCompositionOptions = {}): Promise<RuntimeComposition> {
   const logger = options.logger ?? console
 
@@ -326,30 +362,12 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
   }
 
   function getTaskDefaultProvider(): ProviderConfig {
-    const currentTaskSettings = getCurrentTaskSettings()
-    if (currentTaskSettings.defaultProvider) {
-      const { providerId, modelId } = parseProviderModelId(currentTaskSettings.defaultProvider)
-      if (providerId) {
-        let resolved = resolveProvider(providerId)
-        if (resolved && modelId) {
-          resolved = { ...resolved, enabledModels: [modelId] }
-        }
-        if (resolved) return resolved
-      }
-    }
-
-    // "Active provider (default)": follow the live chat selection for BOTH
-    // provider and model. Downstream task creation derives the model via
-    // getProviderDefaultModel() (= enabledModels[0]), so we narrow the cloned
-    // provider to the active model. Without this, tasks would pick the
-    // provider's first enabled model instead of the user's active model — and
-    // if enabledModels is empty they'd run with no model at all and fail.
-    const active = getActiveProvider()!
-    const activeModelId = getActiveModelId()
-    if (activeModelId) {
-      return { ...active, enabledModels: [activeModelId] }
-    }
-    return active
+    return resolveTaskDefaultProvider({
+      taskDefaultProvider: getCurrentTaskSettings().defaultProvider,
+      resolveProvider,
+      getActiveProvider,
+      getActiveModelId,
+    })!
   }
 
   const chatEventBus = new ChatEventBus()
