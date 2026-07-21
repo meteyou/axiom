@@ -226,6 +226,62 @@ describe('database', () => {
     execSpy.mockRestore()
   })
 
+  it('adds agent_id columns for multi-persona scoping on a fresh database', () => {
+    const db = initDatabase(tmpDbPath())
+
+    for (const table of ['sessions', 'memories', 'chat_messages']) {
+      const col = (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string, notnull: number, dflt_value: string | null }[])
+        .find(c => c.name === 'agent_id')
+      expect(col, `${table}.agent_id missing`).toBeDefined()
+      expect(col!.notnull, `${table}.agent_id should be NOT NULL`).toBe(1)
+      expect(col!.dflt_value).toBe("'main'")
+    }
+
+    const taskCol = (db.prepare('PRAGMA table_info(tasks)').all() as { name: string, notnull: number }[])
+      .find(c => c.name === 'agent_id')
+    expect(taskCol, 'tasks.agent_id missing').toBeDefined()
+    expect(taskCol!.notnull, 'tasks.agent_id must stay nullable').toBe(0)
+
+    db.close()
+  })
+
+  it('backfills existing rows to the main agent and defaults new rows to main', () => {
+    const dbPath = tmpDbPath()
+    createLegacyDatabase(dbPath)
+
+    const db = initDatabase(dbPath)
+
+    const migratedSession = db.prepare('SELECT agent_id FROM sessions').get() as { agent_id: string }
+    expect(migratedSession.agent_id).toBe('main')
+    const migratedMessages = db.prepare('SELECT DISTINCT agent_id FROM chat_messages').all() as { agent_id: string }[]
+    expect(migratedMessages).toEqual([{ agent_id: 'main' }])
+
+    db.prepare('INSERT INTO sessions (id, source) VALUES (?, ?)').run('fresh-agent-session', 'web')
+    const fresh = db.prepare('SELECT agent_id FROM sessions WHERE id = ?').get('fresh-agent-session') as { agent_id: string }
+    expect(fresh.agent_id).toBe('main')
+
+    db.close()
+  })
+
+  it('is idempotent across repeated initialization and never re-adds agent_id', () => {
+    const dbPath = tmpDbPath()
+
+    let db = initDatabase(dbPath)
+    db.prepare('INSERT INTO tasks (id, name, prompt, status, trigger_type) VALUES (?, ?, ?, ?, ?)')
+      .run('task-1', 'n', 'p', 'running', 'user')
+    const beforeAgentId = db.prepare('SELECT agent_id FROM tasks WHERE id = ?').get('task-1') as { agent_id: string | null }
+    expect(beforeAgentId.agent_id).toBeNull()
+    db.close()
+
+    db = initDatabase(dbPath)
+    const agentIdColumns = (db.prepare('PRAGMA table_info(tasks)').all() as { name: string }[])
+      .filter(c => c.name === 'agent_id')
+    expect(agentIdColumns).toHaveLength(1)
+    const afterAgentId = db.prepare('SELECT agent_id FROM tasks WHERE id = ?').get('task-1') as { agent_id: string | null }
+    expect(afterAgentId.agent_id).toBeNull()
+    db.close()
+  })
+
   it('backfills session token counters from existing token_usage rows', () => {
     const dbPath = tmpDbPath()
     const legacyDb = new BetterSqlite3(dbPath)

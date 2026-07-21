@@ -36,6 +36,7 @@ export type {
   UploadsSettingsContract,
   SttRewriteSettingsContract,
   SttSettingsContract,
+  MultiPersonaSettingsContract,
   SettingsContract,
   SettingsUpdateContract,
   SettingsStorageContract,

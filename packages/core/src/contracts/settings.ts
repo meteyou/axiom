@@ -164,6 +164,20 @@ export interface TelegramSettingsContract {
   sendVoiceReply: boolean
 }
 
+/**
+ * Multi-persona / multi-bot support (issue #32).
+ *
+ * When `enabled` is `false` (the default) the application behaves exactly as a
+ * single-agent install: the per-agent `/data/agents/<id>/` layout is bypassed,
+ * all state stays under the implicit `'main'` agent, and no persona-scoped read
+ * paths are taken. This flag is the opt-in switch for the additive multi-persona
+ * feature; toggling it never triggers schema migrations (the `agent_id` columns
+ * exist unconditionally).
+ */
+export interface MultiPersonaSettingsContract {
+  enabled: boolean
+}
+
 export interface SettingsContract {
   sessionTimeoutMinutes: number
   sessionSummaryProviderId: string
@@ -184,6 +198,7 @@ export interface SettingsContract {
   tasks: TasksSettingsContract
   tts: TtsSettingsContract
   stt: SttSettingsContract
+  multiPersona: MultiPersonaSettingsContract
 }
 
 export type SettingsUpdateContract = DeepPartial<SettingsContract>
@@ -203,6 +218,7 @@ export interface SettingsStorageContract {
   tasks?: Partial<TasksSettingsContract>
   tts?: Partial<TtsSettingsContract>
   stt?: Partial<SttSettingsContract>
+  multiPersona?: Partial<MultiPersonaSettingsContract>
 }
 
 export interface TelegramSettingsStorageContract {
@@ -319,6 +335,9 @@ export const DEFAULT_SETTINGS_CONTRACT: SettingsContract = {
       enabled: false,
       providerId: '',
     },
+  },
+  multiPersona: {
+    enabled: false,
   },
 }
 
@@ -483,6 +502,9 @@ export function normalizeSettingsContract(input: DeepPartial<SettingsContract> |
         enabled: source.stt?.rewrite?.enabled ?? DEFAULT_SETTINGS_CONTRACT.stt.rewrite.enabled,
         providerId: source.stt?.rewrite?.providerId ?? DEFAULT_SETTINGS_CONTRACT.stt.rewrite.providerId,
       },
+    },
+    multiPersona: {
+      enabled: source.multiPersona?.enabled ?? DEFAULT_SETTINGS_CONTRACT.multiPersona.enabled,
     },
   }
 }
