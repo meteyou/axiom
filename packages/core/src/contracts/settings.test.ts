@@ -69,6 +69,22 @@ describe('settings contracts', () => {
     })
   })
 
+  describe('multi-persona toggle', () => {
+    it('defaults multiPersona.enabled to false', () => {
+      expect(DEFAULT_SETTINGS_CONTRACT.multiPersona.enabled).toBe(false)
+    })
+
+    it('defaults to disabled when the section is absent', () => {
+      const normalized = normalizeSettingsContract({ language: 'de' })
+      expect(normalized.multiPersona.enabled).toBe(false)
+    })
+
+    it('preserves an explicit enabled flag', () => {
+      const normalized = normalizeSettingsContract({ multiPersona: { enabled: true } })
+      expect(normalized.multiPersona.enabled).toBe(true)
+    })
+  })
+
   describe('thinking level', () => {
     it('defaults both thinking levels to "off"', () => {
       expect(DEFAULT_SETTINGS_CONTRACT.thinkingLevel).toBe('off')

@@ -586,6 +586,8 @@ export function initDatabase(dbPath?: string): Database {
     CREATE INDEX IF NOT EXISTS idx_sessions_parent ON sessions(parent_session_id);
   `)
 
+  addMultiPersonaAgentIdColumns(db)
+
   // Migration (PRD #11 Task 2): Legacy prefix-based session IDs -> UUIDs + type backfill
   // + orphan recovery. Idempotent: only acts on rows whose session_id is not already
   // in UUID form. Wrapped in a single transaction for atomicity.
@@ -606,6 +608,35 @@ export function initDatabase(dbPath?: string): Database {
   }
 
   return db
+}
+
+/**
+ * Multi-persona / multi-bot scaffolding (issue #32).
+ *
+ * Adds an `agent_id` column to every table that holds per-agent state. Runs
+ * unconditionally, independent of the `multiPersona.enabled` setting: gating the
+ * DDL behind the runtime flag would require an ALTER TABLE the moment a user
+ * flips the flag on, which is fragile for a live SQLite database. Keeping the
+ * column always present makes flipping the flag a pure code concern and makes a
+ * rollback a code-only revert (the inert column can stay).
+ *
+ * The scoped tables backfill existing rows to 'main' via the column default —
+ * exactly the agent id the single-agent read paths assume. `tasks.agent_id` is
+ * nullable because tasks predate personas and have no implicit owner.
+ */
+function addMultiPersonaAgentIdColumns(db: Database): void {
+  const scopedTables = ['sessions', 'memories', 'chat_messages'] as const
+  for (const table of scopedTables) {
+    const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]
+    if (!cols.find(c => c.name === 'agent_id')) {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN agent_id TEXT NOT NULL DEFAULT 'main'`)
+    }
+  }
+
+  const taskCols = db.prepare('PRAGMA table_info(tasks)').all() as { name: string }[]
+  if (!taskCols.find(c => c.name === 'agent_id')) {
+    db.exec('ALTER TABLE tasks ADD COLUMN agent_id TEXT DEFAULT NULL')
+  }
 }
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

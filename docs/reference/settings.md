@@ -51,6 +51,7 @@ The on-disk shape is a **superset** of [`SettingsContract`](https://github.com/)
 | `tasks`                            | object                                                            | see below      | nested                                  | Task & cronjob defaults.                                                                                          |
 | `tts`                              | object                                                            | see below      | nested                                  | Voice output config.                                                                                              |
 | `stt`                              | object                                                            | see below      | nested                                  | Voice input config.                                                                                               |
+| `multiPersona`                     | object                                                            | see below      | nested                                  | Multi-persona / multi-bot support (opt-in, default off).                                                          |
 | `tokenPriceTable`                  | `Record<string, { input: number; output: number }>`               | seed prices    | not validated by API                    | Per-model USD/1M-token costs used by [Token Usage](../web-ui/token-usage). Merged on top of `DEFAULT_PRICE_TABLE`. |
 | `builtinTools`                     | object                                                            | see below      | not validated by API                    | Enable/disable built-in `web_search` and `web_fetch` tools, choose the search provider.                           |
 | `braveSearchApiKey`                | `string`                                                          | `""`           | not validated by API                    | **Legacy** — read at boot, migrated into `builtinTools.webSearch.braveSearchApiKey` if present.                   |
@@ -186,6 +187,14 @@ A flat `tasks.statusUpdateIntervalMinutes` may exist on disk from older installs
 | `stt.rewrite.enabled`        | `boolean`                                                        | `false`          | bool                                |
 | `stt.rewrite.providerId`     | `string` (`provider::model` composite)                           | `""`             | string                              |
 
+### `multiPersona`
+
+Opt-in switch for multi-persona / multi-bot support ([issue #32](https://github.com/meteyou/axiom/issues/32)). Additive and **off by default** — while disabled the application behaves exactly as a single-agent install (all state stays under the implicit `main` agent, and the per-agent `/data/agents/<id>/` layout is bypassed). The supporting `agent_id` columns are created unconditionally by the schema migration, so toggling this flag never triggers a DDL change.
+
+| Key                     | Type      | Default | Validation |
+|-------------------------|-----------|---------|------------|
+| `multiPersona.enabled`  | `boolean` | `false` | bool       |
+
 ### `tokenPriceTable`
 
 ```json
@@ -296,7 +305,7 @@ This is the literal file written by `ensureConfigTemplates()`:
 }
 ```
 
-Note: `tts`, `stt`, `healthMonitor`, and `healthMonitorIntervalMinutes` are **not** in the template — they are added the first time the user saves the relevant Settings panel. Until then, the runtime falls back to the defaults documented above (and surfaced by `mapSettingsResponse`).
+Note: `tts`, `stt`, `multiPersona`, `healthMonitor`, and `healthMonitorIntervalMinutes` are **not** in the template — they are added the first time the user saves the relevant Settings panel (or, for `multiPersona`, edited into `settings.json` directly). Until then, the runtime falls back to the defaults documented above (and surfaced by `mapSettingsResponse`).
 
 ---
 
