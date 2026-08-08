@@ -153,6 +153,17 @@ const HTML_ENTITIES: Record<string, string> = {
   nbsp: ' ',
 }
 
+export function pickTrashFolder(
+  folders: Array<{ path: string; specialUse?: string | undefined }>,
+  currentFolder: string,
+): string | null {
+  const trash =
+    folders.find(f => f.specialUse === '\\Trash') ??
+    folders.find(f => /^(trash|papierkorb|deleted items|deleted messages)$/i.test(f.path))
+  if (!trash || trash.path === currentFolder) return null
+  return trash.path
+}
+
 export function decodeHtmlEntities(value: string): string {
   return value
     .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => String.fromCodePoint(Number.parseInt(hex, 16)))
@@ -480,7 +491,9 @@ export function createEmailClient(): EmailClient {
     async deleteMessages(account, folder, uids) {
       if (uids.length === 0) return 0
       return withMailbox(account, folder, async client => {
-        await client.messageDelete(uids, { uid: true })
+        const trash = pickTrashFolder(await client.list(), folder)
+        if (trash) await client.messageMove(uids, trash, { uid: true })
+        else await client.messageDelete(uids, { uid: true })
         return uids.length
       })
     },
