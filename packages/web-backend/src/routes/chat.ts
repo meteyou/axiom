@@ -4,9 +4,12 @@ import { saveUpload, serializeUploadsMetadata } from '@axiom/core'
 import { jwtMiddleware } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
 import { uploadMiddleware } from '../uploads.js'
+import type { ChatActionRegistry } from '../chat-actions.js'
 
 export interface ChatRouterOptions {
   db: Database
+  /** Backs the interactive action buttons rendered inside chat messages. */
+  chatActions?: ChatActionRegistry | null
   /** Resolves the live AgentCore (and via it, SessionManager). May return null
    * if the agent isn't available yet — in which case the REST upload endpoint
    * cannot create a tracked session and will return an error. */
@@ -124,6 +127,52 @@ export function createChatRouter(options: ChatRouterOptions): Router {
         totalPages: Math.ceil(total / limit),
       },
     })
+  })
+
+  /**
+   * POST /api/chat/actions/:messageId
+   * Body: { actionId }
+   * Answers a button of an interactive chat message. The registered handler
+   * owns the decision semantics (including first-action-wins), so a stale
+   * click just loses there and gets the handler's message back.
+   */
+  router.post('/actions/:messageId', async (req: AuthenticatedRequest, res) => {
+    const registry = options.chatActions
+    if (!registry) {
+      res.status(503).json({ error: 'Chat actions are not available' })
+      return
+    }
+
+    const actionId = typeof req.body?.actionId === 'string' ? req.body.actionId.trim() : ''
+    if (!actionId) {
+      res.status(400).json({ error: 'actionId is required' })
+      return
+    }
+
+    const user = req.user!
+
+    try {
+      const result = await registry.invoke(String(req.params.messageId), actionId, {
+        userId: user.userId,
+        username: user.username,
+      })
+
+      if (result.status === 'not_found') {
+        res.status(404).json({ error: 'This action is no longer available.' })
+        return
+      }
+
+      if (result.status === 'ok') {
+        res.json({ status: result.status, resolution: result.resolution })
+        return
+      }
+
+      // `error` mirrors the resolution so generic API clients surface the
+      // reason (e.g. "already decided") instead of a bare status code.
+      res.status(409).json({ status: result.status, resolution: result.resolution, error: result.resolution })
+    } catch (err) {
+      res.status(500).json({ error: `Failed to run chat action: ${(err as Error).message}` })
+    }
   })
 
   /**
