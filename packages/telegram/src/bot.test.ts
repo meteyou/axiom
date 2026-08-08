@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import type { AgentCore, ResponseChunk, Database } from '@axiom/core'
+import type { AgentCore, ResponseChunk, Database, EmailSendLogEntry } from '@axiom/core'
 
 // Mock grammy before importing the module under test
 vi.mock('grammy', () => {
@@ -18,6 +18,7 @@ vi.mock('grammy', () => {
       username: 'test_bot',
     }),
     sendMessage: vi.fn().mockResolvedValue({ message_id: 1 }),
+    editMessageText: vi.fn().mockResolvedValue(true),
     deleteWebhook: vi.fn().mockResolvedValue(true),
     setMyCommands: vi.fn().mockResolvedValue(true),
   }
@@ -1380,5 +1381,205 @@ describe('createTelegramBot', () => {
 
     const result = createTelegramBot(agentCore)
     expect(result).toBeNull()
+  })
+})
+
+describe('email approval channel', () => {
+  let agentCore: AgentCore
+
+  const config: TelegramConfig = {
+    enabled: true,
+    botToken: 'test-token-123',
+    adminUserIds: [],
+    pollingMode: true,
+    webhookUrl: '',
+    batchingDelayMs: 2500,
+  }
+
+  function makeEntry(overrides: Partial<EmailSendLogEntry> = {}): EmailSendLogEntry {
+    return {
+      id: 'entry-1',
+      accountId: 'acc-1',
+      accountName: 'Work',
+      status: 'pending',
+      to: ['stranger@partner.org'],
+      cc: [],
+      bcc: [],
+      subject: 'Quarterly numbers',
+      bodyText: 'All good.',
+      bodyHtml: null,
+      attachments: [{ filename: 'report.pdf', size: 2048 }],
+      inReplyTo: null,
+      references: [],
+      reason: 'Recipient outside the allowlist',
+      errorMessage: null,
+      messageId: null,
+      sessionId: null,
+      decidedBy: null,
+      decidedAt: null,
+      sentAt: null,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      ...overrides,
+    }
+  }
+
+  function makeDb(approvedChatIds: string[] = ['12345']): Database {
+    return {
+      prepare: (sql: string) => ({
+        run: () => ({ changes: 1, lastInsertRowid: 1 }),
+        get: () => (sql.includes('telegram_users')
+          ? {
+              id: 1,
+              telegram_id: '12345',
+              telegram_username: 'johndoe',
+              telegram_display_name: 'John Doe',
+              status: 'approved',
+              user_id: 42,
+              created_at: 'now',
+              updated_at: 'now',
+            }
+          : undefined),
+        all: () => approvedChatIds.map(telegram_id => ({ telegram_id })),
+      }),
+    } as unknown as Database
+  }
+
+  beforeEach(() => {
+    agentCore = createMockAgentCore()
+    vi.clearAllMocks()
+  })
+
+  it('sends an approval prompt with Accept/Cancel buttons to approved chats', async () => {
+    const bot = new TelegramBot({ agentCore, db: makeDb(), config })
+    const api = (bot.getBot() as any).api
+
+    await bot.createEmailApprovalNotifier().approvalRequested!(makeEntry())
+
+    expect(api.sendMessage).toHaveBeenCalledTimes(1)
+    const [chatId, text, opts] = api.sendMessage.mock.calls[0]
+    expect(chatId).toBe('12345')
+    expect(text).toContain('stranger@partner.org')
+    expect(text).toContain('Quarterly numbers')
+    expect(text).toContain('report.pdf')
+    expect(text).toContain('2.0 KB')
+    const buttons = opts.reply_markup.inline_keyboard[0]
+    expect(buttons.map((b: any) => b.callback_data)).toEqual(['mail:a:entry-1', 'mail:r:entry-1'])
+  })
+
+  it('does not send anything when no approved Telegram chat exists', async () => {
+    const bot = new TelegramBot({ agentCore, db: makeDb([]), config })
+    const api = (bot.getBot() as any).api
+
+    await bot.createEmailApprovalNotifier().approvalRequested!(makeEntry())
+
+    expect(api.sendMessage).not.toHaveBeenCalled()
+  })
+
+  it('accept callback approves via the core boundary and edits the prompt', async () => {
+    const sentEntry = makeEntry({ status: 'sent', decidedBy: 'John Doe' })
+    const approval = {
+      approve: vi.fn().mockResolvedValue({ ok: true, entry: sentEntry }),
+      reject: vi.fn(),
+      retry: vi.fn(),
+    }
+    const bot = new TelegramBot({ agentCore, db: makeDb(), config, emailApproval: approval as any })
+    const underlying = bot.getBot() as unknown as MockBotInternals & { api: any }
+
+    await bot.createEmailApprovalNotifier().approvalRequested!(makeEntry())
+
+    const ctx = createMockContext({
+      callbackQuery: { data: 'mail:a:entry-1', message: { message_id: 1 } },
+      answerCallbackQuery: vi.fn().mockResolvedValue(true),
+    })
+    await underlying._handlers.get('callback_query:data')!(ctx as any)
+
+    expect(approval.approve).toHaveBeenCalledWith('entry-1', { name: 'John Doe' })
+    expect((ctx as any).answerCallbackQuery).toHaveBeenCalledWith({ text: 'Email approved.' })
+
+    const [chatId, messageId, editedText] = underlying.api.editMessageText.mock.calls[0]
+    expect(chatId).toBe('12345')
+    expect(messageId).toBe(1)
+    expect(editedText).toContain('John Doe')
+    expect(editedText).toContain('sent')
+  })
+
+  it('cancel callback rejects via the core boundary', async () => {
+    const rejected = makeEntry({ status: 'rejected', decidedBy: 'John Doe' })
+    const approval = {
+      approve: vi.fn(),
+      reject: vi.fn().mockResolvedValue({ ok: true, entry: rejected }),
+      retry: vi.fn(),
+    }
+    const bot = new TelegramBot({ agentCore, db: makeDb(), config, emailApproval: approval as any })
+    const underlying = bot.getBot() as unknown as MockBotInternals & { api: any }
+
+    await bot.createEmailApprovalNotifier().approvalRequested!(makeEntry())
+
+    const ctx = createMockContext({
+      callbackQuery: { data: 'mail:r:entry-1', message: { message_id: 1 } },
+      answerCallbackQuery: vi.fn().mockResolvedValue(true),
+    })
+    await underlying._handlers.get('callback_query:data')!(ctx as any)
+
+    expect(approval.reject).toHaveBeenCalledWith('entry-1', { name: 'John Doe' })
+    expect(underlying.api.editMessageText.mock.calls[0][2]).toContain('rejected')
+  })
+
+  it('a second decision gets the "already decided" alert', async () => {
+    const decided = makeEntry({ status: 'approved', decidedBy: 'alice' })
+    const approval = {
+      approve: vi.fn().mockResolvedValue({
+        ok: false,
+        code: 'already_decided',
+        message: 'This email was already decided by alice (status: approved).',
+        entry: decided,
+      }),
+      reject: vi.fn(),
+      retry: vi.fn(),
+    }
+    const bot = new TelegramBot({ agentCore, db: makeDb(), config, emailApproval: approval as any })
+    const underlying = bot.getBot() as unknown as MockBotInternals & { api: any }
+
+    await bot.createEmailApprovalNotifier().approvalRequested!(makeEntry())
+
+    const ctx = createMockContext({
+      callbackQuery: { data: 'mail:a:entry-1', message: { message_id: 1 } },
+      answerCallbackQuery: vi.fn().mockResolvedValue(true),
+    })
+    await underlying._handlers.get('callback_query:data')!(ctx as any)
+
+    expect((ctx as any).answerCallbackQuery).toHaveBeenCalledWith({
+      text: expect.stringContaining('already decided'),
+      show_alert: true,
+    })
+    expect(underlying.api.editMessageText).toHaveBeenCalledTimes(1)
+  })
+
+  it('invalidates the prompt when another channel decides', async () => {
+    const bot = new TelegramBot({ agentCore, db: makeDb(), config })
+    const underlying = bot.getBot() as unknown as MockBotInternals & { api: any }
+    const notifier = bot.createEmailApprovalNotifier()
+
+    await notifier.approvalRequested!(makeEntry())
+    await notifier.approvalResolved!(makeEntry({ status: 'approved', decidedBy: 'web-admin' }))
+
+    const [chatId, messageId, text, opts] = underlying.api.editMessageText.mock.calls[0]
+    expect(chatId).toBe('12345')
+    expect(messageId).toBe(1)
+    expect(text).toContain('web-admin')
+    expect(opts.reply_markup).toBeUndefined()
+
+    // Prompt is consumed — a later resolve does not edit again.
+    await notifier.approvalResolved!(makeEntry({ status: 'sent', decidedBy: 'web-admin' }))
+    expect(underlying.api.editMessageText).toHaveBeenCalledTimes(1)
+
+    // And a late button tap can no longer act on it.
+    const ctx = createMockContext({
+      callbackQuery: { data: 'mail:a:entry-1', message: { message_id: 1 } },
+      answerCallbackQuery: vi.fn().mockResolvedValue(true),
+    })
+    await underlying._handlers.get('callback_query:data')!(ctx as any)
+    expect((ctx as any).answerCallbackQuery).toHaveBeenCalled()
   })
 })
