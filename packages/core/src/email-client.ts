@@ -9,15 +9,19 @@ import nodemailer from 'nodemailer'
  * imapflow / mailparser / nodemailer — everything goes through this interface.
  */
 
+export type EmailSecurity = 'ssl' | 'starttls' | 'none'
+
 export interface EmailClientAccount {
   imapHost: string
   imapPort: number
   imapUser: string
   imapPassword: string
+  imapSecurity: EmailSecurity
   smtpHost: string
   smtpPort: number
   smtpUser: string
   smtpPassword: string
+  smtpSecurity: EmailSecurity
   allowSelfSignedCert: boolean
   displayName?: string
   appendToSentFolder?: boolean
@@ -104,9 +108,11 @@ export interface EmailConnectionCheck {
 }
 
 export interface EmailConnectionTestResult {
-  imap: EmailConnectionCheck
-  smtp: EmailConnectionCheck
+  imap?: EmailConnectionCheck
+  smtp?: EmailConnectionCheck
 }
+
+export type EmailProtocol = 'imap' | 'smtp'
 
 export interface EmailAttachmentDownload {
   filename: string
@@ -115,7 +121,7 @@ export interface EmailAttachmentDownload {
 }
 
 export interface EmailClient {
-  testConnection: (account: EmailClientAccount) => Promise<EmailConnectionTestResult>
+  testConnection: (account: EmailClientAccount, protocol?: EmailProtocol) => Promise<EmailConnectionTestResult>
   listFolders: (account: EmailClientAccount) => Promise<EmailFolder[]>
   listMessages: (account: EmailClientAccount, options?: EmailListOptions) => Promise<EmailMessageSummary[]>
   readMessage: (
@@ -291,10 +297,13 @@ export function describeConnectionError(err: unknown, protocol: 'IMAP' | 'SMTP')
 // ---------------------------------------------------------------------------
 
 function imapOptions(account: EmailClientAccount) {
+  const security = account.imapSecurity
   return {
     host: account.imapHost,
     port: account.imapPort,
-    secure: account.imapPort === 993,
+    secure: security === 'ssl',
+    // imapflow upgrades to STARTTLS whenever the server offers it unless told otherwise
+    doSTARTTLS: security === 'none' ? false : security === 'starttls',
     auth: { user: account.imapUser, pass: account.imapPassword },
     tls: { rejectUnauthorized: !account.allowSelfSignedCert },
     logger: false as const,
@@ -302,10 +311,13 @@ function imapOptions(account: EmailClientAccount) {
 }
 
 function smtpTransport(account: EmailClientAccount) {
+  const security = account.smtpSecurity
   return nodemailer.createTransport({
     host: account.smtpHost,
     port: account.smtpPort,
-    secure: account.smtpPort === 465,
+    secure: security === 'ssl',
+    requireTLS: security === 'starttls',
+    ignoreTLS: security === 'none',
     auth: account.smtpUser ? { user: account.smtpUser, pass: account.smtpPassword } : undefined,
     tls: { rejectUnauthorized: !account.allowSelfSignedCert },
   })
@@ -375,26 +387,30 @@ function fromAddress(account: EmailClientAccount): string {
 
 export function createEmailClient(): EmailClient {
   return {
-    async testConnection(account) {
-      const result: EmailConnectionTestResult = { imap: { ok: false }, smtp: { ok: false } }
+    async testConnection(account, protocol) {
+      const result: EmailConnectionTestResult = {}
 
-      try {
-        await withImap(account, async client => {
-          await client.noop()
-        })
-        result.imap = { ok: true }
-      } catch (err) {
-        result.imap = { ok: false, error: (err as Error).message }
+      if (protocol !== 'smtp') {
+        try {
+          await withImap(account, async client => {
+            await client.noop()
+          })
+          result.imap = { ok: true }
+        } catch (err) {
+          result.imap = { ok: false, error: (err as Error).message }
+        }
       }
 
-      const transport = smtpTransport(account)
-      try {
-        await transport.verify()
-        result.smtp = { ok: true }
-      } catch (err) {
-        result.smtp = { ok: false, error: describeConnectionError(err, 'SMTP') }
-      } finally {
-        transport.close()
+      if (protocol !== 'imap') {
+        const transport = smtpTransport(account)
+        try {
+          await transport.verify()
+          result.smtp = { ok: true }
+        } catch (err) {
+          result.smtp = { ok: false, error: describeConnectionError(err, 'SMTP') }
+        } finally {
+          transport.close()
+        }
       }
 
       return result

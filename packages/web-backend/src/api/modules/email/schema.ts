@@ -1,6 +1,8 @@
 import { EMAIL_SEND_LOG_STATUSES } from '@axiom/core'
 import type {
   CreateEmailAccountInput,
+  EmailProtocol,
+  EmailSecurity,
   EmailSendLogStatus,
   ListEmailSendLogOptions,
   UpdateEmailAccountInput,
@@ -39,6 +41,23 @@ const CONNECTION_STRING_FIELDS = [
   'smtpUser',
   'smtpPassword',
 ] as const
+
+const SECURITY_VALUES = ['ssl', 'starttls', 'none'] as const
+
+function parseSecurityFields(
+  body: Record<string, unknown>,
+  out: { imapSecurity?: EmailSecurity; smtpSecurity?: EmailSecurity },
+): ParseFailure | null {
+  for (const field of ['imapSecurity', 'smtpSecurity'] as const) {
+    const raw = body[field]
+    if (raw === undefined) continue
+    if (!(SECURITY_VALUES as readonly unknown[]).includes(raw)) {
+      return { ok: false, error: `${field} must be one of: ${SECURITY_VALUES.join(', ')}` }
+    }
+    out[field] = raw as EmailSecurity
+  }
+  return null
+}
 
 function toRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -92,6 +111,9 @@ function applyOptionalFields(
     out[field] = raw
   }
 
+  const securityFailure = parseSecurityFields(body, out)
+  if (securityFailure) return securityFailure
+
   if (body.allowlist !== undefined) {
     const allowlist = parseAllowlist(body.allowlist)
     if (!allowlist.ok) return allowlist
@@ -116,6 +138,9 @@ function applyOptionalFields(
 
 export interface EmailConnectionBody {
   accountId?: string
+  protocol?: EmailProtocol
+  imapSecurity?: EmailSecurity
+  smtpSecurity?: EmailSecurity
   imapHost?: string
   imapPort?: number
   imapUser?: string
@@ -158,6 +183,16 @@ export function parseEmailConnectionBody(body: unknown): ParseResult<EmailConnec
     }
     out.allowSelfSignedCert = b.allowSelfSignedCert
   }
+
+  if (b.protocol !== undefined) {
+    if (b.protocol !== 'imap' && b.protocol !== 'smtp') {
+      return { ok: false, error: 'protocol must be "imap" or "smtp"' }
+    }
+    out.protocol = b.protocol
+  }
+
+  const securityFailure = parseSecurityFields(b, out)
+  if (securityFailure) return securityFailure
 
   return { ok: true, value: out }
 }

@@ -20,6 +20,7 @@ import type {
   EmailClientAccount,
   EmailConnectionTestResult,
   EmailFolder,
+  EmailProtocol,
   EmailSendLogEntry,
   ListEmailSendLogOptions,
   SafeEmailAccount,
@@ -32,6 +33,7 @@ import type {
  */
 export interface EmailConnectionInput extends Partial<EmailClientAccount> {
   accountId?: string
+  protocol?: EmailProtocol
 }
 
 export class EmailAccountNotFoundError extends Error {
@@ -100,14 +102,18 @@ function resolveConnection(input: EmailConnectionInput): EmailClientAccount {
     imapPort: input.imapPort ?? stored?.imapPort ?? 993,
     imapUser: input.imapUser ?? stored?.imapUser ?? '',
     imapPassword: input.imapPassword || stored?.imapPassword || '',
+    imapSecurity: input.imapSecurity ?? stored?.imapSecurity ?? 'ssl',
     smtpHost: input.smtpHost ?? stored?.smtpHost ?? '',
     smtpPort: input.smtpPort ?? stored?.smtpPort ?? 465,
     smtpUser: input.smtpUser ?? stored?.smtpUser ?? '',
     smtpPassword: input.smtpPassword || stored?.smtpPassword || '',
+    smtpSecurity: input.smtpSecurity ?? stored?.smtpSecurity ?? 'ssl',
     allowSelfSignedCert: input.allowSelfSignedCert ?? stored?.allowSelfSignedCert ?? false,
   }
 
-  if (!account.imapHost || !account.imapUser) {
+  if (input.protocol === 'smtp') {
+    if (!account.smtpHost) throw new EmailConnectionInputError('SMTP host is required')
+  } else if (!account.imapHost || !account.imapUser) {
     throw new EmailConnectionInputError('IMAP host and user are required')
   }
 
@@ -162,7 +168,7 @@ export function createEmailService(options: EmailServiceOptions): EmailService {
     },
 
     testConnection(input) {
-      return client.testConnection(resolveConnection(input))
+      return client.testConnection(resolveConnection(input), input.protocol)
     },
 
     listFolders(input) {

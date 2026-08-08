@@ -124,7 +124,7 @@ export function createEmailController(options: EmailServiceOptions): EmailContro
 
       try {
         const result = await service.testConnection(parsed.value)
-        res.json({ ...result, ok: result.imap.ok && result.smtp.ok })
+        res.json({ ...result, ok: (result.imap?.ok ?? true) && (result.smtp?.ok ?? true) })
       } catch (err) {
         handleError(res, err, 'Failed to test email connection')
       }

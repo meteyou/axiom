@@ -17,7 +17,7 @@
         <!-- IMAP -->
         <section class="space-y-3">
           <h3 class="text-sm font-semibold text-foreground">{{ $t('email.form.imapSection') }}</h3>
-          <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-4">
             <div class="space-y-2 sm:col-span-2">
               <Label for="email-imap-host">{{ $t('email.form.host') }}</Label>
               <Input id="email-imap-host" v-model="form.imapHost" placeholder="127.0.0.1" required />
@@ -25,6 +25,19 @@
             <div class="space-y-2">
               <Label for="email-imap-port">{{ $t('email.form.port') }}</Label>
               <Input id="email-imap-port" v-model="form.imapPort" type="number" min="1" max="65535" required />
+            </div>
+            <div class="space-y-2">
+              <Label for="email-imap-security">{{ $t('email.form.security') }}</Label>
+              <Select v-model="form.imapSecurity">
+                <SelectTrigger id="email-imap-security">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem v-for="opt in securityOptions" :key="opt" :value="opt">
+                    {{ $t(`email.form.securityOption.${opt}`) }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -44,12 +57,23 @@
               />
             </div>
           </div>
+          <div class="flex flex-wrap items-center gap-3">
+            <Button type="button" variant="outline" :disabled="connection.testing.value !== null" @click="connection.testConnection(connectionPayload(), 'imap')">
+              {{ connection.testing.value === 'imap' ? $t('email.form.testing') : $t('email.form.testImap') }}
+            </Button>
+            <p v-if="connection.testResult.value?.imap?.ok" class="text-sm text-emerald-600">
+              {{ $t('email.form.testImapSuccess') }}
+            </p>
+            <p v-else-if="connection.testResult.value?.imap?.error" class="text-sm text-destructive">
+              {{ connection.testResult.value.imap.error }}
+            </p>
+          </div>
         </section>
 
         <!-- SMTP -->
         <section class="space-y-3">
           <h3 class="text-sm font-semibold text-foreground">{{ $t('email.form.smtpSection') }}</h3>
-          <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-4">
             <div class="space-y-2 sm:col-span-2">
               <Label for="email-smtp-host">{{ $t('email.form.host') }}</Label>
               <Input id="email-smtp-host" v-model="form.smtpHost" placeholder="127.0.0.1" required />
@@ -58,8 +82,25 @@
               <Label for="email-smtp-port">{{ $t('email.form.port') }}</Label>
               <Input id="email-smtp-port" v-model="form.smtpPort" type="number" min="1" max="65535" required />
             </div>
+            <div class="space-y-2">
+              <Label for="email-smtp-security">{{ $t('email.form.security') }}</Label>
+              <Select v-model="form.smtpSecurity">
+                <SelectTrigger id="email-smtp-security">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem v-for="opt in securityOptions" :key="opt" :value="opt">
+                    {{ $t(`email.form.securityOption.${opt}`) }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label class="flex items-center gap-2 text-sm">
+            <input v-model="form.sameCredentials" type="checkbox" class="h-4 w-4">
+            {{ $t('email.form.sameCredentials') }}
+          </label>
+          <div v-if="!form.sameCredentials" class="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div class="space-y-2">
               <Label for="email-smtp-user">{{ $t('email.form.user') }}</Label>
               <Input id="email-smtp-user" v-model="form.smtpUser" autocomplete="off" required />
@@ -76,25 +117,20 @@
               />
             </div>
           </div>
-        </section>
-
-        <!-- Connection test -->
-        <section class="space-y-2">
-          <div class="flex items-center gap-3">
-            <Button type="button" variant="outline" :disabled="connection.testing.value" @click="onTestConnection">
-              {{ connection.testing.value ? $t('email.form.testing') : $t('email.form.testConnection') }}
+          <div class="flex flex-wrap items-center gap-3">
+            <Button type="button" variant="outline" :disabled="connection.testing.value !== null" @click="connection.testConnection(connectionPayload(), 'smtp')">
+              {{ connection.testing.value === 'smtp' ? $t('email.form.testing') : $t('email.form.testSmtp') }}
             </Button>
-            <p v-if="connection.testError.value" class="text-sm text-destructive">
-              {{ connection.testError.value }}
+            <p v-if="connection.testResult.value?.smtp?.ok" class="text-sm text-emerald-600">
+              {{ $t('email.form.testSmtpSuccess') }}
             </p>
-            <p v-else-if="connection.testResult.value?.ok" class="text-sm text-emerald-600">
-              {{ $t('email.form.testSuccess') }}
+            <p v-else-if="connection.testResult.value?.smtp?.error" class="text-sm text-destructive">
+              {{ connection.testResult.value.smtp.error }}
             </p>
           </div>
-          <ul v-if="connection.testResult.value && !connection.testResult.value.ok" class="space-y-1 text-sm text-destructive">
-            <li v-if="connection.testResult.value.imap.error">{{ connection.testResult.value.imap.error }}</li>
-            <li v-if="connection.testResult.value.smtp.error">{{ connection.testResult.value.smtp.error }}</li>
-          </ul>
+          <p v-if="connection.testError.value" class="text-sm text-destructive">
+            {{ connection.testError.value }}
+          </p>
         </section>
 
         <!-- Folder restriction -->
@@ -231,7 +267,13 @@
 </template>
 
 <script setup lang="ts">
-import type { EmailAccount, EmailAccountPayload, EmailConnectionPayload, EmailFolderMode } from '~/api/email'
+import type {
+  EmailAccount,
+  EmailAccountPayload,
+  EmailConnectionPayload,
+  EmailFolderMode,
+  EmailSecurity,
+} from '~/api/email'
 import { useEmailConnection } from '~/features/email/composables/useEmailConnection'
 
 const props = defineProps<{
@@ -248,26 +290,34 @@ const folderOptions = computed(() => {
   return [...new Set([...loaded, ...form.allowedFolders])].sort((a, b) => a.localeCompare(b))
 })
 
+const securityOptions: EmailSecurity[] = ['ssl', 'starttls', 'none']
+
+/** SMTP falls back to the IMAP credentials unless the user unchecks the box. */
+function smtpCredentials() {
+  return form.sameCredentials
+    ? { user: form.imapUser.trim(), password: form.imapPassword }
+    : { user: form.smtpUser.trim(), password: form.smtpPassword }
+}
+
 function connectionPayload() {
+  const smtp = smtpCredentials()
   const payload: EmailConnectionPayload = {
     imapHost: form.imapHost.trim(),
     imapPort: Number(form.imapPort),
     imapUser: form.imapUser.trim(),
+    imapSecurity: form.imapSecurity,
     smtpHost: form.smtpHost.trim(),
     smtpPort: Number(form.smtpPort),
-    smtpUser: form.smtpUser.trim(),
+    smtpUser: smtp.user,
+    smtpSecurity: form.smtpSecurity,
     allowSelfSignedCert: form.allowSelfSignedCert,
   }
 
   if (props.mode === 'edit' && props.account) payload.accountId = props.account.id
   if (form.imapPassword) payload.imapPassword = form.imapPassword
-  if (form.smtpPassword) payload.smtpPassword = form.smtpPassword
+  if (smtp.password) payload.smtpPassword = smtp.password
 
   return payload
-}
-
-function onTestConnection() {
-  return connection.testConnection(connectionPayload())
 }
 
 function onLoadFolders() {
@@ -306,10 +356,13 @@ function emptyForm() {
     imapPort: '993',
     imapUser: '',
     imapPassword: '',
+    imapSecurity: 'ssl' as EmailSecurity,
     smtpHost: '',
     smtpPort: '465',
     smtpUser: '',
     smtpPassword: '',
+    smtpSecurity: 'ssl' as EmailSecurity,
+    sameCredentials: true,
     allowSelfSignedCert: false,
     canSend: false,
     canManage: false,
@@ -343,10 +396,13 @@ function resetForm() {
     imapPort: String(account.imapPort),
     imapUser: account.imapUser,
     imapPassword: '',
+    imapSecurity: account.imapSecurity,
     smtpHost: account.smtpHost,
     smtpPort: String(account.smtpPort),
     smtpUser: account.smtpUser,
     smtpPassword: '',
+    smtpSecurity: account.smtpSecurity,
+    sameCredentials: account.smtpUser === account.imapUser,
     allowSelfSignedCert: account.allowSelfSignedCert,
     canSend: account.canSend,
     canManage: account.canManage,
@@ -377,14 +433,17 @@ function parseList(value: string): string[] {
 }
 
 function onSubmit() {
+  const smtp = smtpCredentials()
   const payload: EmailAccountPayload = {
     name: form.name.trim(),
     imapHost: form.imapHost.trim(),
     imapPort: Number(form.imapPort),
     imapUser: form.imapUser.trim(),
+    imapSecurity: form.imapSecurity,
     smtpHost: form.smtpHost.trim(),
     smtpPort: Number(form.smtpPort),
-    smtpUser: form.smtpUser.trim(),
+    smtpUser: smtp.user,
+    smtpSecurity: form.smtpSecurity,
     allowSelfSignedCert: form.allowSelfSignedCert,
     canSend: form.canSend,
     canManage: form.canManage,
@@ -405,7 +464,7 @@ function onSubmit() {
   }
 
   if (form.imapPassword) payload.imapPassword = form.imapPassword
-  if (form.smtpPassword) payload.smtpPassword = form.smtpPassword
+  if (smtp.password) payload.smtpPassword = smtp.password
 
   emit('submit', payload)
 }

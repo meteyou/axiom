@@ -33,6 +33,8 @@ function makeAccount(overrides: Partial<EmailAccount> = {}): EmailAccount {
     smtpPort: 465,
     smtpUser: 'agent@example.com',
     smtpPassword: 'secret',
+    imapSecurity: 'ssl',
+    smtpSecurity: 'ssl',
     allowSelfSignedCert: false,
     canSend: false,
     canManage: false,
