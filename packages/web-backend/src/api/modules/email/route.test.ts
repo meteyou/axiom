@@ -3,8 +3,8 @@ import fs from 'node:fs'
 import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
-import type { Database, SafeEmailAccount } from '@axiom/core'
-import { initDatabase, isEncrypted } from '@axiom/core'
+import type { CreateEmailSendLogInput, Database, EmailSendLogEntry, SafeEmailAccount } from '@axiom/core'
+import { createEmailSendLogEntry, initDatabase, isEncrypted } from '@axiom/core'
 import { createApp } from '../../../app.js'
 import { generateAccessToken } from '../../../auth.js'
 
@@ -47,7 +47,26 @@ function accountsFile(): string {
 
 beforeEach(() => {
   fs.rmSync(accountsFile(), { force: true })
+  db.prepare('DELETE FROM email_send_log').run()
 })
+
+function seedLogEntry(overrides: Partial<CreateEmailSendLogInput> = {}): EmailSendLogEntry {
+  return createEmailSendLogEntry(db, {
+    accountId: 'acc-1',
+    accountName: 'Work',
+    status: 'sent',
+    to: ['boss@example.com'],
+    subject: 'Status report',
+    bodyText: 'All systems nominal.',
+    ...overrides,
+  })
+}
+
+async function fetchSendLog(query = '', token = adminToken) {
+  const res = await fetch(`${baseUrl}/api/email/sent-log${query}`, { headers: authHeaders(token) })
+  const body = await res.json() as { entries: EmailSendLogEntry[]; total: number; limit: number; offset: number }
+  return { res, body }
+}
 
 function authHeaders(token = adminToken) {
   return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
@@ -315,5 +334,149 @@ describe('email route module', () => {
   it('requires authentication', async () => {
     const res = await fetch(`${baseUrl}/api/email/accounts`)
     expect(res.status).toBe(401)
+  })
+})
+
+describe('email send log endpoints', () => {
+  it('lists all statuses with total and paging info', async () => {
+    for (const status of ['sent', 'pending', 'approved', 'rejected', 'blocked', 'failed'] as const) {
+      seedLogEntry({ status, subject: `Subject ${status}` })
+    }
+
+    const { res, body } = await fetchSendLog()
+    expect(res.status).toBe(200)
+    expect(body.total).toBe(6)
+    expect(body.entries).toHaveLength(6)
+    expect(body.limit).toBe(50)
+    expect(body.offset).toBe(0)
+    expect([...body.entries].map(e => e.status).sort()).toEqual(
+      ['approved', 'blocked', 'failed', 'pending', 'rejected', 'sent'],
+    )
+  })
+
+  it('filters by account', async () => {
+    seedLogEntry({ accountId: 'acc-1', accountName: 'Work' })
+    seedLogEntry({ accountId: 'acc-2', accountName: 'Private' })
+
+    const { body } = await fetchSendLog('?accountId=acc-2')
+    expect(body.total).toBe(1)
+    expect(body.entries[0]!.accountName).toBe('Private')
+  })
+
+  it('filters by single and multiple statuses', async () => {
+    seedLogEntry({ status: 'sent' })
+    seedLogEntry({ status: 'blocked' })
+    seedLogEntry({ status: 'failed' })
+
+    const single = await fetchSendLog('?status=blocked')
+    expect(single.body.total).toBe(1)
+    expect(single.body.entries[0]!.status).toBe('blocked')
+
+    const multi = await fetchSendLog('?status=blocked,failed')
+    expect(multi.body.total).toBe(2)
+
+    const repeated = await fetchSendLog('?status=blocked&status=sent')
+    expect(repeated.body.total).toBe(2)
+  })
+
+  it('rejects an unknown status filter', async () => {
+    const res = await fetch(`${baseUrl}/api/email/sent-log?status=exploded`, { headers: authHeaders() })
+    expect(res.status).toBe(400)
+  })
+
+  it('filters by recipient across to, cc and bcc', async () => {
+    seedLogEntry({ to: ['boss@example.com'] })
+    seedLogEntry({ to: ['other@example.com'], cc: ['Watcher@Example.org'] })
+    seedLogEntry({ to: ['other@example.com'], bcc: ['hidden@example.net'] })
+
+    expect((await fetchSendLog('?recipient=boss@example.com')).body.total).toBe(1)
+    expect((await fetchSendLog('?recipient=watcher@example.org')).body.total).toBe(1)
+    expect((await fetchSendLog('?recipient=hidden')).body.total).toBe(1)
+    expect((await fetchSendLog('?recipient=example.com')).body.total).toBe(3)
+  })
+
+  it('filters by content across subject and body', async () => {
+    seedLogEntry({ subject: 'Quarterly numbers', bodyText: 'nothing here' })
+    seedLogEntry({ subject: 'Lunch', bodyText: 'Quarterly review follow-up' })
+    seedLogEntry({ subject: 'Other', bodyText: 'unrelated' })
+
+    const { body } = await fetchSendLog('?search=quarterly')
+    expect(body.total).toBe(2)
+  })
+
+  it('filters by date range including date-only bounds', async () => {
+    seedLogEntry({ subject: 'Today' })
+    const today = new Date().toISOString().slice(0, 10)
+
+    expect((await fetchSendLog(`?dateFrom=${today}&dateTo=${today}`)).body.total).toBe(1)
+    expect((await fetchSendLog('?dateFrom=2999-01-01')).body.total).toBe(0)
+    expect((await fetchSendLog('?dateTo=2000-01-01')).body.total).toBe(0)
+
+    const invalid = await fetch(`${baseUrl}/api/email/sent-log?dateFrom=not-a-date`, { headers: authHeaders() })
+    expect(invalid.status).toBe(400)
+  })
+
+  it('supports limit and offset', async () => {
+    seedLogEntry({ subject: 'One' })
+    seedLogEntry({ subject: 'Two' })
+    seedLogEntry({ subject: 'Three' })
+
+    const { body } = await fetchSendLog('?limit=2&offset=1')
+    expect(body.total).toBe(3)
+    expect(body.entries).toHaveLength(2)
+    expect(body.limit).toBe(2)
+    expect(body.offset).toBe(1)
+
+    const invalid = await fetch(`${baseUrl}/api/email/sent-log?limit=-5`, { headers: authHeaders() })
+    expect(invalid.status).toBe(400)
+  })
+
+  it('returns full detail including body, attachments and error message', async () => {
+    const created = seedLogEntry({
+      status: 'failed',
+      to: ['boss@example.com'],
+      cc: ['team@example.com'],
+      bcc: ['archive@example.com'],
+      subject: 'Report',
+      bodyText: 'Full plain text body',
+      bodyHtml: '<p>Full html body</p>',
+      attachments: [{ filename: 'report.pdf', size: 2048, contentType: 'application/pdf' }],
+      errorMessage: 'SMTP connection refused',
+      reason: 'send failed',
+    })
+
+    const res = await fetch(`${baseUrl}/api/email/sent-log/${created.id}`, { headers: authHeaders() })
+    const body = await res.json() as { entry: EmailSendLogEntry }
+
+    expect(res.status).toBe(200)
+    expect(body.entry.bodyText).toBe('Full plain text body')
+    expect(body.entry.bodyHtml).toBe('<p>Full html body</p>')
+    expect(body.entry.cc).toEqual(['team@example.com'])
+    expect(body.entry.bcc).toEqual(['archive@example.com'])
+    expect(body.entry.attachments).toEqual([
+      { filename: 'report.pdf', size: 2048, contentType: 'application/pdf' },
+    ])
+    expect(body.entry.errorMessage).toBe('SMTP connection refused')
+  })
+
+  it('returns 404 for an unknown send log entry', async () => {
+    const res = await fetch(`${baseUrl}/api/email/sent-log/does-not-exist`, { headers: authHeaders() })
+    expect(res.status).toBe(404)
+  })
+
+  it('allows non-admin users to read the send log', async () => {
+    const created = seedLogEntry()
+
+    const list = await fetchSendLog('', userToken)
+    expect(list.res.status).toBe(200)
+    expect(list.body.total).toBe(1)
+
+    const detail = await fetch(`${baseUrl}/api/email/sent-log/${created.id}`, { headers: authHeaders(userToken) })
+    expect(detail.status).toBe(200)
+  })
+
+  it('requires authentication for the send log', async () => {
+    expect((await fetch(`${baseUrl}/api/email/sent-log`)).status).toBe(401)
+    expect((await fetch(`${baseUrl}/api/email/sent-log/x`)).status).toBe(401)
   })
 })
