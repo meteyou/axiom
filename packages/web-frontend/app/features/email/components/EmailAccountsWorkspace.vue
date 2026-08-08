@@ -1,15 +1,13 @@
 <template>
-  <div class="flex h-full flex-col overflow-hidden">
-    <PageHeader :title="$t('email.title')" :subtitle="$t('email.subtitle')">
-      <template #actions>
+  <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div class="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <div class="mb-4 flex justify-end">
         <Button @click="openCreate">
           <AppIcon name="add" class="mr-1 h-4 w-4" />
           {{ $t('email.addAccount') }}
         </Button>
-      </template>
-    </PageHeader>
+      </div>
 
-    <div class="mx-auto flex w-full max-w-5xl flex-1 flex-col overflow-y-auto p-6">
       <Alert v-if="errorMessage" variant="destructive" class="mb-4">
         <AlertDescription class="flex items-center justify-between">
           <span>{{ errorMessage }}</span>
