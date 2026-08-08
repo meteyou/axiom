@@ -407,20 +407,21 @@ export {
   MAX_EMAIL_BULK_UIDS,
 } from './email-tools.js'
 export type { EmailToolsDeps } from './email-tools.js'
+export { createEmailApprovalService } from './email-approval.js'
 export {
-  createEmailApprovalService,
   registerEmailApprovalNotifier,
   clearEmailApprovalNotifiers,
   notifyEmailApprovalRequested,
-} from './email-approval.js'
+  notifyEmailApprovalResolved,
+} from './email-approval-notifier.js'
 export type {
   EmailApprovalService,
   EmailApprovalDeps,
   EmailApprovalDecider,
   EmailApprovalResult,
   EmailApprovalErrorCode,
-  EmailApprovalNotifier,
 } from './email-approval.js'
+export type { EmailApprovalNotifier } from './email-approval-notifier.js'
 export { ScheduledTaskStore, initScheduledTasksTable } from './scheduled-task-store.js'
 export type { ScheduledTask, ScheduledTaskActionType, CreateScheduledTaskInput, UpdateScheduledTaskInput } from './scheduled-task-store.js'
 export { TaskScheduler } from './task-scheduler.js'

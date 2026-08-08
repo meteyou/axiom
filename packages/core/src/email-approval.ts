@@ -2,6 +2,7 @@ import { getEmailAccountDecrypted } from './email-account-store.js'
 import type { EmailAccount } from './email-account-store.js'
 import { createEmailClient } from './email-client.js'
 import type { EmailClient, EmailOutgoingAttachment } from './email-client.js'
+import { notifyEmailApprovalResolved } from './email-approval-notifier.js'
 import { getEmailSendLogEntry } from './email-send-log.js'
 import type { EmailSendLogEntry } from './email-send-log.js'
 import { toClientAccount } from './email-tools.js'
@@ -29,41 +30,6 @@ export type EmailApprovalErrorCode =
 export type EmailApprovalResult =
   | { ok: true; entry: EmailSendLogEntry }
   | { ok: false; code: EmailApprovalErrorCode; message: string; entry: EmailSendLogEntry | null }
-
-/**
- * Channels (webchat, telegram, …) implement this to show approval prompts and
- * to invalidate their buttons once any channel has decided.
- */
-export interface EmailApprovalNotifier {
-  approvalRequested?: (entry: EmailSendLogEntry) => void | Promise<void>
-  approvalResolved?: (entry: EmailSendLogEntry) => void | Promise<void>
-}
-
-const notifiers = new Set<EmailApprovalNotifier>()
-
-export function registerEmailApprovalNotifier(notifier: EmailApprovalNotifier): () => void {
-  notifiers.add(notifier)
-  return () => notifiers.delete(notifier)
-}
-
-export function clearEmailApprovalNotifiers(): void {
-  notifiers.clear()
-}
-
-async function notify(hook: keyof EmailApprovalNotifier, entry: EmailSendLogEntry): Promise<void> {
-  for (const notifier of [...notifiers]) {
-    try {
-      await notifier[hook]?.(entry)
-    } catch (err) {
-      console.error(`[email-approval] notifier "${hook}" failed:`, (err as Error).message)
-    }
-  }
-}
-
-/** Announce a freshly created pending entry to every registered channel. */
-export function notifyEmailApprovalRequested(entry: EmailSendLogEntry): Promise<void> {
-  return notify('approvalRequested', entry)
-}
 
 export interface EmailApprovalDeps {
   db: Database
@@ -198,7 +164,7 @@ export function createEmailApprovalService(deps: EmailApprovalDeps): EmailApprov
         return { ok: false, code: 'already_decided', message: decidedLabel(latest), entry: latest }
       }
 
-      await notify('approvalResolved', approved)
+      await notifyEmailApprovalResolved(approved)
       return deliver(resolved, approved)
     },
 
@@ -212,7 +178,7 @@ export function createEmailApprovalService(deps: EmailApprovalDeps): EmailApprov
         return { ok: false, code: 'already_decided', message: decidedLabel(latest), entry: latest }
       }
 
-      await notify('approvalResolved', rejected)
+      await notifyEmailApprovalResolved(rejected)
       return { ok: true, entry: rejected }
     },
 

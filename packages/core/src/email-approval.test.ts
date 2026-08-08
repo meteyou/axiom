@@ -7,10 +7,10 @@ import { createEmailSendLogEntry, getEmailSendLogEntry, initEmailSendLogTable } 
 import type { CreateEmailSendLogInput, EmailSendLogEntry } from './email-send-log.js'
 import {
   clearEmailApprovalNotifiers,
-  createEmailApprovalService,
   notifyEmailApprovalRequested,
   registerEmailApprovalNotifier,
-} from './email-approval.js'
+} from './email-approval-notifier.js'
+import { createEmailApprovalService } from './email-approval.js'
 
 const ACCOUNT: EmailAccount = {
   id: 'acc-1',
