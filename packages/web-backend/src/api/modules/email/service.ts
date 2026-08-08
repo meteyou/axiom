@@ -1,6 +1,7 @@
 import {
   countEmailSendLog,
   createEmailAccount,
+  createEmailApprovalService,
   createEmailClient,
   deleteEmailAccount,
   getEmailAccount,
@@ -13,6 +14,9 @@ import {
 import type {
   CreateEmailAccountInput,
   Database,
+  EmailApprovalDecider,
+  EmailApprovalErrorCode,
+  EmailApprovalResult,
   EmailClientAccount,
   EmailConnectionTestResult,
   EmailFolder,
@@ -46,6 +50,17 @@ export class EmailSendLogNotFoundError extends Error {
   }
 }
 
+/** Carries the log entry so the UI can show the state that actually won. */
+export class EmailApprovalError extends Error {
+  constructor(
+    readonly code: Exclude<EmailApprovalErrorCode, 'not_found'>,
+    message: string,
+    readonly entry: EmailSendLogEntry | null,
+  ) {
+    super(message)
+  }
+}
+
 export interface EmailSendLogPage {
   entries: EmailSendLogEntry[]
   total: number
@@ -67,6 +82,9 @@ export interface EmailService {
   listFolders: (input: EmailConnectionInput) => Promise<EmailFolder[]>
   listSendLog: (options: ListEmailSendLogOptions) => EmailSendLogPage
   getSendLogEntry: (id: string) => EmailSendLogEntry
+  approveSendLogEntry: (id: string, decider: EmailApprovalDecider) => Promise<EmailSendLogEntry>
+  rejectSendLogEntry: (id: string, decider: EmailApprovalDecider) => Promise<EmailSendLogEntry>
+  retrySendLogEntry: (id: string, decider: EmailApprovalDecider) => Promise<EmailSendLogEntry>
 }
 
 /**
@@ -99,6 +117,13 @@ function resolveConnection(input: EmailConnectionInput): EmailClientAccount {
 export function createEmailService(options: EmailServiceOptions): EmailService {
   const client = createEmailClient()
   const db = options.db
+  const approval = createEmailApprovalService({ db })
+
+  function unwrap(id: string, result: EmailApprovalResult): EmailSendLogEntry {
+    if (result.ok) return result.entry
+    if (result.code === 'not_found') throw new EmailSendLogNotFoundError(id)
+    throw new EmailApprovalError(result.code, result.message, result.entry)
+  }
 
   return {
     listAccounts() {
@@ -159,6 +184,18 @@ export function createEmailService(options: EmailServiceOptions): EmailService {
       const entry = getEmailSendLogEntry(db, id)
       if (!entry) throw new EmailSendLogNotFoundError(id)
       return entry
+    },
+
+    async approveSendLogEntry(id, decider) {
+      return unwrap(id, await approval.approve(id, decider))
+    },
+
+    async rejectSendLogEntry(id, decider) {
+      return unwrap(id, await approval.reject(id, decider))
+    },
+
+    async retrySendLogEntry(id, decider) {
+      return unwrap(id, await approval.retry(id, decider))
     },
   }
 }

@@ -19,6 +19,11 @@ export function createEmailRouter(options: EmailRouterOptions): Router {
   router.get('/sent-log', controller.listSendLog)
   router.get('/sent-log/:id', controller.getSendLogEntry)
 
+  // Approval decisions are open to every authenticated user, not just admins.
+  router.post('/sent-log/:id/approve', controller.approveSendLogEntry)
+  router.post('/sent-log/:id/reject', controller.rejectSendLogEntry)
+  router.post('/sent-log/:id/retry', controller.retrySendLogEntry)
+
   router.use('/accounts', (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     if (req.user?.role !== 'admin') {
       res.status(403).json({ error: 'Admin access required' })
