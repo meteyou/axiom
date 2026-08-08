@@ -150,6 +150,14 @@ describe('describeConnectionError', () => {
   it('falls back to the raw message', () => {
     expect(describeConnectionError(new Error('something odd'), 'SMTP')).toBe('SMTP: something odd')
   })
+
+  it('keeps the server response text of a failed IMAP command', () => {
+    const message = describeConnectionError(
+      Object.assign(new Error('Command failed'), { responseStatus: 'NO', responseText: 'Mailbox is locked' }),
+      'IMAP',
+    )
+    expect(message).toBe('IMAP: Command failed: Mailbox is locked')
+  })
 })
 
 describe('email library encapsulation', () => {
