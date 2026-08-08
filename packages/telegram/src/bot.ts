@@ -6,10 +6,14 @@ import type { Context } from 'grammy'
 import type {
   AgentCore,
   Database,
+  EmailApprovalNotifier,
+  EmailApprovalService,
+  EmailSendLogEntry,
   SlashCommandRegistry,
   SlashCommandPicker,
 } from '@axiom/core'
 import {
+  createEmailApprovalService,
   loadConfig,
   getConfigDir,
   saveUpload,
@@ -26,6 +30,13 @@ import {
   ScheduledTaskStore,
 } from '@axiom/core'
 import type { UploadDescriptor } from '@axiom/core'
+import {
+  EMAIL_APPROVAL_CALLBACK_PREFIX,
+  buildEmailApprovalCallbackData,
+  formatEmailApprovalRequest,
+  formatEmailApprovalResolution,
+  parseEmailApprovalCallbackData,
+} from './email-approval.js'
 
 /**
  * Inline-keyboard callbacks live under this prefix. Telegram limits
@@ -86,6 +97,8 @@ export interface TelegramChatEvent {
 export interface TelegramBotOptions {
   agentCore: AgentCore
   db?: Database
+  /** Overridable for tests; defaults to a service backed by `db`. */
+  emailApproval?: EmailApprovalService
   config?: TelegramConfig
   onQueueDepthChanged?: (queueDepth: number) => void
   /** Called for every chat event (user message, response chunks, etc.) for cross-channel sync */
@@ -369,6 +382,13 @@ export class TelegramBot {
    * doesn't grow unbounded for chats that abandon pickers mid-flow.
    */
   private pickerTokenStore = new Map<string, { command: string; expiresAt: number }>()
+  /**
+   * Approval prompts we sent, per send-log entry. Needed to edit the buttons
+   * away once *any* channel decided. In-memory only — after a restart old
+   * prompts stay visible but taps get the "already decided" answer.
+   */
+  private emailApprovalPrompts = new Map<string, { chatId: string; messageId: number }[]>()
+  private emailApproval: EmailApprovalService | null
 
   constructor(options: TelegramBotOptions) {
     this.agentCore = options.agentCore
@@ -376,6 +396,7 @@ export class TelegramBot {
     this.config = options.config ?? loadTelegramRuntimeConfig()
     this.onQueueDepthChanged = options.onQueueDepthChanged
     this.onChatEvent = options.onChatEvent
+    this.emailApproval = options.emailApproval ?? (this.db ? createEmailApprovalService({ db: this.db }) : null)
     this.slashRegistry = buildTelegramSlashCommandRegistry()
     this.taskStore = this.db ? new TaskStore(this.db) : null
     this.scheduledTaskStore = this.db ? new ScheduledTaskStore(this.db) : null
@@ -509,6 +530,10 @@ export class TelegramBot {
     // picker step or the final text confirmation.
     this.bot.on('callback_query:data', async (ctx) => {
       const data = ctx.callbackQuery.data
+      if (data.startsWith(EMAIL_APPROVAL_CALLBACK_PREFIX)) {
+        await this.handleEmailApprovalCallback(ctx, data)
+        return
+      }
       if (!data.startsWith(PICKER_CALLBACK_PREFIX)) return
       await this.handlePickerCallback(ctx, data.slice(PICKER_CALLBACK_PREFIX.length))
     })
@@ -1286,6 +1311,119 @@ export class TelegramBot {
         console.error('Failed to deliver picker reply:', replyErr)
       }
     }
+  }
+
+  /**
+   * Hooks the bot into the core approval boundary: new pending emails get an
+   * Accept/Cancel prompt, and every decision — no matter which channel made
+   * it — edits that prompt into a result message without buttons.
+   */
+  // fallow-ignore-next-line unused-class-member
+  createEmailApprovalNotifier(): EmailApprovalNotifier {
+    return {
+      approvalRequested: entry => this.sendEmailApprovalPrompt(entry),
+      approvalResolved: entry => this.resolveEmailApprovalPrompts(entry),
+    }
+  }
+
+  private approvedTelegramChatIds(): string[] {
+    if (!this.db) return []
+    const rows = this.db.prepare(
+      'SELECT telegram_id FROM telegram_users WHERE status = ?',
+    ).all('approved') as { telegram_id: string }[]
+    return rows.map(row => row.telegram_id)
+  }
+
+  private async sendEmailApprovalPrompt(entry: EmailSendLogEntry): Promise<void> {
+    if (entry.status !== 'pending') return
+
+    const chatIds = this.approvedTelegramChatIds()
+    if (chatIds.length === 0) return
+
+    const text = formatEmailApprovalRequest(entry)
+    const keyboard = new InlineKeyboard()
+      .text('✅ Accept', buildEmailApprovalCallbackData('approve', entry.id))
+      .text('❌ Cancel', buildEmailApprovalCallbackData('reject', entry.id))
+
+    const prompts: { chatId: string; messageId: number }[] = []
+
+    for (const chatId of chatIds) {
+      try {
+        const message = await this.bot.api.sendMessage(chatId, text, {
+          parse_mode: 'HTML',
+          reply_markup: keyboard,
+        })
+        prompts.push({ chatId, messageId: message.message_id })
+      } catch (err) {
+        console.error(`[telegram] Failed to send email approval prompt to ${chatId}:`, err)
+      }
+    }
+
+    if (prompts.length > 0) this.emailApprovalPrompts.set(entry.id, prompts)
+  }
+
+  private async resolveEmailApprovalPrompts(
+    entry: EmailSendLogEntry,
+    fallback?: { chatId: string; messageId: number }[],
+  ): Promise<void> {
+    const prompts = this.emailApprovalPrompts.get(entry.id) ?? fallback ?? []
+    this.emailApprovalPrompts.delete(entry.id)
+    if (prompts.length === 0) return
+
+    const text = formatEmailApprovalResolution(entry)
+
+    for (const prompt of prompts) {
+      try {
+        await this.bot.api.editMessageText(prompt.chatId, prompt.messageId, text, { parse_mode: 'HTML' })
+      } catch (err) {
+        if (err instanceof GrammyError && /message is not modified/i.test(err.description)) continue
+        console.error(`[telegram] Failed to update email approval prompt in ${prompt.chatId}:`, err)
+      }
+    }
+  }
+
+  private deciderName(ctx: Context): string {
+    const from = ctx.from
+    if (!from) return 'Telegram'
+    const displayName = [from.first_name, from.last_name].filter(Boolean).join(' ')
+    return displayName || from.username || `telegram-${from.id}`
+  }
+
+  private async handleEmailApprovalCallback(ctx: Context, data: string): Promise<void> {
+    const parsed = parseEmailApprovalCallbackData(data)
+    if (!parsed) {
+      await ctx.answerCallbackQuery({ text: 'Unknown action.', show_alert: true })
+      return
+    }
+
+    if (!await this.checkAuthorized(ctx)) {
+      await ctx.answerCallbackQuery({ text: 'Not authorized.', show_alert: true })
+      return
+    }
+
+    if (!this.emailApproval) {
+      await ctx.answerCallbackQuery({ text: 'Email approval is not available.', show_alert: true })
+      return
+    }
+
+    // Captured before the decision because the resolved-notifier consumes the
+    // map entry while `approve()` is still running.
+    const prompts = this.emailApprovalPrompts.get(parsed.entryId)
+
+    const decider = { name: this.deciderName(ctx) }
+    const result = parsed.action === 'approve'
+      ? await this.emailApproval.approve(parsed.entryId, decider)
+      : await this.emailApproval.reject(parsed.entryId, decider)
+
+    if (result.ok) {
+      await ctx.answerCallbackQuery({
+        text: parsed.action === 'approve' ? 'Email approved.' : 'Email rejected.',
+      })
+    } else {
+      await ctx.answerCallbackQuery({ text: result.message, show_alert: true })
+    }
+
+    if (result.entry) await this.resolveEmailApprovalPrompts(result.entry, prompts)
   }
 
   private async handleKillSwitch(ctx: Context): Promise<void> {
