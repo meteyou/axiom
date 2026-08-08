@@ -155,6 +155,79 @@ describe('email route module', () => {
     expect(body.account.signature).toBe('Sent by an AI agent')
   })
 
+  it('persists the folder restriction', async () => {
+    const created = await createAccount({ folderMode: 'selected', allowedFolders: ['INBOX', 'Archive', 'INBOX'] })
+    expect(created.folderMode).toBe('selected')
+    expect(created.allowedFolders).toEqual(['INBOX', 'Archive'])
+
+    const res = await fetch(`${baseUrl}/api/email/accounts/${created.id}`, {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify({ folderMode: 'all', allowedFolders: [] }),
+    })
+    const body = await res.json() as { account: SafeEmailAccount }
+    expect(body.account.folderMode).toBe('all')
+    expect(body.account.allowedFolders).toEqual([])
+
+    const invalid = await fetch(`${baseUrl}/api/email/accounts/${created.id}`, {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify({ folderMode: 'some' }),
+    })
+    expect(invalid.status).toBe(400)
+  })
+
+  it('reports readable errors when the connection test fails', async () => {
+    const res = await fetch(`${baseUrl}/api/email/accounts/test-connection`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({
+        imapHost: '127.0.0.1',
+        imapPort: 1,
+        imapUser: 'agent@example.com',
+        imapPassword: 'x',
+        smtpHost: '127.0.0.1',
+        smtpPort: 1,
+        smtpUser: 'agent@example.com',
+        smtpPassword: 'x',
+      }),
+    })
+
+    const body = await res.json() as { ok: boolean; imap: { ok: boolean; error?: string }; smtp: { ok: boolean; error?: string } }
+    expect(res.status).toBe(200)
+    expect(body.ok).toBe(false)
+    expect(body.imap.ok).toBe(false)
+    expect(body.imap.error).toContain('IMAP')
+    expect(body.smtp.ok).toBe(false)
+    expect(body.smtp.error).toContain('SMTP')
+  })
+
+  it('rejects a connection test without IMAP host or user', async () => {
+    const res = await fetch(`${baseUrl}/api/email/accounts/test-connection`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ smtpHost: '127.0.0.1' }),
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('reports a readable error when live folder listing fails', async () => {
+    const res = await fetch(`${baseUrl}/api/email/accounts/folders`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({
+        imapHost: '127.0.0.1',
+        imapPort: 1,
+        imapUser: 'agent@example.com',
+        imapPassword: 'x',
+      }),
+    })
+
+    const body = await res.json() as { error: string }
+    expect(res.status).toBe(500)
+    expect(body.error).toContain('IMAP')
+  })
+
   it('deletes an account', async () => {
     const created = await createAccount()
 
@@ -221,6 +294,16 @@ describe('email route module', () => {
       fetch(`${baseUrl}/api/email/accounts/${created.id}`, {
         method: 'DELETE',
         headers: authHeaders(userToken),
+      }),
+      fetch(`${baseUrl}/api/email/accounts/test-connection`, {
+        method: 'POST',
+        headers: authHeaders(userToken),
+        body: JSON.stringify({ accountId: created.id }),
+      }),
+      fetch(`${baseUrl}/api/email/accounts/folders`, {
+        method: 'POST',
+        headers: authHeaders(userToken),
+        body: JSON.stringify({ accountId: created.id }),
       }),
     ]
 
