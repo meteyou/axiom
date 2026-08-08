@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentTool } from '@earendil-works/pi-agent-core'
 import type { EmailAccount } from './email-account-store.js'
 import type { EmailClient, EmailMessage, EmailMessageSummary } from './email-client.js'
+import type { CreateEmailSendLogInput, EmailSendLogEntry } from './email-send-log.js'
 import {
   createEmailDeleteTool,
   createEmailDownloadAttachmentTool,
@@ -14,6 +15,7 @@ import {
   createEmailMarkUnreadTool,
   createEmailMoveTool,
   createEmailReadTool,
+  createEmailSendTool,
   createEmailTools,
   isFolderAllowed,
   safeAttachmentFilename,
@@ -613,5 +615,252 @@ describe('safeAttachmentFilename', () => {
     expect(safeAttachmentFilename('../../etc/passwd')).toBe('passwd')
     expect(safeAttachmentFilename('C:\\temp\\report.pdf')).toBe('report.pdf')
     expect(safeAttachmentFilename('...')).toBe('attachment')
+  })
+})
+
+describe('createEmailSendTool', () => {
+  function sendLogSpy() {
+    const entries: CreateEmailSendLogInput[] = []
+    const logSend = vi.fn((input: CreateEmailSendLogInput) => {
+      entries.push(input)
+      return { id: `log-${entries.length}`, ...input } as unknown as EmailSendLogEntry
+    })
+    return { entries, logSend }
+  }
+
+  function sendDeps(account: EmailAccount, client: EmailClient, workspaceDir?: string) {
+    const log = sendLogSpy()
+    return { deps: { ...makeDeps([account], client, workspaceDir), logSend: log.logSend }, log }
+  }
+
+  const allowlisted = {
+    canSend: true,
+    allowlist: { addresses: ['boss@example.com'], domains: ['partner.org'] },
+  }
+
+  function sendResult() {
+    return { messageId: '<sent@example.com>', accepted: ['boss@example.com'], rejected: [], appendedToSent: false }
+  }
+
+  it('is not registered for accounts without canSend', () => {
+    const tools = createEmailTools(makeDeps([makeAccount()], mockClient()))
+    expect(tools.map(tool => tool.name)).not.toContain('email_send')
+
+    const sending = createEmailTools(makeDeps([makeAccount(allowlisted)], mockClient()))
+    expect(sending.map(tool => tool.name)).toContain('email_send')
+  })
+
+  it('refuses to send for an account without the send permission', async () => {
+    const client = mockClient({ sendMessage: vi.fn() })
+    const { deps, log } = sendDeps(makeAccount(), client)
+
+    const result = await createEmailSendTool(deps).execute('c1', {
+      to: ['boss@example.com'],
+      subject: 'Hi',
+      body: 'Hello',
+    })
+
+    expect(details(result).error).toBe(true)
+    expect(client.sendMessage).not.toHaveBeenCalled()
+    expect(log.entries).toHaveLength(0)
+  })
+
+  it('sends to an allowlisted recipient and logs it as sent', async () => {
+    const client = mockClient({ sendMessage: vi.fn().mockResolvedValue(sendResult()) })
+    const { deps, log } = sendDeps(makeAccount({ ...allowlisted, signature: 'Sent by an AI agent' }), client)
+
+    const result = await createEmailSendTool(deps).execute('c1', {
+      to: ['boss@example.com'],
+      subject: 'Status',
+      body: 'All good.',
+    })
+
+    expect(details(result).error).toBeUndefined()
+    expect(details(result).status).toBe('sent')
+    const sent = (client.sendMessage as ReturnType<typeof vi.fn>).mock.calls[0][1]
+    expect(sent.text).toBe('All good.\n\n-- \nSent by an AI agent')
+    expect(sent.html).toBeUndefined()
+    expect(log.entries[0]).toMatchObject({ status: 'sent', to: ['boss@example.com'], subject: 'Status' })
+    expect(log.entries[0].bodyText).toContain('Sent by an AI agent')
+  })
+
+  it('blocks a non-allowlisted recipient and logs the reason', async () => {
+    const client = mockClient({ sendMessage: vi.fn() })
+    const { deps, log } = sendDeps(makeAccount(allowlisted), client)
+
+    const result = await createEmailSendTool(deps).execute('c1', {
+      to: ['stranger@evil.com'],
+      subject: 'Hi',
+      body: 'Hello',
+    })
+
+    expect(details(result).error).toBe(true)
+    expect(text(result)).toContain('blocked')
+    expect(client.sendMessage).not.toHaveBeenCalled()
+    expect(log.entries[0].status).toBe('blocked')
+    expect(log.entries[0].reason).toContain('stranger@evil.com')
+  })
+
+  it('blocks when a CC recipient violates the allowlist', async () => {
+    const client = mockClient({ sendMessage: vi.fn() })
+    const { deps, log } = sendDeps(makeAccount(allowlisted), client)
+
+    await createEmailSendTool(deps).execute('c1', {
+      to: ['boss@example.com'],
+      cc: ['stranger@evil.com'],
+      subject: 'Hi',
+      body: 'Hello',
+    })
+
+    expect(client.sendMessage).not.toHaveBeenCalled()
+    expect(log.entries[0].status).toBe('blocked')
+  })
+
+  it('holds a non-allowlisted recipient as pending when approval is required', async () => {
+    const client = mockClient({ sendMessage: vi.fn() })
+    const { deps, log } = sendDeps(makeAccount({ ...allowlisted, requireApproval: true }), client)
+
+    const result = await createEmailSendTool(deps).execute('c1', {
+      to: ['stranger@evil.com'],
+      subject: 'Hi',
+      body: 'Hello',
+    })
+
+    expect(details(result).error).toBeUndefined()
+    expect(details(result).status).toBe('pending')
+    expect(text(result)).toMatch(/approval/i)
+    expect(client.sendMessage).not.toHaveBeenCalled()
+    expect(log.entries[0].status).toBe('pending')
+    expect(log.entries[0].bodyText).toBe('Hello')
+  })
+
+  it('logs a failed SMTP attempt', async () => {
+    const client = mockClient({ sendMessage: vi.fn().mockRejectedValue(new Error('SMTP: connection refused')) })
+    const { deps, log } = sendDeps(makeAccount(allowlisted), client)
+
+    const result = await createEmailSendTool(deps).execute('c1', {
+      to: ['boss@example.com'],
+      subject: 'Hi',
+      body: 'Hello',
+    })
+
+    expect(details(result).error).toBe(true)
+    expect(log.entries[0].status).toBe('failed')
+    expect(log.entries[0].errorMessage).toContain('connection refused')
+  })
+
+  it('only sends HTML when the account allows it', async () => {
+    const plainClient = mockClient({ sendMessage: vi.fn().mockResolvedValue(sendResult()) })
+    const plain = sendDeps(makeAccount(allowlisted), plainClient)
+    await createEmailSendTool(plain.deps).execute('c1', {
+      to: ['boss@example.com'],
+      subject: 'Hi',
+      body: 'Hello',
+      html_body: '<p>Hello</p>',
+    })
+    expect((plainClient.sendMessage as ReturnType<typeof vi.fn>).mock.calls[0][1].html).toBeUndefined()
+    expect(plain.log.entries[0].bodyHtml).toBeNull()
+
+    const htmlClient = mockClient({ sendMessage: vi.fn().mockResolvedValue(sendResult()) })
+    const html = sendDeps(makeAccount({ ...allowlisted, allowHtml: true, signature: 'Agent' }), htmlClient)
+    await createEmailSendTool(html.deps).execute('c1', {
+      to: ['boss@example.com'],
+      subject: 'Hi',
+      body: 'Hello',
+      html_body: '<p>Hello</p>',
+    })
+    const htmlSent = (htmlClient.sendMessage as ReturnType<typeof vi.fn>).mock.calls[0][1]
+    expect(htmlSent.html).toContain('<p>Hello</p>')
+    expect(htmlSent.html).toContain('Agent')
+  })
+
+  it('keeps the thread intact when replying', async () => {
+    const original = makeMessage({
+      subject: 'Invoice March',
+      messageId: '<orig@example.com>',
+      references: ['<root@example.com>'],
+      from: [{ address: 'boss@example.com' }],
+    })
+    const client = mockClient({
+      readMessage: vi.fn().mockResolvedValue(original),
+      sendMessage: vi.fn().mockResolvedValue(sendResult()),
+    })
+    const { deps, log } = sendDeps(makeAccount(allowlisted), client)
+
+    await createEmailSendTool(deps).execute('c1', { reply_to_uid: 42, body: 'Thanks!' })
+
+    expect(client.readMessage).toHaveBeenCalledWith(expect.anything(), 'INBOX', 42, { markSeen: false })
+    const sent = (client.sendMessage as ReturnType<typeof vi.fn>).mock.calls[0][1]
+    expect(sent.to).toEqual(['boss@example.com'])
+    expect(sent.subject).toBe('Re: Invoice March')
+    expect(sent.inReplyTo).toBe('<orig@example.com>')
+    expect(sent.references).toEqual(['<root@example.com>', '<orig@example.com>'])
+    expect(log.entries[0].inReplyTo).toBe('<orig@example.com>')
+  })
+
+  it('applies the allowlist to replies as well', async () => {
+    const original = makeMessage({ messageId: '<orig@example.com>', from: [{ address: 'stranger@evil.com' }] })
+    const client = mockClient({
+      readMessage: vi.fn().mockResolvedValue(original),
+      sendMessage: vi.fn(),
+    })
+    const { deps, log } = sendDeps(makeAccount(allowlisted), client)
+
+    const result = await createEmailSendTool(deps).execute('c1', { reply_to_uid: 42, body: 'Thanks!' })
+
+    expect(details(result).error).toBe(true)
+    expect(client.sendMessage).not.toHaveBeenCalled()
+    expect(log.entries[0].status).toBe('blocked')
+  })
+
+  it('attaches workspace files and rejects paths outside the workspace', async () => {
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'axiom-email-send-'))
+    try {
+      fs.writeFileSync(path.join(workspace, 'report.pdf'), 'pdf-bytes')
+      const client = mockClient({ sendMessage: vi.fn().mockResolvedValue(sendResult()) })
+      const { deps, log } = sendDeps(makeAccount(allowlisted), client, workspace)
+
+      await createEmailSendTool(deps).execute('c1', {
+        to: ['boss@example.com'],
+        subject: 'Hi',
+        body: 'Hello',
+        attachments: ['report.pdf'],
+      })
+
+      const sent = (client.sendMessage as ReturnType<typeof vi.fn>).mock.calls[0][1]
+      expect(sent.attachments).toEqual([{ filename: 'report.pdf', path: path.join(workspace, 'report.pdf') }])
+      expect(log.entries[0].attachments).toEqual([
+        { filename: 'report.pdf', path: path.join(workspace, 'report.pdf'), size: 9 },
+      ])
+
+      const escaped = await createEmailSendTool(deps).execute('c1', {
+        to: ['boss@example.com'],
+        subject: 'Hi',
+        body: 'Hello',
+        attachments: ['../outside.txt'],
+      })
+      expect(details(escaped).error).toBe(true)
+      expect(text(escaped)).toContain('outside the workspace')
+
+      const missing = await createEmailSendTool(deps).execute('c1', {
+        to: ['boss@example.com'],
+        subject: 'Hi',
+        body: 'Hello',
+        attachments: ['nope.txt'],
+      })
+      expect(text(missing)).toContain('was not found')
+    } finally {
+      fs.rmSync(workspace, { recursive: true, force: true })
+    }
+  })
+
+  it('requires a subject for new messages and a non-empty body', async () => {
+    const client = mockClient({ sendMessage: vi.fn() })
+    const { deps } = sendDeps(makeAccount(allowlisted), client)
+    const tool = createEmailSendTool(deps)
+
+    expect(text(await tool.execute('c1', { to: ['boss@example.com'], body: 'Hello' }))).toContain('subject')
+    expect(text(await tool.execute('c1', { to: ['boss@example.com'], subject: 'Hi', body: '  ' }))).toContain('body')
+    expect(client.sendMessage).not.toHaveBeenCalled()
   })
 })
