@@ -35,7 +35,9 @@
     "saveFailed": "Could not save changes.",
     "deleteFailed": "Could not delete item.",
     "language": "Language",
-    "back": "Back"
+    "back": "Back",
+    "close": "Close",
+    "refresh": "Refresh"
   },
   "admin": {
     "title": "Admin access required",
@@ -1009,6 +1011,45 @@
       "loadFolders": "Load folders",
       "loadingFolders": "Loading…",
       "noFoldersLoaded": "No folders loaded yet — click “Load folders”."
+    },
+    "accountsTab": "Accounts",
+    "sentLogTab": "Sent Log",
+    "sentLog": {
+      "status": {
+        "sent": "Sent",
+        "pending": "Pending",
+        "approved": "Approved",
+        "rejected": "Rejected",
+        "blocked": "Blocked",
+        "failed": "Failed"
+      },
+      "columns": {
+        "status": "Status",
+        "recipients": "Recipients",
+        "subject": "Subject",
+        "account": "Account",
+        "createdAt": "Time"
+      },
+      "filters": {
+        "search": "Search subject or body…",
+        "recipient": "Recipient…",
+        "account": "Account",
+        "allAccounts": "All accounts",
+        "dateFrom": "From date",
+        "dateTo": "To date",
+        "reset": "Reset filters"
+      },
+      "count": "{count} entries",
+      "empty": "The agent has not attempted to send any mail yet.",
+      "noResults": "No send attempts match these filters.",
+      "noSubject": "(no subject)",
+      "loadMore": "Load more",
+      "attachments": "Attachments",
+      "body": "Message",
+      "bodyHtml": "HTML body",
+      "to": "To",
+      "cc": "Cc",
+      "bcc": "Bcc"
     }
   },
   "cronjobs": {
