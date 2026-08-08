@@ -110,7 +110,18 @@
               <AppIcon name="trendDown" class="shrink-0" />
               <span>{{ $t('nav.usage') }}</span>
             </NuxtLink>
+          </template>
 
+          <NuxtLink
+            to="/email"
+            :class="navItemClass('/email')"
+            @click="closeSidebarOnMobile"
+          >
+            <AppIcon name="mail" class="shrink-0" />
+            <span>{{ $t('nav.email') }}</span>
+          </NuxtLink>
+
+          <template v-if="isAdmin">
             <!-- Separator -->
             <div class="my-2 border-t border-sidebar-border/60" />
 
@@ -130,15 +141,6 @@
             >
               <AppIcon name="plug" class="shrink-0" />
               <span>{{ $t('nav.providers') }}</span>
-            </NuxtLink>
-
-            <NuxtLink
-              to="/email"
-              :class="navItemClass('/email')"
-              @click="closeSidebarOnMobile"
-            >
-              <AppIcon name="mail" class="shrink-0" />
-              <span>{{ $t('nav.email') }}</span>
             </NuxtLink>
 
             <NuxtLink
