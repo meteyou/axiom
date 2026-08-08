@@ -353,6 +353,8 @@ export type {
   EmailSendResult,
   EmailConnectionCheck,
   EmailConnectionTestResult,
+  EmailSecurity,
+  EmailProtocol,
 } from './email-client.js'
 export {
   evaluateEmailSendPolicy,

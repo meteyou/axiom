@@ -3,6 +3,7 @@ import path from 'node:path'
 import crypto from 'node:crypto'
 import { getConfigDir } from './config.js'
 import { encrypt, decrypt, isEncrypted } from './encryption.js'
+import type { EmailSecurity } from './email-client.js'
 
 export const DEFAULT_ATTACHMENT_DOWNLOAD_PATH = 'email-attachments'
 
@@ -25,11 +26,13 @@ export interface EmailAccount {
   imapPort: number
   imapUser: string
   imapPassword: string
+  imapSecurity: EmailSecurity
 
   smtpHost: string
   smtpPort: number
   smtpUser: string
   smtpPassword: string
+  smtpSecurity: EmailSecurity
 
   allowSelfSignedCert: boolean
 
@@ -71,10 +74,12 @@ export interface CreateEmailAccountInput {
   imapPort: number
   imapUser: string
   imapPassword?: string
+  imapSecurity?: EmailSecurity
   smtpHost: string
   smtpPort: number
   smtpUser: string
   smtpPassword?: string
+  smtpSecurity?: EmailSecurity
   allowSelfSignedCert?: boolean
   canSend?: boolean
   canManage?: boolean
@@ -109,6 +114,12 @@ function normalizeAllowlist(value: Partial<EmailAllowlist> | undefined): EmailAl
     addresses: [...new Set(addresses)],
     domains: [...new Set(domains)],
   }
+}
+
+/** Legacy accounts predate the explicit security field — infer it from the port. */
+function normalizeSecurity(value: unknown, port: number, sslPort: number): EmailSecurity {
+  if (value === 'ssl' || value === 'starttls' || value === 'none') return value
+  return port === sslPort ? 'ssl' : 'starttls'
 }
 
 function normalizeFolders(value: string[] | undefined): string[] {
@@ -147,6 +158,8 @@ export function loadEmailAccounts(): EmailAccountsFile {
       ...account,
       folderMode: account.folderMode === 'selected' ? 'selected' : 'all',
       allowedFolders: normalizeFolders(account.allowedFolders),
+      imapSecurity: normalizeSecurity(account.imapSecurity, account.imapPort!, 993),
+      smtpSecurity: normalizeSecurity(account.smtpSecurity, account.smtpPort!, 465),
     })),
   }
 }
@@ -206,10 +219,12 @@ export function createEmailAccount(input: CreateEmailAccountInput): SafeEmailAcc
     imapPort: input.imapPort,
     imapUser: input.imapUser.trim(),
     imapPassword: encryptPassword(input.imapPassword),
+    imapSecurity: normalizeSecurity(input.imapSecurity, input.imapPort, 993),
     smtpHost: input.smtpHost.trim(),
     smtpPort: input.smtpPort,
     smtpUser: input.smtpUser.trim(),
     smtpPassword: encryptPassword(input.smtpPassword),
+    smtpSecurity: normalizeSecurity(input.smtpSecurity, input.smtpPort, 465),
     allowSelfSignedCert: input.allowSelfSignedCert ?? false,
     canSend: input.canSend ?? false,
     canManage: input.canManage ?? false,
@@ -253,11 +268,13 @@ export function updateEmailAccount(id: string, input: UpdateEmailAccountInput): 
   if (input.imapPort !== undefined) account.imapPort = input.imapPort
   if (input.imapUser !== undefined) account.imapUser = input.imapUser.trim()
   if (input.imapPassword) account.imapPassword = encryptPassword(input.imapPassword)
+  if (input.imapSecurity !== undefined) account.imapSecurity = input.imapSecurity
 
   if (input.smtpHost !== undefined) account.smtpHost = input.smtpHost.trim()
   if (input.smtpPort !== undefined) account.smtpPort = input.smtpPort
   if (input.smtpUser !== undefined) account.smtpUser = input.smtpUser.trim()
   if (input.smtpPassword) account.smtpPassword = encryptPassword(input.smtpPassword)
+  if (input.smtpSecurity !== undefined) account.smtpSecurity = input.smtpSecurity
 
   if (input.allowSelfSignedCert !== undefined) account.allowSelfSignedCert = input.allowSelfSignedCert
   if (input.canSend !== undefined) account.canSend = input.canSend

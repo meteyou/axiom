@@ -1,10 +1,10 @@
-import type { EmailConnectionPayload, EmailConnectionTestResult, EmailFolder } from '~/api/email'
+import type { EmailConnectionPayload, EmailConnectionTestResult, EmailFolder, EmailProtocol } from '~/api/email'
 import { useEmailApi } from '~/api/email'
 
 export function useEmailConnection() {
   const emailApi = useEmailApi()
 
-  const testing = ref(false)
+  const testing = ref<EmailProtocol | null>(null)
   const testResult = ref<EmailConnectionTestResult | null>(null)
   const testError = ref<string | null>(null)
 
@@ -12,19 +12,18 @@ export function useEmailConnection() {
   const foldersLoading = ref(false)
   const foldersError = ref<string | null>(null)
 
-  async function testConnection(payload: EmailConnectionPayload): Promise<boolean> {
-    testing.value = true
+  async function testConnection(payload: EmailConnectionPayload, protocol: EmailProtocol): Promise<boolean> {
+    testing.value = protocol
     testError.value = null
-    testResult.value = null
     try {
-      const result = await emailApi.testConnection(payload)
-      testResult.value = result
+      const result = await emailApi.testConnection({ ...payload, protocol })
+      testResult.value = { ...testResult.value, ...result }
       return result.ok
     } catch (err) {
       testError.value = (err as Error).message
       return false
     } finally {
-      testing.value = false
+      testing.value = null
     }
   }
 

@@ -23,6 +23,8 @@ const ACCOUNT: EmailAccount = {
   smtpPort: 465,
   smtpUser: 'agent@example.com',
   smtpPassword: 'smtp',
+  imapSecurity: 'ssl',
+  smtpSecurity: 'ssl',
   allowSelfSignedCert: false,
   canSend: true,
   canManage: false,

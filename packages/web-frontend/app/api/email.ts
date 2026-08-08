@@ -5,6 +5,10 @@ export interface EmailAllowlist {
 
 export type EmailFolderMode = 'all' | 'selected'
 
+export type EmailSecurity = 'ssl' | 'starttls' | 'none'
+
+export type EmailProtocol = 'imap' | 'smtp'
+
 export interface EmailFolder {
   path: string
   name: string
@@ -15,21 +19,24 @@ export interface EmailFolder {
 
 export interface EmailConnectionPayload {
   accountId?: string
+  protocol?: EmailProtocol
   imapHost?: string
   imapPort?: number
   imapUser?: string
   imapPassword?: string
+  imapSecurity?: EmailSecurity
   smtpHost?: string
   smtpPort?: number
   smtpUser?: string
   smtpPassword?: string
+  smtpSecurity?: EmailSecurity
   allowSelfSignedCert?: boolean
 }
 
 export interface EmailConnectionTestResult {
   ok: boolean
-  imap: { ok: boolean; error?: string }
-  smtp: { ok: boolean; error?: string }
+  imap?: { ok: boolean; error?: string }
+  smtp?: { ok: boolean; error?: string }
 }
 
 export interface EmailAccount {
@@ -38,9 +45,11 @@ export interface EmailAccount {
   imapHost: string
   imapPort: number
   imapUser: string
+  imapSecurity: EmailSecurity
   smtpHost: string
   smtpPort: number
   smtpUser: string
+  smtpSecurity: EmailSecurity
   imapPasswordSet: boolean
   smtpPasswordSet: boolean
   allowSelfSignedCert: boolean
@@ -67,10 +76,12 @@ export interface EmailAccountPayload {
   imapPort: number
   imapUser: string
   imapPassword?: string
+  imapSecurity: EmailSecurity
   smtpHost: string
   smtpPort: number
   smtpUser: string
   smtpPassword?: string
+  smtpSecurity: EmailSecurity
   allowSelfSignedCert: boolean
   canSend: boolean
   canManage: boolean

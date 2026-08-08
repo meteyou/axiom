@@ -1001,19 +1001,26 @@
       "allowHtmlHelp": "When off, the agent may only send plain text.",
       "attachmentDownloadPath": "Attachment download path",
       "attachmentDownloadPathHelp": "Relative path inside the workspace where attachments are stored.",
-      "testConnection": "Test connection",
       "testing": "Testing…",
-      "testSuccess": "IMAP and SMTP connection successful.",
       "foldersSection": "Folders",
       "foldersHelp": "Restrict which folders the agent may list, read and use as move targets.",
       "folderModeAll": "All folders",
       "folderModeSelected": "Only selected folders",
       "loadFolders": "Load folders",
       "loadingFolders": "Loading…",
-      "noFoldersLoaded": "No folders loaded yet — click “Load folders”."
+      "noFoldersLoaded": "No folders loaded yet — click “Load folders”.",
+      "security": "Encryption",
+      "securityOption": {
+        "ssl": "SSL/TLS",
+        "starttls": "STARTTLS",
+        "none": "None"
+      },
+      "sameCredentials": "Use the same credentials as incoming (email + password)",
+      "testImap": "Test incoming",
+      "testSmtp": "Test outgoing",
+      "testImapSuccess": "IMAP connection successful.",
+      "testSmtpSuccess": "SMTP connection successful."
     },
-    "accountsTab": "Accounts",
-    "sentLogTab": "Sent Log",
     "sentLog": {
       "status": {
         "sent": "Sent",
