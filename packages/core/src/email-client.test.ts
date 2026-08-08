@@ -11,6 +11,7 @@ import {
   mapAddresses,
   normalizeAddress,
   parseReferences,
+  pickTrashFolder,
 } from './email-client.js'
 
 describe('htmlToText', () => {
@@ -172,5 +173,20 @@ describe('email library encapsulation', () => {
     walk(packagesDir)
 
     expect(offenders).toEqual(['core/src/email-client.ts'])
+  })
+})
+
+describe('pickTrashFolder', () => {
+  it('prefers the \\Trash special-use folder', () => {
+    expect(pickTrashFolder([{ path: 'INBOX' }, { path: 'Bin', specialUse: '\\Trash' }], 'INBOX')).toBe('Bin')
+  })
+
+  it('falls back to a name match', () => {
+    expect(pickTrashFolder([{ path: 'Papierkorb' }], 'INBOX')).toBe('Papierkorb')
+  })
+
+  it('returns null when already in trash or none exists', () => {
+    expect(pickTrashFolder([{ path: 'Trash' }], 'Trash')).toBeNull()
+    expect(pickTrashFolder([{ path: 'INBOX' }], 'INBOX')).toBeNull()
   })
 })

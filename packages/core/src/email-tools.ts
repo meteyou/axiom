@@ -534,7 +534,7 @@ export function createEmailDeleteTool(deps: EmailToolsDeps = {}): AgentTool {
     name: 'email_delete',
     label: 'Delete Emails',
     description:
-      'Delete one or more messages by UID. This is irreversible on most servers — prefer email_move to an archive or trash folder. ' +
+      'Delete one or more messages by UID. Moves them to the trash folder when the server has one, otherwise deletes permanently. ' +
       'Requires the account permission to delete messages.',
     parameters: Type.Object({
       account: accountParam(),
