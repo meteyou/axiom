@@ -3,6 +3,35 @@ export interface EmailAllowlist {
   domains: string[]
 }
 
+export type EmailFolderMode = 'all' | 'selected'
+
+export interface EmailFolder {
+  path: string
+  name: string
+  delimiter: string
+  specialUse?: string
+  subscribed: boolean
+}
+
+export interface EmailConnectionPayload {
+  accountId?: string
+  imapHost?: string
+  imapPort?: number
+  imapUser?: string
+  imapPassword?: string
+  smtpHost?: string
+  smtpPort?: number
+  smtpUser?: string
+  smtpPassword?: string
+  allowSelfSignedCert?: boolean
+}
+
+export interface EmailConnectionTestResult {
+  ok: boolean
+  imap: { ok: boolean; error?: string }
+  smtp: { ok: boolean; error?: string }
+}
+
 export interface EmailAccount {
   id: string
   name: string
@@ -21,6 +50,8 @@ export interface EmailAccount {
   canDownloadAttachments: boolean
   requireApproval: boolean
   allowlist: EmailAllowlist
+  folderMode: EmailFolderMode
+  allowedFolders: string[]
   displayName: string
   signature: string
   appendToSentFolder: boolean
@@ -47,6 +78,8 @@ export interface EmailAccountPayload {
   canDownloadAttachments: boolean
   requireApproval: boolean
   allowlist: EmailAllowlist
+  folderMode: EmailFolderMode
+  allowedFolders: string[]
   displayName: string
   signature: string
   appendToSentFolder: boolean
@@ -75,5 +108,17 @@ export function useEmailApi() {
   const deleteAccount = (id: string) =>
     apiFetch<{ success: boolean }>(`/api/email/accounts/${id}`, { method: 'DELETE' })
 
-  return { listAccounts, createAccount, updateAccount, deleteAccount }
+  const testConnection = (payload: EmailConnectionPayload) =>
+    apiFetch<EmailConnectionTestResult>('/api/email/accounts/test-connection', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+
+  const listFolders = (payload: EmailConnectionPayload) =>
+    apiFetch<{ folders: EmailFolder[] }>('/api/email/accounts/folders', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+
+  return { listAccounts, createAccount, updateAccount, deleteAccount, testConnection, listFolders }
 }

@@ -78,6 +78,66 @@
           </div>
         </section>
 
+        <!-- Connection test -->
+        <section class="space-y-2">
+          <div class="flex items-center gap-3">
+            <Button type="button" variant="outline" :disabled="connection.testing.value" @click="onTestConnection">
+              {{ connection.testing.value ? $t('email.form.testing') : $t('email.form.testConnection') }}
+            </Button>
+            <p v-if="connection.testError.value" class="text-sm text-destructive">
+              {{ connection.testError.value }}
+            </p>
+            <p v-else-if="connection.testResult.value?.ok" class="text-sm text-emerald-600">
+              {{ $t('email.form.testSuccess') }}
+            </p>
+          </div>
+          <ul v-if="connection.testResult.value && !connection.testResult.value.ok" class="space-y-1 text-sm text-destructive">
+            <li v-if="connection.testResult.value.imap.error">{{ connection.testResult.value.imap.error }}</li>
+            <li v-if="connection.testResult.value.smtp.error">{{ connection.testResult.value.smtp.error }}</li>
+          </ul>
+        </section>
+
+        <!-- Folder restriction -->
+        <section class="space-y-3">
+          <h3 class="text-sm font-semibold text-foreground">{{ $t('email.form.foldersSection') }}</h3>
+          <p class="text-xs text-muted-foreground">{{ $t('email.form.foldersHelp') }}</p>
+          <div class="space-y-2">
+            <label class="flex items-center gap-2 text-sm">
+              <input v-model="form.folderMode" type="radio" value="all" class="h-4 w-4">
+              {{ $t('email.form.folderModeAll') }}
+            </label>
+            <label class="flex items-center gap-2 text-sm">
+              <input v-model="form.folderMode" type="radio" value="selected" class="h-4 w-4">
+              {{ $t('email.form.folderModeSelected') }}
+            </label>
+          </div>
+
+          <div v-if="form.folderMode === 'selected'" class="space-y-2 rounded-md border border-border p-3">
+            <div class="flex items-center gap-3">
+              <Button type="button" size="sm" variant="outline" :disabled="connection.foldersLoading.value" @click="onLoadFolders">
+                {{ connection.foldersLoading.value ? $t('email.form.loadingFolders') : $t('email.form.loadFolders') }}
+              </Button>
+              <p v-if="connection.foldersError.value" class="text-sm text-destructive">
+                {{ connection.foldersError.value }}
+              </p>
+            </div>
+            <div v-if="folderOptions.length" class="max-h-52 space-y-1 overflow-y-auto">
+              <label v-for="folder in folderOptions" :key="folder" class="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  class="h-4 w-4"
+                  :checked="form.allowedFolders.includes(folder)"
+                  @change="toggleFolder(folder)"
+                >
+                <span class="truncate">{{ folder }}</span>
+              </label>
+            </div>
+            <p v-else-if="!connection.foldersLoading.value" class="text-xs text-muted-foreground">
+              {{ $t('email.form.noFoldersLoaded') }}
+            </p>
+          </div>
+        </section>
+
         <!-- Permissions -->
         <section class="space-y-3">
           <h3 class="text-sm font-semibold text-foreground">{{ $t('email.form.permissionsSection') }}</h3>
@@ -171,7 +231,8 @@
 </template>
 
 <script setup lang="ts">
-import type { EmailAccount, EmailAccountPayload } from '~/api/email'
+import type { EmailAccount, EmailAccountPayload, EmailConnectionPayload, EmailFolderMode } from '~/api/email'
+import { useEmailConnection } from '~/features/email/composables/useEmailConnection'
 
 const props = defineProps<{
   open: boolean
@@ -179,6 +240,45 @@ const props = defineProps<{
   account?: EmailAccount | null
   loading?: boolean
 }>()
+
+const connection = useEmailConnection()
+
+const folderOptions = computed(() => {
+  const loaded = connection.folders.value.map(folder => folder.path)
+  return [...new Set([...loaded, ...form.allowedFolders])].sort((a, b) => a.localeCompare(b))
+})
+
+function connectionPayload() {
+  const payload: EmailConnectionPayload = {
+    imapHost: form.imapHost.trim(),
+    imapPort: Number(form.imapPort),
+    imapUser: form.imapUser.trim(),
+    smtpHost: form.smtpHost.trim(),
+    smtpPort: Number(form.smtpPort),
+    smtpUser: form.smtpUser.trim(),
+    allowSelfSignedCert: form.allowSelfSignedCert,
+  }
+
+  if (props.mode === 'edit' && props.account) payload.accountId = props.account.id
+  if (form.imapPassword) payload.imapPassword = form.imapPassword
+  if (form.smtpPassword) payload.smtpPassword = form.smtpPassword
+
+  return payload
+}
+
+function onTestConnection() {
+  return connection.testConnection(connectionPayload())
+}
+
+function onLoadFolders() {
+  return connection.loadFolders(connectionPayload())
+}
+
+function toggleFolder(folder: string) {
+  const index = form.allowedFolders.indexOf(folder)
+  if (index === -1) form.allowedFolders.push(folder)
+  else form.allowedFolders.splice(index, 1)
+}
 
 const emit = defineEmits<{
   close: []
@@ -218,6 +318,8 @@ function emptyForm() {
     requireApproval: false,
     allowlistAddresses: '',
     allowlistDomains: '',
+    folderMode: 'all' as EmailFolderMode,
+    allowedFolders: [] as string[],
     displayName: '',
     signature: '',
     appendToSentFolder: false,
@@ -230,6 +332,7 @@ const form = reactive(emptyForm())
 
 function resetForm() {
   Object.assign(form, emptyForm())
+  connection.reset()
 
   const account = props.account
   if (props.mode !== 'edit' || !account) return
@@ -252,6 +355,8 @@ function resetForm() {
     requireApproval: account.requireApproval,
     allowlistAddresses: account.allowlist.addresses.join('\n'),
     allowlistDomains: account.allowlist.domains.join('\n'),
+    folderMode: account.folderMode,
+    allowedFolders: [...account.allowedFolders],
     displayName: account.displayName,
     signature: account.signature,
     appendToSentFolder: account.appendToSentFolder,
@@ -290,6 +395,8 @@ function onSubmit() {
       addresses: parseList(form.allowlistAddresses),
       domains: parseList(form.allowlistDomains),
     },
+    folderMode: form.folderMode,
+    allowedFolders: form.folderMode === 'selected' ? [...form.allowedFolders] : [],
     displayName: form.displayName.trim(),
     signature: form.signature,
     appendToSentFolder: form.appendToSentFolder,
