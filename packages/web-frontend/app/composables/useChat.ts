@@ -26,6 +26,27 @@ export interface ChatPicker {
   options: ChatPickerOption[]
 }
 
+/**
+ * A button attached to an interactive chat message (e.g. an email waiting for
+ * approval). Clicking posts to `/api/chat/actions/:messageId`; the backend
+ * answers with the resolution text that replaces the buttons.
+ */
+export interface ChatActionButton {
+  actionId: string
+  label: string
+  style?: 'primary' | 'danger'
+}
+
+export interface ChatActionMessage {
+  messageId: string
+  kind: string
+  refId: string
+  text: string
+  actions: ChatActionButton[]
+  /** Set once decided (in any channel) — buttons are replaced by this text. */
+  resolution?: string
+}
+
 export interface ChatAttachment {
   kind: 'image' | 'file'
   originalName: string
@@ -99,6 +120,12 @@ export interface ChatMessage {
   /** The picker option command the user picked (disables the buttons). */
   pickerResolvedCommand?: string
   /**
+   * Interactive action buttons attached to a system message. Once
+   * `chatAction.resolution` is set the buttons are replaced by the result,
+   * which also happens when another channel decided.
+   */
+  chatAction?: ChatActionMessage
+  /**
    * For `role: 'divider'` messages: the id of the session that ended at
    * this divider. Used to match late-arriving `session_summary` events
    * (from the non-blocking /new flow) to the right divider so its
@@ -108,8 +135,10 @@ export interface ChatMessage {
 }
 
 interface WsMessage {
-  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'session_summary' | 'reminder' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'pong' | 'attachment'
+  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'session_summary' | 'reminder' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'pong' | 'attachment' | 'chat_action' | 'chat_action_resolved'
   text?: string
+  /** Interactive message payload (for chat_action / chat_action_resolved) */
+  chatAction?: ChatActionMessage
   /** Picker payload for interactive slash-command replies (e.g. /model). */
   picker?: ChatPicker
   /** Uploaded file the agent sent for the current turn (for type='attachment') */
@@ -618,6 +647,23 @@ export function useChat() {
         }
         break
 
+      case 'chat_action':
+        if (msg.chatAction) {
+          messages.value = [...messages.value, {
+            role: 'system',
+            content: msg.chatAction.text,
+            timestamp: new Date().toISOString(),
+            chatAction: msg.chatAction,
+          }]
+        }
+        break
+
+      case 'chat_action_resolved':
+        // A decision arrived (this tab, another tab, the web UI or Telegram) —
+        // swap the buttons for the result.
+        if (msg.chatAction) applyChatActionResolution(msg.chatAction.messageId, msg.chatAction.resolution)
+        break
+
       case 'pong':
         // Clear the pong-timeout so the heartbeat knows the connection is alive
         if (pongTimeout) { clearTimeout(pongTimeout); pongTimeout = null }
@@ -756,6 +802,36 @@ export function useChat() {
     sendRawCommand(command)
   }
 
+  function applyChatActionResolution(messageId: string, resolution?: string) {
+    const list = messages.value
+    const index = list.findIndex(m => m.chatAction?.messageId === messageId)
+    if (index < 0) return
+    const target = list[index]!
+    const updated = [...list]
+    updated[index] = { ...target, chatAction: { ...target.chatAction!, resolution } }
+    messages.value = updated
+  }
+
+  /**
+   * Answer an interactive chat message button. The backend owns the decision
+   * (including first-action-wins), so a losing click still gets a resolution
+   * text back and the buttons disappear.
+   */
+  async function submitChatAction(messageId: string, actionId: string) {
+    const { apiFetch } = useApi()
+    try {
+      const response = await apiFetch<{ status: string; resolution: string }>(
+        `/api/chat/actions/${encodeURIComponent(messageId)}`,
+        { method: 'POST', body: JSON.stringify({ actionId }) },
+      )
+      applyChatActionResolution(messageId, response.resolution)
+    } catch (err) {
+      // A losing race answers 409 with the decision text as `error`, so the
+      // message is meaningful on both the domain and the failure path.
+      applyChatActionResolution(messageId, err instanceof Error ? err.message : String(err))
+    }
+  }
+
   function newSession() {
     sendCommand('new')
   }
@@ -792,6 +868,7 @@ export function useChat() {
     sendMessage,
     sendRawCommand,
     resolvePicker,
+    submitChatAction,
     newSession,
     stopTask,
     clearMessages,

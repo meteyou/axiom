@@ -104,11 +104,11 @@
             // Mobile: messages fill the available width (minus avatar + gap
             // or the pl-11 offset for tool cards). On sm+ screens we cap them
             // so bubbles don't span edge-to-edge on wider viewports.
-            msg.role === 'divider' ? 'w-full' : (msg.role === 'tool' || (msg.role === 'system' && (msg.isTaskResult || msg.isTaskStatusUpdate || msg.picker)) || msg.isThinking) ? 'self-start w-full max-w-full sm:max-w-[75%] pl-11' : 'flex max-w-full gap-3 sm:max-w-[75%]',
+            msg.role === 'divider' ? 'w-full' : (msg.role === 'tool' || (msg.role === 'system' && (msg.isTaskResult || msg.isTaskStatusUpdate || msg.picker || msg.chatAction)) || msg.isThinking) ? 'self-start w-full max-w-full sm:max-w-[75%] pl-11' : 'flex max-w-full gap-3 sm:max-w-[75%]',
             {
               'self-end flex-row-reverse': msg.role === 'user',
               'self-start': msg.role === 'assistant' && !msg.isThinking,
-              'self-center max-w-full sm:max-w-[85%]': msg.role === 'system' && !msg.isTaskResult && !msg.isTaskStatusUpdate && !msg.picker,
+              'self-center max-w-full sm:max-w-[85%]': msg.role === 'system' && !msg.isTaskResult && !msg.isTaskStatusUpdate && !msg.picker && !msg.chatAction,
             },
           ]"
         >
@@ -258,6 +258,32 @@
                 <div class="max-h-60 overflow-y-auto px-3 py-2">
                   <div class="prose-chat break-words text-xs text-foreground" v-html="renderMarkdown(taskResultBody(msg.content))" />
                 </div>
+              </div>
+            </div>
+          </template>
+
+          <!-- Interactive action message (e.g. an email waiting for approval).
+               Buttons post to /api/chat/actions; once decided — here or in any
+               other channel — they are replaced by the result line. -->
+          <template v-else-if="msg.role === 'system' && msg.chatAction">
+            <div class="w-full overflow-hidden rounded-lg border border-border bg-muted/30">
+              <div class="whitespace-pre-wrap break-words px-3 py-2 text-xs text-foreground">{{ msg.chatAction.text }}</div>
+              <div
+                v-if="msg.chatAction.resolution"
+                class="border-t border-border/60 px-3 py-2 text-xs text-muted-foreground"
+              >{{ msg.chatAction.resolution }}</div>
+              <div v-else class="flex flex-wrap gap-1.5 border-t border-border/60 p-1.5">
+                <button
+                  v-for="action in msg.chatAction.actions"
+                  :key="action.actionId"
+                  type="button"
+                  class="rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+                  :class="action.style === 'danger'
+                    ? 'border-destructive/30 text-destructive hover:bg-destructive/10'
+                    : 'border-primary/30 text-primary hover:bg-primary/10'"
+                  :disabled="pendingChatActions.has(msg.chatAction.messageId)"
+                  @click="handleChatAction(msg.chatAction!.messageId, action.actionId)"
+                >{{ action.label }}</button>
               </div>
             </div>
           </template>
@@ -685,7 +711,22 @@ function formatTokenCount(count: number): string {
   if (count >= 1000) return `${(count / 1000).toFixed(1)}k`
   return String(count)
 }
-const { messages, connectionStatus, isStreaming, connect, disconnect, sendMessage, newSession, stopTask, resolvePicker } = useChat()
+const { messages, connectionStatus, isStreaming, connect, disconnect, sendMessage, newSession, stopTask, resolvePicker, submitChatAction } = useChat()
+
+/** Message ids with an in-flight action click, so buttons can't be double-fired. */
+const pendingChatActions = ref<Set<string>>(new Set())
+
+async function handleChatAction(messageId: string, actionId: string) {
+  if (pendingChatActions.value.has(messageId)) return
+  pendingChatActions.value = new Set(pendingChatActions.value).add(messageId)
+  try {
+    await submitChatAction(messageId, actionId)
+  } finally {
+    const updated = new Set(pendingChatActions.value)
+    updated.delete(messageId)
+    pendingChatActions.value = updated
+  }
+}
 
 /**
  * Map a clicked picker option back to the position of its message inside
