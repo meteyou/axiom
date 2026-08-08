@@ -258,9 +258,11 @@ export function collectAttachmentParts(
 
 /** Turns raw IMAP/SMTP failures into messages a human can act on. */
 export function describeConnectionError(err: unknown, protocol: 'IMAP' | 'SMTP'): string {
-  const error = err as { code?: string; responseCode?: number; message?: string }
+  const error = err as { code?: string; responseCode?: number; message?: string; responseText?: string }
   const code = error?.code ?? ''
-  const message = error?.message ?? String(err)
+  // imapflow throws a generic "Command failed" and keeps the server's reason in
+  // responseText — without it every IMAP rejection looks identical.
+  const message = [error?.message ?? String(err), error?.responseText].filter(Boolean).join(': ')
 
   if (code === 'ECONNREFUSED') {
     return `${protocol}: connection refused — check host and port.`
