@@ -21,6 +21,7 @@ import { URL } from 'node:url'
 import crypto from 'node:crypto'
 import type { RuntimeMetrics } from './runtime-metrics.js'
 import type { ChatEventBus, ChatEvent } from './chat-event-bus.js'
+import type { ChatActionMessage } from './chat-actions.js'
 
 interface ChatMessage {
   type: 'message' | 'command' | 'ping'
@@ -32,8 +33,15 @@ interface ChatMessage {
 }
 
 interface ChatResponse {
-  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'session_summary' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'reminder' | 'pong' | 'attachment'
+  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'session_summary' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'reminder' | 'pong' | 'attachment' | 'chat_action' | 'chat_action_resolved'
   text?: string
+  /**
+   * Interactive message with action buttons (e.g. an email waiting for
+   * approval). Buttons are answered via `POST /api/chat/actions/:messageId`;
+   * a `chat_action_resolved` for the same `messageId` replaces them with the
+   * result, no matter which channel decided.
+   */
+  chatAction?: ChatActionMessage
   /**
    * Interactive picker payload (slash-command driven). When present on a
    * `system` message the frontend renders a button group; clicking a button
@@ -668,6 +676,11 @@ export function setupWebSocketChat(
             reminderMessage: event.reminderMessage,
             reminderName: event.reminderName,
             cronjobId: event.cronjobId,
+          })
+        } else if (event.type === 'chat_action' || event.type === 'chat_action_resolved') {
+          sendMessage(client, {
+            type: event.type,
+            chatAction: event.chatAction,
           })
         } else if (event.type === 'attachment') {
           sendMessage(client, {

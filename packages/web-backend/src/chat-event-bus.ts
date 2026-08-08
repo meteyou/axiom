@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events'
 import type { UploadDescriptor } from '@axiom/core'
+import type { ChatActionMessage } from './chat-actions.js'
 
 /**
  * A chat event emitted when messages flow through any channel (web, telegram).
@@ -7,7 +8,7 @@ import type { UploadDescriptor } from '@axiom/core'
  */
 export interface ChatEvent {
   /** The kind of event being broadcast */
-  type: 'user_message' | 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'done' | 'error' | 'system' | 'session_end' | 'session_summary' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'reminder' | 'attachment'
+  type: 'user_message' | 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'done' | 'error' | 'system' | 'session_end' | 'session_summary' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'reminder' | 'attachment' | 'chat_action' | 'chat_action_resolved'
   /** The Axiom user ID (integer) this event belongs to */
   userId: number
   /** Where the event originated */
@@ -76,6 +77,8 @@ export interface ChatEvent {
    * Only set for `type: 'user_message'`.
    */
   replyContext?: string
+  /** Interactive message with action buttons (for chat_action* events) */
+  chatAction?: ChatActionMessage
 }
 
 /**
