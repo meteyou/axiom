@@ -480,3 +480,69 @@ describe('email send log endpoints', () => {
     expect((await fetch(`${baseUrl}/api/email/sent-log/x`)).status).toBe(401)
   })
 })
+
+describe('email approval endpoints', () => {
+  async function decide(id: string, action: 'approve' | 'reject' | 'retry', token = userToken) {
+    const res = await fetch(`${baseUrl}/api/email/sent-log/${id}/${action}`, {
+      method: 'POST',
+      headers: authHeaders(token),
+    })
+    const body = await res.json() as { entry: EmailSendLogEntry | null; error?: string; code?: string }
+    return { res, body }
+  }
+
+  it('lets a non-admin user reject a pending mail and records the decider', async () => {
+    const entry = seedLogEntry({ status: 'pending' })
+
+    const { res, body } = await decide(entry.id, 'reject')
+
+    expect(res.status).toBe(200)
+    expect(body.entry!.status).toBe('rejected')
+    expect(body.entry!.decidedBy).toBe('user')
+    expect(body.entry!.decidedAt).toBeTruthy()
+  })
+
+  it('lets only the first decision win', async () => {
+    const entry = seedLogEntry({ status: 'pending' })
+
+    expect((await decide(entry.id, 'reject')).res.status).toBe(200)
+
+    const second = await decide(entry.id, 'approve', adminToken)
+    expect(second.res.status).toBe(409)
+    expect(second.body.code).toBe('already_decided')
+    expect(second.body.error).toContain('user')
+    expect(second.body.entry!.decidedBy).toBe('user')
+  })
+
+  it('marks the entry failed when SMTP is unreachable and allows a retry', async () => {
+    const account = await createAccount({ smtpHost: '127.0.0.1', smtpPort: 1 })
+    const entry = seedLogEntry({ status: 'pending', accountId: account.id, accountName: account.name })
+
+    const approved = await decide(entry.id, 'approve')
+    expect(approved.res.status).toBe(502)
+    expect(approved.body.code).toBe('send_failed')
+    expect(approved.body.entry!.status).toBe('failed')
+    expect(approved.body.entry!.errorMessage).toBeTruthy()
+    expect(approved.body.entry!.decidedBy).toBe('user')
+
+    const retried = await decide(entry.id, 'retry', adminToken)
+    expect(retried.res.status).toBe(502)
+    expect(retried.body.entry!.status).toBe('failed')
+    expect(retried.body.entry!.decidedBy).toBe('admin')
+  })
+
+  it('refuses to retry an entry that did not fail', async () => {
+    const entry = seedLogEntry({ status: 'sent' })
+
+    const { res, body } = await decide(entry.id, 'retry')
+    expect(res.status).toBe(409)
+    expect(body.code).toBe('not_retryable')
+  })
+
+  it('returns 404 for unknown entries and 401 without a token', async () => {
+    expect((await decide('does-not-exist', 'approve')).res.status).toBe(404)
+
+    const anonymous = await fetch(`${baseUrl}/api/email/sent-log/x/approve`, { method: 'POST' })
+    expect(anonymous.status).toBe(401)
+  })
+})
