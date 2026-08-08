@@ -34,6 +34,7 @@ import {
   getProviderDefaultModel,
   ProviderManager,
   SessionManager,
+  registerEmailApprovalNotifier,
   removeCronjobTool,
   TaskEventBus,
 } from '@axiom/core'
@@ -366,6 +367,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
   let agentCore: AgentCore | null = null
   let providerManager: ProviderManager | null = null
   let telegramBot: TelegramBot | null = null
+  let unregisterTelegramEmailApproval: (() => void) | null = null
 
   // Pending task injections keyed by a per-injection UUID. The key is
   // minted here, passed into AgentCore.injectTaskResult as the
@@ -1117,6 +1119,9 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
       return
     }
 
+    unregisterTelegramEmailApproval?.()
+    unregisterTelegramEmailApproval = null
+
     if (telegramBot) {
       try {
         await telegramBot.stop()
@@ -1135,6 +1140,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
     if (telegramBot) {
       try {
         await telegramBot.start()
+        unregisterTelegramEmailApproval = registerEmailApprovalNotifier(telegramBot.createEmailApprovalNotifier())
         logger.log('[axiom] Telegram bot (re)started')
       } catch (err) {
         logger.error('[axiom] Failed to start Telegram bot:', err)
@@ -1278,6 +1284,9 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
       agentHeartbeatService.stop()
       uploadCleanupService.stop()
       taskRuntime.schedules.stop()
+
+      unregisterTelegramEmailApproval?.()
+      unregisterTelegramEmailApproval = null
 
       if (telegramBot) {
         try {
