@@ -9,7 +9,11 @@ import {
 } from './email-account-store.js'
 import type { EmailAccount } from './email-account-store.js'
 import { createEmailClient, formatAddress } from './email-client.js'
-import type { EmailClient, EmailClientAccount } from './email-client.js'
+import type { EmailClient, EmailClientAccount, EmailOutgoingAttachment } from './email-client.js'
+import { evaluateEmailSendPolicy } from './email-send-policy.js'
+import { createEmailSendLogEntry } from './email-send-log.js'
+import type { CreateEmailSendLogInput, EmailSendLogAttachment, EmailSendLogEntry } from './email-send-log.js'
+import { getDatabase } from './database.js'
 import { getWorkspaceDir } from './workspace.js'
 
 export const DEFAULT_EMAIL_FOLDER = 'INBOX'
@@ -26,6 +30,7 @@ export interface EmailToolsDeps {
   listAccounts?: () => { id: string; name: string }[]
   getAccount?: (id: string) => EmailAccount | null
   workspaceDir?: () => string
+  logSend?: (input: CreateEmailSendLogInput) => EmailSendLogEntry
 }
 
 interface ResolvedDeps {
@@ -33,6 +38,7 @@ interface ResolvedDeps {
   listAccounts: () => { id: string; name: string }[]
   getAccount: (id: string) => EmailAccount | null
   workspaceDir: () => string
+  logSend: (input: CreateEmailSendLogInput) => EmailSendLogEntry
 }
 
 function resolveDeps(deps: EmailToolsDeps = {}): ResolvedDeps {
@@ -41,6 +47,7 @@ function resolveDeps(deps: EmailToolsDeps = {}): ResolvedDeps {
     listAccounts: deps.listAccounts ?? (() => listEmailAccounts().map(a => ({ id: a.id, name: a.name }))),
     getAccount: deps.getAccount ?? getEmailAccountDecrypted,
     workspaceDir: deps.workspaceDir ?? getWorkspaceDir,
+    logSend: deps.logSend ?? (input => createEmailSendLogEntry(getDatabase(), input)),
   }
 }
 
@@ -141,9 +148,10 @@ function uidsParam(description: string) {
   return Type.Array(Type.Number(), { description })
 }
 
-type EmailCapability = 'canManage' | 'canDelete' | 'canDownloadAttachments'
+type EmailCapability = 'canSend' | 'canManage' | 'canDelete' | 'canDownloadAttachments'
 
 const CAPABILITY_LABEL: Record<EmailCapability, string> = {
+  canSend: 'send emails',
   canManage: 'manage mailbox (move/archive)',
   canDelete: 'delete messages',
   canDownloadAttachments: 'download attachments',
@@ -683,6 +691,248 @@ export function createEmailDownloadAttachmentTool(deps: EmailToolsDeps = {}): Ag
   }
 }
 
+/** Signature/disclaimer is appended server-side — the agent cannot suppress it. */
+export function appendSignature(body: string, signature: string): string {
+  const trimmed = signature.trim()
+  if (!trimmed) return body
+  return `${body.replace(/\s+$/, '')}\n\n-- \n${trimmed}`
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+export function appendHtmlSignature(html: string, signature: string): string {
+  const trimmed = signature.trim()
+  if (!trimmed) return html
+  return `${html}\n<br><br>--<br>\n${escapeHtml(trimmed).replace(/\n/g, '<br>\n')}`
+}
+
+/** Workspace-relative attachment path, rejecting anything outside the workspace. */
+export function resolveWorkspaceFile(workspaceDir: string, requested: string): string | null {
+  const candidate = path.resolve(workspaceDir, requested)
+  const relative = path.relative(workspaceDir, candidate)
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return null
+  return candidate
+}
+
+function toStringList(value: unknown): string[] {
+  if (value === undefined || value === null) return []
+  const raw = Array.isArray(value) ? value : [value]
+  return raw.map(entry => String(entry).trim()).filter(Boolean)
+}
+
+export function createEmailSendTool(deps: EmailToolsDeps = {}): AgentTool {
+  const resolved = resolveDeps(deps)
+
+  return {
+    name: 'email_send',
+    label: 'Send Email',
+    description:
+      'Send a new email or reply to an existing message. Recipients are checked server-side against the account allowlist: ' +
+      'mails to non-allowlisted recipients are either blocked or held for human approval. Every attempt is recorded in the send log. ' +
+      'The account signature/disclaimer is always appended automatically.',
+    parameters: Type.Object({
+      account: accountParam(),
+      to: Type.Optional(Type.Array(Type.String(), { description: 'Primary recipients. Optional when replying — defaults to the sender of the original message.' })),
+      cc: Type.Optional(Type.Array(Type.String(), { description: 'CC recipients.' })),
+      bcc: Type.Optional(Type.Array(Type.String(), { description: 'BCC recipients.' })),
+      subject: Type.Optional(Type.String({ description: 'Subject. Optional when replying — defaults to "Re: <original subject>".' })),
+      body: Type.String({ description: 'Plain text body. The account signature is appended automatically.' }),
+      html_body: Type.Optional(Type.String({ description: 'Optional HTML body. Ignored when HTML sending is disabled for the account.' })),
+      reply_to_uid: Type.Optional(Type.Number({ description: 'UID of the message to reply to (keeps the thread intact via In-Reply-To/References).' })),
+      folder: Type.Optional(Type.String({ description: `Folder of the message referenced by reply_to_uid (default: ${DEFAULT_EMAIL_FOLDER}).` })),
+      attachments: Type.Optional(Type.Array(Type.String(), { description: 'Workspace-relative file paths to attach.' })),
+    }),
+    execute: async (_toolCallId, params) => {
+      const {
+        account: accountParamValue,
+        to,
+        cc,
+        bcc,
+        subject,
+        body,
+        html_body,
+        reply_to_uid,
+        folder,
+        attachments,
+      } = params as {
+        account?: string
+        to?: string[]
+        cc?: string[]
+        bcc?: string[]
+        subject?: string
+        body?: string
+        html_body?: string
+        reply_to_uid?: number
+        folder?: string
+        attachments?: string[]
+      }
+
+      const account = resolveAccount(resolved, accountParamValue)
+      if (!account.ok) return account.error
+
+      const denied = requireCapability(account.value, 'canSend')
+      if (denied) return denied
+
+      if (typeof body !== 'string' || !body.trim()) {
+        return fail('Parameter "body" is required and must not be empty.')
+      }
+
+      let recipientsTo = toStringList(to)
+      let effectiveSubject = subject?.trim() ?? ''
+      let inReplyTo: string | null = null
+      let references: string[] = []
+
+      if (reply_to_uid !== undefined) {
+        if (typeof reply_to_uid !== 'number' || !Number.isFinite(reply_to_uid)) {
+          return fail('Parameter "reply_to_uid" must be a number (see email_list output).')
+        }
+
+        const sourceFolder = resolveFolder(account.value, folder)
+        if (!sourceFolder.ok) return sourceFolder.error
+
+        try {
+          const original = await resolved.client.readMessage(
+            toClientAccount(account.value),
+            sourceFolder.value,
+            reply_to_uid,
+            { markSeen: false },
+          )
+
+          if (recipientsTo.length === 0) {
+            recipientsTo = original.from.map(entry => entry.address)
+          }
+          if (!effectiveSubject) {
+            effectiveSubject = /^re:/i.test(original.subject) ? original.subject : `Re: ${original.subject}`
+          }
+          inReplyTo = original.messageId ?? null
+          references = [...original.references, ...(original.messageId ? [original.messageId] : [])]
+        } catch (err) {
+          return fail(`Failed to load the message to reply to: ${errorText(err)}`)
+        }
+      }
+
+      if (!effectiveSubject) {
+        return fail('Parameter "subject" is required for new messages.')
+      }
+
+      const recipientsCc = toStringList(cc)
+      const recipientsBcc = toStringList(bcc)
+
+      const workspaceDir = resolved.workspaceDir()
+      const attachmentMeta: EmailSendLogAttachment[] = []
+      const outgoingAttachments: EmailOutgoingAttachment[] = []
+      for (const requested of toStringList(attachments)) {
+        const filePath = resolveWorkspaceFile(workspaceDir, requested)
+        if (!filePath) {
+          return fail(`Attachment "${requested}" is outside the workspace — only workspace-relative paths can be attached.`)
+        }
+        let size: number
+        try {
+          const stat = fs.statSync(filePath)
+          if (!stat.isFile()) return fail(`Attachment "${requested}" is not a file.`)
+          size = stat.size
+        } catch {
+          return fail(`Attachment "${requested}" was not found in the workspace.`)
+        }
+        const filename = path.basename(filePath)
+        attachmentMeta.push({ filename, path: filePath, size })
+        outgoingAttachments.push({ filename, path: filePath })
+      }
+
+      const text = appendSignature(body, account.value.signature)
+      const htmlAllowed = account.value.allowHtml && Boolean(html_body?.trim())
+      const html = htmlAllowed ? appendHtmlSignature(html_body!, account.value.signature) : null
+      const htmlDropped = Boolean(html_body?.trim()) && !account.value.allowHtml
+
+      const policy = evaluateEmailSendPolicy(
+        { to: recipientsTo, cc: recipientsCc, bcc: recipientsBcc },
+        { allowlist: account.value.allowlist, requireApproval: account.value.requireApproval },
+      )
+
+      const logBase = {
+        accountId: account.value.id,
+        accountName: account.value.name,
+        to: recipientsTo,
+        cc: recipientsCc,
+        bcc: recipientsBcc,
+        subject: effectiveSubject,
+        bodyText: text,
+        bodyHtml: html,
+        attachments: attachmentMeta,
+        inReplyTo,
+        references,
+      }
+
+      if (policy.decision === 'blocked') {
+        const entry = resolved.logSend({ ...logBase, status: 'blocked', reason: policy.reason })
+        return fail(
+          `Email was blocked by the send rules of account "${account.value.name}": ${policy.reason} ` +
+            'Ask the user to add the recipient to the allowlist. The attempt was recorded in the send log.',
+          { accountId: account.value.id, logId: entry.id, status: 'blocked', reason: policy.reason },
+        )
+      }
+
+      if (policy.decision === 'pending') {
+        const entry = resolved.logSend({ ...logBase, status: 'pending', reason: policy.reason })
+        return ok(
+          `Email is waiting for human approval (account "${account.value.name}"): ${policy.reason} ` +
+            'It will be sent automatically once approved — do not retry.',
+          { accountId: account.value.id, logId: entry.id, status: 'pending', reason: policy.reason },
+        )
+      }
+
+      try {
+        const result = await resolved.client.sendMessage(toClientAccount(account.value), {
+          to: recipientsTo,
+          cc: recipientsCc,
+          bcc: recipientsBcc,
+          subject: effectiveSubject,
+          text,
+          ...(html ? { html } : {}),
+          ...(inReplyTo ? { inReplyTo } : {}),
+          ...(references.length > 0 ? { references } : {}),
+          ...(outgoingAttachments.length > 0 ? { attachments: outgoingAttachments } : {}),
+          appendToSentFolder: account.value.appendToSentFolder,
+        })
+
+        const entry = resolved.logSend({
+          ...logBase,
+          status: 'sent',
+          reason: policy.reason,
+          messageId: result.messageId,
+        })
+
+        const notes = htmlDropped ? ' HTML sending is disabled for this account — sent as plain text.' : ''
+        return ok(
+          `Email sent to ${recipientsTo.join(', ')} (account "${account.value.name}", subject "${effectiveSubject}").${notes}`,
+          {
+            accountId: account.value.id,
+            logId: entry.id,
+            status: 'sent',
+            messageId: result.messageId,
+            accepted: result.accepted,
+            rejected: result.rejected,
+            appendedToSent: result.appendedToSent,
+          },
+        )
+      } catch (err) {
+        const message = errorText(err)
+        const entry = resolved.logSend({ ...logBase, status: 'failed', errorMessage: message })
+        return fail(`Failed to send email: ${message}`, {
+          accountId: account.value.id,
+          logId: entry.id,
+          status: 'failed',
+        })
+      }
+    },
+  }
+}
+
 /**
  * Email tools available to the agent. Returns an empty array when no account is
  * configured, and only registers capability-gated tools when at least one
@@ -703,6 +953,7 @@ export function createEmailTools(deps: EmailToolsDeps = {}): AgentTool[] {
     createEmailMarkUnreadTool(resolved),
   ]
 
+  if (accounts.some(account => account.canSend)) tools.push(createEmailSendTool(resolved))
   if (accounts.some(account => account.canManage)) tools.push(createEmailMoveTool(resolved))
   if (accounts.some(account => account.canDelete)) tools.push(createEmailDeleteTool(resolved))
   if (accounts.some(account => account.canDownloadAttachments)) {
