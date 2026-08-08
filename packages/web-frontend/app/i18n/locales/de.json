@@ -1028,7 +1028,8 @@
         "recipients": "Empfänger",
         "subject": "Betreff",
         "account": "Konto",
-        "createdAt": "Zeitpunkt"
+        "createdAt": "Zeitpunkt",
+        "decision": "Entscheidung"
       },
       "filters": {
         "search": "Betreff oder Inhalt suchen…",
@@ -1049,7 +1050,14 @@
       "bodyHtml": "HTML-Inhalt",
       "to": "An",
       "cc": "Cc",
-      "bcc": "Bcc"
+      "bcc": "Bcc",
+      "actions": {
+        "approve": "Freigeben",
+        "reject": "Ablehnen",
+        "retry": "Erneut senden"
+      },
+      "approvedBy": "Freigegeben von {user}",
+      "rejectedBy": "Abgelehnt von {user}"
     }
   },
   "cronjobs": {
