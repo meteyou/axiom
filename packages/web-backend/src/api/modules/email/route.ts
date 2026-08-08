@@ -7,11 +7,12 @@ import { createEmailController } from './controller.js'
 
 export interface EmailRouterOptions {
   db: Database
+  onAccountsChanged?: () => void
 }
 
 export function createEmailRouter(options: EmailRouterOptions): Router {
   const router = Router()
-  const controller = createEmailController({ db: options.db })
+  const controller = createEmailController({ db: options.db, onAccountsChanged: options.onAccountsChanged })
 
   router.use(jwtMiddleware)
 

@@ -16,6 +16,10 @@ import {
 } from './service.js'
 import type { EmailServiceOptions } from './service.js'
 
+export interface EmailControllerOptions extends EmailServiceOptions {
+  onAccountsChanged?: () => void
+}
+
 export interface EmailController {
   isConfigured: (req: AuthenticatedRequest, res: Response) => void
   listAccounts: (req: AuthenticatedRequest, res: Response) => void
@@ -59,8 +63,9 @@ function handleError(res: Response, err: unknown, fallback: string): void {
   res.status(500).json({ error: `${fallback}: ${(err as Error).message}` })
 }
 
-export function createEmailController(options: EmailServiceOptions): EmailController {
+export function createEmailController(options: EmailControllerOptions): EmailController {
   const service = createEmailService(options)
+  const accountsChanged = options.onAccountsChanged ?? (() => {})
 
   return {
     isConfigured(_req, res) {
@@ -95,7 +100,9 @@ export function createEmailController(options: EmailServiceOptions): EmailContro
       }
 
       try {
-        res.status(201).json({ account: service.createAccount(parsed.value) })
+        const account = service.createAccount(parsed.value)
+        accountsChanged()
+        res.status(201).json({ account })
       } catch (err) {
         handleError(res, err, 'Failed to create email account')
       }
@@ -109,7 +116,9 @@ export function createEmailController(options: EmailServiceOptions): EmailContro
       }
 
       try {
-        res.json({ account: service.updateAccount(String(req.params.id), parsed.value) })
+        const account = service.updateAccount(String(req.params.id), parsed.value)
+        accountsChanged()
+        res.json({ account })
       } catch (err) {
         handleError(res, err, 'Failed to update email account')
       }
@@ -118,6 +127,7 @@ export function createEmailController(options: EmailServiceOptions): EmailContro
     deleteAccount(req, res) {
       try {
         service.deleteAccount(String(req.params.id))
+        accountsChanged()
         res.json({ success: true })
       } catch (err) {
         handleError(res, err, 'Failed to delete email account')

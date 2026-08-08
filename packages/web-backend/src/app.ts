@@ -171,7 +171,13 @@ export function createApp(options?: AppOptions): express.Express {
       getTaskRuntime: () => options.getTaskRuntime?.()?.schedules ?? null,
       getBackgroundTaskToolNames: options.getBackgroundTaskToolNames,
     }))
-    app.use('/api/email', createEmailRouter({ db: options.db }))
+    // Email tools are baked into the agent tool set at AgentCore construction,
+    // so an account change only takes effect after the same rebuild a provider
+    // switch triggers.
+    app.use('/api/email', createEmailRouter({
+      db: options.db,
+      onAccountsChanged: () => options.onActiveProviderChanged?.(),
+    }))
     app.use('/api/secrets', createSecretsRouter())
     app.use('/api/tts', createTtsRouter())
     app.use('/api/stt', createSttRouter())
