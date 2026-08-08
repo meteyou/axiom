@@ -24,6 +24,7 @@ import { loadSttSettings } from './stt.js'
 import { createAgentSkillTools, getAgentSkillsForPrompt, getAgentSkillsCount, getAgentSkillsDir, trackAgentSkillUsage, currentPlatform } from './agent-skills.js'
 import { createSearchMemoriesTool } from './memories-tool.js'
 import { createReadChatHistoryTool } from './chat-history-tools.js'
+import { createEmailTools } from './email-tools.js'
 import type { AgentRuntimeStateSnapshot, ResponseChunk } from './agent-runtime-types.js'
 
 /**
@@ -54,6 +55,7 @@ export function createBaseAgentTools(options: BaseAgentToolsOptions): AgentTool[
     createReadChatHistoryTool({ db: options.db }),
     createSearchMemoriesTool({ db: options.db, getCurrentUserId: options.getCurrentUserId }),
     ...createAgentSkillTools(),
+    ...createEmailTools(),
     ...(options.sttEnabled ? [createTranscribeAudioTool()] : []),
   ]
 }
