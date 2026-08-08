@@ -30,6 +30,7 @@ import type { HealthMonitorService } from './health-monitor.js'
 import type { RuntimeMetrics } from './runtime-metrics.js'
 import type { MemoryConsolidationScheduler } from './memory-consolidation-scheduler.js'
 import { createUploadsRouter } from './routes/uploads.js'
+import type { ChatActionRegistry } from './chat-actions.js'
 
 const startTime = Date.now()
 
@@ -64,6 +65,8 @@ export interface AppOptions {
    */
   getBackgroundTaskToolNames?: () => string[]
   taskEventBus?: TaskEventBus | null
+  /** Backs the interactive action buttons rendered inside chat messages. */
+  chatActions?: ChatActionRegistry | null
   /**
    * Returns the latest cached subscriber usage snapshots keyed by provider id.
    * Used by the providers list endpoint to surface quota in the UI without
@@ -113,7 +116,11 @@ export function createApp(options?: AppOptions): express.Express {
     ensureAdminUser(options.db)
     app.use('/api/uploads', createUploadsRouter())
     app.use('/api/auth', createAuthRouter(options.db))
-    app.use('/api/chat', createChatRouter({ db: options.db, getAgentCore }))
+    app.use('/api/chat', createChatRouter({
+      db: options.db,
+      getAgentCore,
+      chatActions: options.chatActions ?? null,
+    }))
     app.use('/api/logs', createLogsRouter(options.db))
     app.use('/api/providers', createProvidersRouter({
       getQuotaSnapshot: options.getQuotaSnapshot,
