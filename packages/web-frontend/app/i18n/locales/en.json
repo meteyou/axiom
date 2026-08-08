@@ -1028,7 +1028,8 @@
         "recipients": "Recipients",
         "subject": "Subject",
         "account": "Account",
-        "createdAt": "Time"
+        "createdAt": "Time",
+        "decision": "Decision"
       },
       "filters": {
         "search": "Search subject or body…",
@@ -1049,7 +1050,14 @@
       "bodyHtml": "HTML body",
       "to": "To",
       "cc": "Cc",
-      "bcc": "Bcc"
+      "bcc": "Bcc",
+      "actions": {
+        "approve": "Approve",
+        "reject": "Reject",
+        "retry": "Retry"
+      },
+      "approvedBy": "Approved by {user}",
+      "rejectedBy": "Rejected by {user}"
     }
   },
   "cronjobs": {
