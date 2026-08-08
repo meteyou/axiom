@@ -180,8 +180,12 @@ export function createEmailApprovalService(deps: EmailApprovalDeps): EmailApprov
         return { ok: false, code: 'already_decided', message: decidedLabel(latest), entry: latest }
       }
 
-      await notifyEmailApprovalResolved(approved)
-      return deliver(resolved, approved)
+      // Notify only once the send is done: channels that did not click (other
+      // browser tabs, Telegram) would otherwise be told "approved" and never
+      // hear about a subsequent SMTP failure.
+      const result = await deliver(resolved, approved)
+      await notifyEmailApprovalResolved(result.entry ?? approved)
+      return result
     },
 
     async reject(id, decider) {
