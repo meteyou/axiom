@@ -141,6 +141,8 @@ export interface EmailSendLogQuery {
   offset?: number
 }
 
+export type EmailSendLogDecision = 'approve' | 'reject' | 'retry'
+
 export interface EmailSendLogPage {
   entries: EmailSendLogEntry[]
   total: number
@@ -201,6 +203,9 @@ export function useEmailApi() {
   const getSendLogEntry = (id: string) =>
     apiFetch<{ entry: EmailSendLogEntry }>(`/api/email/sent-log/${id}`)
 
+  const decideSendLogEntry = (id: string, action: EmailSendLogDecision) =>
+    apiFetch<{ entry: EmailSendLogEntry }>(`/api/email/sent-log/${id}/${action}`, { method: 'POST' })
+
   return {
     listAccounts,
     createAccount,
@@ -210,5 +215,6 @@ export function useEmailApi() {
     listFolders,
     listSendLog,
     getSendLogEntry,
+    decideSendLogEntry,
   }
 }
