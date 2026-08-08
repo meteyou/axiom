@@ -543,7 +543,9 @@
       "agentHeartbeat": "Agent Heartbeat",
       "agentHeartbeatDescription": "Periodic background tasks for memory maintenance, daily note-taking, and proactive housekeeping.",
       "secrets": "Secrets",
-      "secretsDescription": "Manage encrypted environment variables injected at runtime."
+      "secretsDescription": "Manage encrypted environment variables injected at runtime.",
+      "email": "Email",
+      "emailDescription": "IMAP/SMTP accounts the agent may use, including permissions and send rules."
     },
     "agentHeartbeatEnabled": "Enable Agent Heartbeat",
     "agentHeartbeatEnabledHint": "When enabled, the agent periodically runs maintenance tasks defined in HEARTBEAT.md (memory updates, hygiene checks).",
@@ -943,7 +945,6 @@
   },
   "email": {
     "title": "Email",
-    "subtitle": "Configure the IMAP/SMTP accounts the agent may use, including permissions and send rules.",
     "addAccount": "New Account",
     "accountMenu": "Account menu",
     "empty": "No email accounts configured yet.",
@@ -959,9 +960,8 @@
     "deleteConfirm": "This permanently removes the account \"{name}\" and its credentials.",
     "columns": {
       "name": "Name",
-      "imap": "IMAP",
-      "smtp": "SMTP",
-      "permissions": "Permissions"
+      "permissions": "Permissions",
+      "server": "Server"
     },
     "form": {
       "name": "Account name",
@@ -1058,7 +1058,8 @@
       },
       "approvedBy": "Approved by {user}",
       "rejectedBy": "Rejected by {user}"
-    }
+    },
+    "sentLogSubtitle": "Mails the agent sent or queued for approval."
   },
   "cronjobs": {
     "pageTitle": "Cronjobs",

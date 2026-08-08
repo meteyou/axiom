@@ -10,7 +10,7 @@
   <div v-else class="flex h-full flex-col overflow-hidden">
     <!-- Header with save action (hidden on secrets tab which has its own save flow) -->
     <PageHeader :title="$t('settings.title')" :subtitle="$t('settings.subtitle')">
-      <template v-if="activeTab !== 'secrets'" #actions>
+      <template v-if="activeTab !== 'secrets' && activeTab !== 'email'" #actions>
         <Button class="h-8 px-3 text-xs md:h-10 md:px-4 md:py-2 md:text-sm" :disabled="saving || !form" @click="handleSave">
           <span
             v-if="saving"
@@ -23,7 +23,7 @@
     </PageHeader>
 
     <!-- Feedback alerts — only for non-secrets tabs (secrets tab handles its own feedback) -->
-    <div v-if="activeTab !== 'secrets' && (error || successMessage)" class="shrink-0 border-b border-border px-6 py-3">
+    <div v-if="activeTab !== 'secrets' && activeTab !== 'email' && (error || successMessage)" class="shrink-0 border-b border-border px-6 py-3">
       <Alert v-if="error" variant="destructive">
         <AlertDescription class="flex items-center justify-between">
           <span>{{ error }}</span>
@@ -84,7 +84,7 @@
 
       <!-- Content area -->
       <div class="flex-1 overflow-y-auto" role="tabpanel">
-        <div class="mx-auto max-w-xl px-6 py-6 md:px-8 md:py-8">
+        <div :class="['mx-auto px-6 py-6 md:px-8 md:py-8', activeTab === 'email' ? 'max-w-5xl' : 'max-w-xl']">
 
           <!-- Loading skeletons -->
           <div v-if="loading" class="flex flex-col gap-6">
@@ -1880,6 +1880,20 @@
               />
             </div>
 
+            <!-- ═══ Email ═══ -->
+            <div v-else-if="activeTab === 'email'">
+              <div class="mb-8">
+                <h2 class="text-lg font-semibold tracking-tight text-foreground">
+                  {{ $t('settings.tabs.email') }}
+                </h2>
+                <p class="mt-1 text-sm text-muted-foreground">
+                  {{ $t('settings.tabs.emailDescription') }}
+                </p>
+              </div>
+
+              <EmailAccountsWorkspace />
+            </div>
+
           </template>
         </div>
       </div>
@@ -1890,6 +1904,7 @@
 <script setup lang="ts">
 import { canonicalizeProviderModelRef, SETTINGS_THINKING_LEVELS, type SettingsThinkingLevel } from '@axiom/core/contracts'
 import { useSettingsApi } from '~/api/settings'
+import EmailAccountsWorkspace from '~/features/email/components/EmailAccountsWorkspace.vue'
 import type { MemoryConsolidationSettings, FactExtractionSettings, HealthMonitorNotificationToggles, HealthMonitorSettings, AgentHeartbeatSettings, TasksSettings, TtsSettings, SttSettings, UploadsSettings, TelegramSettings } from '~/composables/useSettings'
 import type { TelegramUser } from '~/composables/useTelegramUsers'
 
@@ -1935,7 +1950,7 @@ const timezones = [
   'America/Argentina/Buenos_Aires',
 ]
 
-const VALID_TABS = ['agent', 'memory', 'agentHeartbeat', 'healthMonitor', 'telegram', 'tasks', 'tts', 'stt', 'secrets'] as const
+const VALID_TABS = ['agent', 'memory', 'agentHeartbeat', 'healthMonitor', 'telegram', 'tasks', 'tts', 'stt', 'secrets', 'email'] as const
 type TabId = (typeof VALID_TABS)[number]
 
 const activeTab = computed<TabId>({
@@ -1951,6 +1966,7 @@ const activeTab = computed<TabId>({
 const tabs = computed(() => [
   { id: 'agent' as TabId, icon: 'bot', label: t('settings.tabs.agent') },
   { id: 'agentHeartbeat' as TabId, icon: 'activity', label: t('settings.tabs.agentHeartbeat') },
+  { id: 'email' as TabId, icon: 'mail', label: t('settings.tabs.email') },
   { id: 'healthMonitor' as TabId, icon: 'activity', label: t('settings.tabs.healthMonitor') },
   { id: 'memory' as TabId, icon: 'brain', label: t('settings.tabs.memory') },
   { id: 'secrets' as TabId, icon: 'key', label: t('settings.tabs.secrets') },
