@@ -826,9 +826,10 @@ export function useChat() {
       )
       applyChatActionResolution(messageId, response.resolution)
     } catch (err) {
-      // A losing race answers 409 with the decision text as `error`, so the
-      // message is meaningful on both the domain and the failure path.
-      applyChatActionResolution(messageId, err instanceof Error ? err.message : String(err))
+      // Keep the buttons clickable: a transient failure (offline, 500) left the
+      // decision unmade, and a lost race is announced by the server's
+      // `chat_action_resolved` broadcast anyway.
+      console.error('[chat] action failed:', err)
     }
   }
 
