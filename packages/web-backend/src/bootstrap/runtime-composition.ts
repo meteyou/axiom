@@ -34,6 +34,7 @@ import {
   getProviderDefaultModel,
   ProviderManager,
   SessionManager,
+  createEmailApprovalService,
   registerEmailApprovalNotifier,
   removeCronjobTool,
   TaskEventBus,
@@ -51,6 +52,8 @@ import { randomUUID } from 'node:crypto'
 import { createTelegramBot } from '@axiom/telegram'
 import type { TelegramBot, TelegramChatEvent } from '@axiom/telegram'
 import { ChatEventBus } from '../chat-event-bus.js'
+import { ChatActionRegistry } from '../chat-actions.js'
+import { registerEmailApprovalChatChannel } from '../email-approval-chat.js'
 import { triggerFactExtractionForSessionEnd } from '../fact-extraction-session-end.js'
 import { HealthMonitorService } from '../health-monitor.js'
 import { MemoryConsolidationScheduler } from '../memory-consolidation-scheduler.js'
@@ -113,6 +116,7 @@ export interface RuntimeComposition {
   uploadCleanupService: UploadCleanupService
   taskEventBus: TaskEventBus
   chatEventBus: ChatEventBus
+  chatActions: ChatActionRegistry
   getAgentCore: () => AgentCore | null
   getTaskRuntime: () => TaskRuntimeBoundary
   /**
@@ -355,6 +359,22 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
 
   const chatEventBus = new ChatEventBus()
   const taskEventBus = new TaskEventBus()
+
+  // Interactive chat messages are broadcast to every user, because approvals
+  // (the current consumer) may be answered by any authenticated user.
+  const chatActions = new ChatActionRegistry({
+    publishToClients: ({ type, message }) => {
+      const rows = db.prepare('SELECT id FROM users').all() as { id: number }[]
+      for (const row of rows) {
+        chatEventBus.broadcast({ type, userId: row.id, source: 'web', chatAction: message })
+      }
+    },
+  })
+
+  const unregisterEmailApprovalChat = registerEmailApprovalChatChannel({
+    chatActions,
+    approval: createEmailApprovalService({ db }),
+  })
 
   // Shared SessionManager dedicated to background producers (tasks,
   // heartbeat, consolidation, scheduled jobs, reminders). It only uses
@@ -1258,6 +1278,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
     uploadCleanupService,
     taskEventBus,
     chatEventBus,
+    chatActions,
     getAgentCore: () => agentCore,
     getTaskRuntime: () => taskRuntime,
     resolveProvider,
@@ -1287,6 +1308,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
 
       unregisterTelegramEmailApproval?.()
       unregisterTelegramEmailApproval = null
+      unregisterEmailApprovalChat()
 
       if (telegramBot) {
         try {
