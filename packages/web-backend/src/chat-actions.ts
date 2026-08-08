@@ -69,6 +69,8 @@ export class ChatActionRegistry {
 
   constructor(private deps: ChatActionRegistryDeps) {}
 
+  // Used by email-approval-chat.ts; Fallow does not resolve the call site.
+  // fallow-ignore-next-line unused-class-member
   registerHandler(kind: string, handler: ChatActionHandler): () => void {
     this.handlers.set(kind, handler)
     return () => {
@@ -76,6 +78,8 @@ export class ChatActionRegistry {
     }
   }
 
+  // Used by email-approval-chat.ts; Fallow does not resolve the call site.
+  // fallow-ignore-next-line unused-class-member
   publish(payload: Omit<ChatActionMessage, 'messageId' | 'resolution'>): ChatActionMessage {
     const message: ChatActionMessage = { messageId: `cam-${++this.counter}`, ...payload }
     this.messages.set(message.messageId, message)
@@ -95,6 +99,8 @@ export class ChatActionRegistry {
     return message
   }
 
+  // Used by routes/chat.ts; Fallow does not resolve the call site.
+  // fallow-ignore-next-line unused-class-member
   async invoke(messageId: string, actionId: string, user: ChatActionUser): Promise<ChatActionInvocation> {
     const message = this.messages.get(messageId)
     if (!message) return { status: 'not_found' }

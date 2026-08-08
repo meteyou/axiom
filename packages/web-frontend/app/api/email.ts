@@ -154,7 +154,7 @@ export interface EmailSendLogQuery {
 
 export type EmailSendLogDecision = 'approve' | 'reject' | 'retry'
 
-export interface EmailSendLogPage {
+interface EmailSendLogPage {
   entries: EmailSendLogEntry[]
   total: number
   limit: number

@@ -1318,7 +1318,6 @@ export class TelegramBot {
    * Accept/Cancel prompt, and every decision — no matter which channel made
    * it — edits that prompt into a result message without buttons.
    */
-  // fallow-ignore-next-line unused-class-member
   createEmailApprovalNotifier(): EmailApprovalNotifier {
     return {
       approvalRequested: entry => this.sendEmailApprovalPrompt(entry),
