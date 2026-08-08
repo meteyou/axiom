@@ -252,7 +252,18 @@ describe('email approval', () => {
     await service().reject(other.id, { name: 'bob' })
 
     expect(requested).toEqual([entry.id])
-    expect(resolvedStatuses).toEqual(['approved', 'rejected'])
+    // The approve notification carries the send result, not the interim state.
+    expect(resolvedStatuses).toEqual(['sent', 'rejected'])
+  })
+
+  it('notifies channels with the failure when the send blows up', async () => {
+    const resolvedStatuses: string[] = []
+    registerEmailApprovalNotifier({ approvalResolved: e => { resolvedStatuses.push(e.status) } })
+    sendMessage.mockRejectedValueOnce(new Error('SMTP connection refused'))
+
+    await service().approve(seed().id, { name: 'alice' })
+
+    expect(resolvedStatuses).toEqual(['failed'])
   })
 
   it('keeps working when a notifier throws', async () => {
