@@ -359,11 +359,19 @@ export {
   createEmailListTool,
   createEmailFoldersTool,
   createEmailReadTool,
+  createEmailMarkReadTool,
+  createEmailMarkUnreadTool,
+  createEmailMoveTool,
+  createEmailDeleteTool,
+  createEmailDownloadAttachmentTool,
   isFolderAllowed,
   toClientAccount,
+  attachmentTargetDir,
+  safeAttachmentFilename,
   DEFAULT_EMAIL_FOLDER,
   DEFAULT_EMAIL_LIST_LIMIT,
   MAX_EMAIL_LIST_LIMIT,
+  MAX_EMAIL_BULK_UIDS,
 } from './email-tools.js'
 export type { EmailToolsDeps } from './email-tools.js'
 export { ScheduledTaskStore, initScheduledTasksTable } from './scheduled-task-store.js'
