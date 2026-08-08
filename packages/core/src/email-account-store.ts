@@ -11,6 +11,8 @@ export interface EmailAllowlist {
   domains: string[]
 }
 
+export type EmailFolderMode = 'all' | 'selected'
+
 /**
  * One configured IMAP/SMTP account as stored in `email-accounts.json`.
  * `imapPassword` / `smtpPassword` are encrypted at rest.
@@ -38,6 +40,9 @@ export interface EmailAccount {
   requireApproval: boolean
 
   allowlist: EmailAllowlist
+
+  folderMode: EmailFolderMode
+  allowedFolders: string[]
 
   displayName: string
   signature: string
@@ -77,6 +82,8 @@ export interface CreateEmailAccountInput {
   canDownloadAttachments?: boolean
   requireApproval?: boolean
   allowlist?: Partial<EmailAllowlist>
+  folderMode?: EmailFolderMode
+  allowedFolders?: string[]
   displayName?: string
   signature?: string
   appendToSentFolder?: boolean
@@ -104,6 +111,11 @@ function normalizeAllowlist(value: Partial<EmailAllowlist> | undefined): EmailAl
   }
 }
 
+function normalizeFolders(value: string[] | undefined): string[] {
+  const folders = (value ?? []).map(entry => String(entry).trim()).filter(Boolean)
+  return [...new Set(folders)]
+}
+
 function encryptPassword(value: string | undefined): string {
   if (!value) return ''
   return isEncrypted(value) ? value : encrypt(value)
@@ -128,7 +140,15 @@ export function loadEmailAccounts(): EmailAccountsFile {
 
   const content = fs.readFileSync(filePath, 'utf-8')
   const data = JSON.parse(content) as Partial<EmailAccountsFile>
-  return { accounts: Array.isArray(data.accounts) ? data.accounts : [] }
+  const accounts = Array.isArray(data.accounts) ? data.accounts : []
+
+  return {
+    accounts: accounts.map(account => ({
+      ...account,
+      folderMode: account.folderMode === 'selected' ? 'selected' : 'all',
+      allowedFolders: normalizeFolders(account.allowedFolders),
+    })),
+  }
 }
 
 export function saveEmailAccounts(data: EmailAccountsFile): void {
@@ -197,6 +217,8 @@ export function createEmailAccount(input: CreateEmailAccountInput): SafeEmailAcc
     canDownloadAttachments: input.canDownloadAttachments ?? false,
     requireApproval: input.requireApproval ?? false,
     allowlist: normalizeAllowlist(input.allowlist),
+    folderMode: input.folderMode === 'selected' ? 'selected' : 'all',
+    allowedFolders: normalizeFolders(input.allowedFolders),
     displayName: input.displayName?.trim() ?? '',
     signature: input.signature ?? '',
     appendToSentFolder: input.appendToSentFolder ?? false,
@@ -244,6 +266,8 @@ export function updateEmailAccount(id: string, input: UpdateEmailAccountInput): 
   if (input.canDownloadAttachments !== undefined) account.canDownloadAttachments = input.canDownloadAttachments
   if (input.requireApproval !== undefined) account.requireApproval = input.requireApproval
   if (input.allowlist !== undefined) account.allowlist = normalizeAllowlist(input.allowlist)
+  if (input.folderMode !== undefined) account.folderMode = input.folderMode === 'selected' ? 'selected' : 'all'
+  if (input.allowedFolders !== undefined) account.allowedFolders = normalizeFolders(input.allowedFolders)
   if (input.displayName !== undefined) account.displayName = input.displayName.trim()
   if (input.signature !== undefined) account.signature = input.signature
   if (input.appendToSentFolder !== undefined) account.appendToSentFolder = input.appendToSentFolder
