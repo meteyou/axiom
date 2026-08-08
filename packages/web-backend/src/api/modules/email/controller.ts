@@ -9,6 +9,7 @@ import {
 import {
   createEmailService,
   EmailAccountConflictError,
+  EmailApprovalError,
   EmailAccountNotFoundError,
   EmailConnectionInputError,
   EmailSendLogNotFoundError,
@@ -25,9 +26,23 @@ export interface EmailController {
   listFolders: (req: AuthenticatedRequest, res: Response) => Promise<void>
   listSendLog: (req: AuthenticatedRequest, res: Response) => void
   getSendLogEntry: (req: AuthenticatedRequest, res: Response) => void
+  approveSendLogEntry: (req: AuthenticatedRequest, res: Response) => Promise<void>
+  rejectSendLogEntry: (req: AuthenticatedRequest, res: Response) => Promise<void>
+  retrySendLogEntry: (req: AuthenticatedRequest, res: Response) => Promise<void>
+}
+
+const APPROVAL_ERROR_STATUS: Record<EmailApprovalError['code'], number> = {
+  already_decided: 409,
+  not_retryable: 409,
+  account_missing: 502,
+  send_failed: 502,
 }
 
 function handleError(res: Response, err: unknown, fallback: string): void {
+  if (err instanceof EmailApprovalError) {
+    res.status(APPROVAL_ERROR_STATUS[err.code]).json({ error: err.message, code: err.code, entry: err.entry })
+    return
+  }
   if (err instanceof EmailAccountNotFoundError || err instanceof EmailSendLogNotFoundError) {
     res.status(404).json({ error: err.message })
     return
@@ -150,5 +165,28 @@ export function createEmailController(options: EmailServiceOptions): EmailContro
         handleError(res, err, 'Failed to get email send log entry')
       }
     },
+
+    approveSendLogEntry: decide('approveSendLogEntry', 'Failed to approve email'),
+    rejectSendLogEntry: decide('rejectSendLogEntry', 'Failed to reject email'),
+    retrySendLogEntry: decide('retrySendLogEntry', 'Failed to retry email'),
+  }
+
+  function decide(
+    action: 'approveSendLogEntry' | 'rejectSendLogEntry' | 'retrySendLogEntry',
+    fallback: string,
+  ) {
+    return async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const decider = req.user?.username
+      if (!decider) {
+        res.status(401).json({ error: 'Authentication required' })
+        return
+      }
+
+      try {
+        res.json({ entry: await service[action](String(req.params.id), { name: decider }) })
+      } catch (err) {
+        handleError(res, err, fallback)
+      }
+    }
   }
 }
