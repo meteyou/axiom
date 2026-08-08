@@ -29,6 +29,12 @@ const cases: Case[] = [
   { name: 'empty allowlist blocks everything', recipients: { to: ['boss@example.com'] }, allowlist: { addresses: [], domains: [] }, expected: 'blocked' },
   { name: 'empty allowlist with approval is pending', recipients: { to: ['boss@example.com'] }, allowlist: { addresses: [], domains: [] }, requireApproval: true, expected: 'pending' },
   { name: 'no recipients is blocked even with approval', recipients: {}, requireApproval: true, expected: 'blocked' },
+  // Smuggling: one string that SMTP expands into several recipients.
+  { name: 'comma-smuggled recipient is blocked', recipients: { to: ['stranger@evil.com, boss@example.com'] }, expected: 'blocked' },
+  { name: 'comma-smuggled recipient behind a domain entry is blocked', recipients: { to: ['stranger@evil.com, anyone@partner.org'] }, expected: 'blocked' },
+  { name: 'nested display-name address is blocked', recipients: { to: ['"x <boss@example.com>" <stranger@evil.com>'] }, expected: 'blocked' },
+  { name: 'group syntax is expanded', recipients: { to: ['Team: boss@example.com, stranger@evil.com;'] }, expected: 'blocked' },
+  { name: 'multiple allowed addresses in one string stay allowed', recipients: { to: ['boss@example.com, anyone@partner.org'] }, expected: 'allow' },
 ]
 
 describe('evaluateEmailSendPolicy', () => {

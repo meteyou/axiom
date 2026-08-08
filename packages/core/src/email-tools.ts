@@ -8,7 +8,7 @@ import {
   listEmailAccounts,
 } from './email-account-store.js'
 import type { EmailAccount } from './email-account-store.js'
-import { createEmailClient, formatAddress } from './email-client.js'
+import { createEmailClient, formatAddress, parseAddressList } from './email-client.js'
 import type { EmailClient, EmailClientAccount, EmailOutgoingAttachment } from './email-client.js'
 import { notifyEmailApprovalRequested } from './email-approval-notifier.js'
 import { evaluateEmailSendPolicy } from './email-send-policy.js'
@@ -728,6 +728,18 @@ function toStringList(value: unknown): string[] {
   return raw.map(entry => String(entry).trim()).filter(Boolean)
 }
 
+/**
+ * Recipients are expanded to bare addresses before anything else happens, so the
+ * allowlist check, the send log and SMTP all see the exact same list — a single
+ * string may otherwise carry more recipients than it appears to.
+ */
+function toRecipientList(value: unknown): string[] {
+  return toStringList(value).flatMap((entry) => {
+    const parsed = parseAddressList(entry)
+    return parsed.length > 0 ? parsed : [entry]
+  })
+}
+
 export function createEmailSendTool(deps: EmailToolsDeps = {}): AgentTool {
   const resolved = resolveDeps(deps)
 
@@ -785,7 +797,7 @@ export function createEmailSendTool(deps: EmailToolsDeps = {}): AgentTool {
         return fail('Parameter "body" is required and must not be empty.')
       }
 
-      let recipientsTo = toStringList(to)
+      let recipientsTo = toRecipientList(to)
       let effectiveSubject = subject?.trim() ?? ''
       let inReplyTo: string | null = null
       let references: string[] = []
@@ -823,8 +835,8 @@ export function createEmailSendTool(deps: EmailToolsDeps = {}): AgentTool {
         return fail('Parameter "subject" is required for new messages.')
       }
 
-      const recipientsCc = toStringList(cc)
-      const recipientsBcc = toStringList(bcc)
+      const recipientsCc = toRecipientList(cc)
+      const recipientsBcc = toRecipientList(bcc)
 
       const workspaceDir = resolved.workspaceDir()
       const attachmentMeta: EmailSendLogAttachment[] = []
