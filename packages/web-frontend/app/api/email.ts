@@ -178,6 +178,9 @@ function sendLogQueryString(query: EmailSendLogQuery): string {
 export function useEmailApi() {
   const { apiFetch } = useApi()
 
+  const isConfigured = () =>
+    apiFetch<{ configured: boolean }>('/api/email/configured')
+
   const listAccounts = () =>
     apiFetch<{ accounts: EmailAccount[] }>('/api/email/accounts')
 
@@ -218,6 +221,7 @@ export function useEmailApi() {
     apiFetch<{ entry: EmailSendLogEntry }>(`/api/email/sent-log/${id}/${action}`, { method: 'POST' })
 
   return {
+    isConfigured,
     listAccounts,
     createAccount,
     updateAccount,

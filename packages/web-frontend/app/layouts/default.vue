@@ -113,6 +113,7 @@
           </template>
 
           <NuxtLink
+            v-if="emailConfigured"
             to="/email"
             :class="navItemClass('/email')"
             @click="closeSidebarOnMobile"
@@ -335,6 +336,7 @@
 
 <script setup lang="ts">
 import { useMediaQuery } from '@vueuse/core'
+import { useEmailApi } from '~/api/email'
 
 const route = useRoute()
 const runtimeConfig = useRuntimeConfig()
@@ -359,6 +361,16 @@ watch(isMobile, (mobile) => {
 }, { immediate: true })
 
 const isAdmin = computed(() => user.value?.role === 'admin')
+
+const emailApi = useEmailApi()
+const emailConfigured = ref(false)
+watch(() => route.path, async () => {
+  try {
+    emailConfigured.value = (await emailApi.isConfigured()).configured
+  } catch {
+    emailConfigured.value = false
+  }
+}, { immediate: true })
 const { userAvatarUrl, avatarFailed, userInitial, onAvatarError } = useUserAvatar()
 
 const statusDotClass = computed(() => {

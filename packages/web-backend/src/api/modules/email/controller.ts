@@ -17,6 +17,7 @@ import {
 import type { EmailServiceOptions } from './service.js'
 
 export interface EmailController {
+  isConfigured: (req: AuthenticatedRequest, res: Response) => void
   listAccounts: (req: AuthenticatedRequest, res: Response) => void
   getAccount: (req: AuthenticatedRequest, res: Response) => void
   createAccount: (req: AuthenticatedRequest, res: Response) => void
@@ -62,6 +63,14 @@ export function createEmailController(options: EmailServiceOptions): EmailContro
   const service = createEmailService(options)
 
   return {
+    isConfigured(_req, res) {
+      try {
+        res.json({ configured: service.listAccounts().length > 0 })
+      } catch (err) {
+        handleError(res, err, 'Failed to check email configuration')
+      }
+    },
+
     listAccounts(_req, res) {
       try {
         res.json({ accounts: service.listAccounts() })

@@ -15,6 +15,8 @@ export function createEmailRouter(options: EmailRouterOptions): Router {
 
   router.use(jwtMiddleware)
 
+  router.get('/configured', controller.isConfigured)
+
   // Read-only audit view — every authenticated user may inspect what the agent sent.
   router.get('/sent-log', controller.listSendLog)
   router.get('/sent-log/:id', controller.getSendLogEntry)
