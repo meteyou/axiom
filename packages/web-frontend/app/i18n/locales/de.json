@@ -543,7 +543,9 @@
       "agentHeartbeat": "Agent Heartbeat",
       "agentHeartbeatDescription": "Periodische Hintergrundaufgaben für Gedächtnispflege, tägliche Notizen und proaktive Wartung.",
       "secrets": "Secrets",
-      "secretsDescription": "Verschlüsselte Umgebungsvariablen verwalten, die zur Laufzeit injiziert werden."
+      "secretsDescription": "Verschlüsselte Umgebungsvariablen verwalten, die zur Laufzeit injiziert werden.",
+      "email": "E-Mail",
+      "emailDescription": "IMAP/SMTP-Konten des Agenten — inklusive Berechtigungen und Sende-Regeln."
     },
     "agentHeartbeatEnabled": "Agent Heartbeat aktivieren",
     "agentHeartbeatEnabledHint": "Wenn aktiviert, führt der Agent periodisch Wartungsaufgaben aus HEARTBEAT.md durch (Gedächtnis-Updates, Hygiene-Checks).",
@@ -943,7 +945,6 @@
   },
   "email": {
     "title": "E-Mail",
-    "subtitle": "IMAP/SMTP-Konten des Agenten verwalten — inklusive Berechtigungen und Sende-Regeln.",
     "addAccount": "Neues Konto",
     "accountMenu": "Kontomenü",
     "empty": "Noch keine E-Mail-Konten konfiguriert.",
@@ -959,9 +960,8 @@
     "deleteConfirm": "Das Konto \"{name}\" und seine Zugangsdaten werden dauerhaft entfernt.",
     "columns": {
       "name": "Name",
-      "imap": "IMAP",
-      "smtp": "SMTP",
-      "permissions": "Berechtigungen"
+      "permissions": "Berechtigungen",
+      "server": "Server"
     },
     "form": {
       "name": "Kontoname",
@@ -1058,7 +1058,8 @@
       },
       "approvedBy": "Freigegeben von {user}",
       "rejectedBy": "Abgelehnt von {user}"
-    }
+    },
+    "sentLogSubtitle": "Vom Agenten gesendete oder zur Freigabe vorgemerkte Mails."
   },
   "cronjobs": {
     "pageTitle": "Cronjobs",

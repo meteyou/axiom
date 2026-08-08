@@ -51,8 +51,7 @@
             <TableHeader>
               <TableRow class="hover:bg-transparent">
                 <TableHead>{{ $t('email.columns.name') }}</TableHead>
-                <TableHead>{{ $t('email.columns.imap') }}</TableHead>
-                <TableHead>{{ $t('email.columns.smtp') }}</TableHead>
+                <TableHead>{{ $t('email.columns.server') }}</TableHead>
                 <TableHead>{{ $t('email.columns.permissions') }}</TableHead>
                 <TableHead class="w-12" />
               </TableRow>
@@ -68,8 +67,10 @@
                   <div class="font-semibold text-foreground">{{ account.name }}</div>
                   <div class="text-xs text-muted-foreground">{{ account.imapUser }}</div>
                 </TableCell>
-                <TableCell class="font-mono text-xs">{{ account.imapHost }}:{{ account.imapPort }}</TableCell>
-                <TableCell class="font-mono text-xs">{{ account.smtpHost }}:{{ account.smtpPort }}</TableCell>
+                <TableCell class="font-mono text-xs">
+                  <div><span class="text-muted-foreground">IMAP:</span> {{ account.imapHost }}:{{ account.imapPort }}</div>
+                  <div><span class="text-muted-foreground">SMTP:</span> {{ account.smtpHost }}:{{ account.smtpPort }}</div>
+                </TableCell>
                 <TableCell>
                   <div class="flex flex-wrap gap-1">
                     <Badge v-for="badge in permissionBadges(account)" :key="badge" variant="secondary" class="text-[10px]">
