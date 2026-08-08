@@ -1,10 +1,15 @@
 import type { Response } from 'express'
 import type { AuthenticatedRequest } from '../../../auth.js'
-import { parseCreateEmailAccountBody, parseUpdateEmailAccountBody } from './schema.js'
+import {
+  parseCreateEmailAccountBody,
+  parseEmailConnectionBody,
+  parseUpdateEmailAccountBody,
+} from './schema.js'
 import {
   createEmailService,
   EmailAccountConflictError,
   EmailAccountNotFoundError,
+  EmailConnectionInputError,
 } from './service.js'
 
 export interface EmailController {
@@ -13,6 +18,8 @@ export interface EmailController {
   createAccount: (req: AuthenticatedRequest, res: Response) => void
   updateAccount: (req: AuthenticatedRequest, res: Response) => void
   deleteAccount: (req: AuthenticatedRequest, res: Response) => void
+  testConnection: (req: AuthenticatedRequest, res: Response) => Promise<void>
+  listFolders: (req: AuthenticatedRequest, res: Response) => Promise<void>
 }
 
 function handleError(res: Response, err: unknown, fallback: string): void {
@@ -22,6 +29,10 @@ function handleError(res: Response, err: unknown, fallback: string): void {
   }
   if (err instanceof EmailAccountConflictError) {
     res.status(409).json({ error: err.message })
+    return
+  }
+  if (err instanceof EmailConnectionInputError) {
+    res.status(400).json({ error: err.message })
     return
   }
   res.status(500).json({ error: `${fallback}: ${(err as Error).message}` })
@@ -81,6 +92,35 @@ export function createEmailController(): EmailController {
         res.json({ success: true })
       } catch (err) {
         handleError(res, err, 'Failed to delete email account')
+      }
+    },
+
+    async testConnection(req, res) {
+      const parsed = parseEmailConnectionBody(req.body)
+      if (!parsed.ok) {
+        res.status(400).json({ error: parsed.error })
+        return
+      }
+
+      try {
+        const result = await service.testConnection(parsed.value)
+        res.json({ ...result, ok: result.imap.ok && result.smtp.ok })
+      } catch (err) {
+        handleError(res, err, 'Failed to test email connection')
+      }
+    },
+
+    async listFolders(req, res) {
+      const parsed = parseEmailConnectionBody(req.body)
+      if (!parsed.ok) {
+        res.status(400).json({ error: parsed.error })
+        return
+      }
+
+      try {
+        res.json({ folders: await service.listFolders(parsed.value) })
+      } catch (err) {
+        handleError(res, err, 'Failed to list email folders')
       }
     },
   }
