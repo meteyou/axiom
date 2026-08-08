@@ -42,6 +42,7 @@ export async function startHttpBoundary(
     onTelegramSettingsChanged: runtimeComposition.onTelegramSettingsChanged,
     onActiveProviderChanged: runtimeComposition.onActiveProviderChanged,
     taskEventBus: runtimeComposition.taskEventBus,
+    chatActions: runtimeComposition.chatActions,
   })
 
   const server = http.createServer(app)
