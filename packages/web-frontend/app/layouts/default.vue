@@ -133,6 +133,15 @@
             </NuxtLink>
 
             <NuxtLink
+              to="/email"
+              :class="navItemClass('/email')"
+              @click="closeSidebarOnMobile"
+            >
+              <AppIcon name="mail" class="shrink-0" />
+              <span>{{ $t('nav.email') }}</span>
+            </NuxtLink>
+
+            <NuxtLink
               to="/skills"
               :class="navItemClass('/skills')"
               @click="closeSidebarOnMobile"
