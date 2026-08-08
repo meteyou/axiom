@@ -17,6 +17,7 @@ import { createSkillsRouter } from './routes/skills.js'
 import { createStatsRouter } from './routes/stats.js'
 import { createHealthRouter } from './routes/health.js'
 import { createTasksRouter } from './api/modules/tasks/route.js'
+import { createEmailRouter } from './api/modules/email/route.js'
 import { createCronjobsRouter } from './routes/cronjobs.js'
 import { createSecretsRouter } from './routes/secrets.js'
 import { createTtsRouter } from './routes/tts.js'
@@ -163,6 +164,7 @@ export function createApp(options?: AppOptions): express.Express {
       getTaskRuntime: () => options.getTaskRuntime?.()?.schedules ?? null,
       getBackgroundTaskToolNames: options.getBackgroundTaskToolNames,
     }))
+    app.use('/api/email', createEmailRouter())
     app.use('/api/secrets', createSecretsRouter())
     app.use('/api/tts', createTtsRouter())
     app.use('/api/stt', createSttRouter())
