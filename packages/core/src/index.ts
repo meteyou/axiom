@@ -354,6 +354,18 @@ export type {
   EmailConnectionCheck,
   EmailConnectionTestResult,
 } from './email-client.js'
+export {
+  createEmailTools,
+  createEmailListTool,
+  createEmailFoldersTool,
+  createEmailReadTool,
+  isFolderAllowed,
+  toClientAccount,
+  DEFAULT_EMAIL_FOLDER,
+  DEFAULT_EMAIL_LIST_LIMIT,
+  MAX_EMAIL_LIST_LIMIT,
+} from './email-tools.js'
+export type { EmailToolsDeps } from './email-tools.js'
 export { ScheduledTaskStore, initScheduledTasksTable } from './scheduled-task-store.js'
 export type { ScheduledTask, ScheduledTaskActionType, CreateScheduledTaskInput, UpdateScheduledTaskInput } from './scheduled-task-store.js'
 export { TaskScheduler } from './task-scheduler.js'
