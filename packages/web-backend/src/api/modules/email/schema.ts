@@ -25,6 +25,15 @@ const BOOLEAN_FIELDS = [
 
 const OPTIONAL_STRING_FIELDS = ['displayName', 'signature', 'attachmentDownloadPath'] as const
 
+const CONNECTION_STRING_FIELDS = [
+  'imapHost',
+  'imapUser',
+  'imapPassword',
+  'smtpHost',
+  'smtpUser',
+  'smtpPassword',
+] as const
+
 function toRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -83,7 +92,68 @@ function applyOptionalFields(
     out.allowlist = allowlist.value
   }
 
+  if (body.folderMode !== undefined) {
+    if (body.folderMode !== 'all' && body.folderMode !== 'selected') {
+      return { ok: false, error: 'folderMode must be "all" or "selected"' }
+    }
+    out.folderMode = body.folderMode
+  }
+
+  if (body.allowedFolders !== undefined) {
+    const folders = parseStringList(body.allowedFolders, 'allowedFolders')
+    if (!folders.ok) return folders
+    out.allowedFolders = folders.value
+  }
+
   return null
+}
+
+export interface EmailConnectionBody {
+  accountId?: string
+  imapHost?: string
+  imapPort?: number
+  imapUser?: string
+  imapPassword?: string
+  smtpHost?: string
+  smtpPort?: number
+  smtpUser?: string
+  smtpPassword?: string
+  allowSelfSignedCert?: boolean
+}
+
+export function parseEmailConnectionBody(body: unknown): ParseResult<EmailConnectionBody> {
+  const b = toRecord(body)
+  const out: EmailConnectionBody = {}
+
+  if (b.accountId !== undefined) {
+    if (typeof b.accountId !== 'string' || !b.accountId.trim()) {
+      return { ok: false, error: 'accountId must be a non-empty string' }
+    }
+    out.accountId = b.accountId.trim()
+  }
+
+  for (const field of CONNECTION_STRING_FIELDS) {
+    const raw = b[field]
+    if (raw === undefined) continue
+    if (typeof raw !== 'string') return { ok: false, error: `${field} must be a string` }
+    if (raw) out[field] = field.endsWith('Password') ? raw : raw.trim()
+  }
+
+  for (const field of ['imapPort', 'smtpPort'] as const) {
+    if (b[field] === undefined || b[field] === '') continue
+    const port = parsePort(b[field], field)
+    if (!port.ok) return port
+    out[field] = port.value
+  }
+
+  if (b.allowSelfSignedCert !== undefined) {
+    if (typeof b.allowSelfSignedCert !== 'boolean') {
+      return { ok: false, error: 'allowSelfSignedCert must be a boolean' }
+    }
+    out.allowSelfSignedCert = b.allowSelfSignedCert
+  }
+
+  return { ok: true, value: out }
 }
 
 export function parseCreateEmailAccountBody(body: unknown): ParseResult<CreateEmailAccountInput> {

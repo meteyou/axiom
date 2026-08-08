@@ -19,6 +19,8 @@ export function createEmailRouter(): Router {
 
   router.get('/accounts', controller.listAccounts)
   router.post('/accounts', controller.createAccount)
+  router.post('/accounts/test-connection', controller.testConnection)
+  router.post('/accounts/folders', controller.listFolders)
   router.get('/accounts/:id', controller.getAccount)
   router.put('/accounts/:id', controller.updateAccount)
   router.delete('/accounts/:id', controller.deleteAccount)
