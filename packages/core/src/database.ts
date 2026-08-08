@@ -2,6 +2,7 @@ import BetterSqlite3 from 'better-sqlite3'
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 import fs from 'node:fs'
+import { initEmailSendLogTable } from './email-send-log.js'
 
 export type Database = BetterSqlite3.Database
 
@@ -295,6 +296,8 @@ export function initDatabase(dbPath?: string): Database {
     CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at);
     CREATE INDEX IF NOT EXISTS idx_tasks_session_id ON tasks(session_id);
   `)
+
+  initEmailSendLogTable(db)
 
   // Create scheduled_tasks table
   db.exec(`
