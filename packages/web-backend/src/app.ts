@@ -164,7 +164,7 @@ export function createApp(options?: AppOptions): express.Express {
       getTaskRuntime: () => options.getTaskRuntime?.()?.schedules ?? null,
       getBackgroundTaskToolNames: options.getBackgroundTaskToolNames,
     }))
-    app.use('/api/email', createEmailRouter())
+    app.use('/api/email', createEmailRouter({ db: options.db }))
     app.use('/api/secrets', createSecretsRouter())
     app.use('/api/tts', createTtsRouter())
     app.use('/api/stt', createSttRouter())

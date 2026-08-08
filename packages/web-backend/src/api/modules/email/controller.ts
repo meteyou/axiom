@@ -3,6 +3,7 @@ import type { AuthenticatedRequest } from '../../../auth.js'
 import {
   parseCreateEmailAccountBody,
   parseEmailConnectionBody,
+  parseEmailSendLogQuery,
   parseUpdateEmailAccountBody,
 } from './schema.js'
 import {
@@ -10,7 +11,9 @@ import {
   EmailAccountConflictError,
   EmailAccountNotFoundError,
   EmailConnectionInputError,
+  EmailSendLogNotFoundError,
 } from './service.js'
+import type { EmailServiceOptions } from './service.js'
 
 export interface EmailController {
   listAccounts: (req: AuthenticatedRequest, res: Response) => void
@@ -20,10 +23,12 @@ export interface EmailController {
   deleteAccount: (req: AuthenticatedRequest, res: Response) => void
   testConnection: (req: AuthenticatedRequest, res: Response) => Promise<void>
   listFolders: (req: AuthenticatedRequest, res: Response) => Promise<void>
+  listSendLog: (req: AuthenticatedRequest, res: Response) => void
+  getSendLogEntry: (req: AuthenticatedRequest, res: Response) => void
 }
 
 function handleError(res: Response, err: unknown, fallback: string): void {
-  if (err instanceof EmailAccountNotFoundError) {
+  if (err instanceof EmailAccountNotFoundError || err instanceof EmailSendLogNotFoundError) {
     res.status(404).json({ error: err.message })
     return
   }
@@ -38,8 +43,8 @@ function handleError(res: Response, err: unknown, fallback: string): void {
   res.status(500).json({ error: `${fallback}: ${(err as Error).message}` })
 }
 
-export function createEmailController(): EmailController {
-  const service = createEmailService()
+export function createEmailController(options: EmailServiceOptions): EmailController {
+  const service = createEmailService(options)
 
   return {
     listAccounts(_req, res) {
@@ -121,6 +126,28 @@ export function createEmailController(): EmailController {
         res.json({ folders: await service.listFolders(parsed.value) })
       } catch (err) {
         handleError(res, err, 'Failed to list email folders')
+      }
+    },
+
+    listSendLog(req, res) {
+      const parsed = parseEmailSendLogQuery(req.query)
+      if (!parsed.ok) {
+        res.status(400).json({ error: parsed.error })
+        return
+      }
+
+      try {
+        res.json(service.listSendLog(parsed.value))
+      } catch (err) {
+        handleError(res, err, 'Failed to list email send log')
+      }
+    },
+
+    getSendLogEntry(req, res) {
+      try {
+        res.json({ entry: service.getSendLogEntry(String(req.params.id)) })
+      } catch (err) {
+        handleError(res, err, 'Failed to get email send log entry')
       }
     },
   }

@@ -1,14 +1,25 @@
 import { Router } from 'express'
+import type { NextFunction, Response } from 'express'
+import type { Database } from '@axiom/core'
 import { jwtMiddleware } from '../../../auth.js'
 import type { AuthenticatedRequest } from '../../../auth.js'
 import { createEmailController } from './controller.js'
 
-export function createEmailRouter(): Router {
+export interface EmailRouterOptions {
+  db: Database
+}
+
+export function createEmailRouter(options: EmailRouterOptions): Router {
   const router = Router()
-  const controller = createEmailController()
+  const controller = createEmailController({ db: options.db })
 
   router.use(jwtMiddleware)
-  router.use((req: AuthenticatedRequest, res, next) => {
+
+  // Read-only audit view — every authenticated user may inspect what the agent sent.
+  router.get('/sent-log', controller.listSendLog)
+  router.get('/sent-log/:id', controller.getSendLogEntry)
+
+  router.use('/accounts', (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     if (req.user?.role !== 'admin') {
       res.status(403).json({ error: 'Admin access required' })
       return
