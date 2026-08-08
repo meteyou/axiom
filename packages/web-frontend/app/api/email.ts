@@ -87,6 +87,81 @@ export interface EmailAccountPayload {
   attachmentDownloadPath: string
 }
 
+export type EmailSendLogStatus = 'sent' | 'pending' | 'approved' | 'rejected' | 'blocked' | 'failed'
+
+export const EMAIL_SEND_LOG_STATUSES: EmailSendLogStatus[] = [
+  'sent',
+  'pending',
+  'approved',
+  'rejected',
+  'blocked',
+  'failed',
+]
+
+export interface EmailSendLogAttachment {
+  filename: string
+  path?: string
+  size: number
+  contentType?: string
+}
+
+export interface EmailSendLogEntry {
+  id: string
+  accountId: string
+  accountName: string
+  status: EmailSendLogStatus
+  to: string[]
+  cc: string[]
+  bcc: string[]
+  subject: string
+  bodyText: string
+  bodyHtml: string | null
+  attachments: EmailSendLogAttachment[]
+  inReplyTo: string | null
+  references: string[]
+  reason: string | null
+  errorMessage: string | null
+  messageId: string | null
+  sessionId: string | null
+  decidedBy: string | null
+  decidedAt: string | null
+  sentAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface EmailSendLogQuery {
+  accountId?: string
+  status?: EmailSendLogStatus[]
+  recipient?: string
+  search?: string
+  dateFrom?: string
+  dateTo?: string
+  limit?: number
+  offset?: number
+}
+
+export interface EmailSendLogPage {
+  entries: EmailSendLogEntry[]
+  total: number
+  limit: number
+  offset: number
+}
+
+function sendLogQueryString(query: EmailSendLogQuery): string {
+  const params = new URLSearchParams()
+  if (query.accountId) params.set('accountId', query.accountId)
+  if (query.status?.length) params.set('status', query.status.join(','))
+  if (query.recipient) params.set('recipient', query.recipient)
+  if (query.search) params.set('search', query.search)
+  if (query.dateFrom) params.set('dateFrom', query.dateFrom)
+  if (query.dateTo) params.set('dateTo', query.dateTo)
+  if (query.limit !== undefined) params.set('limit', String(query.limit))
+  if (query.offset !== undefined) params.set('offset', String(query.offset))
+  const qs = params.toString()
+  return qs ? `?${qs}` : ''
+}
+
 export function useEmailApi() {
   const { apiFetch } = useApi()
 
@@ -120,5 +195,20 @@ export function useEmailApi() {
       body: JSON.stringify(payload),
     })
 
-  return { listAccounts, createAccount, updateAccount, deleteAccount, testConnection, listFolders }
+  const listSendLog = (query: EmailSendLogQuery = {}) =>
+    apiFetch<EmailSendLogPage>(`/api/email/sent-log${sendLogQueryString(query)}`)
+
+  const getSendLogEntry = (id: string) =>
+    apiFetch<{ entry: EmailSendLogEntry }>(`/api/email/sent-log/${id}`)
+
+  return {
+    listAccounts,
+    createAccount,
+    updateAccount,
+    deleteAccount,
+    testConnection,
+    listFolders,
+    listSendLog,
+    getSendLogEntry,
+  }
 }
