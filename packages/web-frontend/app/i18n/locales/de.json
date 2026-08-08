@@ -35,7 +35,9 @@
     "saveFailed": "Änderungen konnten nicht gespeichert werden.",
     "deleteFailed": "Element konnte nicht gelöscht werden.",
     "language": "Sprache",
-    "back": "Zurück"
+    "back": "Zurück",
+    "close": "Schließen",
+    "refresh": "Aktualisieren"
   },
   "admin": {
     "title": "Admin-Zugriff erforderlich",
@@ -1009,6 +1011,45 @@
       "loadFolders": "Ordner laden",
       "loadingFolders": "Lädt …",
       "noFoldersLoaded": "Noch keine Ordner geladen – auf „Ordner laden“ klicken."
+    },
+    "accountsTab": "Konten",
+    "sentLogTab": "Sende-Log",
+    "sentLog": {
+      "status": {
+        "sent": "Gesendet",
+        "pending": "Wartet auf Freigabe",
+        "approved": "Freigegeben",
+        "rejected": "Abgelehnt",
+        "blocked": "Blockiert",
+        "failed": "Fehlgeschlagen"
+      },
+      "columns": {
+        "status": "Status",
+        "recipients": "Empfänger",
+        "subject": "Betreff",
+        "account": "Konto",
+        "createdAt": "Zeitpunkt"
+      },
+      "filters": {
+        "search": "Betreff oder Inhalt suchen…",
+        "recipient": "Empfänger…",
+        "account": "Konto",
+        "allAccounts": "Alle Konten",
+        "dateFrom": "Von Datum",
+        "dateTo": "Bis Datum",
+        "reset": "Filter zurücksetzen"
+      },
+      "count": "{count} Einträge",
+      "empty": "Der Agent hat noch keinen Sendeversuch unternommen.",
+      "noResults": "Keine Sendeversuche passen zu diesen Filtern.",
+      "noSubject": "(kein Betreff)",
+      "loadMore": "Mehr laden",
+      "attachments": "Anhänge",
+      "body": "Nachricht",
+      "bodyHtml": "HTML-Inhalt",
+      "to": "An",
+      "cc": "Cc",
+      "bcc": "Bcc"
     }
   },
   "cronjobs": {
