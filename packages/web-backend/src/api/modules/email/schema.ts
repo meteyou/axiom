@@ -1,4 +1,10 @@
-import type { CreateEmailAccountInput, UpdateEmailAccountInput } from '@axiom/core'
+import { EMAIL_SEND_LOG_STATUSES } from '@axiom/core'
+import type {
+  CreateEmailAccountInput,
+  EmailSendLogStatus,
+  ListEmailSendLogOptions,
+  UpdateEmailAccountInput,
+} from '@axiom/core'
 
 interface ParseSuccess<T> {
   ok: true
@@ -151,6 +157,75 @@ export function parseEmailConnectionBody(body: unknown): ParseResult<EmailConnec
       return { ok: false, error: 'allowSelfSignedCert must be a boolean' }
     }
     out.allowSelfSignedCert = b.allowSelfSignedCert
+  }
+
+  return { ok: true, value: out }
+}
+
+function firstString(value: unknown): string | undefined {
+  if (Array.isArray(value)) return firstString(value[0])
+  return typeof value === 'string' ? value : undefined
+}
+
+function parseStatusFilter(value: unknown): ParseResult<EmailSendLogStatus[]> {
+  const raw = Array.isArray(value) ? value : [value]
+  const out: EmailSendLogStatus[] = []
+  for (const entry of raw) {
+    if (typeof entry !== 'string') continue
+    for (const part of entry.split(',')) {
+      const status = part.trim()
+      if (!status) continue
+      if (!(EMAIL_SEND_LOG_STATUSES as string[]).includes(status)) {
+        return { ok: false, error: `status must be one of: ${EMAIL_SEND_LOG_STATUSES.join(', ')}` }
+      }
+      if (!out.includes(status as EmailSendLogStatus)) out.push(status as EmailSendLogStatus)
+    }
+  }
+  return { ok: true, value: out }
+}
+
+function parseNonNegativeInt(value: string, field: string): ParseResult<number> {
+  const parsed = Number.parseInt(value, 10)
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    return { ok: false, error: `${field} must be a non-negative integer` }
+  }
+  return { ok: true, value: parsed }
+}
+
+export function parseEmailSendLogQuery(query: unknown): ParseResult<ListEmailSendLogOptions> {
+  const q = toRecord(query)
+  const out: ListEmailSendLogOptions = {}
+
+  for (const field of ['accountId', 'recipient', 'search', 'dateFrom', 'dateTo'] as const) {
+    const raw = firstString(q[field])?.trim()
+    if (raw) out[field] = raw
+  }
+
+  for (const field of ['dateFrom', 'dateTo'] as const) {
+    const raw = out[field]
+    if (!raw) continue
+    if (Number.isNaN(Date.parse(raw))) {
+      return { ok: false, error: `${field} must be an ISO date string` }
+    }
+    // Date-only input from the filter bar must cover the whole day, otherwise
+    // `created_at <= '2026-01-05'` would drop every entry of that day.
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+      out[field] = field === 'dateFrom' ? `${raw}T00:00:00.000Z` : `${raw}T23:59:59.999Z`
+    }
+  }
+
+  if (q.status !== undefined) {
+    const status = parseStatusFilter(q.status)
+    if (!status.ok) return status
+    if (status.value.length > 0) out.status = status.value
+  }
+
+  for (const field of ['limit', 'offset'] as const) {
+    const raw = firstString(q[field])?.trim()
+    if (!raw) continue
+    const parsed = parseNonNegativeInt(raw, field)
+    if (!parsed.ok) return parsed
+    out[field] = parsed.value
   }
 
   return { ok: true, value: out }

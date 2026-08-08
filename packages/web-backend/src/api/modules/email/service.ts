@@ -1,17 +1,23 @@
 import {
+  countEmailSendLog,
   createEmailAccount,
   createEmailClient,
   deleteEmailAccount,
   getEmailAccount,
   getEmailAccountDecrypted,
+  getEmailSendLogEntry,
   listEmailAccounts,
+  listEmailSendLog,
   updateEmailAccount,
 } from '@axiom/core'
 import type {
   CreateEmailAccountInput,
+  Database,
   EmailClientAccount,
   EmailConnectionTestResult,
   EmailFolder,
+  EmailSendLogEntry,
+  ListEmailSendLogOptions,
   SafeEmailAccount,
   UpdateEmailAccountInput,
 } from '@axiom/core'
@@ -34,6 +40,23 @@ export class EmailAccountConflictError extends Error {}
 
 export class EmailConnectionInputError extends Error {}
 
+export class EmailSendLogNotFoundError extends Error {
+  constructor(id: string) {
+    super(`Send log entry not found: ${id}`)
+  }
+}
+
+export interface EmailSendLogPage {
+  entries: EmailSendLogEntry[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface EmailServiceOptions {
+  db: Database
+}
+
 export interface EmailService {
   listAccounts: () => SafeEmailAccount[]
   getAccount: (id: string) => SafeEmailAccount
@@ -42,6 +65,8 @@ export interface EmailService {
   deleteAccount: (id: string) => void
   testConnection: (input: EmailConnectionInput) => Promise<EmailConnectionTestResult>
   listFolders: (input: EmailConnectionInput) => Promise<EmailFolder[]>
+  listSendLog: (options: ListEmailSendLogOptions) => EmailSendLogPage
+  getSendLogEntry: (id: string) => EmailSendLogEntry
 }
 
 /**
@@ -71,8 +96,9 @@ function resolveConnection(input: EmailConnectionInput): EmailClientAccount {
   return account
 }
 
-export function createEmailService(): EmailService {
+export function createEmailService(options: EmailServiceOptions): EmailService {
   const client = createEmailClient()
+  const db = options.db
 
   return {
     listAccounts() {
@@ -116,6 +142,23 @@ export function createEmailService(): EmailService {
 
     listFolders(input) {
       return client.listFolders(resolveConnection(input))
+    },
+
+    listSendLog(query) {
+      const limit = Math.max(1, Math.min(query.limit ?? 50, 500))
+      const offset = Math.max(0, query.offset ?? 0)
+      return {
+        entries: listEmailSendLog(db, { ...query, limit, offset }),
+        total: countEmailSendLog(db, query),
+        limit,
+        offset,
+      }
+    },
+
+    getSendLogEntry(id) {
+      const entry = getEmailSendLogEntry(db, id)
+      if (!entry) throw new EmailSendLogNotFoundError(id)
+      return entry
     },
   }
 }
