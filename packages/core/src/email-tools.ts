@@ -10,6 +10,7 @@ import {
 import type { EmailAccount } from './email-account-store.js'
 import { createEmailClient, formatAddress } from './email-client.js'
 import type { EmailClient, EmailClientAccount, EmailOutgoingAttachment } from './email-client.js'
+import { notifyEmailApprovalRequested } from './email-approval-notifier.js'
 import { evaluateEmailSendPolicy } from './email-send-policy.js'
 import { createEmailSendLogEntry } from './email-send-log.js'
 import type { CreateEmailSendLogInput, EmailSendLogAttachment, EmailSendLogEntry } from './email-send-log.js'
@@ -879,6 +880,7 @@ export function createEmailSendTool(deps: EmailToolsDeps = {}): AgentTool {
 
       if (policy.decision === 'pending') {
         const entry = resolved.logSend({ ...logBase, status: 'pending', reason: policy.reason })
+        await notifyEmailApprovalRequested(entry)
         return ok(
           `Email is waiting for human approval (account "${account.value.name}"): ${policy.reason} ` +
             'It will be sent automatically once approved — do not retry.',
