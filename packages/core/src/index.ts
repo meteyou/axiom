@@ -355,6 +355,35 @@ export type {
   EmailConnectionTestResult,
 } from './email-client.js'
 export {
+  evaluateEmailSendPolicy,
+  isRecipientAllowed,
+} from './email-send-policy.js'
+export type {
+  EmailSendDecision,
+  EmailRecipientField,
+  EmailRecipientViolation,
+  EmailSendPolicyAccount,
+  EmailSendPolicyRecipients,
+  EmailSendPolicyResult,
+} from './email-send-policy.js'
+export {
+  initEmailSendLogTable,
+  createEmailSendLogEntry,
+  getEmailSendLogEntry,
+  updateEmailSendLogEntry,
+  listEmailSendLog,
+  countEmailSendLog,
+  EMAIL_SEND_LOG_STATUSES,
+} from './email-send-log.js'
+export type {
+  EmailSendLogEntry,
+  EmailSendLogStatus,
+  EmailSendLogAttachment,
+  CreateEmailSendLogInput,
+  UpdateEmailSendLogInput,
+  ListEmailSendLogOptions,
+} from './email-send-log.js'
+export {
   createEmailTools,
   createEmailListTool,
   createEmailFoldersTool,
@@ -364,6 +393,10 @@ export {
   createEmailMoveTool,
   createEmailDeleteTool,
   createEmailDownloadAttachmentTool,
+  createEmailSendTool,
+  appendSignature,
+  appendHtmlSignature,
+  resolveWorkspaceFile,
   isFolderAllowed,
   toClientAccount,
   attachmentTargetDir,
