@@ -321,10 +321,39 @@ export type {
   EmailAccount,
   EmailAccountsFile,
   EmailAllowlist,
+  EmailFolderMode,
   SafeEmailAccount,
   CreateEmailAccountInput,
   UpdateEmailAccountInput,
 } from './email-account-store.js'
+export {
+  createEmailClient,
+  htmlToText,
+  normalizeAddress,
+  addressDomain,
+  formatAddress,
+  mapAddresses,
+  parseReferences,
+  collectAttachmentParts,
+  decodeHtmlEntities,
+  describeConnectionError,
+} from './email-client.js'
+export type {
+  EmailClient,
+  EmailClientAccount,
+  EmailAddress,
+  EmailFolder,
+  EmailAttachmentInfo,
+  EmailAttachmentDownload,
+  EmailMessage,
+  EmailMessageSummary,
+  EmailListOptions,
+  EmailOutgoingAttachment,
+  EmailSendInput,
+  EmailSendResult,
+  EmailConnectionCheck,
+  EmailConnectionTestResult,
+} from './email-client.js'
 export { ScheduledTaskStore, initScheduledTasksTable } from './scheduled-task-store.js'
 export type { ScheduledTask, ScheduledTaskActionType, CreateScheduledTaskInput, UpdateScheduledTaskInput } from './scheduled-task-store.js'
 export { TaskScheduler } from './task-scheduler.js'
