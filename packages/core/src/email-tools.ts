@@ -119,7 +119,12 @@ function resolveAccount(deps: ResolvedDeps, requested?: string): Resolution<Emai
     }
   }
 
-  const account = deps.getAccount(selected.id)
+  let account: EmailAccount | null
+  try {
+    account = deps.getAccount(selected.id)
+  } catch (err) {
+    return { ok: false, error: fail(`Email account "${selected.name}" could not be loaded: ${errorText(err)}`) }
+  }
   if (!account) {
     return { ok: false, error: fail(`Email account "${selected.name}" could not be loaded.`) }
   }
@@ -956,8 +961,17 @@ export function createEmailSendTool(deps: EmailToolsDeps = {}): AgentTool {
  */
 export function createEmailTools(deps: EmailToolsDeps = {}): AgentTool[] {
   const resolved = resolveDeps(deps)
+  // A single unreadable account must not take the whole tool set (and with it
+  // the agent) down; the per-call path reports the real reason.
   const accounts = resolved.listAccounts()
-    .map(entry => resolved.getAccount(entry.id))
+    .map(entry => {
+      try {
+        return resolved.getAccount(entry.id)
+      } catch (err) {
+        console.error(`[axiom] Email account "${entry.name}" could not be loaded: ${errorText(err)}`)
+        return null
+      }
+    })
     .filter((entry): entry is EmailAccount => entry !== null)
   if (accounts.length === 0) return []
 

@@ -100,12 +100,28 @@ function markFailed(db: Database, id: string, message: string): EmailSendLogEntr
   return getEmailSendLogEntry(db, id)
 }
 
-async function deliver(deps: ResolvedDeps, entry: EmailSendLogEntry): Promise<EmailApprovalResult> {
-  const account = deps.getAccount(entry.accountId)
+function loadAccount(deps: ResolvedDeps, entry: EmailSendLogEntry): EmailApprovalResult | EmailAccount {
+  let account: EmailAccount | null
+  try {
+    account = deps.getAccount(entry.accountId)
+  } catch (err) {
+    // Unreadable credentials (e.g. a rotated encryption key) must not look like
+    // an SMTP problem — surface the real reason on the entry.
+    const message = `Email account "${entry.accountName}" could not be loaded: ${errorText(err)}`
+    return { ok: false, code: 'account_missing', message, entry: markFailed(deps.db, entry.id, message) }
+  }
+
   if (!account) {
     const message = `Email account "${entry.accountName}" no longer exists — the email could not be sent.`
     return { ok: false, code: 'account_missing', message, entry: markFailed(deps.db, entry.id, message) }
   }
+  return account
+}
+
+async function deliver(deps: ResolvedDeps, entry: EmailSendLogEntry): Promise<EmailApprovalResult> {
+  const loaded = loadAccount(deps, entry)
+  if ('ok' in loaded) return loaded
+  const account = loaded
 
   const attachments = toOutgoingAttachments(entry)
 

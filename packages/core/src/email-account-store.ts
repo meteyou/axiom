@@ -138,8 +138,10 @@ function decryptPassword(value: string, context: string): string {
   try {
     return decrypt(value)
   } catch (err) {
-    console.warn(`[axiom] Failed to decrypt ${context}: ${(err as Error).message}`)
-    return ''
+    // Returning an empty password here would surface as "authentication
+    // failed" and send operators chasing the wrong problem — a broken
+    // ENCRYPTION_KEY or a corrupted store must name itself.
+    throw new Error(`Failed to decrypt ${context}: ${(err as Error).message}`)
   }
 }
 
