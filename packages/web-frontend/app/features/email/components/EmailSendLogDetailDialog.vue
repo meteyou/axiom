@@ -22,6 +22,11 @@
           {{ entry.reason }}
         </div>
 
+        <p v-if="decisionKey" class="text-xs text-muted-foreground">
+          {{ $t(decisionKey, { user: entry.decidedBy }) }}
+          <span v-if="entry.decidedAt"> · {{ formatDateTime(entry.decidedAt) }}</span>
+        </p>
+
         <dl class="grid gap-2">
           <div v-for="field in recipientFields" :key="field.label" class="grid grid-cols-[4rem_1fr] gap-2">
             <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">{{ field.label }}</dt>
@@ -62,6 +67,22 @@
       </div>
 
       <DialogFooter>
+        <template v-if="entry?.status === 'pending'">
+          <Button variant="outline" :disabled="deciding" @click="emit('decide', 'reject')">
+            {{ $t('email.sentLog.actions.reject') }}
+          </Button>
+          <Button :disabled="deciding" @click="emit('decide', 'approve')">
+            {{ $t('email.sentLog.actions.approve') }}
+          </Button>
+        </template>
+        <Button
+          v-else-if="entry?.status === 'failed'"
+          variant="outline"
+          :disabled="deciding"
+          @click="emit('decide', 'retry')"
+        >
+          {{ $t('email.sentLog.actions.retry') }}
+        </Button>
         <Button variant="outline" @click="emit('close')">{{ $t('common.close') }}</Button>
       </DialogFooter>
     </DialogContent>
@@ -69,13 +90,15 @@
 </template>
 
 <script setup lang="ts">
-import type { EmailSendLogEntry } from '~/api/email'
-import { formatBytes, formatDateTime, statusVariant } from '../sendLogFormat'
+import type { EmailSendLogDecision, EmailSendLogEntry } from '~/api/email'
+import { decisionLabelKey, formatBytes, formatDateTime, statusVariant } from '../sendLogFormat'
 
-const props = defineProps<{ open: boolean; entry: EmailSendLogEntry | null }>()
-const emit = defineEmits<{ close: [] }>()
+const props = defineProps<{ open: boolean; entry: EmailSendLogEntry | null; deciding?: boolean }>()
+const emit = defineEmits<{ close: []; decide: [action: EmailSendLogDecision] }>()
 
 const { t } = useI18n()
+
+const decisionKey = computed(() => decisionLabelKey(props.entry))
 
 const recipientFields = computed(() => {
   const entry = props.entry

@@ -1,4 +1,9 @@
-import type { EmailSendLogEntry, EmailSendLogQuery, EmailSendLogStatus } from '~/api/email'
+import type {
+  EmailSendLogDecision,
+  EmailSendLogEntry,
+  EmailSendLogQuery,
+  EmailSendLogStatus,
+} from '~/api/email'
 import { useEmailApi } from '~/api/email'
 
 interface EmailSendLogFilters {
@@ -25,6 +30,7 @@ export function useEmailSendLog() {
   const loading = ref(false)
   const error = ref<string | null>(null)
   const filters = ref<EmailSendLogFilters>(createEmptyFilters())
+  const decidingId = ref<string | null>(null)
   // Normal users cannot read /api/email/accounts, so the account filter is built
   // from the accounts seen in the log itself and kept across filtered reloads.
   const knownAccounts = ref<{ id: string; name: string }[]>([])
@@ -74,6 +80,32 @@ export function useEmailSendLog() {
       .sort((a, b) => a.name.localeCompare(b.name))
   }
 
+  function replaceEntry(updated: EmailSendLogEntry): void {
+    entries.value = entries.value.map(entry => (entry.id === updated.id ? updated : entry))
+  }
+
+  /**
+   * A failed decision still returns the entry as it now stands (e.g. `failed`
+   * after an SMTP error, or the state the competing decision won with), so the
+   * row is refreshed even on error.
+   */
+  async function decide(id: string, action: EmailSendLogDecision): Promise<EmailSendLogEntry | null> {
+    decidingId.value = id
+    error.value = null
+    try {
+      const { entry } = await emailApi.decideSendLogEntry(id, action)
+      replaceEntry(entry)
+      return entry
+    } catch (err) {
+      error.value = (err as Error).message
+      const refreshed = await emailApi.getSendLogEntry(id).catch(() => null)
+      if (refreshed) replaceEntry(refreshed.entry)
+      return refreshed?.entry ?? null
+    } finally {
+      decidingId.value = null
+    }
+  }
+
   function resetFilters(): void {
     filters.value = createEmptyFilters()
     void fetchEntries()
@@ -96,6 +128,8 @@ export function useEmailSendLog() {
     knownAccounts,
     hasMore,
     hasActiveFilters,
+    decidingId,
+    decide,
     fetchEntries,
     loadMore,
     resetFilters,

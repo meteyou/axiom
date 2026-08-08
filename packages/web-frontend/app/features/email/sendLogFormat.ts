@@ -1,4 +1,4 @@
-import type { EmailSendLogStatus } from '~/api/email'
+import type { EmailSendLogEntry, EmailSendLogStatus } from '~/api/email'
 
 type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning' | 'muted'
 
@@ -13,6 +13,12 @@ const STATUS_VARIANTS: Record<EmailSendLogStatus, BadgeVariant> = {
 
 export function statusVariant(status?: EmailSendLogStatus): BadgeVariant {
   return status ? STATUS_VARIANTS[status] : 'muted'
+}
+
+/** i18n key describing who decided about an entry, or null while undecided. */
+export function decisionLabelKey(entry: EmailSendLogEntry | null): string | null {
+  if (!entry?.decidedBy) return null
+  return entry.status === 'rejected' ? 'email.sentLog.rejectedBy' : 'email.sentLog.approvedBy'
 }
 
 export function formatDateTime(value: string): string {

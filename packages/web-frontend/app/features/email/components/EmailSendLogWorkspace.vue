@@ -89,6 +89,7 @@
                 <TableHead>{{ $t('email.sentLog.columns.subject') }}</TableHead>
                 <TableHead class="w-32">{{ $t('email.sentLog.columns.account') }}</TableHead>
                 <TableHead class="w-44">{{ $t('email.sentLog.columns.createdAt') }}</TableHead>
+                <TableHead class="w-52">{{ $t('email.sentLog.columns.decision') }}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -116,6 +117,34 @@
                 </TableCell>
                 <TableCell class="text-xs text-muted-foreground">{{ entry.accountName }}</TableCell>
                 <TableCell class="text-xs text-muted-foreground">{{ formatDateTime(entry.createdAt) }}</TableCell>
+                <TableCell @click.stop>
+                  <div v-if="entry.status === 'pending'" class="flex gap-1.5">
+                    <Button size="sm" :disabled="decidingId === entry.id" @click="decide(entry.id, 'approve')">
+                      {{ $t('email.sentLog.actions.approve') }}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      :disabled="decidingId === entry.id"
+                      @click="decide(entry.id, 'reject')"
+                    >
+                      {{ $t('email.sentLog.actions.reject') }}
+                    </Button>
+                  </div>
+                  <Button
+                    v-else-if="entry.status === 'failed'"
+                    size="sm"
+                    variant="outline"
+                    :disabled="decidingId === entry.id"
+                    @click="decide(entry.id, 'retry')"
+                  >
+                    <AppIcon name="refresh" class="mr-1 h-4 w-4" />
+                    {{ $t('email.sentLog.actions.retry') }}
+                  </Button>
+                  <span v-else-if="decisionLabelKey(entry)" class="text-xs text-muted-foreground">
+                    {{ $t(decisionLabelKey(entry)!, { user: entry.decidedBy }) }}
+                  </span>
+                </TableCell>
               </TableRow>
             </TableBody>
           </Table>
@@ -129,7 +158,13 @@
       </div>
     </div>
 
-    <EmailSendLogDetailDialog :open="!!selected" :entry="selected" @close="selected = null" />
+    <EmailSendLogDetailDialog
+      :open="!!selected"
+      :entry="selected"
+      :deciding="decidingId === selected?.id"
+      @close="selected = null"
+      @decide="action => selected && decide(selected.id, action)"
+    />
   </div>
 </template>
 
@@ -137,7 +172,7 @@
 import type { EmailSendLogEntry } from '~/api/email'
 import { EMAIL_SEND_LOG_STATUSES } from '~/api/email'
 import { useEmailSendLog } from '../composables/useEmailSendLog'
-import { formatDateTime, statusVariant } from '../sendLogFormat'
+import { decisionLabelKey, formatDateTime, statusVariant } from '../sendLogFormat'
 import EmailSendLogDetailDialog from './EmailSendLogDetailDialog.vue'
 
 const {
@@ -149,6 +184,8 @@ const {
   knownAccounts,
   hasMore,
   hasActiveFilters,
+  decidingId,
+  decide,
   fetchEntries,
   loadMore,
   resetFilters,
@@ -156,6 +193,11 @@ const {
 } = useEmailSendLog()
 
 const selected = ref<EmailSendLogEntry | null>(null)
+
+watch(entries, list => {
+  if (!selected.value) return
+  selected.value = list.find(entry => entry.id === selected.value!.id) ?? selected.value
+})
 
 onMounted(fetchEntries)
 
