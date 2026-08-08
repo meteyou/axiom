@@ -1,13 +1,22 @@
-import { describe, expect, it, vi } from 'vitest'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentTool } from '@earendil-works/pi-agent-core'
 import type { EmailAccount } from './email-account-store.js'
 import type { EmailClient, EmailMessage, EmailMessageSummary } from './email-client.js'
 import {
+  createEmailDeleteTool,
+  createEmailDownloadAttachmentTool,
   createEmailFoldersTool,
   createEmailListTool,
+  createEmailMarkReadTool,
+  createEmailMarkUnreadTool,
+  createEmailMoveTool,
   createEmailReadTool,
   createEmailTools,
   isFolderAllowed,
+  safeAttachmentFilename,
 } from './email-tools.js'
 
 function makeAccount(overrides: Partial<EmailAccount> = {}): EmailAccount {
@@ -83,11 +92,12 @@ function mockClient(overrides: Partial<EmailClient> = {}): EmailClient {
   } as unknown as EmailClient
 }
 
-function makeDeps(accounts: EmailAccount[], client: EmailClient) {
+function makeDeps(accounts: EmailAccount[], client: EmailClient, workspaceDir?: string) {
   return {
     client,
     listAccounts: () => accounts.map(a => ({ id: a.id, name: a.name })),
     getAccount: (id: string) => accounts.find(a => a.id === id) ?? null,
+    ...(workspaceDir ? { workspaceDir: () => workspaceDir } : {}),
   }
 }
 
@@ -120,9 +130,27 @@ describe('createEmailTools', () => {
     expect(createEmailTools(makeDeps([], mockClient()))).toEqual([])
   })
 
-  it('registers the read tools when an account exists', () => {
+  it('registers the read and flag tools for a readonly account', () => {
     const tools = createEmailTools(makeDeps([makeAccount()], mockClient()))
-    expect(tools.map(tool => tool.name)).toEqual(['email_list', 'email_folders', 'email_read'])
+    expect(tools.map(tool => tool.name)).toEqual([
+      'email_list',
+      'email_folders',
+      'email_read',
+      'email_mark_read',
+      'email_mark_unread',
+    ])
+  })
+
+  it('registers management tools only when an account grants the capability', () => {
+    const accounts = [
+      makeAccount(),
+      makeAccount({ id: 'acc-2', name: 'Private', canManage: true, canDownloadAttachments: true }),
+    ]
+    const tools = createEmailTools(makeDeps(accounts, mockClient())).map(tool => tool.name)
+
+    expect(tools).toContain('email_move')
+    expect(tools).toContain('email_download_attachment')
+    expect(tools).not.toContain('email_delete')
   })
 })
 
@@ -306,5 +334,284 @@ describe('email_read tool', () => {
     const result = await tool.execute('call-1', { uid: 42 })
 
     expect(text(result)).toContain('invoice.pdf (application/pdf, 2048 bytes)')
+  })
+})
+
+describe('email_mark_read / email_mark_unread tools', () => {
+  it('marks several UIDs in a single call', async () => {
+    const client = mockClient({ setSeen: vi.fn().mockResolvedValue(3) })
+    const tool = createEmailMarkReadTool(makeDeps([makeAccount()], client))
+
+    const result = await tool.execute('call-1', { uids: [1, 2, 3] })
+
+    expect(client.setSeen).toHaveBeenCalledWith(
+      expect.objectContaining({ imapHost: 'imap.example.com' }),
+      'INBOX',
+      [1, 2, 3],
+      true,
+    )
+    expect(text(result)).toContain('Marked 3 message(s) as read')
+    expect(details(result).count).toBe(3)
+  })
+
+  it('deduplicates UIDs and never loads message bodies', async () => {
+    const client = mockClient({ setSeen: vi.fn().mockResolvedValue(2) })
+    const tool = createEmailMarkReadTool(makeDeps([makeAccount()], client))
+
+    await tool.execute('call-1', { uids: [7, 7, 8] })
+
+    expect(client.setSeen).toHaveBeenCalledWith(expect.anything(), 'INBOX', [7, 8], true)
+    expect(client.readMessage).not.toHaveBeenCalled()
+  })
+
+  it('works for readonly accounts (no manage/delete permission)', async () => {
+    const client = mockClient({ setSeen: vi.fn().mockResolvedValue(1) })
+    const readonly = makeAccount({ canManage: false, canDelete: false, canDownloadAttachments: false })
+
+    const read = await createEmailMarkReadTool(makeDeps([readonly], client)).execute('c1', { uids: [1] })
+    const unread = await createEmailMarkUnreadTool(makeDeps([readonly], client)).execute('c2', { uids: [1] })
+
+    expect(details(read).error).toBeUndefined()
+    expect(details(unread).error).toBeUndefined()
+    expect(client.setSeen).toHaveBeenLastCalledWith(expect.anything(), 'INBOX', [1], false)
+  })
+
+  it('rejects an empty or invalid uid list', async () => {
+    const client = mockClient({ setSeen: vi.fn() })
+    const tool = createEmailMarkReadTool(makeDeps([makeAccount()], client))
+
+    expect(text(await tool.execute('c1', { uids: [] }))).toContain('"uids" must be a non-empty array')
+    expect(text(await tool.execute('c2', { uids: ['nope'] }))).toContain('"uids" must be a non-empty array')
+    expect(client.setSeen).not.toHaveBeenCalled()
+  })
+
+  it('blocks folders outside the account restriction', async () => {
+    const client = mockClient({ setSeen: vi.fn() })
+    const account = makeAccount({ folderMode: 'selected', allowedFolders: ['INBOX'] })
+    const tool = createEmailMarkReadTool(makeDeps([account], client))
+
+    const result = await tool.execute('c1', { uids: [1], folder: 'Secret' })
+
+    expect(text(result)).toContain('not accessible')
+    expect(client.setSeen).not.toHaveBeenCalled()
+  })
+})
+
+describe('email_move tool', () => {
+  const manageAccount = makeAccount({ canManage: true })
+
+  it('moves messages to the target folder', async () => {
+    const client = mockClient({ moveMessages: vi.fn().mockResolvedValue(2) })
+    const tool = createEmailMoveTool(makeDeps([manageAccount], client))
+
+    const result = await tool.execute('c1', { uids: [4, 5], target_folder: 'Archive' })
+
+    expect(client.moveMessages).toHaveBeenCalledWith(expect.anything(), 'INBOX', [4, 5], 'Archive')
+    expect(text(result)).toContain('Moved 2 message(s) from "INBOX" to "Archive"')
+  })
+
+  it('is refused for a readonly account', async () => {
+    const client = mockClient({ moveMessages: vi.fn() })
+    const tool = createEmailMoveTool(makeDeps([makeAccount()], client))
+
+    const result = await tool.execute('c1', { uids: [1], target_folder: 'Archive' })
+
+    expect(text(result)).toContain('not allowed to manage mailbox')
+    expect(details(result).capability).toBe('canManage')
+    expect(client.moveMessages).not.toHaveBeenCalled()
+  })
+
+  it('blocks target folders outside the account restriction', async () => {
+    const client = mockClient({ moveMessages: vi.fn() })
+    const account = makeAccount({ canManage: true, folderMode: 'selected', allowedFolders: ['INBOX', 'Archive'] })
+    const tool = createEmailMoveTool(makeDeps([account], client))
+
+    const result = await tool.execute('c1', { uids: [1], target_folder: 'Secret' })
+
+    expect(text(result)).toContain('not accessible')
+    expect(client.moveMessages).not.toHaveBeenCalled()
+  })
+
+  it('requires a target folder', async () => {
+    const client = mockClient({ moveMessages: vi.fn() })
+    const tool = createEmailMoveTool(makeDeps([manageAccount], client))
+
+    expect(text(await tool.execute('c1', { uids: [1] }))).toContain('"target_folder" is required')
+    expect(text(await tool.execute('c2', { uids: [1], target_folder: 'inbox' }))).toContain('identical')
+    expect(client.moveMessages).not.toHaveBeenCalled()
+  })
+})
+
+describe('email_delete tool', () => {
+  it('deletes messages when the account may delete', async () => {
+    const client = mockClient({ deleteMessages: vi.fn().mockResolvedValue(1) })
+    const tool = createEmailDeleteTool(makeDeps([makeAccount({ canDelete: true })], client))
+
+    const result = await tool.execute('c1', { uids: [9] })
+
+    expect(client.deleteMessages).toHaveBeenCalledWith(expect.anything(), 'INBOX', [9])
+    expect(text(result)).toContain('Deleted 1 message(s)')
+  })
+
+  it('is refused for a readonly account and for a manage-only account', async () => {
+    const client = mockClient({ deleteMessages: vi.fn() })
+    const readonly = await createEmailDeleteTool(makeDeps([makeAccount()], client)).execute('c1', { uids: [1] })
+    const manageOnly = await createEmailDeleteTool(
+      makeDeps([makeAccount({ canManage: true })], client),
+    ).execute('c2', { uids: [1] })
+
+    expect(text(readonly)).toContain('not allowed to delete messages')
+    expect(details(manageOnly).capability).toBe('canDelete')
+    expect(client.deleteMessages).not.toHaveBeenCalled()
+  })
+})
+
+describe('email_download_attachment tool', () => {
+  let workspace: string
+
+  beforeEach(() => {
+    workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'axiom-email-attach-'))
+  })
+
+  afterEach(() => {
+    fs.rmSync(workspace, { recursive: true, force: true })
+  })
+
+  function attachmentClient() {
+    return mockClient({
+      downloadAttachment: vi.fn().mockResolvedValue({
+        filename: 'invoice.pdf',
+        contentType: 'application/pdf',
+        content: Buffer.from('PDF-DATA'),
+      }),
+    })
+  }
+
+  it('stores the attachment under the configured workspace path', async () => {
+    const client = attachmentClient()
+    const account = makeAccount({ canDownloadAttachments: true, attachmentDownloadPath: 'downloads/mail' })
+    const tool = createEmailDownloadAttachmentTool(makeDeps([account], client, workspace))
+
+    const result = await tool.execute('c1', { uid: 42, part_id: '2' })
+
+    const expected = path.join(workspace, 'downloads/mail', 'invoice.pdf')
+    expect(details(result).path).toBe(expected)
+    expect(fs.readFileSync(expected, 'utf-8')).toBe('PDF-DATA')
+    expect(client.downloadAttachment).toHaveBeenCalledWith(expect.anything(), 'INBOX', 42, '2')
+  })
+
+  it('does not overwrite an existing file', async () => {
+    const client = attachmentClient()
+    const account = makeAccount({ canDownloadAttachments: true })
+    const tool = createEmailDownloadAttachmentTool(makeDeps([account], client, workspace))
+
+    await tool.execute('c1', { uid: 42, part_id: '2' })
+    const second = await tool.execute('c2', { uid: 42, part_id: '2' })
+
+    expect(details(second).path).toBe(path.join(workspace, 'email-attachments', 'invoice-1.pdf'))
+  })
+
+  it('keeps traversing filenames inside the workspace directory', async () => {
+    const client = attachmentClient()
+    const account = makeAccount({ canDownloadAttachments: true, attachmentDownloadPath: '../../escape' })
+    const tool = createEmailDownloadAttachmentTool(makeDeps([account], client, workspace))
+
+    const result = await tool.execute('c1', { uid: 42, part_id: '2', filename: '../../../etc/passwd' })
+
+    expect(details(result).path).toBe(path.join(workspace, 'email-attachments', 'passwd'))
+  })
+
+  it('is refused when the account may not download attachments', async () => {
+    const client = attachmentClient()
+    const tool = createEmailDownloadAttachmentTool(makeDeps([makeAccount({ canManage: true })], client, workspace))
+
+    const result = await tool.execute('c1', { uid: 42, part_id: '2' })
+
+    expect(text(result)).toContain('not allowed to download attachments')
+    expect(details(result).capability).toBe('canDownloadAttachments')
+    expect(client.downloadAttachment).not.toHaveBeenCalled()
+  })
+
+  it('requires uid and part_id', async () => {
+    const client = attachmentClient()
+    const tool = createEmailDownloadAttachmentTool(
+      makeDeps([makeAccount({ canDownloadAttachments: true })], client, workspace),
+    )
+
+    expect(text(await tool.execute('c1', { part_id: '2' }))).toContain('"uid" must be a number')
+    expect(text(await tool.execute('c2', { uid: 1 }))).toContain('"part_id" is required')
+  })
+})
+
+describe('capability matrix', () => {
+  const cases = [
+    { name: 'readonly', account: {}, allowed: ['email_mark_read', 'email_mark_unread'] },
+    { name: 'manage', account: { canManage: true }, allowed: ['email_mark_read', 'email_mark_unread', 'email_move'] },
+    {
+      name: 'delete',
+      account: { canDelete: true },
+      allowed: ['email_mark_read', 'email_mark_unread', 'email_delete'],
+    },
+    {
+      name: 'attachments',
+      account: { canDownloadAttachments: true },
+      allowed: ['email_mark_read', 'email_mark_unread', 'email_download_attachment'],
+    },
+    {
+      name: 'full',
+      account: { canManage: true, canDelete: true, canDownloadAttachments: true },
+      allowed: ['email_mark_read', 'email_mark_unread', 'email_move', 'email_delete', 'email_download_attachment'],
+    },
+  ]
+
+  const params: Record<string, Record<string, unknown>> = {
+    email_mark_read: { uids: [1] },
+    email_mark_unread: { uids: [1] },
+    email_move: { uids: [1], target_folder: 'Archive' },
+    email_delete: { uids: [1] },
+    email_download_attachment: { uid: 1, part_id: '2' },
+  }
+
+  for (const testCase of cases) {
+    it(`enforces the permissions of a ${testCase.name} account`, async () => {
+      const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'axiom-email-matrix-'))
+      try {
+        const account = makeAccount(testCase.account)
+        const client = mockClient({
+          setSeen: vi.fn().mockResolvedValue(1),
+          moveMessages: vi.fn().mockResolvedValue(1),
+          deleteMessages: vi.fn().mockResolvedValue(1),
+          downloadAttachment: vi.fn().mockResolvedValue({
+            filename: 'a.txt',
+            contentType: 'text/plain',
+            content: Buffer.from('x'),
+          }),
+        })
+        const deps = makeDeps([account], client, workspace)
+        const tools = [
+          createEmailMarkReadTool(deps),
+          createEmailMarkUnreadTool(deps),
+          createEmailMoveTool(deps),
+          createEmailDeleteTool(deps),
+          createEmailDownloadAttachmentTool(deps),
+        ]
+
+        for (const tool of tools) {
+          const result = await tool.execute('c1', params[tool.name]!)
+          const denied = details(result).error === true
+          expect(denied, `${tool.name} for ${testCase.name}`).toBe(!testCase.allowed.includes(tool.name))
+        }
+      } finally {
+        fs.rmSync(workspace, { recursive: true, force: true })
+      }
+    })
+  }
+})
+
+describe('safeAttachmentFilename', () => {
+  it('strips directories and leading dots', () => {
+    expect(safeAttachmentFilename('../../etc/passwd')).toBe('passwd')
+    expect(safeAttachmentFilename('C:\\temp\\report.pdf')).toBe('report.pdf')
+    expect(safeAttachmentFilename('...')).toBe('attachment')
   })
 })
