@@ -998,7 +998,17 @@
       "allowHtml": "HTML-Mails erlauben",
       "allowHtmlHelp": "Wenn aus, darf der Agent nur Klartext senden.",
       "attachmentDownloadPath": "Download-Pfad für Anhänge",
-      "attachmentDownloadPathHelp": "Relativer Pfad im Workspace, in dem Anhänge gespeichert werden."
+      "attachmentDownloadPathHelp": "Relativer Pfad im Workspace, in dem Anhänge gespeichert werden.",
+      "testConnection": "Verbindung testen",
+      "testing": "Teste …",
+      "testSuccess": "IMAP- und SMTP-Verbindung erfolgreich.",
+      "foldersSection": "Ordner",
+      "foldersHelp": "Beschränkt, welche Ordner der Agent auflisten, lesen und als Verschiebeziel nutzen darf.",
+      "folderModeAll": "Alle Ordner",
+      "folderModeSelected": "Nur ausgewählte Ordner",
+      "loadFolders": "Ordner laden",
+      "loadingFolders": "Lädt …",
+      "noFoldersLoaded": "Noch keine Ordner geladen – auf „Ordner laden“ klicken."
     }
   },
   "cronjobs": {

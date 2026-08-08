@@ -998,7 +998,17 @@
       "allowHtml": "Allow HTML mails",
       "allowHtmlHelp": "When off, the agent may only send plain text.",
       "attachmentDownloadPath": "Attachment download path",
-      "attachmentDownloadPathHelp": "Relative path inside the workspace where attachments are stored."
+      "attachmentDownloadPathHelp": "Relative path inside the workspace where attachments are stored.",
+      "testConnection": "Test connection",
+      "testing": "Testing…",
+      "testSuccess": "IMAP and SMTP connection successful.",
+      "foldersSection": "Folders",
+      "foldersHelp": "Restrict which folders the agent may list, read and use as move targets.",
+      "folderModeAll": "All folders",
+      "folderModeSelected": "Only selected folders",
+      "loadFolders": "Load folders",
+      "loadingFolders": "Loading…",
+      "noFoldersLoaded": "No folders loaded yet — click “Load folders”."
     }
   },
   "cronjobs": {
