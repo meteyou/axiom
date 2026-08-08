@@ -10,7 +10,7 @@ import {
   notifyEmailApprovalRequested,
   registerEmailApprovalNotifier,
 } from './email-approval-notifier.js'
-import { createEmailApprovalService } from './email-approval.js'
+import { createEmailApprovalService, recoverStuckApprovedEmails } from './email-approval.js'
 
 const ACCOUNT: EmailAccount = {
   id: 'acc-1',
@@ -264,6 +264,21 @@ describe('email approval', () => {
     await service().approve(seed().id, { name: 'alice' })
 
     expect(resolvedStatuses).toEqual(['failed'])
+  })
+
+  it('recovers entries stuck in approved after a crash so they can be retried', async () => {
+    const stuck = seed({ status: 'approved' })
+    const stale = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+    db.prepare('UPDATE email_send_log SET updated_at = ? WHERE id = ?').run(stale, stuck.id)
+    const inFlight = seed({ status: 'approved' })
+
+    expect(recoverStuckApprovedEmails(db)).toBe(1)
+    expect(getEmailSendLogEntry(db, stuck.id)!.status).toBe('failed')
+    expect(getEmailSendLogEntry(db, inFlight.id)!.status).toBe('approved')
+
+    const retried = await service().retry(stuck.id, { name: 'alice' })
+    expect(retried.ok).toBe(true)
+    expect(retried.entry!.status).toBe('sent')
   })
 
   it('keeps working when a notifier throws', async () => {

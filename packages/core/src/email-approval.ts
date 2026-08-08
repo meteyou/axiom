@@ -100,6 +100,28 @@ function markFailed(db: Database, id: string, message: string): EmailSendLogEntr
   return getEmailSendLogEntry(db, id)
 }
 
+/**
+ * Entries flipped to `approved` whose send never reached a terminal state (the
+ * process died mid-send) are otherwise invisible forever: no longer pending, so
+ * no approval buttons, and `retry` only accepts failed ones. Recovering them at
+ * service construction (i.e. process start) turns them into a retryable failure.
+ * The threshold is generous on purpose so a send that is still running in
+ * another process is never stolen.
+ */
+const STUCK_APPROVED_AFTER_MS = 10 * 60 * 1000
+
+const STUCK_APPROVED_MESSAGE =
+  'Sending was interrupted before the result was known — retry to send it.'
+
+export function recoverStuckApprovedEmails(db: Database, now: number = Date.now()): number {
+  const cutoff = new Date(now - STUCK_APPROVED_AFTER_MS).toISOString()
+  const result = db.prepare(
+    `UPDATE email_send_log SET status = 'failed', error_message = ?, updated_at = ?
+     WHERE status = 'approved' AND message_id IS NULL AND updated_at < ?`,
+  ).run(STUCK_APPROVED_MESSAGE, new Date(now).toISOString(), cutoff)
+  return result.changes
+}
+
 function loadAccount(deps: ResolvedDeps, entry: EmailSendLogEntry): EmailApprovalResult | EmailAccount {
   let account: EmailAccount | null
   try {
@@ -164,6 +186,7 @@ export interface EmailApprovalService {
 
 export function createEmailApprovalService(deps: EmailApprovalDeps): EmailApprovalService {
   const resolved = resolveDeps(deps)
+  recoverStuckApprovedEmails(resolved.db)
 
   function missing(id: string): EmailApprovalResult {
     return { ok: false, code: 'not_found', message: `Send log entry not found: ${id}`, entry: null }

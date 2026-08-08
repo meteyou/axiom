@@ -409,7 +409,7 @@ export {
   MAX_EMAIL_BULK_UIDS,
 } from './email-tools.js'
 export type { EmailToolsDeps } from './email-tools.js'
-export { createEmailApprovalService } from './email-approval.js'
+export { createEmailApprovalService, recoverStuckApprovedEmails } from './email-approval.js'
 export {
   registerEmailApprovalNotifier,
   clearEmailApprovalNotifiers,
