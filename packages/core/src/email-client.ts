@@ -3,6 +3,7 @@ import type { FetchMessageObject, MessageStructureObject } from 'imapflow'
 import { simpleParser } from 'mailparser'
 import type { ParsedMail } from 'mailparser'
 import nodemailer from 'nodemailer'
+import addressparser from 'nodemailer/lib/addressparser/index.js'
 
 /**
  * Deep module encapsulating all IMAP/SMTP details. No other module may import
@@ -202,6 +203,21 @@ export function htmlToText(html: string): string {
 export function normalizeAddress(value: string): string {
   const match = /<([^>]*)>/.exec(value)
   return (match?.[1] ?? value).trim().toLowerCase()
+}
+
+/**
+ * Expands one recipient field value into the bare addresses it will actually be
+ * delivered to, using the same parser nodemailer uses when sending.
+ *
+ * Checking anything else against the allowlist is exploitable: both
+ * `evil@bad.com, ok@allowed.com` and `"x <ok@allowed.com>" <evil@bad.com>` look
+ * like a single allowed recipient to a naive `<…>`/lowercase normalisation,
+ * while SMTP still delivers to the smuggled address.
+ */
+export function parseAddressList(value: string): string[] {
+  return addressparser(String(value), { flatten: true })
+    .map(entry => normalizeAddress(entry.address ?? ''))
+    .filter(Boolean)
 }
 
 export function addressDomain(value: string): string {

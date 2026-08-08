@@ -686,6 +686,30 @@ describe('createEmailSendTool', () => {
     expect(log.entries[0].bodyText).toContain('Sent by an AI agent')
   })
 
+  it('expands smuggled recipients so the check, the log and SMTP agree', async () => {
+    const client = mockClient({ sendMessage: vi.fn().mockResolvedValue(sendResult()) })
+    const { deps, log } = sendDeps(makeAccount(allowlisted), client)
+
+    const blocked = await createEmailSendTool(deps).execute('c1', {
+      to: ['stranger@evil.com, boss@example.com'],
+      subject: 'Hi',
+      body: 'Hello',
+    })
+
+    expect(details(blocked).error).toBe(true)
+    expect(client.sendMessage).not.toHaveBeenCalled()
+
+    await createEmailSendTool(deps).execute('c2', {
+      to: ['Boss <boss@example.com>, someone@partner.org'],
+      subject: 'Hi',
+      body: 'Hello',
+    })
+
+    const sent = (client.sendMessage as ReturnType<typeof vi.fn>).mock.calls[0][1]
+    expect(sent.to).toEqual(['boss@example.com', 'someone@partner.org'])
+    expect(log.entries[1]).toMatchObject({ status: 'sent', to: ['boss@example.com', 'someone@partner.org'] })
+  })
+
   it('blocks a non-allowlisted recipient and logs the reason', async () => {
     const client = mockClient({ sendMessage: vi.fn() })
     const { deps, log } = sendDeps(makeAccount(allowlisted), client)

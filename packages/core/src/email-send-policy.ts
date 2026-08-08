@@ -1,8 +1,9 @@
-import { addressDomain, normalizeAddress } from './email-client.js'
+import { addressDomain, normalizeAddress, parseAddressList } from './email-client.js'
 
 /**
- * Pure send-rule evaluation. Every recipient of every field is checked on its
- * own — there are no implicit exceptions (not even for replies).
+ * Pure send-rule evaluation. Every recipient of every field is expanded into the
+ * addresses SMTP will actually deliver to and checked on its own — there are no
+ * implicit exceptions (not even for replies).
  */
 
 export type EmailSendDecision = 'allow' | 'pending' | 'blocked'
@@ -35,9 +36,12 @@ export interface EmailSendPolicyResult {
 const FIELDS: EmailRecipientField[] = ['to', 'cc', 'bcc']
 
 function normalizeList(values: string[] | undefined): string[] {
-  return (values ?? [])
-    .map(value => normalizeAddress(String(value)))
-    .filter(Boolean)
+  return (values ?? []).flatMap((value) => {
+    const parsed = parseAddressList(value)
+    // An entry the parser cannot resolve is kept verbatim so it shows up as a
+    // violation instead of silently vanishing from the check.
+    return parsed.length > 0 ? parsed : [normalizeAddress(String(value))].filter(Boolean)
+  })
 }
 
 export function isRecipientAllowed(address: string, allowlist: EmailSendPolicyAccount['allowlist']): boolean {
