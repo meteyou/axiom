@@ -62,6 +62,7 @@ import {
   Zap,
   Volume2,
   Loader,
+  Mail,
   Mic,
 } from 'lucide-vue-next'
 
@@ -90,6 +91,7 @@ const iconMap = {
   key: KeyRound,
   lock: LockKeyhole,
   logs: Logs,
+  mail: Mail,
   menu: Menu,
   moreVertical: EllipsisVertical,
   moon: Moon,
