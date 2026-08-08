@@ -305,6 +305,26 @@ export {
   cronToHumanReadable,
 } from './cron-parser.js'
 export type { CronFields } from './cron-parser.js'
+export {
+  loadEmailAccounts,
+  saveEmailAccounts,
+  listEmailAccounts,
+  getEmailAccount,
+  getEmailAccountDecrypted,
+  createEmailAccount,
+  updateEmailAccount,
+  deleteEmailAccount,
+  toSafeEmailAccount,
+  DEFAULT_ATTACHMENT_DOWNLOAD_PATH,
+} from './email-account-store.js'
+export type {
+  EmailAccount,
+  EmailAccountsFile,
+  EmailAllowlist,
+  SafeEmailAccount,
+  CreateEmailAccountInput,
+  UpdateEmailAccountInput,
+} from './email-account-store.js'
 export { ScheduledTaskStore, initScheduledTasksTable } from './scheduled-task-store.js'
 export type { ScheduledTask, ScheduledTaskActionType, CreateScheduledTaskInput, UpdateScheduledTaskInput } from './scheduled-task-store.js'
 export { TaskScheduler } from './task-scheduler.js'
