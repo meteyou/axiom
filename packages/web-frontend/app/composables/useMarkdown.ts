@@ -104,12 +104,9 @@ export function useMarkdown() {
 
     if (!proseEl) return // Not inside rendered markdown — let default copy work
 
-    const pre = closestPre(ancestor)
-    if (pre) {
-      event.preventDefault()
-      event.clipboardData?.setData('text/plain', pre.textContent ?? '')
-      return
-    }
+    // Selection inside a code block: default copy already yields exactly the
+    // selected plain text — no markdown conversion wanted.
+    if (closestPre(ancestor)) return
 
     // Clone the selected fragment and convert HTML → Markdown
     const fragment = range.cloneContents()
