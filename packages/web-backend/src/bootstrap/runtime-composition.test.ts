@@ -74,8 +74,6 @@ describe('background task tools rebuild on email account change', () => {
   it('adds email tools to the background task tool set after an account change without a restart', async () => {
     composition = await createRuntimeComposition({ logger: silentLogger })
 
-    // No account yet: createEmailTools() returns [], so the background set has
-    // no email tools.
     expect(composition.getBackgroundTaskToolNames()).not.toContain('email_list')
 
     createEmailAccount({
@@ -89,15 +87,11 @@ describe('background task tools rebuild on email account change', () => {
       canSend: true,
     })
 
-    // Simulate the /api/email hook firing on an account change. The task runner
-    // captured the backgroundTaskTools array reference at boot, so this must
-    // update that same array in place rather than swap it out.
     composition.onActiveProviderChanged()
 
     const toolNames = composition.getBackgroundTaskToolNames()
     expect(toolNames).toContain('email_list')
     expect(toolNames).toContain('email_send')
-    // Task tools must survive the in-place rebuild.
     expect(toolNames).toContain('create_task')
   })
 })

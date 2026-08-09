@@ -172,8 +172,7 @@ export function createApp(options?: AppOptions): express.Express {
       getBackgroundTaskToolNames: options.getBackgroundTaskToolNames,
     }))
     // Email tools are baked into the tool sets at build time, so an account
-    // change must trigger the same rebuild a provider switch does — this
-    // refreshes both the interactive core and the background-task tool set.
+    // change must trigger the same rebuild a provider switch does.
     app.use('/api/email', createEmailRouter({
       db: options.db,
       onAccountsChanged: () => options.onActiveProviderChanged?.(),
