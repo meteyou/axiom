@@ -2,6 +2,7 @@ import type { Database } from './database.js'
 import type { ProviderConfig } from './provider-config.js'
 import { buildModel, getApiKeyForProvider, PROVIDER_TYPE_PRESETS, resolveModelTemperature, getProviderDefaultModel } from './provider-config.js'
 import { completeSimple } from '@earendil-works/pi-ai/compat'
+import { assertLlmResponseOk } from './llm-response.js'
 
 export type ProviderHealthStatus = 'healthy' | 'degraded' | 'down' | 'unconfigured'
 
@@ -157,14 +158,15 @@ async function performPiAiHealthCheck(
     const timer = setTimeout(() => controller.abort(), timeoutMs)
 
     try {
-      await completeSimple(model, {
+      const response = await completeSimple(model, {
         messages: [{ role: 'user', content: [{ type: 'text', text: 'Respond with OK only.' }], timestamp: Date.now() }],
       }, {
         apiKey,
         maxTokens: 5,
-        temperature: resolveModelTemperature(provider, getProviderDefaultModel(provider), 0),
         signal: controller.signal,
       })
+
+      assertLlmResponseOk(response, 'Health check failed')
 
       const latencyMs = Date.now() - startedAt
       return {
