@@ -665,9 +665,10 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
     })
   }
 
-  // Background task tools are built as a mutable array so that
-  // create_task / list_tasks can be pushed in after taskRuntime is
-  // available (they need taskRuntime.tasks — resolved below).
+  // Background task tools live in a mutable array whose reference is handed to
+  // the task runner below and repopulated in place by rebuildBackgroundTaskTools
+  // (create_task / list_tasks are added once taskRuntime exists; email tools are
+  // refreshed on provider/account changes).
   const backgroundSttEnabled = (() => { try { return loadSttSettings().enabled } catch { return false } })()
   // createBaseAgentTools builds the shared tool set (yolo, web, chat-history,
   // search-memories, agent-skills, transcribe-audio). Both the interactive
@@ -850,21 +851,34 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
     getParentSessionId: () => agentCore?.getCurrentInteractiveSessionId() ?? null,
   }
 
-  // Now that taskRuntime exists, push create_task / list_tasks into the
-  // background-task tool set. The task runner holds a reference to the
-  // backgroundTaskTools array, so all subsequently started tasks
-  // (heartbeat, cronjob, user-spawned) will see these tools.
   // Background tasks never have an active interactive session, so
   // getParentSessionId always returns null here.
   const backgroundTaskToolsOptions = {
     ...taskToolsOptions,
     getParentSessionId: () => null as string | null,
   }
-  backgroundTaskTools.push(
-    createTaskTool(backgroundTaskToolsOptions),
-    createResumeTaskTool(backgroundTaskToolsOptions),
-    listTasksTool({ taskRuntime: taskRuntime.tasks }),
-  )
+
+  // Rebuild the background-task tool set in place. The task runner, heartbeat,
+  // and cronjob paths capture the `backgroundTaskTools` array reference once
+  // and never re-read it, so the rebuild MUST mutate that same array —
+  // reassigning the reference would leave every background path pointing at
+  // the stale set. Called at boot and again on every provider/email-account
+  // change so background tasks pick up email tools without a process restart
+  // (createEmailTools() returns [] until an account exists).
+  function rebuildBackgroundTaskTools(): void {
+    backgroundTaskTools.length = 0
+    backgroundTaskTools.push(
+      ...createBaseAgentTools({
+        db,
+        builtinToolsConfig: () => loadRuntimeSettings().builtinToolsConfig,
+        sttEnabled: backgroundSttEnabled,
+      }),
+      createTaskTool(backgroundTaskToolsOptions),
+      createResumeTaskTool(backgroundTaskToolsOptions),
+      listTasksTool({ taskRuntime: taskRuntime.tasks }),
+    )
+  }
+  rebuildBackgroundTaskTools()
 
   // Wrap the schedule boundary so deleting a cronjob also evicts its
   // cached reminder session id. Without this, a cronjob deleted mid-
@@ -1291,6 +1305,10 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
       })
     },
     onActiveProviderChanged: () => {
+      // Also refresh the background-task tool set: it is built from a separate
+      // static array that initOrUpdateAgentCore does not touch, so without this
+      // an email-account change would only reach the interactive core.
+      rebuildBackgroundTaskTools()
       initOrUpdateAgentCore().catch((err) => {
         logger.error('[axiom] Error initializing agent core after provider change:', err)
       })

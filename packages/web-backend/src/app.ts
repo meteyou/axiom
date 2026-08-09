@@ -171,9 +171,9 @@ export function createApp(options?: AppOptions): express.Express {
       getTaskRuntime: () => options.getTaskRuntime?.()?.schedules ?? null,
       getBackgroundTaskToolNames: options.getBackgroundTaskToolNames,
     }))
-    // Email tools are baked into the agent tool set at AgentCore construction,
-    // so an account change only takes effect after the same rebuild a provider
-    // switch triggers.
+    // Email tools are baked into the tool sets at build time, so an account
+    // change must trigger the same rebuild a provider switch does — this
+    // refreshes both the interactive core and the background-task tool set.
     app.use('/api/email', createEmailRouter({
       db: options.db,
       onAccountsChanged: () => options.onActiveProviderChanged?.(),
