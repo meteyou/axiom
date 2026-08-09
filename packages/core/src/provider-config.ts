@@ -1,9 +1,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
-import type { Api, KnownProvider, Model, Transport } from '@earendil-works/pi-ai'
+import type { Api, Model, Transport } from '@earendil-works/pi-ai'
+import type { BuiltinProvider } from '@earendil-works/pi-ai/compat'
 import { getModels as getPiAiModels, streamSimple } from '@earendil-works/pi-ai/compat'
-import { getOAuthProvider, getOAuthApiKey } from '@earendil-works/pi-ai/oauth'
+import { getOAuthApiKey } from './pi-oauth.js'
 import type { OAuthCredentials } from '@earendil-works/pi-ai/oauth'
 import { getConfigDir, ensureConfigTemplates, loadConfig } from './config.js'
 import { encrypt, decrypt, isEncrypted, maskApiKey } from './encryption.js'
@@ -487,7 +488,7 @@ export function getAvailableModels(providerType: ProviderType): AvailableModel[]
   const catalogModels: AvailableModel[] = preset?.piAiProvider
     ? (() => {
         try {
-          return getPiAiModels(preset.piAiProvider as KnownProvider).map(m => ({ id: m.id, name: m.name }))
+          return getPiAiModels(preset.piAiProvider as BuiltinProvider).map(m => ({ id: m.id, name: m.name }))
         } catch {
           return []
         }
@@ -516,7 +517,7 @@ function findPiAiCatalogModel(providerType: ProviderType | undefined, modelId: s
   const preset = PROVIDER_TYPE_PRESETS[providerType]
   if (!preset?.piAiProvider) return undefined
   try {
-    return (getPiAiModels(preset.piAiProvider as KnownProvider) as Model<Api>[]).find(m => m.id === modelId)
+    return (getPiAiModels(preset.piAiProvider as BuiltinProvider) as Model<Api>[]).find(m => m.id === modelId)
   } catch {
     return undefined
   }
@@ -1462,10 +1463,7 @@ export async function getApiKeyForProvider(provider: ProviderConfig): Promise<st
   const oauthCreds = storedToOAuthCredentials(provider.oauthCredentials)
 
   // Use pi-ai to get API key (auto-refreshes expired tokens)
-  const result = await getOAuthApiKey(
-    preset.oauthProviderId,
-    { [preset.oauthProviderId]: oauthCreds },
-  )
+  const result = await getOAuthApiKey(preset.oauthProviderId, oauthCreds)
 
   if (!result) {
     throw new Error(`Failed to get API key for OAuth provider ${provider.name}. Re-login may be required.`)
@@ -1504,6 +1502,12 @@ export function getProviderDefaultModel(provider: Pick<ProviderConfig, 'enabledM
   return provider.enabledModels?.[0] ?? ''
 }
 
+/** Copilot token format: `tid=...;exp=...;proxy-ep=proxy.individual.githubcopilot.com;...` */
+function copilotBaseUrlFromToken(token: string): string | undefined {
+  const proxyHost = token.match(/proxy-ep=([^;]+)/)?.[1]
+  return proxyHost ? `https://${proxyHost.replace(/^proxy\./, 'api.')}` : undefined
+}
+
 export function buildModel(provider: ProviderConfig, modelId?: string): Model<Api> {
   const id = modelId ?? getProviderDefaultModel(provider)
   const preset = PROVIDER_TYPE_PRESETS[provider.providerType]
@@ -1513,16 +1517,16 @@ export function buildModel(provider: ProviderConfig, modelId?: string): Model<Ap
   // (OpenCode Zen/Go) whose catalog spans multiple wire APIs under one entry.
   if (preset?.piAiProvider && (preset.authMethod === 'oauth' || preset.resolveModelsFromCatalog)) {
     try {
-      const piAiModels = getPiAiModels(preset.piAiProvider as KnownProvider)
+      const piAiModels = getPiAiModels(preset.piAiProvider as BuiltinProvider)
 
-      // Let the OAuth provider modify models (e.g., set base URL for GitHub Copilot)
+      // GitHub Copilot routes each account through its own proxy endpoint,
+      // encoded in the access token; the catalog only carries the default one.
       let models: Model<Api>[] = piAiModels as Model<Api>[]
-      if (preset.oauthProviderId && provider.oauthCredentials) {
-        const oauthProv = getOAuthProvider(preset.oauthProviderId)
-        if (oauthProv?.modifyModels) {
-          const creds = storedToOAuthCredentials(provider.oauthCredentials)
-          models = oauthProv.modifyModels([...models], creds) as Model<Api>[]
-        }
+      if (preset.oauthProviderId === 'github-copilot' && provider.oauthCredentials) {
+        const baseUrl = copilotBaseUrlFromToken(
+          storedToOAuthCredentials(provider.oauthCredentials).access,
+        )
+        if (baseUrl) models = models.map(m => ({ ...m, baseUrl }))
       }
 
       const piModel = models.find(m => m.id === id)

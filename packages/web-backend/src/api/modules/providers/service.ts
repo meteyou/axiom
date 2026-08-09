@@ -31,7 +31,7 @@ import type {
   ProviderOAuthLoginStartPayloadContract,
   ProviderUpdatePayloadContract,
 } from '@axiom/core/contracts'
-import { getOAuthProvider } from '@earendil-works/pi-ai/oauth'
+import { getOAuthAuth, oauthLogin } from '@axiom/core'
 import type { OAuthCredentials } from '@earendil-works/pi-ai/oauth'
 import {
   normalizeOllamaBaseUrl,
@@ -165,7 +165,7 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
       throw new ProvidersValidationError('This provider type does not use OAuth')
     }
 
-    const oauthProvider = getOAuthProvider(preset.oauthProviderId)
+    const oauthProvider = getOAuthAuth(preset.oauthProviderId)
     if (!oauthProvider) {
       throw new ProvidersValidationError(`OAuth provider "${preset.oauthProviderId}" not found`)
     }
@@ -187,7 +187,7 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
           loginId: existingId,
           authUrl: existing.authUrl,
           instructions: existing.instructions,
-          usesCallbackServer: oauthProvider.usesCallbackServer ?? false,
+          usesCallbackServer: existing.resolveManualCode != null,
         }
       }
       // Stale completed/errored entry for this target — drop it and start fresh.
@@ -214,8 +214,7 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
       resolveAuthInfo = resolve
     })
 
-    oauthProvider
-      .login({
+    oauthLogin(preset.oauthProviderId, {
         onAuth: (info) => {
           loginState.authUrl = info.url
           loginState.instructions = info.instructions
@@ -232,12 +231,10 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
           resolveAuthInfo({ url: info.verificationUri, instructions: info.userCode })
         },
         onSelect: async () => undefined,
-        onManualCodeInput: oauthProvider.usesCallbackServer
-          ? () =>
-              new Promise<string>((resolve) => {
-                loginState.resolveManualCode = resolve
-              })
-          : undefined,
+        onManualCodeInput: () =>
+          new Promise<string>((resolve) => {
+            loginState.resolveManualCode = resolve
+          }),
       })
       .then((credentials: OAuthCredentials) => {
         loginState.status = 'completed'
@@ -257,11 +254,14 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
       throw new ProvidersRuntimeError(loginState.error ?? 'OAuth login failed')
     }
 
+    // Callback-server flows request a manual-code fallback synchronously after
+    // announcing the auth URL, so the resolver is set by the time this awaited
+    // continuation runs. Device-code flows never prompt for one.
     return {
       loginId,
       authUrl: authInfo.url,
       instructions: authInfo.instructions,
-      usesCallbackServer: oauthProvider.usesCallbackServer ?? false,
+      usesCallbackServer: loginState.resolveManualCode != null,
     }
   }
 
