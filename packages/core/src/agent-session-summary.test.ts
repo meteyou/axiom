@@ -164,9 +164,37 @@ describe('generateSessionSummary — open threads prompt', () => {
     }).generateSessionSummary('user1', 'User: How do I deploy with Docker?\nAssistant: Use docker compose up.')
 
     expect(mockCompleteSimple).toHaveBeenCalledOnce()
-    const [, callOptions] = mockCompleteSimple.mock.calls[0]
+    const [, callOptions, requestOptions] = mockCompleteSimple.mock.calls[0]
     expect(callOptions.messages[0].content).toContain('How do I deploy with Docker?')
+    // claude-sonnet-5 answers a request carrying `temperature` with a 400.
+    expect(requestOptions).not.toHaveProperty('temperature')
     expect(summary).toBe('Discussed Docker deployment options.')
+  })
+
+  it('returns no summary when the provider rejects the request', async () => {
+    mockCompleteSimple.mockResolvedValueOnce({
+      ...makeCompleteSimpleResponse(''),
+      content: [],
+      stopReason: 'error' as const,
+      errorMessage: '400 `temperature` is deprecated for this model.',
+    })
+
+    const agent = new AgentCore({
+      model: makeModel(),
+      apiKey: 'sk-test',
+      db,
+      tools: [],
+      memoryDir,
+    })
+
+    const summary = await (agent as unknown as {
+      generateSessionSummary: (userId: string, history?: string) => Promise<string>
+    }).generateSessionSummary('user1', 'User: tell me a story\nAssistant: Once upon a time...')
+
+    // Must not fabricate a summary — an "Empty session." placeholder would be
+    // written to the daily memory file as if the conversation had no content.
+    expect(summary).toBe('')
+    expect(mockAppendToDailyFile).not.toHaveBeenCalled()
   })
 
   it('prompt instructs LLM to add ### Open Threads section for unresolved items', async () => {
@@ -260,7 +288,7 @@ describe('generateSessionSummary — open threads prompt', () => {
     expect(mockCompleteSimple).not.toHaveBeenCalled()
   })
 
-  it('returns fallback text when completeSimple throws', async () => {
+  it('returns no summary when completeSimple throws', async () => {
     mockCompleteSimple.mockRejectedValueOnce(new Error('LLM unavailable'))
 
     const agent = new AgentCore({
@@ -275,7 +303,8 @@ describe('generateSessionSummary — open threads prompt', () => {
       generateSessionSummary: (userId: string, history?: string) => Promise<string>
     }).generateSessionSummary('user1', 'User: Hello\nAssistant: Hi')
 
-    expect(summary).toBe('Session ended (summary generation failed).')
+    expect(summary).toBe('')
+    expect(mockAppendToDailyFile).not.toHaveBeenCalled()
   })
 
   it('uses a single completeSimple call (no second call for open threads)', async () => {

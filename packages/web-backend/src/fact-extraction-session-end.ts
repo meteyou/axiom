@@ -87,7 +87,7 @@ function getFactExtractionSettings(
 export async function resolveFactExtractionExecutionContext(
   settings: FactExtractionSettings,
   deps: Partial<FactExtractionDeps> = {},
-): Promise<{ provider: ProviderConfig; model: ReturnType<typeof buildModel>; apiKey: string } | null> {
+): Promise<{ model: ReturnType<typeof buildModel>; apiKey: string } | null> {
   const resolvedDeps = { ...defaultDeps, ...deps }
   let provider: ProviderConfig | null = null
 
@@ -114,7 +114,6 @@ export async function resolveFactExtractionExecutionContext(
   const resolvedModelId = modelId ?? getProviderDefaultModel(provider)
 
   return {
-    provider,
     model: resolvedDeps.buildModel(provider, resolvedModelId),
     apiKey: await resolvedDeps.getApiKeyForProvider(provider),
   }
@@ -166,7 +165,6 @@ export function triggerFactExtractionForSessionEnd(options: TriggerFactExtractio
         conversationHistory,
         executionContext.model,
         executionContext.apiKey,
-        executionContext.provider,
       )
 
       deps.console.log(`[fact-extraction] Session ${sessionId}: ${result.stored} new facts`)

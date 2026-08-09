@@ -23,6 +23,7 @@ export {
   resolveBackgroundReasoning,
   resolveChatReasoning,
 } from './thinking-level.js'
+export { assertLlmResponseOk } from './llm-response.js'
 export {
   ensureMemoryStructure,
   ensureConfigStructure,

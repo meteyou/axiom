@@ -67,7 +67,7 @@ describe('fact-extraction session-end trigger', () => {
       },
     )
 
-    expect(dedicatedContext?.provider.id).toBe('dedicated')
+    expect(dedicatedContext).not.toBeNull()
     expect(buildModel).toHaveBeenCalledWith(dedicatedProvider, 'gpt-4o-mini')
     expect(getApiKeyForProvider).toHaveBeenCalledWith(dedicatedProvider)
 
@@ -85,7 +85,7 @@ describe('fact-extraction session-end trigger', () => {
       },
     )
 
-    expect(fallbackContext?.provider.id).toBe('active')
+    expect(fallbackContext).not.toBeNull()
     expect(buildModel).toHaveBeenCalledWith(activeProvider, 'gpt-4o-mini')
     expect(getApiKeyForProvider).toHaveBeenCalledWith(activeProvider)
   })
@@ -202,7 +202,6 @@ describe('fact-extraction session-end trigger', () => {
         'User: remember that I use dark mode',
         expect.objectContaining({ id: 'gpt-4o-mini' }),
         'key',
-        expect.objectContaining({ providerType: 'openai' }),
       )
       expect(error).toHaveBeenCalled()
     })
