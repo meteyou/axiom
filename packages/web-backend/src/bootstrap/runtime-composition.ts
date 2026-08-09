@@ -989,9 +989,14 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
       // wrong id, causing the divider row + summary to be written into
       // the NEW session's transcript instead of the OLD one.
       const dividerMetadata = JSON.stringify({ type: 'session_divider', summary: summary ?? null })
+      // Date the divider at the session's end, not at `now`: a background
+      // summary lands seconds after the user already sent messages in the new
+      // session, and chat history is ordered by timestamp — a `now` divider
+      // would reappear *below* those messages after a page reload.
       db.prepare(
-        'INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)'
-      ).run(sessionId, numericUserId, 'system', summary ?? '', dividerMetadata)
+        `INSERT INTO chat_messages (session_id, user_id, role, content, metadata, timestamp)
+         VALUES (?, ?, ?, ?, ?, COALESCE((SELECT ended_at FROM sessions WHERE id = ?), datetime('now')))`
+      ).run(sessionId, numericUserId, 'system', summary ?? '', dividerMetadata, sessionId)
 
       if (numericUserId !== null) {
         if (isBackground) {
