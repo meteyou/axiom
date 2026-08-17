@@ -17,6 +17,8 @@ export interface Task {
   maxDurationMinutes: number | null
   promptTokens: number
   completionTokens: number
+  cacheRead: number
+  cacheWrite: number
   estimatedCost: number
   toolCallCount: number
   resultSummary: string | null

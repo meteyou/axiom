@@ -844,6 +844,8 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
             model: assistantMsg.model,
             promptTokens: assistantMsg.usage.input,
             completionTokens: assistantMsg.usage.output,
+            cacheRead: assistantMsg.usage.cacheRead,
+            cacheWrite: assistantMsg.usage.cacheWrite,
             estimatedCost: finalCost,
             sessionId,
           })

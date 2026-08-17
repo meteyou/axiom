@@ -210,9 +210,18 @@
                 {{ formatDuration(task) }}
               </TableCell>
               <TableCell class="text-right tabular-nums text-muted-foreground">
-                <span :title="`Prompt: ${formatNumber(task.promptTokens)} · Completion: ${formatNumber(task.completionTokens)}`">
-                  {{ formatNumber(task.promptTokens + task.completionTokens) }}
-                </span>
+                <div class="flex flex-col items-end">
+                  <span :title="tokensTooltip(task)">
+                    {{ formatNumber(task.promptTokens + task.completionTokens) }}
+                  </span>
+                  <span
+                    v-if="hasCacheTokens(task)"
+                    class="text-xs text-muted-foreground"
+                    :title="tokensTooltip(task)"
+                  >
+                    {{ $t('tasks.cacheTokensShort', { read: formatNumber(task.cacheRead), write: formatNumber(task.cacheWrite) }) }}
+                  </span>
+                </div>
               </TableCell>
               <TableCell class="text-right tabular-nums text-muted-foreground">
                 {{ formatCurrency(task.estimatedCost) }}
@@ -420,6 +429,31 @@ function formatDuration(task: Task): string {
   const hours = Math.floor(minutes / 60)
   const remainingMinutes = minutes % 60
   return `${hours}h ${remainingMinutes}m`
+}
+
+function hasCacheTokens(task: Task): boolean {
+  return (task.cacheRead ?? 0) > 0 || (task.cacheWrite ?? 0) > 0
+}
+
+function cacheHitRate(task: Task): number | null {
+  const cacheRead = task.cacheRead ?? 0
+  const denominator = task.promptTokens + cacheRead + (task.cacheWrite ?? 0)
+  if (denominator <= 0) return null
+  return (cacheRead / denominator) * 100
+}
+
+function tokensTooltip(task: Task): string {
+  const parts = [
+    `${t('tasks.tokensTooltip.prompt')}: ${formatNumber(task.promptTokens)}`,
+    `${t('tasks.tokensTooltip.completion')}: ${formatNumber(task.completionTokens)}`,
+    `${t('tasks.tokensTooltip.cacheRead')}: ${formatNumber(task.cacheRead ?? 0)}`,
+    `${t('tasks.tokensTooltip.cacheWrite')}: ${formatNumber(task.cacheWrite ?? 0)}`,
+  ]
+  const rate = cacheHitRate(task)
+  if (rate !== null) {
+    parts.push(`${t('tasks.tokensTooltip.cacheHitRate')}: ${rate.toFixed(1)}%`)
+  }
+  return parts.join(' · ')
 }
 
 onMounted(async () => {

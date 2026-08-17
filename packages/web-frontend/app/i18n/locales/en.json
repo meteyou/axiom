@@ -941,7 +941,15 @@
       "consolidation": "Consolidation"
     },
     "triggerModelDefault": "Default ({value})",
-    "triggerModelDefaultTooltip": "Default provider and model from the task settings."
+    "triggerModelDefaultTooltip": "Default provider and model from the task settings.",
+    "cacheTokensShort": "Cache {read} / {write}",
+    "tokensTooltip": {
+      "prompt": "Prompt",
+      "completion": "Completion",
+      "cacheRead": "Cache read",
+      "cacheWrite": "Cache write",
+      "cacheHitRate": "Cache hit rate"
+    }
   },
   "email": {
     "title": "Email",

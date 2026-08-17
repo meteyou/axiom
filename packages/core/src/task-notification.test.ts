@@ -30,6 +30,8 @@ function makeTask(overrides: Partial<Task> = {}): Task {
     maxDurationMinutes: 60,
     promptTokens: 5000,
     completionTokens: 3000,
+    cacheRead: 0,
+    cacheWrite: 0,
     estimatedCost: 0.05,
     toolCallCount: 10,
     resultSummary: 'Successfully built a React app with dark mode toggle.',
