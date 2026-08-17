@@ -5,6 +5,8 @@ export interface TokenUsageRecord {
   model: string
   promptTokens: number
   completionTokens: number
+  cacheRead: number
+  cacheWrite: number
   estimatedCost: number
   sessionId?: string
 }
@@ -29,13 +31,15 @@ export interface ToolCallRecord {
  */
 export function logTokenUsage(db: Database, record: TokenUsageRecord): void {
   db.prepare(
-    `INSERT INTO token_usage (provider, model, prompt_tokens, completion_tokens, estimated_cost, session_id)
-     VALUES (?, ?, ?, ?, ?, ?)`
+    `INSERT INTO token_usage (provider, model, prompt_tokens, completion_tokens, cache_read, cache_write, estimated_cost, session_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     record.provider,
     record.model,
     record.promptTokens,
     record.completionTokens,
+    record.cacheRead,
+    record.cacheWrite,
     record.estimatedCost,
     record.sessionId ?? null,
   )
@@ -43,9 +47,10 @@ export function logTokenUsage(db: Database, record: TokenUsageRecord): void {
   if (record.sessionId) {
     db.prepare(
       `UPDATE sessions
-       SET prompt_tokens = prompt_tokens + ?, completion_tokens = completion_tokens + ?
+       SET prompt_tokens = prompt_tokens + ?, completion_tokens = completion_tokens + ?,
+           cache_read = cache_read + ?, cache_write = cache_write + ?
        WHERE id = ?`
-    ).run(record.promptTokens, record.completionTokens, record.sessionId)
+    ).run(record.promptTokens, record.completionTokens, record.cacheRead, record.cacheWrite, record.sessionId)
   }
 }
 
@@ -75,7 +80,7 @@ export function getTokenUsage(db: Database, options?: {
   model?: string
   limit?: number
 }): TokenUsageRecord[] {
-  let sql = 'SELECT provider, model, prompt_tokens as promptTokens, completion_tokens as completionTokens, estimated_cost as estimatedCost, session_id as sessionId FROM token_usage WHERE 1=1'
+  let sql = 'SELECT provider, model, prompt_tokens as promptTokens, completion_tokens as completionTokens, cache_read as cacheRead, cache_write as cacheWrite, estimated_cost as estimatedCost, session_id as sessionId FROM token_usage WHERE 1=1'
   const params: unknown[] = []
 
   if (options?.provider) {

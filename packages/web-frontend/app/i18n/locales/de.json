@@ -941,7 +941,15 @@
       "consolidation": "Konsolidierung"
     },
     "triggerModelDefault": "Standard ({value})",
-    "triggerModelDefaultTooltip": "Standard-Provider und -Modell aus den Task-Einstellungen."
+    "triggerModelDefaultTooltip": "Standard-Provider und -Modell aus den Task-Einstellungen.",
+    "cacheTokensShort": "Cache {read} / {write}",
+    "tokensTooltip": {
+      "prompt": "Prompt",
+      "completion": "Completion",
+      "cacheRead": "Cache-Lesen",
+      "cacheWrite": "Cache-Schreiben",
+      "cacheHitRate": "Cache-Trefferquote"
+    }
   },
   "email": {
     "title": "E-Mail",

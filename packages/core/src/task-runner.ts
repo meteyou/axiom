@@ -148,6 +148,8 @@ interface RunningTask {
   timeoutTimer: ReturnType<typeof setTimeout> | null
   promptTokens: number
   completionTokens: number
+  cacheRead: number
+  cacheWrite: number
   estimatedCost: number
   toolCallCount: number
   toolCallTimers: Map<string, number>
@@ -167,6 +169,8 @@ interface PausedTask {
   pausedAt: number
   promptTokens: number
   completionTokens: number
+  cacheRead: number
+  cacheWrite: number
   estimatedCost: number
   toolCallCount: number
 }
@@ -484,6 +488,8 @@ export class TaskRunner {
         timeoutTimer: null,
         promptTokens: 0,
         completionTokens: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
         estimatedCost: 0,
         toolCallCount: 0,
         toolCallTimers: new Map(),
@@ -600,6 +606,8 @@ export class TaskRunner {
           pausedAt: Date.now(),
           promptTokens: runningTask.promptTokens,
           completionTokens: runningTask.completionTokens,
+          cacheRead: runningTask.cacheRead,
+          cacheWrite: runningTask.cacheWrite,
           estimatedCost: runningTask.estimatedCost,
           toolCallCount: runningTask.toolCallCount,
         }
@@ -611,6 +619,8 @@ export class TaskRunner {
           resultSummary: summary,
           promptTokens: runningTask.promptTokens,
           completionTokens: runningTask.completionTokens,
+          cacheRead: runningTask.cacheRead,
+          cacheWrite: runningTask.cacheWrite,
           estimatedCost: runningTask.estimatedCost,
           toolCallCount: runningTask.toolCallCount,
         })
@@ -634,6 +644,8 @@ export class TaskRunner {
           completedAt: now,
           promptTokens: runningTask.promptTokens,
           completionTokens: runningTask.completionTokens,
+          cacheRead: runningTask.cacheRead,
+          cacheWrite: runningTask.cacheWrite,
           estimatedCost: runningTask.estimatedCost,
           toolCallCount: runningTask.toolCallCount,
         })
@@ -649,6 +661,8 @@ export class TaskRunner {
         completedAt: now,
         promptTokens: runningTask.promptTokens,
         completionTokens: runningTask.completionTokens,
+        cacheRead: runningTask.cacheRead,
+        cacheWrite: runningTask.cacheWrite,
         estimatedCost: runningTask.estimatedCost,
         toolCallCount: runningTask.toolCallCount,
       })
@@ -676,6 +690,8 @@ export class TaskRunner {
         completedAt: now,
         promptTokens: runningTask.promptTokens,
         completionTokens: runningTask.completionTokens,
+        cacheRead: runningTask.cacheRead,
+        cacheWrite: runningTask.cacheWrite,
         estimatedCost: runningTask.estimatedCost,
         toolCallCount: runningTask.toolCallCount,
       })
@@ -731,6 +747,8 @@ export class TaskRunner {
 
           runningTask.promptTokens += assistantMsg.usage.input
           runningTask.completionTokens += assistantMsg.usage.output
+          runningTask.cacheRead += assistantMsg.usage.cacheRead
+          runningTask.cacheWrite += assistantMsg.usage.cacheWrite
           runningTask.estimatedCost += finalCost
 
           this.persistLiveMetrics(runningTask)
@@ -741,6 +759,8 @@ export class TaskRunner {
             model: assistantMsg.model,
             promptTokens: assistantMsg.usage.input,
             completionTokens: assistantMsg.usage.output,
+            cacheRead: assistantMsg.usage.cacheRead,
+            cacheWrite: assistantMsg.usage.cacheWrite,
             estimatedCost: finalCost,
             sessionId,
           })
@@ -923,6 +943,8 @@ export class TaskRunner {
               model: assistantMsg.model,
               promptTokens: assistantMsg.usage.input,
               completionTokens: assistantMsg.usage.output,
+              cacheRead: assistantMsg.usage.cacheRead,
+              cacheWrite: assistantMsg.usage.cacheWrite,
               estimatedCost: finalCost,
               sessionId,
             })
@@ -975,6 +997,8 @@ export class TaskRunner {
       completedAt: now,
       promptTokens: runningTask.promptTokens,
       completionTokens: runningTask.completionTokens,
+      cacheRead: runningTask.cacheRead,
+      cacheWrite: runningTask.cacheWrite,
       estimatedCost: runningTask.estimatedCost,
       toolCallCount: runningTask.toolCallCount,
     })
@@ -1128,6 +1152,8 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
       completedAt: now,
       promptTokens: runningTask.promptTokens,
       completionTokens: runningTask.completionTokens,
+      cacheRead: runningTask.cacheRead,
+      cacheWrite: runningTask.cacheWrite,
       estimatedCost: runningTask.estimatedCost,
       toolCallCount: runningTask.toolCallCount,
     })
@@ -1207,6 +1233,8 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
       this.store.update(runningTask.taskId, {
         promptTokens: runningTask.promptTokens,
         completionTokens: runningTask.completionTokens,
+        cacheRead: runningTask.cacheRead,
+        cacheWrite: runningTask.cacheWrite,
         estimatedCost: runningTask.estimatedCost,
         toolCallCount: runningTask.toolCallCount,
       })
@@ -1278,6 +1306,8 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
       timeoutTimer: null,
       promptTokens: pausedTask.promptTokens,
       completionTokens: pausedTask.completionTokens,
+      cacheRead: pausedTask.cacheRead,
+      cacheWrite: pausedTask.cacheWrite,
       estimatedCost: pausedTask.estimatedCost,
       toolCallCount: pausedTask.toolCallCount,
       toolCallTimers: new Map(),
@@ -1362,6 +1392,8 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
           pausedAt: Date.now(),
           promptTokens: runningTask.promptTokens,
           completionTokens: runningTask.completionTokens,
+          cacheRead: runningTask.cacheRead,
+          cacheWrite: runningTask.cacheWrite,
           estimatedCost: runningTask.estimatedCost,
           toolCallCount: runningTask.toolCallCount,
         }
@@ -1373,6 +1405,8 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
           resultSummary: summary,
           promptTokens: runningTask.promptTokens,
           completionTokens: runningTask.completionTokens,
+          cacheRead: runningTask.cacheRead,
+          cacheWrite: runningTask.cacheWrite,
           estimatedCost: runningTask.estimatedCost,
           toolCallCount: runningTask.toolCallCount,
         })
@@ -1394,6 +1428,8 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
           completedAt: now,
           promptTokens: runningTask.promptTokens,
           completionTokens: runningTask.completionTokens,
+          cacheRead: runningTask.cacheRead,
+          cacheWrite: runningTask.cacheWrite,
           estimatedCost: runningTask.estimatedCost,
           toolCallCount: runningTask.toolCallCount,
         })
@@ -1408,6 +1444,8 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
         completedAt: now,
         promptTokens: runningTask.promptTokens,
         completionTokens: runningTask.completionTokens,
+        cacheRead: runningTask.cacheRead,
+        cacheWrite: runningTask.cacheWrite,
         estimatedCost: runningTask.estimatedCost,
         toolCallCount: runningTask.toolCallCount,
       })
@@ -1432,6 +1470,8 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
         completedAt: now,
         promptTokens: runningTask.promptTokens,
         completionTokens: runningTask.completionTokens,
+        cacheRead: runningTask.cacheRead,
+        cacheWrite: runningTask.cacheWrite,
         estimatedCost: runningTask.estimatedCost,
         toolCallCount: runningTask.toolCallCount,
       })
@@ -1498,6 +1538,8 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
         completedAt: nowStr,
         promptTokens: pausedTask.promptTokens,
         completionTokens: pausedTask.completionTokens,
+        cacheRead: pausedTask.cacheRead,
+        cacheWrite: pausedTask.cacheWrite,
         estimatedCost: pausedTask.estimatedCost,
         toolCallCount: pausedTask.toolCallCount,
       })

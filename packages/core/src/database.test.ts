@@ -106,6 +106,12 @@ describe('database', () => {
     const sessionCols = db.prepare('PRAGMA table_info(sessions)').all() as { name: string }[]
     expect(sessionCols.map(col => col.name)).toContain('prompt_tokens')
     expect(sessionCols.map(col => col.name)).toContain('completion_tokens')
+    expect(sessionCols.map(col => col.name)).toContain('cache_read')
+    expect(sessionCols.map(col => col.name)).toContain('cache_write')
+
+    const tokenUsageCols = db.prepare('PRAGMA table_info(token_usage)').all() as { name: string }[]
+    expect(tokenUsageCols.map(col => col.name)).toContain('cache_read')
+    expect(tokenUsageCols.map(col => col.name)).toContain('cache_write')
 
     db.prepare(
       'INSERT INTO sessions (id, source) VALUES (?, ?)'
@@ -129,6 +135,12 @@ describe('database', () => {
     const sessionCols = db.prepare('PRAGMA table_info(sessions)').all() as { name: string }[]
     expect(sessionCols.map(col => col.name)).toContain('prompt_tokens')
     expect(sessionCols.map(col => col.name)).toContain('completion_tokens')
+    expect(sessionCols.map(col => col.name)).toContain('cache_read')
+    expect(sessionCols.map(col => col.name)).toContain('cache_write')
+
+    const tokenUsageCols = db.prepare('PRAGMA table_info(token_usage)').all() as { name: string }[]
+    expect(tokenUsageCols.map(col => col.name)).toContain('cache_read')
+    expect(tokenUsageCols.map(col => col.name)).toContain('cache_write')
 
     // After PRD #11 Task 2 migration, the legacy session id is remapped to a UUID.
     const migratedSessions = db.prepare(

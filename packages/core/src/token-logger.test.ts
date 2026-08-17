@@ -39,7 +39,7 @@ describe('token-logger', () => {
         provider: 'openai',
         model: 'gpt-4o',
         promptTokens: 150,
-        completionTokens: 75,
+        completionTokens: 75, cacheRead: 0, cacheWrite: 0,
         estimatedCost: 0.001125,
         sessionId: 'session-123',
       })
@@ -65,7 +65,7 @@ describe('token-logger', () => {
         provider: 'openai',
         model: 'gpt-4o',
         promptTokens: 150,
-        completionTokens: 75,
+        completionTokens: 75, cacheRead: 0, cacheWrite: 0,
         estimatedCost: 0.001125,
         sessionId: 'session-with-tokens',
       })
@@ -89,7 +89,7 @@ describe('token-logger', () => {
         provider: 'openai',
         model: 'gpt-4o',
         promptTokens: 100,
-        completionTokens: 50,
+        completionTokens: 50, cacheRead: 0, cacheWrite: 0,
         estimatedCost: 0.001,
         sessionId: 'session-accumulate',
       })
@@ -97,7 +97,7 @@ describe('token-logger', () => {
         provider: 'openai',
         model: 'gpt-4o',
         promptTokens: 25,
-        completionTokens: 10,
+        completionTokens: 10, cacheRead: 0, cacheWrite: 0,
         estimatedCost: 0.00025,
         sessionId: 'session-accumulate',
       })
@@ -110,6 +110,45 @@ describe('token-logger', () => {
       expect(session.completion_tokens).toBe(60)
     })
 
+    it('persists cache read/write tokens and accumulates them per session', () => {
+      const testDb = createDb()
+
+      testDb.prepare('INSERT INTO sessions (id, source) VALUES (?, ?)').run('session-cache', 'web')
+
+      logTokenUsage(testDb, {
+        provider: 'anthropic',
+        model: 'claude-3-5-sonnet-20241022',
+        promptTokens: 100,
+        completionTokens: 50,
+        cacheRead: 800,
+        cacheWrite: 200,
+        estimatedCost: 0.003,
+        sessionId: 'session-cache',
+      })
+      logTokenUsage(testDb, {
+        provider: 'anthropic',
+        model: 'claude-3-5-sonnet-20241022',
+        promptTokens: 20,
+        completionTokens: 10,
+        cacheRead: 400,
+        cacheWrite: 0,
+        estimatedCost: 0.001,
+        sessionId: 'session-cache',
+      })
+
+      const rows = testDb.prepare('SELECT cache_read, cache_write FROM token_usage ORDER BY id').all() as { cache_read: number; cache_write: number }[]
+      expect(rows[0].cache_read).toBe(800)
+      expect(rows[0].cache_write).toBe(200)
+      expect(rows[1].cache_read).toBe(400)
+      expect(rows[1].cache_write).toBe(0)
+
+      const session = testDb.prepare(
+        'SELECT cache_read, cache_write FROM sessions WHERE id = ?'
+      ).get('session-cache') as { cache_read: number; cache_write: number }
+      expect(session.cache_read).toBe(1200)
+      expect(session.cache_write).toBe(200)
+    })
+
     it('inserts without session_id', () => {
       const testDb = createDb()
 
@@ -117,7 +156,7 @@ describe('token-logger', () => {
         provider: 'anthropic',
         model: 'claude-3-5-sonnet-20241022',
         promptTokens: 200,
-        completionTokens: 100,
+        completionTokens: 100, cacheRead: 0, cacheWrite: 0,
         estimatedCost: 0.002,
       })
 
@@ -138,7 +177,7 @@ describe('token-logger', () => {
           provider: 'anthropic',
           model: 'claude-3-5-sonnet-20241022',
           promptTokens: 200,
-          completionTokens: 100,
+          completionTokens: 100, cacheRead: 0, cacheWrite: 0,
           estimatedCost: 0.002,
         })
       }).not.toThrow()
@@ -177,8 +216,8 @@ describe('token-logger', () => {
     it('returns all records when no filters', () => {
       const testDb = createDb()
 
-      logTokenUsage(testDb, { provider: 'openai', model: 'gpt-4o', promptTokens: 100, completionTokens: 50, estimatedCost: 0.001 })
-      logTokenUsage(testDb, { provider: 'anthropic', model: 'claude-3-5-sonnet-20241022', promptTokens: 200, completionTokens: 100, estimatedCost: 0.002 })
+      logTokenUsage(testDb, { provider: 'openai', model: 'gpt-4o', promptTokens: 100, completionTokens: 50, cacheRead: 0, cacheWrite: 0, estimatedCost: 0.001 })
+      logTokenUsage(testDb, { provider: 'anthropic', model: 'claude-3-5-sonnet-20241022', promptTokens: 200, completionTokens: 100, cacheRead: 0, cacheWrite: 0, estimatedCost: 0.002 })
 
       const records = getTokenUsage(testDb)
       expect(records).toHaveLength(2)
@@ -187,8 +226,8 @@ describe('token-logger', () => {
     it('filters by provider', () => {
       const testDb = createDb()
 
-      logTokenUsage(testDb, { provider: 'openai', model: 'gpt-4o', promptTokens: 100, completionTokens: 50, estimatedCost: 0.001 })
-      logTokenUsage(testDb, { provider: 'anthropic', model: 'claude-3-5-sonnet-20241022', promptTokens: 200, completionTokens: 100, estimatedCost: 0.002 })
+      logTokenUsage(testDb, { provider: 'openai', model: 'gpt-4o', promptTokens: 100, completionTokens: 50, cacheRead: 0, cacheWrite: 0, estimatedCost: 0.001 })
+      logTokenUsage(testDb, { provider: 'anthropic', model: 'claude-3-5-sonnet-20241022', promptTokens: 200, completionTokens: 100, cacheRead: 0, cacheWrite: 0, estimatedCost: 0.002 })
 
       const records = getTokenUsage(testDb, { provider: 'openai' })
       expect(records).toHaveLength(1)
@@ -198,8 +237,8 @@ describe('token-logger', () => {
     it('filters by model', () => {
       const testDb = createDb()
 
-      logTokenUsage(testDb, { provider: 'openai', model: 'gpt-4o', promptTokens: 100, completionTokens: 50, estimatedCost: 0.001 })
-      logTokenUsage(testDb, { provider: 'openai', model: 'gpt-4o-mini', promptTokens: 50, completionTokens: 25, estimatedCost: 0.0001 })
+      logTokenUsage(testDb, { provider: 'openai', model: 'gpt-4o', promptTokens: 100, completionTokens: 50, cacheRead: 0, cacheWrite: 0, estimatedCost: 0.001 })
+      logTokenUsage(testDb, { provider: 'openai', model: 'gpt-4o-mini', promptTokens: 50, completionTokens: 25, cacheRead: 0, cacheWrite: 0, estimatedCost: 0.0001 })
 
       const records = getTokenUsage(testDb, { model: 'gpt-4o-mini' })
       expect(records).toHaveLength(1)
@@ -210,7 +249,7 @@ describe('token-logger', () => {
       const testDb = createDb()
 
       for (let i = 0; i < 5; i++) {
-        logTokenUsage(testDb, { provider: 'openai', model: 'gpt-4o', promptTokens: 100, completionTokens: 50, estimatedCost: 0.001 })
+        logTokenUsage(testDb, { provider: 'openai', model: 'gpt-4o', promptTokens: 100, completionTokens: 50, cacheRead: 0, cacheWrite: 0, estimatedCost: 0.001 })
       }
 
       const records = getTokenUsage(testDb, { limit: 3 })
