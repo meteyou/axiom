@@ -60,8 +60,24 @@ export function createBaseAgentTools(options: BaseAgentToolsOptions): AgentTool[
     ...createAgentSkillTools(),
     ...createEmailTools(),
     ...(options.sttEnabled ? [createTranscribeAudioTool()] : []),
-    ...(options.quotaService ? [createProviderQuotaTool({ quotaService: options.quotaService })] : []),
+    ...(options.quotaService
+      ? [createProviderQuotaTool({
+          quotaService: options.quotaService,
+          isAuthorized: () => isQuotaVisibleToUser(options.db, options.getCurrentUserId?.()),
+        })]
+      : []),
   ]
+}
+
+/**
+ * Provider quota is admin-only on the HTTP API, so the tool must not widen that
+ * boundary. Background agents (heartbeat, cronjobs, tasks) run without an
+ * interactive user and stay allowed.
+ */
+function isQuotaVisibleToUser(db: Database, userId: number | undefined): boolean {
+  if (userId === undefined) return true
+  const row = db.prepare('SELECT role FROM users WHERE id = ?').get(userId) as { role?: string } | undefined
+  return row?.role === 'admin'
 }
 
 export interface AgentRuntimeOptions {

@@ -869,6 +869,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
         db,
         builtinToolsConfig: () => loadRuntimeSettings().builtinToolsConfig,
         sttEnabled: backgroundSttEnabled,
+        quotaService: quotaMonitorService,
       }),
       createTaskTool(backgroundTaskToolsOptions),
       createResumeTaskTool(backgroundTaskToolsOptions),
