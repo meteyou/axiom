@@ -142,7 +142,8 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
 
     try {
       return await probeOpenAiCompatibleModelsFromBase(provider.baseUrl, provider.apiKey || undefined)
-    } catch {
+    } catch (err) {
+      console.warn(`[axiom] Live model fetch failed for provider "${provider.name}", using bundled catalog: ${(err as Error).message}`)
       return getAvailableModels(provider.providerType as ProviderType)
     }
   }
