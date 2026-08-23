@@ -798,4 +798,87 @@ describe('setupWebSocketChat kill switch', () => {
       )
     }
   })
+
+  it('streams a retry status and the answer of the retried turn', async () => {
+    const originalDataDir = process.env.DATA_DIR
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'axiom-ws-retry-'))
+    fs.mkdirSync(path.join(dataDir, 'config'), { recursive: true })
+    fs.writeFileSync(
+      path.join(dataDir, 'config', 'settings.json'),
+      JSON.stringify({ retry: { enabled: true, maxRetries: 2, baseDelayMs: 10 } }),
+      'utf-8',
+    )
+    process.env.DATA_DIR = dataDir
+
+    const db = initDatabase(':memory:')
+    const mockSessionManager = {
+      getOrCreateSession: vi.fn(() => ({ id: 'session-retry', userId: '1', source: 'web', startedAt: Date.now(), lastActivity: Date.now(), messageCount: 0, summaryWritten: false, restored: false })),
+    }
+
+    let attempts = 0
+    const stream = async function* (): AsyncGenerator<ResponseChunk> {
+      attempts++
+      if (attempts === 1) {
+        yield { type: 'text', text: 'half an answer' }
+        yield { type: 'error', error: '429 Too Many Requests' }
+        return
+      }
+      yield { type: 'text', text: 'the real answer' }
+      yield { type: 'done' }
+    }
+
+    const agentCore = {
+      sendMessage: vi.fn(stream),
+      retryTurn: vi.fn(stream),
+      abort: vi.fn(),
+      resetSession: vi.fn(),
+      getSessionManager: vi.fn(() => mockSessionManager),
+    } as unknown as AgentCore
+
+    const app = createApp({ db })
+    const server = http.createServer(app)
+    const { wss } = setupWebSocketChat(server, db, agentCore)
+
+    await new Promise<void>((resolve) => server.listen(0, resolve))
+    const port = (server.address() as { port: number }).port
+    const token = generateAccessToken({ userId: 1, username: 'admin', role: 'admin' })
+
+    try {
+      const client = await connectWs(port, token)
+      await client.waitForMessage() // authenticated
+      client.ws.send(JSON.stringify({ type: 'message', content: 'hello' }))
+
+      expect((await client.waitForMessage()).text).toBe('half an answer')
+
+      const retry = await client.waitForMessage()
+      expect(retry.type).toBe('retry_scheduled')
+      expect(retry.retry).toMatchObject({ attempt: 1, maxRetries: 2, delayMs: 10 })
+      expect(retry.text).toContain('retrying (1/2)')
+
+      expect(await client.waitForMessage()).toMatchObject({ type: 'text', text: 'the real answer' })
+      expect((await client.waitForMessage()).type).toBe('done')
+
+      // The discarded attempt left nothing behind — only the user message and
+      // the answer of the successful attempt are persisted.
+      const persisted = db.prepare(
+        "SELECT role, content FROM chat_messages WHERE session_id = 'session-retry' ORDER BY id"
+      ).all() as Array<{ role: string; content: string }>
+      expect(persisted).toEqual([
+        { role: 'user', content: 'hello' },
+        { role: 'assistant', content: 'the real answer' },
+      ])
+
+      client.ws.close()
+    } finally {
+      if (originalDataDir === undefined) delete process.env.DATA_DIR
+      else process.env.DATA_DIR = originalDataDir
+      for (const client of wss.clients) {
+        client.terminate()
+      }
+      wss.close()
+      await new Promise<void>((resolve, reject) =>
+        server.close((err) => (err ? reject(err) : resolve()))
+      )
+    }
+  })
 })
