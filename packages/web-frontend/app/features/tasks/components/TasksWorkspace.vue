@@ -210,18 +210,36 @@
                 {{ formatDuration(task) }}
               </TableCell>
               <TableCell class="text-right tabular-nums text-muted-foreground">
-                <div class="flex flex-col items-end">
-                  <span :title="tokensTooltip(task)">
-                    {{ formatNumber(task.promptTokens + task.completionTokens) }}
-                  </span>
-                  <span
-                    v-if="hasCacheTokens(task)"
-                    class="text-xs text-muted-foreground"
-                    :title="tokensTooltip(task)"
-                  >
-                    {{ $t('tasks.cacheTokensShort', { read: formatNumber(task.cacheRead), write: formatNumber(task.cacheWrite) }) }}
-                  </span>
-                </div>
+                <Tooltip>
+                  <TooltipTrigger as-child>
+                    <div class="flex flex-col items-end">
+                      <span>{{ formatNumber(task.promptTokens + task.completionTokens) }}</span>
+                      <span
+                        v-if="hasCacheTokens(task)"
+                        class="text-xs text-muted-foreground"
+                      >
+                        {{ cacheSummary(task) }}
+                      </span>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="left" class="max-w-none px-3 py-2">
+                    <div class="grid grid-cols-[auto_auto] gap-x-5 gap-y-1 tabular-nums">
+                      <span class="opacity-70">{{ $t('tasks.tokensTooltip.input') }}</span>
+                      <span class="text-right">{{ formatNumber(task.promptTokens) }}</span>
+                      <span class="opacity-70">{{ $t('tasks.tokensTooltip.output') }}</span>
+                      <span class="text-right">{{ formatNumber(task.completionTokens) }}</span>
+                      <span class="opacity-70">{{ $t('tasks.tokensTooltip.cacheRead') }}</span>
+                      <span class="text-right">{{ formatNumber(task.cacheRead) }}</span>
+                      <span class="opacity-70">{{ $t('tasks.tokensTooltip.cacheWrite') }}</span>
+                      <span class="text-right">{{ formatNumber(task.cacheWrite) }}</span>
+                      <template v-if="cacheHitRate(task) !== null">
+                        <span class="col-span-2 my-0.5 border-t border-background/20" />
+                        <span class="opacity-70">{{ $t('tasks.tokensTooltip.cacheHitRate') }}</span>
+                        <span class="text-right">{{ cacheHitRate(task)!.toFixed(1) }}%</span>
+                      </template>
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
               </TableCell>
               <TableCell class="text-right tabular-nums text-muted-foreground">
                 {{ formatCurrency(task.estimatedCost) }}
@@ -432,28 +450,19 @@ function formatDuration(task: Task): string {
 }
 
 function hasCacheTokens(task: Task): boolean {
-  return (task.cacheRead ?? 0) > 0 || (task.cacheWrite ?? 0) > 0
+  return task.cacheRead > 0 || task.cacheWrite > 0
 }
 
 function cacheHitRate(task: Task): number | null {
-  const cacheRead = task.cacheRead ?? 0
-  const denominator = task.promptTokens + cacheRead + (task.cacheWrite ?? 0)
+  const denominator = task.promptTokens + task.cacheRead + task.cacheWrite
   if (denominator <= 0) return null
-  return (cacheRead / denominator) * 100
+  return (task.cacheRead / denominator) * 100
 }
 
-function tokensTooltip(task: Task): string {
-  const parts = [
-    `${t('tasks.tokensTooltip.prompt')}: ${formatNumber(task.promptTokens)}`,
-    `${t('tasks.tokensTooltip.completion')}: ${formatNumber(task.completionTokens)}`,
-    `${t('tasks.tokensTooltip.cacheRead')}: ${formatNumber(task.cacheRead ?? 0)}`,
-    `${t('tasks.tokensTooltip.cacheWrite')}: ${formatNumber(task.cacheWrite ?? 0)}`,
-  ]
+function cacheSummary(task: Task): string {
   const rate = cacheHitRate(task)
-  if (rate !== null) {
-    parts.push(`${t('tasks.tokensTooltip.cacheHitRate')}: ${rate.toFixed(1)}%`)
-  }
-  return parts.join(' · ')
+  if (rate === null) return ''
+  return `CH ${rate.toFixed(1)}%`
 }
 
 onMounted(async () => {

@@ -942,10 +942,9 @@
     },
     "triggerModelDefault": "Standard ({value})",
     "triggerModelDefaultTooltip": "Standard-Provider und -Modell aus den Task-Einstellungen.",
-    "cacheTokensShort": "Cache {read} / {write}",
     "tokensTooltip": {
-      "prompt": "Prompt",
-      "completion": "Completion",
+      "input": "Input",
+      "output": "Output",
       "cacheRead": "Cache-Lesen",
       "cacheWrite": "Cache-Schreiben",
       "cacheHitRate": "Cache-Trefferquote"
