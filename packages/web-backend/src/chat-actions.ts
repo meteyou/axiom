@@ -88,6 +88,21 @@ export class ChatActionRegistry {
     return message
   }
 
+  /**
+   * Register buttons for a message the channel renders itself (e.g. the
+   * persisted turn-error row): unlike `publish` this emits no `chat_action`
+   * bubble, and the caller owns `messageId` so the buttons can be rebuilt
+   * from persisted data after a page reload. Resolutions are broadcast the
+   * usual way.
+   */
+  // Used by turn-retry-chat.ts; Fallow does not resolve the call site.
+  // fallow-ignore-next-line unused-class-member
+  attach(message: ChatActionMessage): ChatActionMessage {
+    this.messages.set(message.messageId, message)
+    this.prune()
+    return message
+  }
+
   /** Called when any channel decided — disables the buttons everywhere. */
   resolve(kind: string, refId: string, resolution: string): ChatActionMessage | null {
     const message = [...this.messages.values()]

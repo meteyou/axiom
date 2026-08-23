@@ -20,7 +20,9 @@ import { URL } from 'node:url'
 import crypto from 'node:crypto'
 import type { RuntimeMetrics } from './runtime-metrics.js'
 import type { ChatEventBus, ChatEvent } from './chat-event-bus.js'
-import type { ChatActionMessage } from './chat-actions.js'
+import type { ChatActionMessage, ChatActionRegistry } from './chat-actions.js'
+import { registerTurnRetryChatChannel } from './turn-retry-chat.js'
+import type { TurnRetryChatChannel } from './turn-retry-chat.js'
 
 interface ChatMessage {
   type: 'message' | 'command' | 'ping'
@@ -151,6 +153,7 @@ export function setupWebSocketChat(
   getAgentCore: (() => AgentCore | null) | AgentCore | null,
   runtimeMetrics?: RuntimeMetrics,
   chatEventBus?: ChatEventBus,
+  chatActions?: ChatActionRegistry | null,
 ): WebSocketChatResult {
   // Support both getter function and direct reference (backward compat)
   const resolveAgentCore = typeof getAgentCore === 'function' ? getAgentCore : () => getAgentCore
@@ -159,12 +162,21 @@ export function setupWebSocketChat(
   // The runner owns the turn lifecycle (streaming, persistence, abort). This
   // handler only dispatches inbound messages into it and forwards its events,
   // which is what keeps a turn alive across socket drops and page reloads.
+  let retryChannel: TurnRetryChatChannel | null = null
   const turnRunner = new TurnRunner({
     db,
     getAgent: () => resolveAgentCore(),
     onTurnStart: () => runtimeMetrics?.startRequest(),
     onTurnEnd: () => runtimeMetrics?.endRequest(),
+    onTurnFailed: failure => retryChannel?.attachRetryAction(failure),
   })
+
+  // Manual retry: the button lives on the persisted error row and is answered
+  // through the chat-action registry, so it survives a reload and resolves for
+  // every connected client at once.
+  if (chatActions) {
+    retryChannel = registerTurnRetryChatChannel({ chatActions, db, runner: turnRunner })
+  }
 
   const slashRegistry: SlashCommandRegistry = buildWebChatSlashCommandRegistry()
   const taskStore = new TaskStore(db)
