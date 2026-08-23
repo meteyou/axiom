@@ -6,6 +6,7 @@ import {
   clearFallbackProvider,
   deleteProvider as deleteProviderConfig,
   getAvailableModels,
+  isDynamicCatalogProvider,
   getFallbackModelId,
   getProviderDefaultModel,
   loadProviders,
@@ -52,6 +53,7 @@ export class ProvidersExternalError extends Error {}
 export interface ProvidersService {
   listProviders: () => { masked: ProvidersFile; decrypted: ProvidersFile }
   getModelsByProviderType: (providerType: string) => AvailableModel[]
+  getLiveModels: (providerId: string) => Promise<AvailableModel[]>
   setFallback: (payload: ProviderFallbackUpdatePayloadContract) => { fallbackProvider: string | null; fallbackModel: string | null }
   startOAuthLogin: (payload: ProviderOAuthLoginStartPayloadContract) => Promise<OAuthLoginResponseContract>
   getOAuthStatus: (loginId: string) => Promise<
@@ -129,6 +131,19 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
       return getAvailableModels(providerType as ProviderType)
     } catch (err) {
       throw new ProvidersRuntimeError(`Failed to get models: ${(err as Error).message}`)
+    }
+  }
+
+  async function getLiveModels(providerId: string): Promise<AvailableModel[]> {
+    const provider = requireProvider(providerId)
+    if (!isDynamicCatalogProvider(provider.providerType)) {
+      throw new ProvidersValidationError('Provider type does not use a dynamic catalog')
+    }
+
+    try {
+      return await probeOpenAiCompatibleModelsFromBase(provider.baseUrl, provider.apiKey || undefined)
+    } catch {
+      return getAvailableModels(provider.providerType as ProviderType)
     }
   }
 
@@ -572,6 +587,7 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
   return {
     listProviders,
     getModelsByProviderType,
+    getLiveModels,
     setFallback,
     startOAuthLogin,
     getOAuthStatus,

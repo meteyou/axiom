@@ -128,7 +128,7 @@ const emit = defineEmits<{
   added: []
 }>()
 
-const { fetchModels, updateProvider } = useProviders()
+const { fetchModels, fetchLiveModels, updateProvider, presets } = useProviders()
 const { t } = useI18n()
 
 const search = ref('')
@@ -177,7 +177,12 @@ async function loadCatalog() {
   loading.value = true
   loadError.value = false
   try {
-    catalog.value = await fetchModels(props.provider.providerType)
+    // Dynamic-catalog providers (e.g. OpenRouter) serve their model list live
+    // from the provider's own /models endpoint; the backend falls back to the
+    // curated catalog if that fetch fails.
+    catalog.value = presets.value[props.provider.providerType]?.dynamicCatalog
+      ? await fetchLiveModels(props.provider.id)
+      : await fetchModels(props.provider.providerType)
   } catch {
     loadError.value = true
     catalog.value = []

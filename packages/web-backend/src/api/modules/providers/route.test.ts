@@ -253,6 +253,37 @@ describe('providers route module', () => {
     expect(await testMissing.json()).toEqual({ error: 'Provider not found' })
   })
 
+  it('serves live models only for dynamic-catalog providers', async () => {
+    const dynamicMissing = await fetch(`${baseUrl}/api/providers/missing-provider/live-models`, {
+      headers: authHeaders(adminToken),
+    })
+    expect(dynamicMissing.status).toBe(404)
+
+    const staticCreate = await fetch(`${baseUrl}/api/providers`, {
+      method: 'POST',
+      headers: {
+        ...authHeaders(adminToken),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: 'Static Catalog Provider',
+        providerType: 'openai',
+        apiKey: 'sk-static-catalog',
+        enabledModels: ['gpt-4o-mini'],
+      }),
+    })
+    expect(staticCreate.status).toBe(201)
+    const staticProvider = await staticCreate.json() as { provider: { id: string } }
+
+    const staticLive = await fetch(`${baseUrl}/api/providers/${staticProvider.provider.id}/live-models`, {
+      headers: authHeaders(adminToken),
+    })
+    expect(staticLive.status).toBe(400)
+    expect(await staticLive.json()).toEqual({
+      error: 'Provider type does not use a dynamic catalog',
+    })
+  })
+
   it('patches a model description and cost via the model edit endpoint', async () => {
     const create = await fetch(`${baseUrl}/api/providers`, {
       method: 'POST',

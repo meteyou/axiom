@@ -66,6 +66,15 @@ export interface ProviderTypePreset {
    * Does not affect the auth flow — `authMethod` still drives that.
    */
   subscription?: boolean
+  /**
+   * When true, the Add Model dialog lists models fetched live from the
+   * provider's own `/models` endpoint (using the stored baseUrl + apiKey)
+   * instead of the static pi-ai catalog. The live list replaces the curated
+   * one; the curated `getAvailableModels()` result is only used as an offline
+   * fallback when the live fetch fails. Suitable for gateways whose catalog
+   * changes frequently and is authoritative at the source (e.g. OpenRouter).
+   */
+  dynamicCatalog?: boolean
 }
 
 export interface AvailableModel {
@@ -168,6 +177,7 @@ export const PROVIDER_TYPE_PRESETS: Record<ProviderType, ProviderTypePreset> = {
     urlEditable: false,
     piAiProvider: 'openrouter',
     authMethod: 'api-key',
+    dynamicCatalog: true,
   },
   deepseek: {
     type: 'deepseek',
@@ -477,6 +487,14 @@ export function buildStreamFn(
     const merged = applyTransport(provider.transport, withVerbosity) as Parameters<typeof streamSimple>[2]
     return streamImpl(model, context, merged)
   }) as typeof streamSimple
+}
+
+/**
+ * Whether a provider type serves its Add Model catalog live from the
+ * provider's own `/models` endpoint instead of the static pi-ai catalog.
+ */
+export function isDynamicCatalogProvider(providerType: ProviderType | string): boolean {
+  return Boolean(PROVIDER_TYPE_PRESETS[providerType as ProviderType]?.dynamicCatalog)
 }
 
 /**

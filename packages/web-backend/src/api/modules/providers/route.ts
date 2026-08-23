@@ -34,6 +34,7 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
   router.post('/ollama-probe', controller.postOllamaProbe)
   router.post('/ollama-probe/pull', controller.postOllamaProbePull)
 
+  router.get('/:id/live-models', controller.getLiveModels)
   router.get('/:id/ollama-models', controller.getOllamaModels)
   router.post('/:id/ollama-pull', controller.postOllamaPull)
   router.delete('/:id/ollama-models/:modelName', controller.deleteOllamaModel)

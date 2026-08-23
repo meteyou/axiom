@@ -37,6 +37,7 @@ export interface ProvidersController {
   putFallback: (req: AuthenticatedRequest, res: ExpressResponse) => void
   getProviders: (req: AuthenticatedRequest, res: ExpressResponse) => void
   getModelsByProviderType: (req: AuthenticatedRequest, res: ExpressResponse) => void
+  getLiveModels: (req: AuthenticatedRequest, res: ExpressResponse) => Promise<void>
   postOAuthLogin: (req: AuthenticatedRequest, res: ExpressResponse) => Promise<void>
   getOAuthStatus: (req: AuthenticatedRequest, res: ExpressResponse) => Promise<void>
   postOAuthCode: (req: AuthenticatedRequest, res: ExpressResponse) => void
@@ -110,6 +111,25 @@ export function createProvidersController(options: ProvidersRouterOptions = {}):
         }
 
         res.status(500).json({ error: `Failed to get models: ${(err as Error).message}` })
+      }
+    },
+
+    async getLiveModels(req, res) {
+      try {
+        const models = await service.getLiveModels(String(req.params.id ?? ''))
+        res.json({ models })
+      } catch (err) {
+        if (err instanceof ProvidersNotFoundError) {
+          res.status(404).json({ error: err.message })
+          return
+        }
+
+        if (err instanceof ProvidersValidationError) {
+          res.status(400).json({ error: err.message })
+          return
+        }
+
+        res.status(502).json({ error: `Failed to load models: ${(err as Error).message}` })
       }
     },
 

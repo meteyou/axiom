@@ -118,6 +118,12 @@ export interface ProviderTypePresetContract {
    * even though it authenticates with an API key (e.g. OpenCode Go).
    */
   subscription?: boolean
+  /**
+   * True when the Add Model dialog should fetch this provider's model list
+   * live from its own `/models` endpoint (via `GET /api/providers/:id/live-models`)
+   * instead of the static catalog returned by `hasKnownModels`.
+   */
+  dynamicCatalog?: boolean
   /** Provider-specific extra fields the UI should render generically. */
   extraFields?: ProviderExtraFieldDefContract[]
 }
