@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { stripFailedAttempt, stripTrailingTurn, upsertStallMessage } from './useChat'
-import type { ChatMessage, ChatStallInfo } from './useChat'
+import {
+  stripFailedAttempt,
+  stripTrailingTurn,
+  turnErrorFromHistoryMetadata,
+  upsertErrorMessage,
+  upsertStallMessage,
+} from './useChat'
+import type { ChatMessage, ChatStallInfo, ChatTurnErrorInfo } from './useChat'
 
 function msg(role: ChatMessage['role'], content: string): ChatMessage {
   return { role, content }
@@ -53,6 +59,28 @@ describe('stripTrailingTurn', () => {
 
     expect(stripTrailingTurn(list).map(m => m.role)).toEqual(['user'])
   })
+
+  it('strips a terminal error notice so the replay rebuilds it exactly once', () => {
+    const list: ChatMessage[] = [
+      msg('user', 'question'),
+      msg('assistant', 'partial'),
+      {
+        id: 77,
+        role: 'system',
+        content: '❌ Provider error: 401 Unauthorized',
+        errorInfo: {
+          messageId: 77,
+          cause: 'non_retryable',
+          error: '401 Unauthorized',
+          attempts: 0,
+          retryable: false,
+          occurredAt: '2026-01-01T00:00:00.000Z',
+        },
+      },
+    ]
+
+    expect(stripTrailingTurn(list).map(m => m.role)).toEqual(['user'])
+  })
 })
 
 describe('stripFailedAttempt', () => {
@@ -90,6 +118,83 @@ describe('stripFailedAttempt', () => {
       'first answer',
       'second question',
     ])
+  })
+})
+
+function turnError(overrides: Partial<ChatTurnErrorInfo> = {}): ChatTurnErrorInfo {
+  return {
+    messageId: 77,
+    cause: 'non_retryable',
+    error: '401 Unauthorized: API key expired',
+    attempts: 0,
+    retryable: false,
+    occurredAt: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  }
+}
+
+describe('upsertErrorMessage', () => {
+  it('appends the terminal error as a system notice', () => {
+    const updated = upsertErrorMessage(
+      [msg('user', 'question')],
+      turnError(),
+      '❌ Provider error: 401 Unauthorized: API key expired',
+    )
+
+    expect(updated.map(m => m.role)).toEqual(['user', 'system'])
+    expect(updated[1]!.content).toContain('401 Unauthorized')
+    expect(updated[1]!.errorInfo?.cause).toBe('non_retryable')
+    expect(updated[1]!.id).toBe(77)
+  })
+
+  it('updates the notice restored from history instead of duplicating it', () => {
+    const fromHistory: ChatMessage[] = [
+      msg('user', 'question'),
+      { id: 77, role: 'system', content: 'old text', errorInfo: turnError() },
+    ]
+
+    const updated = upsertErrorMessage(fromHistory, turnError(), '❌ Provider error: 401 Unauthorized: API key expired')
+    expect(updated).toHaveLength(2)
+    expect(updated[1]!.content).toContain('401 Unauthorized')
+  })
+
+  it('appends an error that was not persisted', () => {
+    const once = upsertErrorMessage([], turnError({ messageId: undefined }), 'boom')
+    const twice = upsertErrorMessage(once, turnError({ messageId: undefined }), 'boom')
+    expect(twice).toHaveLength(2)
+  })
+})
+
+describe('turnErrorFromHistoryMetadata', () => {
+  it('rebuilds the error details of a persisted turn_error row', () => {
+    const info = turnErrorFromHistoryMetadata({
+      kind: 'turn_error',
+      cause: 'retry_exhausted',
+      error: '502 Bad Gateway',
+      attempts: 3,
+      retryable: true,
+      occurredAt: '2026-01-01T00:00:00.000Z',
+    }, 12)
+
+    expect(info).toEqual({
+      messageId: 12,
+      cause: 'retry_exhausted',
+      error: '502 Bad Gateway',
+      attempts: 3,
+      retryable: true,
+      occurredAt: '2026-01-01T00:00:00.000Z',
+    })
+  })
+
+  it('ignores rows of other kinds', () => {
+    expect(turnErrorFromHistoryMetadata({ kind: 'provider_stall' }, 1)).toBeNull()
+    expect(turnErrorFromHistoryMetadata({}, 1)).toBeNull()
+    expect(turnErrorFromHistoryMetadata(null, 1)).toBeNull()
+  })
+
+  it('falls back to a non-retryable cause for unknown values', () => {
+    const info = turnErrorFromHistoryMetadata({ kind: 'turn_error', cause: 'weird', error: 'boom' }, 3)
+    expect(info).toMatchObject({ cause: 'non_retryable', attempts: 0, retryable: false })
   })
 })
 
