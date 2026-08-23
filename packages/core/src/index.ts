@@ -240,6 +240,15 @@ export {
 export type { AgentSkillEntry, AgentSkillUsage, SkillPromptContext } from './agent-skills.js'
 export { AgentCore, createYoloTools, getWorkspaceDir, isRetryablePreStreamError } from './agent.js'
 export type { ResponseChunk, AgentCoreOptions } from './agent.js'
+export { TurnRunner } from './turn-runner.js'
+export type {
+  TurnAgentLike,
+  TurnEvent,
+  TurnInfo,
+  TurnRunnerOptions,
+  TurnSubscriber,
+  StartTurnInput,
+} from './turn-runner.js'
 export { createAgentRuntime, createBaseAgentTools } from './agent-runtime.js'
 export type { AgentRuntimeBoundary, AgentRuntimeOptions, AgentRuntimePiAgentAccess, BaseAgentToolsOptions } from './agent-runtime.js'
 export type { AgentRuntimeStateSnapshot } from './agent-runtime-types.js'
