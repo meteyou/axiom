@@ -62,6 +62,18 @@ export interface ChatStallInfo {
   outcome?: ChatStallOutcome
 }
 
+/**
+ * Auto-retry details attached to a `retry_scheduled` status. Mirrors the
+ * backend `RetryInfo`. Live-only: the failed attempt is discarded server-side,
+ * so nothing about it survives a reload.
+ */
+export interface ChatRetryInfo {
+  attempt: number
+  maxRetries: number
+  delayMs: number
+  error: string
+}
+
 export interface ChatAttachment {
   kind: 'image' | 'file'
   originalName: string
@@ -156,10 +168,12 @@ export interface ChatMessage {
 }
 
 interface WsMessage {
-  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'session_summary' | 'reminder' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'pong' | 'attachment' | 'chat_action' | 'chat_action_resolved' | 'turn_replay_start' | 'turn_replay_end' | 'stall_warning' | 'stall_resolved'
+  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'session_summary' | 'reminder' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'pong' | 'attachment' | 'chat_action' | 'chat_action_resolved' | 'turn_replay_start' | 'turn_replay_end' | 'stall_warning' | 'stall_resolved' | 'retry_scheduled'
   text?: string
   /** Provider-stall details (for stall_warning / stall_resolved) */
   stall?: ChatStallInfo
+  /** Auto-retry details (for retry_scheduled) */
+  retry?: ChatRetryInfo
   /** Interactive message payload (for chat_action / chat_action_resolved) */
   chatAction?: ChatActionMessage
   /** Picker payload for interactive slash-command replies (e.g. /model). */
@@ -285,6 +299,25 @@ export function stripTrailingTurn(list: ChatMessage[]): ChatMessage[] {
     end--
   }
   return end === list.length ? list : list.slice(0, end)
+}
+
+/**
+ * Drop the assistant/tool output of an attempt the backend discarded before
+ * restarting the turn. Unlike {@link stripTrailingTurn} this keeps stall
+ * notices: those are persisted rows and remain part of the history.
+ */
+export function stripFailedAttempt(list: ChatMessage[]): ChatMessage[] {
+  const result = [...list]
+  for (let i = result.length - 1; i >= 0; i--) {
+    const message = result[i]!
+    if (message.role === 'assistant' || message.role === 'tool') {
+      result.splice(i, 1)
+      continue
+    }
+    if (message.role === 'system' && message.stallInfo) continue
+    break
+  }
+  return result
 }
 
 /**
@@ -742,6 +775,21 @@ export function useChat() {
         // The backend sends the same text it persisted on the row, so live
         // rendering and a history reload never disagree.
         if (msg.stall) messages.value = upsertStallMessage(messages.value, msg.stall, msg.text ?? '')
+        break
+
+      case 'retry_scheduled':
+        // The provider failed with a transient error; the backend discarded the
+        // failed attempt and restarts the turn after a backoff. Drop the partial
+        // answer here too so the retried turn does not stack on top of garbage.
+        if (msg.retry) {
+          const retry = msg.retry
+          messages.value = [...stripFailedAttempt(messages.value), {
+            role: 'system',
+            content: msg.text ?? `Retrying (${retry.attempt}/${retry.maxRetries})…`,
+            timestamp: new Date().toISOString(),
+          }]
+          isStreaming.value = true
+        }
         break
 
       case 'turn_replay_start':
