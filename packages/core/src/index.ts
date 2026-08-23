@@ -251,8 +251,19 @@ export type {
 } from './turn-runner.js'
 export { createAgentRuntime, createBaseAgentTools } from './agent-runtime.js'
 export type { AgentRuntimeBoundary, AgentRuntimeOptions, AgentRuntimePiAgentAccess, BaseAgentToolsOptions } from './agent-runtime.js'
-export type { AgentRuntimeStateSnapshot, StallInfo, StallOutcome } from './agent-runtime-types.js'
+export type { AgentRuntimeStateSnapshot, RetryInfo, StallInfo, StallOutcome } from './agent-runtime-types.js'
 export { STALL_OUTCOMES } from './agent-runtime-types.js'
+export {
+  DEFAULT_RETRY_POLICY,
+  DEFAULT_RETRY_ENABLED,
+  DEFAULT_RETRY_MAX_RETRIES,
+  DEFAULT_RETRY_BASE_DELAY_MS,
+  formatRetryScheduledContent,
+  isRetryableTurnError,
+  loadRetryPolicy,
+  retryDelayMs,
+} from './turn-retry.js'
+export type { RetryPolicy } from './turn-retry.js'
 export {
   PROVIDER_STALL_KIND,
   DEFAULT_STALL_WARN_MS,

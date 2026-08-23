@@ -21,8 +21,24 @@ export interface StallInfo {
   outcome?: StallOutcome
 }
 
+/**
+ * Machine-readable payload of a `retry_scheduled` chunk: the turn failed with
+ * a retryable provider error and will be restarted after `delayMs`. Live-only
+ * status — retry notices are never persisted as chat rows.
+ */
+export interface RetryInfo {
+  /** 1-indexed retry attempt. */
+  attempt: number
+  /** Retry budget of the active policy. */
+  maxRetries: number
+  /** Backoff delay before the restart. */
+  delayMs: number
+  /** Provider error that triggered the retry. */
+  error: string
+}
+
 export interface ResponseChunk {
-  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'stall_warning' | 'stall_resolved'
+  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'stall_warning' | 'stall_resolved' | 'retry_scheduled'
   text?: string
   /** Streamed thinking/reasoning delta (for `type: 'thinking'`) */
   thinking?: string
@@ -44,6 +60,8 @@ export interface ResponseChunk {
   injectionId?: string
   /** Stall details (for `type: 'stall_warning' | 'stall_resolved'`). */
   stall?: StallInfo
+  /** Retry details (for `type: 'retry_scheduled'`). */
+  retry?: RetryInfo
 }
 
 export interface AgentRuntimeStateSnapshot {

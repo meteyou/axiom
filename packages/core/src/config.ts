@@ -56,6 +56,11 @@ const TEMPLATES: Record<string, object> = {
       stallWarnMs: 30000,
       stallAbortMs: 90000,
     },
+    retry: {
+      enabled: true,
+      maxRetries: 3,
+      baseDelayMs: 2000,
+    },
     tokenPriceTable: {
       'gpt-4o': { input: 2.5, output: 10 },
       'gpt-4o-mini': { input: 0.15, output: 0.6 },

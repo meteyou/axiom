@@ -1,0 +1,82 @@
+import { isRetryableAssistantError } from '@earendil-works/pi-ai'
+import type { AssistantMessage, RetryPolicy } from '@earendil-works/pi-ai'
+import { loadConfig } from './config.js'
+import type { RetryInfo } from './agent-runtime-types.js'
+
+export type { RetryPolicy }
+
+export const DEFAULT_RETRY_ENABLED = true
+export const DEFAULT_RETRY_MAX_RETRIES = 3
+export const DEFAULT_RETRY_BASE_DELAY_MS = 2_000
+
+export const DEFAULT_RETRY_POLICY: RetryPolicy = {
+  enabled: DEFAULT_RETRY_ENABLED,
+  maxRetries: DEFAULT_RETRY_MAX_RETRIES,
+  baseDelayMs: DEFAULT_RETRY_BASE_DELAY_MS,
+}
+
+interface RetrySettingsFile {
+  retry?: {
+    enabled?: unknown
+    maxRetries?: unknown
+    baseDelayMs?: unknown
+  }
+}
+
+function positiveNumber(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : fallback
+}
+
+function nonNegativeInteger(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : fallback
+}
+
+/**
+ * Read the auto-retry policy from `settings.json`. Config-file only for now;
+ * a missing/unreadable file falls back to pi's defaults (3 retries, 2000 ms).
+ */
+export function loadRetryPolicy(
+  load: () => RetrySettingsFile = () => loadConfig<RetrySettingsFile>('settings.json'),
+): RetryPolicy {
+  let retry: RetrySettingsFile['retry']
+  try {
+    retry = load().retry
+  } catch {
+    retry = undefined
+  }
+
+  return {
+    enabled: typeof retry?.enabled === 'boolean' ? retry.enabled : DEFAULT_RETRY_ENABLED,
+    maxRetries: nonNegativeInteger(retry?.maxRetries, DEFAULT_RETRY_MAX_RETRIES),
+    baseDelayMs: positiveNumber(retry?.baseDelayMs, DEFAULT_RETRY_BASE_DELAY_MS),
+  }
+}
+
+/**
+ * Classify a failed turn via pi-ai's shared classifier, so transient provider
+ * noise (429/5xx/timeouts/dropped streams) is retried while deterministic
+ * failures (auth, quota, billing) fail fast. The classifier works on an
+ * `AssistantMessage`, which is what a turn's error chunk boils down to here.
+ */
+export function isRetryableTurnError(errorMessage: string): boolean {
+  return isRetryableAssistantError({
+    role: 'assistant',
+    content: [],
+    stopReason: 'error',
+    errorMessage,
+  } as unknown as AssistantMessage)
+}
+
+/** Exponential backoff for a 1-indexed attempt: `base * 2^(attempt-1)`. */
+export function retryDelayMs(policy: RetryPolicy, attempt: number): number {
+  return policy.baseDelayMs * 2 ** (attempt - 1)
+}
+
+/**
+ * Body of the `retry_scheduled` chunk. Channels that can render structured
+ * data use `RetryInfo`; this text is the fallback for plain-text channels.
+ */
+export function formatRetryScheduledContent(retry: RetryInfo): string {
+  const seconds = Math.max(1, Math.round(retry.delayMs / 1000))
+  return `\u{1F504} Provider error \u2014 retrying (${retry.attempt}/${retry.maxRetries}) in ${seconds}s\u2026`
+}
