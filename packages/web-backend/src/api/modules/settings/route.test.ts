@@ -4,7 +4,7 @@ import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
 import type { AgentCore, Database } from '@axiom/core'
-import { initDatabase } from '@axiom/core'
+import { initDatabase, loadRetryPolicy, loadStallThresholds } from '@axiom/core'
 import { createApp } from '../../../app.js'
 import type { AppOptions } from '../../../app.js'
 import { generateAccessToken } from '../../../auth.js'
@@ -99,7 +99,13 @@ describe('settings route module', () => {
     }
 
     expect(response.status).toBe(200)
-    expect(body.telegram).toEqual({ enabled: false, botToken: '', batchingDelayMs: 2500, sendVoiceReply: false })
+    expect(body.telegram).toEqual({
+      enabled: false,
+      botToken: '',
+      batchingDelayMs: 2500,
+      sendVoiceReply: false,
+      sendStallWarnings: false,
+    })
     expect(body.factExtraction).toEqual({ enabled: true, providerId: '', minSessionMessages: 3 })
     expect(body.healthMonitor.notifications.downToFallback).toBe(true)
   })
@@ -219,6 +225,76 @@ describe('settings route module', () => {
     expect(legacyResponse.status).toBe(200)
     const legacyBody = await legacyResponse.json() as { healthMonitorIntervalMinutes: number }
     expect(legacyBody.healthMonitorIntervalMinutes).toBe(12)
+  })
+
+  it('round-trips watchdog, retry and the telegram stall-warning toggle', async () => {
+    const defaults = await fetch(`${baseUrl}/api/settings`, {
+      headers: authHeaders(adminToken),
+    })
+
+    const defaultsBody = await defaults.json() as {
+      watchdog: { stallWarnMs: number; stallAbortMs: number }
+      retry: { enabled: boolean; maxRetries: number; baseDelayMs: number }
+      telegram: { sendStallWarnings: boolean }
+    }
+
+    expect(defaultsBody.watchdog).toEqual({ stallWarnMs: 30000, stallAbortMs: 90000 })
+    expect(defaultsBody.retry).toEqual({ enabled: true, maxRetries: 3, baseDelayMs: 2000 })
+    expect(defaultsBody.telegram.sendStallWarnings).toBe(false)
+
+    const updated = await fetch(`${baseUrl}/api/settings`, {
+      method: 'PUT',
+      headers: {
+        ...authHeaders(adminToken),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        watchdog: { stallWarnMs: 15000, stallAbortMs: 45000 },
+        retry: { enabled: false, maxRetries: 5, baseDelayMs: 1000 },
+        telegram: { sendStallWarnings: true },
+      }),
+    })
+
+    expect(updated.status).toBe(200)
+
+    const settings = JSON.parse(fs.readFileSync(path.join(tempDataDir, 'config', 'settings.json'), 'utf-8')) as {
+      watchdog: { stallWarnMs: number; stallAbortMs: number }
+      retry: { enabled: boolean; maxRetries: number; baseDelayMs: number }
+    }
+    const telegram = JSON.parse(fs.readFileSync(path.join(tempDataDir, 'config', 'telegram.json'), 'utf-8')) as {
+      sendStallWarnings: boolean
+    }
+
+    expect(settings.watchdog).toEqual({ stallWarnMs: 15000, stallAbortMs: 45000 })
+    expect(settings.retry).toEqual({ enabled: false, maxRetries: 5, baseDelayMs: 1000 })
+    expect(telegram.sendStallWarnings).toBe(true)
+
+    // The persisted overrides are what the watchdog / retry loop read at turn start.
+    expect(loadStallThresholds()).toEqual({ warnMs: 15000, abortMs: 45000 })
+    expect(loadRetryPolicy()).toEqual({ enabled: false, maxRetries: 5, baseDelayMs: 1000 })
+
+    const reread = await fetch(`${baseUrl}/api/settings`, { headers: authHeaders(adminToken) })
+    const rereadBody = await reread.json() as {
+      watchdog: { stallWarnMs: number; stallAbortMs: number }
+      retry: { enabled: boolean; maxRetries: number; baseDelayMs: number }
+      telegram: { sendStallWarnings: boolean }
+    }
+
+    expect(rereadBody.watchdog).toEqual({ stallWarnMs: 15000, stallAbortMs: 45000 })
+    expect(rereadBody.retry).toEqual({ enabled: false, maxRetries: 5, baseDelayMs: 1000 })
+    expect(rereadBody.telegram.sendStallWarnings).toBe(true)
+
+    const invalid = await fetch(`${baseUrl}/api/settings`, {
+      method: 'PUT',
+      headers: {
+        ...authHeaders(adminToken),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ retry: { maxRetries: 42 } }),
+    })
+
+    expect(invalid.status).toBe(400)
+    expect(await invalid.json()).toEqual({ error: 'retry.maxRetries must be an integer 0-10' })
   })
 
   it('enforces authentication and admin boundaries', async () => {

@@ -4,9 +4,11 @@ import {
   mergeConsolidation,
   mergeFactExtraction,
   mergeHealthMonitor,
+  mergeRetry,
   mergeStt,
   mergeTasks,
   mergeTts,
+  mergeWatchdog,
   normalizeSettingsPayload,
   validateEnum,
   validateHour,
@@ -98,6 +100,65 @@ describe('settings schema', () => {
     })
 
     expect((settingsRaw.factExtraction as Record<string, unknown>).minSessionMessages).toBe(5)
+  })
+
+  it('merges watchdog thresholds and keeps abort at or above warn', () => {
+    const settingsRaw: Record<string, unknown> = {}
+
+    expect(mergeWatchdog({ watchdog: { stallWarnMs: 500 } }, settingsRaw)).toEqual({
+      error: 'watchdog.stallWarnMs must be an integer 1000-600000',
+      changed: false,
+    })
+
+    expect(mergeWatchdog({ watchdog: { stallAbortMs: 5_000_000 } }, settingsRaw)).toEqual({
+      error: 'watchdog.stallAbortMs must be an integer 1000-3600000',
+      changed: false,
+    })
+
+    expect(mergeWatchdog({ watchdog: { stallWarnMs: 60_000, stallAbortMs: 10_000 } }, settingsRaw)).toEqual({
+      error: 'watchdog.stallAbortMs must be greater than or equal to watchdog.stallWarnMs',
+      changed: false,
+    })
+
+    expect(mergeWatchdog({ watchdog: { stallWarnMs: 15_000, stallAbortMs: 45_000 } }, settingsRaw)).toEqual({
+      error: null,
+      changed: true,
+    })
+    expect(settingsRaw.watchdog).toEqual({ stallWarnMs: 15_000, stallAbortMs: 45_000 })
+
+    // A partial update is validated against the stored counterpart, not the default.
+    expect(mergeWatchdog({ watchdog: { stallAbortMs: 10_000 } }, settingsRaw)).toEqual({
+      error: 'watchdog.stallAbortMs must be greater than or equal to watchdog.stallWarnMs',
+      changed: false,
+    })
+  })
+
+  it('merges the retry policy with bounded values', () => {
+    const settingsRaw: Record<string, unknown> = {}
+
+    expect(mergeRetry({ retry: { maxRetries: 11 } }, settingsRaw)).toEqual({
+      error: 'retry.maxRetries must be an integer 0-10',
+      changed: false,
+    })
+
+    expect(mergeRetry({ retry: { baseDelayMs: 10 } }, settingsRaw)).toEqual({
+      error: 'retry.baseDelayMs must be an integer 100-60000',
+      changed: false,
+    })
+
+    expect(mergeRetry({ retry: { enabled: false, maxRetries: 0, baseDelayMs: 500 } }, settingsRaw)).toEqual({
+      error: null,
+      changed: true,
+    })
+    expect(settingsRaw.retry).toEqual({ enabled: false, maxRetries: 0, baseDelayMs: 500 })
+  })
+
+  it('leaves watchdog and retry untouched when the payload omits them', () => {
+    const settingsRaw: Record<string, unknown> = {}
+
+    expect(mergeWatchdog({}, settingsRaw)).toEqual({ error: null, changed: false })
+    expect(mergeRetry({}, settingsRaw)).toEqual({ error: null, changed: false })
+    expect(settingsRaw).toEqual({})
   })
 
   it('validates tasks, tts, and stt payload fragments', () => {
