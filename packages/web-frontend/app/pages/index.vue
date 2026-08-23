@@ -826,8 +826,17 @@ function onMessagesScroll() { const el = messagesContainer.value; if (!el) retur
 function jumpToBottom() { isNearBottom.value = true; nextTick(() => scrollToBottom()) }
 // History must be in place before the socket opens: connecting attaches to a
 // still-running turn and replays it, and a later history load would wipe that
-// replayed tail.
-onMounted(async () => { await loadHistory(); connect(); await Promise.all([fetchTtsSettings(), fetchSttSettings(), loadThinkingLevel()]) })
+// replayed tail. A failed history load must never keep the socket closed —
+// chatting still works, the transcript just starts empty.
+onMounted(async () => {
+  try {
+    await loadHistory()
+  } catch (err) {
+    console.error('[chat] history load failed:', err)
+  }
+  connect()
+  await Promise.all([fetchTtsSettings(), fetchSttSettings(), loadThinkingLevel()])
+})
 onUnmounted(() => { disconnect(); ttsStop(); sttCleanup() })
 watch(() => messages.value.length, () => {
   if (isNearBottom.value) nextTick(() => scrollToBottom())
