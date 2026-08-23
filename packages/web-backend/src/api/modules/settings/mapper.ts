@@ -1,4 +1,10 @@
-import { DEFAULT_HEALTH_MONITOR_NOTIFICATION_TOGGLES, getDefaultTimezone, maskApiKey } from '@axiom/core'
+import {
+  DEFAULT_HEALTH_MONITOR_NOTIFICATION_TOGGLES,
+  DEFAULT_RETRY_SETTINGS,
+  DEFAULT_WATCHDOG_SETTINGS,
+  getDefaultTimezone,
+  maskApiKey,
+} from '@axiom/core'
 import type { HealthMonitorNotificationToggles, SettingsData, TelegramData } from './types.js'
 
 const DEFAULT_NOTIFICATIONS: HealthMonitorNotificationToggles = {
@@ -124,6 +130,24 @@ function buildTelegramResponse(telegram: TelegramData, batchingDelayMs: number) 
     botToken: telegram.botToken ?? '',
     batchingDelayMs,
     sendVoiceReply: telegram.sendVoiceReply ?? false,
+    sendStallWarnings: telegram.sendStallWarnings ?? false,
+  }
+}
+
+function buildWatchdogResponse(settingsRaw: Record<string, unknown>) {
+  const watchdog = (settingsRaw.watchdog ?? {}) as Record<string, unknown>
+  return {
+    stallWarnMs: watchdog.stallWarnMs ?? DEFAULT_WATCHDOG_SETTINGS.stallWarnMs,
+    stallAbortMs: watchdog.stallAbortMs ?? DEFAULT_WATCHDOG_SETTINGS.stallAbortMs,
+  }
+}
+
+function buildRetryResponse(settingsRaw: Record<string, unknown>) {
+  const retry = (settingsRaw.retry ?? {}) as Record<string, unknown>
+  return {
+    enabled: retry.enabled ?? DEFAULT_RETRY_SETTINGS.enabled,
+    maxRetries: retry.maxRetries ?? DEFAULT_RETRY_SETTINGS.maxRetries,
+    baseDelayMs: retry.baseDelayMs ?? DEFAULT_RETRY_SETTINGS.baseDelayMs,
   }
 }
 
@@ -168,6 +192,8 @@ export function mapSettingsResponse(context: SettingsResponseContext) {
       ?? (context.settings.healthMonitor as Record<string, unknown> | undefined)?.intervalMinutes
       ?? 5,
     uploads: buildUploadsResponse(settingsRaw),
+    watchdog: buildWatchdogResponse(settingsRaw),
+    retry: buildRetryResponse(settingsRaw),
     telegram: buildTelegramResponse(context.telegram, context.batchingDelayMs),
     healthMonitor: buildHealthMonitorResponse(settingsRaw),
     memoryConsolidation: buildConsolidationResponse(settingsRaw),

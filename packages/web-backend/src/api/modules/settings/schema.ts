@@ -1,4 +1,5 @@
 import {
+  DEFAULT_WATCHDOG_SETTINGS,
   encrypt,
   HEALTH_MONITOR_FALLBACK_TRIGGERS,
   SETTINGS_STT_OPENAI_MODELS,
@@ -422,6 +423,64 @@ export function mergeUploads(
   }
 
   settingsRaw.uploads = existing
+  return { error: null, changed: true }
+}
+
+export function mergeWatchdog(
+  body: Record<string, unknown>,
+  settingsRaw: Record<string, unknown>,
+): MergeGroupResult {
+  const watchdog = body.watchdog as Record<string, unknown> | undefined
+  if (!watchdog) return { error: null, changed: false }
+
+  const existing = (settingsRaw.watchdog ?? {}) as Record<string, unknown>
+
+  if (watchdog.stallWarnMs !== undefined) {
+    const err = validateIntegerRange(watchdog.stallWarnMs, 'watchdog.stallWarnMs', 1000, 600000)
+    if (err) return { error: err, changed: false }
+    existing.stallWarnMs = watchdog.stallWarnMs
+  }
+
+  if (watchdog.stallAbortMs !== undefined) {
+    const err = validateIntegerRange(watchdog.stallAbortMs, 'watchdog.stallAbortMs', 1000, 3600000)
+    if (err) return { error: err, changed: false }
+    existing.stallAbortMs = watchdog.stallAbortMs
+  }
+
+  const warnMs = (existing.stallWarnMs ?? DEFAULT_WATCHDOG_SETTINGS.stallWarnMs) as number
+  const abortMs = (existing.stallAbortMs ?? DEFAULT_WATCHDOG_SETTINGS.stallAbortMs) as number
+  if (abortMs < warnMs) {
+    return { error: 'watchdog.stallAbortMs must be greater than or equal to watchdog.stallWarnMs', changed: false }
+  }
+
+  settingsRaw.watchdog = existing
+  return { error: null, changed: true }
+}
+
+export function mergeRetry(
+  body: Record<string, unknown>,
+  settingsRaw: Record<string, unknown>,
+): MergeGroupResult {
+  const retry = body.retry as Record<string, unknown> | undefined
+  if (!retry) return { error: null, changed: false }
+
+  const existing = (settingsRaw.retry ?? {}) as Record<string, unknown>
+
+  if (retry.enabled !== undefined) existing.enabled = !!retry.enabled
+
+  if (retry.maxRetries !== undefined) {
+    const err = validateIntegerRange(retry.maxRetries, 'retry.maxRetries', 0, 10)
+    if (err) return { error: err, changed: false }
+    existing.maxRetries = retry.maxRetries
+  }
+
+  if (retry.baseDelayMs !== undefined) {
+    const err = validateIntegerRange(retry.baseDelayMs, 'retry.baseDelayMs', 100, 60000)
+    if (err) return { error: err, changed: false }
+    existing.baseDelayMs = retry.baseDelayMs
+  }
+
+  settingsRaw.retry = existing
   return { error: null, changed: true }
 }
 

@@ -21,6 +21,7 @@ export type TelegramData = TelegramSettingsStorageContract & {
   pollingMode: boolean
   webhookUrl: string
   sendVoiceReply: boolean
+  sendStallWarnings: boolean
 }
 
 export interface SettingsRouterOptions {
