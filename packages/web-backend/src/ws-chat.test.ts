@@ -260,7 +260,7 @@ describe('setupWebSocketChat kill switch', () => {
     }
   })
 
-  it('streams thinking chunks, persists them with metadata.kind=thinking, and broadcasts them', async () => {
+  it('streams thinking chunks, persists them with metadata.kind=thinking, and fans them out to every tab', async () => {
     const db = initDatabase(':memory:')
     const chatEventBus = new ChatEventBus()
     const mockSessionManager = {
@@ -286,15 +286,12 @@ describe('setupWebSocketChat kill switch', () => {
     const port = (server.address() as { port: number }).port
     const token = generateAccessToken({ userId: 1, username: 'admin', role: 'admin' })
 
-    // Spy on the event bus so we can verify thinking broadcasts.
-    const busEvents: Array<{ type: string; thinking?: string; text?: string }> = []
-    chatEventBus.subscribe((ev) => {
-      busEvents.push({ type: ev.type, thinking: ev.thinking, text: ev.text })
-    })
-
     try {
       const { ws, waitForMessage } = await connectWs(port, token)
       await waitForMessage() // authenticated
+      // A second tab of the same user attaches to the same turn stream.
+      const second = await connectWs(port, token)
+      await second.waitForMessage() // authenticated
 
       ws.send(JSON.stringify({ type: 'message', content: 'hello' }))
 
@@ -332,12 +329,19 @@ describe('setupWebSocketChat kill switch', () => {
       expect(assistantTextRows.length).toBe(1)
       expect(assistantTextRows[0]!.content).toBe('Answer.')
 
-      // Event bus broadcasts thinking chunks (in addition to user_message/text/done)
-      const broadcastedThinking = busEvents.filter(e => e.type === 'thinking')
-      expect(broadcastedThinking.length).toBe(2)
-      expect(broadcastedThinking[0]!.thinking).toBe('Hmm,')
-      expect(broadcastedThinking[1]!.thinking).toBe(' let me think.')
+      // The second tab sees the identical stream via the turn runner.
+      const secondStream: Array<Record<string, unknown>> = []
+      for (let i = 0; i < 10; i++) {
+        const msg = await second.waitForMessage()
+        if (msg.type === 'external_user_message') continue
+        secondStream.push(msg)
+        if (msg.type === 'done') break
+      }
+      expect(secondStream.map(m => m.type)).toEqual(['thinking', 'thinking', 'text', 'done'])
+      expect(secondStream[0]!.thinking).toBe('Hmm,')
+      expect(secondStream[1]!.thinking).toBe(' let me think.')
 
+      second.ws.close()
       ws.close()
     } finally {
       for (const client of wss.clients) {
@@ -390,11 +394,6 @@ describe('setupWebSocketChat kill switch', () => {
     const port = (server.address() as { port: number }).port
     const token = generateAccessToken({ userId: 1, username: 'admin', role: 'admin' })
 
-    const busEvents: Array<{ type: string; attachment?: unknown }> = []
-    chatEventBus.subscribe((ev) => {
-      busEvents.push({ type: ev.type, attachment: ev.attachment })
-    })
-
     try {
       const { ws, waitForMessage } = await connectWs(port, token)
       await waitForMessage() // authenticated
@@ -418,10 +417,6 @@ describe('setupWebSocketChat kill switch', () => {
         originalName: uploadDescriptor.originalName,
       })
 
-      // Attachment is also broadcast on the event bus for other tabs
-      const busAttachments = busEvents.filter(e => e.type === 'attachment')
-      expect(busAttachments.length).toBe(1)
-
       // Assistant row persists the upload as metadata.files so history reload
       // shows the download card
       const assistantRow = db.prepare(
@@ -434,6 +429,133 @@ describe('setupWebSocketChat kill switch', () => {
       expect(meta.files[0]!.relativePath).toBe(uploadDescriptor.relativePath)
 
       ws.close()
+    } finally {
+      for (const client of wss.clients) {
+        client.terminate()
+      }
+      wss.close()
+      await new Promise<void>((resolve, reject) =>
+        server.close((err) => (err ? reject(err) : resolve()))
+      )
+    }
+  })
+
+  it('keeps the turn running after the driving socket closes and replays it to a reconnecting client', async () => {
+    const db = initDatabase(':memory:')
+    let releaseTail!: () => void
+    const tail = new Promise<void>((resolve) => { releaseTail = resolve })
+
+    const mockSessionManager = {
+      getOrCreateSession: vi.fn(() => ({ id: 'session-reattach', userId: '1', source: 'web', startedAt: Date.now(), lastActivity: Date.now(), messageCount: 0, summaryWritten: false, restored: false })),
+    }
+    const agentCore = {
+      sendMessage: vi.fn(async function* (): AsyncGenerator<ResponseChunk> {
+        yield { type: 'thinking', thinking: 'pondering' }
+        yield { type: 'text', text: 'first half' }
+        await tail
+        yield { type: 'text', text: ' second half' }
+        yield { type: 'done' }
+      }),
+      abort: vi.fn(),
+      resetSession: vi.fn(),
+      getSessionManager: vi.fn(() => mockSessionManager),
+    } as unknown as AgentCore
+
+    const app = createApp({ db })
+    const server = http.createServer(app)
+    const { wss, turnRunner } = setupWebSocketChat(server, db, agentCore)
+
+    await new Promise<void>((resolve) => server.listen(0, resolve))
+    const port = (server.address() as { port: number }).port
+    const token = generateAccessToken({ userId: 1, username: 'admin', role: 'admin' })
+
+    try {
+      const first = await connectWs(port, token)
+      await first.waitForMessage() // authenticated
+      first.ws.send(JSON.stringify({ type: 'message', content: 'hello' }))
+
+      expect((await first.waitForMessage()).thinking).toBe('pondering')
+      expect((await first.waitForMessage()).text).toBe('first half')
+
+      // Simulate a page reload: the socket dies mid-turn.
+      first.ws.close()
+      await new Promise<void>((resolve) => setTimeout(resolve, 50))
+      expect(agentCore.abort).not.toHaveBeenCalled()
+      expect(turnRunner.hasActiveTurn(1)).toBe(true)
+
+      // The reconnecting client replays the partial turn, then continues live.
+      const second = await connectWs(port, token)
+      await second.waitForMessage() // authenticated
+      expect((await second.waitForMessage()).type).toBe('turn_replay_start')
+      expect(await second.waitForMessage()).toMatchObject({ type: 'thinking', thinking: 'pondering' })
+      expect(await second.waitForMessage()).toMatchObject({ type: 'text', text: 'first half' })
+
+      releaseTail()
+      expect(await second.waitForMessage()).toMatchObject({ type: 'text', text: ' second half' })
+      expect((await second.waitForMessage()).type).toBe('done')
+
+      // The full response is persisted even though the original socket is gone.
+      const assistantRow = db.prepare(
+        "SELECT content FROM chat_messages WHERE session_id = 'session-reattach' AND role = 'assistant' AND metadata IS NULL"
+      ).get() as { content: string } | undefined
+      expect(assistantRow?.content).toBe('first half second half')
+
+      second.ws.close()
+    } finally {
+      for (const client of wss.clients) {
+        client.terminate()
+      }
+      wss.close()
+      await new Promise<void>((resolve, reject) =>
+        server.close((err) => (err ? reject(err) : resolve()))
+      )
+    }
+  })
+
+  it('persists the assistant response when the turn finishes with no client connected', async () => {
+    const db = initDatabase(':memory:')
+    let releaseTail!: () => void
+    const tail = new Promise<void>((resolve) => { releaseTail = resolve })
+
+    const mockSessionManager = {
+      getOrCreateSession: vi.fn(() => ({ id: 'session-detached', userId: '1', source: 'web', startedAt: Date.now(), lastActivity: Date.now(), messageCount: 0, summaryWritten: false, restored: false })),
+    }
+    const agentCore = {
+      sendMessage: vi.fn(async function* (): AsyncGenerator<ResponseChunk> {
+        yield { type: 'text', text: 'started' }
+        await tail
+        yield { type: 'text', text: ' and finished' }
+        yield { type: 'done' }
+      }),
+      abort: vi.fn(),
+      resetSession: vi.fn(),
+      getSessionManager: vi.fn(() => mockSessionManager),
+    } as unknown as AgentCore
+
+    const app = createApp({ db })
+    const server = http.createServer(app)
+    const { wss, turnRunner } = setupWebSocketChat(server, db, agentCore)
+
+    await new Promise<void>((resolve) => server.listen(0, resolve))
+    const port = (server.address() as { port: number }).port
+    const token = generateAccessToken({ userId: 1, username: 'admin', role: 'admin' })
+
+    try {
+      const { ws, waitForMessage } = await connectWs(port, token)
+      await waitForMessage() // authenticated
+      ws.send(JSON.stringify({ type: 'message', content: 'hello' }))
+      expect((await waitForMessage()).text).toBe('started')
+
+      ws.close()
+      await new Promise<void>((resolve) => setTimeout(resolve, 50))
+      releaseTail()
+
+      await vi.waitFor(() => expect(turnRunner.hasActiveTurn(1)).toBe(false))
+
+      const assistantRow = db.prepare(
+        "SELECT content FROM chat_messages WHERE session_id = 'session-detached' AND role = 'assistant'"
+      ).get() as { content: string } | undefined
+      expect(assistantRow?.content).toBe('started and finished')
     } finally {
       for (const client of wss.clients) {
         client.terminate()
