@@ -954,7 +954,7 @@ describe('TurnRunner', () => {
 
     it('hangs a retry action off the persisted error and announces the failure', async () => {
       const db = freshDb()
-      const failures: Array<{ userId: number; sessionId: string; retryActionId?: string; messageId?: number }> = []
+      const failures: Array<{ userId: number | null; sessionId: string; retryActionId?: string; messageId?: number }> = []
       const runner = startRunner(db, scriptedAgent([{ type: 'error', error: 'invalid_api_key' }]), {
         onTurnFailed: ({ turn, error }: { turn: TurnInfo; error: TurnErrorInfo }) => {
           failures.push({
