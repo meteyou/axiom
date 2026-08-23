@@ -54,7 +54,14 @@ export interface TurnAgentLike {
 
 export interface TurnInfo {
   turnId: string
-  userId: number
+  /**
+   * Identity handed to the agent and used to group turns/subscribers. For web
+   * users this is the numeric user id as a string; an approved but unlinked
+   * Telegram chat uses its `telegram-<id>` pseudo identity.
+   */
+  agentUserId: string
+  /** `chat_messages.user_id`; null when the channel has no linked web user. */
+  userId: number | null
   sessionId: string
   startedAt: number
 }
@@ -73,7 +80,18 @@ export type TurnEvent =
 export type TurnSubscriber = (event: TurnEvent) => void
 
 export interface StartTurnInput {
-  userId: number
+  /**
+   * Numeric user the persisted rows belong to. `null` for channels without a
+   * linked web user (an approved but unassigned Telegram chat) — such turns
+   * stream normally but persist nothing, matching pre-runner behavior.
+   */
+  userId: number | null
+  /**
+   * Agent-facing identity, also the subscription key. Defaults to
+   * `String(userId)`, which is what the web chat uses; Telegram passes the
+   * same value for linked users so both channels attach to the same turn.
+   */
+  agentUserId?: string
   sessionId: string
   text: string
   source?: string
@@ -86,7 +104,12 @@ export interface StartTurnInput {
 }
 
 export interface TurnRunnerOptions {
-  db: Database
+  /**
+   * Where turns are persisted. `null` disables persistence entirely (a channel
+   * running without the web database); streaming, buffering and retry still
+   * work unchanged.
+   */
+  db: Database | null
   /** Resolves the live agent. May return null while the runtime boots. */
   getAgent: () => TurnAgentLike | null
   /**
@@ -124,7 +147,9 @@ export interface TurnRunnerOptions {
 
 interface TurnState {
   id: string
-  userId: number
+  /** Subscription/queue key — see {@link TurnInfo.agentUserId}. */
+  key: string
+  userId: number | null
   sessionId: string
   startedAt: number
   buffer: TurnEvent[]
@@ -149,14 +174,19 @@ type AttemptResult =
 const DEFAULT_WATCHDOG_INTERVAL_MS = 5_000
 const DEFAULT_COMPLETED_TURN_RETENTION_MS = 60_000
 
+/**
+ * Persist one row, or skip when the turn has no place to store it (no
+ * database, or a channel without a linked web user).
+ */
 function saveChatMessage(
-  db: Database,
+  db: Database | null,
   sessionId: string,
-  userId: number,
+  userId: number | null,
   role: 'user' | 'assistant' | 'tool' | 'system',
   content: string,
   metadata?: string,
-): number {
+): number | null {
+  if (!db || userId === null) return null
   const result = db.prepare(
     'INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)'
   ).run(sessionId, userId, role, content, metadata ?? null)
@@ -192,7 +222,7 @@ function sleepUnlessAborted(ms: number, signal: AbortSignal): Promise<boolean> {
  * process restart — the buffer is in-memory only and a lost turn simply ends.
  */
 export class TurnRunner {
-  private readonly db: Database
+  private readonly db: Database | null
   private readonly getAgent: () => TurnAgentLike | null
   private readonly stallWarnMs?: number
   private readonly stallAbortMs?: number
@@ -203,13 +233,13 @@ export class TurnRunner {
   private readonly onTurnEnd?: (turn: TurnInfo) => void
   private readonly onTurnFailed?: (failure: { turn: TurnInfo; error: TurnErrorInfo }) => void
 
-  private readonly subscribers = new Map<number, Set<TurnSubscriber>>()
+  private readonly subscribers = new Map<string, Set<TurnSubscriber>>()
   /** Turns that are queued or streaming, per user. */
-  private readonly liveTurns = new Map<number, Set<TurnState>>()
+  private readonly liveTurns = new Map<string, Set<TurnState>>()
   /** Most recently finished turn per user, kept for the retention window. */
-  private readonly recentTurns = new Map<number, TurnState>()
+  private readonly recentTurns = new Map<string, TurnState>()
   /** Serializes turns per user so their chunk streams never interleave. */
-  private readonly queues = new Map<number, Promise<void>>()
+  private readonly queues = new Map<string, Promise<void>>()
 
   constructor(options: TurnRunnerOptions) {
     this.db = options.db
@@ -230,15 +260,16 @@ export class TurnRunner {
    * replayed synchronously, flagged with `replay: true`, before any live event
    * is delivered.
    */
-  subscribe(userId: number, subscriber: TurnSubscriber): () => void {
-    let set = this.subscribers.get(userId)
+  subscribe(user: number | string, subscriber: TurnSubscriber): () => void {
+    const key = String(user)
+    let set = this.subscribers.get(key)
     if (!set) {
       set = new Set()
-      this.subscribers.set(userId, set)
+      this.subscribers.set(key, set)
     }
     set.add(subscriber)
 
-    const replayTarget = this.getReplayableTurn(userId)
+    const replayTarget = this.getReplayableTurn(key)
     if (replayTarget) {
       for (const event of replayTarget.buffer) {
         try {
@@ -250,16 +281,16 @@ export class TurnRunner {
     }
 
     return () => {
-      const current = this.subscribers.get(userId)
+      const current = this.subscribers.get(key)
       if (!current) return
       current.delete(subscriber)
-      if (current.size === 0) this.subscribers.delete(userId)
+      if (current.size === 0) this.subscribers.delete(key)
     }
   }
 
   /** True while a turn for this user is queued or streaming. */
-  hasActiveTurn(userId: number): boolean {
-    const turns = this.liveTurns.get(userId)
+  hasActiveTurn(user: number | string): boolean {
+    const turns = this.liveTurns.get(String(user))
     if (!turns) return false
     for (const turn of turns) {
       if (!turn.ended) return true
@@ -273,8 +304,10 @@ export class TurnRunner {
    * user are queued so their streams stay ordered.
    */
   startTurn(input: StartTurnInput): TurnInfo {
+    const key = input.agentUserId ?? String(input.userId)
     const turn: TurnState = {
       id: randomUUID(),
+      key,
       userId: input.userId,
       sessionId: input.sessionId,
       startedAt: Date.now(),
@@ -285,21 +318,21 @@ export class TurnRunner {
       endedAt: null,
     }
 
-    let turns = this.liveTurns.get(input.userId)
+    let turns = this.liveTurns.get(key)
     if (!turns) {
       turns = new Set()
-      this.liveTurns.set(input.userId, turns)
+      this.liveTurns.set(key, turns)
     }
     turns.add(turn)
 
-    const previous = this.queues.get(input.userId) ?? Promise.resolve()
+    const previous = this.queues.get(key) ?? Promise.resolve()
     const run = previous
       .catch(() => undefined)
       .then(() => this.runTurn(turn, input))
       .catch((err) => {
         console.error('[turn-runner] turn failed unexpectedly:', err)
       })
-    this.queues.set(input.userId, run)
+    this.queues.set(key, run)
 
     return toInfo(turn)
   }
@@ -318,8 +351,8 @@ export class TurnRunner {
    * Abort every queued/streaming turn of a user (the `/stop` command, `/new`,
    * or an explicit kill). Returns true when something was actually aborted.
    */
-  abortTurn(userId: number): boolean {
-    const turns = this.liveTurns.get(userId)
+  abortTurn(user: number | string): boolean {
+    const turns = this.liveTurns.get(String(user))
     if (!turns) return false
 
     let aborted = false
@@ -334,18 +367,18 @@ export class TurnRunner {
     return aborted
   }
 
-  private getReplayableTurn(userId: number): TurnState | null {
-    const turns = this.liveTurns.get(userId)
+  private getReplayableTurn(key: string): TurnState | null {
+    const turns = this.liveTurns.get(key)
     if (turns) {
       for (const turn of turns) {
         if (!turn.ended && turn.buffer.length > 0) return turn
       }
     }
 
-    const recent = this.recentTurns.get(userId)
+    const recent = this.recentTurns.get(key)
     if (!recent || recent.endedAt === null) return null
     if (Date.now() - recent.endedAt > this.completedTurnRetentionMs) {
-      this.recentTurns.delete(userId)
+      this.recentTurns.delete(key)
       return null
     }
     return recent.buffer.length > 0 ? recent : null
@@ -353,7 +386,7 @@ export class TurnRunner {
 
   private emit(turn: TurnState, event: TurnEvent): void {
     turn.buffer.push(event)
-    const set = this.subscribers.get(turn.userId)
+    const set = this.subscribers.get(turn.key)
     if (!set) return
     for (const subscriber of [...set]) {
       try {
@@ -369,12 +402,12 @@ export class TurnRunner {
     turn.ended = true
     turn.endedAt = Date.now()
 
-    const turns = this.liveTurns.get(turn.userId)
+    const turns = this.liveTurns.get(turn.key)
     if (turns) {
       turns.delete(turn)
-      if (turns.size === 0) this.liveTurns.delete(turn.userId)
+      if (turns.size === 0) this.liveTurns.delete(turn.key)
     }
-    this.recentTurns.set(turn.userId, turn)
+    this.recentTurns.set(turn.key, turn)
 
     this.emit(turn, { type: 'turn_end', turnId: turn.id })
     this.onTurnEnd?.(toInfo(turn))
@@ -467,6 +500,7 @@ export class TurnRunner {
   ): Promise<AttemptResult> {
     turn.attemptController = new AbortController()
     const transcript = new TurnTranscript(this.db, turn.sessionId, turn.userId)
+    const agentUserId = turn.key
     const stall: { error: string | null } = { error: null }
     const watchdog = this.startStallWatchdog(turn, agent, thresholds, (error) => { stall.error = error })
     let failure: { error: string; retryable: boolean } | null = null
@@ -474,8 +508,8 @@ export class TurnRunner {
     try {
       const continueTurn = attempt > 0 || input.continueFromTranscript === true
       const stream = continueTurn && agent.retryTurn
-        ? agent.retryTurn(String(turn.userId), input.text, input.source ?? 'web', input.attachments)
-        : agent.sendMessage(String(turn.userId), input.text, input.source ?? 'web', input.attachments)
+        ? agent.retryTurn(agentUserId, input.text, input.source ?? 'web', input.attachments)
+        : agent.sendMessage(agentUserId, input.text, input.source ?? 'web', input.attachments)
 
       for await (const chunk of stream) {
         watchdog.recordActivity()
@@ -561,6 +595,7 @@ export class TurnRunner {
       )
     } catch (err) {
       console.error('[turn-runner] Failed to persist terminal error:', err)
+      messageId = null
     }
 
     console.error(
@@ -643,6 +678,8 @@ export class TurnRunner {
     let lastActivityAt = Date.now()
     let active: { startedAt: number; messageId: number | null } | null = null
 
+    const db = this.db
+
     const persistStall = (stall: StallInfo): number | null => {
       try {
         return saveChatMessage(
@@ -694,10 +731,10 @@ export class TurnRunner {
         outcome,
       }
 
-      if (messageId !== null) {
+      if (messageId !== null && db) {
         try {
           updateChatMessage(
-            this.db,
+            db,
             messageId,
             formatProviderStallContent(stall),
             JSON.stringify(buildProviderStallMetadata(stall)),
@@ -778,10 +815,14 @@ class TurnTranscript {
   private readonly writtenRowIds: number[] = []
 
   constructor(
-    private readonly db: Database,
+    private readonly db: Database | null,
     private readonly sessionId: string,
-    private readonly userId: number,
+    private readonly userId: number | null,
   ) {}
+
+  private get persists(): boolean {
+    return this.db !== null && this.userId !== null
+  }
 
   /** Consume one chunk; returns any uploads the chunk produced. */
   record(chunk: ResponseChunk): UploadDescriptor[] {
@@ -809,7 +850,7 @@ class TurnTranscript {
     if (chunk.type === 'tool_call_end' && chunk.toolCallId) {
       const pending = this.pendingToolCalls.get(chunk.toolCallId)
       const toolName = pending?.toolName ?? chunk.toolName ?? 'unknown'
-      this.writtenRowIds.push(saveChatMessage(this.db, this.sessionId, this.userId, 'tool', `Tool: ${toolName}`, JSON.stringify({
+      this.remember(saveChatMessage(this.db, this.sessionId, this.userId, 'tool', `Tool: ${toolName}`, JSON.stringify({
         toolName,
         toolCallId: chunk.toolCallId,
         toolArgs: pending?.toolArgs ?? null,
@@ -836,12 +877,16 @@ class TurnTranscript {
     const text = this.currentThinking
     this.currentThinking = ''
     try {
-      this.writtenRowIds.push(
+      this.remember(
         saveChatMessage(this.db, this.sessionId, this.userId, 'assistant', text, JSON.stringify({ kind: 'thinking' })),
       )
     } catch (err) {
       console.error('[turn-runner] Failed to persist thinking block:', err)
     }
+  }
+
+  private remember(rowId: number | null): void {
+    if (rowId !== null) this.writtenRowIds.push(rowId)
   }
 
   /**
@@ -856,7 +901,7 @@ class TurnTranscript {
     this.currentThinking = ''
     this.pendingToolCalls.clear()
     this.uploads.length = 0
-    if (this.writtenRowIds.length === 0) return
+    if (!this.db || this.writtenRowIds.length === 0) return
     try {
       const statement = this.db.prepare('DELETE FROM chat_messages WHERE id = ?')
       for (const id of this.writtenRowIds) statement.run(id)
@@ -871,9 +916,10 @@ class TurnTranscript {
    * a row (with empty content) so the download card survives a history reload.
    */
   finalize(): void {
+    if (!this.persists) return
     if (!this.fullResponse && this.uploads.length === 0) return
     const metadata = this.uploads.length > 0 ? serializeUploadsMetadata(this.uploads) : undefined
-    this.writtenRowIds.push(
+    this.remember(
       saveChatMessage(this.db, this.sessionId, this.userId, 'assistant', this.fullResponse, metadata),
     )
   }
@@ -882,6 +928,7 @@ class TurnTranscript {
 function toInfo(turn: TurnState): TurnInfo {
   return {
     turnId: turn.id,
+    agentUserId: turn.key,
     userId: turn.userId,
     sessionId: turn.sessionId,
     startedAt: turn.startedAt,
