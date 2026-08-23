@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildTurnRetryAction,
   stripFailedAttempt,
   stripTrailingTurn,
   turnErrorFromHistoryMetadata,
@@ -163,6 +164,42 @@ describe('upsertErrorMessage', () => {
     const twice = upsertErrorMessage(once, turnError({ messageId: undefined }), 'boom')
     expect(twice).toHaveLength(2)
   })
+
+  it('hangs the retry button off the error notice', () => {
+    const updated = upsertErrorMessage([], turnError({ retryActionId: 'turn-retry-1' }), 'boom')
+
+    expect(updated[0]!.chatAction).toMatchObject({
+      messageId: 'turn-retry-1',
+      kind: 'turn_retry',
+      refId: '77',
+      actions: [{ actionId: 'retry' }],
+    })
+  })
+
+  it('keeps an already-resolved retry resolved when the turn is replayed', () => {
+    const resolved = upsertErrorMessage([], turnError({ retryActionId: 'turn-retry-1' }), 'boom')
+    resolved[0]!.chatAction!.resolution = '🔄 Retrying…'
+
+    const replayed = upsertErrorMessage(resolved, turnError({ retryActionId: 'turn-retry-1' }), 'boom')
+    expect(replayed[0]!.chatAction?.resolution).toBe('🔄 Retrying…')
+  })
+})
+
+describe('buildTurnRetryAction', () => {
+  it('builds the button from the persisted action id', () => {
+    expect(buildTurnRetryAction(turnError({ retryActionId: 'turn-retry-9' }), 'boom')).toEqual({
+      messageId: 'turn-retry-9',
+      kind: 'turn_retry',
+      refId: '77',
+      text: 'boom',
+      actions: [{ actionId: 'retry', label: 'Retry', style: 'primary' }],
+    })
+  })
+
+  it('omits the button for errors without a persisted row or action id', () => {
+    expect(buildTurnRetryAction(turnError(), 'boom')).toBeUndefined()
+    expect(buildTurnRetryAction(turnError({ messageId: undefined, retryActionId: 'x' }), 'boom')).toBeUndefined()
+  })
 })
 
 describe('turnErrorFromHistoryMetadata', () => {
@@ -195,6 +232,15 @@ describe('turnErrorFromHistoryMetadata', () => {
   it('falls back to a non-retryable cause for unknown values', () => {
     const info = turnErrorFromHistoryMetadata({ kind: 'turn_error', cause: 'weird', error: 'boom' }, 3)
     expect(info).toMatchObject({ cause: 'non_retryable', attempts: 0, retryable: false })
+  })
+
+  it('restores the retry action id so the button survives a reload', () => {
+    const info = turnErrorFromHistoryMetadata({
+      kind: 'turn_error',
+      error: 'boom',
+      retryActionId: 'turn-retry-42',
+    }, 5)
+    expect(info?.retryActionId).toBe('turn-retry-42')
   })
 })
 
