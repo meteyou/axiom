@@ -1,13 +1,14 @@
 import { isRetryableAssistantError } from '@earendil-works/pi-ai'
 import type { AssistantMessage, RetryPolicy } from '@earendil-works/pi-ai'
 import { loadConfig } from './config.js'
+import { DEFAULT_RETRY_SETTINGS } from './contracts/settings.js'
 import type { RetryInfo } from './agent-runtime-types.js'
 
 export type { RetryPolicy }
 
-export const DEFAULT_RETRY_ENABLED = true
-export const DEFAULT_RETRY_MAX_RETRIES = 3
-export const DEFAULT_RETRY_BASE_DELAY_MS = 2_000
+export const DEFAULT_RETRY_ENABLED = DEFAULT_RETRY_SETTINGS.enabled
+export const DEFAULT_RETRY_MAX_RETRIES = DEFAULT_RETRY_SETTINGS.maxRetries
+export const DEFAULT_RETRY_BASE_DELAY_MS = DEFAULT_RETRY_SETTINGS.baseDelayMs
 
 export const DEFAULT_RETRY_POLICY: RetryPolicy = {
   enabled: DEFAULT_RETRY_ENABLED,

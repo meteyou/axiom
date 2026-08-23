@@ -126,6 +126,7 @@ const TEMPLATES: Record<string, object> = {
     webhookUrl: '',
     batchingDelayMs: 2500,
     sendVoiceReply: false,
+    sendStallWarnings: false,
   },
 }
 

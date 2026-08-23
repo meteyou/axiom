@@ -72,6 +72,33 @@ export interface UploadsSettingsContract {
   retentionDays: number
 }
 
+/**
+ * Provider-stall watchdog thresholds. Read by the turn runner at turn start,
+ * so edits apply to the next turn without a backend restart.
+ */
+export interface WatchdogSettingsContract {
+  stallWarnMs: number
+  stallAbortMs: number
+}
+
+/** Auto-retry policy for turns that failed with a retryable provider error. */
+export interface RetrySettingsContract {
+  enabled: boolean
+  maxRetries: number
+  baseDelayMs: number
+}
+
+export const DEFAULT_WATCHDOG_SETTINGS: WatchdogSettingsContract = {
+  stallWarnMs: 30_000,
+  stallAbortMs: 90_000,
+}
+
+export const DEFAULT_RETRY_SETTINGS: RetrySettingsContract = {
+  enabled: true,
+  maxRetries: 3,
+  baseDelayMs: 2_000,
+}
+
 export interface AgentHeartbeatNightModeContract {
   enabled: boolean
   startHour: number
@@ -162,6 +189,11 @@ export interface TelegramSettingsContract {
   /** Input batching delay in ms. `0` disables batching. */
   batchingDelayMs: number
   sendVoiceReply: boolean
+  /**
+   * Deliver provider-stall warnings to Telegram. Off by default so transient
+   * hiccups don't spam the chat; terminal errors are always delivered.
+   */
+  sendStallWarnings: boolean
 }
 
 export interface SettingsContract {
@@ -176,6 +208,8 @@ export interface SettingsContract {
   thinkingLevel: SettingsThinkingLevel
   healthMonitorIntervalMinutes: number
   uploads: UploadsSettingsContract
+  watchdog: WatchdogSettingsContract
+  retry: RetrySettingsContract
   telegram: TelegramSettingsContract
   healthMonitor: HealthMonitorSettingsContract
   memoryConsolidation: MemoryConsolidationSettingsContract
@@ -197,6 +231,8 @@ export interface SettingsStorageContract {
   healthMonitorIntervalMinutes?: number
   healthMonitor?: Partial<HealthMonitorSettingsContract> & { intervalMinutes?: number }
   uploads?: Partial<UploadsSettingsContract>
+  watchdog?: Partial<WatchdogSettingsContract>
+  retry?: Partial<RetrySettingsContract>
   memoryConsolidation?: Partial<MemoryConsolidationSettingsContract>
   factExtraction?: Partial<FactExtractionSettingsContract>
   agentHeartbeat?: Partial<AgentHeartbeatSettingsContract>
@@ -213,6 +249,7 @@ export interface TelegramSettingsStorageContract {
   webhookUrl?: string
   batchingDelayMs?: number
   sendVoiceReply?: boolean
+  sendStallWarnings?: boolean
 }
 
 export type HealthMonitorSettingsUpdateContract = DeepPartial<HealthMonitorSettingsContract> & {
@@ -242,11 +279,14 @@ export const DEFAULT_SETTINGS_CONTRACT: SettingsContract = {
   uploads: {
     retentionDays: 30,
   },
+  watchdog: { ...DEFAULT_WATCHDOG_SETTINGS },
+  retry: { ...DEFAULT_RETRY_SETTINGS },
   telegram: {
     enabled: false,
     botToken: '',
     batchingDelayMs: 2500,
     sendVoiceReply: false,
+    sendStallWarnings: false,
   },
   healthMonitor: {
     enabled: true,
@@ -376,11 +416,21 @@ export function normalizeSettingsContract(input: DeepPartial<SettingsContract> |
     uploads: {
       retentionDays: source.uploads?.retentionDays ?? DEFAULT_SETTINGS_CONTRACT.uploads.retentionDays,
     },
+    watchdog: {
+      stallWarnMs: source.watchdog?.stallWarnMs ?? DEFAULT_SETTINGS_CONTRACT.watchdog.stallWarnMs,
+      stallAbortMs: source.watchdog?.stallAbortMs ?? DEFAULT_SETTINGS_CONTRACT.watchdog.stallAbortMs,
+    },
+    retry: {
+      enabled: source.retry?.enabled ?? DEFAULT_SETTINGS_CONTRACT.retry.enabled,
+      maxRetries: source.retry?.maxRetries ?? DEFAULT_SETTINGS_CONTRACT.retry.maxRetries,
+      baseDelayMs: source.retry?.baseDelayMs ?? DEFAULT_SETTINGS_CONTRACT.retry.baseDelayMs,
+    },
     telegram: {
       enabled: source.telegram?.enabled ?? DEFAULT_SETTINGS_CONTRACT.telegram.enabled,
       botToken: source.telegram?.botToken ?? DEFAULT_SETTINGS_CONTRACT.telegram.botToken,
       batchingDelayMs: source.telegram?.batchingDelayMs ?? DEFAULT_SETTINGS_CONTRACT.telegram.batchingDelayMs,
       sendVoiceReply: source.telegram?.sendVoiceReply ?? DEFAULT_SETTINGS_CONTRACT.telegram.sendVoiceReply,
+      sendStallWarnings: source.telegram?.sendStallWarnings ?? DEFAULT_SETTINGS_CONTRACT.telegram.sendStallWarnings,
     },
     healthMonitor: {
       enabled: source.healthMonitor?.enabled ?? DEFAULT_SETTINGS_CONTRACT.healthMonitor.enabled,

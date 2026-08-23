@@ -1,4 +1,5 @@
 import { loadConfig } from './config.js'
+import { DEFAULT_WATCHDOG_SETTINGS } from './contracts/settings.js'
 import { STALL_OUTCOMES } from './agent-runtime-types.js'
 import type { StallInfo, StallOutcome } from './agent-runtime-types.js'
 import type { Database } from './database.js'
@@ -6,8 +7,8 @@ import type { Database } from './database.js'
 /** `chat_messages.metadata.kind` marking a persisted provider-stall notice. */
 export const PROVIDER_STALL_KIND = 'provider_stall'
 
-export const DEFAULT_STALL_WARN_MS = 30_000
-export const DEFAULT_STALL_ABORT_MS = 90_000
+export const DEFAULT_STALL_WARN_MS = DEFAULT_WATCHDOG_SETTINGS.stallWarnMs
+export const DEFAULT_STALL_ABORT_MS = DEFAULT_WATCHDOG_SETTINGS.stallAbortMs
 
 export interface StallThresholds {
   warnMs: number
