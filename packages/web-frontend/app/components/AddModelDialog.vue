@@ -36,7 +36,7 @@
         </div>
 
         <!-- Model list -->
-        <div v-else class="flex flex-col gap-0 rounded-md border border-border overflow-hidden max-h-72 overflow-y-auto">
+        <div v-else class="flex flex-col gap-0 divide-y divide-border rounded-md border border-border overflow-hidden max-h-72 overflow-y-auto">
           <template v-if="filteredModels.length > 0">
             <label
               v-for="model in filteredModels"
@@ -54,8 +54,10 @@
                 class="h-4 w-4 rounded border-border text-primary focus:ring-primary"
                 @change="toggleSelected(model.id)"
               >
-              <span class="flex-1 truncate">{{ model.name }}</span>
-              <span class="font-mono text-[10px] text-muted-foreground truncate">{{ model.id }}</span>
+              <span class="flex min-w-0 flex-1 flex-col">
+                <span class="truncate">{{ model.name }}</span>
+                <span class="font-mono text-[10px] text-muted-foreground truncate">{{ model.id }}</span>
+              </span>
               <span v-if="isAlreadyEnabled(model.id)" class="text-[10px] text-muted-foreground shrink-0">
                 {{ $t('providers.addModelAlreadyEnabled') }}
               </span>
@@ -86,10 +88,12 @@
               <AppIcon v-if="selected.has(search.trim())" name="check" class="h-3 w-3" />
               <span v-else class="text-xs leading-none">+</span>
             </span>
-            <span class="flex-1 truncate">
-              {{ $t('providers.addModelCustom', { name: search.trim() }) }}
+            <span class="flex min-w-0 flex-1 flex-col">
+              <span class="truncate">
+                {{ $t('providers.addModelCustom', { name: search.trim() }) }}
+              </span>
+              <span class="font-mono text-[10px] text-muted-foreground truncate">{{ search.trim() }}</span>
             </span>
-            <span class="font-mono text-[10px] text-muted-foreground truncate">{{ search.trim() }}</span>
           </button>
         </div>
 
