@@ -1474,6 +1474,52 @@ describe('stats API', () => {
     }
   })
 
+  it('GET /api/stats/stalls aggregates provider stalls for the period', async () => {
+    const insertStall = db.prepare(
+      'INSERT INTO chat_messages (session_id, user_id, role, content, metadata, timestamp) VALUES (?, ?, ?, ?, ?, ?)'
+    )
+    const stallMetadata = (durationMs: number, outcome: string | null) => JSON.stringify({
+      kind: 'provider_stall',
+      startedAt: '2026-03-27T08:00:00.000Z',
+      resolvedAt: outcome ? '2026-03-27T08:01:00.000Z' : null,
+      durationMs,
+      outcome,
+    })
+
+    insertStall.run('stall-sess-1', null, 'system', 'stalled', stallMetadata(30_000, 'recovered'), '2026-03-27T08:00:00.000Z')
+    insertStall.run('stall-sess-1', null, 'system', 'stalled', stallMetadata(50_000, 'recovered'), '2026-03-27T09:00:00.000Z')
+    insertStall.run('stall-sess-2', null, 'system', 'stalled', stallMetadata(90_000, 'aborted'), '2026-03-27T10:00:00.000Z')
+    insertStall.run('stall-sess-3', null, 'system', 'stalled', stallMetadata(60_000, 'aborted'), '2026-03-01T10:00:00.000Z')
+
+    const res = await fetch(`${baseUrl}/api/stats/stalls?date_from=2026-03-26&date_to=2026-03-27`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    })
+    const body = (await res.json()) as {
+      total: number
+      recovered: number
+      aborted: number
+      unresolved: number
+      averageDurationMs: number
+      maxDurationMs: number
+    }
+
+    expect(res.status).toBe(200)
+    expect(body.total).toBe(3)
+    expect(body.recovered).toBe(2)
+    expect(body.aborted).toBe(1)
+    expect(body.unresolved).toBe(0)
+    expect(body.averageDurationMs).toBe(56_667)
+    expect(body.maxDurationMs).toBe(90_000)
+
+    const emptyRes = await fetch(`${baseUrl}/api/stats/stalls?date_from=2026-04-01&date_to=2026-04-30`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    })
+    const emptyBody = (await emptyRes.json()) as { total: number; averageDurationMs: number }
+    expect(emptyRes.status).toBe(200)
+    expect(emptyBody.total).toBe(0)
+    expect(emptyBody.averageDurationMs).toBe(0)
+  })
+
   it('stats endpoints reject non-admin users', async () => {
     const bcrypt = await import('bcrypt')
     const hash = bcrypt.hashSync('stats-pass', 10)
