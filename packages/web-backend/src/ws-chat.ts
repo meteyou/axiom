@@ -7,7 +7,7 @@ import type {
   SlashCommandPicker,
 } from '@axiom/core'
 import { isSlashCommandPicker } from '@axiom/core'
-import type { AgentCore, ResponseChunk, TurnEvent } from '@axiom/core'
+import type { AgentCore, ResponseChunk, StallInfo, TurnEvent } from '@axiom/core'
 import {
   TaskStore,
   ScheduledTaskStore,
@@ -32,8 +32,14 @@ interface ChatMessage {
 }
 
 interface ChatResponse {
-  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'session_summary' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'reminder' | 'pong' | 'attachment' | 'chat_action' | 'chat_action_resolved' | 'turn_replay_start' | 'turn_replay_end'
+  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'session_summary' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'reminder' | 'pong' | 'attachment' | 'chat_action' | 'chat_action_resolved' | 'turn_replay_start' | 'turn_replay_end' | 'stall_warning' | 'stall_resolved'
   text?: string
+  /**
+   * Provider-stall details (for `stall_warning` / `stall_resolved`). Carries
+   * the `chat_messages` row id of the persisted notice so the client updates
+   * the existing bubble in place instead of appending a second one.
+   */
+  stall?: StallInfo
   /**
    * Interactive message with action buttons (e.g. an email waiting for
    * approval). Buttons are answered via `POST /api/chat/actions/:messageId`;
@@ -507,6 +513,7 @@ export function setupWebSocketChat(
             toolResult: event.toolResult,
             toolIsError: event.toolIsError,
             error: event.error,
+            stall: event.stall,
             telegramDelivered: event.telegramDelivered,
             isTaskInjection: event.isTaskInjection,
           })
@@ -579,5 +586,6 @@ function chunkToResponse(chunk: ResponseChunk): ChatResponse {
     toolResult: chunk.toolResult,
     toolIsError: chunk.toolIsError,
     error: chunk.error,
+    stall: chunk.stall,
   }
 }
