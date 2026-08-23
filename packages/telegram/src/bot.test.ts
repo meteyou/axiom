@@ -107,7 +107,7 @@ vi.mock('@axiom/core', async (importOriginal) => {
 
 import { TelegramBot, createTelegramBot, extractReplyContext, buildAgentMessage } from './bot.js'
 import type { TelegramConfig, TelegramChatEvent } from './bot.js'
-import { clearTurnRetryNotifiers, initDatabase, loadConfig, notifyTurnRetryResolved } from '@axiom/core'
+import { clearTurnRetryNotifiers, initDatabase, loadConfig, notifyTurnRetryResolved, TurnRunner } from '@axiom/core'
 
 async function* errorStream(error: string): AsyncGenerator<ResponseChunk> {
   yield { type: 'error', error }
@@ -1794,6 +1794,37 @@ describe('turn retry channel', () => {
     // The prompt is consumed — a later tap can no longer edit it again.
     await notifyTurnRetryResolved({ errorMessageId: messageId, ok: false, resolution: 'nope' })
     expect(api.editMessageText).toHaveBeenCalledTimes(1)
+  })
+
+  // A turn that dies before it reaches the agent emits no `turn_start`. The
+  // chat subscription must still close on `turn_end`, or it would stay attached
+  // and deliver the user's next answer a second time.
+  it('does not leak its subscription when the retried turn never reaches the agent', async () => {
+    let agent: AgentCore | null = agentCore
+    const runner = new TurnRunner({ db, getAgent: () => agent })
+    const bot = new TelegramBot({ agentCore, db, config, turnRunner: runner })
+    const handlers = bot.getBot() as unknown as MockBotInternals & { api: any }
+    const api = handlers.api
+
+    vi.mocked(agentCore.sendMessage).mockReturnValue(errorStream('invalid_api_key'))
+    await sendUserMessage(handlers)
+    const callbackData = retryButton(api)!.callback_data
+
+    agent = null
+    const ctx = createMockContext({
+      callbackQuery: { data: callbackData, message: { message_id: 5 } },
+      answerCallbackQuery: vi.fn().mockResolvedValue(true),
+    })
+    await handlers._handlers.get('callback_query:data')!(ctx as any)
+    await vi.advanceTimersByTimeAsync(0)
+
+    agent = agentCore
+    vi.mocked(agentCore.sendMessage).mockReturnValue(textStream('Fresh answer'))
+    api.sendMessage.mockClear()
+    await sendUserMessage(handlers, 'and now?')
+
+    const answers = api.sendMessage.mock.calls.filter((c: any[]) => c[1] === 'Fresh answer')
+    expect(answers).toHaveLength(1)
   })
 
   it('ignores an unknown retry callback payload', async () => {
