@@ -11,6 +11,8 @@ import {
   type TtsSettingsContract,
   type SttSettingsContract,
   type UploadsSettingsContract,
+  type WatchdogSettingsContract,
+  type RetrySettingsContract,
   type AgentHeartbeatNightModeContract,
   type TelegramSettingsContract,
 } from '@axiom/core/contracts'
@@ -26,6 +28,8 @@ export type AgentHeartbeatSettings = AgentHeartbeatSettingsContract
 export type TtsSettings = TtsSettingsContract
 export type SttSettings = SttSettingsContract
 export type UploadsSettings = UploadsSettingsContract
+export type WatchdogSettings = WatchdogSettingsContract
+export type RetrySettings = RetrySettingsContract
 export type TelegramSettings = TelegramSettingsContract
 export type Settings = SettingsContract
 
