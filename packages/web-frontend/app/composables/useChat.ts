@@ -135,7 +135,7 @@ export interface ChatMessage {
 }
 
 interface WsMessage {
-  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'session_summary' | 'reminder' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'pong' | 'attachment' | 'chat_action' | 'chat_action_resolved'
+  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'session_summary' | 'reminder' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'pong' | 'attachment' | 'chat_action' | 'chat_action_resolved' | 'turn_replay_start' | 'turn_replay_end'
   text?: string
   /** Interactive message payload (for chat_action / chat_action_resolved) */
   chatAction?: ChatActionMessage
@@ -240,6 +240,22 @@ function closeStreamingThinking(list: ChatMessage[]): ChatMessage[] {
     return updated
   }
   return list
+}
+
+/**
+ * Drop the trailing assistant/tool run so a replayed turn can be rebuilt from
+ * scratch. Everything the running turn produced sits after the last user (or
+ * system) message, so this removes exactly the partial turn — whether it came
+ * from a mid-stream reconnect or from history rows the backend already wrote.
+ */
+export function stripTrailingTurn(list: ChatMessage[]): ChatMessage[] {
+  let end = list.length
+  while (end > 0) {
+    const role = list[end - 1]!.role
+    if (role !== 'assistant' && role !== 'tool') break
+    end--
+  }
+  return end === list.length ? list : list.slice(0, end)
 }
 
 function insertBeforeTrailingStreams(list: ChatMessage[], message: ChatMessage): ChatMessage[] {
@@ -662,6 +678,21 @@ export function useChat() {
         // A decision arrived (this tab, another tab, the web UI or Telegram) —
         // swap the buttons for the result.
         if (msg.chatAction) applyChatActionResolution(msg.chatAction.messageId, msg.chatAction.resolution)
+        break
+
+      case 'turn_replay_start':
+        // The backend is about to replay a turn that is still running (or just
+        // finished) server-side. Discard whatever partial turn we currently
+        // show — from a mid-stream reconnect or from history — so the replayed
+        // chunks rebuild it exactly once.
+        if (msg.sessionId) sessionId.value = msg.sessionId
+        messages.value = stripTrailingTurn(messages.value)
+        isStreaming.value = true
+        break
+
+      case 'turn_replay_end':
+        // Buffer drained; live chunks follow (or the turn already ended, in
+        // which case the replayed `done` already cleared the indicator).
         break
 
       case 'pong':
