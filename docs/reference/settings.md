@@ -89,6 +89,11 @@ restart.
 { "watchdog": { "stallWarnMs": 30000, "stallAbortMs": 90000 } }
 ```
 
+Stalls are aggregated on the **Token Usage** page (admin only): count, average and
+longest silence, and the split between recovered and aborted turns for the
+selected date range. Only stalls recorded after this feature shipped are counted
+— there is no historical backfill.
+
 ### `healthMonitor`
 
 [Health Monitor settings UI](../settings/health-monitor).
