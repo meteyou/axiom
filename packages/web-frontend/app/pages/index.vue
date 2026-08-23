@@ -104,11 +104,11 @@
             // Mobile: messages fill the available width (minus avatar + gap
             // or the pl-11 offset for tool cards). On sm+ screens we cap them
             // so bubbles don't span edge-to-edge on wider viewports.
-            msg.role === 'divider' ? 'w-full' : (msg.role === 'tool' || (msg.role === 'system' && (msg.isTaskResult || msg.isTaskStatusUpdate || msg.picker || msg.chatAction)) || msg.isThinking) ? 'self-start w-full max-w-full sm:max-w-[75%] pl-11' : 'flex max-w-full gap-3 sm:max-w-[75%]',
+            msg.role === 'divider' ? 'w-full' : (msg.role === 'tool' || (msg.role === 'system' && (msg.isTaskResult || msg.isTaskStatusUpdate || msg.stallInfo || msg.picker || msg.chatAction)) || msg.isThinking) ? 'self-start w-full max-w-full sm:max-w-[75%] pl-11' : 'flex max-w-full gap-3 sm:max-w-[75%]',
             {
               'self-end flex-row-reverse': msg.role === 'user',
               'self-start': msg.role === 'assistant' && !msg.isThinking,
-              'self-center max-w-full sm:max-w-[85%]': msg.role === 'system' && !msg.isTaskResult && !msg.isTaskStatusUpdate && !msg.picker && !msg.chatAction,
+              'self-center max-w-full sm:max-w-[85%]': msg.role === 'system' && !msg.isTaskResult && !msg.isTaskStatusUpdate && !msg.stallInfo && !msg.picker && !msg.chatAction,
             },
           ]"
         >
@@ -226,6 +226,31 @@
                   <span v-if="typeof msg.taskStatusToolCallCount === 'number'">• {{ msg.taskStatusToolCallCount }} tools</span>
                   <span v-if="typeof msg.taskStatusTokensUsed === 'number'">• ~{{ formatTokenCount(msg.taskStatusTokensUsed) }} tok</span>
                   <span class="rounded bg-amber-500/10 px-1.5 py-0.5 font-medium text-amber-600 dark:text-amber-400">Running</span>
+                </span>
+              </div>
+            </div>
+          </template>
+
+          <!-- Provider stall notice. Backed by a persisted chat row, so it
+               survives a reload; the same bubble flips to the resolved state
+               in place when the provider recovers or the turn is aborted. -->
+          <template v-else-if="msg.role === 'system' && msg.stallInfo">
+            <div
+              class="w-full overflow-hidden rounded-lg border px-3 py-1.5 text-xs"
+              :class="msg.stallInfo.outcome === 'recovered'
+                ? 'border-emerald-500/30 bg-emerald-500/5 text-muted-foreground'
+                : msg.stallInfo.outcome === 'aborted'
+                  ? 'border-destructive/30 bg-destructive/5 text-muted-foreground'
+                  : 'border-amber-500/30 bg-amber-500/5 text-muted-foreground'"
+            >
+              <div class="flex items-center gap-2">
+                <AppIcon
+                  :name="msg.stallInfo.outcome === 'recovered' ? 'check' : msg.stallInfo.outcome === 'aborted' ? 'warning' : 'clock'"
+                  class="h-3 w-3 shrink-0 opacity-70"
+                />
+                <span class="min-w-0 flex-1 break-words text-foreground/80">{{ msg.content }}</span>
+                <span class="shrink-0 text-[10px] text-muted-foreground/80">
+                  {{ formatStallDuration(msg.stallInfo.durationMs) }}
                 </span>
               </div>
             </div>
@@ -711,6 +736,12 @@ function formatTokenCount(count: number): string {
   if (count >= 1000) return `${(count / 1000).toFixed(1)}k`
   return String(count)
 }
+// Stall duration badge: 45000 -> "45s", 125000 -> "2m 5s".
+function formatStallDuration(durationMs: number): string {
+  const totalSeconds = Math.max(1, Math.round(durationMs / 1000))
+  if (totalSeconds < 60) return `${totalSeconds}s`
+  return `${Math.floor(totalSeconds / 60)}m ${totalSeconds % 60}s`
+}
 const { messages, connectionStatus, isStreaming, connect, disconnect, sendMessage, newSession, stopTask, resolvePicker, submitChatAction } = useChat()
 
 /** Message ids with an in-flight action click, so buttons can't be double-fired. */
@@ -824,6 +855,23 @@ async function loadHistory() {
             taskStatusRuntimeMinutes: typeof meta.runtimeMinutes === 'number' ? meta.runtimeMinutes : undefined,
             taskStatusToolCallCount: typeof meta.toolCallCount === 'number' ? meta.toolCallCount : undefined,
             taskStatusTokensUsed: typeof meta.totalTokens === 'number' ? meta.totalTokens : undefined,
+          } as ChatMessage
+        }
+
+        // Provider-stall notices (system rows with metadata.kind ===
+        // 'provider_stall'). The row is written when the watchdog warns and
+        // updated in place on recovery/abort, so history always reflects the
+        // final state — that's what makes the warning survive a refresh.
+        if (m.role === 'system' && meta.kind === 'provider_stall') {
+          return {
+            id: m.id, role: 'system' as const, content: m.content, timestamp: m.timestamp, source,
+            stallInfo: {
+              messageId: m.id,
+              startedAt: meta.startedAt,
+              resolvedAt: meta.resolvedAt ?? undefined,
+              durationMs: typeof meta.durationMs === 'number' ? meta.durationMs : 0,
+              outcome: meta.outcome ?? undefined,
+            },
           } as ChatMessage
         }
 

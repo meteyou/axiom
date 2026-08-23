@@ -47,6 +47,21 @@ export interface ChatActionMessage {
   resolution?: string
 }
 
+export type ChatStallOutcome = 'recovered' | 'aborted'
+
+/**
+ * Provider-stall details attached to a stall notice. Mirrors the backend
+ * `StallInfo`; `messageId` is the persisted `chat_messages` row id, which is
+ * what lets a `stall_resolved` update the already-rendered bubble in place.
+ */
+export interface ChatStallInfo {
+  messageId?: number
+  startedAt: string
+  resolvedAt?: string
+  durationMs: number
+  outcome?: ChatStallOutcome
+}
+
 export interface ChatAttachment {
   kind: 'image' | 'file'
   originalName: string
@@ -105,6 +120,12 @@ export interface ChatMessage {
    */
   isThinking?: boolean
   /**
+   * Provider-stall details for a `role: 'system'` stall notice. Present both
+   * live (from `stall_warning`) and after a reload (from the persisted
+   * `provider_stall` row), so the bubble survives a refresh.
+   */
+  stallInfo?: ChatStallInfo
+  /**
    * Excerpt of the message the user replied to (e.g. Telegram reply-to), truncated to 500 chars.
    * When present, the UI renders a WhatsApp/Telegram-style quote bubble above the
    * message body with `[Replying to: "…"]`. Only set for `role: 'user'`.
@@ -135,8 +156,10 @@ export interface ChatMessage {
 }
 
 interface WsMessage {
-  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'session_summary' | 'reminder' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'pong' | 'attachment' | 'chat_action' | 'chat_action_resolved' | 'turn_replay_start' | 'turn_replay_end'
+  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'session_summary' | 'reminder' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'pong' | 'attachment' | 'chat_action' | 'chat_action_resolved' | 'turn_replay_start' | 'turn_replay_end' | 'stall_warning' | 'stall_resolved'
   text?: string
+  /** Provider-stall details (for stall_warning / stall_resolved) */
+  stall?: ChatStallInfo
   /** Interactive message payload (for chat_action / chat_action_resolved) */
   chatAction?: ChatActionMessage
   /** Picker payload for interactive slash-command replies (e.g. /model). */
@@ -251,11 +274,42 @@ function closeStreamingThinking(list: ChatMessage[]): ChatMessage[] {
 export function stripTrailingTurn(list: ChatMessage[]): ChatMessage[] {
   let end = list.length
   while (end > 0) {
-    const role = list[end - 1]!.role
-    if (role !== 'assistant' && role !== 'tool') break
+    const message = list[end - 1]!
+    // Stall notices are emitted mid-turn, so they belong to the turn being
+    // rebuilt — leaving them in place would strand them and block stripping
+    // of the assistant/tool run that came before them.
+    const belongsToTurn = message.role === 'assistant'
+      || message.role === 'tool'
+      || (message.role === 'system' && !!message.stallInfo)
+    if (!belongsToTurn) break
     end--
   }
   return end === list.length ? list : list.slice(0, end)
+}
+
+/**
+ * Insert or update the stall notice for `stall`. Matching on the persisted row
+ * id keeps a single bubble across live warn → resolve, mid-turn replay and a
+ * history reload that already rendered the row.
+ */
+export function upsertStallMessage(list: ChatMessage[], stall: ChatStallInfo, content: string): ChatMessage[] {
+  const index = stall.messageId === undefined
+    ? -1
+    : list.findIndex(m => m.stallInfo?.messageId === stall.messageId)
+
+  if (index >= 0) {
+    const updated = [...list]
+    updated[index] = { ...updated[index]!, content, stallInfo: stall }
+    return updated
+  }
+
+  return insertBeforeTrailingStreams(list, {
+    id: stall.messageId,
+    role: 'system',
+    content,
+    timestamp: new Date().toISOString(),
+    stallInfo: stall,
+  })
 }
 
 function insertBeforeTrailingStreams(list: ChatMessage[], message: ChatMessage): ChatMessage[] {
@@ -678,6 +732,16 @@ export function useChat() {
         // A decision arrived (this tab, another tab, the web UI or Telegram) —
         // swap the buttons for the result.
         if (msg.chatAction) applyChatActionResolution(msg.chatAction.messageId, msg.chatAction.resolution)
+        break
+
+      case 'stall_warning':
+      case 'stall_resolved':
+        // The provider went silent (or came back). The notice is a persisted
+        // chat row, so this only mirrors it into the live view; the same row
+        // is rebuilt from history after a reload.
+        // The backend sends the same text it persisted on the row, so live
+        // rendering and a history reload never disagree.
+        if (msg.stall) messages.value = upsertStallMessage(messages.value, msg.stall, msg.text ?? '')
         break
 
       case 'turn_replay_start':
