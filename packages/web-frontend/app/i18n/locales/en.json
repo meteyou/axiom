@@ -862,7 +862,7 @@
       "requests": "Requests",
       "requestsPerDay": "~{count} per day",
       "totalTokens": "Total Tokens",
-      "tokenBreakdown": "{prompt} prompt · {completion} completion",
+      "tokenBreakdown": "{prompt} input · {completion} output",
       "estimatedCost": "Estimated Cost",
       "costPerRequest": "~{cost} per request"
     },
