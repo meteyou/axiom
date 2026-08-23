@@ -7,7 +7,7 @@ import type {
   SlashCommandPicker,
 } from '@axiom/core'
 import { isSlashCommandPicker } from '@axiom/core'
-import type { AgentCore, ResponseChunk, RetryInfo, StallInfo, TurnEvent } from '@axiom/core'
+import type { AgentCore, ResponseChunk, RetryInfo, StallInfo, TurnErrorInfo, TurnEvent } from '@axiom/core'
 import {
   TaskStore,
   ScheduledTaskStore,
@@ -45,6 +45,12 @@ interface ChatResponse {
    * the existing bubble in place instead of appending a second one.
    */
   stall?: StallInfo
+  /**
+   * Terminal-error details (for `error`). Present whenever the failure was
+   * persisted as a chat row: it carries that row's id plus the machine-readable
+   * cause, so the client renders the same error bubble live and after a reload.
+   */
+  errorInfo?: TurnErrorInfo
   /**
    * Interactive message with action buttons (e.g. an email waiting for
    * approval). Buttons are answered via `POST /api/chat/actions/:messageId`;
@@ -518,6 +524,7 @@ export function setupWebSocketChat(
             toolResult: event.toolResult,
             toolIsError: event.toolIsError,
             error: event.error,
+            errorInfo: event.errorInfo,
             stall: event.stall,
             retry: event.retry,
             telegramDelivered: event.telegramDelivered,
@@ -592,6 +599,7 @@ function chunkToResponse(chunk: ResponseChunk): ChatResponse {
     toolResult: chunk.toolResult,
     toolIsError: chunk.toolIsError,
     error: chunk.error,
+    errorInfo: chunk.errorInfo,
     stall: chunk.stall,
     retry: chunk.retry,
   }

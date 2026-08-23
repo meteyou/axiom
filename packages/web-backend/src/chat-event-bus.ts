@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events'
-import type { RetryInfo, StallInfo, UploadDescriptor } from '@axiom/core'
+import type { RetryInfo, StallInfo, TurnErrorInfo, UploadDescriptor } from '@axiom/core'
 import type { ChatActionMessage } from './chat-actions.js'
 
 /**
@@ -33,6 +33,8 @@ export interface ChatEvent {
   toolIsError?: boolean
   /** Error description */
   error?: string
+  /** Terminal-error details of a persisted error row (for `error`) */
+  errorInfo?: TurnErrorInfo
   /** Provider-stall details (for `stall_warning` / `stall_resolved`) */
   stall?: StallInfo
   /** Auto-retry details (for `retry_scheduled`) */
