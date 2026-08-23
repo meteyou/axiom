@@ -29,7 +29,7 @@ import {
   TaskStore,
   ScheduledTaskStore,
 } from '@axiom/core'
-import type { UploadDescriptor } from '@axiom/core'
+import type { StallInfo, UploadDescriptor } from '@axiom/core'
 import {
   EMAIL_APPROVAL_CALLBACK_PREFIX,
   buildEmailApprovalCallbackData,
@@ -68,7 +68,7 @@ export interface TelegramConfig {
  * Chat event emitted by the Telegram bot for cross-channel sync.
  */
 export interface TelegramChatEvent {
-  type: 'user_message' | 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'done' | 'error' | 'attachment'
+  type: 'user_message' | 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'done' | 'error' | 'attachment' | 'stall_warning' | 'stall_resolved'
   /** Axiom user ID (integer) — only set for linked users */
   userId: number | null
   /** Session ID used for chat_messages */
@@ -87,6 +87,8 @@ export interface TelegramChatEvent {
   toolResult?: unknown
   /** Whether the tool call errored */
   toolIsError?: boolean
+  /** Provider-stall details (for `stall_warning` / `stall_resolved`) */
+  stall?: StallInfo
   /** Display name of the sender */
   senderName?: string
   /** Uploaded file attached to the current assistant turn (for type='attachment') */
