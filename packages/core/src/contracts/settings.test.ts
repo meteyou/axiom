@@ -33,6 +33,24 @@ describe('settings contracts', () => {
       .toBe(DEFAULT_SETTINGS_CONTRACT.tasks.loopDetection.method)
   })
 
+  it('defaults watchdog, retry and the telegram stall toggle, and keeps overrides', () => {
+    const defaults = normalizeSettingsContract({})
+
+    expect(defaults.watchdog).toEqual({ stallWarnMs: 30_000, stallAbortMs: 90_000 })
+    expect(defaults.retry).toEqual({ enabled: true, maxRetries: 3, baseDelayMs: 2_000 })
+    expect(defaults.telegram.sendStallWarnings).toBe(false)
+
+    const overridden = normalizeSettingsContract({
+      watchdog: { stallWarnMs: 5_000 },
+      retry: { enabled: false, maxRetries: 0 },
+      telegram: { sendStallWarnings: true },
+    })
+
+    expect(overridden.watchdog).toEqual({ stallWarnMs: 5_000, stallAbortMs: 90_000 })
+    expect(overridden.retry).toEqual({ enabled: false, maxRetries: 0, baseDelayMs: 2_000 })
+    expect(overridden.telegram.sendStallWarnings).toBe(true)
+  })
+
   it('accepts legacy healthMonitor.intervalMinutes payloads', () => {
     const payload = withLegacySettingsPayloadCompatibility({
       language: 'en',
