@@ -757,7 +757,10 @@ const isNearBottom = ref(true)
 const SCROLL_THRESHOLD = 120
 function onMessagesScroll() { const el = messagesContainer.value; if (!el) return; isNearBottom.value = el.scrollHeight - el.scrollTop - el.clientHeight <= SCROLL_THRESHOLD }
 function jumpToBottom() { isNearBottom.value = true; nextTick(() => scrollToBottom()) }
-onMounted(async () => { connect(); await Promise.all([loadHistory(), fetchTtsSettings(), fetchSttSettings(), loadThinkingLevel()]) })
+// History must be in place before the socket opens: connecting attaches to a
+// still-running turn and replays it, and a later history load would wipe that
+// replayed tail.
+onMounted(async () => { await loadHistory(); connect(); await Promise.all([fetchTtsSettings(), fetchSttSettings(), loadThinkingLevel()]) })
 onUnmounted(() => { disconnect(); ttsStop(); sttCleanup() })
 watch(() => messages.value.length, () => {
   if (isNearBottom.value) nextTick(() => scrollToBottom())
