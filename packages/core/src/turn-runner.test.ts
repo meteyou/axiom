@@ -1,8 +1,13 @@
-import { describe, it, expect, vi } from 'vitest'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { initDatabase } from './database.js'
 import { TurnRunner } from './turn-runner.js'
 import type { TurnAgentLike, TurnEvent } from './turn-runner.js'
 import type { ResponseChunk } from './agent-runtime-types.js'
+import { PROVIDER_STALL_KIND } from './provider-stall.js'
+import type { ProviderStallMetadata } from './provider-stall.js'
 import type { Database } from './database.js'
 
 const SESSION_ID = 'session-turn-runner'
@@ -18,6 +23,37 @@ function rows(db: Database): ChatRow[] {
   return db.prepare(
     'SELECT role, content, metadata FROM chat_messages WHERE session_id = ? ORDER BY id'
   ).all(SESSION_ID) as ChatRow[]
+}
+
+interface StallRow {
+  id: number
+  content: string
+  metadata: ProviderStallMetadata
+}
+
+function stallRows(db: Database): StallRow[] {
+  const all = db.prepare(
+    'SELECT id, role, content, metadata FROM chat_messages WHERE session_id = ? ORDER BY id'
+  ).all(SESSION_ID) as Array<{ id: number; role: string; content: string; metadata: string | null }>
+
+  return all
+    .map(r => ({ id: r.id, content: r.content, metadata: JSON.parse(r.metadata ?? '{}') as ProviderStallMetadata }))
+    .filter(r => r.metadata.kind === PROVIDER_STALL_KIND)
+}
+
+function stallChunks(events: TurnEvent[]): ResponseChunk[] {
+  return events
+    .filter(e => e.type === 'chunk')
+    .map(e => (e as { chunk: ResponseChunk }).chunk)
+    .filter(c => c.type === 'stall_warning' || c.type === 'stall_resolved')
+}
+
+/** Points config lookups at an isolated `settings.json` for the test. */
+function useSettingsFile(settings: Record<string, unknown>): void {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'axiom-turn-runner-'))
+  fs.mkdirSync(path.join(dir, 'config'), { recursive: true })
+  fs.writeFileSync(path.join(dir, 'config', 'settings.json'), JSON.stringify(settings), 'utf-8')
+  process.env.DATA_DIR = dir
 }
 
 function freshDb(): Database {
@@ -351,27 +387,133 @@ describe('TurnRunner', () => {
     expect(rows(db).map(r => r.content)).toEqual(['one', 'two'])
   })
 
-  it('emits a stall warning and then aborts when the provider goes silent', async () => {
-    const db = freshDb()
-    const { agent } = controllableAgent()
-    const runner = startRunner(db, agent, {
-      stallWarnMs: 20,
-      stallAbortMs: 60,
-      watchdogIntervalMs: 5,
+
+  describe('stall watchdog', () => {
+    const originalDataDir = process.env.DATA_DIR
+
+    afterEach(() => {
+      vi.useRealTimers()
+      if (originalDataDir === undefined) delete process.env.DATA_DIR
+      else process.env.DATA_DIR = originalDataDir
     })
 
-    const events: TurnEvent[] = []
-    runner.subscribe(USER_ID, collect(events))
-    runner.startTurn({ userId: USER_ID, sessionId: SESSION_ID, text: 'hi' })
+    it('warns, persists a provider_stall row and resolves it in place when the provider recovers', async () => {
+      vi.useFakeTimers()
+      const db = freshDb()
+      const { agent, push, finish } = controllableAgent()
+      const runner = startRunner(db, agent, {
+        stallWarnMs: 30_000,
+        stallAbortMs: 90_000,
+        watchdogIntervalMs: 1_000,
+      })
 
-    await waitFor(() => events.some(e => e.type === 'system'), 2000)
-    const warning = events.find(e => e.type === 'system') as { text: string }
-    expect(warning.text).toContain('Provider has not responded')
+      const events: TurnEvent[] = []
+      runner.subscribe(USER_ID, collect(events))
+      runner.startTurn({ userId: USER_ID, sessionId: SESSION_ID, text: 'hi' })
+      await vi.advanceTimersByTimeAsync(0)
 
-    await waitFor(() => !runner.hasActiveTurn(USER_ID), 2000)
-    const errorChunk = events.find(e => e.type === 'chunk' && e.chunk.type === 'error') as { chunk: ResponseChunk }
-    expect(errorChunk.chunk.error).toContain('Provider stopped responding')
-    expect(agent.abort).toHaveBeenCalled()
+      // Nothing yet — the provider is merely slow, not stalled.
+      await vi.advanceTimersByTimeAsync(29_000)
+      expect(stallChunks(events)).toEqual([])
+
+      await vi.advanceTimersByTimeAsync(2_000)
+      const [warning] = stallChunks(events)
+      expect(warning?.type).toBe('stall_warning')
+
+      const persistedOnWarn = stallRows(db)
+      expect(persistedOnWarn).toHaveLength(1)
+      expect(persistedOnWarn[0]!.content).toContain('Provider has not responded')
+      expect(persistedOnWarn[0]!.metadata.outcome).toBeNull()
+      expect(persistedOnWarn[0]!.metadata.resolvedAt).toBeNull()
+      expect(persistedOnWarn[0]!.metadata.durationMs).toBeGreaterThanOrEqual(30_000)
+      // The row id travels on the chunk so live clients can update in place.
+      expect(warning!.stall!.messageId).toBe(persistedOnWarn[0]!.id)
+
+      push({ type: 'text', text: 'back' })
+      await vi.advanceTimersByTimeAsync(1)
+
+      const [, resolved] = stallChunks(events)
+      expect(resolved?.type).toBe('stall_resolved')
+      expect(resolved!.stall).toMatchObject({
+        messageId: persistedOnWarn[0]!.id,
+        startedAt: warning!.stall!.startedAt,
+        outcome: 'recovered',
+      })
+      expect(resolved!.stall!.resolvedAt).toBeDefined()
+
+      // Updated, not duplicated and not deleted.
+      const persistedOnResolve = stallRows(db)
+      expect(persistedOnResolve).toHaveLength(1)
+      expect(persistedOnResolve[0]!.id).toBe(persistedOnWarn[0]!.id)
+      expect(persistedOnResolve[0]!.metadata.outcome).toBe('recovered')
+      expect(persistedOnResolve[0]!.metadata.durationMs).toBeGreaterThanOrEqual(31_000)
+      expect(persistedOnResolve[0]!.content).toContain('Provider recovered')
+
+      push({ type: 'done' })
+      finish()
+      await vi.advanceTimersByTimeAsync(1)
+      expect(runner.hasActiveTurn(USER_ID)).toBe(false)
+    })
+
+    it('finalizes the stall row as aborted when the abort threshold is reached', async () => {
+      vi.useFakeTimers()
+      const db = freshDb()
+      const { agent } = controllableAgent()
+      const runner = startRunner(db, agent, {
+        stallWarnMs: 30_000,
+        stallAbortMs: 90_000,
+        watchdogIntervalMs: 1_000,
+      })
+
+      const events: TurnEvent[] = []
+      runner.subscribe(USER_ID, collect(events))
+      runner.startTurn({ userId: USER_ID, sessionId: SESSION_ID, text: 'hi' })
+      await vi.advanceTimersByTimeAsync(0)
+
+      await vi.advanceTimersByTimeAsync(31_000)
+      expect(stallChunks(events).map(c => c.type)).toEqual(['stall_warning'])
+
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(chunkTypes(events)).toEqual(['stall_warning', 'stall_resolved', 'error', 'done'])
+
+      const [, resolved] = stallChunks(events)
+      expect(resolved!.stall!.outcome).toBe('aborted')
+      expect(resolved!.stall!.durationMs).toBeGreaterThanOrEqual(90_000)
+
+      const errorChunk = events.find(e => e.type === 'chunk' && e.chunk.type === 'error') as { chunk: ResponseChunk }
+      expect(errorChunk.chunk.error).toContain('Provider stopped responding')
+      expect(agent.abort).toHaveBeenCalled()
+
+      const persisted = stallRows(db)
+      expect(persisted).toHaveLength(1)
+      expect(persisted[0]!.metadata.outcome).toBe('aborted')
+      expect(persisted[0]!.metadata.resolvedAt).not.toBeNull()
+      expect(persisted[0]!.content).toContain('Provider stopped responding')
+    })
+
+    it('takes warn/abort thresholds from the settings file when not overridden', async () => {
+      useSettingsFile({ watchdog: { stallWarnMs: 5_000, stallAbortMs: 12_000 } })
+      vi.useFakeTimers()
+
+      const db = freshDb()
+      const { agent } = controllableAgent()
+      const runner = startRunner(db, agent, { watchdogIntervalMs: 1_000 })
+
+      const events: TurnEvent[] = []
+      runner.subscribe(USER_ID, collect(events))
+      runner.startTurn({ userId: USER_ID, sessionId: SESSION_ID, text: 'hi' })
+      await vi.advanceTimersByTimeAsync(0)
+
+      await vi.advanceTimersByTimeAsync(4_000)
+      expect(stallChunks(events)).toEqual([])
+
+      await vi.advanceTimersByTimeAsync(2_000)
+      expect(stallChunks(events).map(c => c.type)).toEqual(['stall_warning'])
+
+      await vi.advanceTimersByTimeAsync(7_000)
+      expect(stallChunks(events).map(c => c.type)).toEqual(['stall_warning', 'stall_resolved'])
+      expect(stallRows(db)[0]!.metadata.outcome).toBe('aborted')
+    })
   })
 
   it('surfaces a missing agent as an error instead of hanging', async () => {
