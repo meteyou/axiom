@@ -281,6 +281,12 @@ export type {
   TurnRetryServiceDeps,
 } from './turn-retry-action.js'
 export {
+  registerTurnRetryNotifier,
+  clearTurnRetryNotifiers,
+  notifyTurnRetryResolved,
+} from './turn-retry-notifier.js'
+export type { TurnRetryNotifier, TurnRetryResolution } from './turn-retry-notifier.js'
+export {
   DEFAULT_RETRY_POLICY,
   DEFAULT_RETRY_ENABLED,
   DEFAULT_RETRY_MAX_RETRIES,
