@@ -85,3 +85,42 @@ How many days uploaded files in `/data/uploads/` are kept before the cleanup job
 ```
 
 > The cleanup job also prunes the referencing rows in the database so stale upload metadata doesn't linger after the files are gone.
+
+## Resilience
+
+How the agent reacts when a provider misbehaves mid-turn. All five fields are read at the **start of every turn**, so a save applies to the next message — no restart needed.
+
+### Automatic retry
+
+When a turn fails with a transient provider error (429, 5xx, timeout, dropped stream, or a watchdog stall abort), Axiom discards the failed attempt and re-runs the turn from the existing transcript — the user message is never sent twice. Errors the provider won't recover from on its own (invalid API key, quota, billing) fail immediately, and a turn you stop yourself is never retried.
+
+| Field                 | Default | Range              | Effect                                                                       |
+|-----------------------|---------|--------------------|------------------------------------------------------------------------------|
+| **Automatic retry**   | on      | —                  | Master switch. Off means every provider error ends the turn immediately.     |
+| **Maximum retries**   | `3`     | `0` – `10`         | Retry budget per turn. `0` behaves like the switch being off.                |
+| **Base delay**        | `2000` ms | `100` – `60000` ms | Backoff base; attempt *n* waits `base × 2^(n-1)` — with the defaults 2s / 4s / 8s. |
+
+While a retry is pending the chat shows a `Retrying (n/max)…` status. Once the budget is exhausted, the turn ends with a persisted error message containing the provider's error text.
+
+```json
+{
+  "retry": { "enabled": true, "maxRetries": 3, "baseDelayMs": 2000 }
+}
+```
+
+### Stall thresholds
+
+The watchdog measures how long a turn goes without a single chunk from the provider. At the warn threshold a `provider_stall` message is written to the chat (it survives a reload and is updated in place when the provider recovers); at the abort threshold the stream is hard-aborted, which counts as a retryable error.
+
+| Field                       | Default   | Range                                        |
+|-----------------------------|-----------|-----------------------------------------------|
+| **Stall warning threshold** | `30000` ms | `1000` – `600000` ms                          |
+| **Stall abort threshold**   | `90000` ms | `1000` – `3600000` ms, must be ≥ the warning threshold |
+
+```json
+{
+  "watchdog": { "stallWarnMs": 30000, "stallAbortMs": 90000 }
+}
+```
+
+Stall frequency and average duration (split by recovered vs. aborted) are aggregated on the [Token Usage](../web-ui/token-usage) page. Telegram delivery of the warning is opt-in — see [Telegram → Send stall warnings](./telegram#send-stall-warnings).

@@ -55,6 +55,16 @@ Failures are non-fatal: if synthesis or upload fails, the text reply is still de
 { "sendVoiceReply": false }
 ```
 
+## Send stall warnings
+
+When the provider stops sending data mid-turn, Axiom writes a stall warning into the chat (see [Agent → Resilience](./agent#resilience)). This toggle controls whether that warning is also pushed to the Telegram chat.
+
+Default: **off** — short provider hiccups usually resolve themselves and would otherwise show up as noise in Telegram. Terminal error messages and the retry button are always delivered, regardless of this toggle.
+
+```json [/data/config/telegram.json]
+{ "sendStallWarnings": false }
+```
+
 ## Telegram users
 
 The user directory. Every Telegram account that has ever `/start`ed the bot shows up here with one of three statuses:

@@ -44,8 +44,8 @@ The on-disk shape is a **superset** of [`SettingsContract`](https://github.com/)
 | `thinkingLevel`                    | `"off" \| "minimal" \| "low" \| "medium" \| "high" \| "xhigh"`    | `"off"`        | enum                                    | Reasoning effort for the chat agent — see [Agent → Thinking level](../settings/agent#thinking-level).             |
 | `healthMonitorIntervalMinutes`     | `number`                                                          | `5`            | `> 0`                                   | Health-check frequency — see [Health Monitor → Interval](../settings/health-monitor#health-check-interval).       |
 | `uploads`                          | object                                                            | see below      | nested                                  | Upload retention policy.                                                                                          |
-| `watchdog`                         | object                                                            | see below      | not validated by API                    | Provider-stall thresholds for chat turns.                                                                         |
-| `retry`                            | object                                                            | see below      | not validated by API                    | Automatic retry of chat turns that hit transient provider errors.                                                 |
+| `watchdog`                         | object                                                            | see below      | nested                                  | Provider-stall thresholds for chat turns.                                                                         |
+| `retry`                            | object                                                            | see below      | nested                                  | Automatic retry of chat turns that hit transient provider errors.                                                 |
 | `healthMonitor`                    | object                                                            | see below      | nested                                  | Provider health checks + fallback.                                                                                |
 | `memoryConsolidation`              | object                                                            | see below      | nested                                  | Nightly memory job.                                                                                               |
 | `factExtraction`                   | object                                                            | see below      | nested                                  | Per-session fact extraction.                                                                                      |
@@ -77,14 +77,14 @@ Axiom reacts. The warning is a persisted chat message (`provider_stall`) that is
 updated in place when the provider recovers or the turn is aborted, so it
 survives a page reload.
 
-Config-file only for now — there is no Settings UI panel yet. Values are read at
-the start of every turn, so a save takes effect on the next message without a
+Edited under [Agent → Resilience](../settings/agent#resilience). Values are read
+at the start of every turn, so a save takes effect on the next message without a
 restart.
 
-| Key                     | Type     | Default | Range | Effect                                                                     |
-|-------------------------|----------|---------|-------|----------------------------------------------------------------------------|
-| `watchdog.stallWarnMs`  | `number` | `30000` | `> 0` | Silence before a stall warning is emitted and persisted.                   |
-| `watchdog.stallAbortMs` | `number` | `90000` | `> 0` | Silence before the stream is hard-aborted; the stall row ends as `aborted`. |
+| Key                     | Type     | Default | Range                                       | Effect                                                                     |
+|-------------------------|----------|---------|---------------------------------------------|----------------------------------------------------------------------------|
+| `watchdog.stallWarnMs`  | `number` | `30000` | integer `1000`–`600000`                     | Silence before a stall warning is emitted and persisted.                   |
+| `watchdog.stallAbortMs` | `number` | `90000` | integer `1000`–`3600000`, `>= stallWarnMs`  | Silence before the stream is hard-aborted; the stall row ends as `aborted`. |
 
 ```json
 { "watchdog": { "stallWarnMs": 30000, "stallAbortMs": 90000 } }
@@ -115,15 +115,15 @@ limit — is written to the chat as a persisted error message containing the ful
 provider error text, so a failed turn stays visible after a page reload instead
 of leaving the chat silently unanswered.
 
-Config-file only for now — there is no Settings UI panel yet. Values are read at
-the start of every turn, so a save takes effect on the next message without a
+Edited under [Agent → Resilience](../settings/agent#resilience). Values are read
+at the start of every turn, so a save takes effect on the next message without a
 restart.
 
-| Key                 | Type      | Default | Range  | Effect                                                                      |
-|---------------------|-----------|---------|--------|-----------------------------------------------------------------------------|
-| `retry.enabled`     | `boolean` | `true`  | —      | Master switch for automatic retries.                                        |
-| `retry.maxRetries`  | `number`  | `3`     | `>= 0` | Retry budget per turn (`0` disables retries without turning the block off). |
-| `retry.baseDelayMs` | `number`  | `2000`  | `> 0`  | Base backoff; attempt *n* waits `baseDelayMs * 2^(n-1)` — 2s / 4s / 8s.     |
+| Key                 | Type      | Default | Range                    | Effect                                                                      |
+|---------------------|-----------|---------|--------------------------|-----------------------------------------------------------------------------|
+| `retry.enabled`     | `boolean` | `true`  | —                        | Master switch for automatic retries.                                        |
+| `retry.maxRetries`  | `number`  | `3`     | integer `0`–`10`         | Retry budget per turn (`0` disables retries without turning the block off). |
+| `retry.baseDelayMs` | `number`  | `2000`  | integer `100`–`60000`    | Base backoff; attempt *n* waits `baseDelayMs * 2^(n-1)` — 2s / 4s / 8s.     |
 
 ```json
 { "retry": { "enabled": true, "maxRetries": 3, "baseDelayMs": 2000 } }
@@ -373,6 +373,7 @@ Stored separately from `settings.json` (the Settings UI groups it under the [Tel
 | `botToken`           | `string`    | `""`           | string (plain)   | [Telegram → Bot token](../settings/telegram#bot-token) — **stored in plain text**  |
 | `batchingDelayMs`    | `number`    | `2500`         | `>= 0`           | [Telegram → Batching delay](../settings/telegram#batching-delay)                   |
 | `sendVoiceReply`     | `boolean`   | `false`        | bool             | [Telegram → Send voice reply](../settings/telegram#send-voice-reply) — synthesise the agent's reply via the configured TTS provider and upload it as a Telegram voice message in addition to the text reply. |
+| `sendStallWarnings`  | `boolean`   | `false`        | bool             | [Telegram → Send stall warnings](../settings/telegram#send-stall-warnings) — push provider-stall warnings to Telegram. Off by default; terminal errors are always delivered. |
 | `adminUserIds`       | `number[]`  | `[]`           | not exposed via UI | Numeric Telegram IDs that receive [Health Monitor notifications](../settings/health-monitor#notifications). Edit by hand. |
 | `pollingMode`        | `boolean`   | `true`         | not exposed via UI | `true` = long-poll (default). `false` = expect `webhookUrl` to be set.            |
 | `webhookUrl`         | `string`    | `""`           | not exposed via UI | Public HTTPS URL for webhook mode. Ignored when `pollingMode: true`.              |
@@ -387,7 +388,8 @@ Stored separately from `settings.json` (the Settings UI groups it under the [Tel
   "pollingMode": true,
   "webhookUrl": "",
   "batchingDelayMs": 2500,
-  "sendVoiceReply": false
+  "sendVoiceReply": false,
+  "sendStallWarnings": false
 }
 ```
 
