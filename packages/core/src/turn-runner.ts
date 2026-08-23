@@ -1,6 +1,13 @@
 import { randomUUID } from 'node:crypto'
 import type { Database } from './database.js'
-import type { ResponseChunk, RetryInfo, StallInfo, StallOutcome } from './agent-runtime-types.js'
+import type {
+  ResponseChunk,
+  RetryInfo,
+  StallInfo,
+  StallOutcome,
+  TurnErrorInfo,
+} from './agent-runtime-types.js'
+import { buildTurnErrorMetadata, formatTurnErrorContent } from './turn-error.js'
 import type { UploadDescriptor } from './uploads.js'
 import { serializeUploadsMetadata } from './uploads.js'
 import { extractUploadsFromToolResult } from './send-file-tool.js'
@@ -125,7 +132,7 @@ interface TurnState {
 type AttemptResult =
   | { status: 'completed' }
   | { status: 'aborted' }
-  | { status: 'failed'; error: string; willRetry: boolean }
+  | { status: 'failed'; error: string; retryable: boolean; willRetry: boolean }
 
 const DEFAULT_WATCHDOG_INTERVAL_MS = 5_000
 const DEFAULT_COMPLETED_TURN_RETENTION_MS = 60_000
@@ -357,7 +364,12 @@ export class TurnRunner {
 
     const agent = this.getAgent()
     if (!agent) {
-      this.emitChunk(turn, { type: 'error', error: 'Agent core not available' })
+      this.failTurn(turn, {
+        cause: 'agent_unavailable',
+        error: 'Agent core not available',
+        attempts: 0,
+        retryable: true,
+      })
       this.emitChunk(turn, { type: 'done' })
       this.finishTurn(turn)
       return
@@ -375,7 +387,12 @@ export class TurnRunner {
       if (result.status !== 'failed') break
 
       if (!result.willRetry) {
-        this.emitChunk(turn, { type: 'error', error: result.error })
+        this.failTurn(turn, {
+          cause: result.retryable ? 'retry_exhausted' : 'non_retryable',
+          error: result.error,
+          attempts: attempt,
+          retryable: result.retryable,
+        })
         break
       }
 
@@ -489,7 +506,45 @@ export class TurnRunner {
     if (willRetry) transcript.discard()
     else this.commitTranscript(transcript)
 
-    return { status: 'failed', error: failure.error, willRetry }
+    return { status: 'failed', error: failure.error, retryable: failure.retryable, willRetry }
+  }
+
+  /**
+   * End the turn with a durable error row plus the matching `error` chunk.
+   * Persisting is what turns the old "nothing happens" failure modes (expired
+   * key, failed OAuth refresh, exhausted retries) into a message that is still
+   * there after a reload; the chunk carries the same text and the row id so
+   * live rendering and history agree.
+   */
+  private failTurn(turn: TurnState, failure: Omit<TurnErrorInfo, 'messageId' | 'occurredAt'>): void {
+    const info: TurnErrorInfo = { ...failure, occurredAt: new Date().toISOString() }
+    const content = formatTurnErrorContent(info)
+
+    let messageId: number | null = null
+    try {
+      messageId = saveChatMessage(
+        this.db,
+        turn.sessionId,
+        turn.userId,
+        'system',
+        content,
+        JSON.stringify(buildTurnErrorMetadata(info)),
+      )
+    } catch (err) {
+      console.error('[turn-runner] Failed to persist terminal error:', err)
+    }
+
+    console.error(
+      `[turn-runner] Turn failed (user=${turn.userId}, session=${turn.sessionId}, `
+      + `cause=${info.cause}, attempts=${info.attempts}): ${info.error}`,
+    )
+
+    this.emitChunk(turn, {
+      type: 'error',
+      error: info.error,
+      text: content,
+      errorInfo: { ...info, messageId: messageId ?? undefined },
+    })
   }
 
   /**

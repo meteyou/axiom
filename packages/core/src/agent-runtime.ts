@@ -903,6 +903,17 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
             estimatedCost: finalCost,
             sessionId,
           })
+
+          // pi-agent-core does not throw when the provider answers with an
+          // error (expired key, failed OAuth refresh, quota): it ends the run
+          // with this message and `agent_end`. Without surfacing it here the
+          // turn would finish silently and the user would see nothing at all.
+          if (assistantMsg.stopReason === 'error') {
+            chunks.push({
+              type: 'error',
+              error: assistantMsg.errorMessage || 'Unknown provider error',
+            })
+          }
         }
         break
       }

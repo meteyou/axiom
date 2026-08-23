@@ -37,6 +37,37 @@ export interface RetryInfo {
   error: string
 }
 
+export const TURN_ERROR_CAUSES = ['non_retryable', 'retry_exhausted', 'agent_unavailable'] as const
+
+/**
+ * Why a turn ended terminally:
+ * - `non_retryable`: the provider error is deterministic (auth, quota, billing)
+ * - `retry_exhausted`: transient error, but the retry budget ran out (or
+ *   auto-retry is disabled)
+ * - `agent_unavailable`: no agent runtime was available to run the turn
+ */
+export type TurnErrorCause = (typeof TURN_ERROR_CAUSES)[number]
+
+/**
+ * Machine-readable payload of a terminal `error` chunk and of the `turn_error`
+ * chat row it persists. `messageId` identifies the persisted row, which is what
+ * lets a channel match the live bubble to the one rebuilt from history (and,
+ * later, hang a manual-retry action off it).
+ */
+export interface TurnErrorInfo {
+  /** `chat_messages` row id of the persisted error notice, when persisted. */
+  messageId?: number
+  cause: TurnErrorCause
+  /** Full provider error text, verbatim. */
+  error: string
+  /** Retries spent before giving up (0 when the turn failed fast). */
+  attempts: number
+  /** Whether the provider error was classified as transient. */
+  retryable: boolean
+  /** ISO timestamp of the moment the turn failed. */
+  occurredAt: string
+}
+
 export interface ResponseChunk {
   type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'stall_warning' | 'stall_resolved' | 'retry_scheduled'
   text?: string
@@ -62,6 +93,8 @@ export interface ResponseChunk {
   stall?: StallInfo
   /** Retry details (for `type: 'retry_scheduled'`). */
   retry?: RetryInfo
+  /** Terminal-error details (for `type: 'error'`), when the turn persisted one. */
+  errorInfo?: TurnErrorInfo
 }
 
 export interface AgentRuntimeStateSnapshot {
