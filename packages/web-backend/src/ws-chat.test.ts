@@ -10,6 +10,7 @@ import { createApp } from './app.js'
 import { generateAccessToken } from './auth.js'
 import { setupWebSocketChat } from './ws-chat.js'
 import { ChatEventBus } from './chat-event-bus.js'
+import { ChatActionRegistry } from './chat-actions.js'
 
 interface BufferedWs {
   ws: WebSocket
@@ -947,6 +948,88 @@ describe('setupWebSocketChat kill switch', () => {
       expect((replayedError.errorInfo as { messageId: number }).messageId).toBe(errorInfo.messageId)
 
       second.ws.close()
+    } finally {
+      for (const client of wss.clients) {
+        client.terminate()
+      }
+      wss.close()
+      await new Promise<void>((resolve, reject) =>
+        server.close((err) => (err ? reject(err) : resolve()))
+      )
+    }
+  })
+
+  it('re-runs a failed turn through the Retry button without re-sending the user message', async () => {
+    const db = initDatabase(':memory:')
+    const sessionId = 'session-manual-retry'
+
+    const mockSessionManager = {
+      getOrCreateSession: vi.fn(() => ({ id: sessionId, userId: '1', source: 'web', startedAt: Date.now(), lastActivity: Date.now(), messageCount: 0, summaryWritten: false, restored: false })),
+    }
+
+    const agentCore = {
+      sendMessage: vi.fn(async function* (): AsyncGenerator<ResponseChunk> {
+        yield { type: 'error', error: '401 invalid x-api-key' }
+      }),
+      retryTurn: vi.fn(async function* (): AsyncGenerator<ResponseChunk> {
+        yield { type: 'text', text: 'Recovered.' }
+        yield { type: 'done' }
+      }),
+      abort: vi.fn(),
+      resetSession: vi.fn(),
+      getSessionManager: vi.fn(() => mockSessionManager),
+    } as unknown as AgentCore
+
+    const resolutions: string[] = []
+    const chatActions = new ChatActionRegistry({
+      publishToClients: event => resolutions.push(event.message.resolution ?? ''),
+    })
+
+    const app = createApp({ db, chatActions })
+    // The retry checks the session is still open, so it needs a real row
+    // (`createApp` seeded the admin user this session belongs to).
+    db.prepare(
+      'INSERT INTO sessions (id, user_id, source, type) VALUES (?, ?, ?, ?)'
+    ).run(sessionId, 1, 'web', 'interactive')
+    const server = http.createServer(app)
+    const { wss } = setupWebSocketChat(server, db, agentCore, undefined, undefined, chatActions)
+
+    await new Promise<void>((resolve) => server.listen(0, resolve))
+    const port = (server.address() as { port: number }).port
+    const token = generateAccessToken({ userId: 1, username: 'admin', role: 'admin' })
+
+    try {
+      const { ws, waitForMessage } = await connectWs(port, token)
+      await waitForMessage() // authenticated
+      ws.send(JSON.stringify({ type: 'message', content: 'summarize my inbox' }))
+
+      const error = await waitForMessage()
+      const errorInfo = error.errorInfo as { messageId: number; retryActionId: string }
+      expect(errorInfo.retryActionId).toMatch(/^turn-retry-/)
+      expect((await waitForMessage()).type).toBe('done')
+
+      const res = await fetch(`http://127.0.0.1:${port}/api/chat/actions/${errorInfo.retryActionId}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actionId: 'retry' }),
+      })
+      expect(res.status).toBe(200)
+      expect(resolutions).toHaveLength(1)
+
+      // The retried turn streams to the still-connected client like any other.
+      const text = await waitForMessage()
+      expect(text).toMatchObject({ type: 'text', text: 'Recovered.' })
+      expect((await waitForMessage()).type).toBe('done')
+
+      // Continue-style: the transcript keeps exactly one user message.
+      expect(agentCore.sendMessage).toHaveBeenCalledTimes(1)
+      const rows = db.prepare(
+        'SELECT role, content FROM chat_messages WHERE session_id = ? ORDER BY id'
+      ).all(sessionId) as { role: string; content: string }[]
+      expect(rows.filter(r => r.role === 'user')).toEqual([{ role: 'user', content: 'summarize my inbox' }])
+      expect(rows[rows.length - 1]).toEqual({ role: 'assistant', content: 'Recovered.' })
+
+      ws.close()
     } finally {
       for (const client of wss.clients) {
         client.terminate()
