@@ -99,6 +99,56 @@ function scriptedAgent(chunks: ResponseChunk[]): TurnAgentLike {
   }
 }
 
+/**
+ * An agent that plays a different script per attempt (the last script repeats),
+ * so retry behavior can be driven without timing games.
+ */
+function sequenceAgent(scripts: ResponseChunk[][]) {
+  const calls: string[] = []
+  const agent: TurnAgentLike = {
+    sendMessage: async function* (): AsyncGenerator<ResponseChunk> {
+      const script = scripts[Math.min(calls.length, scripts.length - 1)]!
+      calls.push('sendMessage')
+      for (const chunk of script) yield chunk
+    },
+    retryTurn: async function* (): AsyncGenerator<ResponseChunk> {
+      const script = scripts[Math.min(calls.length, scripts.length - 1)]!
+      calls.push('retryTurn')
+      for (const chunk of script) yield chunk
+    },
+    abort: vi.fn(),
+  }
+  return { agent, calls }
+}
+
+/** First attempt hangs until aborted, later attempts play `followUp`. */
+function stallingThenAnsweringAgent(followUp: ResponseChunk[]) {
+  let attempts = 0
+  let release: (() => void) | null = null
+  const stream = async function* (): AsyncGenerator<ResponseChunk> {
+    attempts++
+    if (attempts === 1) {
+      await new Promise<void>((resolve) => { release = resolve })
+      return
+    }
+    for (const chunk of followUp) yield chunk
+  }
+
+  const agent: TurnAgentLike = {
+    sendMessage: stream,
+    retryTurn: stream,
+    abort: vi.fn(() => { release?.() }),
+  }
+  return { agent, attempts: () => attempts }
+}
+
+function retryChunks(events: TurnEvent[]): ResponseChunk[] {
+  return events
+    .filter(e => e.type === 'chunk')
+    .map(e => (e as { chunk: ResponseChunk }).chunk)
+    .filter(c => c.type === 'retry_scheduled')
+}
+
 function collect(events: TurnEvent[]) {
   return (event: TurnEvent) => { events.push(event) }
 }
@@ -463,6 +513,8 @@ describe('TurnRunner', () => {
         stallWarnMs: 30_000,
         stallAbortMs: 90_000,
         watchdogIntervalMs: 1_000,
+        // Retry behavior of a stall abort has its own test below.
+        retryPolicy: { enabled: false },
       })
 
       const events: TurnEvent[] = []
@@ -513,6 +565,253 @@ describe('TurnRunner', () => {
       await vi.advanceTimersByTimeAsync(7_000)
       expect(stallChunks(events).map(c => c.type)).toEqual(['stall_warning', 'stall_resolved'])
       expect(stallRows(db)[0]!.metadata.outcome).toBe('aborted')
+    })
+  })
+
+  describe('auto-retry', () => {
+    const originalDataDir = process.env.DATA_DIR
+
+    afterEach(() => {
+      vi.useRealTimers()
+      if (originalDataDir === undefined) delete process.env.DATA_DIR
+      else process.env.DATA_DIR = originalDataDir
+    })
+
+    it('restarts the turn on transient errors with 2s/4s backoff and discards the failed attempts', async () => {
+      vi.useFakeTimers()
+      const db = freshDb()
+      const { agent, calls } = sequenceAgent([
+        [{ type: 'text', text: 'half an answer' }, { type: 'error', error: '429 Too Many Requests' }, { type: 'done' }],
+        [{ type: 'thinking', thinking: 'second try' }, { type: 'error', error: '503 Service Unavailable' }, { type: 'done' }],
+        [{ type: 'text', text: 'Finally.' }, { type: 'done' }],
+      ])
+      const runner = startRunner(db, agent, {
+        retryPolicy: { enabled: true, maxRetries: 3, baseDelayMs: 2_000 },
+      })
+
+      const events: TurnEvent[] = []
+      runner.subscribe(USER_ID, collect(events))
+      runner.startTurn({ userId: USER_ID, sessionId: SESSION_ID, text: 'hi' })
+      await vi.advanceTimersByTimeAsync(0)
+
+      expect(retryChunks(events).map(c => c.retry)).toMatchObject([
+        { attempt: 1, maxRetries: 3, delayMs: 2_000, error: '429 Too Many Requests' },
+      ])
+      expect(retryChunks(events)[0]!.text).toContain('retrying (1/3)')
+
+      // A consumer attaching during the backoff must not rebuild the partial
+      // answer of the attempt that was just thrown away.
+      const reattached: TurnEvent[] = []
+      runner.subscribe(USER_ID, collect(reattached))
+      expect(reattached.map(e => e.type)).toEqual(['turn_start', 'chunk'])
+      expect(chunkTypes(reattached)).toEqual(['retry_scheduled'])
+
+      // Nothing happens before the backoff elapses.
+      await vi.advanceTimersByTimeAsync(1_900)
+      expect(calls).toHaveLength(1)
+
+      await vi.advanceTimersByTimeAsync(200)
+      expect(calls).toHaveLength(2)
+      expect(retryChunks(events).map(c => c.retry!.delayMs)).toEqual([2_000, 4_000])
+
+      await vi.advanceTimersByTimeAsync(4_000)
+      await waitFor(() => !runner.hasActiveTurn(USER_ID))
+
+      expect(chunkTypes(events)).toEqual([
+        'text', 'retry_scheduled', 'thinking', 'retry_scheduled', 'text', 'done',
+      ])
+      // The restarts continue the transcript instead of re-sending the message.
+      expect(calls).toEqual(['sendMessage', 'retryTurn', 'retryTurn'])
+
+      // Only the successful attempt survives: no duplicate user message, no
+      // half answer and no thinking block from the discarded attempts.
+      expect(rows(db).map(r => ({ role: r.role, content: r.content }))).toEqual([
+        { role: 'assistant', content: 'Finally.' },
+      ])
+    })
+
+    it('discards tool rows of a failed attempt', async () => {
+      vi.useFakeTimers()
+      const db = freshDb()
+      const { agent } = sequenceAgent([
+        [
+          { type: 'tool_call_start', toolName: 'search', toolCallId: 'tc-1' },
+          { type: 'tool_call_end', toolName: 'search', toolCallId: 'tc-1', toolResult: { ok: true } },
+          { type: 'error', error: 'fetch failed' },
+        ],
+        [{ type: 'text', text: 'answer' }, { type: 'done' }],
+      ])
+      const runner = startRunner(db, agent, { retryPolicy: { maxRetries: 1, baseDelayMs: 1_000 } })
+
+      runner.startTurn({ userId: USER_ID, sessionId: SESSION_ID, text: 'hi' })
+      await vi.advanceTimersByTimeAsync(0)
+      await vi.advanceTimersByTimeAsync(1_000)
+      await waitFor(() => !runner.hasActiveTurn(USER_ID))
+
+      // The tool row written by the discarded attempt is rolled back.
+      expect(rows(db).map(r => ({ role: r.role, content: r.content }))).toEqual([
+        { role: 'assistant', content: 'answer' },
+      ])
+    })
+
+    it('retries a watchdog stall abort', async () => {
+      vi.useFakeTimers()
+      const db = freshDb()
+      const { agent, attempts } = stallingThenAnsweringAgent([
+        { type: 'text', text: 'back from the dead' },
+        { type: 'done' },
+      ])
+      const runner = startRunner(db, agent, {
+        stallWarnMs: 30_000,
+        stallAbortMs: 90_000,
+        watchdogIntervalMs: 1_000,
+        retryPolicy: { maxRetries: 3, baseDelayMs: 2_000 },
+      })
+
+      const events: TurnEvent[] = []
+      runner.subscribe(USER_ID, collect(events))
+      runner.startTurn({ userId: USER_ID, sessionId: SESSION_ID, text: 'hi' })
+      await vi.advanceTimersByTimeAsync(91_000)
+
+      const [retry] = retryChunks(events)
+      expect(retry?.retry).toMatchObject({ attempt: 1, delayMs: 2_000 })
+      expect(retry!.retry!.error).toContain('Provider stopped responding')
+      expect(agent.abort).toHaveBeenCalled()
+
+      await vi.advanceTimersByTimeAsync(2_000)
+      await waitFor(() => !runner.hasActiveTurn(USER_ID))
+
+      expect(attempts()).toBe(2)
+      expect(chunkTypes(events)).toEqual([
+        'stall_warning', 'stall_resolved', 'retry_scheduled', 'text', 'done',
+      ])
+      // The stall notice is real history and stays, unlike the failed attempt.
+      expect(stallRows(db)).toHaveLength(1)
+      expect(rows(db).filter(r => r.role === 'assistant').map(r => r.content)).toEqual(['back from the dead'])
+    })
+
+    it('never retries a user abort', async () => {
+      const db = freshDb()
+      const { agent, push } = controllableAgent()
+      const runner = startRunner(db, agent, { retryPolicy: { maxRetries: 3, baseDelayMs: 1 } })
+
+      const events: TurnEvent[] = []
+      runner.subscribe(USER_ID, collect(events))
+      runner.startTurn({ userId: USER_ID, sessionId: SESSION_ID, text: 'hi' })
+
+      push({ type: 'text', text: 'partial' })
+      await waitFor(() => chunkTypes(events).length === 1)
+      runner.abortTurn(USER_ID)
+      await waitFor(() => !runner.hasActiveTurn(USER_ID))
+
+      expect(chunkTypes(events)).toEqual(['text', 'done'])
+      expect(retryChunks(events)).toEqual([])
+    })
+
+    it('fails fast on terminal provider errors', async () => {
+      const db = freshDb()
+      const { agent, calls } = sequenceAgent([
+        [{ type: 'error', error: 'insufficient_quota: You exceeded your current quota, please check your billing details' }],
+        [{ type: 'text', text: 'never reached' }, { type: 'done' }],
+      ])
+      const runner = startRunner(db, agent, { retryPolicy: { maxRetries: 3, baseDelayMs: 1 } })
+
+      const events: TurnEvent[] = []
+      runner.subscribe(USER_ID, collect(events))
+      runner.startTurn({ userId: USER_ID, sessionId: SESSION_ID, text: 'hi' })
+      await waitFor(() => !runner.hasActiveTurn(USER_ID))
+
+      expect(chunkTypes(events)).toEqual(['error', 'done'])
+      expect(calls).toHaveLength(1)
+      const error = events.find(e => e.type === 'chunk' && e.chunk.type === 'error') as { chunk: ResponseChunk }
+      expect(error.chunk.error).toContain('insufficient_quota')
+    })
+
+    it('ends in a terminal error chunk once the retry budget is exhausted', async () => {
+      vi.useFakeTimers()
+      const db = freshDb()
+      const { agent, calls } = sequenceAgent([
+        [{ type: 'error', error: '502 Bad Gateway' }],
+      ])
+      const runner = startRunner(db, agent, { retryPolicy: { maxRetries: 2, baseDelayMs: 2_000 } })
+
+      const events: TurnEvent[] = []
+      runner.subscribe(USER_ID, collect(events))
+      runner.startTurn({ userId: USER_ID, sessionId: SESSION_ID, text: 'hi' })
+      await vi.advanceTimersByTimeAsync(0)
+      await vi.advanceTimersByTimeAsync(2_000)
+      await vi.advanceTimersByTimeAsync(4_000)
+      await waitFor(() => !runner.hasActiveTurn(USER_ID))
+
+      expect(retryChunks(events).map(c => c.retry!.delayMs)).toEqual([2_000, 4_000])
+      expect(chunkTypes(events)).toEqual(['retry_scheduled', 'retry_scheduled', 'error', 'done'])
+      expect(calls).toHaveLength(3)
+      const error = events.find(e => e.type === 'chunk' && e.chunk.type === 'error') as { chunk: ResponseChunk }
+      expect(error.chunk.error).toBe('502 Bad Gateway')
+    })
+
+    it('takes the retry policy from the settings file when not overridden', async () => {
+      useSettingsFile({ retry: { enabled: true, maxRetries: 1, baseDelayMs: 500 } })
+      vi.useFakeTimers()
+
+      const db = freshDb()
+      const { agent } = sequenceAgent([
+        [{ type: 'error', error: 'socket hang up' }],
+        [{ type: 'text', text: 'recovered' }, { type: 'done' }],
+      ])
+      const runner = startRunner(db, agent)
+
+      const events: TurnEvent[] = []
+      runner.subscribe(USER_ID, collect(events))
+      runner.startTurn({ userId: USER_ID, sessionId: SESSION_ID, text: 'hi' })
+      await vi.advanceTimersByTimeAsync(0)
+
+      expect(retryChunks(events).map(c => c.retry)).toMatchObject([{ attempt: 1, maxRetries: 1, delayMs: 500 }])
+
+      await vi.advanceTimersByTimeAsync(500)
+      await waitFor(() => !runner.hasActiveTurn(USER_ID))
+      expect(chunkTypes(events)).toEqual(['retry_scheduled', 'text', 'done'])
+    })
+
+    it('does not retry when the policy is disabled in the settings file', async () => {
+      useSettingsFile({ retry: { enabled: false } })
+      const db = freshDb()
+      const { agent, calls } = sequenceAgent([
+        [{ type: 'error', error: '429 Too Many Requests' }],
+        [{ type: 'text', text: 'never reached' }, { type: 'done' }],
+      ])
+      const runner = startRunner(db, agent)
+
+      const events: TurnEvent[] = []
+      runner.subscribe(USER_ID, collect(events))
+      runner.startTurn({ userId: USER_ID, sessionId: SESSION_ID, text: 'hi' })
+      await waitFor(() => !runner.hasActiveTurn(USER_ID))
+
+      expect(chunkTypes(events)).toEqual(['error', 'done'])
+      expect(calls).toHaveLength(1)
+    })
+
+    it('ends the turn when the user aborts during the retry backoff', async () => {
+      vi.useFakeTimers()
+      const db = freshDb()
+      const { agent, calls } = sequenceAgent([
+        [{ type: 'error', error: '500 internal error' }],
+        [{ type: 'text', text: 'never reached' }, { type: 'done' }],
+      ])
+      const runner = startRunner(db, agent, { retryPolicy: { maxRetries: 3, baseDelayMs: 10_000 } })
+
+      const events: TurnEvent[] = []
+      runner.subscribe(USER_ID, collect(events))
+      runner.startTurn({ userId: USER_ID, sessionId: SESSION_ID, text: 'hi' })
+      await vi.advanceTimersByTimeAsync(0)
+      expect(retryChunks(events)).toHaveLength(1)
+
+      runner.abortTurn(USER_ID)
+      await vi.advanceTimersByTimeAsync(0)
+      await waitFor(() => !runner.hasActiveTurn(USER_ID))
+
+      expect(chunkTypes(events)).toEqual(['retry_scheduled', 'done'])
+      expect(calls).toHaveLength(1)
     })
   })
 
