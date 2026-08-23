@@ -86,6 +86,9 @@ export function useProvidersApi() {
   const getModels = (providerType: string) =>
     apiFetch<{ models: AvailableModel[] }>(`/api/providers/models/${providerType}`)
 
+  const getLiveModels = (providerId: string) =>
+    apiFetch<{ models: AvailableModel[] }>(`/api/providers/${providerId}/live-models`)
+
   const getOllamaModels = (providerId: string) =>
     apiFetch<{ models: OllamaModel[] }>(`/api/providers/${providerId}/ollama-models`)
 
@@ -179,6 +182,7 @@ export function useProvidersApi() {
     refreshQuota,
     setFallbackProvider,
     getModels,
+    getLiveModels,
     getOllamaModels,
     probeOpenAiCompatibleModels,
     probeOllamaModels,

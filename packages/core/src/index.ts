@@ -79,6 +79,7 @@ export {
   clearFallbackProvider,
   getApiKeyForProvider,
   getAvailableModels,
+  isDynamicCatalogProvider,
   addOAuthProvider,
   updateOAuthCredentials,
   encryptOAuthCredentials,

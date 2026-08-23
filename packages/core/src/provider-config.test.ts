@@ -8,6 +8,7 @@ import {
   setFallbackProvider,
   clearFallbackProvider,
   getAvailableModels,
+  isDynamicCatalogProvider,
   buildModel,
   estimateCost,
   resolveModelTemperature,
@@ -1170,6 +1171,12 @@ describe('getAvailableModels', () => {
     expect(models.length).toBeGreaterThan(0)
     expect(models[0]).toHaveProperty('id')
     expect(models[0]).toHaveProperty('name')
+  })
+
+  it('marks openrouter as a dynamic-catalog provider and others as static', () => {
+    expect(isDynamicCatalogProvider('openrouter')).toBe(true)
+    expect(isDynamicCatalogProvider('openai')).toBe(false)
+    expect(isDynamicCatalogProvider('ollama')).toBe(false)
   })
 
   it('returns models for deepseek provider type', () => {
