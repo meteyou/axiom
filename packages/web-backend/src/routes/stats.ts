@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import type { Database, UsageGroupBy } from '@axiom/core'
-import { getUsageSummary, queryUsageStats } from '@axiom/core'
+import { getUsageSummary, queryStallStats, queryUsageStats } from '@axiom/core'
 import { jwtMiddleware } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
 
@@ -103,6 +103,27 @@ export function createStatsRouter(db: Database): Router {
           model: normalizeFilter(req.query.model) ?? null,
         },
         ...result,
+      })
+    } catch (err) {
+      const message = (err as Error).message
+      const status = message.startsWith('Invalid') ? 400 : 500
+      res.status(status).json({ error: message })
+    }
+  })
+
+  router.get('/stalls', (req: AuthenticatedRequest, res) => {
+    try {
+      const dateFrom = normalizeDateInput(req.query.date_from ?? req.query.start_date, false)
+      const dateTo = normalizeDateInput(req.query.date_to ?? req.query.end_date, true)
+
+      if (dateFrom && dateTo && new Date(dateFrom) > new Date(dateTo)) {
+        res.status(400).json({ error: 'date_from must be before or equal to date_to' })
+        return
+      }
+
+      res.json({
+        filters: { dateFrom: dateFrom ?? null, dateTo: dateTo ?? null },
+        ...queryStallStats(db, { dateFrom, dateTo }),
       })
     } catch (err) {
       const message = (err as Error).message
