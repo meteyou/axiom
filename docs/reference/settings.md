@@ -115,6 +115,12 @@ limit — is written to the chat as a persisted error message containing the ful
 provider error text, so a failed turn stays visible after a page reload instead
 of leaving the chat silently unanswered.
 
+Each of those error messages carries a **Retry** button. It repeats the failed
+turn without re-sending your message — useful after fixing an API key in the
+settings. The retry runs on the server, so the button also works in a reloaded
+tab or a second one. It answers *no longer available* once you sent a newer
+message, once the session ended, or after a restart of Axiom.
+
 Edited under [Agent → Resilience](../settings/agent#resilience). Values are read
 at the start of every turn, so a save takes effect on the next message without a
 restart.

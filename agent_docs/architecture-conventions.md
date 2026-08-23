@@ -58,6 +58,13 @@ route -> controller -> service -> schema/mapper
   error text plus `cause` / `retryable` / `attempts`, and emits the matching
   `error` chunk with the row id. Channels render that row — a failed turn must
   never end silently.
+- Manual retry is a chat action (`core/src/turn-retry-action.ts`): every error row
+  carries a `retryActionId` that channels register in the chat-action registry
+  (`web-backend/src/turn-retry-chat.ts`). The handler validates freshness against
+  the database (session still open, no newer user/assistant/tool row, no running
+  turn) and restarts the turn via `TurnRunner.retryTurn`, which continues the
+  existing transcript instead of re-sending the user message. The registry is
+  in-memory, so buttons minted before a restart answer "no longer available".
 - Integrations (e.g., Heartbeat, Consolidation Scheduler, Task Tools) use boundary contracts instead of low-level wiring.
 
 ## 4) Frontend Convention
