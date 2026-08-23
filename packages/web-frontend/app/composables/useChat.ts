@@ -83,6 +83,11 @@ export type ChatTurnErrorCause = 'non_retryable' | 'retry_exhausted' | 'agent_un
  */
 export interface ChatTurnErrorInfo {
   messageId?: number
+  /**
+   * Id of the Retry chat action hanging off this error. Sent live and stored
+   * on the persisted row, so the button is rebuilt after a page reload.
+   */
+  retryActionId?: string
   cause: ChatTurnErrorCause
   error: string
   attempts: number
@@ -386,7 +391,15 @@ export function upsertErrorMessage(
 
   if (index >= 0) {
     const updated = [...list]
-    updated[index] = { ...updated[index]!, content, errorInfo: info }
+    const existing = updated[index]!
+    updated[index] = {
+      ...existing,
+      content,
+      errorInfo: info,
+      // Keep an already-resolved retry resolved: a replay must not hand the
+      // user a second Retry button for a click the server already answered.
+      chatAction: existing.chatAction ?? buildTurnRetryAction(info, content),
+    }
     return updated
   }
 
@@ -396,7 +409,27 @@ export function upsertErrorMessage(
     content,
     timestamp: new Date().toISOString(),
     errorInfo: info,
+    chatAction: buildTurnRetryAction(info, content),
   }]
+}
+
+/**
+ * The Retry button of a terminal error. Resolved server-side against the
+ * persisted error row, which is what makes it work after a reload; the label
+ * is localized where the bubble is rendered.
+ */
+export function buildTurnRetryAction(
+  info: ChatTurnErrorInfo,
+  content: string,
+): ChatActionMessage | undefined {
+  if (!info.retryActionId || info.messageId === undefined) return undefined
+  return {
+    messageId: info.retryActionId,
+    kind: 'turn_retry',
+    refId: String(info.messageId),
+    text: content,
+    actions: [{ actionId: 'retry', label: 'Retry', style: 'primary' }],
+  }
 }
 
 /**
@@ -414,6 +447,7 @@ export function turnErrorFromHistoryMetadata(metadata: unknown, messageId: numbe
 
   return {
     messageId,
+    retryActionId: typeof meta.retryActionId === 'string' ? meta.retryActionId : undefined,
     cause,
     error: meta.error,
     attempts: typeof meta.attempts === 'number' ? meta.attempts : 0,
@@ -1057,10 +1091,16 @@ export function useChat() {
       )
       applyChatActionResolution(messageId, response.resolution)
     } catch (err) {
-      // Keep the buttons clickable: a transient failure (offline, 500) left the
-      // decision unmade, and a lost race is announced by the server's
-      // `chat_action_resolved` broadcast anyway.
-      console.error('[chat] action failed:', err)
+      // A transport failure left the decision unmade — keep the buttons
+      // clickable so the user can try again once back online.
+      if (err instanceof TypeError || (err as Error).message === 'Session expired') {
+        console.error('[chat] action failed:', err)
+        return
+      }
+      // Anything the server answered is final (stale button, lost race, a
+      // button minted before a restart). Show it in place of the buttons — for
+      // a lost race the broadcast carries the same text.
+      applyChatActionResolution(messageId, (err as Error).message)
     }
   }
 

@@ -79,6 +79,7 @@
     "thinking": "Überlegung",
     "turnError": "Anfrage fehlgeschlagen",
     "turnErrorRetried": "{count}× wiederholt",
+    "turnErrorRetry": "Erneut versuchen",
     "scrollToBottom": "Nach unten scrollen",
     "attachments": {
       "openOriginal": "Original öffnen",

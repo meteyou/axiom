@@ -79,6 +79,7 @@
     "thinking": "Thinking",
     "turnError": "Turn failed",
     "turnErrorRetried": "{count}× retried",
+    "turnErrorRetry": "Retry",
     "scrollToBottom": "Scroll to bottom",
     "attachments": {
       "openOriginal": "Open original",
