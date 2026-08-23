@@ -45,6 +45,7 @@ The on-disk shape is a **superset** of [`SettingsContract`](https://github.com/)
 | `healthMonitorIntervalMinutes`     | `number`                                                          | `5`            | `> 0`                                   | Health-check frequency — see [Health Monitor → Interval](../settings/health-monitor#health-check-interval).       |
 | `uploads`                          | object                                                            | see below      | nested                                  | Upload retention policy.                                                                                          |
 | `watchdog`                         | object                                                            | see below      | not validated by API                    | Provider-stall thresholds for chat turns.                                                                         |
+| `retry`                            | object                                                            | see below      | not validated by API                    | Automatic retry of chat turns that hit transient provider errors.                                                 |
 | `healthMonitor`                    | object                                                            | see below      | nested                                  | Provider health checks + fallback.                                                                                |
 | `memoryConsolidation`              | object                                                            | see below      | nested                                  | Nightly memory job.                                                                                               |
 | `factExtraction`                   | object                                                            | see below      | nested                                  | Per-session fact extraction.                                                                                      |
@@ -93,6 +94,35 @@ Stalls are aggregated on the **Token Usage** page (admin only): count, average a
 longest silence, and the split between recovered and aborted turns for the
 selected date range. Only stalls recorded after this feature shipped are counted
 — there is no historical backfill.
+
+### `retry`
+
+Automatic restart of a chat turn that failed with a transient provider error
+(429, 5xx, timeouts, dropped streams — and a watchdog stall abort). The failed
+attempt is discarded: its half-written answer, thinking blocks and tool rows are
+removed, and the turn continues from the existing transcript, so the user
+message is never sent twice.
+
+Errors the provider will not recover from on its own — invalid API key, quota or
+billing limits — fail immediately without burning retries. A turn you stop
+yourself is never retried.
+
+While a retry is pending the chat shows a `Retrying (n/max)…` status; once the
+budget is exhausted the turn ends with the provider's error message.
+
+Config-file only for now — there is no Settings UI panel yet. Values are read at
+the start of every turn, so a save takes effect on the next message without a
+restart.
+
+| Key                 | Type      | Default | Range  | Effect                                                                      |
+|---------------------|-----------|---------|--------|-----------------------------------------------------------------------------|
+| `retry.enabled`     | `boolean` | `true`  | —      | Master switch for automatic retries.                                        |
+| `retry.maxRetries`  | `number`  | `3`     | `>= 0` | Retry budget per turn (`0` disables retries without turning the block off). |
+| `retry.baseDelayMs` | `number`  | `2000`  | `> 0`  | Base backoff; attempt *n* waits `baseDelayMs * 2^(n-1)` — 2s / 4s / 8s.     |
+
+```json
+{ "retry": { "enabled": true, "maxRetries": 3, "baseDelayMs": 2000 } }
+```
 
 ### `healthMonitor`
 
@@ -286,6 +316,7 @@ This is the literal file written by `ensureConfigTemplates()`:
   },
   "uploads": { "retentionDays": 30 },
   "watchdog": { "stallWarnMs": 30000, "stallAbortMs": 90000 },
+  "retry": { "enabled": true, "maxRetries": 3, "baseDelayMs": 2000 },
   "tokenPriceTable": {
     "gpt-4o":                     { "input": 2.5,  "output": 10 },
     "gpt-4o-mini":                { "input": 0.15, "output": 0.6 },
