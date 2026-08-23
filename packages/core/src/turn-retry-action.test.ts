@@ -8,6 +8,8 @@ import {
   newTurnRetryActionId,
 } from './turn-retry-action.js'
 import type { TurnRetryRunnerLike } from './turn-retry-action.js'
+import { clearTurnRetryNotifiers, registerTurnRetryNotifier } from './turn-retry-notifier.js'
+import type { TurnRetryResolution } from './turn-retry-notifier.js'
 
 const USER_ID = 3
 const SESSION_ID = 'session-retry-action'
@@ -50,7 +52,8 @@ function seedFailedTurn(): number {
 function fakeRunner(overrides: Partial<TurnRetryRunnerLike> = {}) {
   const retryTurn = vi.fn(() => ({
     turnId: 'turn-1',
-    userId: USER_ID,
+    agentUserId: String(USER_ID),
+    userId: USER_ID as number | null,
     sessionId: SESSION_ID,
     startedAt: Date.now(),
   }))
@@ -168,6 +171,32 @@ describe('manual turn retry', () => {
     expect(service.retry(plainSystemRow)).toEqual({ ok: false, resolution: TURN_RETRY_RESOLUTIONS.unavailable })
     expect(service.retry(Number.NaN)).toEqual({ ok: false, resolution: TURN_RETRY_RESOLUTIONS.unavailable })
     expect(retryTurn).not.toHaveBeenCalled()
+  })
+
+  it('announces every outcome so the other channels disable their button', async () => {
+    clearTurnRetryNotifiers()
+    const seen: TurnRetryResolution[] = []
+    const unregister = registerTurnRetryNotifier({ retryResolved: r => { seen.push(r) } })
+
+    try {
+      seedSession()
+      const errorId = seedFailedTurn()
+      const { runner } = fakeRunner()
+      const service = createTurnRetryService({ db, runner })
+
+      service.retry(errorId)
+      // The freshness check now fails: a retry already ran for this error.
+      insertMessage('assistant', 'the answer')
+      service.retry(errorId)
+      await Promise.resolve()
+
+      expect(seen).toEqual([
+        { errorMessageId: errorId, ok: true, resolution: TURN_RETRY_RESOLUTIONS.started },
+        { errorMessageId: errorId, ok: false, resolution: TURN_RETRY_RESOLUTIONS.movedOn },
+      ])
+    } finally {
+      unregister()
+    }
   })
 
   it('refuses the retry when the failed turn has no user message to continue from', () => {
