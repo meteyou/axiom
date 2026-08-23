@@ -333,6 +333,11 @@ export class TurnRunner {
         console.error('[turn-runner] turn failed unexpectedly:', err)
       })
     this.queues.set(key, run)
+    // Drop the drained chain so the map does not keep one entry per user that
+    // ever chatted. A start that already read this promise stays chained to it.
+    void run.then(() => {
+      if (this.queues.get(key) === run) this.queues.delete(key)
+    })
 
     return toInfo(turn)
   }
@@ -408,9 +413,24 @@ export class TurnRunner {
       if (turns.size === 0) this.liveTurns.delete(turn.key)
     }
     this.recentTurns.set(turn.key, turn)
+    this.scheduleRetentionSweep(turn)
 
     this.emit(turn, { type: 'turn_end', turnId: turn.id })
     this.onTurnEnd?.(toInfo(turn))
+  }
+
+  /**
+   * Release the replay buffer once the turn is no longer replayable. Without
+   * this the last turn of every user — including its tool results — would stay
+   * resident for the lifetime of the process, since {@link getReplayableTurn}
+   * only evicts on the next subscribe.
+   */
+  private scheduleRetentionSweep(turn: TurnState): void {
+    const timer = setTimeout(() => {
+      if (this.recentTurns.get(turn.key) === turn) this.recentTurns.delete(turn.key)
+      turn.buffer = []
+    }, this.completedTurnRetentionMs)
+    timer.unref?.()
   }
 
   private async runTurn(turn: TurnState, input: StartTurnInput): Promise<void> {
