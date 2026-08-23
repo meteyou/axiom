@@ -10,6 +10,7 @@ import {
   buildTurnErrorMetadata,
   initDatabase,
   newTurnRetryActionId,
+  notifyTurnRetryResolved,
 } from '@axiom/core'
 import { createApp } from './app.js'
 import { generateAccessToken } from './auth.js'
@@ -67,7 +68,13 @@ function seedFailedTurn(): { errorMessageId: number; retryActionId: string } {
   )
 
   attachRetryAction({
-    turn: { turnId: 'turn-1', userId: USER_ID, sessionId: SESSION_ID, startedAt: Date.now() },
+    turn: {
+      turnId: 'turn-1',
+      agentUserId: String(USER_ID),
+      userId: USER_ID,
+      sessionId: SESSION_ID,
+      startedAt: Date.now(),
+    },
     error: { ...error, messageId: errorMessageId },
   })
 
@@ -118,6 +125,7 @@ beforeEach(() => {
   activeTurn = false
   retryTurn = vi.fn(() => ({
     turnId: 'turn-retry',
+    agentUserId: String(USER_ID),
     userId: USER_ID,
     sessionId: SESSION_ID,
     startedAt: Date.now(),
@@ -195,6 +203,31 @@ describe('manual retry webchat channel', () => {
 
     expect(res.status).toBe(404)
     expect(body.error).toContain('no longer available')
+    expect(retryTurn).not.toHaveBeenCalled()
+  })
+
+  it('disables the web button when another channel answered the retry', async () => {
+    const { errorMessageId, retryActionId } = seedFailedTurn()
+
+    // What the Telegram channel triggers when its inline button is tapped.
+    await notifyTurnRetryResolved({
+      errorMessageId,
+      ok: true,
+      resolution: TURN_RETRY_RESOLUTIONS.started,
+    })
+
+    expect(published).toHaveLength(1)
+    expect(published[0]!.message).toMatchObject({
+      messageId: retryActionId,
+      refId: String(errorMessageId),
+      resolution: TURN_RETRY_RESOLUTIONS.started,
+    })
+
+    // And the now-stale web button cannot start a second turn.
+    insertMessage('assistant', 'the retried answer')
+    const { res, body } = await postAction(retryActionId)
+    expect(res.status).toBe(409)
+    expect(body.resolution).toBe(TURN_RETRY_RESOLUTIONS.movedOn)
     expect(retryTurn).not.toHaveBeenCalled()
   })
 
