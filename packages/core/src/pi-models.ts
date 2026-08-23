@@ -27,22 +27,26 @@ import { openAIResponsesApi } from '@earendil-works/pi-ai/api/openai-responses.l
  * value is a lazy `ProviderStreams` factory, so the underlying API module only
  * loads when a request first dispatches to it.
  */
-const API_IMPLEMENTATIONS: Partial<Record<Api, () => ProviderStreams>> = {
+const API_IMPLEMENTATIONS = {
   'anthropic-messages': anthropicMessagesApi,
   'openai-completions': openAICompletionsApi,
   'openai-responses': openAIResponsesApi,
   'openai-codex-responses': openAICodexResponsesApi,
   'google-generative-ai': googleGenerativeAIApi,
   'mistral-conversations': mistralConversationsApi,
-}
+} satisfies Partial<Record<Api, () => ProviderStreams>>
 
-function buildApiMap(): Partial<Record<Api, ProviderStreams>> {
-  const map: Partial<Record<Api, ProviderStreams>> = {}
-  for (const api of Object.keys(API_IMPLEMENTATIONS) as Api[]) {
-    map[api] = API_IMPLEMENTATIONS[api]!()
-  }
-  return map
-}
+/**
+ * Wire APIs this module can dispatch to. A model whose `api` is missing fails
+ * only at request time (as a stream error), so `pi-models.test.ts` locks this
+ * set against every reachable preset/catalog api.
+ */
+export const SUPPORTED_APIS: ReadonlySet<Api> = new Set(Object.keys(API_IMPLEMENTATIONS) as Api[])
+
+/** Shared across providers: the lazy wrappers are stateless and load on first dispatch. */
+const API_MAP: Partial<Record<Api, ProviderStreams>> = Object.fromEntries(
+  Object.entries(API_IMPLEMENTATIONS).map(([api, factory]) => [api, factory()]),
+)
 
 /**
  * Single shared collection reused across every completion/stream call site so
@@ -71,7 +75,7 @@ function ensureProvider(models: MutableModels, providerId: string): void {
     id: providerId,
     auth: { apiKey: envApiKeyAuth(`${providerId} API key`, []) },
     models: [],
-    api: buildApiMap(),
+    api: API_MAP,
   }))
 }
 
