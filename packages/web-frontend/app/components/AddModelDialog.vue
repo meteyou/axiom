@@ -150,14 +150,15 @@ const loadError = ref(false)
 const selected = ref<Set<string>>(new Set())
 const saving = ref(false)
 
+// Multi-term search: every whitespace-separated term must match somewhere in
+// the id or name (e.g. "nvidia free" finds "nvidia/…:free" models).
 const filteredModels = computed(() => {
-  const query = search.value.trim().toLowerCase()
-  if (!query) return catalog.value
-  return catalog.value.filter(
-    model =>
-      model.id.toLowerCase().includes(query) ||
-      model.name.toLowerCase().includes(query),
-  )
+  const terms = search.value.trim().toLowerCase().split(/\s+/).filter(Boolean)
+  if (terms.length === 0) return catalog.value
+  return catalog.value.filter((model) => {
+    const haystack = `${model.id} ${model.name}`.toLowerCase()
+    return terms.every(term => haystack.includes(term))
+  })
 })
 
 // The custom-model fallback row is shown only when the search text does not
