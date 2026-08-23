@@ -257,6 +257,7 @@
     "addModelSearch": "Search models…",
     "addModelCustom": "Add model \"{name}\"",
     "addModelEmpty": "No models found.",
+    "addModelContext": "{size} ctx",
     "addModelSelected": "{count} selected",
     "addModelButton": "Add",
     "addModelSuccess": "Models added",

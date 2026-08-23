@@ -629,23 +629,47 @@ async function probeOpenAiCompatibleModelsFromBase(baseUrl: string, apiKey?: str
         continue
       }
 
-      const body = await response.json() as { data?: Array<{ id?: unknown; object?: unknown }> }
+      const body = await response.json() as { data?: ProbedModelEntry[] }
       const seen = new Set<string>()
-      return (body.data ?? [])
-        .map(entry => typeof entry.id === 'string' ? entry.id.trim() : '')
-        .filter((id) => {
-          if (!id || seen.has(id)) return false
-          seen.add(id)
-          return true
+      const models: AvailableModel[] = []
+      for (const entry of body.data ?? []) {
+        const id = typeof entry.id === 'string' ? entry.id.trim() : ''
+        if (!id || seen.has(id)) continue
+        seen.add(id)
+        const name = typeof entry.name === 'string' && entry.name.trim() ? entry.name.trim() : id
+        const cost = parseProbedModelCost(entry.pricing)
+        models.push({
+          id,
+          name,
+          ...(typeof entry.context_length === 'number' && entry.context_length > 0
+            ? { contextWindow: entry.context_length }
+            : {}),
+          ...(cost ? { cost } : {}),
         })
-        .sort((a, b) => a.localeCompare(b))
-        .map(id => ({ id, name: id }))
+      }
+      return models.sort((a, b) => a.id.localeCompare(b.id))
     } catch (err) {
       lastError = (err as Error).message
     }
   }
 
   throw new ProvidersExternalError(lastError)
+}
+
+interface ProbedModelEntry {
+  id?: unknown
+  name?: unknown
+  context_length?: unknown
+  pricing?: { prompt?: unknown; completion?: unknown }
+}
+
+/** OpenRouter reports pricing in USD per token; convert to USD per 1M tokens. */
+function parseProbedModelCost(pricing: ProbedModelEntry['pricing']): { input: number; output: number } | undefined {
+  const input = Number(pricing?.prompt) * 1_000_000
+  const output = Number(pricing?.completion) * 1_000_000
+  if (!Number.isFinite(input) || !Number.isFinite(output) || input < 0 || output < 0) return undefined
+  const round = (value: number) => Math.round(value * 1e6) / 1e6
+  return { input: round(input), output: round(output) }
 }
 
 async function requestOllamaPullFromBase(

@@ -131,6 +131,9 @@ export interface ProviderTypePresetContract {
 export interface AvailableModelContract {
   id: string
   name: string
+  contextWindow?: number
+  /** USD per 1M tokens. */
+  cost?: { input: number; output: number }
 }
 
 export interface OllamaModelContract {

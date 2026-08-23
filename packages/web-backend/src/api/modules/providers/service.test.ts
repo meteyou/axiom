@@ -63,6 +63,40 @@ describe('getLiveModels (dynamic catalog)', () => {
     ])
   })
 
+  it('maps display name, context window and per-1M-token cost from the live response', async () => {
+    const provider = createOpenRouterProvider()
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: [
+            {
+              id: 'a/model-one',
+              name: 'Model One',
+              context_length: 1048576,
+              pricing: { prompt: '0.0000001', completion: '0.0000004' },
+            },
+            { id: 'b/no-metadata', pricing: { prompt: '-1', completion: '-1' } },
+          ],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
+
+    const service = createProvidersService()
+    const models = await service.getLiveModels(provider.id)
+
+    expect(models).toEqual([
+      {
+        id: 'a/model-one',
+        name: 'Model One',
+        contextWindow: 1048576,
+        cost: { input: 0.1, output: 0.4 },
+      },
+      { id: 'b/no-metadata', name: 'b/no-metadata' },
+    ])
+  })
+
   it('falls back to the curated catalog when the live fetch fails', async () => {
     const provider = createOpenRouterProvider()
 

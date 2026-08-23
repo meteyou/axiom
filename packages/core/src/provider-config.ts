@@ -80,6 +80,9 @@ export interface ProviderTypePreset {
 export interface AvailableModel {
   id: string
   name: string
+  contextWindow?: number
+  /** USD per 1M tokens. */
+  cost?: { input: number; output: number }
 }
 
 /**
@@ -507,7 +510,7 @@ export function getAvailableModels(providerType: ProviderType): AvailableModel[]
   const catalogModels: AvailableModel[] = preset?.piAiProvider
     ? (() => {
         try {
-          return getPiAiModels(preset.piAiProvider as BuiltinProvider).map(m => ({ id: m.id, name: m.name }))
+          return getPiAiModels(preset.piAiProvider as BuiltinProvider).map(m => toAvailableModel(m.id, m.name, m.contextWindow, m.cost))
         } catch {
           return []
         }
@@ -517,9 +520,23 @@ export function getAvailableModels(providerType: ProviderType): AvailableModel[]
   const overrides = PROVIDER_TYPE_MODEL_OVERRIDES[providerType] ?? []
   const merged = new Map(catalogModels.map(m => [m.id, m]))
   for (const override of overrides) {
-    merged.set(override.id, { id: override.id, name: override.name ?? override.id })
+    merged.set(override.id, toAvailableModel(override.id, override.name ?? override.id, override.contextWindow, override.cost))
   }
   return Array.from(merged.values())
+}
+
+function toAvailableModel(
+  id: string,
+  name: string,
+  contextWindow?: number,
+  cost?: { input: number; output: number },
+): AvailableModel {
+  return {
+    id,
+    name,
+    ...(contextWindow ? { contextWindow } : {}),
+    ...(cost ? { cost: { input: cost.input, output: cost.output } } : {}),
+  }
 }
 
 /**

@@ -257,6 +257,7 @@
     "addModelSearch": "Modelle suchen…",
     "addModelCustom": "Modell „{name}“ hinzufügen",
     "addModelEmpty": "Keine Modelle gefunden.",
+    "addModelContext": "{size} Kontext",
     "addModelSelected": "{count} ausgewählt",
     "addModelButton": "Hinzufügen",
     "addModelSuccess": "Modelle hinzugefügt",
