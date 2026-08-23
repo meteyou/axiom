@@ -261,8 +261,9 @@ export {
   parseProviderStallMetadata,
   formatProviderStallContent,
   loadStallThresholds,
+  queryStallStats,
 } from './provider-stall.js'
-export type { ProviderStallMetadata, StallThresholds } from './provider-stall.js'
+export type { ProviderStallMetadata, StallStats, StallStatsQueryOptions, StallThresholds } from './provider-stall.js'
 export { ProviderManager } from './provider-manager.js'
 export type { OperatingMode, ProviderManagerEvents } from './provider-manager.js'
 export { TaskStore, initTasksTable, buildTaskFilterClause } from './task-store.js'
