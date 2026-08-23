@@ -8,6 +8,8 @@ import type { TurnAgentLike, TurnEvent } from './turn-runner.js'
 import type { ResponseChunk } from './agent-runtime-types.js'
 import { PROVIDER_STALL_KIND } from './provider-stall.js'
 import type { ProviderStallMetadata } from './provider-stall.js'
+import { TURN_ERROR_KIND, parseTurnErrorMetadata } from './turn-error.js'
+import type { TurnErrorMetadata } from './turn-error.js'
 import type { Database } from './database.js'
 
 const SESSION_ID = 'session-turn-runner'
@@ -39,6 +41,29 @@ function stallRows(db: Database): StallRow[] {
   return all
     .map(r => ({ id: r.id, content: r.content, metadata: JSON.parse(r.metadata ?? '{}') as ProviderStallMetadata }))
     .filter(r => r.metadata.kind === PROVIDER_STALL_KIND)
+}
+
+interface ErrorRow {
+  id: number
+  content: string
+  metadata: TurnErrorMetadata
+}
+
+function errorRows(db: Database): ErrorRow[] {
+  const all = db.prepare(
+    'SELECT id, role, content, metadata FROM chat_messages WHERE session_id = ? ORDER BY id'
+  ).all(SESSION_ID) as Array<{ id: number; role: string; content: string; metadata: string | null }>
+
+  return all
+    .map(r => ({ id: r.id, role: r.role, content: r.content, metadata: parseTurnErrorMetadata(r.metadata) }))
+    .filter((r): r is ErrorRow & { role: string } => r.metadata !== null)
+}
+
+function errorChunk(events: TurnEvent[]): ResponseChunk | undefined {
+  return events
+    .filter(e => e.type === 'chunk')
+    .map(e => (e as { chunk: ResponseChunk }).chunk)
+    .find(c => c.type === 'error')
 }
 
 function stallChunks(events: TurnEvent[]): ResponseChunk[] {
@@ -815,7 +840,105 @@ describe('TurnRunner', () => {
     })
   })
 
-  it('surfaces a missing agent as an error instead of hanging', async () => {
+  describe('terminal errors', () => {
+    afterEach(() => { vi.useRealTimers() })
+
+    it('persists a non-retryable provider error with its full text', async () => {
+      const db = freshDb()
+      const providerError = 'AuthenticationError: 401 Unauthorized — token refresh failed for provider "anthropic"'
+      const runner = startRunner(db, scriptedAgent([{ type: 'error', error: providerError }]))
+
+      const events: TurnEvent[] = []
+      runner.subscribe(USER_ID, collect(events))
+      runner.startTurn({ userId: USER_ID, sessionId: SESSION_ID, text: 'hi' })
+      await waitFor(() => !runner.hasActiveTurn(USER_ID))
+
+      const persisted = errorRows(db)
+      expect(persisted).toHaveLength(1)
+      expect(persisted[0]!.content).toContain(providerError)
+      expect(persisted[0]!.metadata).toMatchObject({
+        kind: TURN_ERROR_KIND,
+        cause: 'non_retryable',
+        error: providerError,
+        attempts: 0,
+        retryable: false,
+      })
+      expect(Date.parse(persisted[0]!.metadata.occurredAt)).not.toBeNaN()
+
+      // The chunk mirrors the row (id + text), so live rendering and a history
+      // reload produce the very same bubble.
+      const chunk = errorChunk(events)!
+      expect(chunk.error).toBe(providerError)
+      expect(chunk.text).toBe(persisted[0]!.content)
+      expect(chunk.errorInfo).toMatchObject({
+        messageId: persisted[0]!.id,
+        cause: 'non_retryable',
+        retryable: false,
+      })
+    })
+
+    it('marks an exhausted retry budget as retryable in the persisted metadata', async () => {
+      vi.useFakeTimers()
+      const db = freshDb()
+      const { agent } = sequenceAgent([[{ type: 'error', error: '502 Bad Gateway' }]])
+      const runner = startRunner(db, agent, { retryPolicy: { maxRetries: 2, baseDelayMs: 1_000 } })
+
+      const events: TurnEvent[] = []
+      runner.subscribe(USER_ID, collect(events))
+      runner.startTurn({ userId: USER_ID, sessionId: SESSION_ID, text: 'hi' })
+      await vi.advanceTimersByTimeAsync(0)
+      await vi.advanceTimersByTimeAsync(1_000)
+      await vi.advanceTimersByTimeAsync(2_000)
+      await waitFor(() => !runner.hasActiveTurn(USER_ID))
+
+      const persisted = errorRows(db)
+      expect(persisted).toHaveLength(1)
+      expect(persisted[0]!.metadata).toMatchObject({
+        cause: 'retry_exhausted',
+        error: '502 Bad Gateway',
+        attempts: 2,
+        retryable: true,
+      })
+      expect(persisted[0]!.content).toContain('after 2 retries')
+      expect(errorChunk(events)!.errorInfo).toMatchObject({ cause: 'retry_exhausted', attempts: 2 })
+    })
+
+    it('replays the error notice to a consumer that attaches after the turn failed', async () => {
+      const db = freshDb()
+      const runner = startRunner(db, scriptedAgent([{ type: 'error', error: 'invalid_api_key' }]))
+
+      runner.startTurn({ userId: USER_ID, sessionId: SESSION_ID, text: 'hi' })
+      await waitFor(() => !runner.hasActiveTurn(USER_ID))
+
+      // A page reload right after the failure: the reloaded client rebuilds the
+      // bubble from the replay, keyed by the same persisted row id.
+      const reconnect: TurnEvent[] = []
+      runner.subscribe(USER_ID, collect(reconnect))
+
+      expect(chunkTypes(reconnect)).toEqual(['error', 'done'])
+      expect(reconnect.every(e => e.replay === true)).toBe(true)
+      expect(errorChunk(reconnect)!.errorInfo!.messageId).toBe(errorRows(db)[0]!.id)
+    })
+
+    it('does not persist an error row for a user abort', async () => {
+      const db = freshDb()
+      const { agent, push } = controllableAgent()
+      const runner = startRunner(db, agent)
+
+      const events: TurnEvent[] = []
+      runner.subscribe(USER_ID, collect(events))
+      runner.startTurn({ userId: USER_ID, sessionId: SESSION_ID, text: 'hi' })
+
+      push({ type: 'text', text: 'partial' })
+      await waitFor(() => chunkTypes(events).length === 1)
+      runner.abortTurn(USER_ID)
+      await waitFor(() => !runner.hasActiveTurn(USER_ID))
+
+      expect(errorRows(db)).toEqual([])
+    })
+  })
+
+  it('surfaces a missing agent as a persisted error instead of hanging', async () => {
     const db = freshDb()
     const runner = startRunner(db, null)
 
@@ -825,5 +948,10 @@ describe('TurnRunner', () => {
     await waitFor(() => !runner.hasActiveTurn(USER_ID))
 
     expect(chunkTypes(events)).toEqual(['error', 'done'])
+    expect(errorRows(db)[0]!.metadata).toMatchObject({
+      cause: 'agent_unavailable',
+      error: 'Agent core not available',
+      retryable: true,
+    })
   })
 })

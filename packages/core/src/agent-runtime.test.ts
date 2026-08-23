@@ -279,6 +279,74 @@ describe('AgentRuntime boundary', () => {
     expect(chunks[2]!.text).toBe('Done.')
   })
 
+  it('surfaces a provider error message as an error chunk instead of ending silently', async () => {
+    const db = initDatabase(':memory:')
+    const runtime = createAgentRuntime({
+      model: makeModel(),
+      apiKey: 'sk-primary',
+      db,
+      tools: [],
+    })
+
+    // pi-agent-core reports auth failures (expired key, failed OAuth refresh)
+    // as an assistant message with `stopReason: 'error'` — it never throws.
+    runtimeHarness.promptBehaviors.push(async (agent) => {
+      agent.emit({
+        type: 'message_end',
+        message: {
+          role: 'assistant',
+          content: [],
+          provider: 'openai',
+          model: 'gpt-4o',
+          usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: { total: 0 } },
+          stopReason: 'error',
+          errorMessage: '401 Unauthorized: token refresh failed',
+        },
+      })
+      agent.emit({ type: 'agent_end', messages: [] })
+    })
+
+    const chunks = [] as Array<{ type: string; error?: string }>
+    for await (const chunk of runtime.streamPrompt('hello', 'session-1')) {
+      chunks.push({ type: chunk.type, error: chunk.error })
+    }
+
+    expect(chunks.map(c => c.type)).toEqual(['error', 'done'])
+    expect(chunks[0]!.error).toBe('401 Unauthorized: token refresh failed')
+  })
+
+  it('does not report a user abort as an error', async () => {
+    const db = initDatabase(':memory:')
+    const runtime = createAgentRuntime({
+      model: makeModel(),
+      apiKey: 'sk-primary',
+      db,
+      tools: [],
+    })
+
+    runtimeHarness.promptBehaviors.push(async (agent) => {
+      agent.emit({
+        type: 'message_end',
+        message: {
+          role: 'assistant',
+          content: [],
+          provider: 'openai',
+          model: 'gpt-4o',
+          usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: { total: 0 } },
+          stopReason: 'aborted',
+        },
+      })
+      agent.emit({ type: 'agent_end', messages: [] })
+    })
+
+    const chunks = [] as Array<{ type: string }>
+    for await (const chunk of runtime.streamPrompt('hello', 'session-1')) {
+      chunks.push({ type: chunk.type })
+    }
+
+    expect(chunks.map(c => c.type)).toEqual(['done'])
+  })
+
   it('retries the failed turn by continuing the transcript instead of re-sending the user message', async () => {
     const db = initDatabase(':memory:')
     const runtime = createAgentRuntime({
