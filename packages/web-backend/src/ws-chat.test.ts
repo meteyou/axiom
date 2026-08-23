@@ -1,4 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import http from 'node:http'
 import { WebSocket } from 'ws'
 import { initDatabase } from '@axiom/core'
@@ -687,6 +690,105 @@ describe('setupWebSocketChat kill switch', () => {
       expect(agentCore.abort).not.toHaveBeenCalled()
       ws.close()
     } finally {
+      for (const client of wss.clients) {
+        client.terminate()
+      }
+      wss.close()
+      await new Promise<void>((resolve, reject) =>
+        server.close((err) => (err ? reject(err) : resolve()))
+      )
+    }
+  })
+  it('streams a stall warning, persists it and resolves it in place across a reconnect', async () => {
+    const originalDataDir = process.env.DATA_DIR
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'axiom-ws-stall-'))
+    fs.mkdirSync(path.join(dataDir, 'config'), { recursive: true })
+    fs.writeFileSync(
+      path.join(dataDir, 'config', 'settings.json'),
+      JSON.stringify({ watchdog: { stallWarnMs: 100, stallAbortMs: 60_000 } }),
+      'utf-8',
+    )
+    process.env.DATA_DIR = dataDir
+
+    const db = initDatabase(':memory:')
+    let releaseTail!: () => void
+    const tail = new Promise<void>((resolve) => { releaseTail = resolve })
+
+    const mockSessionManager = {
+      getOrCreateSession: vi.fn(() => ({ id: 'session-stall', userId: '1', source: 'web', startedAt: Date.now(), lastActivity: Date.now(), messageCount: 0, summaryWritten: false, restored: false })),
+    }
+    const agentCore = {
+      sendMessage: vi.fn(async function* (): AsyncGenerator<ResponseChunk> {
+        yield { type: 'text', text: 'starting' }
+        await tail
+        yield { type: 'text', text: ' finished' }
+        yield { type: 'done' }
+      }),
+      abort: vi.fn(),
+      resetSession: vi.fn(),
+      getSessionManager: vi.fn(() => mockSessionManager),
+    } as unknown as AgentCore
+
+    const app = createApp({ db })
+    const server = http.createServer(app)
+    const { wss } = setupWebSocketChat(server, db, agentCore)
+
+    await new Promise<void>((resolve) => server.listen(0, resolve))
+    const port = (server.address() as { port: number }).port
+    const token = generateAccessToken({ userId: 1, username: 'admin', role: 'admin' })
+
+    try {
+      const first = await connectWs(port, token)
+      await first.waitForMessage() // authenticated
+      first.ws.send(JSON.stringify({ type: 'message', content: 'hello' }))
+      expect((await first.waitForMessage()).text).toBe('starting')
+
+      const warning = await first.waitForMessage()
+      expect(warning.type).toBe('stall_warning')
+      expect(warning.text).toContain('Provider has not responded')
+      const warned = warning.stall as { messageId: number; startedAt: string; durationMs: number }
+      expect(warned.messageId).toBeGreaterThan(0)
+
+      const stallRow = db.prepare(
+        'SELECT id, role, content, metadata FROM chat_messages WHERE id = ?'
+      ).get(warned.messageId) as { id: number; role: string; content: string; metadata: string }
+      expect(stallRow.role).toBe('system')
+      expect(JSON.parse(stallRow.metadata)).toMatchObject({
+        kind: 'provider_stall',
+        outcome: null,
+        resolvedAt: null,
+      })
+
+      // Page refresh while stalled: the warning is replayed to the new socket.
+      first.ws.close()
+      await new Promise<void>((resolve) => setTimeout(resolve, 50))
+
+      const second = await connectWs(port, token)
+      await second.waitForMessage() // authenticated
+      expect((await second.waitForMessage()).type).toBe('turn_replay_start')
+      expect(await second.waitForMessage()).toMatchObject({ type: 'text', text: 'starting' })
+      const replayedWarning = await second.waitForMessage()
+      expect(replayedWarning.type).toBe('stall_warning')
+      expect((replayedWarning.stall as { messageId: number }).messageId).toBe(warned.messageId)
+
+      releaseTail()
+      const resolved = await second.waitForMessage()
+      expect(resolved.type).toBe('stall_resolved')
+      expect(resolved.text).toContain('Provider recovered')
+      expect(resolved.stall).toMatchObject({ messageId: warned.messageId, outcome: 'recovered' })
+
+      // Same row, updated instead of duplicated.
+      const rowsAfter = db.prepare(
+        "SELECT id, metadata FROM chat_messages WHERE session_id = 'session-stall' AND role = 'system'"
+      ).all() as Array<{ id: number; metadata: string }>
+      expect(rowsAfter).toHaveLength(1)
+      expect(rowsAfter[0]!.id).toBe(warned.messageId)
+      expect(JSON.parse(rowsAfter[0]!.metadata)).toMatchObject({ kind: 'provider_stall', outcome: 'recovered' })
+
+      second.ws.close()
+    } finally {
+      if (originalDataDir === undefined) delete process.env.DATA_DIR
+      else process.env.DATA_DIR = originalDataDir
       for (const client of wss.clients) {
         client.terminate()
       }
