@@ -540,8 +540,7 @@ export function initDatabase(dbPath?: string): Database {
   if (!sessionCols.find(c => c.name === 'completion_tokens')) {
     db.exec("ALTER TABLE sessions ADD COLUMN completion_tokens INTEGER NOT NULL DEFAULT 0")
   }
-  const needsCacheBackfill = !sessionCols.find(c => c.name === 'cache_read')
-  if (needsCacheBackfill) {
+  if (!sessionCols.find(c => c.name === 'cache_read')) {
     db.exec("ALTER TABLE sessions ADD COLUMN cache_read INTEGER NOT NULL DEFAULT 0")
   }
   if (!sessionCols.find(c => c.name === 'cache_write')) {
@@ -636,20 +635,6 @@ export function initDatabase(dbPath?: string): Database {
         ), 0),
         completion_tokens = COALESCE((
           SELECT SUM(completion_tokens) FROM token_usage WHERE token_usage.session_id = sessions.id
-        ), 0)
-      WHERE EXISTS (SELECT 1 FROM token_usage WHERE token_usage.session_id = sessions.id);
-    `)
-  }
-
-  // Backfill cache token counts from token_usage only when the columns are first added
-  if (needsCacheBackfill) {
-    db.exec(`
-      UPDATE sessions SET
-        cache_read = COALESCE((
-          SELECT SUM(cache_read) FROM token_usage WHERE token_usage.session_id = sessions.id
-        ), 0),
-        cache_write = COALESCE((
-          SELECT SUM(cache_write) FROM token_usage WHERE token_usage.session_id = sessions.id
         ), 0)
       WHERE EXISTS (SELECT 1 FROM token_usage WHERE token_usage.session_id = sessions.id);
     `)
