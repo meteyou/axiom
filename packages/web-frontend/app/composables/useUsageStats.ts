@@ -11,6 +11,8 @@ interface UsageTotals {
   promptTokens: number
   completionTokens: number
   totalTokens: number
+  cacheRead: number
+  cacheWrite: number
   estimatedCost: number
 }
 
@@ -44,7 +46,7 @@ function formatDateParam(date: Date): string {
 }
 
 function emptyTotals(): UsageTotals {
-  return { requests: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCost: 0 }
+  return { requests: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, cacheRead: 0, cacheWrite: 0, estimatedCost: 0 }
 }
 
 export function useUsageStats() {

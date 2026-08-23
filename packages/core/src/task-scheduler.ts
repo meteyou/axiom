@@ -12,8 +12,8 @@ export interface TaskSchedulerOptions {
   db: Database
   taskStore: TaskStore
   taskRunner: TaskRunner
-  /** Get the default provider for tasks */
-  getDefaultProvider: () => ProviderConfig
+  /** Get the default provider for tasks; null when none is configured */
+  getDefaultProvider: () => ProviderConfig | null
   /** Resolve a provider by name/id */
   resolveProvider: (nameOrId: string) => ProviderConfig | null
   /** Callback for injection-type cronjobs — delivers the reminder to the user */
@@ -345,7 +345,7 @@ export class TaskScheduler {
     // composite (same format used everywhere else in settings) or, for legacy
     // rows, a plain provider name/id. `parseProviderModelId` handles both:
     // without a colon it returns `{ providerId: <raw> }` and modelId stays undefined.
-    let provider: ProviderConfig
+    let provider: ProviderConfig | null
     let modelOverride: string | undefined
     if (scheduledTask.provider) {
       const { providerId, modelId } = parseProviderModelId(scheduledTask.provider)
@@ -354,6 +354,11 @@ export class TaskScheduler {
       modelOverride = modelId
     } else {
       provider = this.options.getDefaultProvider()
+    }
+
+    if (!provider) {
+      console.warn(`[axiom] Cronjob "${scheduledTask.name}" skipped: no provider available (configure a task default or an active provider)`)
+      return null
     }
 
     // When the cronjob pins a specific model, pass that model through to the

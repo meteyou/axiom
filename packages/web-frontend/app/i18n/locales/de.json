@@ -862,7 +862,7 @@
       "requests": "Anfragen",
       "requestsPerDay": "~{count} pro Tag",
       "totalTokens": "Gesamt-Tokens",
-      "tokenBreakdown": "{prompt} Prompt · {completion} Completion",
+      "tokenBreakdown": "{prompt} Input · {completion} Output",
       "estimatedCost": "Geschätzte Kosten",
       "costPerRequest": "~{cost} pro Anfrage"
     },
@@ -873,8 +873,8 @@
     "chart": {
       "title": "Tägliches Token-Volumen",
       "description": "Tag-für-Tag Token-Verbrauch im ausgewählten Zeitraum.",
-      "prompt": "Prompt (Eingabe)",
-      "completion": "Completion (Ausgabe)",
+      "prompt": "Input",
+      "completion": "Output",
       "empty": "Für die aktuellen Filter gibt es keine tägliche Nutzung."
     },
     "sourceChart": {
@@ -893,9 +893,11 @@
         "provider": "Anbieter",
         "model": "Modell",
         "requests": "Anfragen",
-        "promptTokens": "Prompt",
-        "completionTokens": "Completion",
-        "totalTokens": "Gesamt-Tokens",
+        "promptTokens": "Input",
+        "completionTokens": "Output",
+        "cacheRead": "Cache-Lesen",
+        "cacheWrite": "Cache-Schreiben",
+        "cacheHitRate": "Cache-Treffer",
         "cost": "Gesch. Kosten"
       }
     }
@@ -941,7 +943,14 @@
       "consolidation": "Konsolidierung"
     },
     "triggerModelDefault": "Standard ({value})",
-    "triggerModelDefaultTooltip": "Standard-Provider und -Modell aus den Task-Einstellungen."
+    "triggerModelDefaultTooltip": "Standard-Provider und -Modell aus den Task-Einstellungen.",
+    "tokensTooltip": {
+      "input": "Input",
+      "output": "Output",
+      "cacheRead": "Cache-Lesen",
+      "cacheWrite": "Cache-Schreiben",
+      "cacheHitRate": "Cache-Trefferquote"
+    }
   },
   "email": {
     "title": "E-Mail",

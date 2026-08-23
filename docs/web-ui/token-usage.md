@@ -4,7 +4,7 @@ Token Usage is the consumption analytics page — how many requests went out, ho
 
 > **Admin only.** Regular users don't see this page.
 
-> **Where do the numbers come from?** The agent records prompt and completion token counts on every model response. Cost is *estimated* by multiplying those counts against the `tokenPriceTable` from your [`settings.json`](../reference/settings) — if a model isn't in that table, its cost shows as `$0.00` even though tokens were used. Add a price entry to fix it.
+> **Where do the numbers come from?** The agent records input and output token counts (plus cache read/write tokens, where the provider reports them) on every model response. Cost is *estimated* by multiplying those counts against the `tokenPriceTable` from your [`settings.json`](../reference/settings) - if a model isn't in that table, its cost shows as `$0.00` even though tokens were used. Add a price entry to fix it.
 
 ![Screenshot of the Token Usage page](../assets/screenshot-token-usage.png)
 
@@ -31,7 +31,7 @@ Three cards across the top, each summarizing the *currently filtered range*:
 | Card               | Number                                              | Sub-line                                                  |
 |--------------------|-----------------------------------------------------|-----------------------------------------------------------|
 | **Requests**       | Total model requests in the range.                 | Average per day across the range (`~N per day`).          |
-| **Total Tokens**   | Prompt + completion tokens combined.               | Split as `<prompt> prompt · <completion> completion`.     |
+| **Total Tokens**   | Input + output tokens combined.                    | Split as `<input> input · <output> output`.               |
 | **Estimated Cost** | Sum of estimated cost over the range, formatted as currency. | Average cost per request (`~$X per request`), or `—` if the range had zero requests. |
 
 Numbers respect the filter — if you've narrowed to a single provider/model, all three cards reflect just that subset.
@@ -40,14 +40,14 @@ Numbers respect the filter — if you've narrowed to a single provider/model, al
 
 A stacked bar chart, one bar per day in the selected range:
 
-- **Bottom segment (solid primary color)** — prompt (input) tokens.
-- **Top segment (light primary)** — completion (output) tokens.
+- **Bottom segment (solid primary color)** — input tokens.
+- **Top segment (light primary)** — output tokens.
 - **Y-axis** — three labels: `0`, half-max, and the maximum total across all visible days (auto-scaled).
 - **X-axis** — date labels. The frequency adapts to the range:
   - ≤ 14 days: every day labeled.
   - 15–31 days: every 3rd day.
   - > 31 days: every 7th day.
-- **Hover** — a tooltip showing the full date, prompt count, completion count, and estimated cost for that day.
+- **Hover** — a tooltip showing the full date, input count, output count, and estimated cost for that day.
 
 Days with zero tokens render as flat (no bar). Days with very few tokens render with an 8 % minimum height so they're still visible — that's a rendering trick, not the actual relative size; trust the tooltip for precise numbers.
 
@@ -76,16 +76,20 @@ Below the charts, a flat table — one row per `(provider, model)` pair that had
 | **Provider**       | The configured provider name (e.g. `anthropic`, `openai-codex`).                  |
 | **Model**          | Monospace, the exact model identifier the request was sent to (e.g. `claude-opus-4-7`). |
 | **Requests**       | Number of completed model requests for this pair.                                  |
-| **Prompt**         | Total prompt tokens.                                                               |
-| **Completion**     | Total completion tokens.                                                           |
-| **Total tokens**   | Sum, bold.                                                                         |
+| **Input**          | Total input tokens.                                                                |
+| **Output**         | Total output tokens.                                                               |
+| **Cache read**     | Total tokens served from the provider's prompt cache.                              |
+| **Cache write**    | Total tokens written to the prompt cache. Always `0` for providers whose API doesn't report cache writes (e.g. OpenAI-compatible endpoints — only Anthropic-style APIs report them). |
+| **Cache hit**      | Cache read as a share of all input-side tokens (`read / (input + read + write)`). Shows `—` when the pair has no cache activity at all. |
 | **Est. cost**      | Currency. When more than one row is present, a small percentage in parentheses (`(53%)`) indicates this row's share of the total cost across the table. |
+
+Requests recorded before cache tracking was introduced count as zero cache tokens, so long-lived deployments may see lower hit rates for wide date ranges.
 
 There's no sort control — rows come back ordered server-side by total cost, descending. Use the filter toolbar to narrow further instead of sorting.
 
 ### Totals row
 
-A bold row at the bottom with a double border on top sums every numeric column. The percentage column is omitted in the totals (since it would always read 100 %).
+A bold row at the bottom with a double border on top sums every numeric column; the cache-hit cell shows the rate computed over those sums. The cost-share percentage is omitted in the totals (since it would always read 100 %).
 
 If a model isn't in the `tokenPriceTable`, its row shows real token counts but a `$0.00` cost — the totals row reflects that.
 

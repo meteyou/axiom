@@ -97,7 +97,7 @@ describe('SessionManager', () => {
         provider: 'openai',
         model: 'gpt-4o',
         promptTokens: 120,
-        completionTokens: 45,
+        completionTokens: 45, cacheRead: 0, cacheWrite: 0,
         estimatedCost: 0.001,
         sessionId: session.id,
       })
@@ -105,7 +105,7 @@ describe('SessionManager', () => {
         provider: 'openai',
         model: 'gpt-4o-mini',
         promptTokens: 30,
-        completionTokens: 15,
+        completionTokens: 15, cacheRead: 0, cacheWrite: 0,
         estimatedCost: 0.0002,
         sessionId: session.id,
       })

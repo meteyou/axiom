@@ -24,6 +24,8 @@ export interface Task {
   maxDurationMinutes: number | null
   promptTokens: number
   completionTokens: number
+  cacheRead: number
+  cacheWrite: number
   estimatedCost: number
   toolCallCount: number
   resultSummary: string | null
@@ -58,6 +60,8 @@ export interface UpdateTaskInput {
   model?: string
   promptTokens?: number
   completionTokens?: number
+  cacheRead?: number
+  cacheWrite?: number
   estimatedCost?: number
   toolCallCount?: number
   resultSummary?: string
@@ -143,6 +147,8 @@ interface TaskRow {
   max_duration_minutes: number | null
   prompt_tokens: number
   completion_tokens: number
+  cache_read: number
+  cache_write: number
   estimated_cost: number
   tool_call_count: number
   result_summary: string | null
@@ -171,6 +177,8 @@ function rowToTask(row: TaskRow): Task {
     maxDurationMinutes: row.max_duration_minutes,
     promptTokens: row.prompt_tokens,
     completionTokens: row.completion_tokens,
+    cacheRead: row.cache_read,
+    cacheWrite: row.cache_write,
     estimatedCost: row.estimated_cost,
     toolCallCount: row.tool_call_count,
     resultSummary: row.result_summary,
@@ -201,6 +209,8 @@ export function initTasksTable(db: Database): void {
       max_duration_minutes INTEGER,
       prompt_tokens INTEGER NOT NULL DEFAULT 0,
       completion_tokens INTEGER NOT NULL DEFAULT 0,
+      cache_read INTEGER NOT NULL DEFAULT 0,
+      cache_write INTEGER NOT NULL DEFAULT 0,
       estimated_cost REAL NOT NULL DEFAULT 0.0,
       tool_call_count INTEGER NOT NULL DEFAULT 0,
       result_summary TEXT,
@@ -313,6 +323,14 @@ export class TaskStore {
     if (input.completionTokens !== undefined) {
       setClauses.push('completion_tokens = ?')
       params.push(input.completionTokens)
+    }
+    if (input.cacheRead !== undefined) {
+      setClauses.push('cache_read = ?')
+      params.push(input.cacheRead)
+    }
+    if (input.cacheWrite !== undefined) {
+      setClauses.push('cache_write = ?')
+      params.push(input.cacheWrite)
     }
     if (input.estimatedCost !== undefined) {
       setClauses.push('estimated_cost = ?')

@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS token_usage (
   model TEXT NOT NULL,
   prompt_tokens INTEGER NOT NULL DEFAULT 0,
   completion_tokens INTEGER NOT NULL DEFAULT 0,
+  cache_read INTEGER NOT NULL DEFAULT 0,
+  cache_write INTEGER NOT NULL DEFAULT 0,
   estimated_cost REAL NOT NULL DEFAULT 0.0,
   session_id TEXT
 );
@@ -53,6 +55,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   summary_written INTEGER NOT NULL DEFAULT 0,
   prompt_tokens INTEGER NOT NULL DEFAULT 0,
   completion_tokens INTEGER NOT NULL DEFAULT 0,
+  cache_read INTEGER NOT NULL DEFAULT 0,
+  cache_write INTEGER NOT NULL DEFAULT 0,
   FOREIGN KEY (user_id) REFERENCES users(id),
   FOREIGN KEY (parent_session_id) REFERENCES sessions(id)
 );
@@ -172,6 +176,15 @@ export function initDatabase(dbPath?: string): Database {
     db.exec("ALTER TABLE tool_calls ADD COLUMN status TEXT NOT NULL DEFAULT 'success' CHECK(status IN ('success', 'error'))")
   }
 
+  // Migration: add cache token columns to token_usage if missing
+  const tokenUsageCols = db.prepare("PRAGMA table_info(token_usage)").all() as { name: string }[]
+  if (!tokenUsageCols.find(c => c.name === 'cache_read')) {
+    db.exec("ALTER TABLE token_usage ADD COLUMN cache_read INTEGER NOT NULL DEFAULT 0")
+  }
+  if (!tokenUsageCols.find(c => c.name === 'cache_write')) {
+    db.exec("ALTER TABLE token_usage ADD COLUMN cache_write INTEGER NOT NULL DEFAULT 0")
+  }
+
   // Migration: add metadata column and tool role to chat_messages if missing
   const chatCols = db.prepare("PRAGMA table_info(chat_messages)").all() as { name: string }[]
   if (!chatCols.find(c => c.name === 'metadata')) {
@@ -280,6 +293,8 @@ export function initDatabase(dbPath?: string): Database {
       max_duration_minutes INTEGER,
       prompt_tokens INTEGER NOT NULL DEFAULT 0,
       completion_tokens INTEGER NOT NULL DEFAULT 0,
+      cache_read INTEGER NOT NULL DEFAULT 0,
+      cache_write INTEGER NOT NULL DEFAULT 0,
       estimated_cost REAL NOT NULL DEFAULT 0.0,
       tool_call_count INTEGER NOT NULL DEFAULT 0,
       result_summary TEXT,
@@ -493,6 +508,15 @@ export function initDatabase(dbPath?: string): Database {
     db.exec("ALTER TABLE tasks ADD COLUMN is_default_model INTEGER")
   }
 
+  // Migration: add cache token columns to tasks table
+  const taskColsForCache = db.prepare("PRAGMA table_info(tasks)").all() as { name: string }[]
+  if (!taskColsForCache.find(c => c.name === 'cache_read')) {
+    db.exec("ALTER TABLE tasks ADD COLUMN cache_read INTEGER NOT NULL DEFAULT 0")
+  }
+  if (!taskColsForCache.find(c => c.name === 'cache_write')) {
+    db.exec("ALTER TABLE tasks ADD COLUMN cache_write INTEGER NOT NULL DEFAULT 0")
+  }
+
   // Provider/model task filters can otherwise fall back to a full task scan
   // when the date range is wide or cleared.
   db.exec(`
@@ -515,6 +539,12 @@ export function initDatabase(dbPath?: string): Database {
   }
   if (!sessionCols.find(c => c.name === 'completion_tokens')) {
     db.exec("ALTER TABLE sessions ADD COLUMN completion_tokens INTEGER NOT NULL DEFAULT 0")
+  }
+  if (!sessionCols.find(c => c.name === 'cache_read')) {
+    db.exec("ALTER TABLE sessions ADD COLUMN cache_read INTEGER NOT NULL DEFAULT 0")
+  }
+  if (!sessionCols.find(c => c.name === 'cache_write')) {
+    db.exec("ALTER TABLE sessions ADD COLUMN cache_write INTEGER NOT NULL DEFAULT 0")
   }
   if (!sessionCols.find(c => c.name === 'type')) {
     // Add without CHECK constraint (SQLite ALTER limitation), then enforce by recreating below
@@ -571,11 +601,13 @@ export function initDatabase(dbPath?: string): Database {
           session_user TEXT,
           prompt_tokens INTEGER NOT NULL DEFAULT 0,
           completion_tokens INTEGER NOT NULL DEFAULT 0,
+          cache_read INTEGER NOT NULL DEFAULT 0,
+          cache_write INTEGER NOT NULL DEFAULT 0,
           FOREIGN KEY (user_id) REFERENCES users(id),
           FOREIGN KEY (parent_session_id) REFERENCES sessions(id)
         );
-        INSERT INTO sessions (id, user_id, source, type, parent_session_id, started_at, ended_at, message_count, summary_written, last_activity, session_user, prompt_tokens, completion_tokens)
-          SELECT id, user_id, source, type, parent_session_id, started_at, ended_at, message_count, summary_written, last_activity, session_user, prompt_tokens, completion_tokens FROM sessions_old;
+        INSERT INTO sessions (id, user_id, source, type, parent_session_id, started_at, ended_at, message_count, summary_written, last_activity, session_user, prompt_tokens, completion_tokens, cache_read, cache_write)
+          SELECT id, user_id, source, type, parent_session_id, started_at, ended_at, message_count, summary_written, last_activity, session_user, prompt_tokens, completion_tokens, cache_read, cache_write FROM sessions_old;
         DROP TABLE sessions_old;
         CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
         CREATE INDEX IF NOT EXISTS idx_sessions_type ON sessions(type);

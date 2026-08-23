@@ -39,7 +39,7 @@ See [Tasks & Cronjobs → Triggers](../concepts/tasks-and-cronjobs#triggers) for
 | **Status**    | Colored badge: gray (running), green (completed), red (failed), amber (paused).     |
 | **Trigger**   | Trigger badge plus, on a second line, the provider/model the task ran on.           |
 | **Duration**  | Live for running tasks (counts up), final for completed ones, `—` if never started. |
-| **Tokens**    | Total prompt + completion. Hover for the prompt/completion split.                   |
+| **Tokens**    | Total input + output tokens. Tasks that used prompt caching show a smaller `CH <rate>%` cache-hit line beneath the total. Hover for a structured tooltip with the full breakdown — input, output, cache read, cache write, and cache hit rate. |
 | **Est. cost** | USD estimate from the [token price table](../reference/settings).                   |
 | **Created**   | Local timestamp, locale-aware short format.                                         |
 

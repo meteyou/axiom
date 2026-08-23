@@ -45,6 +45,8 @@ describe('TaskStore', () => {
       expect(task.triggerType).toBe('agent')
       expect(task.promptTokens).toBe(0)
       expect(task.completionTokens).toBe(0)
+      expect(task.cacheRead).toBe(0)
+      expect(task.cacheWrite).toBe(0)
       expect(task.estimatedCost).toBe(0)
       expect(task.toolCallCount).toBe(0)
       expect(task.createdAt).toBeTruthy()
@@ -237,6 +239,8 @@ describe('TaskStore', () => {
       store.update(task.id, {
         promptTokens: 1000,
         completionTokens: 500,
+        cacheRead: 4000,
+        cacheWrite: 250,
         estimatedCost: 0.05,
         toolCallCount: 10,
       })
@@ -244,6 +248,8 @@ describe('TaskStore', () => {
       const found = store.getById(task.id)!
       expect(found.promptTokens).toBe(1000)
       expect(found.completionTokens).toBe(500)
+      expect(found.cacheRead).toBe(4000)
+      expect(found.cacheWrite).toBe(250)
       expect(found.estimatedCost).toBeCloseTo(0.05)
       expect(found.toolCallCount).toBe(10)
     })

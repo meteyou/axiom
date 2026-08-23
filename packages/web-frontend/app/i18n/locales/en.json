@@ -862,7 +862,7 @@
       "requests": "Requests",
       "requestsPerDay": "~{count} per day",
       "totalTokens": "Total Tokens",
-      "tokenBreakdown": "{prompt} prompt · {completion} completion",
+      "tokenBreakdown": "{prompt} input · {completion} output",
       "estimatedCost": "Estimated Cost",
       "costPerRequest": "~{cost} per request"
     },
@@ -873,8 +873,8 @@
     "chart": {
       "title": "Daily token volume",
       "description": "Day-by-day token usage across the selected range.",
-      "prompt": "Prompt (input)",
-      "completion": "Completion (output)",
+      "prompt": "Input",
+      "completion": "Output",
       "empty": "No daily usage to chart for the current filters."
     },
     "sourceChart": {
@@ -893,9 +893,11 @@
         "provider": "Provider",
         "model": "Model",
         "requests": "Requests",
-        "promptTokens": "Prompt",
-        "completionTokens": "Completion",
-        "totalTokens": "Total tokens",
+        "promptTokens": "Input",
+        "completionTokens": "Output",
+        "cacheRead": "Cache read",
+        "cacheWrite": "Cache write",
+        "cacheHitRate": "Cache hit",
         "cost": "Est. cost"
       }
     }
@@ -941,7 +943,14 @@
       "consolidation": "Consolidation"
     },
     "triggerModelDefault": "Default ({value})",
-    "triggerModelDefaultTooltip": "Default provider and model from the task settings."
+    "triggerModelDefaultTooltip": "Default provider and model from the task settings.",
+    "tokensTooltip": {
+      "input": "Input",
+      "output": "Output",
+      "cacheRead": "Cache read",
+      "cacheWrite": "Cache write",
+      "cacheHitRate": "Cache hit rate"
+    }
   },
   "email": {
     "title": "Email",
