@@ -1,3 +1,5 @@
+import { ApiError } from './useApi'
+
 export interface ToolCallData {
   toolName: string
   toolCallId: string
@@ -1091,15 +1093,16 @@ export function useChat() {
       )
       applyChatActionResolution(messageId, response.resolution)
     } catch (err) {
-      // A transport failure left the decision unmade — keep the buttons
-      // clickable so the user can try again once back online.
-      if (err instanceof TypeError || (err as Error).message === 'Session expired') {
+      // Only a client-side rejection is final (stale button, lost race, a button
+      // minted before a restart): the server answered and its text replaces the
+      // buttons — for a lost race the broadcast carries the same text.
+      // Everything else (offline, expired session, 5xx) left the decision
+      // unmade, so the buttons stay clickable for another attempt.
+      const status = err instanceof ApiError ? err.status : null
+      if (status === null || status === 401 || status >= 500) {
         console.error('[chat] action failed:', err)
         return
       }
-      // Anything the server answered is final (stale button, lost race, a
-      // button minted before a restart). Show it in place of the buttons — for
-      // a lost race the broadcast carries the same text.
       applyChatActionResolution(messageId, (err as Error).message)
     }
   }

@@ -1,3 +1,15 @@
+/**
+ * Failure of an API call, carrying the HTTP status so callers can branch on a
+ * stable signal instead of matching the message text. A network-level failure
+ * never produces this — it surfaces as the raw `TypeError` from `fetch`.
+ */
+export class ApiError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message)
+    this.name = 'ApiError'
+  }
+}
+
 export function useApi() {
   const { getAccessToken, refreshAccessToken, logout } = useAuth()
   const config = useRuntimeConfig()
@@ -37,13 +49,13 @@ export function useApi() {
         })
       } else {
         logout()
-        throw new Error('Session expired')
+        throw new ApiError('Session expired', res.status)
       }
     }
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}))
-      throw new Error((body as { error?: string }).error || `API error: ${res.status}`)
+      throw new ApiError((body as { error?: string }).error || `API error: ${res.status}`, res.status)
     }
 
     return res.json() as Promise<T>
