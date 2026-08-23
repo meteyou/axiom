@@ -9,11 +9,17 @@ import type {
   EmailApprovalNotifier,
   EmailApprovalService,
   EmailSendLogEntry,
+  ResponseChunk,
   SlashCommandRegistry,
   SlashCommandPicker,
+  TurnEvent,
+  TurnRetryService,
 } from '@axiom/core'
 import {
   createEmailApprovalService,
+  createTurnRetryService,
+  registerTurnRetryNotifier,
+  TurnRunner,
   loadConfig,
   getConfigDir,
   saveUpload,
@@ -21,7 +27,6 @@ import {
   parseUploadsMetadata,
   loadSttSettings,
   transcribeAudio,
-  extractUploadsFromToolResult,
   synthesizeTts,
   SlashCommandRegistry as SlashCommandRegistryCtor,
   registerBuiltInSlashCommands,
@@ -29,7 +34,7 @@ import {
   TaskStore,
   ScheduledTaskStore,
 } from '@axiom/core'
-import type { StallInfo, UploadDescriptor } from '@axiom/core'
+import type { TurnErrorInfo, UploadDescriptor } from '@axiom/core'
 import {
   EMAIL_APPROVAL_CALLBACK_PREFIX,
   buildEmailApprovalCallbackData,
@@ -37,6 +42,13 @@ import {
   formatEmailApprovalResolution,
   parseEmailApprovalCallbackData,
 } from './email-approval.js'
+import {
+  TURN_RETRY_CALLBACK_PREFIX,
+  buildTurnRetryCallbackData,
+  formatTurnErrorMessage,
+  formatTurnRetryResolution,
+  parseTurnRetryCallbackData,
+} from './turn-retry.js'
 
 /**
  * Inline-keyboard callbacks live under this prefix. Telegram limits
@@ -66,29 +78,20 @@ export interface TelegramConfig {
 
 /**
  * Chat event emitted by the Telegram bot for cross-channel sync.
+ *
+ * Deliberately narrow: the assistant side of a turn reaches other channels
+ * through their own {@link TurnRunner} subscription, so only what the runner
+ * does not produce is announced here — the inbound Telegram message, the
+ * uploads a turn attached, and bot-initiated outbound messages.
  */
 export interface TelegramChatEvent {
-  type: 'user_message' | 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'done' | 'error' | 'attachment' | 'stall_warning' | 'stall_resolved' | 'retry_scheduled'
+  type: 'user_message' | 'text' | 'done' | 'attachment'
   /** Axiom user ID (integer) — only set for linked users */
   userId: number | null
   /** Session ID used for chat_messages */
   sessionId: string
   /** Text content */
   text?: string
-  /** Streamed thinking/reasoning delta (for `type: 'thinking'`) */
-  thinking?: string
-  /** Tool name */
-  toolName?: string
-  /** Tool call ID */
-  toolCallId?: string
-  /** Tool arguments */
-  toolArgs?: unknown
-  /** Tool result */
-  toolResult?: unknown
-  /** Whether the tool call errored */
-  toolIsError?: boolean
-  /** Provider-stall details (for `stall_warning` / `stall_resolved`) */
-  stall?: StallInfo
   /** Display name of the sender */
   senderName?: string
   /** Uploaded file attached to the current assistant turn (for type='attachment') */
@@ -99,6 +102,12 @@ export interface TelegramChatEvent {
 export interface TelegramBotOptions {
   agentCore: AgentCore
   db?: Database
+  /**
+   * Shared turn lifecycle owner. The composition root passes the process-wide
+   * runner so web and Telegram consume the very same turns; without one the
+   * bot builds a private runner (standalone / test setups).
+   */
+  turnRunner?: TurnRunner
   /** Overridable for tests; defaults to a service backed by `db`. */
   emailApproval?: EmailApprovalService
   config?: TelegramConfig
@@ -140,6 +149,24 @@ interface ChatState {
   queue: QueuedMessage[]
   processing: boolean
   abortRequested: boolean
+}
+
+/** One turn handed to the shared runner on behalf of a Telegram chat. */
+interface TurnRequest {
+  chatId: string | number
+  agentUserId: string
+  userId: number | null
+  sessionId: string
+  text: string
+  source: string
+  attachments?: UploadDescriptor[]
+}
+
+/** What the runner produced, collected for delivery to Telegram. */
+interface TurnOutcome {
+  text: string
+  uploads: UploadDescriptor[]
+  error: TurnErrorInfo | null
 }
 
 /** Telegram's maximum message length */
@@ -391,6 +418,15 @@ export class TelegramBot {
    */
   private emailApprovalPrompts = new Map<string, { chatId: string; messageId: number }[]>()
   private emailApproval: EmailApprovalService | null
+  private turnRunner: TurnRunner
+  private turnRetry: TurnRetryService | null
+  private unregisterTurnRetryNotifier: () => void
+  /**
+   * Retry prompts we sent, per `turn_error` row id, so the keyboard can be
+   * edited away once *any* channel answered. In-memory only, like the email
+   * approval prompts.
+   */
+  private retryPrompts = new Map<number, { chatId: string; messageId: number; error: TurnErrorInfo }[]>()
 
   constructor(options: TelegramBotOptions) {
     this.agentCore = options.agentCore
@@ -399,6 +435,17 @@ export class TelegramBot {
     this.onQueueDepthChanged = options.onQueueDepthChanged
     this.onChatEvent = options.onChatEvent
     this.emailApproval = options.emailApproval ?? (this.db ? createEmailApprovalService({ db: this.db }) : null)
+    this.turnRunner = options.turnRunner ?? new TurnRunner({
+      db: this.db,
+      getAgent: () => this.agentCore,
+    })
+    this.turnRetry = this.db
+      ? createTurnRetryService({ db: this.db, runner: this.turnRunner })
+      : null
+    this.unregisterTurnRetryNotifier = registerTurnRetryNotifier({
+      retryResolved: ({ errorMessageId, resolution }) =>
+        this.resolveRetryPrompts(errorMessageId, resolution),
+    })
     this.slashRegistry = buildTelegramSlashCommandRegistry()
     this.taskStore = this.db ? new TaskStore(this.db) : null
     this.scheduledTaskStore = this.db ? new ScheduledTaskStore(this.db) : null
@@ -534,6 +581,10 @@ export class TelegramBot {
       const data = ctx.callbackQuery.data
       if (data.startsWith(EMAIL_APPROVAL_CALLBACK_PREFIX)) {
         await this.handleEmailApprovalCallback(ctx, data)
+        return
+      }
+      if (data.startsWith(TURN_RETRY_CALLBACK_PREFIX)) {
+        await this.handleTurnRetryCallback(ctx, data)
         return
       }
       if (!data.startsWith(PICKER_CALLBACK_PREFIX)) return
@@ -996,7 +1047,7 @@ export class TelegramBot {
     if (!state) return
 
     const { ctx, text, attachments, replyContext } = queuedMessage
-    const userId = this.resolveUserId(ctx)
+    const agentUserId = this.resolveUserId(ctx)
     const numericUserId = this.resolveNumericUserId(ctx)
     // Agent sees the reply context wrapped as a pseudo-system hint on its own
     // line; the DB-stored `content` remains exactly what the user typed.
@@ -1006,7 +1057,7 @@ export class TelegramBot {
     const isDM = this.isDMChat(ctx)
 
     // Resolve session ID from SessionManager (aligns chat_messages with session tracking)
-    const smSession = this.agentCore.getSessionManager().getOrCreateSession(userId, 'telegram')
+    const smSession = this.agentCore.getSessionManager().getOrCreateSession(agentUserId, 'telegram')
     const sessionId = smSession.id
 
     // Save user message to chat_messages (if linked to a web user)
@@ -1020,7 +1071,9 @@ export class TelegramBot {
       ).run(sessionId, numericUserId, 'user', text, metadata)
     }
 
-    // Broadcast user message event (skip if already broadcast by attachment handler)
+    // Broadcast user message event (skip if already broadcast by attachment
+    // handler). Only the inbound message needs this: the assistant side of the
+    // turn reaches other channels through their own runner subscription.
     if (!attachments?.length) {
       this.onChatEvent?.({
         type: 'user_message',
@@ -1032,23 +1085,10 @@ export class TelegramBot {
       })
     }
 
-    try {
-      // Send "typing" indicator
-      await ctx.replyWithChatAction('typing')
+    const chatId = ctx.chat!.id
 
-      // Collect the full response from agent
-      let fullResponse = ''
-      // Uploads produced by tools during this turn (e.g. `send_file_to_user`).
-      // These are:
-      //   1. delivered to the Telegram chat as documents/photos right after
-      //      the text response (see sendAssistantResponseToTelegram),
-      //   2. merged into the saved assistant message's metadata so history
-      //      rehydration surfaces them alongside the text,
-      //   3. broadcast as `attachment` chat events so concurrently connected
-      //      web tabs render the same download card.
-      const assistantUploads: UploadDescriptor[] = []
-      // Track pending tool calls to save input+output together
-      const pendingToolCalls = new Map<string, { toolName: string; toolArgs: unknown }>()
+    try {
+      await ctx.replyWithChatAction('typing')
 
       // Set up a typing indicator interval (every 4 seconds)
       const typingInterval = setInterval(async () => {
@@ -1059,106 +1099,129 @@ export class TelegramBot {
         }
       }, 4000)
 
+      let outcome: TurnOutcome
       try {
-        const source = isDM ? 'telegram' : 'telegram-group'
-        for await (const chunk of this.agentCore.sendMessage(userId, messageForAgent, source, attachments)) {
-          if (state.abortRequested) break
-
-          if (chunk.type === 'text' && chunk.text) {
-            fullResponse += chunk.text
-          }
-
-          // Track tool call start
-          if (chunk.type === 'tool_call_start' && chunk.toolCallId) {
-            pendingToolCalls.set(chunk.toolCallId, {
-              toolName: chunk.toolName ?? 'unknown',
-              toolArgs: chunk.toolArgs,
-            })
-          }
-
-          // Save completed tool call to DB
-          if (chunk.type === 'tool_call_end' && chunk.toolCallId) {
-            const pending = pendingToolCalls.get(chunk.toolCallId)
-            const toolName = pending?.toolName ?? chunk.toolName ?? 'unknown'
-            if (this.db && numericUserId) {
-              const metadata = JSON.stringify({
-                toolName,
-                toolCallId: chunk.toolCallId,
-                toolArgs: pending?.toolArgs ?? null,
-                toolResult: chunk.toolResult ?? null,
-                toolIsError: chunk.toolIsError ?? false,
-              })
-              this.db.prepare(
-                'INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)'
-              ).run(sessionId, numericUserId, 'tool', `Tool: ${toolName}`, metadata)
-            }
-            pendingToolCalls.delete(chunk.toolCallId)
-
-            // Harvest uploads produced by the tool (generic, not tool-name
-            // specific) and fan them out to cross-channel listeners so
-            // any concurrently-connected web tab also shows the card.
-            const newUploads = extractUploadsFromToolResult(chunk.toolResult)
-            for (const upload of newUploads) {
-              assistantUploads.push(upload)
-              this.onChatEvent?.({
-                type: 'attachment',
-                userId: numericUserId,
-                sessionId,
-                attachment: upload,
-              })
-            }
-          }
-
-          // Broadcast response chunks for cross-channel sync
-          this.onChatEvent?.({
-            type: chunk.type === 'done' ? 'done' : chunk.type,
-            userId: numericUserId,
-            sessionId,
-            text: chunk.text,
-            thinking: chunk.thinking,
-            toolName: chunk.toolName,
-            toolCallId: chunk.toolCallId,
-            toolArgs: chunk.toolArgs,
-            toolResult: chunk.toolResult,
-            toolIsError: chunk.toolIsError,
-          })
-        }
+        outcome = await this.consumeTurn({
+          chatId,
+          agentUserId,
+          userId: numericUserId,
+          sessionId,
+          text: messageForAgent,
+          source: isDM ? 'telegram' : 'telegram-group',
+          attachments,
+        })
       } finally {
         clearInterval(typingInterval)
       }
 
-      if (!state.abortRequested && (fullResponse.trim() || assistantUploads.length > 0)) {
-        await this.sendAssistantResponseToTelegram(ctx.chat!.id, fullResponse, assistantUploads)
+      if (state.abortRequested) return
+
+      if (outcome.text.trim() || outcome.uploads.length > 0) {
+        await this.sendAssistantResponseToTelegram(chatId, outcome.text, outcome.uploads)
         // Optional Deepgram voice reply. Best-effort: a TTS failure must never
         // suppress the text response or abort the turn.
-        if (fullResponse.trim()) {
+        if (outcome.text.trim()) {
           try {
-            await this.maybeSendVoiceReply(ctx.chat!.id, fullResponse)
+            await this.maybeSendVoiceReply(chatId, outcome.text)
           } catch (ttsErr) {
             console.warn('[telegram] Voice reply failed (text already sent):', (ttsErr as Error).message)
           }
         }
       }
 
-      // Save assistant response to chat_messages (if linked to a web user).
-      // Text-only responses get a plain row; if the turn also produced
-      // attachments we persist them in metadata so history rehydration
-      // surfaces the download card alongside the text.
-      if (this.db && numericUserId && (fullResponse.trim() || assistantUploads.length > 0)) {
-        const metadata = assistantUploads.length > 0
-          ? serializeUploadsMetadata(assistantUploads)
-          : null
-        this.db.prepare(
-          'INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)'
-        ).run(sessionId, numericUserId, 'assistant', fullResponse.trim(), metadata)
-      }
+      // A failed turn must never end silently \u2014 the error text plus its Retry
+      // button are delivered regardless of the stall-warning setting.
+      if (outcome.error) await this.sendTurnErrorPrompt(chatId, outcome.error)
     } catch (err) {
       if (state.abortRequested) {
         return
       }
 
       console.error('Error processing Telegram message:', err)
-      await this.safeSendMessage(ctx, '⚠️ Sorry, I encountered an error processing your message. Please try again.')
+      await this.safeSendMessage(ctx, '\u26A0\uFE0F Sorry, I encountered an error processing your message. Please try again.')
+    }
+  }
+
+  /**
+   * Run one turn through the shared {@link TurnRunner} and collect what
+   * Telegram needs to render. The runner owns streaming, persistence, the
+   * stall watchdog and auto-retry; this only translates its events into
+   * Telegram messages.
+   *
+   * Subscribing right after `startTurn` is safe (the turn is scheduled on a
+   * microtask, so no event can be missed) and lets us drop replayed events of
+   * an older turn by turn id.
+   */
+  private consumeTurn(input: TurnRequest): Promise<TurnOutcome> {
+    return new Promise<TurnOutcome>((resolve) => {
+      const outcome: TurnOutcome = { text: '', uploads: [], error: null }
+
+      const turn = this.turnRunner.startTurn({
+        userId: input.userId,
+        agentUserId: input.agentUserId,
+        sessionId: input.sessionId,
+        text: input.text,
+        source: input.source,
+        attachments: input.attachments,
+      })
+
+      const detach = this.turnRunner.subscribe(input.agentUserId, (event: TurnEvent) => {
+        if (event.turnId !== turn.turnId) return
+
+        if (event.type === 'attachment') {
+          outcome.uploads.push(event.attachment)
+          this.onChatEvent?.({
+            type: 'attachment',
+            userId: input.userId,
+            sessionId: input.sessionId,
+            attachment: event.attachment,
+          })
+          return
+        }
+
+        if (event.type === 'chunk') {
+          this.handleTurnChunk(input.chatId, event.chunk, outcome)
+          return
+        }
+
+        if (event.type === 'turn_end') {
+          detach()
+          resolve(outcome)
+        }
+      })
+    })
+  }
+
+  private handleTurnChunk(chatId: string | number, chunk: ResponseChunk, outcome: TurnOutcome): void {
+    if (chunk.type === 'text' && chunk.text) {
+      outcome.text += chunk.text
+      return
+    }
+
+    if (chunk.type === 'error' && chunk.errorInfo) {
+      outcome.error = chunk.errorInfo
+      return
+    }
+
+    // Transient provider status. Opt-in (default off) so a flaky provider does
+    // not spam the chat; the terminal error above is never gated.
+    if (chunk.type === 'stall_warning' || chunk.type === 'stall_resolved' || chunk.type === 'retry_scheduled') {
+      if (!chunk.text || !this.stallWarningsEnabled()) return
+      void this.sendPlainOrFormatted(chatId, chunk.text).catch((err) => {
+        console.error('[telegram] Failed to deliver provider status notice:', err)
+      })
+    }
+  }
+
+  /**
+   * Read fresh from `telegram.json` so toggling the setting takes effect
+   * without restarting the bot.
+   */
+  private stallWarningsEnabled(): boolean {
+    try {
+      return loadConfig<{ sendStallWarnings?: boolean }>('telegram.json').sendStallWarnings === true
+    } catch {
+      return false
     }
   }
 
@@ -1383,6 +1446,146 @@ export class TelegramBot {
     }
   }
 
+  /**
+   * Announce a terminal turn failure in the chat, with the Retry button that
+   * repeats the turn server-side. The button carries the persisted error row
+   * id, so the freshness rules (session still open, nothing newer in the
+   * transcript, no running turn) are the exact same ones the web chat applies.
+   */
+  private async sendTurnErrorPrompt(chatId: string | number, error: TurnErrorInfo): Promise<void> {
+    const text = formatTurnErrorMessage(error)
+    const canRetry = this.turnRetry !== null && error.messageId !== undefined
+
+    try {
+      const message = await this.bot.api.sendMessage(chatId, text, {
+        parse_mode: 'HTML',
+        ...(canRetry
+          ? { reply_markup: new InlineKeyboard().text('\uD83D\uDD04 Retry', buildTurnRetryCallbackData(error.messageId!)) }
+          : {}),
+      })
+
+      if (!canRetry) return
+      const prompts = this.retryPrompts.get(error.messageId!) ?? []
+      prompts.push({ chatId: String(chatId), messageId: message.message_id, error })
+      this.retryPrompts.set(error.messageId!, prompts)
+    } catch (err) {
+      console.error(`[telegram] Failed to send turn error prompt to ${chatId}:`, err)
+    }
+  }
+
+  /**
+   * Drop the keyboard once the retry was answered — in this chat or in any
+   * other channel (the core notifier is what makes that cross-channel).
+   */
+  private async resolveRetryPrompts(errorMessageId: number, resolution: string): Promise<void> {
+    const prompts = this.retryPrompts.get(errorMessageId)
+    if (!prompts || prompts.length === 0) return
+    this.retryPrompts.delete(errorMessageId)
+
+    for (const prompt of prompts) {
+      try {
+        await this.bot.api.editMessageText(
+          prompt.chatId,
+          prompt.messageId,
+          formatTurnRetryResolution(prompt.error, resolution),
+          { parse_mode: 'HTML' },
+        )
+      } catch (err) {
+        if (err instanceof GrammyError && /message is not modified/i.test(err.description)) continue
+        console.error(`[telegram] Failed to update retry prompt in ${prompt.chatId}:`, err)
+      }
+    }
+  }
+
+  private async handleTurnRetryCallback(ctx: Context, data: string): Promise<void> {
+    const parsed = parseTurnRetryCallbackData(data)
+    if (!parsed) {
+      await ctx.answerCallbackQuery({ text: 'Unknown action.', show_alert: true })
+      return
+    }
+
+    if (!await this.checkAuthorized(ctx)) {
+      await ctx.answerCallbackQuery({ text: 'Not authorized.', show_alert: true })
+      return
+    }
+
+    if (!this.turnRetry) {
+      await ctx.answerCallbackQuery({ text: 'Retry is not available.', show_alert: true })
+      return
+    }
+
+    // The turn streams into this chat through the runner subscription opened
+    // below; the retry service only decides whether it may start at all.
+    const chatId = ctx.chat?.id ?? ctx.callbackQuery?.message?.chat.id
+    const pending = chatId !== undefined ? this.subscribeToRetriedTurn(chatId, parsed.errorMessageId) : null
+
+    const outcome = this.turnRetry.retry(parsed.errorMessageId)
+    if (!outcome.ok) pending?.cancel()
+
+    // Deliberately not awaiting the retried turn: grammY processes updates
+    // sequentially, so blocking here would freeze the bot for its duration.
+    await ctx.answerCallbackQuery(
+      outcome.ok ? { text: outcome.resolution } : { text: outcome.resolution, show_alert: true },
+    )
+  }
+
+  /**
+   * Attach to the turn the retry is about to start so its answer lands in the
+   * Telegram chat that tapped the button. Nothing is started here — the retry
+   * service owns that decision.
+   */
+  private subscribeToRetriedTurn(
+    chatId: string | number,
+    errorMessageId: number,
+  ): { cancel: () => void } | null {
+    if (!this.db) return null
+
+    const row = this.db.prepare(
+      'SELECT user_id FROM chat_messages WHERE id = ?',
+    ).get(errorMessageId) as { user_id: number | null } | undefined
+    if (!row?.user_id) return null
+
+    const agentUserId = String(row.user_id)
+    const outcome: TurnOutcome = { text: '', uploads: [], error: null }
+    let turnId: string | null = null
+
+    const detach = this.turnRunner.subscribe(agentUserId, (event: TurnEvent) => {
+      // The retry runs as a brand new turn: the first non-replayed start we
+      // see after the tap is it.
+      if (event.replay) return
+      if (turnId === null && event.type === 'turn_start') turnId = event.turnId
+      if (event.turnId !== turnId) return
+
+      if (event.type === 'attachment') {
+        outcome.uploads.push(event.attachment)
+        return
+      }
+      if (event.type === 'chunk') {
+        this.handleTurnChunk(chatId, event.chunk, outcome)
+        return
+      }
+      if (event.type === 'turn_end') {
+        detach()
+        void this.deliverRetriedTurn(chatId, outcome)
+      }
+    })
+
+    // A refused retry never starts a turn, so the subscription has to be
+    // dropped by hand or it would swallow the user's next turn.
+    return { cancel: detach }
+  }
+
+  private async deliverRetriedTurn(chatId: string | number, outcome: TurnOutcome): Promise<void> {
+    try {
+      if (outcome.text.trim() || outcome.uploads.length > 0) {
+        await this.sendAssistantResponseToTelegram(chatId, outcome.text, outcome.uploads)
+      }
+      if (outcome.error) await this.sendTurnErrorPrompt(chatId, outcome.error)
+    } catch (err) {
+      console.error(`[telegram] Failed to deliver retried turn to ${chatId}:`, err)
+    }
+  }
+
   private deciderName(ctx: Context): string {
     const from = ctx.from
     if (!from) return 'Telegram'
@@ -1444,7 +1647,7 @@ export class TelegramBot {
 
     if (hadActiveTask) {
       try {
-        this.agentCore.abort()
+        this.turnRunner.abortTurn(this.resolveUserId(ctx))
       } catch (err) {
         console.error('Error aborting Telegram task:', err)
       }
@@ -1624,6 +1827,11 @@ export class TelegramBot {
   }
 
   async stop(): Promise<void> {
+    // Detach from the process-global retry boundary first: a bot whose start
+    // failed never set `running`, and leaving it registered would let a dead
+    // instance answer resolutions for the one that replaced it.
+    this.unregisterTurnRetryNotifier()
+
     if (!this.running) return
 
     this.running = false
@@ -1765,6 +1973,7 @@ export function createTelegramBot(
   db?: Database,
   onChatEvent?: (event: TelegramChatEvent) => void,
   onQueueDepthChanged?: (queueDepth: number) => void,
+  turnRunner?: TurnRunner,
 ): TelegramBot | null {
   try {
     const config = loadTelegramRuntimeConfig()
@@ -1779,7 +1988,7 @@ export function createTelegramBot(
       return null
     }
 
-    return new TelegramBot({ agentCore, db, config, onChatEvent, onQueueDepthChanged })
+    return new TelegramBot({ agentCore, db, config, onChatEvent, onQueueDepthChanged, turnRunner })
   } catch {
     console.log('ℹ️  Telegram config not found. Running in web-only mode.')
     return null
