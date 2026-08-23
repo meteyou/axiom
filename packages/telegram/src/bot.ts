@@ -1550,10 +1550,14 @@ export class TelegramBot {
     let turnId: string | null = null
 
     const detach = this.turnRunner.subscribe(agentUserId, (event: TurnEvent) => {
-      // The retry runs as a brand new turn: the first non-replayed start we
-      // see after the tap is it.
+      // The retry runs as a brand new turn, and the service refused to start
+      // one while another was active — so the first non-replayed event after
+      // the tap belongs to it. Latching on any event type (not just
+      // `turn_start`) matters: a turn that fails before it starts (no agent)
+      // only emits its error and `turn_end`, and missing those would leak this
+      // subscription into the user's next turn.
       if (event.replay) return
-      if (turnId === null && event.type === 'turn_start') turnId = event.turnId
+      if (turnId === null) turnId = event.turnId
       if (event.turnId !== turnId) return
 
       if (event.type === 'attachment') {
