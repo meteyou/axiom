@@ -205,4 +205,20 @@ describe('createTaskTool', () => {
     expect(updated.status).toBe('failed')
     expect(updated.errorMessage).toBe('Max duration exceeded')
   })
+
+  it('returns a tool error instead of creating a task when no default provider is configured', async () => {
+    const tool = createTaskTool({
+      taskRuntime: buildBoundary(),
+      getDefaultProvider: () => null,
+      resolveProvider: () => mockProvider,
+      defaultMaxDurationMinutes: 30,
+      maxDurationMinutesCap: 120,
+    })
+
+    const result = await tool.execute('call-5', { prompt: 'do work', name: 'NoProvider' })
+
+    expect(result.details).toMatchObject({ error: true })
+    expect((result.content[0] as { type: 'text'; text: string }).text).toContain('No default task provider is configured')
+    expect(runner.getStore().list().filter(t => t.name === 'NoProvider')).toHaveLength(0)
+  })
 })

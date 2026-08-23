@@ -129,7 +129,7 @@ export interface RuntimeComposition {
    * Current task default provider — same source of truth as the task
    * runner and cronjob scheduler.
    */
-  getTaskDefaultProvider: () => ProviderConfig
+  getTaskDefaultProvider: () => ProviderConfig | null
   /**
    * Names of the tools the task runner gives to background task agents.
    * Exposed so the cronjob UI can render the current tool list dynamically
@@ -296,6 +296,47 @@ function parseNumericUserId(userId: string): number | null {
   return Number.isSafeInteger(numericUserId) ? numericUserId : null
 }
 
+/**
+ * Resolve the provider (and its model, pinned as the sole `enabledModels`
+ * entry) that background tasks run on when no explicit provider/model is given
+ * at task creation.
+ *
+ * An explicitly configured task provider is only honored when it can actually
+ * run a model. Providers may be created without selecting a model upfront, so a
+ * configured provider with no enabled models would start tasks with an empty
+ * model; in that case we fall back to the active provider/model selection.
+ */
+export function resolveTaskDefaultProvider(deps: {
+  taskDefaultProvider: string
+  resolveProvider: (providerId: string) => ProviderConfig | null
+  getActiveProvider: () => ProviderConfig | null
+  getActiveModelId: () => string | null
+  onFallback?: (reason: string) => void
+}): ProviderConfig | null {
+  const { taskDefaultProvider, resolveProvider, getActiveProvider, getActiveModelId, onFallback } = deps
+
+  if (taskDefaultProvider) {
+    const { providerId, modelId } = parseProviderModelId(taskDefaultProvider)
+    const resolved = providerId ? resolveProvider(providerId) : null
+    if (resolved && modelId) return { ...resolved, enabledModels: [modelId] }
+    if (resolved && getProviderDefaultModel(resolved)) return resolved
+
+    onFallback?.(
+      resolved
+        ? `provider "${resolved.name}" has no enabled models`
+        : `provider "${providerId || taskDefaultProvider}" could not be resolved`,
+    )
+  }
+
+  // "Active provider (default)": follow the live chat selection for both
+  // provider and model so tasks pick the user's active model instead of the
+  // provider's first enabled model.
+  const active = getActiveProvider()
+  if (!active) return null
+  const activeModelId = getActiveModelId()
+  return activeModelId ? { ...active, enabledModels: [activeModelId] } : active
+}
+
 export async function createRuntimeComposition(options: RuntimeCompositionOptions = {}): Promise<RuntimeComposition> {
   const logger = options.logger ?? console
 
@@ -330,31 +371,19 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
     }
   }
 
-  function getTaskDefaultProvider(): ProviderConfig {
-    const currentTaskSettings = getCurrentTaskSettings()
-    if (currentTaskSettings.defaultProvider) {
-      const { providerId, modelId } = parseProviderModelId(currentTaskSettings.defaultProvider)
-      if (providerId) {
-        let resolved = resolveProvider(providerId)
-        if (resolved && modelId) {
-          resolved = { ...resolved, enabledModels: [modelId] }
-        }
-        if (resolved) return resolved
-      }
-    }
-
-    // "Active provider (default)": follow the live chat selection for BOTH
-    // provider and model. Downstream task creation derives the model via
-    // getProviderDefaultModel() (= enabledModels[0]), so we narrow the cloned
-    // provider to the active model. Without this, tasks would pick the
-    // provider's first enabled model instead of the user's active model — and
-    // if enabledModels is empty they'd run with no model at all and fail.
-    const active = getActiveProvider()!
-    const activeModelId = getActiveModelId()
-    if (activeModelId) {
-      return { ...active, enabledModels: [activeModelId] }
-    }
-    return active
+  function getTaskDefaultProvider(): ProviderConfig | null {
+    const taskDefaultProvider = getCurrentTaskSettings().defaultProvider
+    return resolveTaskDefaultProvider({
+      taskDefaultProvider,
+      resolveProvider,
+      getActiveProvider,
+      getActiveModelId,
+      onFallback: (reason) => {
+        logger.warn(
+          `[axiom] Task default provider "${taskDefaultProvider}" is not usable (${reason}); falling back to the active provider`,
+        )
+      },
+    })
   }
 
   const chatEventBus = new ChatEventBus()
@@ -667,6 +696,8 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
 
   // Background task tools live in a mutable array that is repopulated in place
   // by rebuildBackgroundTaskTools (see there).
+  const quotaMonitorService = new QuotaMonitorService()
+
   const backgroundSttEnabled = (() => { try { return loadSttSettings().enabled } catch { return false } })()
   // createBaseAgentTools builds the shared tool set (yolo, web, chat-history,
   // search-memories, agent-skills, transcribe-audio). Both the interactive
@@ -676,6 +707,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
     db,
     builtinToolsConfig: () => loadRuntimeSettings().builtinToolsConfig,
     sttEnabled: backgroundSttEnabled,
+    quotaService: quotaMonitorService,
     // Background tasks have no interactive session; search_memories will fall
     // back to the lowest-id user when getCurrentUserId is undefined.
   })
@@ -866,6 +898,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
         db,
         builtinToolsConfig: () => loadRuntimeSettings().builtinToolsConfig,
         sttEnabled: backgroundSttEnabled,
+        quotaService: quotaMonitorService,
       }),
       createTaskTool(backgroundTaskToolsOptions),
       createResumeTaskTool(backgroundTaskToolsOptions),
@@ -927,7 +960,6 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
   const healthMonitorService = new HealthMonitorService({ db, providerManager: null })
   healthMonitorService.start()
 
-  const quotaMonitorService = new QuotaMonitorService()
   quotaMonitorService.start()
 
   const consolidationScheduler = new MemoryConsolidationScheduler({
@@ -1226,6 +1258,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
         providerConfig: provider,
         providerManager,
         sessionTimeoutMinutes,
+        quotaService: quotaMonitorService,
       })
 
       providerManager.on('mode:fallback', async () => {

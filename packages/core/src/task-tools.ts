@@ -7,8 +7,8 @@ import type { TaskRuntimeTaskBoundary } from './task-runtime.js'
 
 export interface TaskToolsOptions {
   taskRuntime: TaskRuntimeTaskBoundary
-  /** Get the default provider to use for tasks */
-  getDefaultProvider: () => ProviderConfig
+  /** Get the default provider to use for tasks; null when none is configured */
+  getDefaultProvider: () => ProviderConfig | null
   /** Resolve a provider by name/id */
   resolveProvider: (nameOrId: string) => ProviderConfig | null
   /** Default max duration from settings */
@@ -174,7 +174,14 @@ export function createTaskTool(options: TaskToolsOptions): AgentTool {
             ? base
             : { ...base, enabledModels: [resolved.modelId] }
         } else {
-          provider = options.getDefaultProvider()
+          const def = options.getDefaultProvider()
+          if (!def) {
+            return {
+              content: [{ type: 'text' as const, text: 'Error: No default task provider is configured. Set one in Settings → Tasks, or pass an explicit provider/model.' }],
+              details: { error: true },
+            }
+          }
+          provider = def
         }
 
         // Cap max duration

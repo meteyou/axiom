@@ -36,7 +36,7 @@ type HeartbeatTaskRuntime = Pick<TaskRuntimeTaskBoundary, 'create' | 'start'>
 
 export interface AgentHeartbeatServiceOptions {
   taskRuntime: HeartbeatTaskRuntime
-  getDefaultProvider: () => ProviderConfig
+  getDefaultProvider: () => ProviderConfig | null
   /** Override for testing — returns the current time */
   now?: () => Date
   /** Override for testing — returns the configured timezone */
@@ -63,7 +63,7 @@ export function isHeartbeatContentEffectivelyEmpty(content: string): boolean {
 
 export class AgentHeartbeatService {
   private taskRuntime: HeartbeatTaskRuntime
-  private getDefaultProvider: () => ProviderConfig
+  private getDefaultProvider: () => ProviderConfig | null
   private nowFn: () => Date
   private getTimezoneFn: () => string
   private timer: ReturnType<typeof setTimeout> | null = null

@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import nodePath from 'node:path'
 import type { Agent as PiAgent } from '@earendil-works/pi-agent-core'
 import type { Api, ImageContent, Model } from '@earendil-works/pi-ai'
-import { completeSimple } from '@earendil-works/pi-ai/compat'
+import { completeSimple } from './pi-models.js'
 import type { Database } from './database.js'
 import { getApiKeyForProvider, buildModel } from './provider-config.js'
 import { assertLlmResponseOk } from './llm-response.js'
@@ -34,6 +34,7 @@ export interface AgentCoreOptions {
   baseInstructions?: string
   providerConfig?: ProviderConfig // For OAuth token refresh
   providerManager?: ProviderManager // For fallback retry support
+  quotaService?: import('./quota-tool.js').QuotaServiceLike
   /**
    * Called when a session ends (timeout, /new command, or provider change)
    * with the summary text. `options.background` is true when the session
@@ -91,6 +92,7 @@ export class AgentCore {
       providerConfig: options.providerConfig,
       providerManager: options.providerManager,
       getCurrentToolUserId: () => this.currentToolUserId,
+      quotaService: options.quotaService,
     })
 
     // Initialize message queue for sequential processing
