@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { stripTrailingTurn, upsertStallMessage } from './useChat'
+import { stripFailedAttempt, stripTrailingTurn, upsertStallMessage } from './useChat'
 import type { ChatMessage, ChatStallInfo } from './useChat'
 
 function msg(role: ChatMessage['role'], content: string): ChatMessage {
@@ -52,6 +52,44 @@ describe('stripTrailingTurn', () => {
     ]
 
     expect(stripTrailingTurn(list).map(m => m.role)).toEqual(['user'])
+  })
+})
+
+describe('stripFailedAttempt', () => {
+  it('removes the partial answer of the discarded attempt', () => {
+    const list = [
+      msg('user', 'question'),
+      msg('assistant', 'thinking…'),
+      msg('tool', 'Tool: search'),
+      msg('assistant', 'half an answer'),
+    ]
+
+    expect(stripFailedAttempt(list).map(m => m.content)).toEqual(['question'])
+  })
+
+  it('keeps stall notices, which stay part of the persisted history', () => {
+    const list: ChatMessage[] = [
+      msg('user', 'question'),
+      { role: 'system', content: '⚠️ Provider stopped responding', stallInfo: stall({ outcome: 'aborted' }) },
+      msg('assistant', 'half an answer'),
+    ]
+
+    expect(stripFailedAttempt(list).map(m => m.role)).toEqual(['user', 'system'])
+  })
+
+  it('stops at the user message of an earlier, completed turn', () => {
+    const list = [
+      msg('user', 'first question'),
+      msg('assistant', 'first answer'),
+      msg('user', 'second question'),
+      msg('assistant', 'half an answer'),
+    ]
+
+    expect(stripFailedAttempt(list).map(m => m.content)).toEqual([
+      'first question',
+      'first answer',
+      'second question',
+    ])
   })
 })
 
