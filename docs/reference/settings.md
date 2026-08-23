@@ -44,6 +44,7 @@ The on-disk shape is a **superset** of [`SettingsContract`](https://github.com/)
 | `thinkingLevel`                    | `"off" \| "minimal" \| "low" \| "medium" \| "high" \| "xhigh"`    | `"off"`        | enum                                    | Reasoning effort for the chat agent — see [Agent → Thinking level](../settings/agent#thinking-level).             |
 | `healthMonitorIntervalMinutes`     | `number`                                                          | `5`            | `> 0`                                   | Health-check frequency — see [Health Monitor → Interval](../settings/health-monitor#health-check-interval).       |
 | `uploads`                          | object                                                            | see below      | nested                                  | Upload retention policy.                                                                                          |
+| `watchdog`                         | object                                                            | see below      | not validated by API                    | Provider-stall thresholds for chat turns.                                                                         |
 | `healthMonitor`                    | object                                                            | see below      | nested                                  | Provider health checks + fallback.                                                                                |
 | `memoryConsolidation`              | object                                                            | see below      | nested                                  | Nightly memory job.                                                                                               |
 | `factExtraction`                   | object                                                            | see below      | nested                                  | Per-session fact extraction.                                                                                      |
@@ -66,6 +67,26 @@ The on-disk shape is a **superset** of [`SettingsContract`](https://github.com/)
 
 ```json
 { "uploads": { "retentionDays": 30 } }
+```
+
+### `watchdog`
+
+How long a chat turn may go without a single chunk from the provider before
+Axiom reacts. The warning is a persisted chat message (`provider_stall`) that is
+updated in place when the provider recovers or the turn is aborted, so it
+survives a page reload.
+
+Config-file only for now — there is no Settings UI panel yet. Values are read at
+the start of every turn, so a save takes effect on the next message without a
+restart.
+
+| Key                     | Type     | Default | Range | Effect                                                                     |
+|-------------------------|----------|---------|-------|----------------------------------------------------------------------------|
+| `watchdog.stallWarnMs`  | `number` | `30000` | `> 0` | Silence before a stall warning is emitted and persisted.                   |
+| `watchdog.stallAbortMs` | `number` | `90000` | `> 0` | Silence before the stream is hard-aborted; the stall row ends as `aborted`. |
+
+```json
+{ "watchdog": { "stallWarnMs": 30000, "stallAbortMs": 90000 } }
 ```
 
 ### `healthMonitor`
@@ -259,6 +280,7 @@ This is the literal file written by `ensureConfigTemplates()`:
     }
   },
   "uploads": { "retentionDays": 30 },
+  "watchdog": { "stallWarnMs": 30000, "stallAbortMs": 90000 },
   "tokenPriceTable": {
     "gpt-4o":                     { "input": 2.5,  "output": 10 },
     "gpt-4o-mini":                { "input": 0.15, "output": 0.6 },

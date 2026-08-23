@@ -48,6 +48,11 @@ route -> controller -> service -> schema/mapper
   it to consumers that attach mid-turn. Channels (`ws-chat`, Telegram) only
   dispatch into it and forward its events — they must not own stream state.
   Turns are never recovered across a process restart.
+- Provider stalls are channel-agnostic: the watchdog emits `stall_warning` /
+  `stall_resolved` chunks and persists a single `provider_stall` chat row
+  (`core/src/provider-stall.ts`) that is updated in place on resolution. Channels
+  render that row, they do not invent their own stall messaging. Thresholds come
+  from `settings.json → watchdog` and are read at turn start.
 - Integrations (e.g., Heartbeat, Consolidation Scheduler, Task Tools) use boundary contracts instead of low-level wiring.
 
 ## 4) Frontend Convention
