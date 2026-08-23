@@ -1019,4 +1019,63 @@ describe('TurnRunner', () => {
       retryable: true,
     })
   })
+
+  describe('lifecycle callbacks', () => {
+    // Consumers use the pair as a gauge (active requests), so an unmatched end
+    // would decrement a concurrently running turn.
+    it('pairs onTurnStart with onTurnEnd even when the turn never reaches the agent', async () => {
+      const db = freshDb()
+      const started: TurnInfo[] = []
+      const ended: TurnInfo[] = []
+      const runner = startRunner(db, null, {
+        onTurnStart: (turn: TurnInfo) => { started.push(turn) },
+        onTurnEnd: (turn: TurnInfo) => { ended.push(turn) },
+      })
+
+      runner.startTurn({ userId: USER_ID, sessionId: SESSION_ID, text: 'hi' })
+      await waitFor(() => !runner.hasActiveTurn(USER_ID))
+
+      expect(started.map(t => t.turnId)).toEqual(ended.map(t => t.turnId))
+      expect(started).toHaveLength(1)
+    })
+
+    it('pairs the callbacks for a turn aborted before it started', async () => {
+      const db = freshDb()
+      const { agent } = controllableAgent()
+      const started: TurnInfo[] = []
+      const ended: TurnInfo[] = []
+      const runner = startRunner(db, agent, {
+        onTurnStart: (turn: TurnInfo) => { started.push(turn) },
+        onTurnEnd: (turn: TurnInfo) => { ended.push(turn) },
+      })
+
+      runner.startTurn({ userId: USER_ID, sessionId: SESSION_ID, text: 'hi' })
+      runner.abortTurn(USER_ID)
+      await waitFor(() => !runner.hasActiveTurn(USER_ID))
+
+      expect(started.map(t => t.turnId)).toEqual(ended.map(t => t.turnId))
+    })
+  })
+
+  it('drops the replay buffer of a completed turn once its retention window passed', async () => {
+    const db = freshDb()
+    const runner = startRunner(db, scriptedAgent([{ type: 'text', text: 'Hi' }]), {
+      completedTurnRetentionMs: 10,
+    })
+
+    runner.startTurn({ userId: USER_ID, sessionId: SESSION_ID, text: 'hi' })
+    await waitFor(() => !runner.hasActiveTurn(USER_ID))
+
+    const early: TurnEvent[] = []
+    runner.subscribe(USER_ID, collect(early))()
+    expect(early.length).toBeGreaterThan(0)
+
+    // Retention elapses without anyone attaching: the buffer must be released
+    // instead of lingering until the next subscribe.
+    await new Promise<void>((resolve) => { setTimeout(resolve, 30) })
+
+    const late: TurnEvent[] = []
+    runner.subscribe(USER_ID, collect(late))()
+    expect(late).toEqual([])
+  })
 })
