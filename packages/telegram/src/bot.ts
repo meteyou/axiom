@@ -68,7 +68,7 @@ export interface TelegramConfig {
  * Chat event emitted by the Telegram bot for cross-channel sync.
  */
 export interface TelegramChatEvent {
-  type: 'user_message' | 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'done' | 'error' | 'attachment' | 'stall_warning' | 'stall_resolved'
+  type: 'user_message' | 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'done' | 'error' | 'attachment' | 'stall_warning' | 'stall_resolved' | 'retry_scheduled'
   /** Axiom user ID (integer) — only set for linked users */
   userId: number | null
   /** Session ID used for chat_messages */

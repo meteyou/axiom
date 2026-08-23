@@ -7,7 +7,7 @@ import type {
   SlashCommandPicker,
 } from '@axiom/core'
 import { isSlashCommandPicker } from '@axiom/core'
-import type { AgentCore, ResponseChunk, StallInfo, TurnEvent } from '@axiom/core'
+import type { AgentCore, ResponseChunk, RetryInfo, StallInfo, TurnEvent } from '@axiom/core'
 import {
   TaskStore,
   ScheduledTaskStore,
@@ -32,8 +32,13 @@ interface ChatMessage {
 }
 
 interface ChatResponse {
-  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'session_summary' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'reminder' | 'pong' | 'attachment' | 'chat_action' | 'chat_action_resolved' | 'turn_replay_start' | 'turn_replay_end' | 'stall_warning' | 'stall_resolved'
+  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'session_summary' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'reminder' | 'pong' | 'attachment' | 'chat_action' | 'chat_action_resolved' | 'turn_replay_start' | 'turn_replay_end' | 'stall_warning' | 'stall_resolved' | 'retry_scheduled'
   text?: string
+  /**
+   * Auto-retry details (for `retry_scheduled`). Live-only status: the failed
+   * attempt is discarded, so nothing about it is persisted.
+   */
+  retry?: RetryInfo
   /**
    * Provider-stall details (for `stall_warning` / `stall_resolved`). Carries
    * the `chat_messages` row id of the persisted notice so the client updates
@@ -514,6 +519,7 @@ export function setupWebSocketChat(
             toolIsError: event.toolIsError,
             error: event.error,
             stall: event.stall,
+            retry: event.retry,
             telegramDelivered: event.telegramDelivered,
             isTaskInjection: event.isTaskInjection,
           })
@@ -587,5 +593,6 @@ function chunkToResponse(chunk: ResponseChunk): ChatResponse {
     toolIsError: chunk.toolIsError,
     error: chunk.error,
     stall: chunk.stall,
+    retry: chunk.retry,
   }
 }
