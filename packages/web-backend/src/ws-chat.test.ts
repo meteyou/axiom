@@ -881,4 +881,80 @@ describe('setupWebSocketChat kill switch', () => {
       )
     }
   })
+
+  it('persists a terminal provider error and replays it to a reconnecting client', async () => {
+    const db = initDatabase(':memory:')
+    const providerError = 'AuthenticationError: 401 Unauthorized — OAuth token refresh failed'
+    const mockSessionManager = {
+      getOrCreateSession: vi.fn(() => ({ id: 'session-error', userId: '1', source: 'web', startedAt: Date.now(), lastActivity: Date.now(), messageCount: 0, summaryWritten: false, restored: false })),
+    }
+
+    const agentCore = {
+      sendMessage: vi.fn(async function* (): AsyncGenerator<ResponseChunk> {
+        yield { type: 'error', error: providerError }
+      }),
+      abort: vi.fn(),
+      resetSession: vi.fn(),
+      getSessionManager: vi.fn(() => mockSessionManager),
+    } as unknown as AgentCore
+
+    const app = createApp({ db })
+    const server = http.createServer(app)
+    const { wss } = setupWebSocketChat(server, db, agentCore)
+
+    await new Promise<void>((resolve) => server.listen(0, resolve))
+    const port = (server.address() as { port: number }).port
+    const token = generateAccessToken({ userId: 1, username: 'admin', role: 'admin' })
+
+    try {
+      const first = await connectWs(port, token)
+      await first.waitForMessage() // authenticated
+      first.ws.send(JSON.stringify({ type: 'message', content: 'hello' }))
+
+      const error = await first.waitForMessage()
+      expect(error.type).toBe('error')
+      expect(error.error).toBe(providerError)
+      expect(error.text).toContain(providerError)
+      const errorInfo = error.errorInfo as { messageId: number; cause: string; retryable: boolean }
+      expect(errorInfo).toMatchObject({ cause: 'non_retryable', retryable: false })
+      expect((await first.waitForMessage()).type).toBe('done')
+
+      // The failure is a durable row (full provider text included), so a reload
+      // still shows it instead of the turn dying silently.
+      const row = db.prepare(
+        'SELECT role, content, metadata FROM chat_messages WHERE id = ?'
+      ).get(errorInfo.messageId) as { role: string; content: string; metadata: string }
+      expect(row.role).toBe('system')
+      expect(row.content).toBe(error.text)
+      expect(JSON.parse(row.metadata)).toMatchObject({
+        kind: 'turn_error',
+        cause: 'non_retryable',
+        error: providerError,
+        attempts: 0,
+        retryable: false,
+      })
+
+      // Reload: the replay carries the same row id so the client rebuilds the
+      // very same error bubble instead of appending a second one.
+      first.ws.close()
+      await new Promise<void>((resolve) => setTimeout(resolve, 50))
+
+      const second = await connectWs(port, token)
+      await second.waitForMessage() // authenticated
+      expect((await second.waitForMessage()).type).toBe('turn_replay_start')
+      const replayedError = await second.waitForMessage()
+      expect(replayedError.type).toBe('error')
+      expect((replayedError.errorInfo as { messageId: number }).messageId).toBe(errorInfo.messageId)
+
+      second.ws.close()
+    } finally {
+      for (const client of wss.clients) {
+        client.terminate()
+      }
+      wss.close()
+      await new Promise<void>((resolve, reject) =>
+        server.close((err) => (err ? reject(err) : resolve()))
+      )
+    }
+  })
 })
