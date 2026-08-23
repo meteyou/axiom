@@ -32,6 +32,8 @@ export interface UsageTotals {
   promptTokens: number
   completionTokens: number
   totalTokens: number
+  cacheRead: number
+  cacheWrite: number
   estimatedCost: number
 }
 
@@ -158,6 +160,8 @@ function normalizeTotals(row?: {
   requests?: number | null
   promptTokens?: number | null
   completionTokens?: number | null
+  cacheRead?: number | null
+  cacheWrite?: number | null
   estimatedCost?: number | null
 }): UsageTotals {
   const requests = row?.requests ?? 0
@@ -170,6 +174,8 @@ function normalizeTotals(row?: {
     promptTokens,
     completionTokens,
     totalTokens: promptTokens + completionTokens,
+    cacheRead: row?.cacheRead ?? 0,
+    cacheWrite: row?.cacheWrite ?? 0,
     estimatedCost,
   }
 }
@@ -184,6 +190,8 @@ function getUsageTotalsInternal(db: Database, options: UsageStatsQueryOptions): 
       COUNT(*) AS requests,
       COALESCE(SUM(prompt_tokens), 0) AS promptTokens,
       COALESCE(SUM(completion_tokens), 0) AS completionTokens,
+      COALESCE(SUM(cache_read), 0) AS cacheRead,
+      COALESCE(SUM(cache_write), 0) AS cacheWrite,
       ${costExpression} AS estimatedCost
     FROM token_usage
     WHERE ${clause}
@@ -191,6 +199,8 @@ function getUsageTotalsInternal(db: Database, options: UsageStatsQueryOptions): 
     requests?: number | null
     promptTokens?: number | null
     completionTokens?: number | null
+    cacheRead?: number | null
+    cacheWrite?: number | null
     estimatedCost?: number | null
   } | undefined
 
@@ -213,6 +223,8 @@ export function queryUsageStats(db: Database, options: UsageStatsQueryOptions = 
       COUNT(*) AS requests,
       COALESCE(SUM(prompt_tokens), 0) AS promptTokens,
       COALESCE(SUM(completion_tokens), 0) AS completionTokens,
+      COALESCE(SUM(cache_read), 0) AS cacheRead,
+      COALESCE(SUM(cache_write), 0) AS cacheWrite,
       ${costExpression} AS estimatedCost
     FROM token_usage
     WHERE ${clause}
@@ -228,6 +240,8 @@ export function queryUsageStats(db: Database, options: UsageStatsQueryOptions = 
     requests?: number | null
     promptTokens?: number | null
     completionTokens?: number | null
+    cacheRead?: number | null
+    cacheWrite?: number | null
     estimatedCost?: number | null
   }>
 

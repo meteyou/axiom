@@ -351,13 +351,15 @@
                         <TableHead class="text-right">{{ $t('usage.table.columns.requests') }}</TableHead>
                         <TableHead class="text-right">{{ $t('usage.table.columns.promptTokens') }}</TableHead>
                         <TableHead class="text-right">{{ $t('usage.table.columns.completionTokens') }}</TableHead>
-                        <TableHead class="text-right">{{ $t('usage.table.columns.totalTokens') }}</TableHead>
+                        <TableHead class="text-right">{{ $t('usage.table.columns.cacheRead') }}</TableHead>
+                        <TableHead class="text-right">{{ $t('usage.table.columns.cacheWrite') }}</TableHead>
+                        <TableHead class="text-right">{{ $t('usage.table.columns.cacheHitRate') }}</TableHead>
                         <TableHead class="text-right">{{ $t('usage.table.columns.cost') }}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       <TableRow v-if="breakdown.rows.length === 0">
-                        <TableCell colspan="7" class="py-8 text-center text-muted-foreground">
+                        <TableCell colspan="9" class="py-8 text-center text-muted-foreground">
                           {{ $t('usage.table.empty') }}
                         </TableCell>
                       </TableRow>
@@ -371,7 +373,9 @@
                           <TableCell class="text-right tabular-nums">{{ formatNumber(row.requests) }}</TableCell>
                           <TableCell class="text-right tabular-nums">{{ formatNumber(row.promptTokens) }}</TableCell>
                           <TableCell class="text-right tabular-nums">{{ formatNumber(row.completionTokens) }}</TableCell>
-                          <TableCell class="text-right font-semibold tabular-nums">{{ formatNumber(row.totalTokens) }}</TableCell>
+                          <TableCell class="text-right tabular-nums">{{ formatNumber(row.cacheRead) }}</TableCell>
+                          <TableCell class="text-right tabular-nums">{{ formatNumber(row.cacheWrite) }}</TableCell>
+                          <TableCell class="text-right tabular-nums">{{ cacheHitLabel(row) }}</TableCell>
                           <TableCell class="text-right tabular-nums">
                             {{ formatCurrency(row.estimatedCost) }}
                             <span v-if="breakdown.rows.length > 1" class="ml-1 text-[11px] text-muted-foreground">
@@ -395,7 +399,13 @@
                             {{ formatNumber(totals.completionTokens) }}
                           </TableCell>
                           <TableCell class="text-right font-semibold tabular-nums">
-                            {{ formatNumber(totals.totalTokens) }}
+                            {{ formatNumber(totals.cacheRead) }}
+                          </TableCell>
+                          <TableCell class="text-right font-semibold tabular-nums">
+                            {{ formatNumber(totals.cacheWrite) }}
+                          </TableCell>
+                          <TableCell class="text-right font-semibold tabular-nums">
+                            {{ cacheHitLabel(totals) }}
                           </TableCell>
                           <TableCell class="text-right font-semibold tabular-nums">
                             {{ formatCurrency(totals.estimatedCost) }}
@@ -654,6 +664,13 @@ function sourceChartTooltip(point: SourceChartPoint): string {
 }
 
 // ── Table helpers ───────────────────────────────────────────
+function cacheHitLabel(row: { promptTokens: number; cacheRead: number; cacheWrite: number }): string {
+  if (row.cacheRead + row.cacheWrite === 0) return '—'
+  const denominator = row.promptTokens + row.cacheRead + row.cacheWrite
+  if (denominator <= 0) return '—'
+  return `${((row.cacheRead / denominator) * 100).toFixed(1)}%`
+}
+
 function costShareLabel(cost: number): string {
   const total = totals.value.estimatedCost
   if (total === 0) return ''

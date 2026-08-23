@@ -873,8 +873,8 @@
     "chart": {
       "title": "Tägliches Token-Volumen",
       "description": "Tag-für-Tag Token-Verbrauch im ausgewählten Zeitraum.",
-      "prompt": "Prompt (Eingabe)",
-      "completion": "Completion (Ausgabe)",
+      "prompt": "Input",
+      "completion": "Output",
       "empty": "Für die aktuellen Filter gibt es keine tägliche Nutzung."
     },
     "sourceChart": {
@@ -893,9 +893,11 @@
         "provider": "Anbieter",
         "model": "Modell",
         "requests": "Anfragen",
-        "promptTokens": "Prompt",
-        "completionTokens": "Completion",
-        "totalTokens": "Gesamt-Tokens",
+        "promptTokens": "Input",
+        "completionTokens": "Output",
+        "cacheRead": "Cache-Lesen",
+        "cacheWrite": "Cache-Schreiben",
+        "cacheHitRate": "Cache-Treffer",
         "cost": "Gesch. Kosten"
       }
     }
