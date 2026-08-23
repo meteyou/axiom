@@ -129,7 +129,7 @@ export interface RuntimeComposition {
    * Current task default provider — same source of truth as the task
    * runner and cronjob scheduler.
    */
-  getTaskDefaultProvider: () => ProviderConfig
+  getTaskDefaultProvider: () => ProviderConfig | null
   /**
    * Names of the tools the task runner gives to background task agents.
    * Exposed so the cronjob UI can render the current tool list dynamically
@@ -311,16 +311,21 @@ export function resolveTaskDefaultProvider(deps: {
   resolveProvider: (providerId: string) => ProviderConfig | null
   getActiveProvider: () => ProviderConfig | null
   getActiveModelId: () => string | null
+  onFallback?: (reason: string) => void
 }): ProviderConfig | null {
-  const { taskDefaultProvider, resolveProvider, getActiveProvider, getActiveModelId } = deps
+  const { taskDefaultProvider, resolveProvider, getActiveProvider, getActiveModelId, onFallback } = deps
 
   if (taskDefaultProvider) {
     const { providerId, modelId } = parseProviderModelId(taskDefaultProvider)
-    if (providerId) {
-      const resolved = resolveProvider(providerId)
-      if (resolved && modelId) return { ...resolved, enabledModels: [modelId] }
-      if (resolved && getProviderDefaultModel(resolved)) return resolved
-    }
+    const resolved = providerId ? resolveProvider(providerId) : null
+    if (resolved && modelId) return { ...resolved, enabledModels: [modelId] }
+    if (resolved && getProviderDefaultModel(resolved)) return resolved
+
+    onFallback?.(
+      resolved
+        ? `provider "${resolved.name}" has no enabled models`
+        : `provider "${providerId || taskDefaultProvider}" could not be resolved`,
+    )
   }
 
   // "Active provider (default)": follow the live chat selection for both
@@ -366,13 +371,19 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
     }
   }
 
-  function getTaskDefaultProvider(): ProviderConfig {
+  function getTaskDefaultProvider(): ProviderConfig | null {
+    const taskDefaultProvider = getCurrentTaskSettings().defaultProvider
     return resolveTaskDefaultProvider({
-      taskDefaultProvider: getCurrentTaskSettings().defaultProvider,
+      taskDefaultProvider,
       resolveProvider,
       getActiveProvider,
       getActiveModelId,
-    })!
+      onFallback: (reason) => {
+        logger.warn(
+          `[axiom] Task default provider "${taskDefaultProvider}" is not usable (${reason}); falling back to the active provider`,
+        )
+      },
+    })
   }
 
   const chatEventBus = new ChatEventBus()

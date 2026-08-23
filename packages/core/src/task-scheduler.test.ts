@@ -163,6 +163,24 @@ describe('TaskScheduler', () => {
       const result = await scheduler.triggerNow('non-existent')
       expect(result).toBeNull()
     })
+
+    it('skips the run without starting a task when no provider is available', async () => {
+      const providerlessScheduler = new TaskScheduler({
+        db,
+        taskStore,
+        taskRunner: mockTaskRunner,
+        getDefaultProvider: () => null,
+        resolveProvider: () => null,
+      })
+      providerlessScheduler.start()
+      const scheduledTask = scheduledTaskStore.create({ name: 'No Provider', prompt: 'test', schedule: '0 9 * * *' })
+
+      const result = await providerlessScheduler.triggerNow(scheduledTask.id)
+
+      expect(result).toBeNull()
+      expect(mockTaskRunner.startTask).not.toHaveBeenCalled()
+      providerlessScheduler.dispose()
+    })
   })
 
   describe('injection mode', () => {

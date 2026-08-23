@@ -137,24 +137,34 @@ describe('resolveTaskDefaultProvider', () => {
 
   it('falls back to the active provider when the configured provider has no enabled models', () => {
     const emptyConfigured = makeProvider({ id: 'p-conf', name: 'configured', enabledModels: [] })
+    const reasons: string[] = []
     const result = resolveTaskDefaultProvider(deps({
       taskDefaultProvider: 'p-conf',
       resolveProvider: () => emptyConfigured,
+      onFallback: (reason) => reasons.push(reason),
     }))
     expect(result?.id).toBe('p-active')
     expect(result?.enabledModels).toEqual(['active-model'])
+    expect(reasons).toEqual(['provider "configured" has no enabled models'])
   })
 
   it('falls back to the active provider when the configured provider cannot be resolved', () => {
-    const result = resolveTaskDefaultProvider(deps({ taskDefaultProvider: 'missing' }))
+    const reasons: string[] = []
+    const result = resolveTaskDefaultProvider(deps({
+      taskDefaultProvider: 'missing',
+      onFallback: (reason) => reasons.push(reason),
+    }))
     expect(result?.id).toBe('p-active')
     expect(result?.enabledModels).toEqual(['active-model'])
+    expect(reasons).toEqual(['provider "missing" could not be resolved'])
   })
 
   it('pins the active model when no task default is configured', () => {
-    const result = resolveTaskDefaultProvider(deps())
+    const reasons: string[] = []
+    const result = resolveTaskDefaultProvider(deps({ onFallback: (reason) => reasons.push(reason) }))
     expect(result?.id).toBe('p-active')
     expect(result?.enabledModels).toEqual(['active-model'])
+    expect(reasons).toEqual([])
   })
 
   it('returns the active provider unchanged when no active model is selected', () => {
