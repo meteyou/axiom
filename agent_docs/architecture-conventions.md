@@ -42,6 +42,12 @@ route -> controller -> service -> schema/mapper
 
 - Agent runtime is encapsulated via `createAgentRuntime`/`AgentRuntimeBoundary`.
 - Task runtime is encapsulated via `createTaskRuntime`/`TaskRuntimeBoundary`.
+- Chat turns are encapsulated via `TurnRunner` (`core/src/turn-runner.ts`). It owns
+  the turn lifecycle (streaming, chunk persistence, stall watchdog, abort)
+  independently of any connection, buffers the active turn in memory and replays
+  it to consumers that attach mid-turn. Channels (`ws-chat`, Telegram) only
+  dispatch into it and forward its events — they must not own stream state.
+  Turns are never recovered across a process restart.
 - Integrations (e.g., Heartbeat, Consolidation Scheduler, Task Tools) use boundary contracts instead of low-level wiring.
 
 ## 4) Frontend Convention
