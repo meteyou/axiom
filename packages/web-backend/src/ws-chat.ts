@@ -154,6 +154,7 @@ export function setupWebSocketChat(
   runtimeMetrics?: RuntimeMetrics,
   chatEventBus?: ChatEventBus,
   chatActions?: ChatActionRegistry | null,
+  sharedTurnRunner?: TurnRunner,
 ): WebSocketChatResult {
   // Support both getter function and direct reference (backward compat)
   const resolveAgentCore = typeof getAgentCore === 'function' ? getAgentCore : () => getAgentCore
@@ -162,8 +163,10 @@ export function setupWebSocketChat(
   // The runner owns the turn lifecycle (streaming, persistence, abort). This
   // handler only dispatches inbound messages into it and forwards its events,
   // which is what keeps a turn alive across socket drops and page reloads.
+  // In the real process the runner is shared with Telegram (composition root);
+  // a standalone setup gets its own so this module stays independently usable.
   let retryChannel: TurnRetryChatChannel | null = null
-  const turnRunner = new TurnRunner({
+  const turnRunner = sharedTurnRunner ?? new TurnRunner({
     db,
     getAgent: () => resolveAgentCore(),
     onTurnStart: () => runtimeMetrics?.startRequest(),
@@ -173,8 +176,8 @@ export function setupWebSocketChat(
 
   // Manual retry: the button lives on the persisted error row and is answered
   // through the chat-action registry, so it survives a reload and resolves for
-  // every connected client at once.
-  if (chatActions) {
+  // every connected client at once. A shared runner already brought its own.
+  if (chatActions && !sharedTurnRunner) {
     retryChannel = registerTurnRetryChatChannel({ chatActions, db, runner: turnRunner })
   }
 

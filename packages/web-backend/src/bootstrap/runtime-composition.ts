@@ -38,6 +38,7 @@ import {
   registerEmailApprovalNotifier,
   removeCronjobTool,
   TaskEventBus,
+  TurnRunner,
 } from '@axiom/core'
 import type {
   BuiltinToolsConfig,
@@ -54,6 +55,8 @@ import type { TelegramBot, TelegramChatEvent } from '@axiom/telegram'
 import { ChatEventBus } from '../chat-event-bus.js'
 import { ChatActionRegistry } from '../chat-actions.js'
 import { registerEmailApprovalChatChannel } from '../email-approval-chat.js'
+import { registerTurnRetryChatChannel } from '../turn-retry-chat.js'
+import type { TurnRetryChatChannel } from '../turn-retry-chat.js'
 import { triggerFactExtractionForSessionEnd } from '../fact-extraction-session-end.js'
 import { HealthMonitorService } from '../health-monitor.js'
 import { MemoryConsolidationScheduler } from '../memory-consolidation-scheduler.js'
@@ -117,6 +120,8 @@ export interface RuntimeComposition {
   taskEventBus: TaskEventBus
   chatEventBus: ChatEventBus
   chatActions: ChatActionRegistry
+  /** Shared turn lifecycle owner; every chat channel dispatches into it. */
+  turnRunner: TurnRunner
   getAgentCore: () => AgentCore | null
   getTaskRuntime: () => TaskRuntimeBoundary
   /**
@@ -417,6 +422,19 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
   let providerManager: ProviderManager | null = null
   let telegramBot: TelegramBot | null = null
   let unregisterTelegramEmailApproval: (() => void) | null = null
+
+  // One runner for the whole process: web sockets and Telegram attach to the
+  // same turns, so a turn started in one channel streams into the other and a
+  // manual retry cannot race a second, channel-local runner.
+  let retryChatChannel: TurnRetryChatChannel | null = null
+  const turnRunner = new TurnRunner({
+    db,
+    getAgent: () => agentCore,
+    onTurnStart: () => runtimeMetrics.startRequest(),
+    onTurnEnd: () => runtimeMetrics.endRequest(),
+    onTurnFailed: failure => retryChatChannel?.attachRetryAction(failure),
+  })
+  retryChatChannel = registerTurnRetryChatChannel({ chatActions, db, runner: turnRunner })
 
   // Pending task injections keyed by a per-injection UUID. The key is
   // minted here, passed into AgentCore.injectTaskResult as the
@@ -980,6 +998,9 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
   const uploadCleanupService = new UploadCleanupService(db)
   uploadCleanupService.start()
 
+  // Only the events the turn runner does not already stream to every attached
+  // channel; the assistant side of a Telegram turn reaches web clients through
+  // their own runner subscription.
   const onTelegramChatEvent = (event: TelegramChatEvent) => {
     if (event.userId == null) return
     chatEventBus.broadcast({
@@ -988,12 +1009,6 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
       source: 'telegram',
       sessionId: event.sessionId,
       text: event.text,
-      thinking: event.thinking,
-      toolName: event.toolName,
-      toolCallId: event.toolCallId,
-      toolArgs: event.toolArgs,
-      toolResult: event.toolResult,
-      toolIsError: event.toolIsError,
       senderName: event.senderName,
       attachment: event.attachment,
       replyContext: event.replyContext,
@@ -1201,6 +1216,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
       db,
       onTelegramChatEvent,
       (queueDepth) => runtimeMetrics.setQueueDepth('telegram', queueDepth),
+      turnRunner,
     )
     if (telegramBot) {
       try {
@@ -1325,6 +1341,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
     taskEventBus,
     chatEventBus,
     chatActions,
+    turnRunner,
     getAgentCore: () => agentCore,
     getTaskRuntime: () => taskRuntime,
     resolveProvider,
@@ -1357,6 +1374,8 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
       unregisterTelegramEmailApproval?.()
       unregisterTelegramEmailApproval = null
       unregisterEmailApprovalChat()
+      retryChatChannel?.unregister()
+      retryChatChannel = null
 
       if (telegramBot) {
         try {
