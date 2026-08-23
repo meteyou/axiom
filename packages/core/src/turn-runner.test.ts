@@ -4,8 +4,8 @@ import path from 'node:path'
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { initDatabase } from './database.js'
 import { TurnRunner } from './turn-runner.js'
-import type { TurnAgentLike, TurnEvent } from './turn-runner.js'
-import type { ResponseChunk } from './agent-runtime-types.js'
+import type { TurnAgentLike, TurnEvent, TurnInfo } from './turn-runner.js'
+import type { ResponseChunk, TurnErrorInfo } from './agent-runtime-types.js'
 import { PROVIDER_STALL_KIND } from './provider-stall.js'
 import type { ProviderStallMetadata } from './provider-stall.js'
 import { TURN_ERROR_KIND, parseTurnErrorMetadata } from './turn-error.js'
@@ -840,6 +840,38 @@ describe('TurnRunner', () => {
     })
   })
 
+  describe('manual retry', () => {
+    it('continues the transcript instead of re-sending the user message', async () => {
+      const db = freshDb()
+      const { agent, calls } = sequenceAgent([[{ type: 'text', text: 'Second time lucky.' }, { type: 'done' }]])
+      const runner = startRunner(db, agent)
+
+      const events: TurnEvent[] = []
+      runner.subscribe(USER_ID, collect(events))
+      runner.retryTurn({ userId: USER_ID, sessionId: SESSION_ID, text: 'hi' })
+      await waitFor(() => !runner.hasActiveTurn(USER_ID))
+
+      expect(calls).toEqual(['retryTurn'])
+      expect(chunkTypes(events)).toEqual(['text', 'done'])
+      // The answer streams like a normal turn and no user row is duplicated:
+      // the runner never writes one, and the agent continues the transcript.
+      expect(rows(db).map(r => ({ role: r.role, content: r.content }))).toEqual([
+        { role: 'assistant', content: 'Second time lucky.' },
+      ])
+    })
+
+    it('falls back to a fresh prompt when the agent cannot continue', async () => {
+      const db = freshDb()
+      const agent = scriptedAgent([{ type: 'text', text: 'answer' }, { type: 'done' }])
+      const runner = startRunner(db, agent)
+
+      runner.retryTurn({ userId: USER_ID, sessionId: SESSION_ID, text: 'hi' })
+      await waitFor(() => !runner.hasActiveTurn(USER_ID))
+
+      expect(rows(db).map(r => r.content)).toEqual(['answer'])
+    })
+  })
+
   describe('terminal errors', () => {
     afterEach(() => { vi.useRealTimers() })
 
@@ -918,6 +950,39 @@ describe('TurnRunner', () => {
       expect(chunkTypes(reconnect)).toEqual(['error', 'done'])
       expect(reconnect.every(e => e.replay === true)).toBe(true)
       expect(errorChunk(reconnect)!.errorInfo!.messageId).toBe(errorRows(db)[0]!.id)
+    })
+
+    it('hangs a retry action off the persisted error and announces the failure', async () => {
+      const db = freshDb()
+      const failures: Array<{ userId: number; sessionId: string; retryActionId?: string; messageId?: number }> = []
+      const runner = startRunner(db, scriptedAgent([{ type: 'error', error: 'invalid_api_key' }]), {
+        onTurnFailed: ({ turn, error }: { turn: TurnInfo; error: TurnErrorInfo }) => {
+          failures.push({
+            userId: turn.userId,
+            sessionId: turn.sessionId,
+            retryActionId: error.retryActionId,
+            messageId: error.messageId,
+          })
+        },
+      })
+
+      const events: TurnEvent[] = []
+      runner.subscribe(USER_ID, collect(events))
+      runner.startTurn({ userId: USER_ID, sessionId: SESSION_ID, text: 'hi' })
+      await waitFor(() => !runner.hasActiveTurn(USER_ID))
+
+      const persisted = errorRows(db)[0]!
+      const retryActionId = persisted.metadata.retryActionId
+      expect(retryActionId).toMatch(/^turn-retry-/)
+      // Live chunk, persisted row and failure hook agree on the action id, so
+      // the button is the same one before and after a reload.
+      expect(errorChunk(events)!.errorInfo!.retryActionId).toBe(retryActionId)
+      expect(failures).toEqual([{
+        userId: USER_ID,
+        sessionId: SESSION_ID,
+        retryActionId,
+        messageId: persisted.id,
+      }])
     })
 
     it('does not persist an error row for a user abort', async () => {
