@@ -110,6 +110,11 @@ yourself is never retried.
 While a retry is pending the chat shows a `Retrying (n/max)…` status; once the
 budget is exhausted the turn ends with the provider's error message.
 
+Every terminal failure — exhausted retries, an expired key, a quota or billing
+limit — is written to the chat as a persisted error message containing the full
+provider error text, so a failed turn stays visible after a page reload instead
+of leaving the chat silently unanswered.
+
 Config-file only for now — there is no Settings UI panel yet. Values are read at
 the start of every turn, so a save takes effect on the next message without a
 restart.

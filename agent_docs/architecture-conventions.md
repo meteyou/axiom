@@ -53,6 +53,11 @@ route -> controller -> service -> schema/mapper
   (`core/src/provider-stall.ts`) that is updated in place on resolution. Channels
   render that row, they do not invent their own stall messaging. Thresholds come
   from `settings.json → watchdog` and are read at turn start.
+- Terminal turn failures are persisted the same way: the runner writes a
+  `turn_error` chat row (`core/src/turn-error.ts`) carrying the full provider
+  error text plus `cause` / `retryable` / `attempts`, and emits the matching
+  `error` chunk with the row id. Channels render that row — a failed turn must
+  never end silently.
 - Integrations (e.g., Heartbeat, Consolidation Scheduler, Task Tools) use boundary contracts instead of low-level wiring.
 
 ## 4) Frontend Convention
