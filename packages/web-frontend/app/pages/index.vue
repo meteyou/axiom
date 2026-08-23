@@ -104,11 +104,11 @@
             // Mobile: messages fill the available width (minus avatar + gap
             // or the pl-11 offset for tool cards). On sm+ screens we cap them
             // so bubbles don't span edge-to-edge on wider viewports.
-            msg.role === 'divider' ? 'w-full' : (msg.role === 'tool' || (msg.role === 'system' && (msg.isTaskResult || msg.isTaskStatusUpdate || msg.stallInfo || msg.picker || msg.chatAction)) || msg.isThinking) ? 'self-start w-full max-w-full sm:max-w-[75%] pl-11' : 'flex max-w-full gap-3 sm:max-w-[75%]',
+            msg.role === 'divider' ? 'w-full' : (msg.role === 'tool' || (msg.role === 'system' && (msg.isTaskResult || msg.isTaskStatusUpdate || msg.stallInfo || msg.errorInfo || msg.picker || msg.chatAction)) || msg.isThinking) ? 'self-start w-full max-w-full sm:max-w-[75%] pl-11' : 'flex max-w-full gap-3 sm:max-w-[75%]',
             {
               'self-end flex-row-reverse': msg.role === 'user',
               'self-start': msg.role === 'assistant' && !msg.isThinking,
-              'self-center max-w-full sm:max-w-[85%]': msg.role === 'system' && !msg.isTaskResult && !msg.isTaskStatusUpdate && !msg.stallInfo && !msg.picker && !msg.chatAction,
+              'self-center max-w-full sm:max-w-[85%]': msg.role === 'system' && !msg.isTaskResult && !msg.isTaskStatusUpdate && !msg.stallInfo && !msg.errorInfo && !msg.picker && !msg.chatAction,
             },
           ]"
         >
@@ -253,6 +253,22 @@
                   {{ formatStallDuration(msg.stallInfo.durationMs) }}
                 </span>
               </div>
+            </div>
+          </template>
+
+          <!-- Terminal turn error. Backed by a persisted chat row (full
+               provider text included), so the failure is still visible after a
+               reload instead of the turn dying silently. -->
+          <template v-else-if="msg.role === 'system' && msg.errorInfo">
+            <div class="w-full overflow-hidden rounded-lg border border-destructive/40 bg-destructive/5">
+              <div class="flex items-center gap-2 border-b border-destructive/20 px-3 py-1.5 text-xs">
+                <AppIcon name="warning" class="h-3 w-3 shrink-0 text-destructive" />
+                <span class="font-medium text-destructive">{{ $t('chat.turnError') }}</span>
+                <span v-if="msg.errorInfo.attempts > 0" class="ml-auto shrink-0 text-[10px] text-muted-foreground/80">
+                  {{ $t('chat.turnErrorRetried', { count: msg.errorInfo.attempts }) }}
+                </span>
+              </div>
+              <div class="whitespace-pre-wrap break-words px-3 py-2 text-xs text-foreground/90">{{ msg.content }}</div>
             </div>
           </template>
 
@@ -872,6 +888,17 @@ async function loadHistory() {
               durationMs: typeof meta.durationMs === 'number' ? meta.durationMs : 0,
               outcome: meta.outcome ?? undefined,
             },
+          } as ChatMessage
+        }
+
+        // Terminal turn errors (system rows with metadata.kind ===
+        // 'turn_error'). Persisted with the full provider error text so the
+        // failure — and, later, its retry button — survives a page reload.
+        const turnError = m.role === 'system' ? turnErrorFromHistoryMetadata(meta, m.id) : null
+        if (turnError) {
+          return {
+            id: m.id, role: 'system' as const, content: m.content, timestamp: m.timestamp, source,
+            errorInfo: turnError,
           } as ChatMessage
         }
 

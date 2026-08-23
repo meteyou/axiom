@@ -74,6 +74,22 @@ export interface ChatRetryInfo {
   error: string
 }
 
+export type ChatTurnErrorCause = 'non_retryable' | 'retry_exhausted' | 'agent_unavailable'
+
+/**
+ * Terminal-error details of a failed turn. Mirrors the backend `TurnErrorInfo`;
+ * the error is a persisted chat row, so `messageId` matches the live bubble
+ * with the one rebuilt from history after a reload.
+ */
+export interface ChatTurnErrorInfo {
+  messageId?: number
+  cause: ChatTurnErrorCause
+  error: string
+  attempts: number
+  retryable: boolean
+  occurredAt: string
+}
+
 export interface ChatAttachment {
   kind: 'image' | 'file'
   originalName: string
@@ -138,6 +154,12 @@ export interface ChatMessage {
    */
   stallInfo?: ChatStallInfo
   /**
+   * Terminal provider error for a `role: 'system'` error notice. Present both
+   * live (from the `error` chunk) and after a reload (from the persisted
+   * `turn_error` row), so the failure never silently disappears.
+   */
+  errorInfo?: ChatTurnErrorInfo
+  /**
    * Excerpt of the message the user replied to (e.g. Telegram reply-to), truncated to 500 chars.
    * When present, the UI renders a WhatsApp/Telegram-style quote bubble above the
    * message body with `[Replying to: "…"]`. Only set for `role: 'user'`.
@@ -174,6 +196,8 @@ interface WsMessage {
   stall?: ChatStallInfo
   /** Auto-retry details (for retry_scheduled) */
   retry?: ChatRetryInfo
+  /** Terminal-error details of a persisted error row (for type='error') */
+  errorInfo?: ChatTurnErrorInfo
   /** Interactive message payload (for chat_action / chat_action_resolved) */
   chatAction?: ChatActionMessage
   /** Picker payload for interactive slash-command replies (e.g. /model). */
@@ -289,12 +313,13 @@ export function stripTrailingTurn(list: ChatMessage[]): ChatMessage[] {
   let end = list.length
   while (end > 0) {
     const message = list[end - 1]!
-    // Stall notices are emitted mid-turn, so they belong to the turn being
-    // rebuilt — leaving them in place would strand them and block stripping
-    // of the assistant/tool run that came before them.
+    // Stall and error notices are emitted as part of the turn, so they belong
+    // to the turn being rebuilt — leaving them in place would strand them and
+    // block stripping of the assistant/tool run that came before them. The
+    // replay re-emits both, so nothing is lost.
     const belongsToTurn = message.role === 'assistant'
       || message.role === 'tool'
-      || (message.role === 'system' && !!message.stallInfo)
+      || (message.role === 'system' && (!!message.stallInfo || !!message.errorInfo))
     if (!belongsToTurn) break
     end--
   }
@@ -343,6 +368,58 @@ export function upsertStallMessage(list: ChatMessage[], stall: ChatStallInfo, co
     timestamp: new Date().toISOString(),
     stallInfo: stall,
   })
+}
+
+/**
+ * Insert or update the terminal-error notice for `info`. Matching on the
+ * persisted row id keeps a single bubble when a turn that already failed is
+ * replayed on top of a history load.
+ */
+export function upsertErrorMessage(
+  list: ChatMessage[],
+  info: ChatTurnErrorInfo,
+  content: string,
+): ChatMessage[] {
+  const index = info.messageId === undefined
+    ? -1
+    : list.findIndex(m => m.errorInfo?.messageId === info.messageId)
+
+  if (index >= 0) {
+    const updated = [...list]
+    updated[index] = { ...updated[index]!, content, errorInfo: info }
+    return updated
+  }
+
+  return [...list, {
+    id: info.messageId,
+    role: 'system',
+    content,
+    timestamp: new Date().toISOString(),
+    errorInfo: info,
+  }]
+}
+
+/**
+ * Rebuild the terminal-error details of a persisted `turn_error` row on a
+ * history load, so the error bubble looks exactly like it did live.
+ */
+export function turnErrorFromHistoryMetadata(metadata: unknown, messageId: number): ChatTurnErrorInfo | null {
+  if (!metadata || typeof metadata !== 'object') return null
+  const meta = metadata as Record<string, unknown>
+  if (meta.kind !== 'turn_error' || typeof meta.error !== 'string') return null
+
+  const cause = meta.cause === 'retry_exhausted' || meta.cause === 'agent_unavailable'
+    ? meta.cause
+    : 'non_retryable'
+
+  return {
+    messageId,
+    cause,
+    error: meta.error,
+    attempts: typeof meta.attempts === 'number' ? meta.attempts : 0,
+    retryable: meta.retryable === true,
+    occurredAt: typeof meta.occurredAt === 'string' ? meta.occurredAt : '',
+  }
 }
 
 function insertBeforeTrailingStreams(list: ChatMessage[], message: ChatMessage): ChatMessage[] {
@@ -723,12 +800,23 @@ export function useChat() {
         if (lastOnError && lastOnError.streaming) {
           updatedOnError[updatedOnError.length - 1] = { ...lastOnError, streaming: false }
         }
-        updatedOnError.push({
-          role: 'system',
-          content: `Error: ${msg.error}`,
-          timestamp: new Date().toISOString(),
-        })
-        messages.value = updatedOnError
+        if (msg.errorInfo) {
+          // A terminal turn failure: the backend persisted it as a chat row and
+          // sent the very text it stored, so the bubble is identical after a
+          // reload. Connection-level errors (no `errorInfo`) stay ephemeral.
+          messages.value = upsertErrorMessage(
+            updatedOnError,
+            msg.errorInfo,
+            msg.text ?? `Error: ${msg.error}`,
+          )
+        } else {
+          updatedOnError.push({
+            role: 'system',
+            content: `Error: ${msg.error}`,
+            timestamp: new Date().toISOString(),
+          })
+          messages.value = updatedOnError
+        }
         isStreaming.value = false
         break
       }

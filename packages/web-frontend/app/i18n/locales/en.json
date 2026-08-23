@@ -77,6 +77,8 @@
     "filterThinking": "Thinking blocks",
     "sessionSummary": "Session Summary",
     "thinking": "Thinking",
+    "turnError": "Turn failed",
+    "turnErrorRetried": "{count}× retried",
     "scrollToBottom": "Scroll to bottom",
     "attachments": {
       "openOriginal": "Open original",

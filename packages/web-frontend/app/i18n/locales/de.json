@@ -77,6 +77,8 @@
     "filterThinking": "Thinking-Blöcke",
     "sessionSummary": "Sitzungszusammenfassung",
     "thinking": "Überlegung",
+    "turnError": "Anfrage fehlgeschlagen",
+    "turnErrorRetried": "{count}× wiederholt",
     "scrollToBottom": "Nach unten scrollen",
     "attachments": {
       "openOriginal": "Original öffnen",
