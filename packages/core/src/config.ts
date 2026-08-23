@@ -220,6 +220,22 @@ export function loadConfig<T = unknown>(filename: string): T {
   return JSON.parse(content) as T
 }
 
+const reportedConfigFailures = new Set<string>()
+
+/**
+ * Report a config file that could not be read or parsed, for callers that fall
+ * back to defaults instead of failing the operation. Deduplicated per process:
+ * these run per turn, and a corrupt `settings.json` must be visible in the log
+ * without flooding it.
+ */
+export function warnConfigReadFailed(filename: string, err: unknown): void {
+  const message = err instanceof Error ? err.message : String(err)
+  const key = `${filename}:${message}`
+  if (reportedConfigFailures.has(key)) return
+  reportedConfigFailures.add(key)
+  console.warn(`[config] Failed to read ${filename}, using defaults: ${message}`)
+}
+
 export function ensureConfigTemplates(configDir?: string): void {
   const dir = configDir ?? getConfigDir()
 

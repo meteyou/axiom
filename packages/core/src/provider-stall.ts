@@ -1,4 +1,4 @@
-import { loadConfig } from './config.js'
+import { loadConfig, warnConfigReadFailed } from './config.js'
 import { DEFAULT_WATCHDOG_SETTINGS } from './contracts/settings.js'
 import { STALL_OUTCOMES } from './agent-runtime-types.js'
 import type { StallInfo, StallOutcome } from './agent-runtime-types.js'
@@ -164,7 +164,8 @@ function positiveNumber(value: unknown, fallback: number): number {
 
 /**
  * Read the watchdog thresholds from `settings.json`. Config-file only for now;
- * a missing/unreadable file falls back to the 30 s / 90 s defaults.
+ * a missing/unreadable file falls back to the 30 s / 90 s defaults — a turn is
+ * never failed over a config problem, but the failure is logged.
  */
 export function loadStallThresholds(
   load: () => WatchdogSettingsFile = () => loadConfig<WatchdogSettingsFile>('settings.json'),
@@ -172,7 +173,8 @@ export function loadStallThresholds(
   let watchdog: WatchdogSettingsFile['watchdog']
   try {
     watchdog = load().watchdog
-  } catch {
+  } catch (err) {
+    warnConfigReadFailed('settings.json', err)
     watchdog = undefined
   }
 

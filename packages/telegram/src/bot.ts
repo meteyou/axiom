@@ -21,6 +21,7 @@ import {
   registerTurnRetryNotifier,
   TurnRunner,
   loadConfig,
+  warnConfigReadFailed,
   getConfigDir,
   saveUpload,
   serializeUploadsMetadata,
@@ -1220,7 +1221,8 @@ export class TelegramBot {
   private stallWarningsEnabled(): boolean {
     try {
       return loadConfig<{ sendStallWarnings?: boolean }>('telegram.json').sendStallWarnings === true
-    } catch {
+    } catch (err) {
+      warnConfigReadFailed('telegram.json', err)
       return false
     }
   }

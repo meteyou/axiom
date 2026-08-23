@@ -1,6 +1,6 @@
 import { isRetryableAssistantError } from '@earendil-works/pi-ai'
 import type { AssistantMessage, RetryPolicy } from '@earendil-works/pi-ai'
-import { loadConfig } from './config.js'
+import { loadConfig, warnConfigReadFailed } from './config.js'
 import { DEFAULT_RETRY_SETTINGS } from './contracts/settings.js'
 import type { RetryInfo } from './agent-runtime-types.js'
 
@@ -34,7 +34,8 @@ function nonNegativeInteger(value: unknown, fallback: number): number {
 
 /**
  * Read the auto-retry policy from `settings.json`. Config-file only for now;
- * a missing/unreadable file falls back to pi's defaults (3 retries, 2000 ms).
+ * a missing/unreadable file falls back to pi's defaults (3 retries, 2000 ms) —
+ * a turn is never failed over a config problem, but the failure is logged.
  */
 export function loadRetryPolicy(
   load: () => RetrySettingsFile = () => loadConfig<RetrySettingsFile>('settings.json'),
@@ -42,7 +43,8 @@ export function loadRetryPolicy(
   let retry: RetrySettingsFile['retry']
   try {
     retry = load().retry
-  } catch {
+  } catch (err) {
+    warnConfigReadFailed('settings.json', err)
     retry = undefined
   }
 
