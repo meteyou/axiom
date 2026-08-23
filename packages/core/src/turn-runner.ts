@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { Database } from './database.js'
-import type { ResponseChunk, StallInfo, StallOutcome } from './agent-runtime-types.js'
+import type { ResponseChunk, RetryInfo, StallInfo, StallOutcome } from './agent-runtime-types.js'
 import type { UploadDescriptor } from './uploads.js'
 import { serializeUploadsMetadata } from './uploads.js'
 import { extractUploadsFromToolResult } from './send-file-tool.js'
@@ -10,6 +10,13 @@ import {
   loadStallThresholds,
 } from './provider-stall.js'
 import type { StallThresholds } from './provider-stall.js'
+import {
+  formatRetryScheduledContent,
+  isRetryableTurnError,
+  loadRetryPolicy,
+  retryDelayMs,
+} from './turn-retry.js'
+import type { RetryPolicy } from './turn-retry.js'
 
 /**
  * The slice of AgentCore the turn runner depends on. Keeping this narrow
@@ -18,6 +25,17 @@ import type { StallThresholds } from './provider-stall.js'
  */
 export interface TurnAgentLike {
   sendMessage(
+    userId: string,
+    text: string,
+    source?: string,
+    attachments?: UploadDescriptor[],
+  ): AsyncIterable<ResponseChunk>
+  /**
+   * Restart the failed assistant turn from the existing transcript instead of
+   * re-sending the user message, so a retry never duplicates it in the model
+   * context. Optional: agents without it are retried via `sendMessage`.
+   */
+  retryTurn?(
     userId: string,
     text: string,
     source?: string,
@@ -71,6 +89,11 @@ export interface TurnRunnerOptions {
   /** Watchdog tick interval (default 5 s). */
   watchdogIntervalMs?: number
   /**
+   * Auto-retry policy overrides. Fields set here win over `settings.json` →
+   * `retry` (defaults: enabled, 3 retries, 2000 ms base delay).
+   */
+  retryPolicy?: Partial<RetryPolicy>
+  /**
    * How long a finished turn stays replayable. Covers the "refresh right as
    * the answer completes" case: the client strips its trailing assistant/tool
    * messages and rebuilds them from the replay, so no duplicates appear.
@@ -86,10 +109,23 @@ interface TurnState {
   sessionId: string
   startedAt: number
   buffer: TurnEvent[]
+  /** Turn-level abort: user initiated, never retried. */
   abortController: AbortController
+  /** Per-attempt abort (watchdog stall): kills one attempt, not the turn. */
+  attemptController: AbortController
   ended: boolean
   endedAt: number | null
 }
+
+/**
+ * Result of one attempt at streaming the turn. `willRetry` is decided where
+ * the attempt is run so the transcript rows of a doomed attempt are dropped
+ * before the next one starts.
+ */
+type AttemptResult =
+  | { status: 'completed' }
+  | { status: 'aborted' }
+  | { status: 'failed'; error: string; willRetry: boolean }
 
 const DEFAULT_WATCHDOG_INTERVAL_MS = 5_000
 const DEFAULT_COMPLETED_TURN_RETENTION_MS = 60_000
@@ -112,6 +148,22 @@ function updateChatMessage(db: Database, id: number, content: string, metadata: 
   db.prepare('UPDATE chat_messages SET content = ?, metadata = ? WHERE id = ?').run(content, metadata, id)
 }
 
+/** Resolves `true` when the delay elapsed, `false` when `signal` aborted first. */
+function sleepUnlessAborted(ms: number, signal: AbortSignal): Promise<boolean> {
+  if (signal.aborted) return Promise.resolve(false)
+  return new Promise<boolean>((resolve) => {
+    const onAbort = () => {
+      clearTimeout(timer)
+      resolve(false)
+    }
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort)
+      resolve(true)
+    }, ms)
+    signal.addEventListener('abort', onAbort, { once: true })
+  })
+}
+
 /**
  * Owns the full lifecycle of an agent turn, decoupled from any connection.
  *
@@ -126,6 +178,7 @@ export class TurnRunner {
   private readonly stallWarnMs?: number
   private readonly stallAbortMs?: number
   private readonly watchdogIntervalMs: number
+  private readonly retryPolicyOverrides?: Partial<RetryPolicy>
   private readonly completedTurnRetentionMs: number
   private readonly onTurnStart?: (turn: TurnInfo) => void
   private readonly onTurnEnd?: (turn: TurnInfo) => void
@@ -144,6 +197,7 @@ export class TurnRunner {
     this.stallWarnMs = options.stallWarnMs
     this.stallAbortMs = options.stallAbortMs
     this.watchdogIntervalMs = options.watchdogIntervalMs ?? DEFAULT_WATCHDOG_INTERVAL_MS
+    this.retryPolicyOverrides = options.retryPolicy
     this.completedTurnRetentionMs = options.completedTurnRetentionMs ?? DEFAULT_COMPLETED_TURN_RETENTION_MS
     this.onTurnStart = options.onTurnStart
     this.onTurnEnd = options.onTurnEnd
@@ -205,6 +259,7 @@ export class TurnRunner {
       startedAt: Date.now(),
       buffer: [],
       abortController: new AbortController(),
+      attemptController: new AbortController(),
       ended: false,
       endedAt: null,
     }
@@ -241,6 +296,7 @@ export class TurnRunner {
       if (turn.ended) continue
       aborted = true
       turn.abortController.abort()
+      turn.attemptController.abort()
     }
 
     if (aborted) this.getAgent()?.abort()
@@ -310,23 +366,87 @@ export class TurnRunner {
     this.onTurnStart?.(toInfo(turn))
     this.emit(turn, { type: 'turn_start', turnId: turn.id, sessionId: turn.sessionId })
 
+    const thresholds = this.resolveStallThresholds()
+    const policy = this.resolveRetryPolicy()
+    let attempt = 0
+
+    for (;;) {
+      const result = await this.runAttempt(turn, input, agent, thresholds, policy, attempt)
+      if (result.status !== 'failed') break
+
+      if (!result.willRetry) {
+        this.emitChunk(turn, { type: 'error', error: result.error })
+        break
+      }
+
+      attempt++
+      const retry: RetryInfo = {
+        attempt,
+        maxRetries: policy.maxRetries,
+        delayMs: retryDelayMs(policy, attempt),
+        error: result.error,
+      }
+      console.warn(
+        `[turn-runner] Retryable provider error (user=${turn.userId}, session=${turn.sessionId}): `
+        + `${result.error} — retry ${attempt}/${policy.maxRetries} in ${retry.delayMs}ms.`,
+      )
+
+      // The failed attempt is discarded, so drop its events from the replay
+      // buffer too: a consumer attaching during the backoff must not rebuild
+      // the partial answer that no longer exists in the transcript.
+      turn.buffer = turn.buffer.filter(event => event.type === 'turn_start')
+      this.emitChunk(turn, {
+        type: 'retry_scheduled',
+        text: formatRetryScheduledContent(retry),
+        retry,
+      })
+
+      // A user abort during the backoff ends the turn like any other abort.
+      if (!await sleepUnlessAborted(retry.delayMs, turn.abortController.signal)) break
+    }
+
+    // Exactly one `done` per turn, emitted after the last attempt, so consumers
+    // never get stuck on a streaming indicator and never see a turn "end" twice.
+    this.emitChunk(turn, { type: 'done' })
+    this.finishTurn(turn)
+  }
+
+  /**
+   * Stream one attempt of the turn. Returns how it ended; the caller decides
+   * whether to restart. Nothing terminal (`error`, `done`) is emitted here —
+   * a failed attempt that will be retried must leave no trace behind.
+   */
+  private async runAttempt(
+    turn: TurnState,
+    input: StartTurnInput,
+    agent: TurnAgentLike,
+    thresholds: StallThresholds,
+    policy: RetryPolicy,
+    attempt: number,
+  ): Promise<AttemptResult> {
+    turn.attemptController = new AbortController()
     const transcript = new TurnTranscript(this.db, turn.sessionId, turn.userId)
-    const watchdog = this.startStallWatchdog(turn, agent, this.resolveStallThresholds())
-    let doneSent = false
+    const stall: { error: string | null } = { error: null }
+    const watchdog = this.startStallWatchdog(turn, agent, thresholds, (error) => { stall.error = error })
+    let failure: { error: string; retryable: boolean } | null = null
 
     try {
-      const stream = agent.sendMessage(
-        String(turn.userId),
-        input.text,
-        input.source ?? 'web',
-        input.attachments,
-      )
+      const stream = attempt > 0 && agent.retryTurn
+        ? agent.retryTurn(String(turn.userId), input.text, input.source ?? 'web', input.attachments)
+        : agent.sendMessage(String(turn.userId), input.text, input.source ?? 'web', input.attachments)
 
       for await (const chunk of stream) {
         watchdog.recordActivity()
-        if (turn.abortController.signal.aborted) break
+        if (this.isAttemptAborted(turn)) break
 
-        if (chunk.type === 'done') doneSent = true
+        // `done` is owned by the turn, not by an attempt.
+        if (chunk.type === 'done') continue
+
+        if (chunk.type === 'error') {
+          const error = chunk.error ?? 'Unknown provider error'
+          failure = { error, retryable: isRetryableTurnError(error) }
+          break
+        }
 
         // Attachments are emitted before their tool chunk so consumers render
         // the download card on the running assistant turn, matching the order
@@ -337,26 +457,64 @@ export class TurnRunner {
 
         this.emitChunk(turn, chunk)
       }
-
-      transcript.finalize()
     } catch (err) {
-      if (!turn.abortController.signal.aborted) {
-        this.emitChunk(turn, { type: 'error', error: `Agent error: ${(err as Error).message}` })
+      if (!this.isAttemptAborted(turn)) {
+        const message = (err as Error).message
+        failure = { error: `Agent error: ${message}`, retryable: isRetryableTurnError(message) }
       }
     } finally {
       watchdog.stop()
-      // Flush any trailing thinking that wasn't closed by text/tool/done (e.g.
-      // aborted/errored streams) so a reload shows the partial reasoning.
-      transcript.flushThinking()
-      // Always emit a 'done' if one wasn't already sent, so consumers never get
-      // stuck with a streaming indicator that never resolves.
-      if (!doneSent) this.emitChunk(turn, { type: 'done' })
-      this.finishTurn(turn)
     }
+
+    // A watchdog kill outranks whatever the stream reported on its way out: it
+    // is the reason the attempt died, and it is always retryable.
+    if (stall.error) failure = { error: stall.error, retryable: true }
+
+    // A user abort ends the turn even if the watchdog fired first: only the
+    // watchdog's own kill counts as a retryable failure.
+    if (turn.abortController.signal.aborted) {
+      this.commitTranscript(transcript)
+      return { status: 'aborted' }
+    }
+
+    if (!failure) {
+      this.commitTranscript(transcript)
+      return { status: 'completed' }
+    }
+
+    const willRetry = policy.enabled && attempt < policy.maxRetries && failure.retryable
+    // Discarding keeps the transcript free of half-written answers from the
+    // attempt that is about to be replaced; a terminal failure keeps whatever
+    // the provider managed to produce.
+    if (willRetry) transcript.discard()
+    else this.commitTranscript(transcript)
+
+    return { status: 'failed', error: failure.error, willRetry }
+  }
+
+  /**
+   * Flush any trailing thinking that wasn't closed by text/tool/done (e.g.
+   * aborted/errored streams) and write the assistant row.
+   */
+  private commitTranscript(transcript: TurnTranscript): void {
+    transcript.flushThinking()
+    transcript.finalize()
+  }
+
+  private isAttemptAborted(turn: TurnState): boolean {
+    return turn.abortController.signal.aborted || turn.attemptController.signal.aborted
   }
 
   private emitChunk(turn: TurnState, chunk: ResponseChunk): void {
     this.emit(turn, { type: 'chunk', turnId: turn.id, chunk })
+  }
+
+  /**
+   * Resolved per turn so a settings edit applies to the next turn without a
+   * restart. Constructor overrides win over the config file.
+   */
+  private resolveRetryPolicy(): RetryPolicy {
+    return { ...loadRetryPolicy(), ...this.retryPolicyOverrides }
   }
 
   /**
@@ -382,8 +540,17 @@ export class TurnRunner {
    * Stalls surface as `stall_warning` / `stall_resolved` chunks (channel
    * agnostic) and as a single `provider_stall` chat row that is updated in
    * place on resolution — never deleted — so history keeps an honest record.
+   *
+   * A hard abort is reported through `onAbort` instead of erroring out
+   * directly: unlike a user abort it counts as a retryable failure, so the
+   * attempt loop decides whether the turn restarts or ends.
    */
-  private startStallWatchdog(turn: TurnState, agent: TurnAgentLike, thresholds: StallThresholds) {
+  private startStallWatchdog(
+    turn: TurnState,
+    agent: TurnAgentLike,
+    thresholds: StallThresholds,
+    onAbort: (error: string) => void,
+  ) {
     let lastActivityAt = Date.now()
     let active: { startedAt: number; messageId: number | null } | null = null
 
@@ -459,7 +626,7 @@ export class TurnRunner {
     }
 
     const timer = setInterval(() => {
-      if (turn.abortController.signal.aborted) return
+      if (this.isAttemptAborted(turn)) return
       const now = Date.now()
       const idleMs = now - lastActivityAt
 
@@ -472,12 +639,11 @@ export class TurnRunner {
         // threshold never fired (e.g. warn >= abort in a custom config).
         openStall(now)
         closeStall(now, 'aborted')
-        this.emitChunk(turn, {
-          type: 'error',
-          error: `Provider stopped responding after ${Math.round(idleMs / 1000)}s. `
-            + `Connection aborted — please retry.`,
-        })
-        turn.abortController.abort()
+        onAbort(
+          `Provider stopped responding after ${Math.round(idleMs / 1000)}s. `
+          + `Connection aborted — please retry.`,
+        )
+        turn.attemptController.abort()
         // Propagate abort into pi-agent-core so the underlying SSE fetch /
         // WebSocket gets cancelled (mirrors the /stop command handler).
         agent.abort()
@@ -519,6 +685,8 @@ class TurnTranscript {
   private currentThinking = ''
   private readonly pendingToolCalls = new Map<string, { toolName: string; toolArgs: unknown }>()
   private readonly uploads: UploadDescriptor[] = []
+  /** Rows written so far, so a discarded attempt can roll them back. */
+  private readonly writtenRowIds: number[] = []
 
   constructor(
     private readonly db: Database,
@@ -552,13 +720,13 @@ class TurnTranscript {
     if (chunk.type === 'tool_call_end' && chunk.toolCallId) {
       const pending = this.pendingToolCalls.get(chunk.toolCallId)
       const toolName = pending?.toolName ?? chunk.toolName ?? 'unknown'
-      saveChatMessage(this.db, this.sessionId, this.userId, 'tool', `Tool: ${toolName}`, JSON.stringify({
+      this.writtenRowIds.push(saveChatMessage(this.db, this.sessionId, this.userId, 'tool', `Tool: ${toolName}`, JSON.stringify({
         toolName,
         toolCallId: chunk.toolCallId,
         toolArgs: pending?.toolArgs ?? null,
         toolResult: chunk.toolResult ?? null,
         toolIsError: chunk.toolIsError ?? false,
-      }))
+      })))
       this.pendingToolCalls.delete(chunk.toolCallId)
 
       const newUploads = extractUploadsFromToolResult(chunk.toolResult)
@@ -579,10 +747,34 @@ class TurnTranscript {
     const text = this.currentThinking
     this.currentThinking = ''
     try {
-      saveChatMessage(this.db, this.sessionId, this.userId, 'assistant', text, JSON.stringify({ kind: 'thinking' }))
+      this.writtenRowIds.push(
+        saveChatMessage(this.db, this.sessionId, this.userId, 'assistant', text, JSON.stringify({ kind: 'thinking' })),
+      )
     } catch (err) {
       console.error('[turn-runner] Failed to persist thinking block:', err)
     }
+  }
+
+  /**
+   * Roll back everything this attempt wrote. Used when a retryable error kills
+   * the attempt: the restarted turn produces its own thinking and tool rows,
+   * and leaving the failed ones behind would duplicate them in the history.
+   * Stall notices are written by the watchdog, not here, so they survive —
+   * they are an honest record of what happened.
+   */
+  discard(): void {
+    this.fullResponse = ''
+    this.currentThinking = ''
+    this.pendingToolCalls.clear()
+    this.uploads.length = 0
+    if (this.writtenRowIds.length === 0) return
+    try {
+      const statement = this.db.prepare('DELETE FROM chat_messages WHERE id = ?')
+      for (const id of this.writtenRowIds) statement.run(id)
+    } catch (err) {
+      console.error('[turn-runner] Failed to discard the failed attempt:', err)
+    }
+    this.writtenRowIds.length = 0
   }
 
   /**
@@ -592,7 +784,9 @@ class TurnTranscript {
   finalize(): void {
     if (!this.fullResponse && this.uploads.length === 0) return
     const metadata = this.uploads.length > 0 ? serializeUploadsMetadata(this.uploads) : undefined
-    saveChatMessage(this.db, this.sessionId, this.userId, 'assistant', this.fullResponse, metadata)
+    this.writtenRowIds.push(
+      saveChatMessage(this.db, this.sessionId, this.userId, 'assistant', this.fullResponse, metadata),
+    )
   }
 }
 
