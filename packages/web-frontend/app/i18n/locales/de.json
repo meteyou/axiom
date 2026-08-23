@@ -885,6 +885,20 @@
       "taskAgent": "Aufgaben-Agent",
       "heartbeat": "Heartbeat"
     },
+    "stalls": {
+      "title": "Provider-Aussetzer",
+      "description": "Turns, in denen der Provider lange genug stumm blieb, um den Watchdog auszulösen — im gewählten Zeitraum.",
+      "empty": "Keine Provider-Aussetzer in diesem Zeitraum.",
+      "total": "Aussetzer",
+      "allResolved": "Alle abgeschlossen",
+      "unresolved": "{count} offen",
+      "avgDuration": "Ø Stille",
+      "longest": "Längster {duration}",
+      "recovered": "Erholt",
+      "aborted": "Abgebrochen",
+      "share": "{percent}% der Aussetzer",
+      "avgShort": "ø {duration}"
+    },
     "table": {
       "title": "Anbieter- & Modell-Aufschlüsselung",
       "description": "Detaillierte Aufschlüsselung von Nutzung und geschätzten Kosten pro Anbieter/Modell.",

@@ -38,6 +38,17 @@ interface UsageSummaryResponse {
   allTime: UsageTotals
 }
 
+interface StallStatsResponse {
+  total: number
+  recovered: number
+  aborted: number
+  unresolved: number
+  averageDurationMs: number
+  maxDurationMs: number
+  averageRecoveredDurationMs: number
+  averageAbortedDurationMs: number
+}
+
 function formatDateParam(date: Date): string {
   const y = date.getFullYear()
   const m = `${date.getMonth() + 1}`.padStart(2, '0')
@@ -47,6 +58,19 @@ function formatDateParam(date: Date): string {
 
 function emptyTotals(): UsageTotals {
   return { requests: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, cacheRead: 0, cacheWrite: 0, estimatedCost: 0 }
+}
+
+function emptyStallStats(): StallStatsResponse {
+  return {
+    total: 0,
+    recovered: 0,
+    aborted: 0,
+    unresolved: 0,
+    averageDurationMs: 0,
+    maxDurationMs: 0,
+    averageRecoveredDurationMs: 0,
+    averageAbortedDurationMs: 0,
+  }
 }
 
 export function useUsageStats() {
@@ -105,6 +129,8 @@ export function useUsageStats() {
     availableModels: [],
   })
 
+  const stalls = ref<StallStatsResponse>(emptyStallStats())
+
   const availableProviders = ref<string[]>([])
   const availableModels = ref<string[]>([])
 
@@ -128,6 +154,13 @@ export function useUsageStats() {
     filters.model = ''
   }
 
+  function buildDateQuery(): URLSearchParams {
+    const params = new URLSearchParams()
+    if (filters.dateFrom) params.set('date_from', filters.dateFrom)
+    if (filters.dateTo) params.set('date_to', filters.dateTo)
+    return params
+  }
+
   function buildQuery(groupBy: string[], sessionType?: string): string {
     const params = new URLSearchParams()
     params.set('group_by', groupBy.join(','))
@@ -145,13 +178,14 @@ export function useUsageStats() {
     error.value = null
 
     try {
-      const [summaryData, dailyData, breakdownData, mainAgentData, taskAgentData, heartbeatData] = await Promise.all([
+      const [summaryData, dailyData, breakdownData, mainAgentData, taskAgentData, heartbeatData, stallData] = await Promise.all([
         apiFetch<UsageSummaryResponse>('/api/stats/summary'),
         apiFetch<UsageStatsResponse>(`/api/stats/usage?${buildQuery(['day'])}`),
         apiFetch<UsageStatsResponse>(`/api/stats/usage?${buildQuery(['provider', 'model'])}`),
         apiFetch<UsageStatsResponse>(`/api/stats/usage?${buildQuery(['day'], 'main')}`),
         apiFetch<UsageStatsResponse>(`/api/stats/usage?${buildQuery(['day'], 'task')}`),
         apiFetch<UsageStatsResponse>(`/api/stats/usage?${buildQuery(['day'], 'heartbeat')}`),
+        apiFetch<StallStatsResponse>(`/api/stats/stalls?${buildDateQuery().toString()}`),
       ])
 
       allTimeTokens.value = summaryData.allTime.totalTokens
@@ -160,6 +194,7 @@ export function useUsageStats() {
       dailyMainAgent.value = mainAgentData
       dailyTaskAgent.value = taskAgentData
       dailyHeartbeat.value = heartbeatData
+      stalls.value = stallData
       availableProviders.value = dailyData.availableProviders
       availableModels.value = dailyData.availableModels
     } catch (err) {
@@ -186,6 +221,7 @@ export function useUsageStats() {
     dailyTaskAgent,
     dailyHeartbeat,
     breakdown,
+    stalls,
     availableProviders,
     availableModels,
     hasAnyUsage,

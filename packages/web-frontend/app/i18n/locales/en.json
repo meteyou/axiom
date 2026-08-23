@@ -885,6 +885,20 @@
       "taskAgent": "Task Agent",
       "heartbeat": "Heartbeat"
     },
+    "stalls": {
+      "title": "Provider stalls",
+      "description": "Turns where the provider went silent long enough to trigger the watchdog, within the selected date range.",
+      "empty": "No provider stalls in this period.",
+      "total": "Stalls",
+      "allResolved": "All resolved",
+      "unresolved": "{count} unresolved",
+      "avgDuration": "Avg. silence",
+      "longest": "Longest {duration}",
+      "recovered": "Recovered",
+      "aborted": "Aborted",
+      "share": "{percent}% of stalls",
+      "avgShort": "ø {duration}"
+    },
     "table": {
       "title": "Provider & model breakdown",
       "description": "Detailed breakdown of usage and estimated cost per provider/model pair.",

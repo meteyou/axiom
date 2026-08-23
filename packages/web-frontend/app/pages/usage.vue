@@ -102,6 +102,36 @@
             </Card>
           </section>
 
+          <!-- ─── Provider stalls ─── -->
+          <Card class="mb-4">
+            <CardContent class="p-5">
+              <div class="mb-4">
+                <h2 class="text-base font-semibold text-foreground">{{ $t('usage.stalls.title') }}</h2>
+                <p class="mt-1 text-sm text-muted-foreground">{{ $t('usage.stalls.description') }}</p>
+              </div>
+
+              <div
+                v-if="stalls.total === 0"
+                class="flex items-center gap-2 rounded-lg border border-dashed border-border/70 px-4 py-6 text-sm text-muted-foreground"
+              >
+                <AppIcon name="check" class="h-4 w-4 opacity-60" />
+                {{ $t('usage.stalls.empty') }}
+              </div>
+
+              <div v-else class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div v-for="card in stallCards" :key="card.label" class="rounded-lg border border-border/70 p-4">
+                  <span class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+                    {{ card.label }}
+                  </span>
+                  <strong class="mt-2 block text-xl font-bold tracking-tight tabular-nums text-foreground">
+                    {{ card.value }}
+                  </strong>
+                  <span class="mt-1 block text-xs text-muted-foreground">{{ card.meta }}</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
           <!-- No results for current filters -->
           <Card v-if="!hasFilteredResults" class="mb-4">
             <CardContent class="flex flex-col items-center gap-3 py-10 text-center">
@@ -426,7 +456,7 @@
 
 <script setup lang="ts">
 const { t, locale } = useI18n()
-const { formatNumber, formatCurrency } = useFormat()
+const { formatNumber, formatCurrency, formatDuration } = useFormat()
 const { user } = useAuth()
 const isAdmin = computed(() => user.value?.role === 'admin')
 
@@ -439,6 +469,7 @@ const {
   dailyTaskAgent,
   dailyHeartbeat,
   breakdown,
+  stalls,
   availableProviders,
   availableModels,
   hasAnyUsage,
@@ -483,6 +514,43 @@ const kpiCards = computed(() => [
       : '—',
   },
 ])
+
+// ── Provider stall cards ────────────────────────────────────
+const stallCards = computed(() => {
+  const stats = stalls.value
+  const share = (count: number) => stats.total > 0
+    ? t('usage.stalls.share', { percent: Math.round((count / stats.total) * 100) })
+    : '—'
+
+  return [
+    {
+      label: t('usage.stalls.total'),
+      value: formatNumber(stats.total),
+      meta: stats.unresolved > 0
+        ? t('usage.stalls.unresolved', { count: formatNumber(stats.unresolved) })
+        : t('usage.stalls.allResolved'),
+    },
+    {
+      label: t('usage.stalls.avgDuration'),
+      value: formatDuration(stats.averageDurationMs),
+      meta: t('usage.stalls.longest', { duration: formatDuration(stats.maxDurationMs) }),
+    },
+    {
+      label: t('usage.stalls.recovered'),
+      value: formatNumber(stats.recovered),
+      meta: stats.recovered > 0
+        ? `${share(stats.recovered)} · ${t('usage.stalls.avgShort', { duration: formatDuration(stats.averageRecoveredDurationMs) })}`
+        : share(stats.recovered),
+    },
+    {
+      label: t('usage.stalls.aborted'),
+      value: formatNumber(stats.aborted),
+      meta: stats.aborted > 0
+        ? `${share(stats.aborted)} · ${t('usage.stalls.avgShort', { duration: formatDuration(stats.averageAbortedDurationMs) })}`
+        : share(stats.aborted),
+    },
+  ]
+})
 
 // ── Chart data ──────────────────────────────────────────────
 interface ChartPoint {
