@@ -118,9 +118,60 @@ describe('provider_quota execute', () => {
     const result = await tool.execute('call-1', { providerId: 'anthropic', refresh: true })
     const text = getText(result)
 
-    expect(text).toContain('anthropic')
+    expect(text).toContain('19:35:00Z')
     expect(getDetails(result).refreshed).toBe(true)
     expect(service.refreshProvider).toHaveBeenCalledWith('anthropic')
+  })
+
+  it('refreshes every known provider when providerId is omitted', async () => {
+    const service: QuotaServiceLike = {
+      getSnapshot: vi.fn(() => ({ anthropic: makeQuota(), zai: makeQuota({ kind: 'zai' }) })),
+      refreshProvider: vi.fn(async () => makeQuota({ fetchedAt: '2026-06-20T19:40:00Z' })),
+    }
+    const tool = createProviderQuotaTool({ quotaService: service })
+
+    const result = await tool.execute('call-1', { refresh: true })
+
+    expect(service.refreshProvider).toHaveBeenCalledWith('anthropic')
+    expect(service.refreshProvider).toHaveBeenCalledWith('zai')
+    expect(getDetails(result).refreshed).toBe(true)
+    expect(getDetails(result).count).toBe(2)
+  })
+
+  it('throttles repeated live refreshes of the same provider', async () => {
+    let clock = 1_000
+    const service = makeService({ anthropic: makeQuota() })
+    service.refreshProvider = vi.fn(async () => makeQuota({ fetchedAt: '2026-06-20T19:45:00Z' }))
+    const tool = createProviderQuotaTool({ quotaService: service, now: () => clock })
+
+    await tool.execute('call-1', { providerId: 'anthropic', refresh: true })
+    clock += 30_000
+    const throttledResult = await tool.execute('call-2', { providerId: 'anthropic', refresh: true })
+
+    expect(service.refreshProvider).toHaveBeenCalledTimes(1)
+    expect(getText(throttledResult)).toContain('live refresh skipped')
+    expect(getDetails(throttledResult).throttled).toEqual(['anthropic'])
+    expect(getDetails(throttledResult).refreshed).toBe(false)
+
+    clock += 31_000
+    await tool.execute('call-3', { providerId: 'anthropic', refresh: true })
+    expect(service.refreshProvider).toHaveBeenCalledTimes(2)
+  })
+
+  it('includes the plan label in the formatted output', async () => {
+    const tool = createProviderQuotaTool({ quotaService: makeService({ anthropic: makeQuota({ plan: 'Max' }) }) })
+
+    expect(getText(await tool.execute('call-1', {}))).toContain('plan: Max')
+  })
+
+  it('refuses to answer when the caller is not authorized', async () => {
+    const service = makeService({ anthropic: makeQuota() })
+    const tool = createProviderQuotaTool({ quotaService: service, isAuthorized: () => false })
+
+    const result = await tool.execute('call-1', {})
+
+    expect(getText(result)).toContain('admin users')
+    expect(getDetails(result).forbidden).toBe(true)
     expect(service.getSnapshot).not.toHaveBeenCalled()
   })
 

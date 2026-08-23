@@ -916,6 +916,9 @@ ${dailyContext}
     toolLines.push('- **read_chat_history**: Read past chat messages from the database with datetime/source/role filters. Supports a query parameter for full-text search on message content and tool call inputs/outputs.')
     toolLines.push('- **search_memories**: Search the agent\'s fact memory for previously learned information from past conversations. Use when the user asks about past decisions, preferences, or details.')
 
+    // Provider quota (admin-only; the tool itself enforces the role check)
+    toolLines.push('- **provider_quota**: Check the subscriber usage quota of configured LLM providers (utilization per window, reset times, plan). Only available to admin users.')
+
     // Agent skills tool (only useful when there are more skills than shown in the prompt)
     if (options?.agentSkillsOverflowCount && options.agentSkillsOverflowCount > 10) {
       toolLines.push(`- **list_agent_skills**: Browse all ${options.agentSkillsOverflowCount} self-created agent skills (only the 10 most recent are shown in the available_skills block).`)

@@ -46,7 +46,7 @@ The agent can spawn its own background workers and schedule recurring or one-sho
 
 | Tool | Notes |
 |---|---|
-| `provider_quota` | Returns the current subscriber usage quota for LLM providers (Anthropic Claude Pro/Max, ChatGPT Codex, OpenCode, z.ai, …). Accepts an optional `providerId` to scope to one provider and an optional `refresh` flag to force a live fetch before returning. Without `refresh`, returns the cached snapshot from the [subscriber usage quota](../web-ui/providers#subscriber-usage-quota) monitor (polled in the background). |
+| `provider_quota` | Returns the current subscriber usage quota for LLM providers (Anthropic Claude Pro/Max, ChatGPT Codex, OpenCode, z.ai, …). Accepts an optional `providerId` to scope to one provider and an optional `refresh` flag to force a live fetch (for the selected provider, or all of them when `providerId` is omitted). Without `refresh`, returns the cached snapshot from the [subscriber usage quota](../web-ui/providers#subscriber-usage-quota) monitor (polled in the background). Like the provider API, the tool answers **admin users only**; a provider refreshed less than a minute ago keeps serving cached data. |
 
 ## User delivery
 
