@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('@earendil-works/pi-ai/compat', async (importOriginal) => {
+vi.mock('./pi-models.js', async (importOriginal) => {
   const original = await importOriginal() as Record<string, unknown>
   return {
     ...original,
@@ -8,7 +8,7 @@ vi.mock('@earendil-works/pi-ai/compat', async (importOriginal) => {
   }
 })
 
-import { completeSimple } from '@earendil-works/pi-ai/compat'
+import { completeSimple } from './pi-models.js'
 import { initDatabase } from './database.js'
 import type { Database } from './database.js'
 import {
@@ -126,7 +126,9 @@ describe('fact-extraction', () => {
     expect(prompt.systemPrompt).toContain('extract atomic, reusable facts')
     expect(prompt.messages[0].content).toContain('<transcript>\nUser: Please remember that I prefer dark mode.')
     expect(prompt.messages[0].content).toContain('\n</transcript>')
-    expect(options).toMatchObject({ apiKey: 'test-key', temperature: 0 })
+    expect(options).toMatchObject({ apiKey: 'test-key' })
+    // claude-sonnet-5 and friends reject `temperature` with a 400.
+    expect(options).not.toHaveProperty('temperature')
 
     const storedFacts = listMemories(db, { userId: 1, limit: 10, offset: 0 }).facts
       .filter(fact => fact.source === 'extracted_fact')
@@ -150,6 +152,24 @@ describe('fact-extraction', () => {
 
     expect(result).toEqual({ extracted: 0, stored: 0, duplicates: 0 })
     expect(listMemories(db, { userId: 1, limit: 10, offset: 0 }).facts).toHaveLength(0)
+  })
+
+  it('throws when the provider rejects the request instead of storing zero facts', async () => {
+    mockCompleteSimple.mockResolvedValueOnce({
+      ...makeResponse(''),
+      content: [],
+      stopReason: 'error' as const,
+      errorMessage: '400 `temperature` is deprecated for this model.',
+    })
+
+    await expect(extractAndStoreFacts(
+      db,
+      1,
+      'session-error',
+      'User: remember X\nAssistant: ok',
+      makeModel(),
+      'test-key',
+    )).rejects.toThrow('temperature')
   })
 
   it('propagates LLM errors so callers can handle them', async () => {

@@ -484,6 +484,31 @@ describe('SessionManager', () => {
       expect(content).toContain('Async daily entry.')
     })
 
+    it('dates ended_at at the /new click, not at the slow summary completion', async () => {
+      const onSummarize = vi.fn().mockImplementation(
+        () => new Promise<string>(resolve => setTimeout(() => resolve('Late summary.'), 2100)),
+      )
+      const manager = new SessionManager({ db, memoryDir, timeoutMinutes: 15, onSummarize })
+      await manager.init()
+
+      const oldSession = manager.getOrCreateSession('user1')
+      manager.recordMessage('user1')
+      manager.recordMessage('user1')
+      manager.recordMessage('user1')
+
+      const clickedAt = Date.now()
+      manager.handleNewCommandAsync('user1')
+      await manager.awaitBackgroundJobs()
+
+      const row = db.prepare('SELECT ended_at FROM sessions WHERE id = ?').get(oldSession.id) as { ended_at: string }
+      const endedAt = new Date(`${row.ended_at}Z`).getTime()
+
+      // The summary took >2s; ended_at must still point at the click, because
+      // the chat divider is positioned by this timestamp.
+      expect(Math.abs(endedAt - clickedAt)).toBeLessThan(1500)
+      expect(Date.now() - clickedAt).toBeGreaterThan(2000)
+    })
+
     it('returns a fresh session when there was no active session before', async () => {
       const onSummarize = vi.fn()
       const manager = new SessionManager({ db, memoryDir, onSummarize })

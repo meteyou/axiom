@@ -183,6 +183,26 @@ describe('provider-config', () => {
     expect(model.cost.output).toBe(10.00)
   })
 
+  it('buildModel routes GitHub Copilot to the account proxy endpoint from the token', () => {
+    const model = buildModel({
+      id: 'copilot-id',
+      name: 'copilot',
+      type: 'anthropic-messages',
+      providerType: 'github-copilot' as const,
+      provider: 'github-copilot',
+      baseUrl: '',
+      apiKey: '',
+      authMethod: 'oauth' as const,
+      enabledModels: ['claude-haiku-4.5'],
+      oauthCredentials: {
+        refresh: 'r',
+        access: 'tid=abc;exp=1;proxy-ep=proxy.enterprise.githubcopilot.com;',
+        expires: Date.now() + 60_000,
+      },
+    })
+    expect(model.baseUrl).toBe('https://api.enterprise.githubcopilot.com')
+  })
+
   it('buildModel uses configured settings price table as fallback', () => {
     setupTmpConfig()
     fs.writeFileSync(
@@ -1170,9 +1190,7 @@ describe('getAvailableModels', () => {
     // The catalog is sourced from pi-ai's maintained `xai` provider, so we
     // assert on stable family ids rather than a frozen list.
     expect(models.every(m => m.id.startsWith('grok-'))).toBe(true)
-    const ids = models.map(m => m.id)
-    expect(ids).toContain('grok-3')
-    expect(ids).toContain('grok-4.3')
+    expect(models.map(m => m.id)).toContain('grok-4.3')
   })
 
   it('returns Moonshot platform models for kimi (local override, not pi-ai)', () => {

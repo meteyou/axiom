@@ -1,6 +1,6 @@
 {
   "name": "@axiom/web-backend",
-  "version": "0.25.3",
+  "version": "0.25.4",
   "private": true,
   "type": "module",
   "main": "dist/index.js",
@@ -13,7 +13,7 @@
   "dependencies": {
     "@axiom/core": "*",
     "@axiom/telegram": "*",
-    "@earendil-works/pi-ai": "0.80.6",
+    "@earendil-works/pi-ai": "0.84.2",
     "bcrypt": "^6.0.0",
     "express": "^5.1.0",
     "jsonwebtoken": "^9.0.3",

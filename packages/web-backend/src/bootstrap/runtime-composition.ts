@@ -685,6 +685,8 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
 
   // Background task tools live in a mutable array that is repopulated in place
   // by rebuildBackgroundTaskTools (see there).
+  const quotaMonitorService = new QuotaMonitorService()
+
   const backgroundSttEnabled = (() => { try { return loadSttSettings().enabled } catch { return false } })()
   // createBaseAgentTools builds the shared tool set (yolo, web, chat-history,
   // search-memories, agent-skills, transcribe-audio). Both the interactive
@@ -694,6 +696,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
     db,
     builtinToolsConfig: () => loadRuntimeSettings().builtinToolsConfig,
     sttEnabled: backgroundSttEnabled,
+    quotaService: quotaMonitorService,
     // Background tasks have no interactive session; search_memories will fall
     // back to the lowest-id user when getCurrentUserId is undefined.
   })
@@ -884,6 +887,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
         db,
         builtinToolsConfig: () => loadRuntimeSettings().builtinToolsConfig,
         sttEnabled: backgroundSttEnabled,
+        quotaService: quotaMonitorService,
       }),
       createTaskTool(backgroundTaskToolsOptions),
       createResumeTaskTool(backgroundTaskToolsOptions),
@@ -945,7 +949,6 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
   const healthMonitorService = new HealthMonitorService({ db, providerManager: null })
   healthMonitorService.start()
 
-  const quotaMonitorService = new QuotaMonitorService()
   quotaMonitorService.start()
 
   const consolidationScheduler = new MemoryConsolidationScheduler({
@@ -1007,9 +1010,14 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
       // wrong id, causing the divider row + summary to be written into
       // the NEW session's transcript instead of the OLD one.
       const dividerMetadata = JSON.stringify({ type: 'session_divider', summary: summary ?? null })
+      // Date the divider at the session's end, not at `now`: a background
+      // summary lands seconds after the user already sent messages in the new
+      // session, and chat history is ordered by timestamp — a `now` divider
+      // would reappear *below* those messages after a page reload.
       db.prepare(
-        'INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)'
-      ).run(sessionId, numericUserId, 'system', summary ?? '', dividerMetadata)
+        `INSERT INTO chat_messages (session_id, user_id, role, content, metadata, timestamp)
+         VALUES (?, ?, ?, ?, ?, COALESCE((SELECT ended_at FROM sessions WHERE id = ?), datetime('now')))`
+      ).run(sessionId, numericUserId, 'system', summary ?? '', dividerMetadata, sessionId)
 
       if (numericUserId !== null) {
         if (isBackground) {
@@ -1239,6 +1247,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
         providerConfig: provider,
         providerManager,
         sessionTimeoutMinutes,
+        quotaService: quotaMonitorService,
       })
 
       providerManager.on('mode:fallback', async () => {

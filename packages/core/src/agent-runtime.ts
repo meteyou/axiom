@@ -25,6 +25,8 @@ import { createAgentSkillTools, getAgentSkillsForPrompt, getAgentSkillsCount, ge
 import { createSearchMemoriesTool } from './memories-tool.js'
 import { createReadChatHistoryTool } from './chat-history-tools.js'
 import { createEmailTools } from './email-tools.js'
+import { createProviderQuotaTool } from './quota-tool.js'
+import type { QuotaServiceLike } from './quota-tool.js'
 import type { AgentRuntimeStateSnapshot, ResponseChunk } from './agent-runtime-types.js'
 
 /**
@@ -38,6 +40,7 @@ export interface BaseAgentToolsOptions {
   sttEnabled?: boolean
   /** Called by search_memories to scope results to the current user. */
   getCurrentUserId?: () => number | undefined
+  quotaService?: QuotaServiceLike
 }
 
 /**
@@ -57,7 +60,24 @@ export function createBaseAgentTools(options: BaseAgentToolsOptions): AgentTool[
     ...createAgentSkillTools(),
     ...createEmailTools(),
     ...(options.sttEnabled ? [createTranscribeAudioTool()] : []),
+    ...(options.quotaService
+      ? [createProviderQuotaTool({
+          quotaService: options.quotaService,
+          isAuthorized: () => isQuotaVisibleToUser(options.db, options.getCurrentUserId?.()),
+        })]
+      : []),
   ]
+}
+
+/**
+ * Provider quota is admin-only on the HTTP API, so the tool must not widen that
+ * boundary. Background agents (heartbeat, cronjobs, tasks) run without an
+ * interactive user and stay allowed.
+ */
+function isQuotaVisibleToUser(db: Database, userId: number | undefined): boolean {
+  if (userId === undefined) return true
+  const row = db.prepare('SELECT role FROM users WHERE id = ?').get(userId) as { role?: string } | undefined
+  return row?.role === 'admin'
 }
 
 export interface AgentRuntimeOptions {
@@ -71,6 +91,7 @@ export interface AgentRuntimeOptions {
   providerConfig?: ProviderConfig
   providerManager?: ProviderManager
   getCurrentToolUserId?: () => number | undefined
+  quotaService?: QuotaServiceLike
   /**
    * Reasoning / thinking level applied to every LLM turn. Defaults to the value
    * stored in `settings.json` (`thinkingLevel`), or `off` if not configured.
@@ -464,6 +485,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
         builtinToolsConfig: () => this.readRuntimeSettings().builtinToolsConfig,
         sttEnabled,
         getCurrentUserId: () => this.getCurrentToolUserId(),
+        quotaService: options.quotaService,
       }),
     ]
 

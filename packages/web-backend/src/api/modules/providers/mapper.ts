@@ -13,8 +13,8 @@ import type {
   ProviderMutationResponseContract,
   ProvidersListResponseContract,
 } from '@axiom/core/contracts'
-import { getModels as getPiAiModels } from '@earendil-works/pi-ai/compat'
-import type { KnownProvider as PiAiKnownProvider } from '@earendil-works/pi-ai'
+import { getBuiltinModels as getPiAiModels } from '@earendil-works/pi-ai/providers/all'
+import type { BuiltinProvider as PiAiKnownProvider } from '@earendil-works/pi-ai/providers/all'
 import type { OllamaTagsResponse } from './types.js'
 
 function maskApiKey(apiKey: string): string {
