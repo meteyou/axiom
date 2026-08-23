@@ -52,6 +52,10 @@ const TEMPLATES: Record<string, object> = {
     uploads: {
       retentionDays: 30,
     },
+    watchdog: {
+      stallWarnMs: 30000,
+      stallAbortMs: 90000,
+    },
     tokenPriceTable: {
       'gpt-4o': { input: 2.5, output: 10 },
       'gpt-4o-mini': { input: 0.15, output: 0.6 },

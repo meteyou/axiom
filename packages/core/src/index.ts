@@ -251,7 +251,18 @@ export type {
 } from './turn-runner.js'
 export { createAgentRuntime, createBaseAgentTools } from './agent-runtime.js'
 export type { AgentRuntimeBoundary, AgentRuntimeOptions, AgentRuntimePiAgentAccess, BaseAgentToolsOptions } from './agent-runtime.js'
-export type { AgentRuntimeStateSnapshot } from './agent-runtime-types.js'
+export type { AgentRuntimeStateSnapshot, StallInfo, StallOutcome } from './agent-runtime-types.js'
+export { STALL_OUTCOMES } from './agent-runtime-types.js'
+export {
+  PROVIDER_STALL_KIND,
+  DEFAULT_STALL_WARN_MS,
+  DEFAULT_STALL_ABORT_MS,
+  buildProviderStallMetadata,
+  parseProviderStallMetadata,
+  formatProviderStallContent,
+  loadStallThresholds,
+} from './provider-stall.js'
+export type { ProviderStallMetadata, StallThresholds } from './provider-stall.js'
 export { ProviderManager } from './provider-manager.js'
 export type { OperatingMode, ProviderManagerEvents } from './provider-manager.js'
 export { TaskStore, initTasksTable, buildTaskFilterClause } from './task-store.js'
