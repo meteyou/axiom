@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createAgentRuntime } from './agent-runtime.js'
+import type { AgentRuntimePiAgentAccess } from './agent-runtime.js'
 import { initDatabase } from './database.js'
 import type { AgentTool } from '@earendil-works/pi-agent-core'
 import { assembleSystemPrompt } from './memory.js'
@@ -7,6 +8,8 @@ import { logToolCall } from './token-logger.js'
 
 const runtimeHarness = vi.hoisted(() => ({
   promptBehaviors: [] as Array<(agent: { emit: (event: unknown) => void }, text: string) => Promise<void>>,
+  promptCalls: [] as string[],
+  continueCalls: 0,
 }))
 
 vi.mock('@earendil-works/pi-agent-core', () => {
@@ -27,9 +30,18 @@ vi.mock('@earendil-works/pi-agent-core', () => {
     }
 
     async prompt(text: string): Promise<void> {
+      runtimeHarness.promptCalls.push(text)
       const behavior = runtimeHarness.promptBehaviors.shift()
       if (behavior) {
         await behavior(this, text)
+      }
+    }
+
+    async continue(): Promise<void> {
+      runtimeHarness.continueCalls++
+      const behavior = runtimeHarness.promptBehaviors.shift()
+      if (behavior) {
+        await behavior(this, '<continue>')
       }
     }
 
@@ -130,6 +142,8 @@ function makeModel() {
 describe('AgentRuntime boundary', () => {
   beforeEach(() => {
     runtimeHarness.promptBehaviors = []
+    runtimeHarness.promptCalls = []
+    runtimeHarness.continueCalls = 0
     vi.mocked(assembleSystemPrompt).mockClear()
     vi.mocked(logToolCall).mockClear()
   })
@@ -263,5 +277,56 @@ describe('AgentRuntime boundary', () => {
     expect(chunks[0]!.thinking).toBe('Hmm,')
     expect(chunks[1]!.thinking).toBe(' weighing options.')
     expect(chunks[2]!.text).toBe('Done.')
+  })
+
+  it('retries the failed turn by continuing the transcript instead of re-sending the user message', async () => {
+    const db = initDatabase(':memory:')
+    const runtime = createAgentRuntime({
+      model: makeModel(),
+      apiKey: 'sk-primary',
+      db,
+      tools: [],
+    })
+
+    const piAgent = (runtime as unknown as AgentRuntimePiAgentAccess).getAgent()
+    piAgent.state.messages = [
+      { role: 'user', content: 'hello' },
+      { role: 'assistant', content: [], stopReason: 'error', errorMessage: '429' },
+    ] as never
+
+    runtimeHarness.promptBehaviors.push(async (agent) => {
+      agent.emit({ type: 'message_update', assistantMessageEvent: { type: 'text_delta', delta: 'Second try.' } })
+      agent.emit({ type: 'agent_end', messages: [] })
+    })
+
+    const chunks = [] as Array<{ type: string; text?: string }>
+    for await (const chunk of runtime.retryLastTurn('hello', 'session-1')) {
+      chunks.push({ type: chunk.type, text: chunk.text })
+    }
+
+    expect(chunks.map(c => c.type)).toEqual(['text', 'done'])
+    expect(runtimeHarness.continueCalls).toBe(1)
+    expect(runtimeHarness.promptCalls).toEqual([])
+    // The failed assistant message is gone; the user message is not duplicated.
+    expect((piAgent.state.messages as Array<{ role: string }>).map(m => m.role)).toEqual(['user'])
+  })
+
+  it('falls back to a fresh prompt when the transcript has nothing to continue from', async () => {
+    const db = initDatabase(':memory:')
+    const runtime = createAgentRuntime({
+      model: makeModel(),
+      apiKey: 'sk-primary',
+      db,
+      tools: [],
+    })
+
+    runtimeHarness.promptBehaviors.push(async (agent) => {
+      agent.emit({ type: 'agent_end', messages: [] })
+    })
+
+    for await (const _chunk of runtime.retryLastTurn('hello', 'session-1')) { /* drain */ }
+
+    expect(runtimeHarness.continueCalls).toBe(0)
+    expect(runtimeHarness.promptCalls).toEqual(['hello'])
   })
 })
