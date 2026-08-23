@@ -873,8 +873,8 @@
     "chart": {
       "title": "Daily token volume",
       "description": "Day-by-day token usage across the selected range.",
-      "prompt": "Prompt (input)",
-      "completion": "Completion (output)",
+      "prompt": "Input",
+      "completion": "Output",
       "empty": "No daily usage to chart for the current filters."
     },
     "sourceChart": {
@@ -893,9 +893,11 @@
         "provider": "Provider",
         "model": "Model",
         "requests": "Requests",
-        "promptTokens": "Prompt",
-        "completionTokens": "Completion",
-        "totalTokens": "Total tokens",
+        "promptTokens": "Input",
+        "completionTokens": "Output",
+        "cacheRead": "Cache read",
+        "cacheWrite": "Cache write",
+        "cacheHitRate": "Cache hit",
         "cost": "Est. cost"
       }
     }
