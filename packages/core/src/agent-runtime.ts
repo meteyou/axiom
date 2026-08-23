@@ -101,6 +101,13 @@ export interface AgentRuntimeOptions {
 
 export interface AgentRuntimeBoundary {
   streamPrompt(text: string, sessionId: string, images?: ImageContent[]): AsyncIterable<ResponseChunk>
+  /**
+   * Re-run the last assistant turn after it failed. The trailing failed
+   * assistant message is dropped and the turn continues from the existing
+   * transcript, so the user message is never sent (and billed) twice. Falls
+   * back to a normal prompt when the transcript has no continuable tail.
+   */
+  retryLastTurn(text: string, sessionId: string, images?: ImageContent[]): AsyncIterable<ResponseChunk>
   refreshSystemPrompt(channel?: string, currentUser?: { username: string }): void
   getCurrentTimeContext(): string
   swapProvider(provider: ProviderConfig, apiKey: string, modelId?: string): void
@@ -525,6 +532,30 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
     return this.executePromptWithRetry(text, sessionId, false, images)
   }
 
+  retryLastTurn(text: string, sessionId: string, images?: ImageContent[]): AsyncIterable<ResponseChunk> {
+    const continuable = this.dropFailedAssistantTail()
+    return this.executePromptWithRetry(text, sessionId, false, images, continuable)
+  }
+
+  /**
+   * Drop the trailing assistant messages left behind by a failed turn so the
+   * transcript ends on the user (or tool-result) message the assistant still
+   * owes an answer to. Returns false when no such tail exists — then the
+   * caller must re-prompt instead of continuing.
+   */
+  private dropFailedAssistantTail(): boolean {
+    const messages = this.agent.state.messages
+    let end = messages.length
+    while (end > 0 && (messages[end - 1] as { role?: string }).role === 'assistant') end--
+    if (end === 0) return false
+
+    const last = messages[end - 1] as { role?: string }
+    if (last.role !== 'user' && last.role !== 'toolResult') return false
+
+    if (end !== messages.length) this.agent.state.messages = messages.slice(0, end)
+    return true
+  }
+
   refreshSystemPrompt(channel?: string, currentUser?: { username: string }): void {
     this.agent.state.systemPrompt = this.buildSystemPrompt(channel, currentUser)
   }
@@ -715,7 +746,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
   /**
    * Execute a prompt with optional fallback retry on pre-stream errors.
    */
-  private async *executePromptWithRetry(text: string, sessionId: string, isRetry: boolean = false, images?: ImageContent[]): AsyncIterable<ResponseChunk> {
+  private async *executePromptWithRetry(text: string, sessionId: string, isRetry: boolean = false, images?: ImageContent[], continueTranscript = false): AsyncIterable<ResponseChunk> {
     const eventQueue: AgentEvent[] = []
     let resolveWaiting: (() => void) | null = null
     let done = false
@@ -731,7 +762,8 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
     })
 
     // Start the prompt (non-blocking)
-    const promptPromise = this.agent.prompt(text, images).then(() => {
+    const started = continueTranscript ? this.agent.continue() : this.agent.prompt(text, images)
+    const promptPromise = started.then(() => {
       done = true
       if (resolveWaiting) {
         resolveWaiting()
@@ -809,7 +841,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
         this.swapProvider(fallback, apiKey)
 
         // Retry once with fallback
-        yield* this.executePromptWithRetry(text, sessionId, true, images)
+        yield* this.executePromptWithRetry(text, sessionId, true, images, continueTranscript)
         return
       }
 

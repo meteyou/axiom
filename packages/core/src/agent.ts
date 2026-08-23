@@ -171,6 +171,34 @@ export class AgentCore {
   }
 
   /**
+   * Re-run the last assistant turn after it failed (auto-retry, manual retry).
+   *
+   * The user message is NOT re-sent: the runtime drops the failed assistant
+   * tail and continues from the existing transcript, so a retried turn never
+   * duplicates the user message in the model context. `text`/`attachments`
+   * are only used for the fallback path where the transcript has nothing to
+   * continue from (e.g. the session was cleared in between).
+   */
+  async *retryTurn(
+    userId: string,
+    text: string,
+    source: string = 'web',
+    attachments?: UploadDescriptor[],
+  ): AsyncIterable<ResponseChunk> {
+    const uploads = attachments
+    const iterable = await this.messageQueue.enqueue<ResponseChunk>(
+      'user_message',
+      userId,
+      text,
+      source,
+      (msg) => {
+        return this.processUserMessage(msg.payload.userId, msg.payload.text, msg.payload.source, uploads, true)
+      },
+    )
+    yield* iterable
+  }
+
+  /**
    * Inject a task result into the main agent via the message queue.
    * The injection is queued and processed sequentially like any other message.
    *
@@ -221,7 +249,7 @@ export class AgentCore {
   /**
    * Process a user message (called from the queue).
    */
-  private async *processUserMessage(userId: string, text: string, source: string, attachments?: UploadDescriptor[]): AsyncIterable<ResponseChunk> {
+  private async *processUserMessage(userId: string, text: string, source: string, attachments?: UploadDescriptor[], retry: boolean = false): AsyncIterable<ResponseChunk> {
     const session = this.sessionManager.getOrCreateSession(userId, source)
     const sessionId = session.id
     this.currentInteractiveSessionId = sessionId
@@ -272,7 +300,10 @@ export class AgentCore {
     this.currentToolUserId = Number.isFinite(parsedUserId) ? parsedUserId : undefined
 
     try {
-      yield* this.runtime.streamPrompt(enrichedText, sessionId, images.length > 0 ? images : undefined)
+      const stream = retry
+        ? this.runtime.retryLastTurn(enrichedText, sessionId, images.length > 0 ? images : undefined)
+        : this.runtime.streamPrompt(enrichedText, sessionId, images.length > 0 ? images : undefined)
+      yield* stream
     } finally {
       this.currentToolUserId = undefined
       this.currentInteractiveSessionId = undefined
