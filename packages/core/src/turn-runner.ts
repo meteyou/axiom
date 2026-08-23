@@ -414,6 +414,11 @@ export class TurnRunner {
   }
 
   private async runTurn(turn: TurnState, input: StartTurnInput): Promise<void> {
+    // Paired with `onTurnEnd` in `finishTurn` before any early exit: consumers
+    // use the pair as a gauge (active requests), so an unmatched end would
+    // decrement someone else's turn.
+    this.onTurnStart?.(toInfo(turn))
+
     if (turn.abortController.signal.aborted) {
       this.finishTurn(turn)
       return
@@ -432,7 +437,6 @@ export class TurnRunner {
       return
     }
 
-    this.onTurnStart?.(toInfo(turn))
     this.emit(turn, { type: 'turn_start', turnId: turn.id, sessionId: turn.sessionId })
 
     const thresholds = this.resolveStallThresholds()
