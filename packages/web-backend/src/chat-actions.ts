@@ -128,9 +128,14 @@ export class ChatActionRegistry {
     // The handler owns first-action-wins; a stale click simply loses there.
     const outcome = await handler({ refId: message.refId, actionId, user })
 
+    // Handlers that announce their outcome cross-channel resolve the message
+    // through `resolve()` while still running; broadcasting the identical
+    // result again would duplicate the event for every client.
+    const alreadyBroadcast = message.resolution === outcome.resolution
+
     // A losing click must not overwrite the winner's result for everyone; it
     // still gets the handler's answer back over HTTP.
-    if (outcome.ok || !message.resolution) {
+    if (!alreadyBroadcast && (outcome.ok || !message.resolution)) {
       message.resolution = outcome.resolution
       this.deps.publishToClients({ type: 'chat_action_resolved', message })
     }

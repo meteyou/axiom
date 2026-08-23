@@ -1,4 +1,9 @@
-import { TURN_RETRY_ACTION_ID, TURN_RETRY_ACTION_KIND, createTurnRetryService } from '@axiom/core'
+import {
+  TURN_RETRY_ACTION_ID,
+  TURN_RETRY_ACTION_KIND,
+  createTurnRetryService,
+  registerTurnRetryNotifier,
+} from '@axiom/core'
 import type { Database, TurnErrorInfo, TurnInfo, TurnRetryRunnerLike } from '@axiom/core'
 import type { ChatActionRegistry } from './chat-actions.js'
 
@@ -26,10 +31,18 @@ export interface TurnRetryChatChannel {
 export function registerTurnRetryChatChannel(deps: TurnRetryChatChannelDeps): TurnRetryChatChannel {
   const service = createTurnRetryService({ db: deps.db, runner: deps.runner })
 
-  const unregister = deps.chatActions.registerHandler(
+  const unregisterHandler = deps.chatActions.registerHandler(
     TURN_RETRY_ACTION_KIND,
     ({ refId }) => service.retry(Number(refId)),
   )
+
+  // A retry answered elsewhere (Telegram) must disable the web bubble's
+  // button too — the registry broadcasts the resolution to every client.
+  const unregisterNotifier = registerTurnRetryNotifier({
+    retryResolved: ({ errorMessageId, resolution }) => {
+      deps.chatActions.resolve(TURN_RETRY_ACTION_KIND, String(errorMessageId), resolution)
+    },
+  })
 
   return {
     attachRetryAction: ({ error }) => {
@@ -44,6 +57,9 @@ export function registerTurnRetryChatChannel(deps: TurnRetryChatChannelDeps): Tu
         actions: [{ actionId: TURN_RETRY_ACTION_ID, label: 'Retry', style: 'primary' }],
       })
     },
-    unregister,
+    unregister: () => {
+      unregisterHandler()
+      unregisterNotifier()
+    },
   }
 }
