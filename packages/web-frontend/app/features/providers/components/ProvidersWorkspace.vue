@@ -324,6 +324,7 @@ import type { ProviderUpdatePayloadContract } from '@axiom/core/contracts'
 import type { Provider } from '~/features/providers/composables/useProviders'
 import type { ProviderFormPayload } from '~/components/ProviderFormDialog.vue'
 import { useProviders } from '~/features/providers/composables/useProviders'
+import { formatModelCost as formatCost } from '~/utils/modelFormat'
 
 const { t } = useI18n()
 const { quotaWindowParts } = useQuotaFormat()
@@ -443,12 +444,6 @@ function getStatusVariant(status?: string): 'success' | 'destructive' | 'muted' 
     case 'error': return 'destructive'
     default: return 'muted'
   }
-}
-
-function formatCost(value: number): string {
-  if (value >= 1) return value.toFixed(2)
-  if (value >= 0.01) return value.toFixed(2)
-  return value.toFixed(3)
 }
 
 function getDisplayModels(provider: Provider): string[] {

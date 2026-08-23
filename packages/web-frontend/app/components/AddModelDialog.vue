@@ -58,6 +58,13 @@
                 <span class="truncate">{{ model.name }}</span>
                 <span class="font-mono text-[10px] text-muted-foreground truncate">{{ model.id }}</span>
               </span>
+              <span
+                v-if="model.contextWindow || model.cost"
+                class="flex shrink-0 flex-col items-end text-[10px] text-muted-foreground tabular-nums"
+              >
+                <span v-if="model.contextWindow">{{ $t('providers.addModelContext', { size: formatContextWindow(model.contextWindow) }) }}</span>
+                <span v-if="model.cost">${{ formatModelCost(model.cost.input) }} / ${{ formatModelCost(model.cost.output) }}</span>
+              </span>
               <span v-if="isAlreadyEnabled(model.id)" class="text-[10px] text-muted-foreground shrink-0">
                 {{ $t('providers.addModelAlreadyEnabled') }}
               </span>
@@ -121,6 +128,7 @@
 <script setup lang="ts">
 import type { Provider, AvailableModel } from '~/features/providers/composables/useProviders'
 import type { ProviderUpdatePayloadContract } from '@axiom/core/contracts'
+import { formatContextWindow, formatModelCost } from '~/utils/modelFormat'
 
 const props = defineProps<{
   open: boolean
