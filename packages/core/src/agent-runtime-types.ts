@@ -57,6 +57,11 @@ export type TurnErrorCause = (typeof TURN_ERROR_CAUSES)[number]
 export interface TurnErrorInfo {
   /** `chat_messages` row id of the persisted error notice, when persisted. */
   messageId?: number
+  /**
+   * Id of the manual-retry chat action hanging off this error. Persisted with
+   * the row, so the Retry button can be rebuilt after a page reload.
+   */
+  retryActionId?: string
   cause: TurnErrorCause
   /** Full provider error text, verbatim. */
   error: string

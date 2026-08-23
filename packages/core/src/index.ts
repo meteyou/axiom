@@ -268,6 +268,19 @@ export {
 } from './turn-error.js'
 export type { TurnErrorMetadata } from './turn-error.js'
 export {
+  TURN_RETRY_ACTION_KIND,
+  TURN_RETRY_ACTION_ID,
+  TURN_RETRY_RESOLUTIONS,
+  createTurnRetryService,
+  newTurnRetryActionId,
+} from './turn-retry-action.js'
+export type {
+  TurnRetryOutcome,
+  TurnRetryRunnerLike,
+  TurnRetryService,
+  TurnRetryServiceDeps,
+} from './turn-retry-action.js'
+export {
   DEFAULT_RETRY_POLICY,
   DEFAULT_RETRY_ENABLED,
   DEFAULT_RETRY_MAX_RETRIES,

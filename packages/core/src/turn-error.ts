@@ -18,6 +18,12 @@ export interface TurnErrorMetadata {
   attempts: number
   retryable: boolean
   occurredAt: string
+  /**
+   * Chat-action id of the Retry button. Stored on the row so a channel can
+   * rebuild the button from history; the in-memory action registry decides
+   * whether it still resolves (it does not survive a restart).
+   */
+  retryActionId?: string
 }
 
 export function buildTurnErrorMetadata(info: TurnErrorInfo): TurnErrorMetadata {
@@ -28,6 +34,7 @@ export function buildTurnErrorMetadata(info: TurnErrorInfo): TurnErrorMetadata {
     attempts: info.attempts,
     retryable: info.retryable,
     occurredAt: info.occurredAt,
+    ...(info.retryActionId ? { retryActionId: info.retryActionId } : {}),
   }
 }
 
@@ -56,6 +63,7 @@ export function parseTurnErrorMetadata(raw: string | null | undefined): TurnErro
     attempts: typeof value.attempts === 'number' ? value.attempts : 0,
     retryable: value.retryable === true,
     occurredAt: typeof value.occurredAt === 'string' ? value.occurredAt : '',
+    ...(typeof value.retryActionId === 'string' ? { retryActionId: value.retryActionId } : {}),
   }
 }
 

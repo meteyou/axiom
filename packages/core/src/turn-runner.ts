@@ -8,6 +8,7 @@ import type {
   TurnErrorInfo,
 } from './agent-runtime-types.js'
 import { buildTurnErrorMetadata, formatTurnErrorContent } from './turn-error.js'
+import { newTurnRetryActionId } from './turn-retry-action.js'
 import type { UploadDescriptor } from './uploads.js'
 import { serializeUploadsMetadata } from './uploads.js'
 import { extractUploadsFromToolResult } from './send-file-tool.js'
@@ -77,6 +78,11 @@ export interface StartTurnInput {
   text: string
   source?: string
   attachments?: UploadDescriptor[]
+  /**
+   * Restart a failed turn from the existing transcript instead of prompting
+   * with `text` again (manual retry). Set via {@link TurnRunner.retryTurn}.
+   */
+  continueFromTranscript?: boolean
 }
 
 export interface TurnRunnerOptions {
@@ -108,6 +114,12 @@ export interface TurnRunnerOptions {
   completedTurnRetentionMs?: number
   onTurnStart?: (turn: TurnInfo) => void
   onTurnEnd?: (turn: TurnInfo) => void
+  /**
+   * Called once a turn ended terminally, after the `turn_error` row was
+   * written. Channels use this to hang a manual-retry action off the error
+   * (`error.retryActionId`).
+   */
+  onTurnFailed?: (failure: { turn: TurnInfo; error: TurnErrorInfo }) => void
 }
 
 interface TurnState {
@@ -189,6 +201,7 @@ export class TurnRunner {
   private readonly completedTurnRetentionMs: number
   private readonly onTurnStart?: (turn: TurnInfo) => void
   private readonly onTurnEnd?: (turn: TurnInfo) => void
+  private readonly onTurnFailed?: (failure: { turn: TurnInfo; error: TurnErrorInfo }) => void
 
   private readonly subscribers = new Map<number, Set<TurnSubscriber>>()
   /** Turns that are queued or streaming, per user. */
@@ -208,6 +221,7 @@ export class TurnRunner {
     this.completedTurnRetentionMs = options.completedTurnRetentionMs ?? DEFAULT_COMPLETED_TURN_RETENTION_MS
     this.onTurnStart = options.onTurnStart
     this.onTurnEnd = options.onTurnEnd
+    this.onTurnFailed = options.onTurnFailed
   }
 
   /**
@@ -288,6 +302,16 @@ export class TurnRunner {
     this.queues.set(input.userId, run)
 
     return toInfo(turn)
+  }
+
+  /**
+   * Re-run a failed turn (manual retry). Behaves like {@link startTurn} except
+   * that the agent continues the existing transcript: the failed assistant
+   * tail is dropped and the user message is never re-sent, so a retry cannot
+   * duplicate it.
+   */
+  retryTurn(input: StartTurnInput): TurnInfo {
+    return this.startTurn({ ...input, continueFromTranscript: true })
   }
 
   /**
@@ -448,7 +472,8 @@ export class TurnRunner {
     let failure: { error: string; retryable: boolean } | null = null
 
     try {
-      const stream = attempt > 0 && agent.retryTurn
+      const continueTurn = attempt > 0 || input.continueFromTranscript === true
+      const stream = continueTurn && agent.retryTurn
         ? agent.retryTurn(String(turn.userId), input.text, input.source ?? 'web', input.attachments)
         : agent.sendMessage(String(turn.userId), input.text, input.source ?? 'web', input.attachments)
 
@@ -516,8 +541,12 @@ export class TurnRunner {
    * there after a reload; the chunk carries the same text and the row id so
    * live rendering and history agree.
    */
-  private failTurn(turn: TurnState, failure: Omit<TurnErrorInfo, 'messageId' | 'occurredAt'>): void {
-    const info: TurnErrorInfo = { ...failure, occurredAt: new Date().toISOString() }
+  private failTurn(turn: TurnState, failure: Omit<TurnErrorInfo, 'messageId' | 'occurredAt' | 'retryActionId'>): void {
+    const info: TurnErrorInfo = {
+      ...failure,
+      occurredAt: new Date().toISOString(),
+      retryActionId: newTurnRetryActionId(),
+    }
     const content = formatTurnErrorContent(info)
 
     let messageId: number | null = null
@@ -539,12 +568,17 @@ export class TurnRunner {
       + `cause=${info.cause}, attempts=${info.attempts}): ${info.error}`,
     )
 
+    const errorInfo: TurnErrorInfo = { ...info, messageId: messageId ?? undefined }
     this.emitChunk(turn, {
       type: 'error',
       error: info.error,
       text: content,
-      errorInfo: { ...info, messageId: messageId ?? undefined },
+      errorInfo,
     })
+
+    // Only a persisted error can carry a retry button: the action is resolved
+    // against the row id, and without it a reload would lose the button.
+    if (messageId !== null) this.onTurnFailed?.({ turn: toInfo(turn), error: errorInfo })
   }
 
   /**
