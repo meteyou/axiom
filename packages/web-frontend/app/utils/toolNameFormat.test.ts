@@ -39,8 +39,26 @@ describe('getToolCallSummary', () => {
     expect(getToolCallSummary('shell', { command: 'cd /workspace' })).toBe('cd /workspace')
   })
 
+  it('shows the task name for create_task', () => {
+    expect(getToolCallSummary('create_task', { name: 'GUI Debug Tool Runner', prompt: 'long…' })).toBe('GUI Debug Tool Runner')
+  })
+
+  it('joins multiple labeled arguments for read_chat_history', () => {
+    expect(getToolCallSummary('read_chat_history', { query: 'cache Test Task', limit: 30 }))
+      .toBe('query: cache Test Task · limit: 30')
+    expect(getToolCallSummary('read_chat_history', { start: '2026-08-23', limit: 40 }))
+      .toBe('start: 2026-08-23 · limit: 40')
+  })
+
+  it('renders array arguments as comma separated lists', () => {
+    expect(getToolCallSummary('email_send', { to: ['a@x.de', 'b@x.de'], subject: 'Hi', body: '…' }))
+      .toBe('to: a@x.de, b@x.de · subject: Hi')
+    expect(getToolCallSummary('email_delete', { uids: [1, 2, 3] })).toBe('uids: 1, 2, 3')
+  })
+
   it('returns null for unknown tools or missing arguments', () => {
-    expect(getToolCallSummary('create_task', { name: 'x' })).toBeNull()
+    expect(getToolCallSummary('list_agent_skills', {})).toBeNull()
+    expect(getToolCallSummary('list_cronjobs', { enabled_only: true })).toBeNull()
     expect(getToolCallSummary('read_file', {})).toBeNull()
     expect(getToolCallSummary('read_file', null)).toBeNull()
     expect(getToolCallSummary('shell', { command: '   ' })).toBeNull()
