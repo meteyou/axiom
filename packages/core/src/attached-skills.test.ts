@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import { loadAttachedSkillContent, renderAttachedSkillsBlock } from './task-runner.js'
+import { loadAttachedSkillContent, renderAttachedSkillsBlock } from './attached-skills.js'
 import { ensureConfigTemplates, getConfigDir } from './config.js'
 import { loadSkills, saveSkills } from './skill-config.js'
 
