@@ -1,263 +1,267 @@
 <template>
   <Dialog :open="open" @update:open="$emit('close')">
-    <DialogContent class="max-w-lg max-h-[85vh] overflow-y-auto">
-      <DialogHeader>
-        <DialogTitle>{{ mode === 'create' ? $t('cronjobs.createTitle') : $t('cronjobs.editTitle') }}</DialogTitle>
-        <DialogDescription>{{ mode === 'create' ? $t('cronjobs.createDescription') : $t('cronjobs.editDescription') }}</DialogDescription>
-      </DialogHeader>
+    <DialogContent
+      class="flex max-h-[calc(100dvh-1.5rem)] w-[calc(100vw-1.5rem)] max-w-lg flex-col overflow-hidden p-0 md:max-h-[85vh]"
+    >
+      <form class="flex min-h-0 flex-1 flex-col" @submit.prevent="onSubmit">
+        <DialogHeader class="oa-scrollbar mb-0 shrink-0 overflow-y-auto px-6 pb-4 pt-6 [scrollbar-gutter:stable]">
+          <DialogTitle>{{ mode === 'create' ? $t('cronjobs.createTitle') : $t('cronjobs.editTitle') }}</DialogTitle>
+          <DialogDescription>{{ mode === 'create' ? $t('cronjobs.createDescription') : $t('cronjobs.editDescription') }}</DialogDescription>
+        </DialogHeader>
 
-      <form class="space-y-4" @submit.prevent="onSubmit">
-        <!-- Name -->
-        <div class="space-y-2">
-          <Label for="cronjob-name">{{ $t('cronjobs.form.name') }}</Label>
-          <Input
-            id="cronjob-name"
-            v-model="form.name"
-            :placeholder="$t('cronjobs.form.namePlaceholder')"
-            required
-          />
-        </div>
-
-        <!-- Prompt -->
-        <div class="space-y-2">
-          <Label for="cronjob-prompt">{{ $t('cronjobs.form.prompt') }}</Label>
-          <textarea
-            id="cronjob-prompt"
-            v-model="form.prompt"
-            rows="4"
-            class="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            :placeholder="$t('cronjobs.form.promptPlaceholder')"
-            required
-          />
-        </div>
-
-        <!-- Schedule -->
-        <div class="space-y-2">
-          <Label for="cronjob-schedule">{{ $t('cronjobs.form.schedule') }}</Label>
-          <Input
-            id="cronjob-schedule"
-            v-model="form.schedule"
-            placeholder="0 9 * * *"
-            required
-          />
-          <p class="text-xs text-muted-foreground">
-            {{ $t('cronjobs.form.scheduleHelp') }}
-          </p>
-        </div>
-
-        <!-- Action Type -->
-        <div class="space-y-2">
-          <Label for="cronjob-action-type">{{ $t('cronjobs.form.actionType') }}</Label>
-          <Select v-model="form.actionType">
-            <SelectTrigger id="cronjob-action-type">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="task">{{ $t('cronjobs.form.actionTypeTask') }}</SelectItem>
-              <SelectItem value="injection">{{ $t('cronjobs.form.actionTypeInjection') }}</SelectItem>
-            </SelectContent>
-          </Select>
-          <p class="text-xs text-muted-foreground">
-            {{ form.actionType === 'injection' ? $t('cronjobs.form.actionTypeInjectionHelp') : $t('cronjobs.form.actionTypeTaskHelp') }}
-          </p>
-        </div>
-
-        <!-- Provider & Model (only for task type) -->
-        <div v-if="form.actionType !== 'injection'" class="space-y-2">
-          <Label for="cronjob-provider">{{ $t('cronjobs.form.provider') }}</Label>
-          <Select v-model="form.provider">
-            <SelectTrigger id="cronjob-provider">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="">{{ $t('cronjobs.form.defaultProvider') }}</SelectItem>
-              <SelectItem
-                v-for="opt in providerModelOptions"
-                :key="opt.value"
-                :value="opt.value"
-              >
-                {{ opt.label }}
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <!-- Advanced Section (Collapsible) — only for task type -->
-        <div v-if="form.actionType !== 'injection'" class="border border-border rounded-md">
-          <button
-            type="button"
-            class="flex w-full items-center justify-between px-4 py-3 text-sm font-medium hover:bg-muted/50 transition-colors"
-            @click="advancedOpen = !advancedOpen"
-          >
-            <span class="flex items-center gap-2">
-              {{ $t('cronjobs.form.advanced') }}
-              <Badge v-if="hasOverrides" variant="outline" class="text-xs">
-                {{ $t('cronjobs.form.customized') }}
-              </Badge>
-            </span>
-            <AppIcon
-              name="chevronDown"
-              size="sm"
-              class="text-muted-foreground transition-transform"
-              :class="{ 'rotate-180': advancedOpen }"
+        <div class="oa-scrollbar min-h-0 flex-1 space-y-4 overflow-y-auto px-6 pb-6 [scrollbar-gutter:stable]">
+          <!-- Name -->
+          <div class="space-y-2">
+            <Label for="cronjob-name">{{ $t('cronjobs.form.name') }}</Label>
+            <Input
+              id="cronjob-name"
+              v-model="form.name"
+              :placeholder="$t('cronjobs.form.namePlaceholder')"
+              required
             />
-          </button>
+          </div>
 
-          <div v-if="advancedOpen" class="border-t border-border px-4 py-4 space-y-5">
-            <!-- Tool Overrides -->
-            <div class="space-y-3">
-              <Label>{{ $t('cronjobs.form.toolOverrides') }}</Label>
-              <p class="text-xs text-muted-foreground">
-                {{ $t('cronjobs.form.toolOverridesHelp') }}
-              </p>
-              <div v-if="metaLoading" class="text-xs text-muted-foreground italic">
-                {{ $t('common.loading') }}
-              </div>
-              <div v-else-if="availableTools.length > 0" class="space-y-2">
-                <div
-                  v-for="tool in availableTools"
-                  :key="tool"
-                  class="flex items-center justify-between py-1"
+          <!-- Prompt -->
+          <div class="space-y-2">
+            <Label for="cronjob-prompt">{{ $t('cronjobs.form.prompt') }}</Label>
+            <textarea
+              id="cronjob-prompt"
+              v-model="form.prompt"
+              rows="4"
+              class="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              :placeholder="$t('cronjobs.form.promptPlaceholder')"
+              required
+            />
+          </div>
+
+          <!-- Schedule -->
+          <div class="space-y-2">
+            <Label for="cronjob-schedule">{{ $t('cronjobs.form.schedule') }}</Label>
+            <Input
+              id="cronjob-schedule"
+              v-model="form.schedule"
+              placeholder="0 9 * * *"
+              required
+            />
+            <p class="text-xs text-muted-foreground">
+              {{ $t('cronjobs.form.scheduleHelp') }}
+            </p>
+          </div>
+
+          <!-- Action Type -->
+          <div class="space-y-2">
+            <Label for="cronjob-action-type">{{ $t('cronjobs.form.actionType') }}</Label>
+            <Select v-model="form.actionType">
+              <SelectTrigger id="cronjob-action-type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="task">{{ $t('cronjobs.form.actionTypeTask') }}</SelectItem>
+                <SelectItem value="injection">{{ $t('cronjobs.form.actionTypeInjection') }}</SelectItem>
+              </SelectContent>
+            </Select>
+            <p class="text-xs text-muted-foreground">
+              {{ form.actionType === 'injection' ? $t('cronjobs.form.actionTypeInjectionHelp') : $t('cronjobs.form.actionTypeTaskHelp') }}
+            </p>
+          </div>
+
+          <!-- Provider & Model (only for task type) -->
+          <div v-if="form.actionType !== 'injection'" class="space-y-2">
+            <Label for="cronjob-provider">{{ $t('cronjobs.form.provider') }}</Label>
+            <Select v-model="form.provider">
+              <SelectTrigger id="cronjob-provider">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">{{ $t('cronjobs.form.defaultProvider') }}</SelectItem>
+                <SelectItem
+                  v-for="opt in providerModelOptions"
+                  :key="opt.value"
+                  :value="opt.value"
                 >
-                  <span class="text-sm font-mono">{{ tool }}</span>
-                  <Switch
-                    :checked="!disabledTools.includes(tool)"
-                    @update:checked="(val: boolean) => toggleTool(tool, val)"
-                  />
-                </div>
-                <!--
-                  Stale disabled entries: tools that were disabled when this cronjob was
-                  saved but no longer exist. Keep them visible so the user can clean them
-                  up instead of silently carrying dead overrides forward.
-                -->
-                <div
-                  v-for="tool in staleDisabledTools"
-                  :key="`stale-${tool}`"
-                  class="flex items-center justify-between py-1 opacity-60"
-                >
-                  <span class="text-sm font-mono line-through">{{ tool }}</span>
-                  <Switch
-                    :checked="false"
-                    @update:checked="(val: boolean) => toggleTool(tool, val)"
-                  />
-                </div>
-              </div>
-              <p v-else class="text-xs text-muted-foreground italic">
-                {{ $t('cronjobs.form.noTools') }}
-              </p>
-            </div>
+                  {{ opt.label }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
-            <Separator />
-
-            <!-- Skill Overrides -->
-            <div class="space-y-3">
-              <Label>{{ $t('cronjobs.form.skillOverrides') }}</Label>
-              <p class="text-xs text-muted-foreground">
-                {{ $t('cronjobs.form.skillOverridesHelp') }}
-              </p>
-              <div v-if="metaLoading" class="text-xs text-muted-foreground italic">
-                {{ $t('common.loading') }}
-              </div>
-              <div v-else-if="availableSkillEntries.length > 0" class="space-y-2">
-                <div
-                  v-for="skill in availableSkillEntries"
-                  :key="skill.id"
-                  class="flex items-center justify-between py-1"
-                >
-                  <span class="text-sm">
-                    <span v-if="skill.emoji" class="mr-1">{{ skill.emoji }}</span>{{ skill.name }}
-                    <span class="ml-1 text-xs font-mono text-muted-foreground">({{ skill.id }})</span>
-                  </span>
-                  <Switch
-                    :checked="!disabledSkills.includes(skill.id)"
-                    @update:checked="(val: boolean) => toggleSkill(skill.id, val)"
-                  />
-                </div>
-                <div
-                  v-for="skill in staleDisabledSkills"
-                  :key="`stale-skill-${skill}`"
-                  class="flex items-center justify-between py-1 opacity-60"
-                >
-                  <span class="text-sm line-through">{{ skill }}</span>
-                  <Switch
-                    :checked="false"
-                    @update:checked="(val: boolean) => toggleSkill(skill, val)"
-                  />
-                </div>
-              </div>
-              <p v-else class="text-xs text-muted-foreground italic">
-                {{ $t('cronjobs.form.noSkills') }}
-              </p>
-            </div>
-
-            <Separator />
-
-            <!-- Attached Skills — both installed and agent skills, their SKILL.md is injected into the task prompt -->
-            <div class="space-y-3">
-              <Label>{{ $t('cronjobs.form.attachedSkills') }}</Label>
-              <p class="text-xs text-muted-foreground">
-                {{ $t('cronjobs.form.attachedSkillsHelp') }}
-              </p>
-              <div v-if="metaLoading" class="text-xs text-muted-foreground italic">
-                {{ $t('common.loading') }}
-              </div>
-              <div v-else-if="attachableSkillEntries.length > 0" class="space-y-2">
-                <div
-                  v-for="skill in attachableSkillEntries"
-                  :key="`attached-${skill.id}`"
-                  class="flex items-center justify-between py-1"
-                >
-                  <span class="text-sm">
-                    <span v-if="skill.emoji" class="mr-1">{{ skill.emoji }}</span>
-                    <span class="font-mono">{{ skill.id }}</span>
-                    <span
-                      class="ml-1 text-xs uppercase tracking-wide"
-                      :class="skill.kind === 'agent' ? 'text-primary' : 'text-muted-foreground'"
-                    >
-                      {{ skill.kind === 'agent' ? $t('cronjobs.form.skillKindAgent') : $t('cronjobs.form.skillKindInstalled') }}
-                    </span>
-                  </span>
-                  <Switch
-                    :checked="attachedSkills.includes(skill.id)"
-                    @update:checked="(val: boolean) => toggleAttachedSkill(skill.id, val)"
-                  />
-                </div>
-                <div v-if="attachedSkills.length > 0" class="flex flex-wrap gap-1.5 pt-1">
-                  <Badge
-                    v-for="skill in attachedSkills"
-                    :key="`attached-selected-${skill}`"
-                    variant="secondary"
-                    class="text-xs font-normal"
-                  >
-                    📎 {{ skill }}
-                  </Badge>
-                </div>
-              </div>
-              <p v-else class="text-xs text-muted-foreground italic">
-                {{ $t('cronjobs.form.noAttachableSkills') }}
-              </p>
-            </div>
-
-            <Separator />
-
-            <!-- System Prompt Override -->
-            <div class="space-y-2">
-              <Label for="cronjob-system-prompt">{{ $t('cronjobs.form.systemPromptOverride') }}</Label>
-              <p class="text-xs text-muted-foreground">
-                {{ $t('cronjobs.form.systemPromptOverrideHelp') }}
-              </p>
-              <textarea
-                id="cronjob-system-prompt"
-                v-model="form.systemPromptOverride"
-                rows="5"
-                class="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 font-mono"
-                :placeholder="$t('cronjobs.form.systemPromptPlaceholder')"
+          <!-- Advanced Section (Collapsible) — only for task type -->
+          <div v-if="form.actionType !== 'injection'" class="border border-border rounded-md">
+            <button
+              type="button"
+              class="flex w-full items-center justify-between px-4 py-3 text-sm font-medium hover:bg-muted/50 transition-colors"
+              @click="advancedOpen = !advancedOpen"
+            >
+              <span class="flex items-center gap-2">
+                {{ $t('cronjobs.form.advanced') }}
+                <Badge v-if="hasOverrides" variant="outline" class="text-xs">
+                  {{ $t('cronjobs.form.customized') }}
+                </Badge>
+              </span>
+              <AppIcon
+                name="chevronDown"
+                size="sm"
+                class="text-muted-foreground transition-transform"
+                :class="{ 'rotate-180': advancedOpen }"
               />
+            </button>
+
+            <div v-if="advancedOpen" class="border-t border-border px-4 py-4 space-y-5">
+              <!-- Tool Overrides -->
+              <div class="space-y-3">
+                <Label>{{ $t('cronjobs.form.toolOverrides') }}</Label>
+                <p class="text-xs text-muted-foreground">
+                  {{ $t('cronjobs.form.toolOverridesHelp') }}
+                </p>
+                <div v-if="metaLoading" class="text-xs text-muted-foreground italic">
+                  {{ $t('common.loading') }}
+                </div>
+                <div v-else-if="availableTools.length > 0" class="space-y-2">
+                  <div
+                    v-for="tool in availableTools"
+                    :key="tool"
+                    class="flex items-center justify-between py-1"
+                  >
+                    <span class="text-sm font-mono">{{ tool }}</span>
+                    <Switch
+                      :checked="!disabledTools.includes(tool)"
+                      @update:checked="(val: boolean) => toggleTool(tool, val)"
+                    />
+                  </div>
+                  <!--
+                    Stale disabled entries: tools that were disabled when this cronjob was
+                    saved but no longer exist. Keep them visible so the user can clean them
+                    up instead of silently carrying dead overrides forward.
+                  -->
+                  <div
+                    v-for="tool in staleDisabledTools"
+                    :key="`stale-${tool}`"
+                    class="flex items-center justify-between py-1 opacity-60"
+                  >
+                    <span class="text-sm font-mono line-through">{{ tool }}</span>
+                    <Switch
+                      :checked="false"
+                      @update:checked="(val: boolean) => toggleTool(tool, val)"
+                    />
+                  </div>
+                </div>
+                <p v-else class="text-xs text-muted-foreground italic">
+                  {{ $t('cronjobs.form.noTools') }}
+                </p>
+              </div>
+
+              <Separator />
+
+              <!-- Skill Overrides -->
+              <div class="space-y-3">
+                <Label>{{ $t('cronjobs.form.skillOverrides') }}</Label>
+                <p class="text-xs text-muted-foreground">
+                  {{ $t('cronjobs.form.skillOverridesHelp') }}
+                </p>
+                <div v-if="metaLoading" class="text-xs text-muted-foreground italic">
+                  {{ $t('common.loading') }}
+                </div>
+                <div v-else-if="availableSkillEntries.length > 0" class="space-y-2">
+                  <div
+                    v-for="skill in availableSkillEntries"
+                    :key="skill.id"
+                    class="flex items-center justify-between py-1"
+                  >
+                    <span class="text-sm">
+                      <span v-if="skill.emoji" class="mr-1">{{ skill.emoji }}</span>{{ skill.name }}
+                      <span class="ml-1 text-xs font-mono text-muted-foreground">({{ skill.id }})</span>
+                    </span>
+                    <Switch
+                      :checked="!disabledSkills.includes(skill.id)"
+                      @update:checked="(val: boolean) => toggleSkill(skill.id, val)"
+                    />
+                  </div>
+                  <div
+                    v-for="skill in staleDisabledSkills"
+                    :key="`stale-skill-${skill}`"
+                    class="flex items-center justify-between py-1 opacity-60"
+                  >
+                    <span class="text-sm line-through">{{ skill }}</span>
+                    <Switch
+                      :checked="false"
+                      @update:checked="(val: boolean) => toggleSkill(skill, val)"
+                    />
+                  </div>
+                </div>
+                <p v-else class="text-xs text-muted-foreground italic">
+                  {{ $t('cronjobs.form.noSkills') }}
+                </p>
+              </div>
+
+              <Separator />
+
+              <!-- Attached Skills — both installed and agent skills, their SKILL.md is injected into the task prompt -->
+              <div class="space-y-3">
+                <Label>{{ $t('cronjobs.form.attachedSkills') }}</Label>
+                <p class="text-xs text-muted-foreground">
+                  {{ $t('cronjobs.form.attachedSkillsHelp') }}
+                </p>
+                <div v-if="metaLoading" class="text-xs text-muted-foreground italic">
+                  {{ $t('common.loading') }}
+                </div>
+                <div v-else-if="attachableSkillEntries.length > 0" class="space-y-2">
+                  <div
+                    v-for="skill in attachableSkillEntries"
+                    :key="`attached-${skill.id}`"
+                    class="flex items-center justify-between py-1"
+                  >
+                    <span class="text-sm">
+                      <span v-if="skill.emoji" class="mr-1">{{ skill.emoji }}</span>
+                      <span class="font-mono">{{ skill.id }}</span>
+                      <span
+                        class="ml-1 text-xs uppercase tracking-wide"
+                        :class="skill.kind === 'agent' ? 'text-primary' : 'text-muted-foreground'"
+                      >
+                        {{ skill.kind === 'agent' ? $t('cronjobs.form.skillKindAgent') : $t('cronjobs.form.skillKindInstalled') }}
+                      </span>
+                    </span>
+                    <Switch
+                      :checked="attachedSkills.includes(skill.id)"
+                      @update:checked="(val: boolean) => toggleAttachedSkill(skill.id, val)"
+                    />
+                  </div>
+                  <div v-if="attachedSkills.length > 0" class="flex flex-wrap gap-1.5 pt-1">
+                    <Badge
+                      v-for="skill in attachedSkills"
+                      :key="`attached-selected-${skill}`"
+                      variant="secondary"
+                      class="text-xs font-normal"
+                    >
+                      📎 {{ skill }}
+                    </Badge>
+                  </div>
+                </div>
+                <p v-else class="text-xs text-muted-foreground italic">
+                  {{ $t('cronjobs.form.noAttachableSkills') }}
+                </p>
+              </div>
+
+              <Separator />
+
+              <!-- System Prompt Override -->
+              <div class="space-y-2">
+                <Label for="cronjob-system-prompt">{{ $t('cronjobs.form.systemPromptOverride') }}</Label>
+                <p class="text-xs text-muted-foreground">
+                  {{ $t('cronjobs.form.systemPromptOverrideHelp') }}
+                </p>
+                <textarea
+                  id="cronjob-system-prompt"
+                  v-model="form.systemPromptOverride"
+                  rows="5"
+                  class="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 font-mono"
+                  :placeholder="$t('cronjobs.form.systemPromptPlaceholder')"
+                />
+              </div>
             </div>
           </div>
         </div>
 
-        <DialogFooter>
+        <DialogFooter class="oa-scrollbar mt-0 shrink-0 overflow-y-auto border-t border-border px-6 py-4 [scrollbar-gutter:stable]">
           <Button type="button" variant="outline" @click="$emit('close')">
             {{ $t('common.cancel') }}
           </Button>
