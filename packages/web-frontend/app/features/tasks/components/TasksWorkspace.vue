@@ -2,77 +2,57 @@
   <div class="flex h-full flex-col overflow-hidden">
     <PageHeader :title="$t('tasks.title')" :subtitle="$t('tasks.subtitle')" />
 
-    <!-- Filter toolbar -->
-    <div class="flex-shrink-0 border-b border-border px-5 py-3">
-      <div class="flex flex-col gap-2 lg:flex-row lg:items-center">
+    <!-- Filter toolbar. On mobile the fields live in a popover so the list
+         gets the screen; the badge shows how many filters deviate from default. -->
+    <div class="flex-shrink-0 border-b border-border px-3 py-2 md:px-5 md:py-3">
+      <div class="flex items-center gap-2 md:hidden">
+        <Popover>
+          <PopoverTrigger as-child>
+            <Button variant="outline" class="flex-1 justify-start gap-2">
+              <AppIcon name="filter" size="sm" />
+              {{ $t('tasks.filters.button') }}
+              <Badge v-if="activeFilterCount > 0" variant="default" class="ml-auto px-1.5 py-0 text-[10px]">
+                {{ activeFilterCount }}
+              </Badge>
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="start" class="flex w-[calc(100vw-1.5rem)] max-w-sm flex-col gap-2">
+            <TaskFilterFields
+              v-model:status="filters.status"
+              v-model:trigger-type="filters.triggerType"
+              v-model:provider-filter="filters.providerFilter"
+              v-model:created-from="filters.createdFrom"
+              v-model:created-to="filters.createdTo"
+              :has-default-provider-option="hasDefaultProviderFilter"
+              :provider-model-options="providerModelFilterOptions"
+              @change="onFilterChange"
+            />
+          </PopoverContent>
+        </Popover>
+
+        <Button
+          variant="outline"
+          size="icon"
+          :disabled="loading"
+          :title="$t('tasks.refresh')"
+          @click="loadTasks(pagination.page)"
+        >
+          <AppIcon name="refresh" size="sm" />
+        </Button>
+      </div>
+
+      <div class="hidden flex-col gap-2 md:flex lg:flex-row lg:items-center">
         <div class="flex flex-1 flex-wrap items-center gap-2">
-          <Select v-model="filters.status" @update:model-value="onFilterChange">
-            <SelectTrigger class="w-full sm:w-[160px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="">{{ $t('tasks.filters.allStatuses') }}</SelectItem>
-              <SelectItem value="running">{{ $t('tasks.status.running') }}</SelectItem>
-              <SelectItem value="paused">{{ $t('tasks.status.paused') }}</SelectItem>
-              <SelectItem value="completed">{{ $t('tasks.status.completed') }}</SelectItem>
-              <SelectItem value="failed">{{ $t('tasks.status.failed') }}</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select v-model="filters.triggerType" @update:model-value="onFilterChange">
-            <SelectTrigger class="w-full sm:w-[160px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="">{{ $t('tasks.filters.allTriggers') }}</SelectItem>
-              <SelectItem value="user">{{ $t('tasks.trigger.user') }}</SelectItem>
-              <SelectItem value="agent">{{ $t('tasks.trigger.agent') }}</SelectItem>
-              <SelectItem value="cronjob">{{ $t('tasks.trigger.cronjob') }}</SelectItem>
-              <SelectItem value="heartbeat">{{ $t('tasks.trigger.heartbeat') }}</SelectItem>
-              <SelectItem value="consolidation">{{ $t('tasks.trigger.consolidation') }}</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select v-model="filters.providerFilter" @update:model-value="onFilterChange">
-            <SelectTrigger class="w-full sm:w-[240px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="">{{ $t('tasks.filters.allProviders') }}</SelectItem>
-              <SelectItem v-if="hasDefaultProviderFilter" :value="TASK_DEFAULT_PROVIDER_FILTER">
-                {{ $t('tasks.filters.defaultProvider') }}
-              </SelectItem>
-              <SelectItem
-                v-for="option in providerModelFilterOptions"
-                :key="option.value"
-                :value="option.value"
-              >
-                {{ option.label }}
-              </SelectItem>
-            </SelectContent>
-          </Select>
-
-          <div class="flex items-center gap-2">
-            <span class="text-xs text-muted-foreground">{{ $t('tasks.filters.fromDate') }}</span>
-            <Input
-              v-model="filters.createdFrom"
-              type="date"
-              class="w-[145px]"
-              :aria-label="$t('tasks.filters.fromDate')"
-              @change="onFilterChange"
-            />
-          </div>
-
-          <div class="flex items-center gap-2">
-            <span class="text-xs text-muted-foreground">{{ $t('tasks.filters.toDate') }}</span>
-            <Input
-              v-model="filters.createdTo"
-              type="date"
-              class="w-[145px]"
-              :aria-label="$t('tasks.filters.toDate')"
-              @change="onFilterChange"
-            />
-          </div>
+          <TaskFilterFields
+            v-model:status="filters.status"
+            v-model:trigger-type="filters.triggerType"
+            v-model:provider-filter="filters.providerFilter"
+            v-model:created-from="filters.createdFrom"
+            v-model:created-to="filters.createdTo"
+            :has-default-provider-option="hasDefaultProviderFilter"
+            :provider-model-options="providerModelFilterOptions"
+            @change="onFilterChange"
+          />
         </div>
 
         <Button variant="outline" :disabled="loading" class="gap-2" @click="loadTasks(pagination.page)">
@@ -301,8 +281,8 @@
 
 <script setup lang="ts">
 import type { Task } from '~/api/tasks'
+import TaskFilterFields from '~/features/tasks/components/TaskFilterFields.vue'
 import {
-  TASK_DEFAULT_PROVIDER_FILTER,
   encodeTaskProviderModelFilter,
   useTasksList,
 } from '~/features/tasks/composables/useTasksList'
@@ -322,6 +302,7 @@ const {
   error,
   pagination,
   filters,
+  activeFilterCount,
   sortField,
   sortDirection,
   loadTasks,

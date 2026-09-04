@@ -951,6 +951,7 @@
       "allTriggers": "All triggers",
       "allProviders": "All providers",
       "defaultProvider": "Default",
+      "button": "Filters",
       "fromDate": "From",
       "toDate": "To"
     },
