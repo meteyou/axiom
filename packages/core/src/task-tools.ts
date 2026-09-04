@@ -3,6 +3,7 @@ import { Type } from '@earendil-works/pi-ai'
 import type { TaskStatus, TaskTriggerType } from './task-store.js'
 import type { ProviderConfig } from './provider-config.js'
 import { resolveProviderModelInput, getProviderDefaultModel } from './provider-config.js'
+import { normalizeAttachedSkills } from './attached-skills.js'
 import type { TaskRuntimeTaskBoundary } from './task-runtime.js'
 
 export interface TaskToolsOptions {
@@ -112,7 +113,8 @@ export function createTaskTool(options: TaskToolsOptions): AgentTool {
       'Start a background task that runs autonomously. Use this for complex, long-running, or parallelizable work ' +
       'that should continue in the background (e.g., building apps, substantial refactors, multi-step research, complex file operations). ' +
       'Do not use it for simple questions or quick checks you can finish in the current turn. ' +
-      'Provide a self-contained prompt; the task runs in an isolated agent instance and reports back when complete, fails, or needs input.',
+      'Provide a self-contained prompt; the task runs in an isolated agent instance and reports back when complete, fails, or needs input. ' +
+      'Use `attached_skills` to bake the rules of specific skills into the task prompt instead of hoping the task agent discovers them.',
     parameters: Type.Object({
       prompt: Type.String({
         description: 'Detailed, self-contained prompt describing what the task should accomplish. Include the goal, constraints, relevant files or URLs, required checks, and the expected final deliverable. Write it so the task can proceed without relying on hidden chat context.',
@@ -135,14 +137,20 @@ export function createTaskTool(options: TaskToolsOptions): AgentTool {
           description: 'Maximum duration in minutes for this task. Cannot exceed the system maximum. Defaults to system default if not specified.',
         })
       ),
+      attached_skills: Type.Optional(
+        Type.Array(Type.String(), {
+          description: 'Optional list of agent-skill names (directory names under /data/skills_agent/<name>/) or installed skill ids ("owner/name") whose SKILL.md should be injected directly into the task prompt. Use this to bake skill rules into the prompt deterministically instead of requiring the task agent to read_file them. Example: ["nitter", "reddit"]. Missing SKILL.md files are skipped with a warning, the task still runs.',
+        })
+      ),
     }),
     execute: async (_toolCallId, params) => {
-      const { prompt, name, provider: providerName, model: modelName, max_duration_minutes } = params as {
+      const { prompt, name, provider: providerName, model: modelName, max_duration_minutes, attached_skills } = params as {
         prompt: string
         name: string
         provider?: string
         model?: string
         max_duration_minutes?: number
+        attached_skills?: string[]
       }
 
       try {
@@ -207,18 +215,24 @@ export function createTaskTool(options: TaskToolsOptions): AgentTool {
 
         // Start the task, linking its session to the current interactive session
         const parentSessionId = options.getParentSessionId?.() ?? null
-        await options.taskRuntime.start(task, provider, undefined, parentSessionId)
+        const attachedSkills = normalizeAttachedSkills(attached_skills)
+        await options.taskRuntime.start(task, provider, { attachedSkills }, parentSessionId)
+
+        const attachedSkillsLine = attachedSkills
+          ? `Attached skills: ${attachedSkills.join(', ')}\n`
+          : ''
 
         return {
           content: [{
             type: 'text' as const,
-            text: `Background task started successfully.\n\nTask ID: ${task.id}\nName: ${name}\nProvider: ${provider.name}\nMax Duration: ${maxDuration} minutes\n\nThe task is now running in the background. You will receive a notification when it completes or fails.`,
+            text: `Background task started successfully.\n\nTask ID: ${task.id}\nName: ${name}\nProvider: ${provider.name}\nMax Duration: ${maxDuration} minutes\n${attachedSkillsLine}\nThe task is now running in the background. You will receive a notification when it completes or fails.`,
           }],
           details: {
             taskId: task.id,
             name,
             provider: provider.name,
             maxDurationMinutes: maxDuration,
+            attachedSkills,
           },
         }
       } catch (err) {
