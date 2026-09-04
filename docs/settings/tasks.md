@@ -22,6 +22,8 @@ Hard upper bound on a single task run, in minutes. Any task hitting this limit i
 
 Use this to protect your wallet against runaway agents in an infinite tool loop.
 
+Axiom has no built-in hard spend cap. Max duration and loop detection bound how long a task runs and catch runaway loops, but they do not limit absolute cost. The hard cost ceiling is set at the provider: for subscription/OAuth providers it is your plan allowance (shown as the [subscriber usage quota](../web-ui/providers#subscriber-usage-quota-oauth-plans) on the Providers page), and for pay-per-token API keys it is a spend limit you configure with the provider.
+
 ```json
 { "tasks": { "maxDurationMinutes": 30 } }
 ```
@@ -67,7 +69,7 @@ Master toggle. Default: `true`. Leave it on unless you're debugging an agent tha
 |---|---|
 | `systematic` | Pure rule-based. Counts consecutive failing tool calls against `maxConsecutiveFailures`. Fast, zero extra tokens. |
 | `smart` | Periodically asks a small LLM "is this agent making progress?". Slower, costs tokens, catches subtle loops. |
-| `auto` | Start with `systematic`; escalate to `smart` if the rule-based signal is ambiguous. Recommended default. |
+| `auto` | Start with `systematic`; escalate to `smart` if the rule-based signal is ambiguous. A good all-round choice, though the built-in default is `systematic`. |
 
 ```json
 { "tasks": { "loopDetection": { "method": "auto" } } }
@@ -75,7 +77,7 @@ Master toggle. Default: `true`. Leave it on unless you're debugging an agent tha
 
 ### Max consecutive failures
 
-How many back-to-back failing tool calls count as a loop. Default: `5`. Range: 1 – 20.
+How many back-to-back failing tool calls count as a loop. Default: `3`. Range: 1 – 20.
 
 ```json
 { "tasks": { "loopDetection": { "maxConsecutiveFailures": 5 } } }
@@ -91,7 +93,7 @@ Only shown for `smart` / `auto`. Which LLM judges "is the agent making progress?
 
 ### Smart check interval
 
-Only shown for `smart` / `auto`. How often (every _N_ tool calls) the smart check runs. Default: `10`. Range: 1 – 50. Lower = more sensitive, more tokens; higher = cheaper, slower to react.
+Only shown for `smart` / `auto`. How often (every _N_ tool calls) the smart check runs. Default: `5`. Range: 1 – 50. Lower = more sensitive, more tokens; higher = cheaper, slower to react.
 
 ```json
 { "tasks": { "loopDetection": { "smartCheckInterval": 10 } } }
