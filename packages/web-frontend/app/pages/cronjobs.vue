@@ -140,111 +140,127 @@
         </Button>
       </div>
 
-      <!-- Cronjobs table -->
-      <div v-else class="overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{{ $t('cronjobs.columns.name') }}</TableHead>
-              <TableHead>{{ $t('cronjobs.columns.schedule') }}</TableHead>
-              <TableHead>{{ $t('cronjobs.columns.actionType') }}</TableHead>
-              <TableHead>{{ $t('cronjobs.columns.provider') }}</TableHead>
-              <TableHead>{{ $t('cronjobs.columns.enabled') }}</TableHead>
-              <TableHead>{{ $t('cronjobs.columns.lastRun') }}</TableHead>
-              <TableHead class="w-12" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            <TableRow
-              v-for="cj in filteredCronjobs"
-              :key="cj.id"
-              class="cursor-pointer"
-              @click="openEditCronjob(cj)"
-            >
-              <TableCell class="max-w-[260px] font-medium">
-                <div class="flex flex-wrap items-center gap-1.5">
-                  <span class="truncate">{{ cj.name }}</span>
-                  <Badge v-if="cj.toolsOverride" variant="outline" class="shrink-0 text-xs">
-                    {{ $t('cronjobs.badges.customTools') }}
-                  </Badge>
-                  <Badge v-if="cj.skillsOverride" variant="outline" class="shrink-0 text-xs">
-                    {{ $t('cronjobs.badges.customSkills') }}
-                  </Badge>
-                  <Badge v-if="cj.systemPromptOverride" variant="outline" class="shrink-0 text-xs">
-                    {{ $t('cronjobs.badges.customPrompt') }}
-                  </Badge>
-                </div>
-                <div v-if="cj.attachedSkills?.length" class="mt-1 flex flex-wrap items-center gap-1.5">
-                  <Badge
-                    v-for="skill in cj.attachedSkills"
-                    :key="`attached-${skill}`"
-                    variant="secondary"
-                    class="shrink-0 text-xs font-normal"
-                    :title="$t('cronjobs.badges.attachedSkillTooltip', { name: skill })"
-                  >
-                    📎 {{ skill }}
-                  </Badge>
-                </div>
-              </TableCell>
-              <TableCell>
-                <div class="flex flex-col">
-                  <span class="text-sm">{{ cj.scheduleHuman }}</span>
-                  <span class="font-mono text-xs text-muted-foreground">{{ cj.schedule }}</span>
-                </div>
-              </TableCell>
-              <TableCell>
-                <Badge :variant="cj.actionType === 'injection' ? 'warning' : 'default'">
-                  {{ cj.actionType === 'injection' ? $t('cronjobs.actionTypeInjection') : $t('cronjobs.actionTypeTask') }}
-                </Badge>
-              </TableCell>
-              <TableCell class="text-muted-foreground">
-                {{ cj.actionType === 'injection' ? '—' : (formatCronjobProvider(cj.provider, providers) || $t('cronjobs.defaultProvider')) }}
-              </TableCell>
-              <TableCell @click.stop>
-                <Switch
-                  :checked="cj.enabled"
-                  @update:checked="(val: boolean) => handleToggle(cj.id, val)"
-                />
-              </TableCell>
-              <TableCell>
-                <div v-if="cj.lastRunAt" class="flex flex-col gap-1">
-                  <div class="flex items-center gap-1.5">
-                    <Badge :variant="lastRunStatusVariant(cj.lastRunStatus)">
-                      {{ cj.lastRunStatus ?? '—' }}
+      <template v-else>
+        <!-- Mobile card list -->
+        <div class="flex flex-col gap-2 p-3 md:hidden">
+          <CronjobListCard
+            v-for="cj in filteredCronjobs"
+            :key="cj.id"
+            :cronjob="cj"
+            :provider-label="providerLabel(cj)"
+            @edit="openEditCronjob(cj)"
+            @trigger="handleTrigger(cj)"
+            @delete="confirmDeleteCronjob(cj)"
+            @toggle="(val) => handleToggle(cj.id, val)"
+          />
+        </div>
+
+        <!-- Desktop table -->
+        <div class="hidden overflow-x-auto md:block">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{{ $t('cronjobs.columns.name') }}</TableHead>
+                <TableHead>{{ $t('cronjobs.columns.schedule') }}</TableHead>
+                <TableHead>{{ $t('cronjobs.columns.actionType') }}</TableHead>
+                <TableHead>{{ $t('cronjobs.columns.provider') }}</TableHead>
+                <TableHead>{{ $t('cronjobs.columns.enabled') }}</TableHead>
+                <TableHead>{{ $t('cronjobs.columns.lastRun') }}</TableHead>
+                <TableHead class="w-12" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow
+                v-for="cj in filteredCronjobs"
+                :key="cj.id"
+                class="cursor-pointer"
+                @click="openEditCronjob(cj)"
+              >
+                <TableCell class="max-w-[260px] font-medium">
+                  <div class="flex flex-wrap items-center gap-1.5">
+                    <span class="truncate">{{ cj.name }}</span>
+                    <Badge v-if="cj.toolsOverride" variant="outline" class="shrink-0 text-xs">
+                      {{ $t('cronjobs.badges.customTools') }}
+                    </Badge>
+                    <Badge v-if="cj.skillsOverride" variant="outline" class="shrink-0 text-xs">
+                      {{ $t('cronjobs.badges.customSkills') }}
+                    </Badge>
+                    <Badge v-if="cj.systemPromptOverride" variant="outline" class="shrink-0 text-xs">
+                      {{ $t('cronjobs.badges.customPrompt') }}
                     </Badge>
                   </div>
-                  <span class="text-xs text-muted-foreground">{{ formatTimestamp(cj.lastRunAt) }}</span>
-                </div>
-                <span v-else class="text-sm text-muted-foreground">—</span>
-              </TableCell>
-              <TableCell @click.stop>
-                <DropdownMenu>
-                  <DropdownMenuTrigger as-child>
-                    <Button variant="ghost" size="sm" class="h-8 w-8 p-0">
-                      <AppIcon name="moreVertical" size="sm" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem @click="openEditCronjob(cj)">
-                      <AppIcon name="edit" size="sm" class="mr-2" />
-                      {{ $t('common.edit') }}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem @click="handleTrigger(cj)">
-                      <AppIcon name="send" size="sm" class="mr-2" />
-                      {{ $t('cronjobs.runNow') }}
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem destructive @click="confirmDeleteCronjob(cj)">
-                      <AppIcon name="trash" size="sm" class="mr-2" />
-                      {{ $t('common.delete') }}
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </TableCell>
-            </TableRow>
-          </TableBody>
-        </Table>
-      </div>
+                  <div v-if="cj.attachedSkills?.length" class="mt-1 flex flex-wrap items-center gap-1.5">
+                    <Badge
+                      v-for="skill in cj.attachedSkills"
+                      :key="`attached-${skill}`"
+                      variant="secondary"
+                      class="shrink-0 text-xs font-normal"
+                      :title="$t('cronjobs.badges.attachedSkillTooltip', { name: skill })"
+                    >
+                      📎 {{ skill }}
+                    </Badge>
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div class="flex flex-col">
+                    <span class="text-sm">{{ cj.scheduleHuman }}</span>
+                    <span class="font-mono text-xs text-muted-foreground">{{ cj.schedule }}</span>
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <Badge :variant="cj.actionType === 'injection' ? 'warning' : 'default'">
+                    {{ cj.actionType === 'injection' ? $t('cronjobs.actionTypeInjection') : $t('cronjobs.actionTypeTask') }}
+                  </Badge>
+                </TableCell>
+                <TableCell class="text-muted-foreground">
+                  {{ cj.actionType === 'injection' ? '—' : providerLabel(cj) }}
+                </TableCell>
+                <TableCell @click.stop>
+                  <Switch
+                    :checked="cj.enabled"
+                    @update:checked="(val: boolean) => handleToggle(cj.id, val)"
+                  />
+                </TableCell>
+                <TableCell>
+                  <div v-if="cj.lastRunAt" class="flex flex-col gap-1">
+                    <div class="flex items-center gap-1.5">
+                      <Badge :variant="cronjobLastRunVariant(cj.lastRunStatus)">
+                        {{ cj.lastRunStatus ?? '—' }}
+                      </Badge>
+                    </div>
+                    <span class="text-xs text-muted-foreground">{{ formatTimestamp(cj.lastRunAt) }}</span>
+                  </div>
+                  <span v-else class="text-sm text-muted-foreground">—</span>
+                </TableCell>
+                <TableCell @click.stop>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger as-child>
+                      <Button variant="ghost" size="sm" class="h-8 w-8 p-0">
+                        <AppIcon name="moreVertical" size="sm" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem @click="openEditCronjob(cj)">
+                        <AppIcon name="edit" size="sm" class="mr-2" />
+                        {{ $t('common.edit') }}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem @click="handleTrigger(cj)">
+                        <AppIcon name="send" size="sm" class="mr-2" />
+                        {{ $t('cronjobs.runNow') }}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem destructive @click="confirmDeleteCronjob(cj)">
+                        <AppIcon name="trash" size="sm" class="mr-2" />
+                        {{ $t('common.delete') }}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </div>
+      </template>
     </div>
 
     <!-- Cronjob form dialog -->
@@ -275,6 +291,8 @@
 import type { Cronjob } from '~/composables/useCronjobs'
 import CronjobFilterFields from '~/features/cronjobs/components/CronjobFilterFields.vue'
 import { useCronjobFilters } from '~/features/cronjobs/composables/useCronjobFilters'
+import CronjobListCard from '~/features/cronjobs/components/CronjobListCard.vue'
+import { cronjobLastRunVariant } from '~/features/cronjobs/utils/cronjobFormat'
 import { formatCronjobProvider } from '~/features/cronjobs/utils/formatProvider'
 
 const { t } = useI18n()
@@ -283,6 +301,10 @@ const { user } = useAuth()
 const isAdmin = computed(() => user.value?.role === 'admin')
 
 const { providers, fetchProviders } = useProviders()
+
+function providerLabel(cj: Cronjob): string {
+  return formatCronjobProvider(cj.provider, providers.value) || t('cronjobs.defaultProvider')
+}
 
 // === Cronjobs ===
 const {
@@ -377,15 +399,6 @@ async function executeDeleteCronjob() {
   deleteCronjobDialog.loading = false
   deleteCronjobDialog.open = false
   deleteCronjobDialog.cronjobId = null
-}
-
-function lastRunStatusVariant(status: string | null): 'default' | 'success' | 'destructive' | 'warning' | 'muted' {
-  switch (status) {
-    case 'running': return 'default'
-    case 'completed': return 'success'
-    case 'failed': return 'destructive'
-    default: return 'muted'
-  }
 }
 
 onMounted(async () => {
