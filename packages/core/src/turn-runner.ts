@@ -79,6 +79,18 @@ export type TurnEvent =
 
 export type TurnSubscriber = (event: TurnEvent) => void
 
+/**
+ * A tool call that did not come from the agent but should appear in the turn
+ * as if it had (persisted, replayed, rendered). Used by slash commands that
+ * do work on the user's behalf before the agent runs, e.g. `/skill` reading a
+ * SKILL.md.
+ */
+export interface TurnPreambleToolCall {
+  toolName: string
+  toolArgs: unknown
+  toolResult: unknown
+}
+
 export interface StartTurnInput {
   /**
    * Numeric user the persisted rows belong to. `null` for channels without a
@@ -101,6 +113,8 @@ export interface StartTurnInput {
    * with `text` again (manual retry). Set via {@link TurnRunner.retryTurn}.
    */
   continueFromTranscript?: boolean
+  /** Synthetic tool calls emitted at the start of the turn, before the agent streams. */
+  preambleToolCalls?: TurnPreambleToolCall[]
 }
 
 export interface TurnRunnerOptions {
@@ -173,6 +187,17 @@ type AttemptResult =
 
 const DEFAULT_WATCHDOG_INTERVAL_MS = 5_000
 const DEFAULT_COMPLETED_TURN_RETENTION_MS = 60_000
+
+function preambleChunks(calls: TurnPreambleToolCall[] | undefined): ResponseChunk[] {
+  if (!calls || calls.length === 0) return []
+  return calls.flatMap((call) => {
+    const toolCallId = `preamble-${randomUUID()}`
+    return [
+      { type: 'tool_call_start', toolName: call.toolName, toolCallId, toolArgs: call.toolArgs },
+      { type: 'tool_call_end', toolName: call.toolName, toolCallId, toolResult: call.toolResult, toolIsError: false },
+    ] satisfies ResponseChunk[]
+  })
+}
 
 /**
  * Persist one row, or skip when the turn has no place to store it (no
@@ -543,6 +568,15 @@ export class TurnRunner {
 
     try {
       const continueTurn = attempt > 0 || input.continueFromTranscript === true
+      // Re-emitted per auto-retry attempt because a discarded attempt rolls
+      // back its rows and the UI strips them; a manual retry continues from a
+      // committed transcript that already holds them.
+      if (input.continueFromTranscript !== true) {
+        for (const chunk of preambleChunks(input.preambleToolCalls)) {
+          transcript.record(chunk)
+          this.emitChunk(turn, chunk)
+        }
+      }
       const stream = continueTurn && agent.retryTurn
         ? agent.retryTurn(agentUserId, input.text, input.source ?? 'web', input.attachments)
         : agent.sendMessage(agentUserId, input.text, input.source ?? 'web', input.attachments)

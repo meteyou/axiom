@@ -12,6 +12,7 @@ import type {
   ResponseChunk,
   SlashCommandRegistry,
   SlashCommandPicker,
+  SlashCommandAgentTurn,
   TurnEvent,
   TurnRetryService,
 } from '@axiom/core'
@@ -36,7 +37,7 @@ import {
   TaskStore,
   ScheduledTaskStore,
 } from '@axiom/core'
-import type { TurnErrorInfo, UploadDescriptor } from '@axiom/core'
+import type { TurnErrorInfo, TurnPreambleToolCall, UploadDescriptor } from '@axiom/core'
 import {
   EMAIL_APPROVAL_CALLBACK_PREFIX,
   buildEmailApprovalCallbackData,
@@ -141,6 +142,7 @@ interface QueuedMessage {
    * typed command into the SKILL.md). `text` is still what gets persisted.
    */
   agentText?: string
+  preambleToolCalls?: TurnPreambleToolCall[]
 }
 
 interface PendingBatch {
@@ -167,6 +169,7 @@ interface TurnRequest {
   text: string
   source: string
   attachments?: UploadDescriptor[]
+  preambleToolCalls?: TurnPreambleToolCall[]
 }
 
 /** What the runner produced, collected for delivery to Telegram. */
@@ -1068,7 +1071,7 @@ export class TelegramBot {
     const state = this.chatStates.get(chatKey)
     if (!state) return
 
-    const { ctx, text, attachments, replyContext, agentText } = queuedMessage
+    const { ctx, text, attachments, replyContext, agentText, preambleToolCalls } = queuedMessage
     const agentUserId = this.resolveUserId(ctx)
     const numericUserId = this.resolveNumericUserId(ctx)
     // Agent sees the reply context wrapped as a pseudo-system hint on its own
@@ -1131,6 +1134,7 @@ export class TelegramBot {
           text: messageForAgent,
           source: isDM ? 'telegram' : 'telegram-group',
           attachments,
+          preambleToolCalls,
         })
       } finally {
         clearInterval(typingInterval)
@@ -1185,6 +1189,7 @@ export class TelegramBot {
         text: input.text,
         source: input.source,
         attachments: input.attachments,
+        preambleToolCalls: input.preambleToolCalls,
       })
 
       const detach = this.turnRunner.subscribe(input.agentUserId, (event: TurnEvent) => {
@@ -1267,8 +1272,7 @@ export class TelegramBot {
         return
       }
       if (isSlashCommandAgentTurn(result.reply)) {
-        if (result.reply.ack) await ctx.reply(result.reply.ack)
-        await this.enqueueAgentTurn(ctx, text, result.reply.text)
+        await this.enqueueAgentTurn(ctx, text, result.reply)
         return
       }
       if (result.reply) await ctx.reply(result.reply)
@@ -1290,10 +1294,15 @@ export class TelegramBot {
    * the batching delay (the command is complete as-is) but still goes through
    * the per-chat queue so it serialises with in-flight messages.
    */
-  private async enqueueAgentTurn(ctx: Context, typedText: string, agentText: string): Promise<void> {
+  private async enqueueAgentTurn(ctx: Context, typedText: string, reply: SlashCommandAgentTurn): Promise<void> {
     const chatKey = getChatKey(ctx)
     const state = this.getOrCreateChatState(chatKey)
-    state.queue.push({ ctx, text: typedText, agentText })
+    state.queue.push({
+      ctx,
+      text: typedText,
+      agentText: reply.text,
+      preambleToolCalls: reply.toolCall ? [reply.toolCall] : undefined,
+    })
     this.emitQueueDepthChanged()
     await this.processQueue(chatKey)
   }
@@ -1396,8 +1405,8 @@ export class TelegramBot {
     if (isSlashCommandAgentTurn(result.reply)) {
       // Two-step flow (e.g. /skill): the tap loads the skill, the agent
       // acknowledges, and the user's next message carries the actual request.
-      await this.editPickerMessage(ctx, result.reply.ack ?? entry.command)
-      await this.enqueueAgentTurn(ctx, entry.command, result.reply.text)
+      await this.editPickerMessage(ctx, result.reply.label ?? entry.command)
+      await this.enqueueAgentTurn(ctx, entry.command, result.reply)
       return
     }
 

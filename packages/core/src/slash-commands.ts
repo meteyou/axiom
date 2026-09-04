@@ -14,9 +14,9 @@ import type { ProviderConfig } from './provider-config.js'
 import { getConfigDir, loadConfig } from './config.js'
 import { SETTINGS_THINKING_LEVELS, type SettingsThinkingLevel } from './contracts/settings.js'
 import { normalizeThinkingLevel } from './thinking-level.js'
-import { listAgentSkills, trackAgentSkillUsage } from './agent-skills.js'
-import { loadSkills } from './skill-config.js'
-import { loadAttachedSkillContent, renderAttachedSkillsBlock } from './attached-skills.js'
+import { getAgentSkillsDir, listAgentSkills, trackAgentSkillUsage } from './agent-skills.js'
+import { getSkill, loadSkills } from './skill-config.js'
+import { renderSkillBlock, wrapAttachedSkills } from './attached-skills.js'
 
 export type SlashCommandSurface = 'web' | 'telegram'
 
@@ -71,8 +71,14 @@ export interface SlashCommandAgentTurn {
   kind: 'agent_turn'
   /** Full message to send to the agent. */
   text: string
-  /** Optional short acknowledgement shown before the turn starts. */
-  ack?: string
+  /**
+   * Synthetic tool call recorded at the start of the turn so the work the
+   * command did (e.g. reading a SKILL.md) shows up like the agent's own tool
+   * calls. Surfaces pass it through as `StartTurnInput.preambleToolCalls`.
+   */
+  toolCall?: { toolName: string; toolArgs: unknown; toolResult: unknown }
+  /** Short label for surfaces that must replace an interactive prompt (Telegram picker edit). */
+  label?: string
 }
 
 export function isSlashCommandAgentTurn(value: unknown): value is SlashCommandAgentTurn {
@@ -346,13 +352,13 @@ function handleSkillCommand(rawArgs: string): SlashCommandReply {
     return `Unknown skill: ${key}\n\n${formatSkillList(skills)}`
   }
 
-  const content = loadAttachedSkillContent(skill.id)
-  if (content === null) {
+  const loaded = readSkillMd(skill)
+  if (!loaded) {
     return `Could not read SKILL.md for "${skill.name}".`
   }
   if (skill.kind === 'agent') trackAgentSkillUsage(skill.name)
 
-  const block = renderAttachedSkillsBlock([skill.id])
+  const block = wrapAttachedSkills([renderSkillBlock(skill.id, loaded.content)])
   const instruction = prompt.length > 0
     ? `The user loaded the skill "${skill.name}" via /skill. Follow its instructions for this request:\n\n${prompt}`
     : `The user loaded the skill "${skill.name}" via /skill but has not given a request yet. `
@@ -361,7 +367,34 @@ function handleSkillCommand(rawArgs: string): SlashCommandReply {
   return {
     kind: 'agent_turn',
     text: `${block}\n\n${instruction}`,
-    ack: `\uD83D\uDCDA Skill loaded: ${skill.name}`,
+    // Mirrors the real `read_file` tool's SKILL.md output so the chat UI
+    // renders the same "Load Skill" row it shows for agent-initiated loads.
+    toolCall: {
+      toolName: 'read_file',
+      toolArgs: { path: loaded.path },
+      toolResult: {
+        content: [{ type: 'text', text: `Skill directory: ${path.dirname(loaded.path)}\n\n${loaded.content}` }],
+        details: { path: loaded.path, size: loaded.content.length, skillLoad: true, skillName: skill.id },
+      },
+    },
+    label: `\uD83D\uDCDA Skill loaded: ${skill.name}`,
+  }
+}
+
+function resolveSkillMdPath(skill: LoadableSkill): string | null {
+  if (skill.kind === 'agent') return path.join(getAgentSkillsDir(), skill.id, 'SKILL.md')
+  const installed = getSkill(skill.id)
+  return installed?.path ? path.join(installed.path, 'SKILL.md') : null
+}
+
+function readSkillMd(skill: LoadableSkill): { path: string; content: string } | null {
+  const skillPath = resolveSkillMdPath(skill)
+  if (!skillPath) return null
+  try {
+    const raw = fs.readFileSync(skillPath, 'utf-8')
+    return { path: skillPath, content: raw.replaceAll('{baseDir}', path.dirname(skillPath)) }
+  } catch {
+    return null
   }
 }
 

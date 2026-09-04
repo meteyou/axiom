@@ -595,7 +595,22 @@ describe('built-in slash commands', () => {
       expect(r.reply.text).toContain('<skill name="deploy">')
       expect(r.reply.text).toContain('Deploy body')
       expect(r.reply.text).toMatch(/ask what they want to do/i)
-      expect(r.reply.ack).toContain('deploy')
+      expect(r.reply.label).toContain('deploy')
+    })
+
+    it('emits a read_file preamble tool call shaped like a real SKILL.md load', async () => {
+      writeAgentSkill('deploy', 'deploy', 'Deploy things', 'Run {baseDir}/scripts/go.sh')
+      const r = await registry.dispatch('/skill:deploy', { surface: 'web', userId: '1', registry })
+      if (r.kind !== 'handled' || !isSlashCommandAgentTurn(r.reply)) throw new Error('expected agent turn')
+      const call = r.reply.toolCall!
+      const skillDir = path.join(dataDir, 'skills_agent', 'deploy')
+      expect(call.toolName).toBe('read_file')
+      expect(call.toolArgs).toEqual({ path: path.join(skillDir, 'SKILL.md') })
+      const result = call.toolResult as { content: { type: string; text: string }[]; details: { skillLoad: boolean } }
+      expect(result.details.skillLoad).toBe(true)
+      expect(result.content[0]!.text).toContain(`Skill directory: ${skillDir}`)
+      expect(result.content[0]!.text).toContain(`Run ${skillDir}/scripts/go.sh`)
+      expect(r.reply.text).toContain(`Run ${skillDir}/scripts/go.sh`)
     })
 
     it('/skill:<name> <prompt> forwards the prompt after the skill block', async () => {

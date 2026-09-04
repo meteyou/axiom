@@ -7,6 +7,7 @@ import type {
   SlashCommandPicker,
 } from '@axiom/core'
 import { isSlashCommandPicker, isSlashCommandAgentTurn } from '@axiom/core'
+import type { TurnPreambleToolCall } from '@axiom/core'
 import type { AgentCore, ResponseChunk, RetryInfo, StallInfo, TurnErrorInfo, TurnEvent } from '@axiom/core'
 import {
   TaskStore,
@@ -298,6 +299,7 @@ export function setupWebSocketChat(
       // slash commands that enrich the input (e.g. /skill), where the raw
       // command is persisted but the agent sees the expanded text.
       let agentText = parsed.content
+      let preambleToolCalls: TurnPreambleToolCall[] | undefined
 
       // Handle commands
       if (parsed.type === 'command' || parsed.content.startsWith('/')) {
@@ -316,7 +318,7 @@ export function setupWebSocketChat(
             // Fall through to the regular message flow below with the
             // expanded text; the raw command is what gets persisted.
             agentText = reply.text
-            if (reply.ack) sendMessage(ws, { type: 'system', text: reply.ack })
+            if (reply.toolCall) preambleToolCalls = [reply.toolCall]
           } else {
             if (isSlashCommandPicker(reply)) {
               sendMessage(ws, {
@@ -437,6 +439,7 @@ export function setupWebSocketChat(
         text: agentText,
         source: 'web',
         attachments: parsed.attachments,
+        preambleToolCalls,
       })
     })
 
