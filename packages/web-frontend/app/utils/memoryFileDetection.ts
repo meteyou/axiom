@@ -68,17 +68,18 @@ function extractPath(toolArgs: unknown): string | null {
   return null
 }
 
+// The memory root is `data/memory/` in production and `.data/memory/` in
+// local development; both must be recognised.
+const MEMORY_ROOT = /(?:^|\/)\.?data\/memory\//
+
 function isMemoryPath(filePath: string): boolean {
-  // Match common memory directory patterns
   return (
-    filePath.includes('/data/memory/') ||
+    MEMORY_ROOT.test(filePath) ||
     filePath.includes('/memory/SOUL.md') ||
     filePath.includes('/memory/MEMORY.md') ||
     filePath.includes('/config/AGENTS.md') ||
     filePath.includes('/config/HEARTBEAT.md') ||
-    filePath.includes('/config/CONSOLIDATION.md') ||
-    filePath.includes('/memory/daily/') ||
-    filePath.includes('/memory/users/')
+    filePath.includes('/config/CONSOLIDATION.md')
   )
 }
 
