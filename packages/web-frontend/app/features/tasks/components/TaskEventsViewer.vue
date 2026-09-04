@@ -185,8 +185,8 @@
           @toggle="toggleExpanded(`tool-${idx}`)"
         >
           <template #header>
-            <span class="font-mono text-xs font-medium" :class="event.toolIsError ? 'text-destructive' : 'text-foreground'">
-              {{ event.toolName ?? 'unknown' }}
+            <span class="text-xs font-medium" :class="event.toolIsError ? 'text-destructive' : 'text-foreground'">
+              {{ formatToolName(event.toolName ?? 'unknown') }}
             </span>
             <Badge v-if="event.toolIsError" variant="destructive" class="text-[10px] px-1.5 py-0">
               {{ $t('taskViewer.error') }}
@@ -293,6 +293,7 @@ import type { TaskEventItem } from '~/api/tasks'
 import TaskEventCard from '~/features/tasks/components/TaskEventCard.vue'
 import { useTaskEvents } from '~/features/tasks/composables/useTaskEvents'
 import { useTasksApi } from '~/api/tasks'
+import { formatToolName } from '~/utils/toolNameFormat'
 import { useProviders } from '~/composables/useProviders'
 
 const props = defineProps<{
