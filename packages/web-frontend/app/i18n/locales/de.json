@@ -951,6 +951,7 @@
       "allTriggers": "Alle Auslöser",
       "allProviders": "Alle Provider",
       "defaultProvider": "Standard",
+      "button": "Filter",
       "fromDate": "Von",
       "toDate": "Bis"
     },

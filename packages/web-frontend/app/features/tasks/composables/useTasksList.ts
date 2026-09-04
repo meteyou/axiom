@@ -41,6 +41,18 @@ export function useTasksList() {
     createdTo: defaultDateRange.createdTo,
   })
 
+  const activeFilterCount = computed(() => {
+    let count = 0
+    if (filters.status) count++
+    if (filters.triggerType) count++
+    if (filters.providerFilter) count++
+    if (
+      filters.createdFrom !== defaultDateRange.createdFrom
+      || filters.createdTo !== defaultDateRange.createdTo
+    ) count++
+    return count
+  })
+
   const sortField = ref<string>('createdAt')
   const sortDirection = ref<'asc' | 'desc'>('desc')
 
@@ -174,6 +186,7 @@ export function useTasksList() {
     error,
     pagination,
     filters,
+    activeFilterCount,
     sortField,
     sortDirection,
     hasRunningTasks,
