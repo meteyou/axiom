@@ -173,22 +173,17 @@
         </div>
       </div>
 
-      <div
-        v-for="(event, idx) in groupedEvents"
-        :key="idx"
-        class="rounded-lg border border-border bg-card"
-      >
+      <template v-for="(event, idx) in groupedEvents" :key="idx">
         <!-- Tool call event -->
-        <div v-if="event.type === 'tool_call_end' || event.type === 'tool_call_start'" class="group">
-          <button
-            class="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors hover:bg-muted/50"
-            @click="toggleExpanded(idx)"
-          >
-            <AppIcon
-              name="wrench"
-              size="sm"
-              :class="event.toolIsError ? 'text-destructive' : 'text-muted-foreground'"
-            />
+        <TaskEventCollapsible
+          v-if="event.type === 'tool_call_end' || event.type === 'tool_call_start'"
+          icon="wrench"
+          :icon-class="event.toolIsError ? 'text-destructive' : undefined"
+          :timestamp="formatTime(event.timestamp)"
+          :expanded="isExpanded(`tool-${idx}`)"
+          @toggle="toggleExpanded(`tool-${idx}`)"
+        >
+          <template #header>
             <span class="font-mono text-xs font-medium" :class="event.toolIsError ? 'text-destructive' : 'text-foreground'">
               {{ event.toolName ?? 'unknown' }}
             </span>
@@ -198,20 +193,9 @@
             <span v-if="event.durationMs != null" class="text-xs text-muted-foreground">
               {{ formatDurationMs(event.durationMs) }}
             </span>
-            <span class="flex-1" />
-            <span class="text-xs text-muted-foreground">
-              {{ formatTime(event.timestamp) }}
-            </span>
-            <AppIcon
-              :name="expandedItems.has(idx) ? 'chevronDown' : 'chevronRight'"
-              size="sm"
-              class="text-muted-foreground"
-            />
-          </button>
+          </template>
 
-          <!-- Expanded content -->
-          <div v-if="expandedItems.has(idx)" class="border-t border-border bg-muted/20 px-4 py-3 space-y-3">
-            <!-- Arguments -->
+          <div class="space-y-3">
             <div v-if="event.toolArgs">
               <p class="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 {{ $t('taskViewer.arguments') }}
@@ -221,7 +205,6 @@
               </div>
             </div>
 
-            <!-- Result -->
             <div v-if="event.type === 'tool_call_end' && event.toolResult !== undefined">
               <p class="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 {{ $t('taskViewer.result') }}
@@ -231,31 +214,32 @@
               </div>
             </div>
           </div>
-        </div>
+        </TaskEventCollapsible>
 
-        <!-- Text delta event -->
-        <div v-else-if="event.type === 'text_delta' && (event.text || event.thinking)" class="px-4 py-3 space-y-3">
-          <!-- Thinking -->
-          <div v-if="event.thinking" class="flex items-start gap-3">
-            <AppIcon name="sparkles" size="sm" class="mt-0.5 text-muted-foreground/50" />
-            <div class="min-w-0 flex-1">
-              <button
-                class="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors mb-1"
-                @click="toggleThinking(idx)"
-              >
-                <AppIcon
-                  :name="expandedThinking.has(idx) ? 'chevronDown' : 'chevronRight'"
-                  size="sm"
-                />
-                {{ $t('taskViewer.thinking') }}
-              </button>
-              <div v-if="expandedThinking.has(idx)" class="rounded border border-border/50 bg-muted/30 p-2.5">
-                <p class="whitespace-pre-wrap text-xs text-muted-foreground">{{ event.thinking }}</p>
-              </div>
-            </div>
-          </div>
-          <!-- Agent text (structured or plain) -->
-          <div v-if="event.text" class="flex items-start gap-3">
+        <!-- Thinking -->
+        <TaskEventCollapsible
+          v-if="event.type === 'text_delta' && event.thinking"
+          icon="sparkles"
+          icon-class="text-muted-foreground/50"
+          :timestamp="formatTime(event.timestamp)"
+          :expanded="isExpanded(`thinking-${idx}`)"
+          @toggle="toggleExpanded(`thinking-${idx}`)"
+        >
+          <template #header>
+            <span class="text-xs font-medium text-muted-foreground">
+              {{ $t('taskViewer.thinking') }}
+            </span>
+          </template>
+
+          <p class="whitespace-pre-wrap text-xs text-muted-foreground">{{ event.thinking }}</p>
+        </TaskEventCollapsible>
+
+        <!-- Agent text (structured or plain) -->
+        <div
+          v-if="event.type === 'text_delta' && event.text"
+          class="rounded-lg border border-border bg-card px-4 py-3"
+        >
+          <div class="flex items-start gap-3">
             <template v-if="parseStructuredResponse(event.text)">
               <AppIcon
                 :name="parseStructuredResponse(event.text)!.status === 'completed' ? 'check' : 'close'"
@@ -295,7 +279,10 @@
         </div>
 
         <!-- Status change event -->
-        <div v-else-if="event.type === 'status_change'" class="px-4 py-2.5">
+        <div
+          v-if="event.type === 'status_change'"
+          class="rounded-lg border border-border bg-card px-4 py-2.5"
+        >
           <div class="flex items-center gap-3">
             <AppIcon name="info" size="sm" class="text-muted-foreground" />
             <Badge :variant="statusVariant(event.status ?? '')">
@@ -310,7 +297,7 @@
             </span>
           </div>
         </div>
-      </div>
+      </template>
 
       <!-- Auto-scroll anchor -->
       <div ref="scrollAnchor" />
@@ -320,6 +307,7 @@
 
 <script setup lang="ts">
 import type { TaskEventItem } from '~/api/tasks'
+import TaskEventCollapsible from '~/features/tasks/components/TaskEventCollapsible.vue'
 import { useTaskEvents } from '~/features/tasks/composables/useTaskEvents'
 import { useTasksApi } from '~/api/tasks'
 import { useProviders } from '~/composables/useProviders'
@@ -350,8 +338,7 @@ const {
   disconnect,
 } = useTaskEvents()
 
-const expandedItems = ref(new Set<number>())
-const expandedThinking = ref(new Set<number>())
+const expandedItems = ref(new Set<string>())
 
 // —— Edit & Restart form state ——
 //
@@ -497,22 +484,18 @@ const firstEventTimestamp = computed(() => {
   return events.value.length > 0 ? events.value[0]!.timestamp : undefined
 })
 
-function toggleExpanded(idx: number) {
-  if (expandedItems.value.has(idx)) {
-    expandedItems.value.delete(idx)
-  } else {
-    expandedItems.value.add(idx)
-  }
-  expandedItems.value = new Set(expandedItems.value)
+function isExpanded(key: string): boolean {
+  return expandedItems.value.has(key)
 }
 
-function toggleThinking(idx: number) {
-  if (expandedThinking.value.has(idx)) {
-    expandedThinking.value.delete(idx)
+function toggleExpanded(key: string) {
+  const next = new Set(expandedItems.value)
+  if (next.has(key)) {
+    next.delete(key)
   } else {
-    expandedThinking.value.add(idx)
+    next.add(key)
   }
-  expandedThinking.value = new Set(expandedThinking.value)
+  expandedItems.value = next
 }
 
 const groupedEvents = computed(() => {
