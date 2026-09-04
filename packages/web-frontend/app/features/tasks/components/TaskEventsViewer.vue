@@ -230,7 +230,8 @@
             </span>
           </template>
 
-          <p class="whitespace-pre-wrap text-xs text-muted-foreground">{{ event.thinking }}</p>
+          <!-- eslint-disable-next-line vue/no-v-html -->
+          <div class="prose-chat text-xs text-muted-foreground" v-html="renderMarkdown(event.thinking.trim())" />
         </TaskEventCard>
 
         <!-- Agent text (structured or plain) -->
