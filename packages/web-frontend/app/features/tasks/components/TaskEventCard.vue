@@ -2,8 +2,8 @@
   <div class="rounded-lg border border-border bg-card">
     <component
       :is="collapsible ? 'button' : 'div'"
-      class="flex w-full items-center gap-3 px-4 text-left text-sm"
-      :class="headerClass"
+      class="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm"
+      :class="collapsible && 'transition-colors hover:bg-muted/50'"
       @click="collapsible && $emit('toggle')"
     >
       <AppIcon :name="icon" size="sm" :class="iconClass ?? 'text-muted-foreground'" />
@@ -24,10 +24,7 @@
       <span v-else class="w-3.5" aria-hidden="true" />
     </component>
 
-    <div v-if="collapsible && expanded" class="border-t border-border bg-muted/20 px-4 py-3">
-      <slot />
-    </div>
-    <div v-else-if="!collapsible && hasBody" class="px-4 pb-3 pl-10.5 pt-1">
+    <div v-if="showBody" class="px-4 pb-3 pl-10.5">
       <slot />
     </div>
   </div>
@@ -48,10 +45,5 @@ defineEmits<{
 }>()
 
 const slots = useSlots()
-const hasBody = computed(() => Boolean(slots.default))
-
-const headerClass = computed(() => {
-  if (props.collapsible) return 'py-2.5 transition-colors hover:bg-muted/50'
-  return hasBody.value ? 'pt-3' : 'py-2.5'
-})
+const showBody = computed(() => Boolean(slots.default) && (!props.collapsible || props.expanded))
 </script>
