@@ -1,14 +1,21 @@
 <template>
   <div class="flex h-full flex-col overflow-hidden">
     <!-- Header with back button -->
-    <div class="flex-shrink-0 border-b border-border px-5 py-3">
-      <div class="flex items-center gap-3">
-        <Button variant="ghost" size="sm" class="gap-1.5" @click="$emit('back')">
+    <!-- Mobile left padding matches the layout header so the back icon sits
+         directly below the hamburger button. -->
+    <div class="flex-shrink-0 border-b border-border py-2 pl-1 pr-3 md:px-5 md:py-3">
+      <div class="flex items-center gap-2 md:gap-3">
+        <Button
+          variant="ghost"
+          class="h-10 w-10 shrink-0 gap-1.5 p-0 md:h-8 md:w-auto md:px-3 md:text-xs"
+          :title="$t('taskViewer.back')"
+          @click="$emit('back')"
+        >
           <AppIcon name="arrowLeft" size="sm" />
-          {{ $t('taskViewer.back') }}
+          <span class="hidden md:inline">{{ $t('taskViewer.back') }}</span>
         </Button>
 
-        <Separator orientation="vertical" class="h-5" />
+        <Separator orientation="vertical" class="hidden h-5 md:block" />
 
         <div class="flex min-w-0 flex-1 items-center gap-2">
           <h2 class="truncate text-sm font-semibold">{{ taskInfo?.name ?? '—' }}</h2>
@@ -36,7 +43,7 @@
           @click="toggleAutoScroll"
         >
           <AppIcon :name="autoScroll ? 'squareCheck' : 'square'" size="sm" />
-          {{ $t('taskViewer.autoScroll') }}
+          <span class="hidden sm:inline">{{ $t('taskViewer.autoScroll') }}</span>
         </Button>
 
         <!-- Edit & Restart button. Only shown for terminal states. For
@@ -51,7 +58,7 @@
           @click="startEdit"
         >
           <AppIcon name="refresh" size="sm" />
-          {{ $t('taskViewer.restartButton') }}
+          <span class="hidden sm:inline">{{ $t('taskViewer.restartButton') }}</span>
         </Button>
         <Button
           v-else-if="!editing && taskInfo?.status && !canRestart"
@@ -62,7 +69,7 @@
           :title="$t(`taskViewer.restartDisabled.${taskInfo.status}`)"
         >
           <AppIcon name="refresh" size="sm" />
-          {{ $t('taskViewer.restartButton') }}
+          <span class="hidden sm:inline">{{ $t('taskViewer.restartButton') }}</span>
         </Button>
       </div>
     </div>
