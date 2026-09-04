@@ -161,6 +161,11 @@ export function useTaskEvents() {
             }
           }
         }
+        // The server keeps the socket open after the task ends; close it
+        // ourselves so `isLive` reflects the actual task state.
+        if (data.status === 'completed' || data.status === 'failed') {
+          disconnect()
+        }
         break
 
       case 'error':
