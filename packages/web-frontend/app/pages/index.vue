@@ -122,13 +122,13 @@
                   :class="{ 'rounded-b-lg': !expandedSummaries.has(String(msg.id ?? i)) }"
                   @click="toggleSummary(String(msg.id ?? i))"
                 >
-                  <svg
-                    class="h-3 w-3 shrink-0 transition-transform duration-200"
-                    :class="{ 'rotate-90': expandedSummaries.has(String(msg.id ?? i)) }"
-                    viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                  ><polyline points="9 18 15 12 9 6" /></svg>
                   <AppIcon name="file" size="sm" class="h-3 w-3 shrink-0 opacity-50" />
                   <span class="font-medium">{{ $t('chat.sessionSummary') }}</span>
+                  <span class="flex-1" />
+                  <AppIcon
+                    :name="expandedSummaries.has(String(msg.id ?? i)) ? 'chevronDown' : 'chevronRight'"
+                    class="h-3 w-3 shrink-0"
+                  />
                 </button>
                 <div
                   v-if="expandedSummaries.has(String(msg.id ?? i))"
@@ -155,38 +155,43 @@
 
           <!-- Thinking card (clickable/expandable) -->
           <template v-else-if="msg.isThinking">
-            <div class="w-full overflow-hidden rounded-lg border border-border">
-              <button
-                class="group flex w-full items-center gap-2 bg-muted/30 px-3 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-muted/60"
-                :class="{ 'border-b border-border': expandedThinking.has(String(msg.id ?? i)) }"
-                @click="toggleThinking(String(msg.id ?? i))"
-              >
-                <svg class="h-3 w-3 shrink-0 transition-transform duration-200" :class="{ 'rotate-90': expandedThinking.has(String(msg.id ?? i)) }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6" /></svg>
-                <AppIcon name="sparkles" class="h-3 w-3 shrink-0 opacity-60" />
+            <ChatCollapsibleCard
+              icon="sparkles"
+              :expanded="expandedThinking.has(String(msg.id ?? i))"
+              @toggle="toggleThinking(String(msg.id ?? i))"
+            >
+              <template #header>
                 <span class="font-medium">{{ $t('chat.thinking') }}</span>
                 <span v-if="msg.streaming" class="ml-2 inline-flex items-center gap-1">
                   <span class="h-1 w-1 animate-pulse rounded-full bg-current opacity-60" />
                   <span class="h-1 w-1 animate-pulse rounded-full bg-current opacity-60" />
                   <span class="h-1 w-1 animate-pulse rounded-full bg-current opacity-60" />
                 </span>
-              </button>
-              <div v-if="expandedThinking.has(String(msg.id ?? i))" class="bg-background text-xs">
-                <div class="max-h-80 overflow-y-auto px-3 py-2">
-                  <p class="whitespace-pre-wrap break-words text-muted-foreground">{{ msg.content }}</p>
-                </div>
+              </template>
+              <div class="max-h-80 overflow-y-auto px-3 py-2">
+                <p class="whitespace-pre-wrap break-words text-muted-foreground">{{ msg.content }}</p>
               </div>
-            </div>
+            </ChatCollapsibleCard>
           </template>
 
           <!-- Tool call card (clickable/expandable) -->
           <template v-else-if="msg.role === 'tool' && msg.toolData">
-            <div class="w-full overflow-hidden rounded-lg border border-border">
-              <button class="group flex w-full items-center gap-2 bg-muted/30 px-3 py-1.5 text-left text-xs text-muted-foreground" :class="{ 'border-b border-border': expandedTools.has(msg.toolData!.toolCallId) }" @click="toggleTool(msg.toolData!.toolCallId)">
-                <svg class="h-3 w-3 shrink-0 transition-transform duration-200" :class="{ 'rotate-90': expandedTools.has(msg.toolData!.toolCallId) }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6" /></svg>
-                <AppIcon :name="toolIconName(msg.toolData!)" class="h-3 w-3 shrink-0 opacity-60" />
-                <span class="font-medium">{{ toolDisplayName(msg.toolData!) }}</span>
-              </button>
-              <div v-if="expandedTools.has(msg.toolData!.toolCallId)" class="bg-background text-xs">
+            <ChatCollapsibleCard
+              :icon="toolIconName(msg.toolData!)"
+              :expanded="expandedTools.has(msg.toolData!.toolCallId)"
+              @toggle="toggleTool(msg.toolData!.toolCallId)"
+            >
+              <template #header>
+                <span class="shrink-0 font-medium">{{ toolDisplayName(msg.toolData!) }}</span>
+                <span
+                  v-if="toolSummary(msg.toolData!)"
+                  class="min-w-0 truncate font-mono text-muted-foreground/70"
+                  :title="toolSummary(msg.toolData!)!"
+                >
+                  {{ toolSummary(msg.toolData!) }}
+                </span>
+              </template>
+              <div>
                 <div v-if="!isToolSkillLoad(msg.toolData!) && !hasMemoryView(msg.toolData!)" class="border-b border-border px-3 py-2"><p class="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Input</p><ToolDataDisplay :data="msg.toolData!.toolArgs" /></div>
                 <template v-if="isEditFileTool(msg.toolData!) && getToolEdits(msg.toolData!) && getToolMemoryInfo(msg.toolData!).isMemoryFile">
                   <div class="max-h-80 overflow-y-auto">
@@ -209,7 +214,7 @@
                   <p class="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Output</p><ToolDataDisplay :data="msg.toolData!.toolResult" :is-error="msg.toolData!.toolIsError" />
                 </div>
               </div>
-            </div>
+            </ChatCollapsibleCard>
           </template>
 
           <!-- Periodic task heartbeat (compact, non-collapsible progress row).
@@ -294,18 +299,18 @@
 
           <!-- Task result notification (collapsible card) -->
           <template v-else-if="msg.role === 'system' && msg.isTaskResult">
-            <div class="w-full overflow-hidden rounded-lg border border-border">
-              <button
-                class="group flex w-full items-center gap-2 bg-muted/30 px-3 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-muted/60"
-                :class="{ 'border-b border-border': expandedInjections.has(i) }"
-                @click="toggleInjection(i)"
-              >
-                <svg class="h-3 w-3 shrink-0 transition-transform duration-200" :class="{ 'rotate-90': expandedInjections.has(i) }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6" /></svg>
-                <AppIcon name="zap" class="h-3 w-3 shrink-0 opacity-60" />
+            <ChatCollapsibleCard
+              icon="zap"
+              :expanded="expandedInjections.has(i)"
+              @toggle="toggleInjection(i)"
+            >
+              <template #header>
                 <span class="font-medium">{{ msg.taskResultName ?? 'Background Task' }}</span>
                 <span v-if="msg.taskResultDuration" class="ml-1 text-[10px] text-muted-foreground/60">({{ msg.taskResultDuration }}min)</span>
+              </template>
+              <template #trailing>
                 <span
-                  class="ml-auto rounded px-1.5 py-0.5 text-[10px] font-medium"
+                  class="rounded px-1.5 py-0.5 text-[10px] font-medium"
                   :class="msg.taskResultStatus === 'failed'
                     ? 'bg-destructive/10 text-destructive'
                     : msg.taskResultStatus === 'question'
@@ -314,13 +319,11 @@
                 >
                   {{ msg.taskResultStatus === 'failed' ? 'Failed' : msg.taskResultStatus === 'question' ? 'Question' : 'Completed' }}
                 </span>
-              </button>
-              <div v-if="expandedInjections.has(i)" class="bg-background text-xs">
-                <div class="max-h-60 overflow-y-auto px-3 py-2">
-                  <div class="prose-chat break-words text-xs text-foreground" v-html="renderMarkdown(taskResultBody(msg.content))" />
-                </div>
+              </template>
+              <div class="max-h-60 overflow-y-auto px-3 py-2">
+                <div class="prose-chat break-words text-xs text-foreground" v-html="renderMarkdown(taskResultBody(msg.content))" />
               </div>
-            </div>
+            </ChatCollapsibleCard>
           </template>
 
           <!-- Interactive action message (e.g. an email waiting for approval).
@@ -705,7 +708,13 @@ function toolDisplayName(toolData: ToolCallData): string {
   if (isToolSkillLoad(toolData)) return `Load Skill: ${getSkillName(toolData.toolArgs)}`
   const memInfo = getToolMemoryInfo(toolData)
   if (memInfo.isMemoryFile) return memInfo.label
-  return toolData.toolName
+  return formatToolName(toolData.toolName)
+}
+function toolSummary(toolData: ToolCallData): string | null {
+  if (isToolSkillLoad(toolData)) return null
+  const memInfo = getToolMemoryInfo(toolData)
+  if (memInfo.isMemoryFile) return memInfo.displayPath
+  return extractMemoryRelativePath(toolData.toolArgs) ?? getToolCallSummary(toolData.toolName, toolData.toolArgs)
 }
 function toolIconName(toolData: ToolCallData): string {
   if (isToolSkillLoad(toolData)) return 'puzzle'

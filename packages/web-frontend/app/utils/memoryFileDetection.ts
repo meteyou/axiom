@@ -7,15 +7,27 @@ export interface MemoryFileInfo {
   isMemoryFile: boolean
   label: string
   icon: 'brain' | 'settings'
+  /** Memory-root-relative path, minus any folder already implied by the label. */
+  displayPath: string | null
 }
 
-const MEMORY_PATH_PATTERNS: Array<{ pattern: RegExp; readLabel: string; writeLabel: string; editLabel: string }> = [
+interface MemoryPathPattern {
+  pattern: RegExp
+  readLabel: string
+  writeLabel: string
+  editLabel: string
+  /** Folder prefix that the label already conveys and that is dropped from displayPath. */
+  folder?: string
+}
+
+const MEMORY_PATH_PATTERNS: MemoryPathPattern[] = [
   { pattern: /SOUL\.md$/i, readLabel: 'Reading Personality', writeLabel: 'Writing Personality', editLabel: 'Editing Personality' },
   { pattern: /MEMORY\.md$/i, readLabel: 'Reading Memory', writeLabel: 'Writing Memory', editLabel: 'Editing Memory' },
   { pattern: /AGENTS\.md$/i, readLabel: 'Reading Agent Rules', writeLabel: 'Writing Agent Rules', editLabel: 'Editing Agent Rules' },
   { pattern: /HEARTBEAT\.md$/i, readLabel: 'Reading Heartbeat Tasks', writeLabel: 'Writing Heartbeat Tasks', editLabel: 'Editing Heartbeat Tasks' },
-  { pattern: /\/daily\/[^/]+\.md$/i, readLabel: 'Reading Daily Notes', writeLabel: 'Writing Daily Notes', editLabel: 'Editing Daily Notes' },
-  { pattern: /\/users\/[^/]+\.md$/i, readLabel: 'Reading User Profile', writeLabel: 'Writing User Profile', editLabel: 'Editing User Profile' },
+  { pattern: /\/daily\/[^/]+\.md$/i, readLabel: 'Reading Daily Notes', writeLabel: 'Writing Daily Notes', editLabel: 'Editing Daily Notes', folder: 'daily/' },
+  { pattern: /\/users\/[^/]+\.md$/i, readLabel: 'Reading User Profile', writeLabel: 'Writing User Profile', editLabel: 'Editing User Profile', folder: 'users/' },
+  { pattern: /\/wiki\/.+\.md$/i, readLabel: 'Reading Wiki', writeLabel: 'Writing Wiki', editLabel: 'Editing Wiki', folder: 'wiki/' },
 ]
 
 /**
@@ -25,7 +37,7 @@ export function detectMemoryFile(
   toolName: string,
   toolArgs: unknown,
 ): MemoryFileInfo {
-  const defaultResult: MemoryFileInfo = { isMemoryFile: false, label: '', icon: 'settings' }
+  const defaultResult: MemoryFileInfo = { isMemoryFile: false, label: '', icon: 'settings', displayPath: null }
 
   // Only match file read/write/edit tools
   const isRead = toolName === 'read_file' || toolName === 'Read'
@@ -40,22 +52,24 @@ export function detectMemoryFile(
   // Check if path is in memory directory
   if (!isMemoryPath(filePath)) return defaultResult
 
-  // Match against known patterns
-  for (const { pattern, readLabel, writeLabel, editLabel } of MEMORY_PATH_PATTERNS) {
+  const relativePath = toMemoryRelativePath(filePath)
+
+  for (const { pattern, readLabel, writeLabel, editLabel, folder } of MEMORY_PATH_PATTERNS) {
     if (pattern.test(filePath)) {
       return {
         isMemoryFile: true,
         label: isEdit ? editLabel : isWrite ? writeLabel : readLabel,
         icon: 'brain',
+        displayPath: folder && relativePath?.startsWith(folder) ? relativePath.slice(folder.length) : relativePath,
       }
     }
   }
 
-  // Generic memory file
   return {
     isMemoryFile: true,
     label: isEdit ? 'Editing Memory File' : isWrite ? 'Writing Memory File' : 'Reading Memory File',
     icon: 'brain',
+    displayPath: relativePath,
   }
 }
 
@@ -97,6 +111,25 @@ export function extractMemoryFileName(toolArgs: unknown): string | null {
     return `/data${filePath.substring(memoryIndex)}`
   }
 
+  return filePath.split('/').pop() ?? null
+}
+
+/**
+ * Path of a memory file relative to the memory root (`MEMORY.md`,
+ * `wiki/llm-systems.md`, `daily/2026-04-05.md`). Config files outside the
+ * memory directory fall back to their file name.
+ */
+export function extractMemoryRelativePath(toolArgs: unknown): string | null {
+  const filePath = extractPath(toolArgs)
+  if (!filePath || !isMemoryPath(filePath)) return null
+  return toMemoryRelativePath(filePath)
+}
+
+function toMemoryRelativePath(filePath: string): string | null {
+  const memoryIndex = filePath.indexOf('/memory/')
+  if (memoryIndex !== -1) {
+    return filePath.substring(memoryIndex + '/memory/'.length)
+  }
   return filePath.split('/').pop() ?? null
 }
 
