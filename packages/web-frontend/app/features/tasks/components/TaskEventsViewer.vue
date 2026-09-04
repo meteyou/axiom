@@ -24,6 +24,21 @@
           </Badge>
         </div>
 
+        <Button
+          v-if="isLive"
+          variant="outline"
+          size="sm"
+          class="gap-1.5"
+          :class="{ 'text-muted-foreground': !autoScroll }"
+          role="checkbox"
+          :aria-checked="autoScroll"
+          :title="$t('taskViewer.autoScrollHint')"
+          @click="toggleAutoScroll"
+        >
+          <AppIcon :name="autoScroll ? 'squareCheck' : 'square'" size="sm" />
+          {{ $t('taskViewer.autoScroll') }}
+        </Button>
+
         <!-- Edit & Restart button. Only shown for terminal states. For
              `running` / `paused` we surface a hint in the button's tooltip
              so the user knows to kill or resume first. -->
@@ -73,7 +88,12 @@
     </div>
 
     <!-- Events list -->
-    <div v-else ref="eventsContainer" class="flex flex-1 flex-col gap-1 overflow-y-auto px-5 py-3">
+    <div
+      v-else
+      ref="eventsContainer"
+      class="flex flex-1 flex-col gap-1 overflow-y-auto px-5 py-3"
+      @scroll="onEventsScroll"
+    >
       <!-- Edit & Restart form (replaces the read-only Prompt block while editing) -->
       <div v-if="editing" class="rounded-lg border border-primary/50 bg-card px-5 py-4">
         <div class="mb-4 flex items-center gap-2">
@@ -517,13 +537,36 @@ const groupedEvents = computed(() => {
   return result
 })
 
+const eventsContainer = ref<HTMLElement | null>(null)
 const scrollAnchor = ref<HTMLElement | null>(null)
+const autoScroll = ref(true)
+let lastScrollTop = 0
+
+function scrollToBottom() {
+  scrollAnchor.value?.scrollIntoView({ behavior: 'smooth' })
+}
+
+// Programmatic scrolling only ever moves downwards, so a decreasing
+// scrollTop is a reliable signal of user intent to stop following.
+function onEventsScroll() {
+  const el = eventsContainer.value
+  if (!el) return
+  if (el.scrollTop < lastScrollTop) {
+    autoScroll.value = false
+  }
+  lastScrollTop = el.scrollTop
+}
+
+function toggleAutoScroll() {
+  autoScroll.value = !autoScroll.value
+  if (autoScroll.value) {
+    nextTick(scrollToBottom)
+  }
+}
 
 watch(() => events.value.length, () => {
-  if (isLive.value) {
-    nextTick(() => {
-      scrollAnchor.value?.scrollIntoView({ behavior: 'smooth' })
-    })
+  if (isLive.value && autoScroll.value) {
+    nextTick(scrollToBottom)
   }
 })
 
@@ -561,6 +604,8 @@ onMounted(() => {
 watch(() => props.taskId, (newId) => {
   disconnect()
   expandedItems.value.clear()
+  autoScroll.value = true
+  lastScrollTop = 0
   // Any pending edit belongs to the previous task — drop it before the new
   // task loads so the form doesn't end up carrying stale values.
   editing.value = false

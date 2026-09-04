@@ -1187,6 +1187,8 @@
     "thinking": "Thinking",
     "resultSummary": "Task Result",
     "noSummary": "Task completed without summary.",
+    "autoScroll": "Autoscroll",
+    "autoScrollHint": "Follow new events automatically. Turns off when you scroll up.",
     "restartButton": "Edit & restart",
     "restartButtonHint": "Edit the prompt / provider and start a fresh run. The original task stays in history.",
     "restartDisabled": {

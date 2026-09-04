@@ -1187,6 +1187,8 @@
     "thinking": "Überlegung",
     "resultSummary": "Task-Ergebnis",
     "noSummary": "Task ohne Zusammenfassung abgeschlossen.",
+    "autoScroll": "Autoscroll",
+    "autoScrollHint": "Neuen Events automatisch folgen. Wird beim Hochscrollen deaktiviert.",
     "restartButton": "Bearbeiten & Neustart",
     "restartButtonHint": "Prompt / Provider bearbeiten und neu starten. Der ursprüngliche Task bleibt in der Historie.",
     "restartDisabled": {
