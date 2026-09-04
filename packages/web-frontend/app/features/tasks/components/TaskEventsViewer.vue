@@ -324,6 +324,7 @@
 
 <script setup lang="ts">
 import type { TaskEventItem } from '~/api/tasks'
+import { buildProviderModelOptions } from '~/utils/providerModelOptions'
 import TaskEventCard from '~/features/tasks/components/TaskEventCard.vue'
 import { useTaskEvents } from '~/features/tasks/composables/useTaskEvents'
 import { useTasksApi } from '~/api/tasks'
@@ -394,19 +395,7 @@ const showRetriggerNotice = computed(() => {
 })
 
 /** Flattened provider+model options, same pattern as CronjobFormDialog. */
-const providerModelOptions = computed(() => {
-  const options: { value: string; label: string }[] = []
-  for (const p of providers.value) {
-    const models = p.enabledModels ?? []
-    for (const modelId of models) {
-      options.push({
-        value: `${p.id}:${modelId}`,
-        label: `${p.name} (${modelId})`,
-      })
-    }
-  }
-  return options
-})
+const providerModelOptions = computed(() => buildProviderModelOptions(providers.value))
 
 /** Map the task's stored (provider, model) strings onto the composite
  *  `providerId:modelId` used by the select. Falls back to '' when the

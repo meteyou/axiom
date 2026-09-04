@@ -276,6 +276,8 @@
 
 <script setup lang="ts">
 import type { Cronjob, CronjobMeta } from '~/composables/useCronjobs'
+import { normalizeCronjobProviderValue } from '~/features/cronjobs/utils/providerValue'
+import { buildProviderModelOptions } from '~/utils/providerModelOptions'
 
 const props = defineProps<{
   open: boolean
@@ -302,49 +304,7 @@ const emit = defineEmits<{
 const { providers, fetchProviders } = useProviders()
 const { fetchCronjobMeta } = useCronjobs()
 
-/**
- * Convert a stored cronjob provider value into the composite `providerId:modelId`
- * format used by the select. Accepts:
- *   - already-composite values (`providerId:modelId`) → returned as-is if provider exists
- *   - legacy plain provider name or id → expanded to `providerId:<first enabled model>`
- *   - empty/null → empty string (falls back to default provider)
- */
-function normalizeProviderValue(raw: string | null | undefined): string {
-  if (!raw) return ''
-  const colonIdx = raw.indexOf(':')
-  if (colonIdx !== -1) {
-    const providerId = raw.slice(0, colonIdx)
-    const match = providers.value.find(
-      p => p.id === providerId || p.name.toLowerCase() === providerId.toLowerCase(),
-    )
-    if (match) {
-      const modelId = raw.slice(colonIdx + 1) || match.enabledModels?.[0] || ''
-      return `${match.id}:${modelId}`
-    }
-    return raw
-  }
-  // Legacy: plain provider name or id
-  const match = providers.value.find(
-    p => p.id === raw || p.name.toLowerCase() === raw.toLowerCase(),
-  )
-  if (match) return `${match.id}:${match.enabledModels?.[0] ?? ''}`
-  return ''
-}
-
-/** Flattened list of provider+model combinations (matches the Settings page pattern). */
-const providerModelOptions = computed(() => {
-  const options: { value: string; label: string }[] = []
-  for (const p of providers.value) {
-    const models = p.enabledModels ?? []
-    for (const modelId of models) {
-      options.push({
-        value: `${p.id}:${modelId}`,
-        label: `${p.name} (${modelId})`,
-      })
-    }
-  }
-  return options
-})
+const providerModelOptions = computed(() => buildProviderModelOptions(providers.value))
 
 const advancedOpen = ref(false)
 
@@ -405,12 +365,12 @@ const staleDisabledSkills = computed(() => {
   return disabledSkills.value.filter(s => !ids.has(s))
 })
 
-const hasOverrides = computed(() => {
-  return disabledTools.value.length > 0
-    || disabledSkills.value.length > 0
-    || attachedSkills.value.length > 0
-    || (form.systemPromptOverride && form.systemPromptOverride.trim().length > 0)
-})
+const hasOverrides = computed(() => [
+  disabledTools.value.length,
+  disabledSkills.value.length,
+  attachedSkills.value.length,
+  form.systemPromptOverride.trim().length,
+].some(count => count > 0))
 
 function toggleAttachedSkill(skill: string, enabled: boolean) {
   if (enabled) {
@@ -450,12 +410,12 @@ function applyCronjob(cronjob: Cronjob) {
   form.prompt = cronjob.prompt
   form.schedule = cronjob.schedule
   form.actionType = cronjob.actionType ?? 'task'
-  form.provider = normalizeProviderValue(cronjob.provider)
+  form.provider = normalizeCronjobProviderValue(cronjob.provider, providers.value)
   form.systemPromptOverride = cronjob.systemPromptOverride ?? ''
   disabledTools.value = parseStringArray(cronjob.toolsOverride)
   disabledSkills.value = parseStringArray(cronjob.skillsOverride)
   attachedSkills.value = [...(cronjob.attachedSkills ?? [])]
-  advancedOpen.value = Boolean(hasOverrides.value)
+  advancedOpen.value = hasOverrides.value
 }
 
 function resetForm() {
@@ -471,21 +431,29 @@ function resetForm() {
   advancedOpen.value = false
 }
 
-watch(() => props.open, async (isOpen) => {
-  if (!isOpen) return
+/**
+ * Legacy "provider name" values can only be mapped to `providerId:modelId`
+ * once providers are loaded, so re-normalize after the fetch. Skipped when the
+ * dialog was closed or switched to another cronjob in the meantime.
+ */
+function syncProviderAfterFetch(cronjob: Cronjob | null) {
+  if (!cronjob || !props.open || props.cronjob !== cronjob) return
+  form.provider = normalizeCronjobProviderValue(cronjob.provider, providers.value)
+}
 
-  const cronjob = props.mode === 'edit' ? props.cronjob : null
+const editingCronjob = computed(() => (props.mode === 'edit' && props.cronjob) || null)
+
+async function initializeDialog() {
+  const cronjob = editingCronjob.value
   if (cronjob) applyCronjob(cronjob)
   else resetForm()
 
   await Promise.all([fetchProviders(), loadMeta()])
+  syncProviderAfterFetch(cronjob)
+}
 
-  // Legacy "provider name" values can only be mapped to `providerId:modelId`
-  // once providers are loaded, so re-normalize after the fetch. Skip if the
-  // dialog was closed or switched to another cronjob in the meantime.
-  if (cronjob && props.open && props.cronjob === cronjob) {
-    form.provider = normalizeProviderValue(cronjob.provider)
-  }
+watch(() => props.open, (isOpen) => {
+  if (isOpen) initializeDialog()
 })
 
 function toggleTool(tool: string, enabled: boolean) {
@@ -508,23 +476,35 @@ function toggleSkill(skill: string, enabled: boolean) {
   }
 }
 
+function nonEmptyJson(values: string[]): string | null {
+  return values.length > 0 ? JSON.stringify(values) : null
+}
+
+function taskOverrides() {
+  return {
+    provider: form.provider || undefined,
+    toolsOverride: nonEmptyJson(disabledTools.value),
+    skillsOverride: nonEmptyJson(disabledSkills.value),
+    systemPromptOverride: form.systemPromptOverride.trim() || null,
+    attachedSkills: attachedSkills.value.length > 0 ? [...attachedSkills.value] : null,
+  }
+}
+
+const INJECTION_OVERRIDES = {
+  provider: undefined,
+  toolsOverride: null,
+  skillsOverride: null,
+  systemPromptOverride: null,
+  attachedSkills: null,
+}
+
 function onSubmit() {
   emit('submit', {
     name: form.name,
     prompt: form.prompt,
     schedule: form.schedule,
     actionType: form.actionType,
-    provider: form.actionType === 'injection' ? undefined : (form.provider || undefined),
-    toolsOverride: form.actionType === 'injection' ? null : (
-      disabledTools.value.length > 0 ? JSON.stringify(disabledTools.value) : null
-    ),
-    skillsOverride: form.actionType === 'injection' ? null : (
-      disabledSkills.value.length > 0 ? JSON.stringify(disabledSkills.value) : null
-    ),
-    systemPromptOverride: form.actionType === 'injection' ? null : (form.systemPromptOverride?.trim() || null),
-    attachedSkills: form.actionType === 'injection'
-      ? null
-      : (attachedSkills.value.length > 0 ? [...attachedSkills.value] : null),
+    ...(form.actionType === 'injection' ? INJECTION_OVERRIDES : taskOverrides()),
   })
 }
 </script>
