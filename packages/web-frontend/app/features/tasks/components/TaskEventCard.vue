@@ -6,10 +6,10 @@
       :class="collapsible && 'transition-colors hover:bg-muted/50'"
       @click="collapsible && $emit('toggle')"
     >
-      <AppIcon :name="icon" size="sm" :class="iconClass ?? 'text-muted-foreground'" />
+      <AppIcon :name="icon" size="sm" class="shrink-0" :class="iconClass ?? 'text-muted-foreground'" />
       <slot name="header" />
       <span class="flex-1" />
-      <span v-if="meta || timestamp" class="text-xs text-muted-foreground tabular-nums">
+      <span v-if="meta || timestamp" class="shrink-0 whitespace-nowrap text-xs text-muted-foreground tabular-nums">
         <template v-if="meta">{{ meta }}</template>
         <span v-if="meta && timestamp" class="mx-1.5 opacity-50">·</span>
         <template v-if="timestamp">{{ timestamp }}</template>
@@ -18,10 +18,10 @@
         v-if="collapsible"
         :name="expanded ? 'chevronDown' : 'chevronRight'"
         size="sm"
-        class="text-muted-foreground"
+        class="shrink-0 text-muted-foreground"
       />
       <!-- Keeps the timestamp column aligned with collapsible cards -->
-      <span v-else class="w-3.5" aria-hidden="true" />
+      <span v-else class="w-3.5 shrink-0" aria-hidden="true" />
     </component>
 
     <div v-if="showBody" class="px-4 pb-3 pl-10.5">
