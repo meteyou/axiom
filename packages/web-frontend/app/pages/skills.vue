@@ -10,7 +10,7 @@
   <div v-else class="flex h-full flex-col overflow-hidden">
     <PageHeader :title="$t('skills.title')" :subtitle="$t('skills.subtitle')">
       <template v-if="activeTab === 'installed'" #actions>
-        <Button @click="showInstallDialog = true">
+        <Button class="h-8 px-3 text-xs md:h-10 md:px-4 md:py-2 md:text-sm" @click="showInstallDialog = true">
           <AppIcon name="add" class="mr-1 h-4 w-4" />
           {{ $t('skills.addSkill') }}
         </Button>

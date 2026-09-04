@@ -12,7 +12,7 @@
   <div v-else class="flex h-full flex-col overflow-hidden">
     <PageHeader :title="$t('cronjobs.pageTitle')" :subtitle="$t('cronjobs.pageSubtitle')">
       <template #actions>
-        <Button class="gap-2" @click="openCreateCronjob">
+        <Button class="h-8 gap-2 px-3 text-xs md:h-10 md:px-4 md:py-2 md:text-sm" @click="openCreateCronjob">
           <AppIcon name="add" class="h-4 w-4" />
           {{ $t('cronjobs.create') }}
         </Button>
