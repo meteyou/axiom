@@ -221,4 +221,129 @@ describe('createTaskTool', () => {
     expect((result.content[0] as { type: 'text'; text: string }).text).toContain('No default task provider is configured')
     expect(runner.getStore().list().filter(t => t.name === 'NoProvider')).toHaveLength(0)
   })
+
+  describe('attached_skills', () => {
+    let skillsTmpDir: string
+    let originalDataDir: string | undefined
+
+    beforeEach(() => {
+      originalDataDir = process.env.DATA_DIR
+      skillsTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'axiom-task-tools-skills-'))
+      process.env.DATA_DIR = skillsTmpDir
+
+      const nitterDir = path.join(skillsTmpDir, 'skills_agent', 'nitter')
+      fs.mkdirSync(nitterDir, { recursive: true })
+      fs.writeFileSync(
+        path.join(nitterDir, 'SKILL.md'),
+        '---\nname: nitter\ndescription: Fetch tweets via Nitter.\n---\n\n# Nitter Skill\nAlways rotate Nitter mirrors.',
+        'utf-8',
+      )
+    })
+
+    afterEach(() => {
+      if (originalDataDir === undefined) {
+        delete process.env.DATA_DIR
+      } else {
+        process.env.DATA_DIR = originalDataDir
+      }
+      try { fs.rmSync(skillsTmpDir, { recursive: true, force: true }) } catch {
+        // Cleanup failures should not mask the test result.
+      }
+    })
+
+    async function runToolCapturingSystemPrompt(
+      params: Record<string, unknown>,
+    ): Promise<{ systemPrompt: string; details: Record<string, unknown> }> {
+      const { Agent } = await import('@earendil-works/pi-agent-core')
+      const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
+
+      type Captured = { initialState: { systemPrompt: string } }
+      const captured: { value: Captured | null } = { value: null }
+      MockAgent.mockImplementationOnce((agentOptions: unknown) => {
+        captured.value = agentOptions as Captured
+        const messages: unknown[] = []
+        return {
+          subscribe: vi.fn(() => () => {}),
+          prompt: vi.fn(async () => {
+            messages.push({
+              role: 'assistant',
+              content: [{ type: 'text', text: 'STATUS: completed\nSUMMARY: ok' }],
+            })
+          }),
+          abort: vi.fn(),
+          state: { get messages() { return messages } },
+        }
+      })
+
+      const tool = createTaskTool({
+        taskRuntime: buildBoundary(),
+        getDefaultProvider: () => mockProvider,
+        resolveProvider: () => mockProvider,
+        defaultMaxDurationMinutes: 30,
+        maxDurationMinutesCap: 120,
+      })
+
+      const result = await tool.execute('call-skills', params)
+      await new Promise(resolve => setTimeout(resolve, 50))
+
+      if (!captured.value) throw new Error('Agent was not instantiated')
+      return {
+        systemPrompt: captured.value.initialState.systemPrompt,
+        details: result.details as Record<string, unknown>,
+      }
+    }
+
+    it('injects the SKILL.md content of attached skills into the task system prompt', async () => {
+      const { systemPrompt, details } = await runToolCapturingSystemPrompt({
+        prompt: 'do work',
+        name: 'WithSkills',
+        attached_skills: ['nitter'],
+      })
+
+      expect(systemPrompt.startsWith('<attached_skills>')).toBe(true)
+      expect(systemPrompt).toContain('<skill name="nitter">')
+      expect(systemPrompt).toContain('Always rotate Nitter mirrors.')
+      expect(systemPrompt).toContain('do work')
+      expect(details.attachedSkills).toEqual(['nitter'])
+    })
+
+    it('normalizes attached_skills (trim + dedupe + drop empty)', async () => {
+      const { details } = await runToolCapturingSystemPrompt({
+        prompt: 'do work',
+        name: 'NormalizedSkills',
+        attached_skills: ['nitter', '  nitter  ', ''],
+      })
+
+      expect(details.attachedSkills).toEqual(['nitter'])
+    })
+
+    it('skips a missing SKILL.md and still starts the task', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        const { systemPrompt, details } = await runToolCapturingSystemPrompt({
+          prompt: 'do work',
+          name: 'MissingSkill',
+          attached_skills: ['nitter', 'does-not-exist'],
+        })
+
+        expect(systemPrompt).toContain('<skill name="nitter">')
+        expect(systemPrompt).not.toContain('<skill name="does-not-exist">')
+        expect(details.error).not.toBe(true)
+        const warned = warnSpy.mock.calls.some(args => String(args[0] ?? '').includes('does-not-exist'))
+        expect(warned).toBe(true)
+      } finally {
+        warnSpy.mockRestore()
+      }
+    })
+
+    it('adds no attached-skills block when the parameter is omitted', async () => {
+      const { systemPrompt, details } = await runToolCapturingSystemPrompt({
+        prompt: 'do work',
+        name: 'NoSkills',
+      })
+
+      expect(systemPrompt).not.toContain('<attached_skills>')
+      expect(details.attachedSkills).toBeNull()
+    })
+  })
 })
