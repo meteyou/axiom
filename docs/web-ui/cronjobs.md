@@ -10,20 +10,42 @@ The Cronjobs page is where you manage everything that runs on a schedule — dai
 
 ## List view
 
-The page is a single table — one row per scheduled cronjob. There is no filter toolbar; the list is small enough that you scan it directly.
+The page is a filter toolbar above a list of scheduled cronjobs: a table on desktop, a stack of cards on mobile (see [Mobile layout](#mobile-layout)).
 
 ### Header actions
 
-Two buttons in the page header:
+A single button in the page header:
 
-- **Refresh** — re-fetches `/api/cronjobs`. The list does *not* auto-poll, so click this to pull in fresh `Last Run` info after a fire.
-- **New Cronjob** — opens the create dialog (see [Create / Edit dialog](#create-edit-dialog) below).
+- **New Cronjob** opens the create dialog (see [Create / Edit dialog](#create-edit-dialog) below).
+
+The **Refresh** button sits at the right end of the [filter toolbar](#filter-toolbar), not in the header.
+
+### Filter toolbar
+
+Six filters sit at the top, plus a Refresh button. They combine with AND semantics: pick an action type *and* a provider *and* a last-run status to narrow down. Filtering happens client-side on the already-loaded list, so it is instant.
+
+| Filter              | Options                                                                                          |
+|---------------------|--------------------------------------------------------------------------------------------------|
+| **Search**          | Free text. Matches against the cronjob name, the prompt, and the names of attached skills (case-insensitive). |
+| **Enabled state**   | All states, Enabled only, Disabled only. **Defaults to Enabled only.**                            |
+| **Action type**     | All actions, Task, Injection.                                                                    |
+| **Provider**        | All providers, *Default*, or a specific `Provider (model)` pairing. Only matches `Task` cronjobs; injections never match a provider filter. |
+| **Last run status** | All last runs, Running, Completed, Failed, Never ran.                                            |
+| **Schedule type**   | All schedules, Recurring, Fixed date.                                                            |
+| **Refresh**         | Re-fetches `/api/cronjobs`. The list does *not* auto-poll, so click this to pull in fresh `Last Run` info after a fire. |
+
+A few details worth knowing:
+
+- **Enabled state defaults to `Enabled only`.** Disabled cronjobs are hidden when the page loads. Switch the filter to `All states` or `Disabled only` to see them. Because this is the default, it does not count as an active filter (see the mobile badge below).
+- The **Provider** dropdown is built from the data, not from the configured-providers list: it only offers providers that some `Task` cronjob actually uses. The `Default` entry appears only if at least one `Task` cronjob runs on the [task default](../settings/tasks), and it selects exactly those.
+- **Never ran** matches cronjobs that have no `Last Run` timestamp yet.
+- **Schedule type** is derived from the cron expression. `Fixed date` means both the day-of-month and month fields are fixed numbers (e.g. `30 11 30 3 *`), so the schedule fires on specific calendar dates at most once a year. That is the shape `create_reminder` produces for one-shot reminders. Everything else is `Recurring`.
 
 ### Columns
 
 | Column        | Notes                                                                                              |
 |---------------|----------------------------------------------------------------------------------------------------|
-| **Name**      | The cronjob name, plus inline badges for any customizations (see [Name badges](#name-badges)).    |
+| **Name**      | The cronjob name, plus badges for any customizations (see [Name badges](#name-badges)).           |
 | **Schedule**  | Top line: human-readable (e.g. *"At 09:00 on Sat"*). Bottom line: the raw 5-field cron expression. |
 | **Action**    | `Task` (green) or `Injection` (amber). See [Action types](#action-types).                          |
 | **Provider**  | `Default` (uses [Settings → Tasks](../settings/tasks)), a specific `Provider (model)`, or `—` for injections (no agent runs). |
@@ -35,14 +57,32 @@ Clicking anywhere else on a row opens the same edit dialog as the menu's *Edit* 
 
 ### Name badges
 
-Customizations show up as small outline badges next to the cronjob name so you can see at a glance which entries deviate from the defaults:
+Customizations show up as small badges in the Name cell so you can see at a glance which entries deviate from the defaults. Override badges sit inline next to the name; attached-skill badges get their own line below it.
 
-- **`custom tools`** — the cronjob has tool overrides (some tools disabled for this run).
-- **`custom skills`** — the cronjob has skill overrides (some skills disabled for this run).
-- **`custom prompt`** — the cronjob has a custom system prompt that completely replaces the default task agent system prompt.
-- **📎 `<skill-name>`** — one badge per attached skill. Attached skills get their `SKILL.md` injected directly into the task prompt on every firing. See [Tasks & Cronjobs → `attached_skills`](../concepts/tasks-and-cronjobs#attached-skills).
+Inline, next to the name (outline style):
 
-A row with no badges runs on the unmodified defaults.
+- **`custom tools`**: the cronjob has tool overrides (some tools disabled for this run).
+- **`custom skills`**: the cronjob has skill overrides (some skills disabled for this run).
+- **`custom prompt`**: the cronjob has a custom system prompt that completely replaces the default task agent system prompt.
+
+On a second line below the name (secondary style):
+
+- **📎 `<skill-name>`**: one badge per attached skill. Attached skills get their `SKILL.md` injected directly into the task prompt on every firing. Hover a badge for a tooltip naming the skill. See [Tasks & Cronjobs → `attached_skills`](../concepts/tasks-and-cronjobs#attached-skills).
+
+A row with no badges runs on the unmodified defaults. On mobile, all badges (overrides and attached skills) share a single wrapping row below the name.
+
+### Mobile layout
+
+Below the `md` breakpoint the table is replaced by a vertical stack of cards, one per cronjob. Each card contains the same information as a table row, rearranged:
+
+- **Top row**: cronjob name, the `Task` / `Injection` badge, and the ⋮ menu (Edit, Run Now, Delete).
+- **Badge row**: override badges and 📎 attached-skill badges, only shown if the cronjob has any.
+- **Schedule**: human-readable text with the raw cron expression underneath, next to a **Last Run** block with status badge and timestamp (or `—` if never fired).
+- **Bottom row**: the **Provider** label (Task cronjobs only) and the **Enabled** switch.
+
+Tapping anywhere on the card opens the edit dialog, the same as clicking a table row. The switch and the ⋮ menu are exempt from that, so toggling or opening the menu does not open the dialog.
+
+The filter toolbar collapses into a **Filters** button that opens a popover with all six fields, plus a compact Refresh icon button next to it. The Filters button shows a count badge when any filter differs from its default. Since `Enabled only` *is* the default, that filter alone does not produce a badge.
 
 ### Action types
 
@@ -57,7 +97,9 @@ Reminders created via the agent's `create_reminder` tool show up here with actio
 
 ### Enabled toggle
 
-The switch in the Enabled column flips `enabled` on the database row immediately. Disabled cronjobs stay in the list (greyed switch) but the scheduler skips them. There is no confirmation dialog — toggling is meant to be a quick, reversible action.
+The switch in the Enabled column (or on the card, on mobile) flips `enabled` on the database row immediately. The scheduler skips disabled cronjobs. There is no confirmation dialog: toggling is meant to be a quick, reversible action.
+
+Note that the [Enabled state filter](#filter-toolbar) defaults to `Enabled only`, so a cronjob you just switched off disappears from the list. It is not deleted. Set the filter to `All states` or `Disabled only` to find it again and switch it back on.
 
 > **Auto-disable.** Some cronjobs disable themselves after firing. If a cron expression matches a single point in time more than 364 days in the future (e.g. `30 11 30 3 *` = March 30 at 11:30, fired by `create_reminder`), the scheduler auto-disables the row after the first run so it doesn't fire again next year. `Task`-type cronjobs are never auto-disabled.
 
@@ -73,7 +115,12 @@ The switch in the Enabled column flips `enabled` on the database row immediately
 
 ### Empty state
 
-When you have no cronjobs at all, the table is replaced by a centered message — *"No scheduled tasks. Create a cronjob to automate recurring tasks like daily summaries or periodic checks."* — with a `New Cronjob` button right there.
+There are two distinct empty states:
+
+- **No cronjobs at all.** The list is replaced by a centered message, *"No scheduled tasks. Create a cronjob to automate recurring tasks like daily summaries or periodic checks."*, with a `New Cronjob` button right there.
+- **No filter matches.** You have cronjobs, but none pass the current filters. The message reads *"No cronjobs match the filters. Adjust or reset the filters to see more cronjobs."* and offers a **Reset filters** button that restores every filter to its default, including `Enabled only` for the enabled state.
+
+Because the enabled filter defaults to `Enabled only`, a fresh install whose only cronjobs are disabled shows the *no filter matches* state, not the *no cronjobs* one.
 
 ## Create / Edit dialog
 
