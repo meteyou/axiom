@@ -97,11 +97,11 @@ Background tasks see four complementary instruction layers:
 | Source | Scope | Where it lives |
 |---|---|---|
 | `TASKS.md` | Global generic guidelines for **every** background task run. | `/data/config/TASKS.md` |
-| `attached_skills` | Skill-specific rules pinned at cronjob authoring time — always loaded for that specific cronjob. | `/data/skills_agent/<name>/SKILL.md` (or installed skills) |
+| `attached_skills` | Skill-specific rules pinned when the task or cronjob is created — always loaded for that specific run. | `/data/skills_agent/<name>/SKILL.md` (or installed skills) |
 | Task `prompt` | The concrete work this run must do. | `tasks.prompt` column / per-cronjob `prompt` field |
 | `AGENTS.md` | Read by the **interactive** agent only — NOT injected into background task prompts. | `/data/config/AGENTS.md` |
 
-Use `TASKS.md` for rules that should apply to *all* background work ("always commit before pushing", "never auto-merge PRs", "prefer pnpm over npm"). Use `attached_skills` for rules that only matter to one cronjob ("this nitter scrape needs the nitter skill"). Put the actual work in the task `prompt`. Don't copy `AGENTS.md` content into `TASKS.md` — the two roles are different and the chat-only rules waste tokens on every task run.
+Use `TASKS.md` for rules that should apply to *all* background work ("always commit before pushing", "never auto-merge PRs", "prefer pnpm over npm"). Use `attached_skills` for rules that only matter to one run or one cronjob ("this nitter scrape needs the nitter skill"). Put the actual work in the task `prompt`. Don't copy `AGENTS.md` content into `TASKS.md` — the two roles are different and the chat-only rules waste tokens on every task run.
 
 ### Effect on cronjobs
 
@@ -112,7 +112,7 @@ A cronjob with `action_type: "task"` spawns a fresh task on every tick, and that
 - Keep it tight. Every line ships in every task system prompt — long lists cost tokens on every run.
 - Be imperative and observable ("verify with the project's test command before reporting success"), not aspirational ("do good work").
 - Resist re-stating what `AGENTS.md` already covers — the chat agent's tone rules don't help a task that has no user to talk to.
-- If a rule only matters in one specific scheduled job, prefer `attached_skills` or embedding it in that cronjob's prompt over polluting `TASKS.md`.
+- If a rule only matters in one specific task or scheduled job, prefer `attached_skills` or embedding it in that prompt over polluting `TASKS.md`.
 
 ## `HEARTBEAT.md`
 
