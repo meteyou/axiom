@@ -33,7 +33,10 @@ const forwarded = useForwardPropsEmits(delegatedProps, emits)
     <DialogContent
       v-bind="forwarded"
       :class="cn(
-        'fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-card p-6 shadow-xl',
+        // Centered via auto margins instead of translate(-50%, -50%): a transformed
+        // scroll container makes Firefox's async scrolling paint content outside
+        // the dialog while scrolling.
+        'fixed inset-0 z-50 m-auto h-fit w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-xl',
         'focus:outline-none',
         'data-[state=open]:animate-fade-in data-[state=closed]:animate-fade-out',
         props.class
