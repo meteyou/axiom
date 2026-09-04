@@ -82,13 +82,21 @@ export function renderAttachedSkillsBlock(
   for (const name of skillNames) {
     const content = loadAttachedSkillContent(name, skillsDir)
     if (content === null) continue
-    // Escape any closing tag in the content so the block stays well-formed.
-    const safe = content.replace(/<\/skill>/gi, '</ skill>')
-    parts.push(`<skill name="${name}">\n${safe.trim()}\n</skill>`)
+    parts.push(renderSkillBlock(name, content))
   }
 
-  if (parts.length === 0) return ''
-  return `<attached_skills>\n${parts.join('\n\n')}\n</attached_skills>`
+  return wrapAttachedSkills(parts)
+}
+
+export function renderSkillBlock(name: string, content: string): string {
+  // Escape any closing tag in the content so the block stays well-formed.
+  const safe = content.replace(/<\/skill>/gi, '</ skill>')
+  return `<skill name="${name}">\n${safe.trim()}\n</skill>`
+}
+
+export function wrapAttachedSkills(blocks: readonly string[]): string {
+  if (blocks.length === 0) return ''
+  return `<attached_skills>\n${blocks.join('\n\n')}\n</attached_skills>`
 }
 
 /**

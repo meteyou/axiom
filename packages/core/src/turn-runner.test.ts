@@ -318,6 +318,28 @@ describe('TurnRunner', () => {
     expect(persisted[2]!.metadata).toBeNull()
   })
 
+  it('emits and persists preamble tool calls ahead of the agent stream', async () => {
+    const db = freshDb()
+    const runner = startRunner(db, scriptedAgent([{ type: 'text', text: 'Answer.' }, { type: 'done' }]))
+    const events: TurnEvent[] = []
+    runner.subscribe(String(USER_ID), collect(events))
+
+    runner.startTurn({
+      userId: USER_ID,
+      sessionId: SESSION_ID,
+      text: 'hi',
+      preambleToolCalls: [{ toolName: 'read_file', toolArgs: { path: '/x/SKILL.md' }, toolResult: { ok: true } }],
+    })
+    await waitFor(() => !runner.hasActiveTurn(USER_ID))
+
+    expect(chunkTypes(events)).toEqual(['tool_call_start', 'tool_call_end', 'text', 'done'])
+    const persisted = rows(db)
+    expect(persisted.map(r => r.role)).toEqual(['tool', 'assistant'])
+    const meta = JSON.parse(persisted[0]!.metadata!)
+    expect(meta).toMatchObject({ toolName: 'read_file', toolArgs: { path: '/x/SKILL.md' }, toolResult: { ok: true }, toolIsError: false })
+    expect(meta.toolCallId).toMatch(/^preamble-/)
+  })
+
   it('emits an attachment event and merges uploads into the assistant row metadata', async () => {
     const db = freshDb()
     const upload = {
@@ -675,6 +697,31 @@ describe('TurnRunner', () => {
 
       // The tool row written by the discarded attempt is rolled back.
       expect(rows(db).map(r => ({ role: r.role, content: r.content }))).toEqual([
+        { role: 'assistant', content: 'answer' },
+      ])
+    })
+
+    it('re-emits preamble tool calls on the retried attempt so exactly one row survives', async () => {
+      vi.useFakeTimers()
+      const db = freshDb()
+      const { agent } = sequenceAgent([
+        [{ type: 'error', error: 'fetch failed' }],
+        [{ type: 'text', text: 'answer' }, { type: 'done' }],
+      ])
+      const runner = startRunner(db, agent, { retryPolicy: { maxRetries: 1, baseDelayMs: 1_000 } })
+
+      runner.startTurn({
+        userId: USER_ID,
+        sessionId: SESSION_ID,
+        text: 'hi',
+        preambleToolCalls: [{ toolName: 'read_file', toolArgs: { path: '/x/SKILL.md' }, toolResult: {} }],
+      })
+      await vi.advanceTimersByTimeAsync(0)
+      await vi.advanceTimersByTimeAsync(1_000)
+      await waitFor(() => !runner.hasActiveTurn(USER_ID))
+
+      expect(rows(db).map(r => ({ role: r.role, content: r.content }))).toEqual([
+        { role: 'tool', content: 'Tool: read_file' },
         { role: 'assistant', content: 'answer' },
       ])
     })

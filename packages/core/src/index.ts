@@ -248,6 +248,7 @@ export type {
   TurnRunnerOptions,
   TurnSubscriber,
   StartTurnInput,
+  TurnPreambleToolCall,
 } from './turn-runner.js'
 export { createAgentRuntime, createBaseAgentTools } from './agent-runtime.js'
 export type { AgentRuntimeBoundary, AgentRuntimeOptions, AgentRuntimePiAgentAccess, BaseAgentToolsOptions } from './agent-runtime.js'
