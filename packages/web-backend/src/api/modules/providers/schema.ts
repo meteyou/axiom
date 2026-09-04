@@ -108,40 +108,54 @@ function asCostNumber(value: unknown): number | undefined {
   return num
 }
 
+function parseModelCostPatch(value: unknown): ProviderModelUpdatePayloadContract['cost'] {
+  const body = toRecord(value)
+  const cost: NonNullable<ProviderModelUpdatePayloadContract['cost']> = {}
+  for (const key of ['input', 'output', 'cacheRead', 'cacheWrite'] as const) {
+    const parsed = asCostNumber(body[key])
+    if (parsed !== undefined) cost[key] = parsed
+  }
+  return Object.keys(cost).length > 0 ? cost : undefined
+}
+
+function parseOptionalStringField(body: Record<string, unknown>, key: 'name' | 'description'): ParseResult<string | undefined> {
+  if (!Object.prototype.hasOwnProperty.call(body, key)) return { ok: true, value: undefined }
+  if (typeof body[key] !== 'string') return { ok: false, error: `${key} must be a string` }
+  return { ok: true, value: body[key] }
+}
+
+function parseOptionalContextWindow(body: Record<string, unknown>): ParseResult<number | undefined> {
+  if (!Object.prototype.hasOwnProperty.call(body, 'contextWindow')) return { ok: true, value: undefined }
+  const contextWindow = Number(body.contextWindow)
+  if (!Number.isInteger(contextWindow) || contextWindow <= 0) {
+    return { ok: false, error: 'contextWindow must be a positive integer' }
+  }
+  return { ok: true, value: contextWindow }
+}
+
 export function parseProviderModelUpdatePayload(payload: unknown): ParseResult<ProviderModelUpdatePayloadContract> {
   const body = toRecord(payload)
-  const costBody = toRecord(body.cost)
-
-  const hasDescription = Object.prototype.hasOwnProperty.call(body, 'description')
-  const hasCost = Object.prototype.hasOwnProperty.call(body, 'cost') && typeof body.cost === 'object'
-
-  if (!hasDescription && !hasCost) {
-    return { ok: false, error: 'Provide at least a description or cost to update.' }
+  const hasCost = typeof body.cost === 'object' && body.cost !== null
+  const hasAnyField = hasCost || ['name', 'description', 'contextWindow'].some(key => Object.prototype.hasOwnProperty.call(body, key))
+  if (!hasAnyField) {
+    return { ok: false, error: 'Provide at least a name, description, contextWindow or cost to update.' }
   }
+
+  const name = parseOptionalStringField(body, 'name')
+  if (!name.ok) return name
+  const description = parseOptionalStringField(body, 'description')
+  if (!description.ok) return description
+  const contextWindow = parseOptionalContextWindow(body)
+  if (!contextWindow.ok) return contextWindow
 
   const value: ProviderModelUpdatePayloadContract = {}
+  if (name.value !== undefined) value.name = name.value
+  if (description.value !== undefined) value.description = description.value
+  if (contextWindow.value !== undefined) value.contextWindow = contextWindow.value
+  const cost = hasCost ? parseModelCostPatch(body.cost) : undefined
+  if (cost) value.cost = cost
 
-  if (hasDescription) {
-    if (typeof body.description !== 'string') {
-      return { ok: false, error: 'description must be a string' }
-    }
-    value.description = body.description
-  }
-
-  if (hasCost) {
-    const cost: NonNullable<ProviderModelUpdatePayloadContract['cost']> = {}
-    const input = asCostNumber(costBody.input)
-    const output = asCostNumber(costBody.output)
-    const cacheRead = asCostNumber(costBody.cacheRead)
-    const cacheWrite = asCostNumber(costBody.cacheWrite)
-    if (input !== undefined) cost.input = input
-    if (output !== undefined) cost.output = output
-    if (cacheRead !== undefined) cost.cacheRead = cacheRead
-    if (cacheWrite !== undefined) cost.cacheWrite = cacheWrite
-    if (Object.keys(cost).length > 0) value.cost = cost
-  }
-
-  if (!value.description && !value.cost) {
+  if (Object.keys(value).length === 0) {
     return { ok: false, error: 'No valid fields to update.' }
   }
 

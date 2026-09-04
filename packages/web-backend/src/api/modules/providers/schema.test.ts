@@ -150,7 +150,15 @@ describe('providers schema', () => {
 
     const empty = parseProviderModelUpdatePayload({})
     expect(empty.ok).toBe(false)
-    if (!empty.ok) expect(empty.error).toContain('description or cost')
+    if (!empty.ok) expect(empty.error).toContain('contextWindow or cost')
+
+    const metadata = parseProviderModelUpdatePayload({ name: 'Qwen3.8 Flash', contextWindow: 1_000_000 })
+    expect(metadata.ok).toBe(true)
+    if (metadata.ok) expect(metadata.value).toEqual({ name: 'Qwen3.8 Flash', contextWindow: 1_000_000 })
+
+    const badContextWindow = parseProviderModelUpdatePayload({ contextWindow: -5 })
+    expect(badContextWindow.ok).toBe(false)
+    if (!badContextWindow.ok) expect(badContextWindow.error).toContain('contextWindow must be a positive integer')
 
     const negativeCost = parseProviderModelUpdatePayload({ cost: { input: -1 } })
     expect(negativeCost.ok).toBe(false)
