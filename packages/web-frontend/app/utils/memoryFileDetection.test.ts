@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { detectMemoryFile, extractMemoryFileName } from './memoryFileDetection'
+import { detectMemoryFile, extractMemoryFileName, extractMemoryRelativePath } from './memoryFileDetection'
 
 describe('detectMemoryFile', () => {
   it('detects SOUL.md read as memory file', () => {
@@ -52,14 +52,28 @@ describe('detectMemoryFile', () => {
     expect(result.label).toBe('Writing User Profile')
   })
 
-  it('detects arbitrary subfolders below the memory root in dev and prod layouts', () => {
+  it('detects wiki pages and drops the wiki folder from the display path', () => {
     const dev = detectMemoryFile('read_file', { path: '/Users/dev/project/.data/memory/wiki/karpathy-lernpfad.md' })
     expect(dev.isMemoryFile).toBe(true)
-    expect(dev.label).toBe('Reading Memory File')
+    expect(dev.label).toBe('Reading Wiki')
+    expect(dev.displayPath).toBe('karpathy-lernpfad.md')
 
     const prod = detectMemoryFile('write_file', { path: '/data/memory/wiki/notes.md', content: 'x' })
-    expect(prod.isMemoryFile).toBe(true)
-    expect(prod.label).toBe('Writing Memory File')
+    expect(prod.label).toBe('Writing Wiki')
+    expect(prod.displayPath).toBe('notes.md')
+  })
+
+  it('falls back to a generic label for unknown memory subfolders', () => {
+    const result = detectMemoryFile('read_file', { path: '/data/memory/projects/axiom.md' })
+    expect(result.isMemoryFile).toBe(true)
+    expect(result.label).toBe('Reading Memory File')
+    expect(result.displayPath).toBe('projects/axiom.md')
+  })
+
+  it('exposes display paths for core and folder-based memory files', () => {
+    expect(detectMemoryFile('read_file', { path: '/data/memory/MEMORY.md' }).displayPath).toBe('MEMORY.md')
+    expect(detectMemoryFile('read_file', { path: '/data/memory/daily/2026-04-05.md' }).displayPath).toBe('2026-04-05.md')
+    expect(detectMemoryFile('read_file', { path: '/data/memory/users/admin.md' }).displayPath).toBe('admin.md')
   })
 
   it('returns default for non-memory file paths', () => {
@@ -116,5 +130,22 @@ describe('extractMemoryFileName', () => {
     expect(extractMemoryFileName({ path: '/workspace/src/index.ts' })).toBeNull()
     expect(extractMemoryFileName(null)).toBeNull()
     expect(extractMemoryFileName(undefined)).toBeNull()
+  })
+})
+
+describe('extractMemoryRelativePath', () => {
+  it('strips everything up to the memory root', () => {
+    expect(extractMemoryRelativePath({ path: '/Users/dev/project/.data/memory/MEMORY.md' })).toBe('MEMORY.md')
+    expect(extractMemoryRelativePath({ path: '/data/memory/wiki/llm-systems.md' })).toBe('wiki/llm-systems.md')
+    expect(extractMemoryRelativePath({ path: '/data/memory/daily/2026-04-05.md' })).toBe('daily/2026-04-05.md')
+  })
+
+  it('falls back to the file name for config files', () => {
+    expect(extractMemoryRelativePath({ path: '/data/config/AGENTS.md' })).toBe('AGENTS.md')
+  })
+
+  it('returns null for non-memory paths', () => {
+    expect(extractMemoryRelativePath({ path: '/workspace/src/index.ts' })).toBeNull()
+    expect(extractMemoryRelativePath(null)).toBeNull()
   })
 })
