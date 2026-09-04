@@ -10,6 +10,8 @@ import {
   formatCronjobsReply,
   renderHelp,
   isSlashCommandPicker,
+  isSlashCommandAgentTurn,
+  listLoadableSkills,
 } from './slash-commands.js'
 import type { SlashCommandPicker, SlashCommandReply } from './slash-commands.js'
 
@@ -64,6 +66,21 @@ describe('parseSlashCommand', () => {
       name: 'title',
       args: 'hello  world',
     })
+  })
+
+  it('treats a colon as a name/args separator', () => {
+    expect(parseSlashCommand('/skill:foo')).toEqual({ raw: '/skill:foo', name: 'skill', args: 'foo' })
+    expect(parseSlashCommand('/skill:foo do the thing')).toEqual({
+      raw: '/skill:foo do the thing',
+      name: 'skill',
+      args: 'foo do the thing',
+    })
+    expect(parseSlashCommand('/Skill: foo')).toEqual({ raw: '/Skill: foo', name: 'skill', args: 'foo' })
+    expect(parseSlashCommand('/skill:')).toEqual({ raw: '/skill:', name: 'skill', args: '' })
+  })
+
+  it('strips @botname before a colon-separated argument', () => {
+    expect(parseSlashCommand('/skill@my_bot:foo')).toEqual({ raw: '/skill@my_bot:foo', name: 'skill', args: 'foo' })
   })
 })
 
@@ -488,6 +505,133 @@ describe('built-in slash commands', () => {
       expect(r.kind).toBe('handled')
       if (r.kind !== 'handled') return
       expect(asText(r.reply)).toContain('not enabled')
+    })
+  })
+
+  describe('/skill', () => {
+    let dataDir: string
+    let previousDataDir: string | undefined
+
+    function writeAgentSkill(dir: string, name: string, description: string, body: string): void {
+      const skillDir = path.join(dataDir, 'skills_agent', dir)
+      fs.mkdirSync(skillDir, { recursive: true })
+      fs.writeFileSync(
+        path.join(skillDir, 'SKILL.md'),
+        `---\nname: ${name}\ndescription: ${description}\n---\n${body}\n`,
+        'utf-8',
+      )
+    }
+
+    function writeInstalledSkill(id: string, enabled: boolean): void {
+      const [owner, name] = id.split('/')
+      const skillDir = path.join(dataDir, 'skills', owner!, name!)
+      fs.mkdirSync(skillDir, { recursive: true })
+      fs.writeFileSync(path.join(skillDir, 'SKILL.md'), `---\nname: ${name}\ndescription: installed ${name}\n---\nInstalled body\n`, 'utf-8')
+      fs.mkdirSync(path.join(dataDir, 'config'), { recursive: true })
+      fs.writeFileSync(
+        path.join(dataDir, 'config', 'skills.json'),
+        JSON.stringify({
+          skills: [{
+            id, owner, name, description: `installed ${name}`, source: 'github', sourceUrl: '',
+            path: skillDir, enabled, envKeys: [], envValues: {}, installedAt: new Date().toISOString(),
+          }],
+        }),
+        'utf-8',
+      )
+    }
+
+    beforeEach(() => {
+      previousDataDir = process.env.DATA_DIR
+      dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'axiom-skill-command-'))
+      process.env.DATA_DIR = dataDir
+    })
+
+    afterEach(() => {
+      if (previousDataDir === undefined) delete process.env.DATA_DIR
+      else process.env.DATA_DIR = previousDataDir
+      fs.rmSync(dataDir, { recursive: true, force: true })
+    })
+
+    it('is registered on both surfaces with the colon usage', () => {
+      const def = registry.resolve('skill')
+      expect(def?.surfaces).toEqual(['web', 'telegram'])
+      expect(def?.usage).toBe('/skill:<name> [prompt]')
+    })
+
+    it('reports when no skills exist', async () => {
+      const r = await registry.dispatch('/skill', { surface: 'web', userId: '1', registry })
+      expect(r.kind).toBe('handled')
+      if (r.kind === 'handled') expect(asText(r.reply)).toMatch(/No skills available/)
+    })
+
+    it('lists agent skills and enabled installed skills', () => {
+      writeAgentSkill('deploy', 'deploy', 'Deploy things', 'Deploy body')
+      writeInstalledSkill('acme/widgets', true)
+      expect(listLoadableSkills().map((s) => s.id)).toEqual(['deploy', 'acme/widgets'])
+      writeInstalledSkill('acme/widgets', false)
+      expect(listLoadableSkills().map((s) => s.id)).toEqual(['deploy'])
+    })
+
+    it('bare /skill returns a picker whose options re-dispatch /skill:<id>', async () => {
+      writeAgentSkill('deploy', 'deploy', 'Deploy things', 'Deploy body')
+      writeAgentSkill('review', 'code-review', 'Review PRs', 'Review body')
+      const r = await registry.dispatch('/skill', { surface: 'telegram', userId: '1', registry })
+      expect(r.kind).toBe('handled')
+      if (r.kind !== 'handled') return
+      const picker = asPicker(r.reply)
+      expect(picker.pickerId).toBe('skill:list')
+      expect(picker.options.map((o) => o.command)).toEqual(['/skill:review', '/skill:deploy'])
+      expect(picker.options[0]!.label).toBe('code-review')
+    })
+
+    it('/skill:<name> without a prompt loads the skill and asks the agent to wait', async () => {
+      writeAgentSkill('deploy', 'deploy', 'Deploy things', 'Deploy body')
+      const r = await registry.dispatch('/skill:deploy', { surface: 'telegram', userId: '1', registry })
+      expect(r.kind).toBe('handled')
+      if (r.kind !== 'handled') return
+      expect(isSlashCommandAgentTurn(r.reply)).toBe(true)
+      if (!isSlashCommandAgentTurn(r.reply)) return
+      expect(r.reply.text).toContain('<attached_skills>')
+      expect(r.reply.text).toContain('<skill name="deploy">')
+      expect(r.reply.text).toContain('Deploy body')
+      expect(r.reply.text).toMatch(/ask what they want to do/i)
+      expect(r.reply.ack).toContain('deploy')
+    })
+
+    it('/skill:<name> <prompt> forwards the prompt after the skill block', async () => {
+      writeAgentSkill('deploy', 'deploy', 'Deploy things', 'Deploy body')
+      const r = await registry.dispatch('/skill:deploy ship v2 to staging', { surface: 'web', userId: '1', registry })
+      expect(r.kind).toBe('handled')
+      if (r.kind !== 'handled' || !isSlashCommandAgentTurn(r.reply)) throw new Error('expected agent turn')
+      expect(r.reply.text.indexOf('</attached_skills>')).toBeLessThan(r.reply.text.indexOf('ship v2 to staging'))
+      expect(r.reply.text).not.toMatch(/Do not act yet/)
+    })
+
+    it('resolves skills case-insensitively by frontmatter name or directory', async () => {
+      writeAgentSkill('review', 'Code-Review', 'Review PRs', 'Review body')
+      for (const input of ['/skill:review', '/skill:code-review', '/skill:CODE-REVIEW']) {
+        const r = await registry.dispatch(input, { surface: 'web', userId: '1', registry })
+        expect(r.kind).toBe('handled')
+        if (r.kind === 'handled') expect(isSlashCommandAgentTurn(r.reply)).toBe(true)
+      }
+    })
+
+    it('loads installed skills by owner/name id', async () => {
+      writeInstalledSkill('acme/widgets', true)
+      const r = await registry.dispatch('/skill:acme/widgets build one', { surface: 'web', userId: '1', registry })
+      expect(r.kind).toBe('handled')
+      if (r.kind !== 'handled' || !isSlashCommandAgentTurn(r.reply)) throw new Error('expected agent turn')
+      expect(r.reply.text).toContain('Installed body')
+    })
+
+    it('unknown skill returns an error with the available list', async () => {
+      writeAgentSkill('deploy', 'deploy', 'Deploy things', 'Deploy body')
+      const r = await registry.dispatch('/skill:nope do it', { surface: 'web', userId: '1', registry })
+      expect(r.kind).toBe('handled')
+      if (r.kind !== 'handled') return
+      const text = asText(r.reply)
+      expect(text).toContain('Unknown skill: nope')
+      expect(text).toContain('/skill:deploy')
     })
   })
 })

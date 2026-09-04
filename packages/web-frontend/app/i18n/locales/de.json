@@ -107,7 +107,12 @@
     "micError": "Mikrofonfehler",
     "micPermissionDenied": "Mikrofonzugriff verweigert",
     "micTooShort": "Aufnahme zu kurz — länger halten",
-    "dropFilesHere": "Dateien zum Anhängen hier ablegen"
+    "dropFilesHere": "Dateien zum Anhängen hier ablegen",
+    "skillAutocomplete": {
+      "label": "Skill laden",
+      "installed": "installiert",
+      "hint": "↑↓ zum Navigieren · Tab/Enter zum Auswählen · Esc zum Schließen · Prompt hinter dem Namen anhängen, um direkt loszulegen"
+    }
   },
   "status": {
     "online": "Online",

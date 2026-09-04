@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import type { Database, AgentCore } from '@axiom/core'
-import { saveUpload, serializeUploadsMetadata } from '@axiom/core'
+import { saveUpload, serializeUploadsMetadata, listLoadableSkills } from '@axiom/core'
 import { jwtMiddleware } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
 import { uploadMiddleware } from '../uploads.js'
@@ -194,6 +194,19 @@ export function createChatRouter(options: ChatRouterOptions): Router {
     `).all(userId)
 
     res.json({ sessions })
+  })
+
+  /**
+   * GET /api/chat/skills
+   * Skills the current user can load via `/skill:<id>` (composer autocomplete).
+   * Deliberately not admin-gated: every chat user may load skills.
+   */
+  router.get('/skills', (_req: AuthenticatedRequest, res) => {
+    try {
+      res.json({ skills: listLoadableSkills() })
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message })
+    }
   })
 
   return router

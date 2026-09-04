@@ -576,6 +576,8 @@ export {
   formatTasksReply,
   formatCronjobsReply,
   isSlashCommandPicker,
+  isSlashCommandAgentTurn,
+  listLoadableSkills,
 } from './slash-commands.js'
 export type {
   SlashCommandSurface,
@@ -587,4 +589,6 @@ export type {
   SlashCommandPicker,
   SlashCommandPickerOption,
   SlashCommandReply,
+  SlashCommandAgentTurn,
+  LoadableSkill,
 } from './slash-commands.js'

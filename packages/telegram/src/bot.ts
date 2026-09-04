@@ -32,6 +32,7 @@ import {
   SlashCommandRegistry as SlashCommandRegistryCtor,
   registerBuiltInSlashCommands,
   isSlashCommandPicker,
+  isSlashCommandAgentTurn,
   TaskStore,
   ScheduledTaskStore,
 } from '@axiom/core'
@@ -135,6 +136,11 @@ interface QueuedMessage {
   text: string
   attachments?: UploadDescriptor[]
   replyContext?: string
+  /**
+   * Overrides `text` as the agent-facing message (e.g. `/skill` expands the
+   * typed command into the SKILL.md). `text` is still what gets persisted.
+   */
+  agentText?: string
 }
 
 interface PendingBatch {
@@ -358,6 +364,10 @@ function isHandledCommand(text: string): boolean {
   return /^\/(start|new|stop|kill|tts|voice)(?:@[\w_]+)?\b/i.test(text.trim())
 }
 
+function isSkillShortcut(text: string): boolean {
+  return /^\/skill(?:@[\w_]+)?:/i.test(text.trim())
+}
+
 function normalizeCommand(text: string): string {
   return text.trim().split(/\s+/, 1)[0].toLowerCase().replace(/@[\w_]+$/, '')
 }
@@ -574,6 +584,9 @@ export class TelegramBot {
     this.bot.command('voice', async (ctx) => {
       await this.handleRegistryCommand(ctx, 'voice')
     })
+    this.bot.command('skill', async (ctx) => {
+      await this.handleRegistryCommand(ctx, 'skill')
+    })
 
     // Inline-keyboard button taps from picker messages (e.g. /model).
     // The original message is edited in place to either show the next
@@ -750,6 +763,14 @@ export class TelegramBot {
     }
 
     if (isHandledCommand(text)) {
+      return
+    }
+
+    // `/skill:<name>` only reaches here when Telegram did not emit a
+    // bot_command entity for it (entity parsing stops at `:`), so route it
+    // to the registry explicitly instead of treating it as chat text.
+    if (isSkillShortcut(text)) {
+      await this.handleRegistryCommand(ctx, 'skill')
       return
     }
 
@@ -1047,12 +1068,12 @@ export class TelegramBot {
     const state = this.chatStates.get(chatKey)
     if (!state) return
 
-    const { ctx, text, attachments, replyContext } = queuedMessage
+    const { ctx, text, attachments, replyContext, agentText } = queuedMessage
     const agentUserId = this.resolveUserId(ctx)
     const numericUserId = this.resolveNumericUserId(ctx)
     // Agent sees the reply context wrapped as a pseudo-system hint on its own
     // line; the DB-stored `content` remains exactly what the user typed.
-    const messageForAgent = buildAgentMessage(text, replyContext)
+    const messageForAgent = buildAgentMessage(agentText ?? text, replyContext)
     const senderName = this.getSenderName(ctx)
 
     const isDM = this.isDMChat(ctx)
@@ -1245,6 +1266,11 @@ export class TelegramBot {
         await this.sendPicker(ctx, result.reply)
         return
       }
+      if (isSlashCommandAgentTurn(result.reply)) {
+        if (result.reply.ack) await ctx.reply(result.reply.ack)
+        await this.enqueueAgentTurn(ctx, text, result.reply.text)
+        return
+      }
       if (result.reply) await ctx.reply(result.reply)
       return
     }
@@ -1257,6 +1283,19 @@ export class TelegramBot {
       return
     }
     await ctx.reply(`Cannot handle /${name}.`)
+  }
+
+  /**
+   * Run a slash command's expanded text as a regular agent turn. Bypasses
+   * the batching delay (the command is complete as-is) but still goes through
+   * the per-chat queue so it serialises with in-flight messages.
+   */
+  private async enqueueAgentTurn(ctx: Context, typedText: string, agentText: string): Promise<void> {
+    const chatKey = getChatKey(ctx)
+    const state = this.getOrCreateChatState(chatKey)
+    state.queue.push({ ctx, text: typedText, agentText })
+    this.emitQueueDepthChanged()
+    await this.processQueue(chatKey)
   }
 
   /**
@@ -1351,6 +1390,14 @@ export class TelegramBot {
         formatPickerMessage(result.reply),
         this.buildPickerKeyboard(result.reply),
       )
+      return
+    }
+
+    if (isSlashCommandAgentTurn(result.reply)) {
+      // Two-step flow (e.g. /skill): the tap loads the skill, the agent
+      // acknowledges, and the user's next message carries the actual request.
+      await this.editPickerMessage(ctx, result.reply.ack ?? entry.command)
+      await this.enqueueAgentTurn(ctx, entry.command, result.reply.text)
       return
     }
 

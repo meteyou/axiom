@@ -14,6 +14,9 @@ import type { ProviderConfig } from './provider-config.js'
 import { getConfigDir, loadConfig } from './config.js'
 import { SETTINGS_THINKING_LEVELS, type SettingsThinkingLevel } from './contracts/settings.js'
 import { normalizeThinkingLevel } from './thinking-level.js'
+import { listAgentSkills, trackAgentSkillUsage } from './agent-skills.js'
+import { loadSkills } from './skill-config.js'
+import { loadAttachedSkillContent, renderAttachedSkillsBlock } from './attached-skills.js'
 
 export type SlashCommandSurface = 'web' | 'telegram'
 
@@ -58,7 +61,26 @@ export function isSlashCommandPicker(value: unknown): value is SlashCommandPicke
     && (value as { kind?: unknown }).kind === 'picker'
 }
 
-export type SlashCommandReply = string | SlashCommandPicker | null
+/**
+ * Reply that asks the surface to run a regular agent turn with `text` as the
+ * user message. Used by commands that enrich the user's input (e.g. `/skill`
+ * injects a SKILL.md) rather than answering directly. Surfaces persist the
+ * raw slash command the user typed and hand `text` to the agent.
+ */
+export interface SlashCommandAgentTurn {
+  kind: 'agent_turn'
+  /** Full message to send to the agent. */
+  text: string
+  /** Optional short acknowledgement shown before the turn starts. */
+  ack?: string
+}
+
+export function isSlashCommandAgentTurn(value: unknown): value is SlashCommandAgentTurn {
+  return typeof value === 'object' && value !== null
+    && (value as { kind?: unknown }).kind === 'agent_turn'
+}
+
+export type SlashCommandReply = string | SlashCommandPicker | SlashCommandAgentTurn | null
 
 export interface SlashCommandDefinition extends SlashCommandMetadata {
   handler?: (ctx: SlashCommandContext) => Promise<SlashCommandReply> | SlashCommandReply
@@ -90,9 +112,11 @@ export function parseSlashCommand(input: string): ParsedSlashCommand | null {
   const body = raw.slice(1)
   if (body.length === 0) return null
 
-  const wsIdx = body.search(/\s/)
-  let head = wsIdx === -1 ? body : body.slice(0, wsIdx)
-  const args = wsIdx === -1 ? '' : body.slice(wsIdx + 1).trim()
+  // Both whitespace and `:` end the command name so `/skill:foo bar` parses
+  // as name="skill", args="foo bar".
+  const sepIdx = body.search(/[\s:]/)
+  let head = sepIdx === -1 ? body : body.slice(0, sepIdx)
+  const args = sepIdx === -1 ? '' : body.slice(sepIdx + 1).trim()
 
   const atIdx = head.indexOf('@')
   if (atIdx !== -1) head = head.slice(0, atIdx)
@@ -247,6 +271,122 @@ export function registerBuiltInSlashCommands(registry: SlashCommandRegistry): vo
     surfaces: ['web', 'telegram'],
     handler: (ctx) => handleThinkingCommand(ctx),
   })
+
+  registry.register({
+    name: 'skill',
+    description: 'Load a skill into the current conversation.',
+    usage: '/skill:<name> [prompt]',
+    surfaces: ['web', 'telegram'],
+    handler: (ctx) => handleSkillCommand(ctx.args),
+  })
+}
+
+export interface LoadableSkill {
+  /** Identifier accepted by `/skill:<id>` (agent skill name or `owner/name`). */
+  id: string
+  name: string
+  description: string
+  kind: 'agent' | 'installed'
+}
+
+/**
+ * Skills the user may load via `/skill`: self-created agent skills plus
+ * enabled installed skills. Agent skills are addressed by their directory
+ * name (what `loadAttachedSkillContent` expects), installed ones by id.
+ */
+export function listLoadableSkills(): LoadableSkill[] {
+  const out: LoadableSkill[] = []
+  for (const s of listAgentSkills()) {
+    out.push({
+      id: path.basename(s.location),
+      name: s.name,
+      description: s.description,
+      kind: 'agent',
+    })
+  }
+  try {
+    for (const s of loadSkills().skills) {
+      if (!s.enabled || !s.path) continue
+      if (!fs.existsSync(path.join(s.path, 'SKILL.md'))) continue
+      out.push({ id: s.id, name: s.name, description: s.description, kind: 'installed' })
+    }
+  } catch {
+    // skills.json unreadable → agent skills only
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name))
+}
+
+function findLoadableSkill(skills: LoadableSkill[], key: string): LoadableSkill | undefined {
+  const k = key.toLowerCase()
+  return skills.find((s) => s.id.toLowerCase() === k)
+    ?? skills.find((s) => s.name.toLowerCase() === k)
+}
+
+/**
+ * `/skill` → picker with all loadable skills.
+ * `/skill:<name> [prompt]` → agent turn with the SKILL.md injected. Without a
+ * prompt the agent is asked to confirm and wait, which is the second step of
+ * the Telegram picker flow (button tap → load → user types the request).
+ */
+function handleSkillCommand(rawArgs: string): SlashCommandReply {
+  const args = rawArgs.trim()
+  const skills = listLoadableSkills()
+
+  if (args.length === 0) {
+    if (skills.length === 0) return 'No skills available to load.'
+    return buildSkillPicker(skills)
+  }
+
+  const sepIdx = args.search(/\s/)
+  const key = sepIdx === -1 ? args : args.slice(0, sepIdx)
+  const prompt = sepIdx === -1 ? '' : args.slice(sepIdx + 1).trim()
+
+  const skill = findLoadableSkill(skills, key)
+  if (!skill) {
+    return `Unknown skill: ${key}\n\n${formatSkillList(skills)}`
+  }
+
+  const content = loadAttachedSkillContent(skill.id)
+  if (content === null) {
+    return `Could not read SKILL.md for "${skill.name}".`
+  }
+  if (skill.kind === 'agent') trackAgentSkillUsage(skill.name)
+
+  const block = renderAttachedSkillsBlock([skill.id])
+  const instruction = prompt.length > 0
+    ? `The user loaded the skill "${skill.name}" via /skill. Follow its instructions for this request:\n\n${prompt}`
+    : `The user loaded the skill "${skill.name}" via /skill but has not given a request yet. `
+      + `Confirm in one short sentence that the skill is loaded and ask what they want to do. Do not act yet.`
+
+  return {
+    kind: 'agent_turn',
+    text: `${block}\n\n${instruction}`,
+    ack: `\uD83D\uDCDA Skill loaded: ${skill.name}`,
+  }
+}
+
+function formatSkillList(skills: LoadableSkill[]): string {
+  if (skills.length === 0) return 'No skills available to load.'
+  const lines = ['Available skills:']
+  for (const s of skills) {
+    lines.push(`  \u2022 /skill:${s.id} \u2014 ${truncate(s.description, 80)}`)
+  }
+  return lines.join('\n')
+}
+
+function buildSkillPicker(skills: LoadableSkill[]): SlashCommandPicker {
+  return {
+    kind: 'picker',
+    pickerId: 'skill:list',
+    title: 'Choose a skill to load',
+    description: 'Tip: type /skill:<name> <prompt> to load a skill and ask in one go.',
+    options: skills.map((s) => ({
+      command: `/skill:${s.id}`,
+      label: s.name,
+      description: truncate(s.description, 120),
+      badge: s.kind === 'installed' ? 'installed' : undefined,
+    })),
+  }
 }
 
 function handleThinkingCommand(ctx: SlashCommandContext): string {

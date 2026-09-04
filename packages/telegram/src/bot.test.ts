@@ -558,6 +558,121 @@ describe('TelegramBot', () => {
     })
   })
 
+  describe('/skill command', () => {
+    let dataDir: string
+    let previousDataDir: string | undefined
+
+    function writeAgentSkill(dir: string, name: string, body: string): void {
+      const skillDir = path.join(dataDir, 'skills_agent', dir)
+      fs.mkdirSync(skillDir, { recursive: true })
+      fs.writeFileSync(path.join(skillDir, 'SKILL.md'), `---\nname: ${name}\ndescription: ${name} skill\n---\n${body}\n`, 'utf-8')
+    }
+
+    beforeEach(() => {
+      previousDataDir = process.env.DATA_DIR
+      dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'axiom-tg-skill-'))
+      process.env.DATA_DIR = dataDir
+      writeAgentSkill('deploy', 'deploy', 'Deploy body')
+      writeAgentSkill('review', 'code-review', 'Review body')
+    })
+
+    afterEach(() => {
+      if (previousDataDir === undefined) delete process.env.DATA_DIR
+      else process.env.DATA_DIR = previousDataDir
+      fs.rmSync(dataDir, { recursive: true, force: true })
+    })
+
+    it('registers /skill and lists it in the bot menu', async () => {
+      const bot = new TelegramBot({ agentCore, config: defaultConfig })
+      const underlying = bot.getBot() as unknown as MockBotInternals
+      expect(underlying._commandHandlers.has('skill')).toBe(true)
+      await bot.start()
+      const menu = (bot.getBot() as any).api.setMyCommands.mock.calls[0]![0] as { command: string }[]
+      expect(menu.map((c) => c.command)).toContain('skill')
+    })
+
+    it('bare /skill sends an inline keyboard with one button per skill', async () => {
+      const bot = new TelegramBot({ agentCore, config: defaultConfig })
+      const underlying = bot.getBot() as unknown as MockBotInternals
+
+      const ctx = createMockContext()
+      ctx.message = { text: '/skill', message_id: 1 }
+      await underlying._commandHandlers.get('skill')!(ctx)
+
+      const [text, opts] = ctx.reply.mock.calls[0] as [string, { reply_markup: { inline_keyboard: { text: string; callback_data: string }[][] } }]
+      expect(text).toContain('Choose a skill')
+      const rows = opts.reply_markup.inline_keyboard
+      expect(rows.map((r) => r[0]!.text)).toEqual(['code-review', 'deploy'])
+      expect(agentCore.sendMessage).not.toHaveBeenCalled()
+    })
+
+    it('tapping a skill loads it as an agent turn and edits the picker message', async () => {
+      vi.mocked(agentCore.sendMessage).mockReturnValue(textStream('Skill deploy loaded. What should I do?'))
+      const bot = new TelegramBot({ agentCore, config: defaultConfig })
+      const underlying = bot.getBot() as unknown as MockBotInternals
+
+      const cmdCtx = createMockContext()
+      cmdCtx.message = { text: '/skill', message_id: 1 }
+      await underlying._commandHandlers.get('skill')!(cmdCtx)
+      const rows = (cmdCtx.reply.mock.calls[0] as [string, { reply_markup: { inline_keyboard: { text: string; callback_data: string }[][] } }])[1].reply_markup.inline_keyboard
+      const deployCb = rows.find((r) => r[0]!.text === 'deploy')![0]!.callback_data
+
+      const cbCtx = createMockContext({
+        callbackQuery: { data: deployCb, message: { message_id: 1 } },
+        answerCallbackQuery: vi.fn().mockResolvedValue(true),
+        editMessageText: vi.fn().mockResolvedValue(true),
+      })
+      await underlying._handlers.get('callback_query:data')!(cbCtx as any)
+      await flushAsyncWork()
+
+      const [editedText, editedOpts] = (cbCtx as any).editMessageText.mock.calls[0] as [string, { reply_markup?: unknown }]
+      expect(editedText).toContain('deploy')
+      expect(editedOpts.reply_markup).toBeUndefined()
+
+      expect(agentCore.sendMessage).toHaveBeenCalledTimes(1)
+      const [userId, agentText, source] = vi.mocked(agentCore.sendMessage).mock.calls[0] as [string, string, string]
+      expect(userId).toBe('telegram-12345')
+      expect(source).toBe('telegram')
+      expect(agentText).toContain('<skill name="deploy">')
+      expect(agentText).toContain('Deploy body')
+      expect(agentText).toMatch(/ask what they want to do/i)
+
+      const botApi = (bot.getBot() as any).api
+      expect(botApi.sendMessage).toHaveBeenCalledWith(67890, 'Skill deploy loaded. What should I do?', { parse_mode: 'HTML' })
+    })
+
+    it('/skill:<name> <prompt> typed as text runs the prompt with the skill loaded, without batching', async () => {
+      vi.mocked(agentCore.sendMessage).mockReturnValue(textStream('Reviewing.'))
+      const bot = new TelegramBot({ agentCore, config: defaultConfig })
+      const underlying = bot.getBot() as unknown as MockBotInternals
+
+      const ctx = createMockContext()
+      ctx.message = { text: '/skill:review look at PR 42', message_id: 1 }
+      await underlying._handlers.get('message:text')!(ctx)
+      await flushAsyncWork()
+
+      expect(agentCore.sendMessage).toHaveBeenCalledTimes(1)
+      const agentText = (vi.mocked(agentCore.sendMessage).mock.calls[0] as [string, string])[1]
+      expect(agentText).toContain('Review body')
+      expect(agentText).toContain('look at PR 42')
+      expect(agentText).not.toMatch(/Do not act yet/)
+    })
+
+    it('unknown skill replies with the available list and does not start a turn', async () => {
+      const bot = new TelegramBot({ agentCore, config: defaultConfig })
+      const underlying = bot.getBot() as unknown as MockBotInternals
+
+      const ctx = createMockContext()
+      ctx.message = { text: '/skill:nope', message_id: 1 }
+      await underlying._commandHandlers.get('skill')!(ctx)
+
+      const [text] = ctx.reply.mock.calls[0] as [string]
+      expect(text).toContain('Unknown skill: nope')
+      expect(text).toContain('/skill:deploy')
+      expect(agentCore.sendMessage).not.toHaveBeenCalled()
+    })
+  })
+
   describe('/new command', () => {
     it('delegates to agent core handleNewCommand', async () => {
       vi.mocked(agentCore.handleNewCommand).mockResolvedValue('Session summary here')
