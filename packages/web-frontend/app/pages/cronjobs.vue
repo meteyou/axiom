@@ -173,8 +173,10 @@
                   <Badge v-if="cj.systemPromptOverride" variant="outline" class="shrink-0 text-xs">
                     {{ $t('cronjobs.badges.customPrompt') }}
                   </Badge>
+                </div>
+                <div v-if="cj.attachedSkills?.length" class="mt-1 flex flex-wrap items-center gap-1.5">
                   <Badge
-                    v-for="skill in cj.attachedSkills || []"
+                    v-for="skill in cj.attachedSkills"
                     :key="`attached-${skill}`"
                     variant="secondary"
                     class="shrink-0 text-xs font-normal"
