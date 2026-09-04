@@ -2,7 +2,7 @@
   <div class="flex h-full flex-col overflow-y-auto">
     <PageHeader :title="$t('providers.title')" :subtitle="$t('providers.subtitle')">
       <template #actions>
-        <Button @click="openCreate">
+        <Button class="h-8 px-3 text-xs md:h-10 md:px-4 md:py-2 md:text-sm" @click="openCreate">
           <AppIcon name="add" class="mr-1 h-4 w-4" />
           {{ $t('providers.addProvider') }}
         </Button>
