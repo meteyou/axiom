@@ -111,12 +111,10 @@ defineEmits<{
 
 const { formatTimestamp } = useFormat()
 
-const hasBadges = computed(() =>
-  Boolean(
-    props.cronjob.toolsOverride
-    || props.cronjob.skillsOverride
-    || props.cronjob.systemPromptOverride
-    || props.cronjob.attachedSkills?.length,
-  ),
-)
+const hasBadges = computed(() => [
+  props.cronjob.toolsOverride,
+  props.cronjob.skillsOverride,
+  props.cronjob.systemPromptOverride,
+  props.cronjob.attachedSkills?.length,
+].some(Boolean))
 </script>

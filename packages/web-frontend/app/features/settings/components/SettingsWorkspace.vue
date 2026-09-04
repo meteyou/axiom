@@ -2022,6 +2022,7 @@
 
 <script setup lang="ts">
 import { canonicalizeProviderModelRef, SETTINGS_THINKING_LEVELS, type SettingsThinkingLevel } from '@axiom/core/contracts'
+import { buildProviderModelOptions } from '~/utils/providerModelOptions'
 import { useSettingsApi } from '~/api/settings'
 import EmailAccountsWorkspace from '~/features/email/components/EmailAccountsWorkspace.vue'
 import type { MemoryConsolidationSettings, FactExtractionSettings, HealthMonitorNotificationToggles, HealthMonitorSettings, AgentHeartbeatSettings, TasksSettings, TtsSettings, SttSettings, UploadsSettings, TelegramSettings, WatchdogSettings, RetrySettings } from '~/composables/useSettings'
@@ -2128,19 +2129,7 @@ async function handleActivateProvider(value: string) {
 }
 
 /** Flattened list of provider+model combinations for all provider select dropdowns */
-const providerModelOptions = computed(() => {
-  const options: { value: string; label: string }[] = []
-  for (const p of providers.value) {
-    const models = p.enabledModels ?? []
-    for (const modelId of models) {
-      options.push({
-        value: `${p.id}:${modelId}`,
-        label: `${p.name} (${modelId})`,
-      })
-    }
-  }
-  return options
-})
+const providerModelOptions = computed(() => buildProviderModelOptions(providers.value))
 
 /* ── Users (for telegram user assignment) ── */
 const { users, fetchUsers } = useUsers()

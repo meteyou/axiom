@@ -1,6 +1,7 @@
 import type { Ref } from 'vue'
 import type { Cronjob } from '~/composables/useCronjobs'
-import { formatCronjobProvider, type ProviderLike } from '../utils/formatProvider'
+import type { ProviderModelSource } from '~/utils/providerModelOptions'
+import { formatCronjobProvider } from '../utils/providerValue'
 import { getCronjobScheduleType } from '../utils/scheduleType'
 
 export const CRONJOB_DEFAULT_PROVIDER_FILTER = '__default__'
@@ -36,21 +37,23 @@ function matchesProvider(cj: Cronjob, filter: string): boolean {
   return cj.provider === filter
 }
 
+const PREDICATE_FACTORIES: Array<(filters: CronjobFilters) => CronjobPredicate | null> = [
+  ({ enabled }) => enabled ? cj => cj.enabled === (enabled === 'enabled') : null,
+  ({ actionType }) => actionType ? cj => cj.actionType === actionType : null,
+  ({ provider }) => provider ? cj => matchesProvider(cj, provider) : null,
+  ({ lastRunStatus }) => lastRunStatus ? cj => matchesLastRunStatus(cj, lastRunStatus) : null,
+  ({ scheduleType }) => scheduleType ? cj => getCronjobScheduleType(cj.schedule) === scheduleType : null,
+  ({ search }) => {
+    const query = search.trim().toLowerCase()
+    return query ? cj => matchesSearch(cj, query) : null
+  },
+]
+
 function buildPredicates(filters: CronjobFilters): CronjobPredicate[] {
-  const predicates: CronjobPredicate[] = []
-  const query = filters.search.trim().toLowerCase()
-
-  if (filters.enabled) predicates.push(cj => cj.enabled === (filters.enabled === 'enabled'))
-  if (filters.actionType) predicates.push(cj => cj.actionType === filters.actionType)
-  if (filters.provider) predicates.push(cj => matchesProvider(cj, filters.provider))
-  if (filters.lastRunStatus) predicates.push(cj => matchesLastRunStatus(cj, filters.lastRunStatus))
-  if (filters.scheduleType) predicates.push(cj => getCronjobScheduleType(cj.schedule) === filters.scheduleType)
-  if (query) predicates.push(cj => matchesSearch(cj, query))
-
-  return predicates
+  return PREDICATE_FACTORIES.flatMap(factory => factory(filters) ?? [])
 }
 
-export function useCronjobFilters(cronjobs: Ref<Cronjob[]>, providers: Ref<ProviderLike[]>) {
+export function useCronjobFilters(cronjobs: Ref<Cronjob[]>, providers: Ref<ProviderModelSource[]>) {
   const filters = reactive({ ...DEFAULT_FILTERS })
 
   const activeFilterCount = computed(() =>

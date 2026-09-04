@@ -288,12 +288,12 @@
 </template>
 
 <script setup lang="ts">
-import type { Cronjob } from '~/composables/useCronjobs'
+import type { Cronjob, CronjobFormData } from '~/composables/useCronjobs'
 import CronjobFilterFields from '~/features/cronjobs/components/CronjobFilterFields.vue'
 import { useCronjobFilters } from '~/features/cronjobs/composables/useCronjobFilters'
 import CronjobListCard from '~/features/cronjobs/components/CronjobListCard.vue'
 import { cronjobLastRunVariant } from '~/features/cronjobs/utils/cronjobFormat'
-import { formatCronjobProvider } from '~/features/cronjobs/utils/formatProvider'
+import { formatCronjobProvider } from '~/features/cronjobs/utils/providerValue'
 
 const { t } = useI18n()
 const { formatTimestamp } = useFormat()
@@ -350,22 +350,13 @@ function openEditCronjob(cj: Cronjob) {
   cronjobDialog.open = true
 }
 
-async function handleCronjobSubmit(form: { name: string; prompt: string; schedule: string; actionType?: 'task' | 'injection'; provider?: string; toolsOverride?: string | null; skillsOverride?: string | null; systemPromptOverride?: string | null; attachedSkills?: string[] | null }) {
+async function handleCronjobSubmit(form: CronjobFormData) {
   cronjobDialog.loading = true
-
-  if (cronjobDialog.mode === 'create') {
-    const result = await createCronjob(form)
-    if (result) {
-      cronjobDialog.open = false
-    }
-  } else if (cronjobDialog.cronjob) {
-    const result = await updateCronjob(cronjobDialog.cronjob.id, form)
-    if (result) {
-      cronjobDialog.open = false
-    }
-  }
-
+  const result = cronjobDialog.mode === 'create' || !cronjobDialog.cronjob
+    ? await createCronjob(form)
+    : await updateCronjob(cronjobDialog.cronjob.id, form)
   cronjobDialog.loading = false
+  if (result) cronjobDialog.open = false
 }
 
 async function handleToggle(id: string, enabled: boolean) {
