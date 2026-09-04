@@ -210,7 +210,7 @@
             </span>
             <span
               v-if="getToolCallSummary(event.toolName ?? '', event.toolArgs)"
-              class="min-w-0 truncate font-mono text-xs text-muted-foreground"
+              class="hidden min-w-0 truncate font-mono text-xs text-muted-foreground sm:inline"
               :title="getToolCallSummary(event.toolName ?? '', event.toolArgs)!"
             >
               {{ getToolCallSummary(event.toolName ?? '', event.toolArgs) }}
