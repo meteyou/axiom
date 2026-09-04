@@ -19,7 +19,7 @@
 
         <div class="flex min-w-0 flex-1 items-center gap-2">
           <h2 class="truncate text-sm font-semibold">{{ taskInfo?.name ?? '—' }}</h2>
-          <Badge v-if="taskInfo?.status" :variant="statusVariant(taskInfo.status)">
+          <Badge v-if="taskInfo?.status" :variant="taskStatusVariant(taskInfo.status)">
             {{ $t(`tasks.status.${taskInfo.status}`) }}
           </Badge>
           <Badge v-if="isLive" variant="default" class="gap-1">
@@ -306,7 +306,7 @@
           :timestamp="formatTime(event.timestamp)"
         >
           <template #header>
-            <Badge :variant="statusVariant(event.status ?? '')">
+            <Badge :variant="taskStatusVariant(event.status ?? '')">
               {{ $t(`tasks.status.${event.status}`) }}
             </Badge>
             <span v-if="event.statusMessage" class="text-sm text-muted-foreground truncate">
@@ -329,6 +329,7 @@ import { useTaskEvents } from '~/features/tasks/composables/useTaskEvents'
 import { useTasksApi } from '~/api/tasks'
 import { formatToolName, getToolCallSummary } from '~/utils/toolNameFormat'
 import { useProviders } from '~/composables/useProviders'
+import { taskStatusVariant } from '~/features/tasks/utils/taskFormat'
 
 const props = defineProps<{
   taskId: string
@@ -576,16 +577,6 @@ watch(() => events.value.length, () => {
     nextTick(scrollToBottom)
   }
 })
-
-function statusVariant(status: string): 'default' | 'success' | 'destructive' | 'warning' | 'muted' {
-  switch (status) {
-    case 'running': return 'default'
-    case 'completed': return 'success'
-    case 'failed': return 'destructive'
-    case 'paused': return 'warning'
-    default: return 'muted'
-  }
-}
 
 function formatDurationMs(ms: number): string {
   if (ms < 1000) return `${ms}ms`
