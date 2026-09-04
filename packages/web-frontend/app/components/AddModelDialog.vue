@@ -129,6 +129,8 @@
 import type { Provider, AvailableModel } from '~/features/providers/composables/useProviders'
 import type { ProviderUpdatePayloadContract } from '@axiom/core/contracts'
 import { formatContextWindow, formatModelCost } from '~/utils/modelFormat'
+import { useProvidersApi } from '~/api/providers'
+import { buildCatalogModelPatch } from '~/utils/catalogModelPatch'
 
 const props = defineProps<{
   open: boolean
@@ -141,6 +143,7 @@ const emit = defineEmits<{
 }>()
 
 const { fetchModels, fetchLiveModels, updateProvider, presets } = useProviders()
+const providersApi = useProvidersApi()
 const { t } = useI18n()
 
 const search = ref('')
@@ -204,13 +207,33 @@ async function loadCatalog() {
   }
 }
 
+// Models from a live catalog (e.g. OpenRouter) are usually absent from the
+// bundled pi-ai catalog, so their pricing/context window would otherwise be
+// unknown to buildModel(). Persist that metadata as per-model overrides.
+async function persistLiveCatalogMetadata(provider: Provider, modelIds: string[]) {
+  if (!presets.value[provider.providerType]?.dynamicCatalog) return
+
+  const patches = catalog.value
+    .filter(entry => modelIds.includes(entry.id))
+    .map(entry => ({ modelId: entry.id, patch: buildCatalogModelPatch(entry) }))
+
+  // Best-effort enrichment: a failed patch must not block enabling the model.
+  await Promise.allSettled(
+    patches
+      .filter(({ patch }) => patch !== null)
+      .map(({ modelId, patch }) => providersApi.updateProviderModel(provider.id, modelId, patch!)),
+  )
+}
+
 async function handleAdd() {
   if (!props.provider || selected.value.size === 0) return
   saving.value = true
   try {
     const current = props.provider.enabledModels ?? []
-    const merged = Array.from(new Set([...current, ...selected.value]))
+    const added = Array.from(selected.value).filter(id => !current.includes(id))
+    const merged = Array.from(new Set([...current, ...added]))
     const payload: ProviderUpdatePayloadContract = { enabledModels: merged }
+    await persistLiveCatalogMetadata(props.provider, added)
     const result = await updateProvider(props.provider.id, payload)
     if (result) {
       emit('added')
