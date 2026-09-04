@@ -160,7 +160,7 @@
                 {{ task.name }}
               </TableCell>
               <TableCell>
-                <Badge :variant="statusVariant(task.status)">
+                <Badge :variant="taskStatusVariant(task.status)">
                   {{ $t(`tasks.status.${task.status}`) }}
                 </Badge>
               </TableCell>
@@ -170,16 +170,16 @@
                     {{ $t(`tasks.trigger.${task.triggerType}`) }}
                   </Badge>
                   <span
-                    v-if="formatTriggerModel(task)"
+                    v-if="formatTaskTriggerModel(task, t)"
                     class="text-xs text-muted-foreground"
                     :title="task.isDefaultModel ? $t('tasks.triggerModelDefaultTooltip') : undefined"
                   >
-                    {{ formatTriggerModel(task) }}
+                    {{ formatTaskTriggerModel(task, t) }}
                   </span>
                 </div>
               </TableCell>
               <TableCell class="text-right tabular-nums text-muted-foreground">
-                {{ formatDuration(task) }}
+                {{ formatTaskDuration(task) }}
               </TableCell>
               <TableCell class="text-right tabular-nums text-muted-foreground">
                 <Tooltip>
@@ -283,6 +283,14 @@
 import type { Task } from '~/api/tasks'
 import TaskFilterFields from '~/features/tasks/components/TaskFilterFields.vue'
 import {
+  cacheHitRate,
+  cacheSummary,
+  formatTaskDuration,
+  formatTaskTriggerModel,
+  hasCacheTokens,
+  taskStatusVariant,
+} from '~/features/tasks/utils/taskFormat'
+import {
   encodeTaskProviderModelFilter,
   useTasksList,
 } from '~/features/tasks/composables/useTasksList'
@@ -357,67 +365,6 @@ async function executeKill() {
 
 function onFilterChange() {
   loadTasks(1)
-}
-
-function statusVariant(status: string): 'default' | 'success' | 'destructive' | 'warning' | 'muted' {
-  switch (status) {
-    case 'running': return 'default'
-    case 'completed': return 'success'
-    case 'failed': return 'destructive'
-    case 'paused': return 'warning'
-    default: return 'muted'
-  }
-}
-
-function formatTriggerModel(task: Task): string | null {
-  const provider = task.provider
-  const model = task.model
-  if (!provider && !model) return null
-
-  const parts = [provider, model].filter(Boolean).join(' – ')
-  if (task.isDefaultModel === true) {
-    return t('tasks.triggerModelDefault', { value: parts })
-  }
-  return parts
-}
-
-function formatDuration(task: Task): string {
-  const start = task.startedAt ? new Date(task.startedAt.replace(' ', 'T') + 'Z').getTime() : null
-  if (!start) return '—'
-
-  const end = task.completedAt
-    ? new Date(task.completedAt.replace(' ', 'T') + 'Z').getTime()
-    : Date.now()
-
-  const diffMs = end - start
-  if (diffMs < 0) return '—'
-
-  const seconds = Math.floor(diffMs / 1000)
-  if (seconds < 60) return `${seconds}s`
-
-  const minutes = Math.floor(seconds / 60)
-  const remainingSeconds = seconds % 60
-  if (minutes < 60) return `${minutes}m ${remainingSeconds}s`
-
-  const hours = Math.floor(minutes / 60)
-  const remainingMinutes = minutes % 60
-  return `${hours}h ${remainingMinutes}m`
-}
-
-function hasCacheTokens(task: Task): boolean {
-  return task.cacheRead > 0 || task.cacheWrite > 0
-}
-
-function cacheHitRate(task: Task): number | null {
-  const denominator = task.promptTokens + task.cacheRead + task.cacheWrite
-  if (denominator <= 0) return null
-  return (task.cacheRead / denominator) * 100
-}
-
-function cacheSummary(task: Task): string {
-  const rate = cacheHitRate(task)
-  if (rate === null) return ''
-  return `CH ${rate.toFixed(1)}%`
 }
 
 onMounted(async () => {
