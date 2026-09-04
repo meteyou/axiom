@@ -160,25 +160,26 @@
       </div>
 
       <!-- Task prompt (read-only, hidden while editing) -->
-      <div v-if="!editing && taskInfo?.prompt" class="rounded-lg border border-border bg-card px-4 py-3">
-        <div class="flex items-start gap-3">
-          <AppIcon name="send" size="sm" class="mt-0.5 text-primary" />
-          <div class="min-w-0 flex-1">
-            <p class="mb-1 text-xs font-medium text-primary">Prompt</p>
-            <p class="text-sm text-foreground whitespace-pre-wrap">{{ taskInfo.prompt }}</p>
-          </div>
-          <span v-if="firstEventTimestamp" class="flex-shrink-0 text-xs text-muted-foreground">
-            {{ formatTime(firstEventTimestamp) }}
-          </span>
-        </div>
-      </div>
+      <TaskEventCard
+        v-if="!editing && taskInfo?.prompt"
+        icon="send"
+        icon-class="text-primary"
+        :timestamp="firstEventTimestamp ? formatTime(firstEventTimestamp) : undefined"
+      >
+        <template #header>
+          <span class="text-xs font-medium text-primary">Prompt</span>
+        </template>
+        <p class="text-sm text-foreground whitespace-pre-wrap">{{ taskInfo.prompt }}</p>
+      </TaskEventCard>
 
       <template v-for="(event, idx) in groupedEvents" :key="idx">
         <!-- Tool call event -->
-        <TaskEventCollapsible
+        <TaskEventCard
           v-if="event.type === 'tool_call_end' || event.type === 'tool_call_start'"
+          collapsible
           icon="wrench"
           :icon-class="event.toolIsError ? 'text-destructive' : undefined"
+          :meta="event.durationMs != null ? formatDurationMs(event.durationMs) : undefined"
           :timestamp="formatTime(event.timestamp)"
           :expanded="isExpanded(`tool-${idx}`)"
           @toggle="toggleExpanded(`tool-${idx}`)"
@@ -190,9 +191,6 @@
             <Badge v-if="event.toolIsError" variant="destructive" class="text-[10px] px-1.5 py-0">
               {{ $t('taskViewer.error') }}
             </Badge>
-            <span v-if="event.durationMs != null" class="text-xs text-muted-foreground">
-              {{ formatDurationMs(event.durationMs) }}
-            </span>
           </template>
 
           <div class="space-y-3">
@@ -214,11 +212,12 @@
               </div>
             </div>
           </div>
-        </TaskEventCollapsible>
+        </TaskEventCard>
 
         <!-- Thinking -->
-        <TaskEventCollapsible
+        <TaskEventCard
           v-if="event.type === 'text_delta' && event.thinking"
+          collapsible
           icon="sparkles"
           icon-class="text-muted-foreground/50"
           :timestamp="formatTime(event.timestamp)"
@@ -232,71 +231,54 @@
           </template>
 
           <p class="whitespace-pre-wrap text-xs text-muted-foreground">{{ event.thinking }}</p>
-        </TaskEventCollapsible>
+        </TaskEventCard>
 
         <!-- Agent text (structured or plain) -->
-        <div
-          v-if="event.type === 'text_delta' && event.text"
-          class="rounded-lg border border-border bg-card px-4 py-3"
-        >
-          <div class="flex items-start gap-3">
-            <template v-if="parseStructuredResponse(event.text)">
-              <AppIcon
-                :name="parseStructuredResponse(event.text)!.status === 'completed' ? 'check' : 'close'"
-                size="sm"
-                :class="parseStructuredResponse(event.text)!.status === 'completed' ? 'mt-0.5 text-green-500' : 'mt-0.5 text-destructive'"
-              />
-              <div class="min-w-0 flex-1">
-                <p
-                  class="mb-1 text-xs font-medium"
-                  :class="parseStructuredResponse(event.text)!.status === 'completed' ? 'text-green-500' : 'text-destructive'"
-                >
-                  {{ parseStructuredResponse(event.text)!.statusLabel }}
-                </p>
-                <!-- eslint-disable-next-line vue/no-v-html -->
-                <div class="prose-chat text-sm" v-html="renderMarkdown(parseStructuredResponse(event.text)!.summary)" />
-              </div>
-              <span class="flex-shrink-0 text-xs text-muted-foreground">
-                {{ formatTime(event.timestamp) }}
+        <template v-if="event.type === 'text_delta' && event.text">
+          <TaskEventCard
+            v-if="parseStructuredResponse(event.text)"
+            :icon="parseStructuredResponse(event.text)!.status === 'completed' ? 'check' : 'close'"
+            :icon-class="parseStructuredResponse(event.text)!.status === 'completed' ? 'text-green-500' : 'text-destructive'"
+            :timestamp="formatTime(event.timestamp)"
+          >
+            <template #header>
+              <span
+                class="text-xs font-medium"
+                :class="parseStructuredResponse(event.text)!.status === 'completed' ? 'text-green-500' : 'text-destructive'"
+              >
+                {{ parseStructuredResponse(event.text)!.statusLabel }}
               </span>
             </template>
-            <template v-else>
-              <AppIcon name="bot" size="sm" class="mt-0.5 text-muted-foreground" />
-              <div class="min-w-0 flex-1">
-                <div class="flex items-center gap-2 mb-1">
-                  <span class="text-xs font-medium text-muted-foreground">
-                    {{ $t('taskViewer.agentResponse') }}
-                  </span>
-                  <span class="text-xs text-muted-foreground">
-                    {{ formatTime(event.timestamp) }}
-                  </span>
-                </div>
-                <!-- eslint-disable-next-line vue/no-v-html -->
-                <div class="prose-chat text-sm" v-html="renderMarkdown(event.text)" />
-              </div>
+            <!-- eslint-disable-next-line vue/no-v-html -->
+            <div class="prose-chat text-sm" v-html="renderMarkdown(parseStructuredResponse(event.text)!.summary)" />
+          </TaskEventCard>
+
+          <TaskEventCard v-else icon="bot" :timestamp="formatTime(event.timestamp)">
+            <template #header>
+              <span class="text-xs font-medium text-muted-foreground">
+                {{ $t('taskViewer.agentResponse') }}
+              </span>
             </template>
-          </div>
-        </div>
+            <!-- eslint-disable-next-line vue/no-v-html -->
+            <div class="prose-chat text-sm" v-html="renderMarkdown(event.text)" />
+          </TaskEventCard>
+        </template>
 
         <!-- Status change event -->
-        <div
+        <TaskEventCard
           v-if="event.type === 'status_change'"
-          class="rounded-lg border border-border bg-card px-4 py-2.5"
+          icon="info"
+          :timestamp="formatTime(event.timestamp)"
         >
-          <div class="flex items-center gap-3">
-            <AppIcon name="info" size="sm" class="text-muted-foreground" />
+          <template #header>
             <Badge :variant="statusVariant(event.status ?? '')">
               {{ $t(`tasks.status.${event.status}`) }}
             </Badge>
             <span v-if="event.statusMessage" class="text-sm text-muted-foreground truncate">
               {{ event.statusMessage }}
             </span>
-            <span class="flex-1" />
-            <span class="text-xs text-muted-foreground">
-              {{ formatTime(event.timestamp) }}
-            </span>
-          </div>
-        </div>
+          </template>
+        </TaskEventCard>
       </template>
 
       <!-- Auto-scroll anchor -->
@@ -307,7 +289,7 @@
 
 <script setup lang="ts">
 import type { TaskEventItem } from '~/api/tasks'
-import TaskEventCollapsible from '~/features/tasks/components/TaskEventCollapsible.vue'
+import TaskEventCard from '~/features/tasks/components/TaskEventCard.vue'
 import { useTaskEvents } from '~/features/tasks/composables/useTaskEvents'
 import { useTasksApi } from '~/api/tasks'
 import { useProviders } from '~/composables/useProviders'
