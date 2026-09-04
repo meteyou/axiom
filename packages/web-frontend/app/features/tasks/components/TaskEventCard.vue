@@ -24,7 +24,7 @@
       <span v-else class="w-3.5 shrink-0" aria-hidden="true" />
     </component>
 
-    <div v-if="showBody" class="px-4 pb-3 pl-10.5">
+    <div v-if="showBody" class="px-4 pb-3 sm:pl-10.5">
       <slot />
     </div>
   </div>
