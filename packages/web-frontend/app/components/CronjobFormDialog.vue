@@ -431,63 +431,56 @@ async function loadMeta(): Promise<void> {
   }
 }
 
+function parseStringArray(raw: string | null): string[] {
+  if (!raw) return []
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+function applyCronjob(cronjob: Cronjob) {
+  form.name = cronjob.name
+  form.prompt = cronjob.prompt
+  form.schedule = cronjob.schedule
+  form.actionType = cronjob.actionType ?? 'task'
+  form.provider = normalizeProviderValue(cronjob.provider)
+  form.systemPromptOverride = cronjob.systemPromptOverride ?? ''
+  disabledTools.value = parseStringArray(cronjob.toolsOverride)
+  disabledSkills.value = parseStringArray(cronjob.skillsOverride)
+  attachedSkills.value = [...(cronjob.attachedSkills ?? [])]
+  advancedOpen.value = Boolean(hasOverrides.value)
+}
+
+function resetForm() {
+  form.name = ''
+  form.prompt = ''
+  form.schedule = ''
+  form.actionType = 'task'
+  form.provider = ''
+  form.systemPromptOverride = ''
+  disabledTools.value = []
+  disabledSkills.value = []
+  attachedSkills.value = []
+  advancedOpen.value = false
+}
+
 watch(() => props.open, async (isOpen) => {
-  if (isOpen) {
-    // Providers must be loaded before normalizing the stored provider value,
-    // otherwise legacy "provider name" values cannot be mapped to `providerId:modelId`.
-    await Promise.all([fetchProviders(), loadMeta()])
-    if (props.mode === 'edit' && props.cronjob) {
-      form.name = props.cronjob.name
-      form.prompt = props.cronjob.prompt
-      form.schedule = props.cronjob.schedule
-      form.actionType = props.cronjob.actionType ?? 'task'
-      form.provider = normalizeProviderValue(props.cronjob.provider)
-      form.systemPromptOverride = props.cronjob.systemPromptOverride ?? ''
+  if (!isOpen) return
 
-      // Parse tool overrides
-      if (props.cronjob.toolsOverride) {
-        try {
-          disabledTools.value = JSON.parse(props.cronjob.toolsOverride)
-        } catch {
-          disabledTools.value = []
-        }
-      } else {
-        disabledTools.value = []
-      }
+  const cronjob = props.mode === 'edit' ? props.cronjob : null
+  if (cronjob) applyCronjob(cronjob)
+  else resetForm()
 
-      // Parse skill overrides
-      if (props.cronjob.skillsOverride) {
-        try {
-          disabledSkills.value = JSON.parse(props.cronjob.skillsOverride)
-        } catch {
-          disabledSkills.value = []
-        }
-      } else {
-        disabledSkills.value = []
-      }
+  await Promise.all([fetchProviders(), loadMeta()])
 
-      // Attached skills (array on the cronjob)
-      attachedSkills.value = Array.isArray(props.cronjob.attachedSkills)
-        ? [...props.cronjob.attachedSkills]
-        : []
-
-      // Auto-expand advanced section if there are overrides
-      advancedOpen.value = disabledTools.value.length > 0
-        || disabledSkills.value.length > 0
-        || attachedSkills.value.length > 0
-        || (form.systemPromptOverride?.trim().length ?? 0) > 0
-    } else {
-      form.name = ''
-      form.prompt = ''
-      form.schedule = ''
-      form.actionType = 'task'
-      form.provider = ''
-      form.systemPromptOverride = ''
-      disabledTools.value = []
-      disabledSkills.value = []
-      attachedSkills.value = []
-      advancedOpen.value = false
-    }
+  // Legacy "provider name" values can only be mapped to `providerId:modelId`
+  // once providers are loaded, so re-normalize after the fetch. Skip if the
+  // dialog was closed or switched to another cronjob in the meantime.
+  if (cronjob && props.open && props.cronjob === cronjob) {
+    form.provider = normalizeProviderValue(cronjob.provider)
   }
 })
 
