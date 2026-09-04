@@ -188,6 +188,13 @@
             <span class="text-xs font-medium" :class="event.toolIsError ? 'text-destructive' : 'text-foreground'">
               {{ formatToolName(event.toolName ?? 'unknown') }}
             </span>
+            <span
+              v-if="getToolCallSummary(event.toolName ?? '', event.toolArgs)"
+              class="min-w-0 truncate font-mono text-xs text-muted-foreground"
+              :title="getToolCallSummary(event.toolName ?? '', event.toolArgs)!"
+            >
+              {{ getToolCallSummary(event.toolName ?? '', event.toolArgs) }}
+            </span>
             <Badge v-if="event.toolIsError" variant="destructive" class="text-[10px] px-1.5 py-0">
               {{ $t('taskViewer.error') }}
             </Badge>
@@ -293,7 +300,7 @@ import type { TaskEventItem } from '~/api/tasks'
 import TaskEventCard from '~/features/tasks/components/TaskEventCard.vue'
 import { useTaskEvents } from '~/features/tasks/composables/useTaskEvents'
 import { useTasksApi } from '~/api/tasks'
-import { formatToolName } from '~/utils/toolNameFormat'
+import { formatToolName, getToolCallSummary } from '~/utils/toolNameFormat'
 import { useProviders } from '~/composables/useProviders'
 
 const props = defineProps<{
