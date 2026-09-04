@@ -1233,7 +1233,9 @@ export function updateProviderModel(
   providerId: string,
   modelId: string,
   patch: {
+    name?: string
     description?: string
+    contextWindow?: number
     cost?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number }
   },
 ): ProviderConfig {
@@ -1270,9 +1272,18 @@ export function updateProviderModel(
     provider.models.push(entry)
   }
 
+  if (patch.name !== undefined) {
+    const trimmed = patch.name.trim()
+    entry.name = trimmed ? trimmed : undefined
+  }
+
   if (patch.description !== undefined) {
     const trimmed = patch.description.trim()
     entry.description = trimmed ? trimmed : undefined
+  }
+
+  if (patch.contextWindow !== undefined && patch.contextWindow > 0) {
+    entry.contextWindow = patch.contextWindow
   }
 
   if (patch.cost) {

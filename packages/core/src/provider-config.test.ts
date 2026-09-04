@@ -366,6 +366,42 @@ describe('provider-config', () => {
       'Provider not found: no-such',
     )
   })
+
+  it('updateProviderModel persists name/contextWindow/cost for models outside the bundled catalog', () => {
+    setupTmpConfig({
+      providers: [
+        {
+          id: 'or-id',
+          name: 'OpenRouter',
+          type: 'openai-completions',
+          providerType: 'openrouter',
+          provider: 'openrouter',
+          baseUrl: 'https://openrouter.ai/api/v1',
+          apiKey: 'sk-or',
+          enabledModels: ['qwen/qwen3.8-flash'],
+        },
+      ],
+    })
+
+    const patched = updateProviderModel('or-id', 'qwen/qwen3.8-flash', {
+      name: 'Qwen: Qwen3.8 Flash',
+      contextWindow: 1_000_000,
+      cost: { input: 0.15, output: 0.47 },
+    })
+    const entry = patched.models?.find(m => m.id === 'qwen/qwen3.8-flash')
+    expect(entry).toEqual({
+      id: 'qwen/qwen3.8-flash',
+      name: 'Qwen: Qwen3.8 Flash',
+      contextWindow: 1_000_000,
+      cost: { input: 0.15, output: 0.47 },
+    })
+
+    const model = buildModel(patched, 'qwen/qwen3.8-flash')
+    expect(model.name).toBe('Qwen: Qwen3.8 Flash')
+    expect(model.contextWindow).toBe(1_000_000)
+    expect(model.cost.input).toBe(0.15)
+    expect(model.cost.output).toBe(0.47)
+  })
 })
 
 describe('streamFn injection', () => {

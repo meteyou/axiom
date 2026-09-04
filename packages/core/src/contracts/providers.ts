@@ -250,7 +250,9 @@ export interface ProviderModelSelectionPayloadContract {
  * catalog-default) value.
  */
 export interface ProviderModelUpdatePayloadContract {
+  name?: string
   description?: string
+  contextWindow?: number
   cost?: {
     input?: number
     output?: number
