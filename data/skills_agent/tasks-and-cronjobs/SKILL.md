@@ -166,6 +166,37 @@ attached_skills: ["nitter", "summarizer"]
 
 Missing SKILL.md files are skipped with a warning — the task still runs.
 
+### Persistent state across runs (continuity)
+
+Each cronjob run spawns a **fresh, isolated task agent**. Run N+1 remembers nothing from run N. For digest / monitor / watch jobs this means the same items get reported over and over. Fix it with a **brain file** the task owns:
+
+1. At the **start** of the run, read the brain file to see what's already known/reported.
+2. Do the work, dedupe against that state.
+3. At the **end**, write the new facts / last-seen markers back.
+
+This needs zero platform code — it's just `read_file` / `write_file` in the cronjob prompt. It composes with `attached_skills`: attached skills bake in *rules*, the brain file carries *run-to-run state*.
+
+**Where to store:**
+
+- **`/data/memory/state/<job-name>.json` or `.md`** — compact, machine-readable job state (last-seen IDs, timestamps, cursors). Prefer this for pure dedupe markers.
+- **Wiki page (`/data/memory/wiki/<topic>.md`)** — curated, human-readable knowledge the job enriches over time.
+
+**Guardrails (a brain a cronjob writes to on every run grows unnoticed):**
+
+- **Set a size budget** (~60 KB). When the file outgrows it, move raw material into monthly archives / sub-pages and keep only a compact summary or current state in the main file.
+- **Don't blindly `read_file` a large state file** — a single `read_file` on an overgrown file can silently blow up the run (a real incident: a hub page grew to 756 KB and killed the run on low token budget / high cost). Instead `grep` for the specific marker and append with shell `>>`.
+- **Keep the split clean:** compact machine state → `/data/memory/state/`; curated knowledge → the wiki.
+
+Example digest cronjob prompt using a brain file:
+
+```
+prompt: "Read /data/memory/state/hn-digest.md for the list of story IDs already sent.
+         Fetch the current Hacker News front page. Report only stories whose ID is
+         NOT in that file, as a 5-bullet digest. Then append the newly reported IDs
+         to /data/memory/state/hn-digest.md (use grep + shell append, do not reload
+         the whole file if it is large). Keep the file under ~60 KB."
+```
+
 ### Editing, listing, removing
 
 - `list_cronjobs` — overview of all cronjobs (id, name, schedule, status).
@@ -264,6 +295,19 @@ create_cronjob(
 )
 ```
 
+### "A daily digest that doesn't repeat itself"
+
+Give the cronjob a brain file so it dedupes across runs (see [Persistent state across runs](#persistent-state-across-runs-continuity)):
+
+```
+create_cronjob(
+  name: "HN digest",
+  schedule: "0 8 * * *",
+  action_type: "task",
+  prompt: "Read /data/memory/state/hn-digest.md for story IDs already sent. Fetch the HN front page, report only new stories, then append the new IDs back to that file (grep + shell append; keep it under ~60 KB).",
+)
+```
+
 ---
 
 ## Common mistakes to avoid
@@ -276,6 +320,8 @@ create_cronjob(
 - **Promising fresh data from a `create_reminder`.** A reminder is static text. If you say "I'll remind you with the latest weather", you're lying. Use `create_cronjob` task-type instead.
 - **Telling a task to `read_file` a skill instead of attaching it.** `create_task` accepts `attached_skills` — use it, the SKILL.md then ships inside the task prompt.
 - **Attaching skills to a `create_reminder` or an `injection` cronjob.** No agent runs there, so `attached_skills` does not exist for them.
+- **A digest/monitor cronjob with no brain file.** Each run is isolated, so it re-reports the same items forever. Give it a `/data/memory/state/` file to dedupe against.
+- **Reloading an overgrown brain file with `read_file`.** A single `read_file` on a state/wiki file that grew into the hundreds of KB can kill the run. Budget its size and `grep` + append instead.
 
 ---
 
