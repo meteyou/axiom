@@ -12,16 +12,70 @@
   <div v-else class="flex h-full flex-col overflow-hidden">
     <PageHeader :title="$t('cronjobs.pageTitle')" :subtitle="$t('cronjobs.pageSubtitle')">
       <template #actions>
-        <Button variant="outline" :disabled="loading" class="gap-2" @click="loadCronjobs">
-          <AppIcon name="refresh" class="h-4 w-4" />
-          {{ $t('tasks.refresh') }}
-        </Button>
         <Button class="gap-2" @click="openCreateCronjob">
           <AppIcon name="add" class="h-4 w-4" />
           {{ $t('cronjobs.create') }}
         </Button>
       </template>
     </PageHeader>
+
+    <div class="flex-shrink-0 border-b border-border px-3 py-2 md:px-5 md:py-3">
+      <div class="flex items-center gap-2 md:hidden">
+        <Popover>
+          <PopoverTrigger as-child>
+            <Button variant="outline" class="flex-1 justify-start gap-2">
+              <AppIcon name="filter" size="sm" />
+              {{ $t('cronjobs.filters.button') }}
+              <Badge v-if="activeFilterCount > 0" variant="default" class="ml-auto px-1.5 py-0 text-[10px]">
+                {{ activeFilterCount }}
+              </Badge>
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="start" class="flex w-[calc(100vw-1.5rem)] max-w-sm flex-col gap-2">
+            <CronjobFilterFields
+              v-model:search="filters.search"
+              v-model:enabled="filters.enabled"
+              v-model:action-type="filters.actionType"
+              v-model:provider="filters.provider"
+              v-model:last-run-status="filters.lastRunStatus"
+              v-model:schedule-type="filters.scheduleType"
+              :has-default-provider-option="hasDefaultProviderOption"
+              :provider-options="providerOptions"
+            />
+          </PopoverContent>
+        </Popover>
+
+        <Button
+          variant="outline"
+          size="icon"
+          :disabled="loading"
+          :title="$t('tasks.refresh')"
+          @click="loadCronjobs"
+        >
+          <AppIcon name="refresh" size="sm" />
+        </Button>
+      </div>
+
+      <div class="hidden flex-col gap-2 md:flex lg:flex-row lg:items-center">
+        <div class="flex flex-1 flex-wrap items-center gap-2">
+          <CronjobFilterFields
+            v-model:search="filters.search"
+            v-model:enabled="filters.enabled"
+            v-model:action-type="filters.actionType"
+            v-model:provider="filters.provider"
+            v-model:last-run-status="filters.lastRunStatus"
+            v-model:schedule-type="filters.scheduleType"
+            :has-default-provider-option="hasDefaultProviderOption"
+            :provider-options="providerOptions"
+          />
+        </div>
+
+        <Button variant="outline" :disabled="loading" class="gap-2" @click="loadCronjobs">
+          <AppIcon name="refresh" class="h-4 w-4" />
+          {{ $t('tasks.refresh') }}
+        </Button>
+      </div>
+    </div>
 
     <div class="flex flex-1 flex-col overflow-y-auto">
       <!-- Error banner -->
@@ -73,6 +127,19 @@
         </Button>
       </div>
 
+      <!-- No filter matches -->
+      <div
+        v-else-if="filteredCronjobs.length === 0"
+        class="flex flex-1 flex-col items-center justify-center gap-3 p-10 text-center"
+      >
+        <AppIcon name="filter" size="xl" class="opacity-40" />
+        <h2 class="text-base font-semibold text-foreground">{{ $t('cronjobs.noFilterMatchesTitle') }}</h2>
+        <p class="max-w-md text-sm text-muted-foreground">{{ $t('cronjobs.noFilterMatchesDescription') }}</p>
+        <Button variant="outline" class="mt-2" @click="resetFilters">
+          {{ $t('cronjobs.filters.reset') }}
+        </Button>
+      </div>
+
       <!-- Cronjobs table -->
       <div v-else class="overflow-x-auto">
         <Table>
@@ -89,7 +156,7 @@
           </TableHeader>
           <TableBody>
             <TableRow
-              v-for="cj in cronjobs"
+              v-for="cj in filteredCronjobs"
               :key="cj.id"
               class="cursor-pointer"
               @click="openEditCronjob(cj)"
@@ -129,7 +196,7 @@
                 </Badge>
               </TableCell>
               <TableCell class="text-muted-foreground">
-                {{ cj.actionType === 'injection' ? '—' : (formatProvider(cj.provider) || $t('cronjobs.defaultProvider')) }}
+                {{ cj.actionType === 'injection' ? '—' : (formatCronjobProvider(cj.provider, providers) || $t('cronjobs.defaultProvider')) }}
               </TableCell>
               <TableCell @click.stop>
                 <Switch
@@ -204,33 +271,16 @@
 
 <script setup lang="ts">
 import type { Cronjob } from '~/composables/useCronjobs'
+import CronjobFilterFields from '~/features/cronjobs/components/CronjobFilterFields.vue'
+import { useCronjobFilters } from '~/features/cronjobs/composables/useCronjobFilters'
+import { formatCronjobProvider } from '~/features/cronjobs/utils/formatProvider'
 
 const { t } = useI18n()
 const { formatTimestamp } = useFormat()
 const { user } = useAuth()
 const isAdmin = computed(() => user.value?.role === 'admin')
 
-// Providers (needed to format `providerId:modelId` into a human label in the table)
 const { providers, fetchProviders } = useProviders()
-
-/**
- * Format a stored cronjob provider value for display. Accepts both the modern
- * `providerId:modelId` composite and the legacy plain provider name/id.
- * Returns the provider name (with model in parens when known), or the raw
- * value when the provider cannot be resolved.
- */
-function formatProvider(raw: string | null | undefined): string {
-  if (!raw) return ''
-  const colonIdx = raw.indexOf(':')
-  const providerKey = colonIdx === -1 ? raw : raw.slice(0, colonIdx)
-  const modelId = colonIdx === -1 ? undefined : raw.slice(colonIdx + 1) || undefined
-  const match = providers.value.find(
-    p => p.id === providerKey || p.name.toLowerCase() === providerKey.toLowerCase(),
-  )
-  if (!match) return raw
-  const model = modelId ?? match.enabledModels?.[0]
-  return model ? `${match.name} (${model})` : match.name
-}
 
 // === Cronjobs ===
 const {
@@ -246,6 +296,15 @@ const {
   triggerCronjob,
   clearSuccess,
 } = useCronjobs()
+
+const {
+  filters,
+  activeFilterCount,
+  hasDefaultProviderOption,
+  providerOptions,
+  filteredCronjobs,
+  resetFilters,
+} = useCronjobFilters(cronjobs, providers)
 
 // Create/Edit dialog
 const cronjobDialog = reactive({
