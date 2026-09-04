@@ -52,10 +52,21 @@ describe('detectMemoryFile', () => {
     expect(result.label).toBe('Writing User Profile')
   })
 
+  it('detects arbitrary subfolders below the memory root in dev and prod layouts', () => {
+    const dev = detectMemoryFile('read_file', { path: '/Users/dev/project/.data/memory/wiki/karpathy-lernpfad.md' })
+    expect(dev.isMemoryFile).toBe(true)
+    expect(dev.label).toBe('Reading Memory File')
+
+    const prod = detectMemoryFile('write_file', { path: '/data/memory/wiki/notes.md', content: 'x' })
+    expect(prod.isMemoryFile).toBe(true)
+    expect(prod.label).toBe('Writing Memory File')
+  })
+
   it('returns default for non-memory file paths', () => {
     const result = detectMemoryFile('read_file', { path: '/workspace/src/index.ts' })
     expect(result.isMemoryFile).toBe(false)
     expect(result.icon).toBe('settings')
+    expect(detectMemoryFile('read_file', { path: '/workspace/memory/notes.md' }).isMemoryFile).toBe(false)
   })
 
   it('returns default for non-file tools', () => {
