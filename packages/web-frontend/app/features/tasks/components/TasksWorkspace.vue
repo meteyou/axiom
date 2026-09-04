@@ -1,13 +1,5 @@
 <template>
-  <!-- Task Viewer (detail mode) -->
-  <TaskEventsViewer
-    v-if="selectedTaskId"
-    :task-id="selectedTaskId"
-    @back="closeViewer"
-    @restarted="onTaskRestarted"
-  />
-
-  <div v-else class="flex h-full flex-col overflow-hidden">
+  <div class="flex h-full flex-col overflow-hidden">
     <PageHeader :title="$t('tasks.title')" :subtitle="$t('tasks.subtitle')" />
 
     <!-- Filter toolbar -->
@@ -309,7 +301,6 @@
 
 <script setup lang="ts">
 import type { Task } from '~/api/tasks'
-import TaskEventsViewer from '~/features/tasks/components/TaskEventsViewer.vue'
 import {
   TASK_DEFAULT_PROVIDER_FILTER,
   encodeTaskProviderModelFilter,
@@ -319,25 +310,8 @@ import {
 const { t } = useI18n()
 const { formatNumber, formatCurrency, formatTimestamp } = useFormat()
 
-const selectedTaskId = ref<string | null>(null)
-
 function openViewer(taskId: string) {
-  selectedTaskId.value = taskId
-}
-
-function closeViewer() {
-  selectedTaskId.value = null
-  loadTasks(pagination.value.page)
-}
-
-// After a successful restart, swap the viewer to the new task so the user
-// can watch it run. We also refresh the list in the background so the new
-// row shows up when they navigate back.
-function onTaskRestarted(newTaskId: string) {
-  selectedTaskId.value = newTaskId
-  loadTasks(1).catch(() => {
-    // Background refresh — errors are already surfaced by useTasksList.
-  })
+  navigateTo(`/tasks/${taskId}`)
 }
 
 const {

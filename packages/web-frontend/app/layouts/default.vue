@@ -417,7 +417,7 @@ onUnmounted(() => {
 
 function navItemClass(path: string | string[]) {
   const paths = Array.isArray(path) ? path : [path]
-  const isActive = paths.includes(route.path)
+  const isActive = paths.some(p => route.path === p || route.path.startsWith(`${p}/`))
   return [
     'flex items-center gap-3 rounded-lg px-3 py-[11px] text-sm font-medium transition-all duration-150 no-underline',
     isActive
