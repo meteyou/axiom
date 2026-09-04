@@ -117,6 +117,7 @@ carries between surfaces.
 | `/cronjobs` | Show configured cronjobs and their next run time. (alias `/cron`)           |
 | `/model`    | Show or switch the active provider and model. (alias `/provider`)           |
 | `/thinking` | Show or set the global main-agent thinking level.                           |
+| `/skill`    | Load a skill into the current conversation. (`/skill:<name> [prompt]`)      |
 
 On the web chat, `/model` (and its alias `/provider`) responds as an
 interactive button group: provider picker → model picker → confirmation.
@@ -126,6 +127,17 @@ the next turn.
 `/thinking` accepts `off`, `minimal`, `low`, `medium`, `high`, or `xhigh`.
 Like the brain-icon selector, it changes the global main-agent setting and
 applies to the next turn.
+
+`/skill:<name>` injects a skill's `SKILL.md` into the conversation so the
+agent follows it from now on — the same instructions it would read when it
+picks the skill itself. Both self-created agent skills (by name) and enabled
+installed skills (by `owner/name`) can be loaded. Typing `/skill:` opens an
+autocomplete dropdown listing every loadable skill; pick one with ↑/↓ and
+Tab/Enter. Append a prompt on the same line (`/skill:deploy ship v2 to
+staging`) to load the skill and run the request in one go, or send just
+`/skill:<name>` and the agent confirms the skill is loaded and waits for your
+next message. A bare `/skill` shows a button picker. Unknown names reply with
+the list of available skills.
 
 Unknown commands respond with a hint pointing at `/help` and are not sent to
 the agent. To send a literal message that starts with a slash to the agent

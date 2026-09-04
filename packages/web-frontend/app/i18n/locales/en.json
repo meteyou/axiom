@@ -107,7 +107,12 @@
     "micError": "Microphone error",
     "micPermissionDenied": "Microphone permission denied",
     "micTooShort": "Recording too short — hold longer",
-    "dropFilesHere": "Drop files to attach"
+    "dropFilesHere": "Drop files to attach",
+    "skillAutocomplete": {
+      "label": "Load a skill",
+      "installed": "installed",
+      "hint": "↑↓ to navigate · Tab/Enter to pick · Esc to dismiss · add a prompt after the name to run it immediately"
+    }
   },
   "status": {
     "online": "Online",

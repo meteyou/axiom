@@ -77,6 +77,7 @@ to the input field) is populated automatically on bot startup via
 | `/model`    | Show or switch the active provider and model. (alias `/provider`)           |
 | `/thinking` | Show or set the global main-agent thinking level.                           |
 | `/tts`      | Toggle automatic Telegram voice replies. (alias `/voice`)                   |
+| `/skill`    | Load a skill into the current conversation. (`/skill:<name> [prompt]`)      |
 
 On Telegram, `/model` (and its alias `/provider`) renders as an inline
 keyboard: provider picker → model picker → confirmation. The same message is
@@ -84,6 +85,16 @@ edited in place between steps. Selecting a model writes `providers.json` and
 switches the active model for the next turn. The picker auto-expires after
 10 minutes if untouched, so scrolling back to an old picker and tapping a
 button will return an "expired" notice instead of switching models.
+
+`/skill` works in two ways. A bare `/skill` opens an inline keyboard listing
+every loadable skill (self-created agent skills and enabled installed
+skills). Tapping one injects its `SKILL.md` into the conversation; the agent
+confirms that the skill is loaded and waits, so your next message is the
+actual request. Telegram buttons cannot carry free text, which is why this is
+a two-step flow. If you already know the name, type everything in one line:
+`/skill:<name> <prompt>` loads the skill and runs the prompt immediately (no
+native autocomplete for the name, but the same result). Unknown names reply
+with the list of available skills.
 
 Everything else is treated as a normal message and forwarded to the agent.
 If the menu does not appear in your Telegram client, restart the chat or wait

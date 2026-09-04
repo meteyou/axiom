@@ -6,7 +6,7 @@ import type {
   SlashCommandRegistry,
   SlashCommandPicker,
 } from '@axiom/core'
-import { isSlashCommandPicker } from '@axiom/core'
+import { isSlashCommandPicker, isSlashCommandAgentTurn } from '@axiom/core'
 import type { AgentCore, ResponseChunk, RetryInfo, StallInfo, TurnErrorInfo, TurnEvent } from '@axiom/core'
 import {
   TaskStore,
@@ -294,6 +294,11 @@ export function setupWebSocketChat(
         return
       }
 
+      // What the agent receives. Differs from `parsed.content` only for
+      // slash commands that enrich the input (e.g. /skill), where the raw
+      // command is persisted but the agent sees the expanded text.
+      let agentText = parsed.content
+
       // Handle commands
       if (parsed.type === 'command' || parsed.content.startsWith('/')) {
         const dispatch = await slashRegistry.dispatch(parsed.content, {
@@ -306,18 +311,26 @@ export function setupWebSocketChat(
           onThinkingLevelChanged: (level) => resolveAgentCore()?.setThinkingLevel(level),
         })
         if (dispatch.kind === 'handled') {
-          if (isSlashCommandPicker(dispatch.reply)) {
-            sendMessage(ws, {
-              type: 'system',
-              // Title/description rendered as the bubble's text; buttons live
-              // alongside via the `picker` field.
-              text: formatPickerText(dispatch.reply),
-              picker: dispatch.reply,
-            })
-          } else if (dispatch.reply !== null) {
-            sendMessage(ws, { type: 'system', text: dispatch.reply })
+          const reply = dispatch.reply
+          if (isSlashCommandAgentTurn(reply)) {
+            // Fall through to the regular message flow below with the
+            // expanded text; the raw command is what gets persisted.
+            agentText = reply.text
+            if (reply.ack) sendMessage(ws, { type: 'system', text: reply.ack })
+          } else {
+            if (isSlashCommandPicker(reply)) {
+              sendMessage(ws, {
+                type: 'system',
+                // Title/description rendered as the bubble's text; buttons live
+                // alongside via the `picker` field.
+                text: formatPickerText(reply),
+                picker: reply,
+              })
+            } else if (reply !== null) {
+              sendMessage(ws, { type: 'system', text: reply })
+            }
+            return
           }
-          return
         }
         if (dispatch.kind === 'not_found') {
           sendMessage(ws, {
@@ -335,7 +348,9 @@ export function setupWebSocketChat(
         }
         const command = dispatch.kind === 'external'
           ? dispatch.command.name
-          : parsed.content.replace(/^\//, '').trim().toLowerCase()
+          : dispatch.kind === 'handled'
+            ? null
+            : parsed.content.replace(/^\//, '').trim().toLowerCase()
 
         if (command === 'new') {
           turnRunner.abortTurn(currentUser.userId)
@@ -419,7 +434,7 @@ export function setupWebSocketChat(
       turnRunner.startTurn({
         userId: currentUser.userId,
         sessionId: resolvedSessionId,
-        text: parsed.content,
+        text: agentText,
         source: 'web',
         attachments: parsed.attachments,
       })

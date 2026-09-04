@@ -489,7 +489,14 @@
     </Transition>
 
     <div class="shrink-0 border-t border-border bg-background p-3">
-      <form class="flex flex-col gap-2" @submit.prevent="handleSend">
+      <form class="relative flex flex-col gap-2" @submit.prevent="handleSend">
+        <ChatSkillAutocomplete
+          v-if="skillAutocomplete.active.value"
+          :suggestions="skillAutocomplete.suggestions.value"
+          :selected-index="skillAutocomplete.selectedIndex.value"
+          @select="handleSkillSelect"
+          @hover="skillAutocomplete.selectedIndex.value = $event"
+        />
         <!-- Pending files row -->
         <div v-if="pendingFiles.length" class="flex flex-wrap gap-2">
           <div
@@ -566,7 +573,7 @@
               :class="isAdmin ? 'pl-2' : 'pl-3'"
               :placeholder="$t('chat.placeholder')"
               rows="1"
-              @keydown.enter.exact.prevent="handleSend"
+              @keydown="handleComposerKeydown"
               @input="autoResize"
             />
 
@@ -628,6 +635,7 @@
 
 <script setup lang="ts">
 import type { ChatMessage, ToolCallData } from '~/composables/useChat'
+import type { LoadableSkill } from '~/composables/useSkillAutocomplete'
 import { SETTINGS_THINKING_LEVELS, type SettingsThinkingLevel } from '@axiom/core/contracts'
 import { useSettingsApi } from '~/api/settings'
 const { t } = useI18n()
@@ -970,6 +978,21 @@ async function loadHistory() {
     }
   } finally { loadingHistory.value = false; nextTick(() => scrollToBottom()) }
 }
+const skillAutocomplete = useSkillAutocomplete(inputText)
+
+function handleSkillSelect(skill: LoadableSkill) {
+  skillAutocomplete.select(skill)
+  inputRef.value?.focus()
+}
+
+function handleComposerKeydown(event: KeyboardEvent) {
+  if (skillAutocomplete.handleKeydown(event)) return
+  if (event.key === 'Enter' && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey && !event.isComposing) {
+    event.preventDefault()
+    void handleSend()
+  }
+}
+
 async function handleSend() {
   const files = [...pendingFiles.value]
   const text = inputText.value
