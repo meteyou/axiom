@@ -1963,10 +1963,12 @@ export class TelegramBot {
   }
 
   // Public cross-workspace API used by web-backend; Fallow cannot see this in clean CI before workspace dist files exist.
+  // Not mirrored to the web chat: every caller (reminders, task status
+  // updates) already persists and broadcasts its own dedicated chat row, so
+  // syncing here would duplicate the message as a plain assistant bubble.
   // fallow-ignore-next-line unused-class-member
   async sendTaskNotification(chatId: string | number, html: string): Promise<boolean> {
     const parts = splitMessage(html)
-    const plainFull = telegramHtmlToPlainText(html)
 
     for (const part of parts) {
       try {
@@ -1983,7 +1985,6 @@ export class TelegramBot {
       }
     }
 
-    this.syncOutgoingMessageToWeb(chatId, plainFull)
     return true
   }
 
