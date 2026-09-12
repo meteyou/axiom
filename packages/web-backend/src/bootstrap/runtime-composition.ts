@@ -284,6 +284,13 @@ function areReminderFieldsDistinct(name: string, message: string): boolean {
   return true
 }
 
+function formatReminderPlainText(name: string, message: string): string {
+  if (!areReminderFieldsDistinct(name, message)) {
+    return `⏰ ${message.trim() || name.trim()}`
+  }
+  return `⏰ ${name.trim()}\n\n${message.trim()}`
+}
+
 function formatReminderTelegramHtml(name: string, message: string): string {
   if (!areReminderFieldsDistinct(name, message)) {
     const singleLine = message.trim() || name.trim()
@@ -777,6 +784,38 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
         // otherwise add 8760 session rows per year; with the cache each fire
         // appends a new `tool_calls` row under the same session.
         const reminderSessionId = resolveReminderSessionId(scheduledTask.id)
+
+        // Persist into the user's interactive session so the reminder card
+        // survives a page reload (the live `reminder` event below is not
+        // stored anywhere else). A failed insert must not block the live
+        // broadcast or Telegram delivery, so it is recorded in
+        // deliveryResults (surfaced via the reminder_delivery tool-call log)
+        // instead of rethrown.
+        if (agentCore) {
+          try {
+            const chatSessionId = agentCore.resolveInjectionSessionId(String(userId))
+            db.prepare(
+              'INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)'
+            ).run(
+              chatSessionId,
+              userId,
+              'system',
+              formatReminderPlainText(scheduledTask.name, scheduledTask.prompt),
+              JSON.stringify({
+                type: 'reminder',
+                cronjobId: scheduledTask.id,
+                name: scheduledTask.name,
+                message: scheduledTask.prompt,
+              }),
+            )
+            deliveryResults.push('chat_messages: reminder persisted')
+          } catch (err) {
+            logger.error(`[axiom] Failed to persist reminder "${scheduledTask.name}":`, err)
+            deliveryResults.push(`chat_messages: persist failed - ${(err as Error).message}`)
+          }
+        } else {
+          deliveryResults.push('chat_messages: not persisted (agent core unavailable)')
+        }
 
         chatEventBus.broadcast({
           type: 'reminder',

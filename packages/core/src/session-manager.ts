@@ -407,6 +407,8 @@ export class SessionManager {
         const taskName = typeof metadata.taskName === 'string' ? metadata.taskName.trim() : ''
         const taskLabel = taskName ? `: ${taskName}` : ''
         lines.push(`Background task (${taskStatus}${taskLabel}): ${msg.content.slice(0, 2000)}`)
+      } else if (msg.role === 'system' && metadata?.type === 'reminder') {
+        lines.push(`Reminder: ${msg.content.slice(0, 2000)}`)
       }
     }
 
