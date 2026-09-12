@@ -1,8 +1,8 @@
-import { execSync } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import nodePath from 'node:path'
 import { Agent as PiAgent } from '@earendil-works/pi-agent-core'
-import type { AgentEvent, AgentTool } from '@earendil-works/pi-agent-core'
+import type { AgentEvent, AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core'
 import type { Api, AssistantMessage, Message, ImageContent, Model } from '@earendil-works/pi-ai'
 import { Type } from '@earendil-works/pi-ai'
 import type { Database } from './database.js'
@@ -139,6 +139,92 @@ function resolveWorkspacePath(filePath: string): string {
   return nodePath.resolve(getWorkspaceDir(), filePath)
 }
 
+type ShellResult = AgentToolResult<{ exitCode: number }>
+
+const SHELL_MAX_OUTPUT_BYTES = 10 * 1024 * 1024
+
+// Must stay async: a blocking child process would stall the whole event loop
+// (HTTP + WebSocket) for the duration of the command.
+//
+// Uses spawn instead of exec: execFile drops `detached`, and we need the child
+// to lead its own process group so that killing the group (negative pid)
+// reaches pipelines/`&&` chains/npm wrappers instead of only `/bin/sh`.
+function runShellCommand(command: string, timeout: number, signal?: AbortSignal): Promise<ShellResult> {
+  return new Promise((resolve) => {
+    let killReason: 'timeout' | 'abort' | 'maxBuffer' | null = null
+    let stdout = ''
+    let stderr = ''
+    let outputBytes = 0
+
+    const child = spawn(command, {
+      shell: true,
+      detached: true,
+      cwd: getWorkspaceDir(),
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+
+    const killProcessGroup = (reason: NonNullable<typeof killReason>): void => {
+      if (killReason !== null || child.pid === undefined) return
+      killReason = reason
+      try {
+        process.kill(-child.pid, 'SIGKILL')
+      } catch (err) {
+        // ESRCH: the group already exited before this kill; the close event will
+        // still fire with the real result. Anything else is a bug.
+        if ((err as NodeJS.ErrnoException).code !== 'ESRCH') throw err
+      }
+    }
+
+    const collect = (target: 'stdout' | 'stderr') => (chunk: Buffer): void => {
+      outputBytes += chunk.length
+      if (outputBytes > SHELL_MAX_OUTPUT_BYTES) {
+        killProcessGroup('maxBuffer')
+        return
+      }
+      if (target === 'stdout') stdout += chunk.toString('utf-8')
+      else stderr += chunk.toString('utf-8')
+    }
+    child.stdout?.on('data', collect('stdout'))
+    child.stderr?.on('data', collect('stderr'))
+
+    const timer = setTimeout(() => killProcessGroup('timeout'), timeout)
+    const onAbort = (): void => killProcessGroup('abort')
+    if (signal?.aborted) onAbort()
+    else signal?.addEventListener('abort', onAbort, { once: true })
+
+    const finish = (result: ShellResult): void => {
+      clearTimeout(timer)
+      signal?.removeEventListener('abort', onAbort)
+      resolve(result)
+    }
+
+    child.on('error', (err) => {
+      finish({
+        content: [{ type: 'text', text: err.message }],
+        details: { exitCode: 1 },
+      })
+    })
+
+    child.on('close', (code) => {
+      if (code === 0 && killReason === null) {
+        finish({
+          content: [{ type: 'text', text: stdout || '(no output)' }],
+          details: { exitCode: 0 },
+        })
+        return
+      }
+      const parts = [stdout, stderr].filter(Boolean)
+      if (killReason === 'abort') parts.push('Command aborted')
+      else if (killReason === 'timeout') parts.push(`Command timed out after ${timeout}ms`)
+      else if (killReason === 'maxBuffer') parts.push(`Command output exceeded ${SHELL_MAX_OUTPUT_BYTES} bytes`)
+      finish({
+        content: [{ type: 'text', text: parts.join('\n') || 'Command failed' }],
+        details: { exitCode: typeof code === 'number' ? code : 1 },
+      })
+    })
+  })
+}
+
 /**
  * Build YOLO-mode tools that give the agent unrestricted access
  */
@@ -151,27 +237,9 @@ export function createYoloTools(): AgentTool[] {
       command: Type.String({ description: 'The shell command to execute' }),
       timeout: Type.Optional(Type.Number({ description: 'Timeout in milliseconds (default: 60000)' })),
     }),
-    execute: async (_toolCallId, params) => {
+    execute: async (_toolCallId, params, signal) => {
       const { command, timeout = 60000 } = params as { command: string; timeout?: number }
-      try {
-        const result = execSync(command, {
-          timeout,
-          encoding: 'utf-8',
-          maxBuffer: 10 * 1024 * 1024,
-          cwd: getWorkspaceDir(),
-        })
-        return {
-          content: [{ type: 'text' as const, text: result || '(no output)' }],
-          details: { exitCode: 0 },
-        }
-      } catch (err: unknown) {
-        const error = err as { stdout?: string; stderr?: string; status?: number; message?: string }
-        const output = [error.stdout, error.stderr].filter(Boolean).join('\n') || error.message || 'Command failed'
-        return {
-          content: [{ type: 'text' as const, text: output }],
-          details: { exitCode: error.status ?? 1 },
-        }
-      }
+      return runShellCommand(command, timeout, signal)
     },
   }
 
