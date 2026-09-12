@@ -131,6 +131,12 @@ export interface ChatMessage {
   isTaskResult?: boolean
   /** Task result display name */
   taskResultName?: string
+  /** Whether this is a scheduled reminder (injection cronjob) delivered as a system message */
+  isReminder?: boolean
+  /** Reminder display name (card header) */
+  reminderName?: string
+  /** Reminder body without the name prefix (card body) */
+  reminderMessage?: string
   /** Task result status: completed, failed, question */
   taskResultStatus?: string
   /** Task duration in minutes */
@@ -702,6 +708,9 @@ export function useChat() {
             role: 'system',
             content: reminderContent,
             timestamp: new Date().toISOString(),
+            isReminder: true,
+            reminderName: msg.reminderName?.trim() || undefined,
+            reminderMessage: msg.reminderMessage?.trim() || undefined,
           }]
 
           if (

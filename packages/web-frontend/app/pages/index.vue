@@ -104,11 +104,11 @@
             // Mobile: messages fill the available width (minus avatar + gap
             // or the pl-11 offset for tool cards). On sm+ screens we cap them
             // so bubbles don't span edge-to-edge on wider viewports.
-            msg.role === 'divider' ? 'w-full' : (msg.role === 'tool' || (msg.role === 'system' && (msg.isTaskResult || msg.isTaskStatusUpdate || msg.stallInfo || msg.errorInfo || msg.picker || msg.chatAction)) || msg.isThinking) ? 'self-start w-full max-w-full sm:max-w-[75%] pl-11' : 'flex max-w-full gap-3 sm:max-w-[75%]',
+            msg.role === 'divider' ? 'w-full' : (msg.role === 'tool' || (msg.role === 'system' && (msg.isTaskResult || msg.isTaskStatusUpdate || msg.isReminder || msg.stallInfo || msg.errorInfo || msg.picker || msg.chatAction)) || msg.isThinking) ? 'self-start w-full max-w-full sm:max-w-[75%] pl-11' : 'flex max-w-full gap-3 sm:max-w-[75%]',
             {
               'self-end flex-row-reverse': msg.role === 'user',
               'self-start': msg.role === 'assistant' && !msg.isThinking,
-              'self-center max-w-full sm:max-w-[85%]': msg.role === 'system' && !msg.isTaskResult && !msg.isTaskStatusUpdate && !msg.stallInfo && !msg.errorInfo && !msg.picker && !msg.chatAction,
+              'self-center max-w-full sm:max-w-[85%]': msg.role === 'system' && !msg.isTaskResult && !msg.isTaskStatusUpdate && !msg.isReminder && !msg.stallInfo && !msg.errorInfo && !msg.picker && !msg.chatAction,
             },
           ]"
         >
@@ -322,6 +322,28 @@
               </template>
               <div class="max-h-60 overflow-y-auto px-3 py-2">
                 <div class="prose-chat break-words text-xs text-foreground" v-html="renderMarkdown(taskResultBody(msg.content))" />
+              </div>
+            </ChatCollapsibleCard>
+          </template>
+
+          <!-- Scheduled reminder (injection cronjob), same collapsible card as task results -->
+          <template v-else-if="msg.role === 'system' && msg.isReminder">
+            <ChatCollapsibleCard
+              icon="clock"
+              :expanded="expandedInjections.has(i)"
+              @toggle="toggleInjection(i)"
+            >
+              <template #header>
+                <span class="min-w-0 truncate font-medium">{{ msg.reminderName ?? $t('chat.reminder') }}</span>
+              </template>
+              <template #trailing>
+                <span class="rounded bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-medium text-sky-600 dark:text-sky-400">
+                  {{ $t('chat.reminder') }}
+                </span>
+                <span v-if="msg.timestamp" class="text-[10px] text-muted-foreground/60">{{ formatTimeShort(msg.timestamp) }}</span>
+              </template>
+              <div class="max-h-60 overflow-y-auto px-3 py-2">
+                <div class="prose-chat break-words text-xs text-foreground" v-html="renderMarkdown(msg.reminderMessage ?? msg.content)" />
               </div>
             </ChatCollapsibleCard>
           </template>
@@ -762,11 +784,18 @@ const expandedSummaries = ref<Set<string>>(new Set())
 function toggleSummary(id: string) { const updated = new Set(expandedSummaries.value); updated.has(id) ? updated.delete(id) : updated.add(id); expandedSummaries.value = updated }
 
 const filteredMessages = computed(() => {
-  return messages.value.filter((msg) => {
-    if (!showToolCalls.value && msg.role === 'tool' && msg.toolData) return false
-    if (!showInjections.value && msg.role === 'system' && (msg.isTaskResult || msg.isTaskStatusUpdate)) return false
-    if (!showThinking.value && msg.isThinking) return false
-    return true
+  return messages.value.flatMap((msg): ChatMessage[] => {
+    if (!showToolCalls.value && msg.role === 'tool' && msg.toolData) return []
+    if (!showThinking.value && msg.isThinking) return []
+    if (msg.role === 'system' && msg.isReminder) {
+      // A reminder is one persisted row but two UI elements: the injection
+      // card (subject to the Injections filter) and the always-visible
+      // delivery bubble, mirroring task-result card + assistant response.
+      const bubble: ChatMessage = { ...msg, role: 'assistant', isReminder: false }
+      return showInjections.value ? [msg, bubble] : [bubble]
+    }
+    if (!showInjections.value && msg.role === 'system' && (msg.isTaskResult || msg.isTaskStatusUpdate)) return []
+    return [msg]
   })
 })
 const expandedTools = ref<Set<string>>(new Set())
@@ -902,6 +931,15 @@ async function loadHistory() {
             taskResultName: meta.taskName ?? 'Background Task',
             taskResultStatus: meta.taskResultStatus ?? meta.taskStatus ?? 'completed',
             taskResultDuration: meta.durationMinutes,
+          } as ChatMessage
+        }
+
+        if (m.role === 'system' && meta.type === 'reminder') {
+          return {
+            id: m.id, role: 'system' as const, content: m.content, timestamp: m.timestamp, source,
+            isReminder: true,
+            reminderName: typeof meta.name === 'string' && meta.name.trim() ? meta.name.trim() : undefined,
+            reminderMessage: typeof meta.message === 'string' && meta.message.trim() ? meta.message.trim() : undefined,
           } as ChatMessage
         }
 
