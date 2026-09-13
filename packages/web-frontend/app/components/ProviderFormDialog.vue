@@ -303,6 +303,11 @@
               </div>
             </div>
 
+            <div v-if="oauthDeviceCode" class="mt-3 flex items-center gap-3 rounded-md border border-border bg-background px-3 py-2">
+              <span class="text-xs text-muted-foreground">{{ $t('providers.oauthDeviceCode') }}</span>
+              <code class="font-mono text-sm font-semibold tracking-widest">{{ oauthDeviceCode }}</code>
+            </div>
+
             <!-- Manual code input fallback -->
             <div v-if="oauthUsesCallback" class="mt-3 flex flex-col gap-1.5">
               <Label for="oauth-code" class="text-xs">{{ $t('providers.oauthManualCode') }}</Label>
@@ -446,6 +451,7 @@ const oauthInProgress = ref(false)
 const oauthError = ref<string | null>(null)
 const oauthLoginId = ref<string | null>(null)
 const oauthUsesCallback = ref(false)
+const oauthDeviceCode = ref<string | null>(null)
 const manualCode = ref('')
 
 // Ollama state
@@ -608,6 +614,7 @@ watch(() => [props.open, props.provider] as const, ([isOpen, entry]) => {
     oauthInProgress.value = false
     oauthError.value = null
     oauthLoginId.value = null
+    oauthDeviceCode.value = null
     manualCode.value = ''
   }
 }, { immediate: true })
@@ -775,6 +782,7 @@ function cancelOAuthRenew() {
   // and reset local OAuth state so the user can trigger a fresh renewal.
   oauthInProgress.value = false
   oauthLoginId.value = null
+  oauthDeviceCode.value = null
   manualCode.value = ''
   oauthError.value = null
 }
@@ -798,6 +806,7 @@ async function startOAuthRenew() {
 
     oauthLoginId.value = response.loginId
     oauthUsesCallback.value = response.usesCallbackServer
+    oauthDeviceCode.value = response.usesCallbackServer ? null : (response.instructions ?? null)
 
     if (response.authUrl) {
       window.open(response.authUrl, '_blank')
@@ -828,6 +837,7 @@ async function startOAuth() {
 
     oauthLoginId.value = response.loginId
     oauthUsesCallback.value = response.usesCallbackServer
+    oauthDeviceCode.value = response.usesCallbackServer ? null : (response.instructions ?? null)
 
     // Open auth URL in new tab
     if (response.authUrl) {

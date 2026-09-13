@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { addProvider, getAvailableModels } from '@axiom/core'
+import { __setRadiusCatalogForTests, addProvider, getAvailableModels } from '@axiom/core'
 import {
   createProvidersService,
   ProvidersNotFoundError,
@@ -127,5 +127,58 @@ describe('getLiveModels (dynamic catalog)', () => {
   it('rejects an unknown provider id', async () => {
     const service = createProvidersService()
     await expect(service.getLiveModels('does-not-exist')).rejects.toBeInstanceOf(ProvidersNotFoundError)
+  })
+})
+
+describe('getModelsByProviderType (Radius)', () => {
+  const kimi = {
+    id: 'kimi-k3',
+    name: 'Kimi K3',
+    reasoning: true,
+    input: ['text'] as ('text' | 'image')[],
+    contextWindow: 1_000_000,
+    maxTokens: 100_000,
+    cost: { input: 3, output: 15, cacheRead: 0, cacheWrite: 0 },
+  }
+  const staleAuthenticatedCatalog = {
+    checkedAt: Date.now() - 7 * 60 * 60 * 1000,
+    baseUrl: 'https://radius.pi.dev/v1',
+    models: [kimi, { ...kimi, id: 'org/private-model', name: 'Private' }],
+    authenticated: true,
+  }
+
+  afterEach(() => {
+    __setRadiusCatalogForTests(undefined)
+  })
+
+  it('uses the configured Radius provider credential for the refresh', async () => {
+    addProvider({ name: 'Radius', providerType: 'radius-api-key', apiKey: 'org-key', enabledModels: [] })
+    __setRadiusCatalogForTests(staleAuthenticatedCatalog)
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ baseUrl: 'https://radius.pi.dev/v1', models: [kimi] }), { status: 200 }),
+    )
+
+    const models = await createProvidersService().getModelsByProviderType('radius')
+
+    expect(models.map(m => m.id)).toEqual(['kimi-k3'])
+    const headers = (fetchSpy.mock.calls[0]![1] as RequestInit).headers as Record<string, string>
+    expect(headers.authorization).toBe('Bearer org-key')
+  })
+
+  it('falls back to the cached catalog when the refresh fails', async () => {
+    __setRadiusCatalogForTests(staleAuthenticatedCatalog)
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('network down'))
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const models = await createProvidersService().getModelsByProviderType('radius')
+
+    expect(models.map(m => m.id)).toEqual(['kimi-k3', 'org/private-model'])
+  })
+
+  it('fails when the refresh fails and no catalog is cached', async () => {
+    __setRadiusCatalogForTests(null)
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('network down'))
+
+    await expect(createProvidersService().getModelsByProviderType('radius')).rejects.toThrow(/network down/)
   })
 })

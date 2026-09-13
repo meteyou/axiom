@@ -5,8 +5,13 @@ import {
   addProvider as addProviderConfig,
   clearFallbackProvider,
   deleteProvider as deleteProviderConfig,
+  getApiKeyForProvider,
   getAvailableModels,
+  getRadiusCatalog,
   isDynamicCatalogProvider,
+  isRadiusProviderType,
+  refreshRadiusCatalog,
+  radiusCatalogToAvailableModels,
   getFallbackModelId,
   getProviderDefaultModel,
   loadProviders,
@@ -52,7 +57,7 @@ export class ProvidersExternalError extends Error {}
 
 export interface ProvidersService {
   listProviders: () => { masked: ProvidersFile; decrypted: ProvidersFile }
-  getModelsByProviderType: (providerType: string) => AvailableModel[]
+  getModelsByProviderType: (providerType: string) => Promise<AvailableModel[]>
   getLiveModels: (providerId: string) => Promise<AvailableModel[]>
   setFallback: (payload: ProviderFallbackUpdatePayloadContract) => { fallbackProvider: string | null; fallbackModel: string | null }
   startOAuthLogin: (payload: ProviderOAuthLoginStartPayloadContract) => Promise<OAuthLoginResponseContract>
@@ -126,11 +131,35 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
     }
   }
 
-  function getModelsByProviderType(providerType: string): AvailableModel[] {
+  async function getModelsByProviderType(providerType: string): Promise<AvailableModel[]> {
     try {
+      if (isRadiusProviderType(providerType)) {
+        return radiusCatalogToAvailableModels(await refreshRadiusCatalogForPicker())
+      }
       return getAvailableModels(providerType as ProviderType)
     } catch (err) {
       throw new ProvidersRuntimeError(`Failed to get models: ${(err as Error).message}`)
+    }
+  }
+
+  /**
+   * Radius has no bundled catalog, so the create-mode picker needs the gateway
+   * listing. An existing Radius provider's credential is used so the result
+   * includes organization-private models and never downgrades an
+   * authenticated cache. A failed refresh (gateway down, rate-limited, OAuth
+   * refresh error) degrades to the persisted catalog like `getLiveModels`;
+   * only a cold cache propagates the error.
+   */
+  async function refreshRadiusCatalogForPicker() {
+    const radiusProvider = loadProvidersDecrypted().providers.find(p => isRadiusProviderType(p.providerType))
+    try {
+      const apiKey = radiusProvider ? await resolveCatalogApiKey(radiusProvider) : undefined
+      return await refreshRadiusCatalog({ apiKey })
+    } catch (err) {
+      const cached = getRadiusCatalog()
+      if (!cached) throw err
+      console.warn(`[axiom] Radius catalog refresh failed, using cached catalog: ${(err as Error).message}`)
+      return cached
     }
   }
 
@@ -141,6 +170,12 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
     }
 
     try {
+      if (isRadiusProviderType(provider.providerType)) {
+        return radiusCatalogToAvailableModels(await refreshRadiusCatalog({
+          apiKey: await resolveCatalogApiKey(provider),
+          force: true,
+        }))
+      }
       return await probeOpenAiCompatibleModelsFromBase(provider.baseUrl, provider.apiKey || undefined)
     } catch (err) {
       console.warn(`[axiom] Live model fetch failed for provider "${provider.name}", using bundled catalog: ${(err as Error).message}`)
@@ -242,11 +277,17 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
         },
         onProgress: () => {},
         onDeviceCode: (info) => {
-          loginState.authUrl = info.verificationUri
+          const url = deviceCodeAuthUrl(preset.oauthProviderId!, info)
+          loginState.authUrl = url
           loginState.instructions = info.userCode
-          resolveAuthInfo({ url: info.verificationUri, instructions: info.userCode })
+          resolveAuthInfo({ url, instructions: info.userCode })
         },
-        onSelect: async () => undefined,
+        // Browser flows bind a callback server on the backend host, which only
+        // works when the browser runs on the same machine. Radius offers a
+        // `device-code` option that works for remote deployments, so pick it.
+        // Other providers (e.g. Codex, `device_code`) deliberately keep their
+        // first option to leave existing login behaviour untouched.
+        onSelect: async ({ options: choices }) => choices.find((o) => o.id === 'device-code')?.id,
         onManualCodeInput: () =>
           new Promise<string>((resolve) => {
             loginState.resolveManualCode = resolve
@@ -606,6 +647,24 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
     requestOllamaPull,
     deleteOllamaModel,
   }
+}
+
+/**
+ * Radius' `/pair` page accepts the user code as `?code=` (mirrors the
+ * `verification_uri_complete` the device endpoint returns, which pi-ai does
+ * not surface). Saves the user a copy/paste; the code is still shown in the UI.
+ */
+function deviceCodeAuthUrl(oauthProviderId: string, info: { verificationUri: string; userCode: string }): string {
+  if (oauthProviderId !== 'radius') return info.verificationUri
+  const url = new URL(info.verificationUri)
+  url.searchParams.set('code', info.userCode)
+  return url.toString()
+}
+
+/** Credential for the catalog fetch; OAuth refresh failures propagate to the caller. */
+async function resolveCatalogApiKey(provider: ProviderConfig): Promise<string | undefined> {
+  const key = await getApiKeyForProvider(provider)
+  return key && key !== 'no-key' ? key : undefined
 }
 
 async function probeOpenAiCompatibleModelsFromBase(baseUrl: string, apiKey?: string): Promise<AvailableModel[]> {

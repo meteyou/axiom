@@ -171,6 +171,7 @@
     "oauthConnecting": "Verbinde...",
     "oauthWaiting": "Warte auf Authentifizierung...",
     "oauthWaitingHint": "Schließen Sie die Anmeldung im Browser-Tab ab, der sich gerade geöffnet hat.",
+    "oauthDeviceCode": "Diesen Code im Browser eingeben:",
     "oauthManualCode": "Oder fügen Sie die Redirect-URL hier ein (für Remote-Server):",
     "oauthManualCodePlaceholder": "Redirect-URL oder Code einfügen...",
     "oauthSubmitCode": "Absenden",

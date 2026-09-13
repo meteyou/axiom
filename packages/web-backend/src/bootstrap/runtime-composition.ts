@@ -25,6 +25,8 @@ import {
   getFallbackProvider,
   initDatabase,
   injectSecretsIntoEnv,
+  isRadiusCatalogStale,
+  isRadiusProviderType,
   listCronjobsTool,
   listTasksTool,
   loadConfig,
@@ -33,6 +35,7 @@ import {
   parseProviderModelId,
   getProviderDefaultModel,
   ProviderManager,
+  refreshRadiusCatalog,
   SessionManager,
   createEmailApprovalService,
   registerEmailApprovalNotifier,
@@ -349,6 +352,25 @@ export function resolveTaskDefaultProvider(deps: {
   return activeModelId ? { ...active, enabledModels: [activeModelId] } : active
 }
 
+/**
+ * Radius models exist only in the fetched gateway catalog, so a configured
+ * Radius provider needs a warm (or at least non-stale) catalog before the
+ * first request. The fetch is authenticated with the provider's credential so
+ * org-private (BYOK) models survive the refresh; the catalog file is shared by
+ * all Radius providers, so the first one's credential is used. Runs in the
+ * background; a failure is logged and leaves the persisted copy in place.
+ */
+function warmRadiusCatalog(logger: Pick<Console, 'warn'>): void {
+  const radiusProvider = loadProvidersDecrypted().providers.find(p => isRadiusProviderType(p.providerType))
+  if (!radiusProvider || !isRadiusCatalogStale()) return
+  void (async () => {
+    const key = await getApiKeyForProvider(radiusProvider)
+    await refreshRadiusCatalog({ apiKey: key && key !== 'no-key' ? key : undefined })
+  })().catch((err: unknown) => {
+    logger.warn(`[axiom] Radius catalog refresh failed: ${(err as Error).message}`)
+  })
+}
+
 export async function createRuntimeComposition(options: RuntimeCompositionOptions = {}): Promise<RuntimeComposition> {
   const logger = options.logger ?? console
 
@@ -364,6 +386,8 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
 
   logger.log('[axiom] Injecting global secrets into environment...')
   injectSecretsIntoEnv()
+
+  warmRadiusCatalog(logger)
 
   const runtimeMetrics = new RuntimeMetrics()
   const { sessionTimeoutMinutes, taskSettings } = loadRuntimeSettings()

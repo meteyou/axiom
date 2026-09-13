@@ -36,7 +36,7 @@ import type { ProvidersRouterOptions } from './types.js'
 export interface ProvidersController {
   putFallback: (req: AuthenticatedRequest, res: ExpressResponse) => void
   getProviders: (req: AuthenticatedRequest, res: ExpressResponse) => void
-  getModelsByProviderType: (req: AuthenticatedRequest, res: ExpressResponse) => void
+  getModelsByProviderType: (req: AuthenticatedRequest, res: ExpressResponse) => Promise<void>
   getLiveModels: (req: AuthenticatedRequest, res: ExpressResponse) => Promise<void>
   postOAuthLogin: (req: AuthenticatedRequest, res: ExpressResponse) => Promise<void>
   getOAuthStatus: (req: AuthenticatedRequest, res: ExpressResponse) => Promise<void>
@@ -94,7 +94,7 @@ export function createProvidersController(options: ProvidersRouterOptions = {}):
       }
     },
 
-    getModelsByProviderType(req, res) {
+    async getModelsByProviderType(req, res) {
       const parsedProviderType = parseProviderTypeParam(req.params.providerType)
       if (!parsedProviderType.ok) {
         res.status(400).json({ error: parsedProviderType.error })
@@ -102,7 +102,7 @@ export function createProvidersController(options: ProvidersRouterOptions = {}):
       }
 
       try {
-        const models = service.getModelsByProviderType(parsedProviderType.value)
+        const models = await service.getModelsByProviderType(parsedProviderType.value)
         res.json({ models })
       } catch (err) {
         if (err instanceof ProvidersRuntimeError) {

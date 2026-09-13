@@ -171,6 +171,7 @@
     "oauthConnecting": "Connecting...",
     "oauthWaiting": "Waiting for authentication...",
     "oauthWaitingHint": "Complete the login in the browser tab that just opened.",
+    "oauthDeviceCode": "Enter this code in the browser:",
     "oauthManualCode": "Or paste the redirect URL here (for remote servers):",
     "oauthManualCodePlaceholder": "Paste redirect URL or code...",
     "oauthSubmitCode": "Submit",
