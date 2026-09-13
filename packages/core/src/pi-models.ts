@@ -19,6 +19,7 @@ import { mistralConversationsApi } from '@earendil-works/pi-ai/api/mistral-conve
 import { openAICodexResponsesApi } from '@earendil-works/pi-ai/api/openai-codex-responses.lazy'
 import { openAICompletionsApi } from '@earendil-works/pi-ai/api/openai-completions.lazy'
 import { openAIResponsesApi } from '@earendil-works/pi-ai/api/openai-responses.lazy'
+import { piMessagesApi } from '@earendil-works/pi-ai/api/pi-messages.lazy'
 
 /**
  * Wire-API implementations Axiom can reach. The set covers every preset
@@ -34,6 +35,7 @@ const API_IMPLEMENTATIONS = {
   'openai-codex-responses': openAICodexResponsesApi,
   'google-generative-ai': googleGenerativeAIApi,
   'mistral-conversations': mistralConversationsApi,
+  'pi-messages': piMessagesApi,
 } satisfies Partial<Record<Api, () => ProviderStreams>>
 
 /**

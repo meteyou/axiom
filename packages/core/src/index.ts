@@ -80,6 +80,7 @@ export {
   getApiKeyForProvider,
   getAvailableModels,
   isDynamicCatalogProvider,
+  isRadiusProviderType,
   addOAuthProvider,
   updateOAuthCredentials,
   encryptOAuthCredentials,
@@ -100,6 +101,14 @@ export {
   maskProviderExtraFields,
 } from './provider-config.js'
 export type { ProviderConfig, MaskedProviderConfig, MaskedProvidersFile, ProviderModelConfig, ProvidersFile, ProviderType, ProviderTypePreset, ProviderExtraFieldDef, AuthMethod, TextVerbosity, AvailableModel, OAuthCredentialsStored, TokenPriceTable } from './provider-config.js'
+export {
+  refreshRadiusCatalog,
+  getRadiusCatalog,
+  isRadiusCatalogStale,
+  radiusCatalogToAvailableModels,
+  __setRadiusCatalogForTests,
+} from './radius-catalog.js'
+export type { RadiusCatalog, RadiusCatalogModel } from './radius-catalog.js'
 export {
   fetchAnthropicQuota,
   getAnthropicQuotaForProvider,

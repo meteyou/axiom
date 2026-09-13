@@ -9,6 +9,7 @@ import type { OAuthCredentials } from '@earendil-works/pi-ai/oauth'
 import { streamSimple } from './pi-models.js'
 import { getConfigDir, ensureConfigTemplates, loadConfig } from './config.js'
 import { encrypt, decrypt, isEncrypted, maskApiKey } from './encryption.js'
+import { RADIUS_BASE_URL, findRadiusCatalogModel, radiusCatalogToAvailableModels } from './radius-catalog.js'
 
 /**
  * Claude Code CLI version to advertise in the user-agent header for Anthropic requests.
@@ -21,6 +22,7 @@ export const CLAUDE_CODE_VERSION = '2.1.96'
  */
 export type ProviderType =
   | 'openai' | 'anthropic' | 'mistral' | 'ollama' | 'openrouter' | 'deepseek' | 'kimi' | 'minimax' | 'zai' | 'zai-coding' | 'xai' | 'opencode-go' | 'opencode-zen' | 'openai-compatible' | 'google'
+  | 'radius' | 'radius-api-key'
   // Legacy aliases kept for migration
   | 'ollama-local' | 'ollama-cloud'
   | 'openai-codex' | 'github-copilot' | 'anthropic-oauth'
@@ -314,6 +316,19 @@ export const PROVIDER_TYPE_PRESETS: Record<ProviderType, ProviderTypePreset> = {
     piAiProvider: 'google',
     authMethod: 'api-key',
   },
+  'radius-api-key': {
+    type: 'radius-api-key',
+    label: 'Radius (API key)',
+    description: 'Pi-native gateway by Earendil, authenticated with an organization API key',
+    apiType: 'pi-messages',
+    providerName: 'radius',
+    baseUrl: RADIUS_BASE_URL,
+    requiresApiKey: true,
+    urlEditable: false,
+    piAiProvider: null,
+    authMethod: 'api-key',
+    dynamicCatalog: true,
+  },
 
   // ── OAuth / Subscription providers ──
   'openai-codex': {
@@ -352,6 +367,28 @@ export const PROVIDER_TYPE_PRESETS: Record<ProviderType, ProviderTypePreset> = {
     authMethod: 'oauth',
     oauthProviderId: 'anthropic',
   },
+  radius: {
+    type: 'radius',
+    label: 'Radius',
+    description: 'Pi-native gateway by Earendil (credits, routing, rewrites) — sign in with your Radius account',
+    apiType: 'pi-messages',
+    providerName: 'radius',
+    baseUrl: RADIUS_BASE_URL,
+    requiresApiKey: false,
+    urlEditable: false,
+    piAiProvider: null,
+    authMethod: 'oauth',
+    oauthProviderId: 'radius',
+    dynamicCatalog: true,
+  },
+}
+
+/**
+ * Whether a provider type talks to the Radius gateway (either auth method).
+ * Radius has no static pi-ai catalog; its models come from `radius-catalog.ts`.
+ */
+export function isRadiusProviderType(providerType: ProviderType | string): boolean {
+  return PROVIDER_TYPE_PRESETS[providerType as ProviderType]?.providerName === 'radius'
 }
 
 /**
@@ -506,6 +543,8 @@ export function isDynamicCatalogProvider(providerType: ProviderType | string): b
  * layered on top (added, or replacing a catalog entry of the same id).
  */
 export function getAvailableModels(providerType: ProviderType): AvailableModel[] {
+  if (isRadiusProviderType(providerType)) return radiusCatalogToAvailableModels()
+
   const preset = PROVIDER_TYPE_PRESETS[providerType]
   const catalogModels: AvailableModel[] = preset?.piAiProvider
     ? (() => {
@@ -1249,6 +1288,7 @@ export function updateProviderModel(
   let entry = provider.models.find(m => m.id === modelId)
   if (!entry) {
     const override = findOverrideModel(provider.providerType, modelId)
+      ?? (isRadiusProviderType(provider.providerType) ? radiusCatalogModelConfig(modelId) : undefined)
     if (override) {
       entry = { ...override, cost: override.cost ? { ...override.cost } : undefined }
     } else {
@@ -1600,6 +1640,11 @@ export function buildModel(provider: ProviderConfig, modelId?: string): Model<Ap
   // PROVIDER_TYPE_MODEL_OVERRIDES catalog → configured price table → zero.
   const modelConfig = provider.models?.find(m => m.id === id)
     ?? findOverrideModel(provider.providerType, id)
+
+  if (isRadiusProviderType(provider.providerType)) {
+    const radiusModel = buildRadiusModel(provider, id, modelConfig)
+    if (radiusModel) return radiusModel
+  }
   const priceFallback = getConfiguredPriceTable()[id] ?? { input: 0, output: 0 }
 
   // For Anthropic providers, set the user-agent header to advertise as Claude Code CLI
@@ -1623,6 +1668,52 @@ export function buildModel(provider: ProviderConfig, modelId?: string): Model<Ap
     contextWindow: modelConfig?.contextWindow ?? 128000,
     maxTokens: modelConfig?.maxTokens ?? 16384,
     ...(headers && { headers }),
+  }
+}
+
+/**
+ * Radius models are only known through the fetched gateway catalog, which
+ * carries the wire-level details (thinking level map, max tokens, per-model
+ * base URL) that the generic build cannot guess. User edits in
+ * `provider.models` win for display name, context window and pricing.
+ */
+function radiusCatalogModelConfig(modelId: string): ProviderModelConfig | undefined {
+  const m = findRadiusCatalogModel(modelId)
+  if (!m) return undefined
+  return {
+    id: m.id,
+    name: m.name,
+    contextWindow: m.contextWindow,
+    maxTokens: m.maxTokens,
+    reasoning: m.reasoning,
+    cost: { ...m.cost },
+  }
+}
+
+function buildRadiusModel(
+  provider: ProviderConfig,
+  id: string,
+  modelConfig: ProviderModelConfig | undefined,
+): Model<Api> | undefined {
+  const catalogModel = findRadiusCatalogModel(id)
+  if (!catalogModel) return undefined
+  return {
+    id,
+    name: modelConfig?.name ?? catalogModel.name,
+    api: 'pi-messages',
+    provider: provider.provider,
+    baseUrl: catalogModel.baseUrl,
+    reasoning: catalogModel.reasoning,
+    ...(catalogModel.thinkingLevelMap && { thinkingLevelMap: catalogModel.thinkingLevelMap }),
+    input: catalogModel.input,
+    cost: {
+      input: modelConfig?.cost?.input ?? catalogModel.cost.input,
+      output: modelConfig?.cost?.output ?? catalogModel.cost.output,
+      cacheRead: modelConfig?.cost?.cacheRead ?? catalogModel.cost.cacheRead,
+      cacheWrite: modelConfig?.cost?.cacheWrite ?? catalogModel.cost.cacheWrite,
+    },
+    contextWindow: modelConfig?.contextWindow ?? catalogModel.contextWindow,
+    maxTokens: catalogModel.maxTokens,
   }
 }
 
