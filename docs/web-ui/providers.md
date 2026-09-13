@@ -106,7 +106,7 @@ The dialog keeps connection details first, then model selection, then advanced h
 | Field                  | Notes                                                                                                |
 |------------------------|------------------------------------------------------------------------------------------------------|
 | **Name**               | Free text, your label for this provider — appears in the table, in `<task_injection>` blocks, on the Dashboard. |
-| **Type**               | Dropdown grouped into two sections: **API Key** (OpenAI, Anthropic, Mistral, OpenRouter, DeepSeek, Kimi / Moonshot, MiniMax, xAI (Grok), Google Gemini, OpenCode Zen, OpenCode Go, Ollama, generic OpenAI-compatible, …) and **Subscription / OAuth** (Anthropic Claude Pro/Max, OpenAI ChatGPT Plus/Pro, GitHub Copilot, z.ai (GLM Coding Plan), …). |
+| **Type**               | Dropdown grouped into two sections: **API Key** (OpenAI, Anthropic, Mistral, OpenRouter, DeepSeek, Kimi / Moonshot, MiniMax, xAI (Grok), Google Gemini, OpenCode Zen, OpenCode Go, Radius (API key), Ollama, generic OpenAI-compatible, …) and **Subscription / OAuth** (Anthropic Claude Pro/Max, OpenAI ChatGPT Plus/Pro, GitHub Copilot, Radius, z.ai (GLM Coding Plan), …). |
 | **Base URL**           | Shown directly after Type when the preset has an editable URL (Ollama, generic OpenAI-compatible, …). |
 | **API Key**            | Shown after Base URL for API-key providers. Required for most hosted presets, optional for local/custom providers that do not need auth. |
 | **Model**              | Model selector for this provider. Shown **only in create mode** — after creation, models are managed via [Add Model](#add-model-dialog) and [Edit Model](#edit-model-dialog) from the row menus. The exact control depends on the provider type. The first enabled model acts as the provider's default/primary model. |
@@ -134,6 +134,7 @@ The model selector adapts to the preset. It is shown **only in create mode** —
 
 - **Curated providers (OpenAI, Anthropic, Mistral, DeepSeek, Kimi / Moonshot, MiniMax, xAI (Grok), OpenCode Zen, OpenCode Go, …)** — a dropdown of known models. Pick the one you want; it becomes the provider's initial enabled model and acts as its default until you enable more. If the model you need isn't in the catalog, type its id in the custom-model field below the dropdown and click **Add**. OpenCode Zen and Go source their catalog (models, per-token costs, per-model API type) directly from the bundled `@earendil-works/pi-ai` registry, so they stay in sync with [OpenCode Zen](https://opencode.ai/docs/zen) whenever that dependency is updated — no manual price table to maintain.
 - **Dynamic-catalog providers (OpenRouter)** — in create mode this behaves like the curated dropdown above (bundled catalog). Once the provider exists, the [Add Model dialog](#add-model-dialog) fetches the model list **live** from the provider's own `/models` endpoint (using the stored base URL and API key) instead of the bundled catalog, so newly published models appear without waiting for an Axiom release. If the live fetch fails, Axiom falls back to the bundled `@earendil-works/pi-ai` catalog so the picker still works offline.
+- **Radius** (`radius` via OAuth, `radius-api-key` via an organization API key) — [Radius](https://radius.earendil.com/) is Earendil's Pi-native gateway (prepaid credits, routing, rewrite rules). It has no bundled catalog: the model list, prices, context windows and thinking-level support are fetched from the gateway's public `/v1/config` endpoint and cached in `config/radius-catalog.json`. The cache is refreshed when the create-mode model dropdown loads (if older than six hours), every time you open the Add Model dialog, and on backend start when a Radius provider exists and the cache is stale. Refreshes triggered by an existing provider use its credential so organization-private (BYOK) models are included. The OAuth variant uses the device-code flow: Axiom opens the Radius pairing page (with the code pre-filled) and also shows the code in the dialog, so it works for remote deployments. Radius speaks Pi's native `pi-messages` wire protocol, not the OpenAI API.
 - **Generic OpenAI-compatible** — free-text model-id entry plus an optional **Load models** button for providers that implement OpenAI's `/models` endpoint.
 - **Ollama** — a separate panel with its own controls (see below).
 
@@ -226,8 +227,13 @@ For subscription-style providers that expose a usage endpoint, the provider head
 - **OpenAI ChatGPT Plus/Pro (Codex)** (`openai-codex`)
 - **OpenCode Go** (`opencode-go`) — see the credential note below
 - **z.ai (GLM Coding Plan)** (`zai-coding`) — read from the subscription API key; the pay-per-token `z.ai` (`zai`) provider has no quota endpoint
+- **Radius** (`radius` via OAuth and `radius-api-key`) — shows the organization's **prepaid credit balance** instead of usage windows (see below)
 
 Other provider types never show quota — they have no usage endpoint.
+
+#### Radius credit balance
+
+Radius is pay-as-you-go, so there are no rate-limit windows. The Status column shows the **available** credit (balance minus the amount reserved for in-flight requests) as a currency amount, plus what has been charged in the current billing period, e.g. `Credits: $8.97 ($0.01 this period)`. It turns red once the available balance reaches zero. The data comes from the gateway's `/v1/billing` endpoint using the same credential as inference (OAuth access token or organization API key).
 
 ::: warning OpenCode Go is a special case
 OpenCode Go has no official usage API. Its quota is read by scraping the authenticated web dashboard. Configure the provider's extra fields in the provider dialog:
@@ -247,7 +253,7 @@ Each usage window appears on its own line as `<window>: <utilization>% (<reset>)
 | OpenCode Go           | `5h` (rolling), `7d` (weekly), `30d` (monthly). | `5h` relative; `7d`/`30d` weekday + time. |
 | z.ai (GLM Coding Plan)| `5h` (rolling), `7d` (weekly). | `5h` relative; `7d` weekday + time. |
 
-The percentage is colour-coded: green below 70%, amber at 70–89%, red at 90%+. Reset times follow your browser's regional settings.
+The percentage is colour-coded: green below 70%, amber at 70–89%, red at 90%+. Reset times and currency amounts follow your browser's regional settings.
 
 The same active-provider quota is mirrored in the **top bar** next to the health status — but only on wide (`lg`) viewports, and only for the *active* provider. It is hidden on smaller screens and for non-active providers.
 
@@ -270,7 +276,7 @@ In **edit** mode for an OAuth provider, the dialog footer shows a **Renew Token*
 
 Opened from the provider header row's ⋮ menu → **Add Model**. Lets you enable additional models on an existing provider without reopening the provider form.
 
-- **Search** — filters the provider's model catalog by name or id. For most providers the catalog is fetched from the bundled `@earendil-works/pi-ai` registry (same source as the create-mode dropdown). **Dynamic-catalog providers (OpenRouter)** instead fetch the list live from the provider's own `/models` endpoint, falling back to the bundled catalog if that request fails.
+- **Search** — filters the provider's model catalog by name or id. For most providers the catalog is fetched from the bundled `@earendil-works/pi-ai` registry (same source as the create-mode dropdown). **Dynamic-catalog providers (OpenRouter, Radius)** instead fetch the list live from the provider (OpenRouter's `/models`, Radius' `/v1/config`), falling back to the bundled/cached catalog if that request fails.
 - **Model list** — scrollable, multi-select. Models already enabled on this provider appear greyed out with an *"already enabled"* label. Tick the ones you want to add.
 - **Custom model fallback** — when your search text doesn't match any catalog entry, a button appears to add the typed id as a custom model (e.g. a manually published model not yet in pi-ai).
 - **Add** — merges the selected models into the provider's enabled list. The footer shows the number selected.
