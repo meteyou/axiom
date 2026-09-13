@@ -186,7 +186,9 @@
       "rateLimited": "Rate-limited — try again shortly",
       "refresh": "Refresh quota",
       "refreshing": "Refreshing...",
-      "refreshSuccess": "Quota updated"
+      "refreshSuccess": "Quota updated",
+      "credits": "Credits",
+      "periodSpent": "{amount} this period"
     },
     "testConnection": "Test Connection",
     "testing": "Testing...",

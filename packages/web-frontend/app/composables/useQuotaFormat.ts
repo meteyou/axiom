@@ -1,9 +1,10 @@
-import type { ProviderQuotaWindowContract } from '@axiom/core/contracts'
+import type { ProviderQuotaBalanceContract, ProviderQuotaWindowContract } from '@axiom/core/contracts'
 
 export interface QuotaDisplayPart {
   key: string
   label: string
-  utilization: number
+  /** Rendered value: `42%` for usage windows, `$8.97` for credit balances. */
+  value: string
   colorClass: string
   reset: string
 }
@@ -18,6 +19,8 @@ export interface QuotaDisplayPart {
  * matching `useFormat`.
  */
 export function useQuotaFormat() {
+  const { t } = useI18n()
+
   function quotaColorClass(utilization: number): string {
     if (utilization >= 90) return 'text-destructive'
     if (utilization >= 70) return 'text-amber-600 dark:text-amber-500'
@@ -64,11 +67,15 @@ export function useQuotaFormat() {
    * window renders its own reset time according to its `resetDisplay` hint
    * (relative countdown vs. absolute weekday/time).
    */
-  function quotaWindowParts(quota: { windows: readonly ProviderQuotaWindowContract[] }): QuotaDisplayPart[] {
+  function quotaWindowParts(quota: {
+    windows: readonly ProviderQuotaWindowContract[]
+    balance?: ProviderQuotaBalanceContract | null
+  }): QuotaDisplayPart[] {
+    if (quota.balance) return [quotaBalancePart(quota.balance)]
     return quota.windows.map((window) => ({
       key: window.key,
       label: window.label,
-      utilization: window.utilization,
+      value: `${window.utilization}%`,
       colorClass: quotaColorClass(window.utilization),
       reset:
         window.resetDisplay === 'absolute'
@@ -77,8 +84,29 @@ export function useQuotaFormat() {
     }))
   }
 
+  function formatCurrency(amount: number, currency: string): string {
+    try {
+      return new Intl.NumberFormat(undefined, { style: 'currency', currency, maximumFractionDigits: 2 }).format(amount)
+    } catch {
+      return `${amount.toFixed(2)} ${currency}`
+    }
+  }
+
+  function quotaBalancePart(balance: ProviderQuotaBalanceContract): QuotaDisplayPart {
+    return {
+      key: 'balance',
+      label: t('providers.quota.credits'),
+      value: formatCurrency(balance.available, balance.currency),
+      colorClass: balance.available <= 0 ? 'text-destructive' : 'text-emerald-600 dark:text-emerald-500',
+      reset: typeof balance.periodSpent === 'number'
+        ? t('providers.quota.periodSpent', { amount: formatCurrency(balance.periodSpent, balance.currency) })
+        : '',
+    }
+  }
+
   return {
     quotaColorClass,
+    formatCurrency,
     formatQuotaResetRelative,
     formatQuotaResetNice,
     quotaWindowParts,

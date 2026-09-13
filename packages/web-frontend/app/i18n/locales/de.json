@@ -186,7 +186,9 @@
       "rateLimited": "Rate-Limit — bitte gleich erneut versuchen",
       "refresh": "Kontingent aktualisieren",
       "refreshing": "Aktualisiere...",
-      "refreshSuccess": "Kontingent aktualisiert"
+      "refreshSuccess": "Kontingent aktualisiert",
+      "credits": "Guthaben",
+      "periodSpent": "{amount} diesen Monat"
     },
     "testConnection": "Verbindung testen",
     "testing": "Teste...",

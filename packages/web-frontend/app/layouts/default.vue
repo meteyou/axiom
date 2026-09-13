@@ -289,7 +289,7 @@
           <template v-for="(part, idx) in quotaTopBarParts" :key="part.key">
             <span v-if="idx > 0" class="text-muted-foreground/40">·</span>
             <span class="text-xs">
-              <span class="font-medium" :class="part.colorClass">{{ part.label }}: {{ part.utilization }}%</span>
+              <span class="font-medium" :class="part.colorClass">{{ part.label }}: {{ part.value }}</span>
               <span v-if="part.reset" class="text-muted-foreground"> ({{ part.reset }})</span>
             </span>
           </template>

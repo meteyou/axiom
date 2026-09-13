@@ -39,8 +39,8 @@ export function createProviderQuotaTool(options: ProviderQuotaToolOptions): Agen
     name: 'provider_quota',
     label: 'Provider Quota',
     description:
-      'Check the current subscriber usage quota for LLM providers (Anthropic Claude Pro/Max, ChatGPT Codex, OpenCode, etc.). ' +
-      'Returns normalized usage windows with utilization percentages and reset times. ' +
+      'Check the current subscriber usage quota or prepaid credit balance for LLM providers (Anthropic Claude Pro/Max, ChatGPT Codex, OpenCode, Radius, etc.). ' +
+      'Returns normalized usage windows with utilization percentages and reset times, or the remaining credit balance for credit-based gateways. ' +
       'Use this to answer questions about remaining quota, rate limits, or usage consumption per provider. ' +
       'Only available to admin users.',
     parameters: Type.Object({
@@ -158,6 +158,18 @@ function formatProviderQuota(providerId: string, quota: ProviderQuotaContract): 
     : `**${providerId}** (${quota.kind})`
   if (quota.error) {
     return `${header}\nError: ${quota.error}\nFetched: ${quota.fetchedAt}`
+  }
+
+  if (quota.balance) {
+    const b = quota.balance
+    const lines = [
+      `  - Available: ${b.available.toFixed(2)} ${b.currency} (balance ${b.total.toFixed(2)}, reserved ${b.reserved.toFixed(2)})`,
+    ]
+    if (typeof b.periodSpent === 'number') {
+      const until = b.periodEndsAt ? ` (period ends ${b.periodEndsAt})` : ''
+      lines.push(`  - Spent this period: ${b.periodSpent.toFixed(2)} ${b.currency}${until}`)
+    }
+    return [header, ...lines, `Fetched: ${quota.fetchedAt}`].join('\n')
   }
 
   if (!quota.windows || quota.windows.length === 0) {

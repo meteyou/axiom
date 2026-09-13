@@ -137,6 +137,13 @@ export {
   zaiQuotaAdapter,
 } from './zai-quota.js'
 export {
+  fetchRadiusQuota,
+  getRadiusQuotaForProvider,
+  isRadiusQuotaProvider,
+  parseRadiusBalance,
+  radiusQuotaAdapter,
+} from './radius-quota.js'
+export {
   getQuotaAdapter,
   isQuotaProvider,
 } from './quota-registry.js'

@@ -3,7 +3,7 @@ import type { ProviderType } from '../provider-config.js'
 export type ProviderStatusContract = 'connected' | 'error' | 'untested'
 
 /** Provider families that expose a subscriber usage quota endpoint. */
-export type ProviderQuotaKindContract = 'anthropic' | 'openai-codex' | 'opencode-go' | 'zai'
+export type ProviderQuotaKindContract = 'anthropic' | 'openai-codex' | 'opencode-go' | 'zai' | 'radius'
 
 /**
  * A single normalized usage window, provider-agnostic. Each window carries its
@@ -23,10 +23,27 @@ export interface ProviderQuotaWindowContract {
   resetDisplay: 'relative' | 'absolute'
 }
 
+/**
+ * Prepaid credit balance for pay-as-you-go gateways. `available` is what new
+ * requests can spend (`total` minus `reserved` holds for in-flight requests).
+ */
+export interface ProviderQuotaBalanceContract {
+  currency: string
+  total: number
+  reserved: number
+  available: number
+  /** Amount charged in the current billing period, if the provider reports one. */
+  periodSpent?: number | null
+  /** ISO-8601 end of the current billing period, if the provider reports one. */
+  periodEndsAt?: string | null
+}
+
 export interface ProviderQuotaContract {
   kind: ProviderQuotaKindContract
-  /** Normalized usage windows in display order. */
+  /** Normalized usage windows in display order (empty for balance-only providers). */
   windows: ProviderQuotaWindowContract[]
+  /** Prepaid credit balance (only for credit-based providers such as Radius). */
+  balance?: ProviderQuotaBalanceContract | null
   /** Optional human-readable plan label (e.g. 'Plus', 'Pro', 'Max'). */
   plan?: string | null
   fetchedAt: string

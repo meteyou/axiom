@@ -62,6 +62,7 @@ export type {
   ProviderStatusContract,
   ProviderAuthMethodContract,
   ProviderQuotaKindContract,
+  ProviderQuotaBalanceContract,
   ProviderQuotaWindowContract,
   ProviderQuotaContract,
   ProviderContract,

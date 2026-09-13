@@ -115,7 +115,7 @@
                           class="flex items-center gap-1 whitespace-nowrap"
                         >
                           <span class="font-medium" :class="part.colorClass">
-                            {{ part.label }}: {{ part.utilization }}%
+                            {{ part.label }}: {{ part.value }}
                           </span>
                           <span v-if="part.reset" class="text-muted-foreground">({{ part.reset }})</span>
                         </div>
