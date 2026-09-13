@@ -378,26 +378,26 @@ describe('provider-config', () => {
           provider: 'openrouter',
           baseUrl: 'https://openrouter.ai/api/v1',
           apiKey: 'sk-or',
-          enabledModels: ['qwen/qwen3.8-flash'],
+          enabledModels: ['acme/custom-model-xyz'],
         },
       ],
     })
 
-    const patched = updateProviderModel('or-id', 'qwen/qwen3.8-flash', {
-      name: 'Qwen: Qwen3.8 Flash',
+    const patched = updateProviderModel('or-id', 'acme/custom-model-xyz', {
+      name: 'Acme Custom Model XYZ',
       contextWindow: 1_000_000,
       cost: { input: 0.15, output: 0.47 },
     })
-    const entry = patched.models?.find(m => m.id === 'qwen/qwen3.8-flash')
+    const entry = patched.models?.find(m => m.id === 'acme/custom-model-xyz')
     expect(entry).toEqual({
-      id: 'qwen/qwen3.8-flash',
-      name: 'Qwen: Qwen3.8 Flash',
+      id: 'acme/custom-model-xyz',
+      name: 'Acme Custom Model XYZ',
       contextWindow: 1_000_000,
       cost: { input: 0.15, output: 0.47 },
     })
 
-    const model = buildModel(patched, 'qwen/qwen3.8-flash')
-    expect(model.name).toBe('Qwen: Qwen3.8 Flash')
+    const model = buildModel(patched, 'acme/custom-model-xyz')
+    expect(model.name).toBe('Acme Custom Model XYZ')
     expect(model.contextWindow).toBe(1_000_000)
     expect(model.cost.input).toBe(0.15)
     expect(model.cost.output).toBe(0.47)
