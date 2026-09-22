@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM ubuntu:24.04
+FROM ubuntu:24.04 AS base
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV NODE_VERSION=22
@@ -62,29 +62,45 @@ RUN existing_user=$(getent passwd ${USER_UID} | cut -d: -f1) \
     && chmod 0440 /etc/sudoers.d/${USERNAME} \
     && chown -R ${USER_UID}:${USER_GID} /workspace /data
 
-# Create app directory
+FROM base AS build
 WORKDIR /app
 
-# Copy package files first for better caching
 COPY package.json package-lock.json* ./
 COPY packages/core/package.json packages/core/
 COPY packages/telegram/package.json packages/telegram/
 COPY packages/web-backend/package.json packages/web-backend/
 COPY packages/web-frontend/package.json packages/web-frontend/
 
-# Install dependencies (include devDependencies for TypeScript type declarations)
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
     npm ci --include=dev --prefer-offline --no-audit --no-fund
 
-# Copy only the build inputs so docs/README/skills changes don't invalidate the build layer
 COPY tsconfig.json ./
 COPY packages ./packages
 
-# Build all packages
 RUN npm run build
 
-# Copy the remaining project files (docs/, README.md, … are read at runtime)
+# Runtime image: only the backend workspaces' production dependencies. The
+# frontend is a static SPA, so Nuxt/Vite and all dev tooling stay in the build stage.
+FROM base AS runtime
+WORKDIR /app
+
+COPY package.json package-lock.json* ./
+COPY packages/core/package.json packages/core/
+COPY packages/telegram/package.json packages/telegram/
+COPY packages/web-backend/package.json packages/web-backend/
+COPY packages/web-frontend/package.json packages/web-frontend/
+
+RUN --mount=type=cache,target=/root/.npm,sharing=locked \
+    npm ci --omit=dev --prefer-offline --no-audit --no-fund \
+      -w packages/core -w packages/telegram -w packages/web-backend
+
+# Project files (docs/, README.md, … are read at runtime)
 COPY . .
+
+COPY --from=build /app/packages/core/dist packages/core/dist
+COPY --from=build /app/packages/telegram/dist packages/telegram/dist
+COPY --from=build /app/packages/web-backend/dist packages/web-backend/dist
+COPY --from=build /app/packages/web-frontend/.output/public packages/web-frontend/.output/public
 
 # Copy built-in agent skills into image (seeded to /data/skills_agent on first run via entrypoint)
 COPY data/skills_agent /app/skills_agent_defaults
