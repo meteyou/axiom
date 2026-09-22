@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -34,34 +35,8 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
 # Verify installations
 RUN node --version && npm --version && git --version && python3 --version && jq --version
 
-# Create app directory
-WORKDIR /app
-
-# Copy package files first for better caching
-COPY package.json package-lock.json* ./
-COPY packages/core/package.json packages/core/
-COPY packages/telegram/package.json packages/telegram/
-COPY packages/web-backend/package.json packages/web-backend/
-COPY packages/web-frontend/package.json packages/web-frontend/
-
-# Install dependencies (include devDependencies for TypeScript type declarations)
-RUN npm ci --include=dev
-
-# Copy source code
-COPY . .
-
-# Build all packages
-RUN npm run build
-
-# Configure npm global prefix to persist packages in /data volume
-ENV NPM_CONFIG_PREFIX=/data/npm-global
-ENV PATH="/data/npm-global/bin:${PATH}"
-
 # Create data directories
 RUN mkdir -p /data/db /data/config /data/memory/daily /data/skills /data/skills_agent /data/npm-global /workspace
-
-# Copy built-in agent skills into image (seeded to /data/skills_agent on first run via entrypoint)
-COPY data/skills_agent /app/skills_agent_defaults
 
 # Save baseline package snapshot for auto-tracking agent-installed packages
 # Uses apt-mark showmanual to only capture explicitly installed packages,
@@ -86,6 +61,37 @@ RUN existing_user=$(getent passwd ${USER_UID} | cut -d: -f1) \
     && echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${USERNAME} \
     && chmod 0440 /etc/sudoers.d/${USERNAME} \
     && chown -R ${USER_UID}:${USER_GID} /workspace /data
+
+# Create app directory
+WORKDIR /app
+
+# Copy package files first for better caching
+COPY package.json package-lock.json* ./
+COPY packages/core/package.json packages/core/
+COPY packages/telegram/package.json packages/telegram/
+COPY packages/web-backend/package.json packages/web-backend/
+COPY packages/web-frontend/package.json packages/web-frontend/
+
+# Install dependencies (include devDependencies for TypeScript type declarations)
+RUN --mount=type=cache,target=/root/.npm,sharing=locked \
+    npm ci --include=dev --prefer-offline --no-audit --no-fund
+
+# Copy only the build inputs so docs/README/skills changes don't invalidate the build layer
+COPY tsconfig.json ./
+COPY packages ./packages
+
+# Build all packages
+RUN npm run build
+
+# Copy the remaining project files (docs/, README.md, … are read at runtime)
+COPY . .
+
+# Copy built-in agent skills into image (seeded to /data/skills_agent on first run via entrypoint)
+COPY data/skills_agent /app/skills_agent_defaults
+
+# Configure npm global prefix to persist packages in /data volume
+ENV NPM_CONFIG_PREFIX=/data/npm-global
+ENV PATH="/data/npm-global/bin:${PATH}"
 
 # Copy entrypoint
 COPY entrypoint.sh /entrypoint.sh

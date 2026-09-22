@@ -10,14 +10,14 @@ node_modules/
 # Build output — rebuilt inside the image
 dist/
 **/dist/
-*.tsbuildinfo
+**/*.tsbuildinfo
 
 # IDE / editor
 .idea/
 .vscode/
 
 # OS files
-.DS_Store
+**/.DS_Store
 
 # Local environment & data
 .env
@@ -25,11 +25,11 @@ dist/
 .data/
 
 # Test artifacts
-coverage/
+**/coverage/
 
 # Nuxt
-.nuxt/
-.output/
+**/.nuxt/
+**/.output/
 
 # VitePress (docs are sources only — built site is not needed in the image)
 docs/.vitepress/cache/
