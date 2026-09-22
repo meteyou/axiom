@@ -14,13 +14,14 @@ const runtimeHarness = vi.hoisted(() => ({
 
 vi.mock('@earendil-works/pi-agent-core', () => {
   class MockAgent {
-    public state: { systemPrompt: string; model: unknown; tools: AgentTool[]; messages: unknown[] }
+    public state: { model: unknown; tools: AgentTool[]; messages: unknown[] }
     private listeners = new Set<(event: unknown) => void>()
 
     constructor(options: { initialState: { systemPrompt: string; model: unknown; tools: AgentTool[] } }) {
+      const { systemPrompt, ...rest } = options.initialState
       this.state = {
-        ...options.initialState,
-        messages: [],
+        ...rest,
+        messages: [{ role: 'system', content: systemPrompt, timestamp: 0 }],
       }
     }
 
@@ -201,6 +202,33 @@ describe('AgentRuntime boundary', () => {
     ]))
   })
 
+  it('replaces the leading system message on refresh and keeps it when clearing messages', () => {
+    const db = initDatabase(':memory:')
+    const runtime = createAgentRuntime({
+      model: makeModel(),
+      apiKey: 'sk-primary',
+      db,
+      tools: [],
+    })
+    const piAgent = (runtime as unknown as AgentRuntimePiAgentAccess).getAgent()
+    piAgent.state.messages = [
+      { role: 'system', content: 'old prompt', timestamp: 0 },
+      { role: 'user', content: 'hello', timestamp: 1 },
+    ] as never
+
+    vi.mocked(assembleSystemPrompt).mockReturnValueOnce('new prompt')
+    runtime.refreshSystemPrompt()
+
+    expect(piAgent.state.messages).toEqual([
+      { role: 'system', content: 'new prompt', timestamp: 0 },
+      { role: 'user', content: 'hello', timestamp: 1 },
+    ])
+
+    runtime.clearMessages()
+
+    expect(piAgent.state.messages).toEqual([{ role: 'system', content: 'new prompt', timestamp: 0 }])
+  })
+
   it('orchestrates prompt execution events into runtime response chunks', async () => {
     const db = initDatabase(':memory:')
     const runtime = createAgentRuntime({
@@ -358,6 +386,7 @@ describe('AgentRuntime boundary', () => {
 
     const piAgent = (runtime as unknown as AgentRuntimePiAgentAccess).getAgent()
     piAgent.state.messages = [
+      { role: 'system', content: 'prompt', timestamp: 0 },
       { role: 'user', content: 'hello' },
       { role: 'assistant', content: [], stopReason: 'error', errorMessage: '429' },
     ] as never
@@ -376,7 +405,7 @@ describe('AgentRuntime boundary', () => {
     expect(runtimeHarness.continueCalls).toBe(1)
     expect(runtimeHarness.promptCalls).toEqual([])
     // The failed assistant message is gone; the user message is not duplicated.
-    expect((piAgent.state.messages as Array<{ role: string }>).map(m => m.role)).toEqual(['user'])
+    expect((piAgent.state.messages as Array<{ role: string }>).map(m => m.role)).toEqual(['system', 'user'])
   })
 
   it('falls back to a fresh prompt when the transcript has nothing to continue from', async () => {

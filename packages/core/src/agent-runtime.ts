@@ -4,7 +4,7 @@ import nodePath from 'node:path'
 import { Agent as PiAgent } from '@earendil-works/pi-agent-core'
 import type { AgentEvent, AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core'
 import type { Api, AssistantMessage, Message, ImageContent, Model } from '@earendil-works/pi-ai'
-import { Type } from '@earendil-works/pi-ai'
+import { Type, getCurrentSystemMessage } from '@earendil-works/pi-ai'
 import type { Database } from './database.js'
 import { logTokenUsage, logToolCall } from './token-logger.js'
 import { estimateCost, getApiKeyForProvider, buildModel, buildStreamFn, loadProvidersDecrypted, parseProviderModelId, getProviderDefaultModel } from './provider-config.js'
@@ -625,7 +625,15 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
   }
 
   refreshSystemPrompt(channel?: string, currentUser?: { username: string }): void {
-    this.agent.state.systemPrompt = this.buildSystemPrompt(channel, currentUser)
+    const systemPrompt = this.buildSystemPrompt(channel, currentUser)
+    const messages = this.agent.state.messages
+    const leading = messages[0]
+    if (leading?.role === 'system') {
+      if (leading.content === systemPrompt) return
+      this.agent.state.messages = [{ ...leading, content: systemPrompt }, ...messages.slice(1)]
+      return
+    }
+    this.agent.state.messages = [{ role: 'system', content: systemPrompt, timestamp: 0 }, ...messages]
   }
 
   getCurrentTimeContext(): string {
@@ -651,7 +659,9 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
   }
 
   clearMessages(): void {
-    this.agent.state.messages = []
+    // The leading system message carries the system prompt and tool declarations.
+    const baseline = getCurrentSystemMessage(this.agent.state.messages)
+    this.agent.state.messages = baseline ? [baseline] : []
   }
 
   abort(): void {

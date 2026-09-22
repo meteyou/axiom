@@ -14,8 +14,10 @@ import { RADIUS_BASE_URL, findRadiusCatalogModel, radiusCatalogToAvailableModels
 /**
  * Claude Code CLI version to advertise in the user-agent header for Anthropic requests.
  * This ensures Anthropic treats requests as coming from a Claude Code client.
+ * Model headers override pi-ai's own OAuth user-agent, so keep this in sync with
+ * `claudeCodeVersion` in `@earendil-works/pi-ai/dist/api/anthropic-messages.js`.
  */
-export const CLAUDE_CODE_VERSION = '2.1.96'
+export const CLAUDE_CODE_VERSION = '2.1.280'
 
 /**
  * Supported provider types with presets
