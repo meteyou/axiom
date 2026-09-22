@@ -34,6 +34,10 @@ import type { ChatActionRegistry } from './chat-actions.js'
 
 const startTime = Date.now()
 
+const appVersion = (JSON.parse(
+  fs.readFileSync(new URL('../package.json', import.meta.url), 'utf-8'),
+) as { version: string }).version
+
 export interface AppOptions {
   db: Database
   agentCore?: AgentCore | null
@@ -104,7 +108,7 @@ export function createApp(options?: AppOptions): express.Express {
     res.json({
       status: 'ok',
       uptime: uptimeSeconds,
-      version: '0.1.0',
+      version: appVersion,
       timestamp: new Date().toISOString(),
     })
   })

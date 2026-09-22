@@ -123,6 +123,10 @@ afterAll(async () => {
   }
 })
 
+const backendPackage = JSON.parse(
+  fs.readFileSync(new URL('../package.json', import.meta.url), 'utf-8'),
+) as { version: string }
+
 describe('health endpoint', () => {
   it('GET /health returns status ok', async () => {
     const res = await fetch(`${baseUrl}/health`)
@@ -130,7 +134,7 @@ describe('health endpoint', () => {
     expect(res.status).toBe(200)
     expect(body.status).toBe('ok')
     expect(typeof body.uptime).toBe('number')
-    expect(typeof body.version).toBe('string')
+    expect(body.version).toBe(backendPackage.version)
   })
 })
 
