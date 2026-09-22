@@ -52,17 +52,19 @@ If you catch yourself writing "the agent should be helpful and friendly" — cut
 
 The rules that govern memory consolidation. The consolidation job condenses the last few days of `memory/daily/<date>.md` files into durable entries in `MEMORY.md`, user profiles, and the wiki — then trims the dailies. `CONSOLIDATION.md` is the prompt that tells it how to judge each candidate entry.
 
-The file lives at `/data/config/CONSOLIDATION.md` and is read on every scheduled consolidation run (see [Settings → Memory → Memory consolidation](./../settings/memory#memory-consolidation)). It is *not* part of the chat system prompt — only the consolidation job ever sees it. The shipped default — [`CONSOLIDATION_TEMPLATE` in `memory.ts`](https://github.com/meteyou/axiom/blob/main/packages/core/src/memory.ts#L154-L245) — is a starting point you can adapt to your own taxonomy.
+The file lives at `/data/config/CONSOLIDATION.md` and is read on every scheduled consolidation run (see [Settings → Memory → Memory consolidation](./../settings/memory#memory-consolidation)). It is *not* part of the chat system prompt — only the consolidation job ever sees it. The shipped default — [`CONSOLIDATION_TEMPLATE` in `memory.ts`](https://github.com/meteyou/axiom/blob/main/packages/core/src/memory.ts#L174-L279) — is a starting point you can adapt to your own taxonomy.
 
 ### What the default template covers
 
 The shipped template maps out the **memory architecture** and gives explicit rules for each tier:
 
+- **Placement test**: prompt-injected files (`MEMORY.md`, user profiles) only hold what the agent must know without looking it up. Runbooks, config paths, IPs, product lists, and project status go to the wiki, with at most a one-line pointer left behind. The wiki is shared across all users, so sensitive personal data stays in the user profile (or is dropped) and never moves to the wiki.
 - **Promote to `MEMORY.md`** — recurring patterns, technical decisions, persistent facts, corrections.
 - **Update user profiles** (`memory/users/*.md`) — preferences, work context, personal details the user shared.
 - **Update wiki pages** (`memory/wiki/*.md`) — project discoveries, architecture notes, evergreen concepts.
 - **Archive under `sources/`** — immutable raw material (articles, transcripts, papers) the wiki cites.
 - **Ignore** — ephemeral one-shot commands, temporary paths, noise.
+- **Size budgets**: `MEMORY.md` ≤ ~80 lines / ~6 KB, each user profile ≤ ~60 lines / ~5 KB. Both line count and byte size are checked, since long bullets hide in line counts. Over-budget files are compacted before anything new is added.
 
 Customize it to match your taxonomy. For example, if you don't use the `wiki/` layer at all, remove that section so the consolidator stops trying.
 

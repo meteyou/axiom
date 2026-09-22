@@ -189,6 +189,15 @@ The memory system has several tiers. Each piece of information should live in ex
 | sources/**/*.md | Immutable raw source material (articles, transcripts, papers). Never edited, only added to. Wiki pages cite these. |
 | daily/*.md | Ephemeral daily logs (source for consolidation, never modified) |
 
+## Placement test (apply before every write)
+
+Prompt-injected files (MEMORY.md, users/*.md) are for things the agent must know **without looking them up**. Everything else lives in the wiki.
+
+- Does it change how the agent behaves or talks, in any conversation? → MEMORY.md (general) or the user profile (person-specific).
+- Is it a setup, runbook, config path, IP, command sequence, diagnosis, product list, size chart, price, or project status? → wiki page. Leave at most a one-line pointer (\`→ wiki/<page>.md\`) in MEMORY.md or the profile.
+- A bullet longer than ~2 lines, or several bullets about the same topic, is a sign it belongs in the wiki.
+- **Wiki pages are shared across all users.** Sensitive personal data (health, finances, relationships, private routines) stays in the user profile as a short line, or is dropped. Never move it to the wiki.
+
 ## What to promote to MEMORY.md
 
 - Recurring patterns and lessons learned across multiple sessions
@@ -247,7 +256,7 @@ source files so their factual claims stay verifiable.
 - **Merge & refine**: If similar information exists, update it rather than adding a duplicate.
 - **Remove outdated info**: If daily entries contradict existing memory, update or remove the old entry.
 - **Prune every run**: merge near-duplicate entries, collapse resolved threads to their end state, and delete lessons that are already covered by AGENTS.md or a wiki page.
-- **Size budgets**: MEMORY.md ≤ ~80 lines, each user profile ≤ ~60 lines. Both are injected into every system prompt. When a file exceeds its budget, compact it in the same run: move episodic detail to the wiki or delete it.
+- **Size budgets**: MEMORY.md ≤ ~80 lines / ~6 KB, each user profile ≤ ~60 lines / ~5 KB. Both are injected into every system prompt. Check both (line count **and** byte size, since long bullets hide in line counts) at the start of every run. When a file exceeds its budget, compact it in the same run before adding anything new: move detail to the wiki (placement test above) or delete it. Adding content to an over-budget file is not allowed.
 - **Preserve structure**: Keep existing markdown structure. Add new sections if needed.
 - **Be concise**: Use bullet points and short descriptions. Core memory should be scannable.
 - **Daily files are read-only**: Never modify daily log files — they are append-only source material.

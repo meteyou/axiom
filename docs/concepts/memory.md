@@ -64,6 +64,8 @@ The agent maintains the file as it learns about the user.
 
 The agent's own structured knowledge base: project notes, architecture decisions, key dependencies, evergreen concepts. Pages have an optional YAML frontmatter (`aliases: [Foo, foo-thing]`) and are listed in the system prompt **by title only** — the agent loads a page on demand with `read_file` when the topic comes up.
 
+The wiki is shared across all users, so sensitive personal data (health, finances, relationships) belongs in the user profile, not in a wiki page.
+
 The agent maintains the wiki autonomously: it adds new pages, extends existing ones, merges duplicates, fixes stale entries, and keeps cross-links healthy without asking. Only genuine contradictions (new info conflicts with an existing page) get escalated to the user.
 
 For non-trivial wiki work, the agent uses the bundled `wiki` skill (`/data/skills_agent/wiki/SKILL.md`), which carries the canonical conventions for frontmatter, filenames, cross-links, and the `## Sources` section.
