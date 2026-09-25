@@ -1,6 +1,6 @@
 ---
 name: tasks-and-cronjobs
-version: 1.1.0
+version: 1.2.0
 description: Use Axiom's background-execution system — one-off background tasks (create_task), recurring cronjobs (create_cronjob), and static scheduled reminders (create_reminder). Load this skill before creating any of them, and ALWAYS load it when you receive a <task_injection> message so you respond correctly.
 ---
 
@@ -58,10 +58,29 @@ The task agent runs in **isolation** — no chat history, no recall of context, 
 - **Goal in one sentence** at the top: *"Add a dark-mode toggle to the settings page."*
 - **Constraints** the agent must respect: file boundaries, libraries to use/avoid, code style.
 - **Concrete inputs**: file paths (absolute), URLs, tickets, IDs. Quote them inline.
-- **Verification expectations**: how the agent should know it's done (tests pass, manual check, screenshot).
-- **Final deliverable**: what the final report must contain (file diff summary, links, numbers).
+- **Definition of done**: a concrete, checkable finish line, not an activity. *"Done means every endpoint uses the new client, the old client is deleted, and the test suite passes"* beats *"work on the migration"*. Without it, strong models tend to stop early (after the first phase) or report progress instead of finishing.
+- **Verification expectations**: how the agent proves it's done (tests pass, build succeeds, screenshot, `gh pr view` after opening a PR). A completion claim is not evidence; ask for the evidence.
+- **Pre-granted permissions**: name the risky-looking but required steps up front (copying env vars, pushing to a branch, installing a dependency). Otherwise the task may pause with `status: question` just to ask for permission you already intended to give.
+- **Explicit exclusions**: say what the task must *not* do (no force-push, no changes outside the repo, no merge, no public posts). Exclusions steer more reliably than general intent.
+- **When to stop and ask**: give the agent a legitimate way out, e.g. *"Keep going without asking unless you cannot continue without me, or before anything destructive. If something fails for a reason you can't explain, stop and ask."* Models are trained hard not to give up; without this sentence they answer their own questions and push through a wrong path.
+- **Final deliverable**: what the final report must contain (file diff summary, links, numbers). For long tasks, require a fixed closing structure, e.g. three headings **Blocked on me / Changed / Found**, plus a list of anything the agent could **not** verify.
 
 If you'd need to say *"and remember from earlier we decided…"*, include that decision verbatim in the prompt. The task can't read the chat.
+
+Skip filler instructions like *"think carefully"* or *"think step by step"*: current models reason on their own, and it only adds noise. If the work splits naturally (large audits, many independent reviews, a migration across many files), explicitly allow parallel sub-agents; some models rarely use them unprompted.
+
+Template:
+
+```
+Goal: <one sentence>.
+Context: <paths, IDs, decisions from the chat, verbatim>.
+Done means: <checkable end state>.
+Verify by: <tests / build / screenshot / API check>.
+You may: <pre-granted permissions>.
+Do not: <exclusions>.
+Keep going without asking; stop and ask only if <condition> or before anything destructive.
+Final report: Blocked on me / Changed / Found, plus anything you could not verify.
+```
 
 ### Provider and model selection
 
@@ -110,7 +129,7 @@ Summary text from the task agent
 
 | Status | What to say |
 |---|---|
-| `completed` | Tell the user what got done. Include concrete details: files created/modified, verification performed, links, numbers. Don't bury the lede. |
+| `completed` | Tell the user what got done. Include concrete details: files created/modified, verification performed, links, numbers. Don't bury the lede. Lead with anything the task says it is **blocked on** or needs from the user. If the task claims an external effect (PR opened, commit pushed, file written) and the summary gives no evidence, verify it cheaply yourself before repeating the claim. |
 | `failed` | Explain what went wrong in plain language. If actionable, suggest a next step (retry with different inputs, fix the missing dependency, …). Don't pretend it succeeded. |
 | `question` | Relay the question to the user naturally. The task is **paused** waiting for an answer — do not start solving it yourself. |
 
@@ -313,6 +332,8 @@ create_cronjob(
 ## Common mistakes to avoid
 
 - **Spawning a task for a question you can answer directly.** Wastes tokens and time.
+- **A task prompt without a definition of done.** The task stops after the first step or returns a plan instead of results. State the checkable end state.
+- **Telling a task to "think hard".** It doesn't help and costs tokens. Describe the goal and the finish line instead.
 - **Reminder for dynamic content.** "Remind me each morning what the weather is" → that's a `create_cronjob` with `action_type: "task"`, not a reminder.
 - **Editing a cronjob's prompt without first calling `get_cronjob`.** You'll either overwrite something important or repeat a typo. Read first, then `edit_cronjob`.
 - **Forgetting timezone.** Cron schedules use the configured `TZ`. If the user is in a different timezone, ask before assuming.
