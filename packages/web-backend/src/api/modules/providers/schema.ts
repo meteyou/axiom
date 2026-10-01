@@ -1,6 +1,8 @@
 import { URL } from 'node:url'
-import { PROVIDER_TYPE_PRESETS } from '@axiom/core'
+import { MODEL_THINKING_LEVELS, PROVIDER_TYPE_PRESETS } from '@axiom/core'
 import type {
+  ModelInputModalityContract,
+  ModelThinkingLevelMapContract,
   ProviderCreatePayloadContract,
   ProviderFallbackUpdatePayloadContract,
   ProviderModelSelectionPayloadContract,
@@ -78,6 +80,15 @@ function normalizeTransport(
   return undefined
 }
 
+/** `undefined` = not sent, `null` = clear; an object is validated against the preset's API in core. */
+function parseCompatField(body: Record<string, unknown>): ParseResult<Record<string, unknown> | null | undefined> {
+  if (!Object.prototype.hasOwnProperty.call(body, 'compat')) return { ok: true, value: undefined }
+  const raw = body.compat
+  if (raw === null) return { ok: true, value: null }
+  if (typeof raw !== 'object' || Array.isArray(raw)) return { ok: false, error: 'compat must be a JSON object or null' }
+  return { ok: true, value: raw as Record<string, unknown> }
+}
+
 function isValidProviderType(providerType: string): boolean {
   return VALID_PROVIDER_TYPES.includes(providerType)
 }
@@ -108,10 +119,15 @@ function asCostNumber(value: unknown): number | undefined {
   return num
 }
 
+/** `null` clears the override (the field follows the catalog again). */
 function parseModelCostPatch(value: unknown): ProviderModelUpdatePayloadContract['cost'] {
   const body = toRecord(value)
   const cost: NonNullable<ProviderModelUpdatePayloadContract['cost']> = {}
   for (const key of ['input', 'output', 'cacheRead', 'cacheWrite'] as const) {
+    if (body[key] === null) {
+      cost[key] = null
+      continue
+    }
     const parsed = asCostNumber(body[key])
     if (parsed !== undefined) cost[key] = parsed
   }
@@ -124,34 +140,107 @@ function parseOptionalStringField(body: Record<string, unknown>, key: 'name' | '
   return { ok: true, value: body[key] }
 }
 
-function parseOptionalContextWindow(body: Record<string, unknown>): ParseResult<number | undefined> {
-  if (!Object.prototype.hasOwnProperty.call(body, 'contextWindow')) return { ok: true, value: undefined }
-  const contextWindow = Number(body.contextWindow)
-  if (!Number.isInteger(contextWindow) || contextWindow <= 0) {
-    return { ok: false, error: 'contextWindow must be a positive integer' }
+function parseOptionalBooleanField(body: Record<string, unknown>, key: 'disabled'): ParseResult<boolean | undefined> {
+  if (!Object.prototype.hasOwnProperty.call(body, key)) return { ok: true, value: undefined }
+  if (typeof body[key] !== 'boolean') return { ok: false, error: `${key} must be a boolean` }
+  return { ok: true, value: body[key] }
+}
+
+function parseOptionalNullableBoolean(body: Record<string, unknown>, key: 'reasoning'): ParseResult<boolean | null | undefined> {
+  if (!Object.prototype.hasOwnProperty.call(body, key)) return { ok: true, value: undefined }
+  if (body[key] === null) return { ok: true, value: null }
+  if (typeof body[key] !== 'boolean') return { ok: false, error: `${key} must be a boolean or null` }
+  return { ok: true, value: body[key] }
+}
+
+const MODEL_UPDATE_FIELDS = [
+  'name', 'description', 'contextWindow', 'maxTokens', 'reasoning', 'input', 'thinkingLevelMap', 'disabled',
+] as const
+
+function parseOptionalPositiveInteger(
+  body: Record<string, unknown>,
+  key: 'contextWindow' | 'maxTokens',
+): ParseResult<number | null | undefined> {
+  if (!Object.prototype.hasOwnProperty.call(body, key)) return { ok: true, value: undefined }
+  if (body[key] === null) return { ok: true, value: null }
+  const value = Number(body[key])
+  if (!Number.isInteger(value) || value <= 0) {
+    return { ok: false, error: `${key} must be a positive integer` }
   }
-  return { ok: true, value: contextWindow }
+  return { ok: true, value }
+}
+
+const MODEL_INPUT_MODALITIES: readonly ModelInputModalityContract[] = ['text', 'image']
+
+function parseOptionalModelInput(body: Record<string, unknown>): ParseResult<ModelInputModalityContract[] | null | undefined> {
+  if (!Object.prototype.hasOwnProperty.call(body, 'input')) return { ok: true, value: undefined }
+  const raw = body.input
+  if (raw === null) return { ok: true, value: null }
+  if (!Array.isArray(raw) || !raw.every(entry => MODEL_INPUT_MODALITIES.includes(entry))) {
+    return { ok: false, error: `input must be an array of ${MODEL_INPUT_MODALITIES.join(', ')}` }
+  }
+  const input = [...new Set(raw as ModelInputModalityContract[])]
+  if (!input.includes('text')) return { ok: false, error: 'input must include text' }
+  return { ok: true, value: input }
+}
+
+function parseOptionalThinkingLevelMap(
+  body: Record<string, unknown>,
+): ParseResult<ModelThinkingLevelMapContract | null | undefined> {
+  if (!Object.prototype.hasOwnProperty.call(body, 'thinkingLevelMap')) return { ok: true, value: undefined }
+  const raw = body.thinkingLevelMap
+  if (raw === null) return { ok: true, value: null }
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    return { ok: false, error: 'thinkingLevelMap must be an object or null' }
+  }
+  const map: ModelThinkingLevelMapContract = {}
+  for (const [level, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!(MODEL_THINKING_LEVELS as readonly string[]).includes(level)) {
+      return { ok: false, error: `thinkingLevelMap has unknown level "${level}"` }
+    }
+    if (value !== null && (typeof value !== 'string' || !value.trim())) {
+      return { ok: false, error: `thinkingLevelMap.${level} must be a non-empty string or null` }
+    }
+    map[level as keyof ModelThinkingLevelMapContract] = value === null ? null : value.trim()
+  }
+  return { ok: true, value: map }
 }
 
 export function parseProviderModelUpdatePayload(payload: unknown): ParseResult<ProviderModelUpdatePayloadContract> {
   const body = toRecord(payload)
   const hasCost = typeof body.cost === 'object' && body.cost !== null
-  const hasAnyField = hasCost || ['name', 'description', 'contextWindow'].some(key => Object.prototype.hasOwnProperty.call(body, key))
+  const hasAnyField = hasCost || MODEL_UPDATE_FIELDS.some(key => Object.prototype.hasOwnProperty.call(body, key))
   if (!hasAnyField) {
-    return { ok: false, error: 'Provide at least a name, description, contextWindow or cost to update.' }
+    return { ok: false, error: `Provide at least one of ${MODEL_UPDATE_FIELDS.join(', ')} or cost to update.` }
   }
+
+  const disabled = parseOptionalBooleanField(body, 'disabled')
+  if (!disabled.ok) return disabled
 
   const name = parseOptionalStringField(body, 'name')
   if (!name.ok) return name
   const description = parseOptionalStringField(body, 'description')
   if (!description.ok) return description
-  const contextWindow = parseOptionalContextWindow(body)
+  const contextWindow = parseOptionalPositiveInteger(body, 'contextWindow')
   if (!contextWindow.ok) return contextWindow
+  const maxTokens = parseOptionalPositiveInteger(body, 'maxTokens')
+  if (!maxTokens.ok) return maxTokens
+  const reasoning = parseOptionalNullableBoolean(body, 'reasoning')
+  if (!reasoning.ok) return reasoning
+  const input = parseOptionalModelInput(body)
+  if (!input.ok) return input
+  const thinkingLevelMap = parseOptionalThinkingLevelMap(body)
+  if (!thinkingLevelMap.ok) return thinkingLevelMap
 
   const value: ProviderModelUpdatePayloadContract = {}
+  if (disabled.value !== undefined) value.disabled = disabled.value
   if (name.value !== undefined) value.name = name.value
   if (description.value !== undefined) value.description = description.value
   if (contextWindow.value !== undefined) value.contextWindow = contextWindow.value
+  if (maxTokens.value !== undefined) value.maxTokens = maxTokens.value
+  if (reasoning.value !== undefined) value.reasoning = reasoning.value
+  if (input.value !== undefined) value.input = input.value
+  if (thinkingLevelMap.value !== undefined) value.thinkingLevelMap = thinkingLevelMap.value
   const cost = hasCost ? parseModelCostPatch(body.cost) : undefined
   if (cost) value.cost = cost
 
@@ -254,6 +343,8 @@ export function parseProviderCreatePayload(
   if (preset?.requiresApiKey && !apiKey) {
     return { ok: false, error: 'API key is required for this provider type' }
   }
+  const compat = parseCompatField(body)
+  if (!compat.ok) return compat
 
   return {
     ok: true,
@@ -267,6 +358,7 @@ export function parseProviderCreatePayload(
       textVerbosity: normalizeTextVerbosity(body.textVerbosity),
       transport: normalizeTransport(body.transport),
       extraFields: normalizeExtraFields(body.extraFields),
+      compat: compat.value,
     },
   }
 }
@@ -274,6 +366,10 @@ export function parseProviderCreatePayload(
 export function parseProviderUpdatePayload(payload: unknown): ParseResult<ProviderUpdatePayloadContract> {
   const body = toRecord(payload)
   const providerType = asTrimmedString(body.providerType)
+  const disabled = parseOptionalBooleanField(body, 'disabled')
+  if (!disabled.ok) return disabled
+  const compat = parseCompatField(body)
+  if (!compat.ok) return compat
 
   if (providerType && !isValidProviderType(providerType)) {
     return {
@@ -294,29 +390,8 @@ export function parseProviderUpdatePayload(payload: unknown): ParseResult<Provid
       textVerbosity: normalizeTextVerbosity(body.textVerbosity),
       transport: normalizeTransport(body.transport),
       extraFields: normalizeExtraFields(body.extraFields),
-    },
-  }
-}
-
-export function parseOpenAiCompatibleModelsProbePayload(payload: unknown): ParseResult<{ baseUrl: string; apiKey?: string; providerType: string }> {
-  const body = toRecord(payload)
-  const providerType = asTrimmedString(body.providerType)
-  const baseUrl = asTrimmedString(body.baseUrl)
-
-  if (!providerType || providerType !== 'openai-compatible') {
-    return { ok: false, error: 'providerType must be openai-compatible' }
-  }
-
-  if (!baseUrl) {
-    return { ok: false, error: 'baseUrl is required' }
-  }
-
-  return {
-    ok: true,
-    value: {
-      providerType,
-      baseUrl,
-      apiKey: asTrimmedString(body.apiKey),
+      disabled: disabled.value,
+      compat: compat.value,
     },
   }
 }

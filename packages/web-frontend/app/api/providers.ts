@@ -11,6 +11,7 @@ import type {
   ProviderModelUpdatePayloadContract,
   ProviderMutationResponseContract,
   ProviderQuotaRefreshResponseContract,
+  ProviderCatalogRefreshResponseContract,
   ProviderTestResultContract,
   ProviderTypePresetContract,
   ProviderUpdatePayloadContract,
@@ -72,6 +73,9 @@ export function useProvidersApi() {
       body: JSON.stringify({ modelId }),
     })
 
+  const refreshModelCatalogs = () =>
+    apiFetch<ProviderCatalogRefreshResponseContract>('/api/providers/refresh-catalogs', { method: 'POST' })
+
   const refreshQuota = (id: string) =>
     apiFetch<ProviderQuotaRefreshResponseContract>(`/api/providers/${id}/refresh-quota`, {
       method: 'POST',
@@ -91,12 +95,6 @@ export function useProvidersApi() {
 
   const getOllamaModels = (providerId: string) =>
     apiFetch<{ models: OllamaModel[] }>(`/api/providers/${providerId}/ollama-models`)
-
-  const probeOpenAiCompatibleModels = (baseUrl: string, apiKey: string | undefined, providerType: string) =>
-    apiFetch<{ models: AvailableModel[] }>('/api/providers/openai-compatible/models-probe', {
-      method: 'POST',
-      body: JSON.stringify({ baseUrl, apiKey, providerType }),
-    })
 
   const probeOllamaModels = (baseUrl: string, providerType: string) =>
     apiFetch<{ models: OllamaModel[] }>('/api/providers/ollama-probe', {
@@ -180,11 +178,11 @@ export function useProvidersApi() {
     testProvider,
     activateProvider,
     refreshQuota,
+    refreshModelCatalogs,
     setFallbackProvider,
     getModels,
     getLiveModels,
     getOllamaModels,
-    probeOpenAiCompatibleModels,
     probeOllamaModels,
     deleteOllamaModel,
     pullOllamaModel,

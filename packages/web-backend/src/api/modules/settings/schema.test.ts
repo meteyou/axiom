@@ -189,7 +189,7 @@ describe('settings schema', () => {
     const settingsRaw: Record<string, unknown> = {}
 
     expect(mergeTasks({ tasks: { backgroundThinkingLevel: 'extreme' } }, settingsRaw)).toEqual({
-      error: 'tasks.backgroundThinkingLevel must be "off" or "minimal" or "low" or "medium" or "high" or "xhigh"',
+      error: 'tasks.backgroundThinkingLevel must be "off" or "minimal" or "low" or "medium" or "high" or "xhigh" or "max"',
     })
 
     expect(mergeTasks({ tasks: { backgroundThinkingLevel: 'medium' } }, settingsRaw)).toEqual({

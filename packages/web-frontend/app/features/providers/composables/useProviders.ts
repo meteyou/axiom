@@ -1,4 +1,5 @@
 import type {
+  ProviderCatalogRefreshResultContract,
   ProviderCreatePayloadContract,
   ProviderModelUpdatePayloadContract,
   ProviderUpdatePayloadContract,
@@ -132,6 +133,18 @@ export function useProviders() {
     }
   }
 
+  async function refreshModelCatalogs(): Promise<ProviderCatalogRefreshResultContract[] | null> {
+    error.value = null
+    try {
+      const { results } = await providersApi.refreshModelCatalogs()
+      await fetchProviders()
+      return results
+    } catch (err) {
+      error.value = (err as Error).message
+      return null
+    }
+  }
+
   async function activateProvider(id: string, modelId?: string): Promise<boolean> {
     error.value = null
     try {
@@ -170,11 +183,6 @@ export function useProviders() {
 
   async function fetchOllamaModels(providerId: string): Promise<OllamaModel[]> {
     const data = await providersApi.getOllamaModels(providerId)
-    return data.models
-  }
-
-  async function probeOpenAiCompatibleModels(baseUrl: string, apiKey: string | undefined, providerType: string): Promise<AvailableModel[]> {
-    const data = await providersApi.probeOpenAiCompatibleModels(baseUrl, apiKey, providerType)
     return data.models
   }
 
@@ -237,7 +245,6 @@ export function useProviders() {
     fetchModels,
     fetchLiveModels,
     fetchOllamaModels,
-    probeOpenAiCompatibleModels,
     probeOllamaModels,
     pullOllamaModel,
     probeOllamaPull,
@@ -249,6 +256,7 @@ export function useProviders() {
     testProvider,
     activateProvider,
     refreshQuota,
+    refreshModelCatalogs,
     setFallbackProvider,
     startOAuthLogin,
     pollOAuthStatus,

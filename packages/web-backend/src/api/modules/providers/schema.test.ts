@@ -150,11 +150,52 @@ describe('providers schema', () => {
 
     const empty = parseProviderModelUpdatePayload({})
     expect(empty.ok).toBe(false)
-    if (!empty.ok) expect(empty.error).toContain('contextWindow or cost')
+    if (!empty.ok) expect(empty.error).toContain('or cost to update')
 
-    const metadata = parseProviderModelUpdatePayload({ name: 'Qwen3.8 Flash', contextWindow: 1_000_000 })
+    const metadata = parseProviderModelUpdatePayload({ name: 'Qwen3.8 Flash', contextWindow: 1_000_000, maxTokens: 65_536 })
     expect(metadata.ok).toBe(true)
-    if (metadata.ok) expect(metadata.value).toEqual({ name: 'Qwen3.8 Flash', contextWindow: 1_000_000 })
+    if (metadata.ok) expect(metadata.value).toEqual({ name: 'Qwen3.8 Flash', contextWindow: 1_000_000, maxTokens: 65_536 })
+
+    const badMaxTokens = parseProviderModelUpdatePayload({ maxTokens: 1.5 })
+    expect(badMaxTokens.ok).toBe(false)
+    if (!badMaxTokens.ok) expect(badMaxTokens.error).toContain('maxTokens must be a positive integer')
+
+    const capabilities = parseProviderModelUpdatePayload({
+      reasoning: true,
+      input: ['text', 'image', 'text'],
+      thinkingLevelMap: { minimal: null, low: ' low ', max: 'max' },
+    })
+    expect(capabilities.ok).toBe(true)
+    if (capabilities.ok) {
+      expect(capabilities.value).toEqual({
+        reasoning: true,
+        input: ['text', 'image'],
+        thinkingLevelMap: { minimal: null, low: 'low', max: 'max' },
+      })
+    }
+
+    const resets = parseProviderModelUpdatePayload({
+      contextWindow: null, maxTokens: null, reasoning: null, input: null, cost: { input: null, output: 2 },
+    })
+    expect(resets.ok && resets.value).toEqual({
+      contextWindow: null, maxTokens: null, reasoning: null, input: null, cost: { input: null, output: 2 },
+    })
+
+    const clearedMap = parseProviderModelUpdatePayload({ thinkingLevelMap: null })
+    expect(clearedMap.ok && clearedMap.value.thinkingLevelMap).toBeNull()
+
+    const imageOnly = parseProviderModelUpdatePayload({ input: ['image'] })
+    expect(imageOnly.ok).toBe(false)
+
+    const unknownLevel = parseProviderModelUpdatePayload({ thinkingLevelMap: { ultra: 'ultra' } })
+    expect(unknownLevel.ok).toBe(false)
+    if (!unknownLevel.ok) expect(unknownLevel.error).toContain('unknown level "ultra"')
+
+    const emptyLevelValue = parseProviderModelUpdatePayload({ thinkingLevelMap: { low: '' } })
+    expect(emptyLevelValue.ok).toBe(false)
+
+    const badReasoning = parseProviderModelUpdatePayload({ reasoning: 'yes' })
+    expect(badReasoning.ok).toBe(false)
 
     const badContextWindow = parseProviderModelUpdatePayload({ contextWindow: -5 })
     expect(badContextWindow.ok).toBe(false)
@@ -167,5 +208,20 @@ describe('providers schema', () => {
     const nonStringDescription = parseProviderModelUpdatePayload({ description: 42 })
     expect(nonStringDescription.ok).toBe(false)
     if (!nonStringDescription.ok) expect(nonStringDescription.error).toContain('description must be a string')
+  })
+})
+
+describe('custom provider payload fields', () => {
+  it('passes compat through and rejects invalid shapes', () => {
+    const created = parseProviderCreatePayload({
+      name: 'Gateway', providerType: 'custom-anthropic-messages', compat: { supportsTemperature: false },
+    }, PROVIDER_TYPE_PRESETS)
+    expect(created.ok && created.value).toMatchObject({ providerType: 'custom-anthropic-messages', compat: { supportsTemperature: false } })
+
+    const cleared = parseProviderUpdatePayload({ compat: null })
+    expect(cleared.ok && cleared.value.compat).toBeNull()
+
+    const badCompat = parseProviderCreatePayload({ name: 'X', providerType: 'custom-openai-completions', compat: [1] }, PROVIDER_TYPE_PRESETS)
+    expect(!badCompat.ok && badCompat.error).toContain('compat must be a JSON object')
   })
 })

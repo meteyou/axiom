@@ -9,6 +9,7 @@ import {
   loadProviders,
   setActiveProvider,
   getProviderDefaultModel,
+  getUsableModels,
 } from './provider-config.js'
 import type { ProviderConfig } from './provider-config.js'
 import { getConfigDir, loadConfig } from './config.js'
@@ -273,7 +274,7 @@ export function registerBuiltInSlashCommands(registry: SlashCommandRegistry): vo
   registry.register({
     name: 'thinking',
     description: 'Show or set the main chat thinking level.',
-  usage: '/thinking <off|minimal|low|medium|high|xhigh>',
+  usage: `/thinking <${SETTINGS_THINKING_LEVELS.join('|')}>`,
     surfaces: ['web', 'telegram'],
     handler: (ctx) => handleThinkingCommand(ctx),
   })
@@ -532,7 +533,7 @@ function handleModelCommand(rawArgs: string): SlashCommandReply {
   } catch (err) {
     return `Could not read provider settings: ${(err as Error).message}`
   }
-  const providers = file.providers
+  const providers = file.providers.filter((p) => getUsableModels(p).length > 0)
   if (providers.length === 0) {
     return 'No providers are configured. Add one in the settings UI first.'
   }
@@ -580,7 +581,7 @@ function findProvider(providers: ProviderConfig[], key: string): ProviderConfig 
 }
 
 function enabledModelIds(provider: ProviderConfig): string[] {
-  return provider.enabledModels ?? []
+  return getUsableModels(provider)
 }
 
 function buildProviderPicker(

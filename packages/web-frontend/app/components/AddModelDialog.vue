@@ -9,13 +9,28 @@
       </DialogHeader>
 
       <div class="flex flex-col gap-3">
-        <!-- Search input -->
-        <Input
-          v-model="search"
-          type="text"
-          :placeholder="$t('providers.addModelSearch')"
-          autofocus
-        />
+        <div class="flex items-center gap-2">
+          <Input
+            v-model="search"
+            type="text"
+            class="flex-1"
+            :placeholder="$t('providers.addModelSearch')"
+            autofocus
+          />
+          <Button
+            v-if="isDynamicCatalog"
+            type="button"
+            variant="outline"
+            size="icon"
+            class="shrink-0"
+            :disabled="loading"
+            :title="$t('providers.addModelRefresh')"
+            :aria-label="$t('providers.addModelRefresh')"
+            @click="loadCatalog"
+          >
+            <AppIcon name="refresh" :class="['h-4 w-4', loading ? 'animate-spin' : '']" />
+          </Button>
+        </div>
 
         <!-- Loading -->
         <div v-if="loading" class="flex items-center gap-2 py-4 text-xs text-muted-foreground">
@@ -26,6 +41,7 @@
         <!-- Error -->
         <div v-else-if="loadError" class="flex flex-col gap-1">
           <span class="text-xs text-destructive">{{ $t('providers.modelsLoadError') }}</span>
+          <span v-if="loadErrorMessage" class="break-words text-xs text-muted-foreground">{{ loadErrorMessage }}</span>
           <button
             type="button"
             class="self-start text-xs text-destructive hover:underline"
@@ -150,6 +166,7 @@ const search = ref('')
 const catalog = ref<AvailableModel[]>([])
 const loading = ref(false)
 const loadError = ref(false)
+const loadErrorMessage = ref('')
 const selected = ref<Set<string>>(new Set())
 const saving = ref(false)
 
@@ -166,7 +183,7 @@ const filteredModels = computed(() => {
 
 // The custom-model fallback row is shown only when the search text does not
 // match any catalog entry (and is non-empty). For providers with an empty
-// catalog (e.g. Ollama, openai-compatible) every non-empty search qualifies.
+// catalog (e.g. Ollama, custom presets) every non-empty search qualifies.
 const canAddCustom = computed(() => {
   const query = search.value.trim()
   if (!query) return false
@@ -174,6 +191,10 @@ const canAddCustom = computed(() => {
     model => model.id.toLowerCase() === query.toLowerCase(),
   )
 })
+
+const isDynamicCatalog = computed(() =>
+  Boolean(props.provider && presets.value[props.provider.providerType]?.dynamicCatalog),
+)
 
 function isAlreadyEnabled(modelId: string): boolean {
   const enabled = props.provider?.enabledModels
@@ -192,15 +213,14 @@ async function loadCatalog() {
   if (!props.provider) return
   loading.value = true
   loadError.value = false
+  loadErrorMessage.value = ''
   try {
-    // Dynamic-catalog providers (e.g. OpenRouter) serve their model list live
-    // from the provider's own /models endpoint; the backend falls back to the
-    // curated catalog if that fetch fails.
-    catalog.value = presets.value[props.provider.providerType]?.dynamicCatalog
+    catalog.value = isDynamicCatalog.value
       ? await fetchLiveModels(props.provider.id)
       : await fetchModels(props.provider.providerType)
-  } catch {
+  } catch (err) {
     loadError.value = true
+    loadErrorMessage.value = (err as Error).message
     catalog.value = []
   } finally {
     loading.value = false
@@ -211,7 +231,7 @@ async function loadCatalog() {
 // bundled pi-ai catalog, so their pricing/context window would otherwise be
 // unknown to buildModel(). Persist that metadata as per-model overrides.
 async function persistLiveCatalogMetadata(provider: Provider, modelIds: string[]) {
-  if (!presets.value[provider.providerType]?.dynamicCatalog) return
+  if (!isDynamicCatalog.value) return
 
   const patches = catalog.value
     .filter(entry => modelIds.includes(entry.id))

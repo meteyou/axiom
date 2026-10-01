@@ -63,6 +63,8 @@ export interface ProviderContract {
   apiKey: string
   apiKeyMasked: string
   enabledModels?: string[]
+  disabled?: boolean
+  disabledModels?: string[]
   degradedThresholdMs?: number
   textVerbosity?: ProviderTextVerbosityContract
   transport?: ProviderTransportContract
@@ -72,6 +74,8 @@ export interface ProviderContract {
   oauthCredentials?: { expires: number }
   cost?: { input: number; output: number } | null
   modelCosts?: Record<string, { input: number; output: number; cacheRead?: number; cacheWrite?: number }>
+  /** Effective runtime specs per enabled model (overrides layered on catalog defaults). */
+  modelSpecs?: Record<string, ProviderModelSpecContract>
   /** Per-model user overrides (description, cost, limits). Not masked. */
   models?: ProviderModelContract[]
   /** True when this provider exposes a subscriber usage quota endpoint. */
@@ -82,6 +86,8 @@ export interface ProviderContract {
   extraFields?: Record<string, string>
   /** Presence flags for secret extra fields (the values themselves are never returned). */
   extraFieldsSet?: Record<string, boolean>
+  /** pi-ai `compat` options (custom presets only). */
+  compat?: Record<string, unknown>
 }
 
 /**
@@ -95,8 +101,54 @@ export interface ProviderModelContract {
   contextWindow?: number
   maxTokens?: number
   reasoning?: boolean
+  input?: ModelInputModalityContract[]
+  thinkingLevelMap?: ModelThinkingLevelMapContract
   fixedTemperature?: number
-  cost?: { input: number; output: number; cacheRead?: number; cacheWrite?: number }
+  /** Only the fields the user overrode; the rest follows the catalog. */
+  cost?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number }
+}
+
+export const MODEL_THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
+export type ModelThinkingLevelContract = (typeof MODEL_THINKING_LEVELS)[number]
+/** pi-ai semantics: a missing key uses the provider default, `null` marks the level as unsupported. */
+export type ModelThinkingLevelMapContract = Partial<Record<ModelThinkingLevelContract, string | null>>
+export type ModelInputModalityContract = 'text' | 'image'
+
+export interface ProviderModelSpecContract {
+  /** Effective display name (user override → catalog → id). */
+  name: string
+  contextWindow: number
+  maxTokens: number
+  reasoning: boolean
+  input: ModelInputModalityContract[]
+  thinkingLevelMap?: ModelThinkingLevelMapContract
+}
+
+/** Mirrors pi-ai's `getSupportedThinkingLevels`. */
+export function getSupportedThinkingLevels(
+  spec: Pick<ProviderModelSpecContract, 'reasoning' | 'thinkingLevelMap'>,
+): ModelThinkingLevelContract[] {
+  if (!spec.reasoning) return ['off']
+  return MODEL_THINKING_LEVELS.filter((level) => {
+    const mapped = spec.thinkingLevelMap?.[level]
+    if (mapped === null) return false
+    if (level === 'xhigh' || level === 'max') return mapped !== undefined
+    return true
+  })
+}
+
+/** Mirrors pi-ai's `clampThinkingLevel`: prefer the next higher supported level, then the next lower. */
+export function clampThinkingLevel(
+  spec: Pick<ProviderModelSpecContract, 'reasoning' | 'thinkingLevelMap'>,
+  level: ModelThinkingLevelContract,
+): ModelThinkingLevelContract {
+  const supported = getSupportedThinkingLevels(spec)
+  if (supported.includes(level)) return level
+  const index = MODEL_THINKING_LEVELS.indexOf(level)
+  const higher = MODEL_THINKING_LEVELS.slice(index + 1).find(candidate => supported.includes(candidate))
+  if (higher) return higher
+  const lower = MODEL_THINKING_LEVELS.slice(0, index).reverse().find(candidate => supported.includes(candidate))
+  return lower ?? supported[0] ?? 'off'
 }
 
 /** Declarative definition of one provider-specific extra configuration field. */
@@ -143,14 +195,19 @@ export interface ProviderTypePresetContract {
   dynamicCatalog?: boolean
   /** Provider-specific extra fields the UI should render generically. */
   extraFields?: ProviderExtraFieldDefContract[]
+  /** True when per-model capability overrides (limits, reasoning, input) take effect at runtime. */
+  editableModelSpecs?: boolean
+  /** Generic preset for any endpoint speaking `apiType`; accepts pi-ai `compat` options. */
+  custom?: boolean
 }
 
 export interface AvailableModelContract {
   id: string
   name: string
   contextWindow?: number
+  maxTokens?: number
   /** USD per 1M tokens. */
-  cost?: { input: number; output: number }
+  cost?: { input: number; output: number; cacheRead?: number; cacheWrite?: number }
 }
 
 export interface OllamaModelContract {
@@ -184,6 +241,22 @@ export interface ProviderMutationResponseContract {
 
 export interface ProviderQuotaRefreshResponseContract {
   quota: ProviderQuotaContract | null
+}
+
+/** Outcome of refreshing the model catalog behind one configured provider. */
+export interface ProviderCatalogRefreshResultContract {
+  providerId: string
+  providerName: string
+  status: 'updated' | 'unchanged' | 'error'
+  /** Models that became available with this refresh. */
+  addedModelIds: string[]
+  /** Enabled models the provider's catalog no longer lists (they cannot run reliably). */
+  missingModelIds: string[]
+  error?: string
+}
+
+export interface ProviderCatalogRefreshResponseContract {
+  results: ProviderCatalogRefreshResultContract[]
 }
 
 export interface ProviderTestResultContract {
@@ -225,6 +298,8 @@ export interface ProviderCreatePayloadContract {
   textVerbosity?: ProviderTextVerbosityContract | null
   transport?: ProviderTransportContract | null
   extraFields?: Record<string, string>
+  /** Custom presets only: pi-ai `compat` options. */
+  compat?: Record<string, unknown> | null
 }
 
 export interface ProviderUpdatePayloadContract {
@@ -237,6 +312,9 @@ export interface ProviderUpdatePayloadContract {
   textVerbosity?: ProviderTextVerbosityContract | null
   transport?: ProviderTransportContract | null
   extraFields?: Record<string, string>
+  disabled?: boolean
+  /** Custom presets only; `null` removes all compat options. */
+  compat?: Record<string, unknown> | null
 }
 
 export interface ProviderFallbackUpdatePayloadContract {
@@ -267,14 +345,20 @@ export interface ProviderModelSelectionPayloadContract {
  * catalog-default) value.
  */
 export interface ProviderModelUpdatePayloadContract {
+  disabled?: boolean
   name?: string
   description?: string
-  contextWindow?: number
+  /** For every spec/cost field, `null` removes the override so the value follows the catalog again. */
+  contextWindow?: number | null
+  maxTokens?: number | null
+  reasoning?: boolean | null
+  input?: ModelInputModalityContract[] | null
+  thinkingLevelMap?: ModelThinkingLevelMapContract | null
   cost?: {
-    input?: number
-    output?: number
-    cacheRead?: number
-    cacheWrite?: number
+    input?: number | null
+    output?: number | null
+    cacheRead?: number | null
+    cacheWrite?: number | null
   }
 }
 
@@ -309,4 +393,120 @@ export function canonicalizeProviderModelRef(
 
   const firstModel = provider.enabledModels?.[0]
   return firstModel ? `${provider.id}:${firstModel}` : trimmed
+}
+
+/** Wire APIs with a known pi-ai `compat` schema (the APIs custom presets speak). */
+export const COMPAT_API_TYPES = ['openai-completions', 'openai-responses', 'anthropic-messages'] as const
+export type CompatApiTypeContract = (typeof COMPAT_API_TYPES)[number]
+
+export function isCompatApiType(value: unknown): value is CompatApiTypeContract {
+  return (COMPAT_API_TYPES as readonly unknown[]).includes(value)
+}
+
+type CompatFieldKind = 'boolean' | 'number' | 'object' | 'array' | readonly string[]
+
+const SESSION_AFFINITY_FORMATS = ['openai', 'openai-nosession', 'openrouter'] as const
+
+/**
+ * pi-ai `compat` options per wire API, mirroring `OpenAICompletionsCompat`,
+ * `OpenAIResponsesCompat` and `AnthropicMessagesCompat` from pi-ai 1.0.
+ * Update together with the pi-ai dependency.
+ */
+export const MODEL_COMPAT_FIELDS: Record<CompatApiTypeContract, Record<string, CompatFieldKind>> = {
+  'openai-completions': {
+    supportsStore: 'boolean',
+    supportsDeveloperRole: 'boolean',
+    supportsReasoningEffort: 'boolean',
+    supportsUsageInStreaming: 'boolean',
+    supportsFinishReason: 'boolean',
+    maxTokensField: ['max_completion_tokens', 'max_tokens'],
+    requiresToolResultName: 'boolean',
+    requiresAssistantAfterToolResult: 'boolean',
+    requiresThinkingAsText: 'boolean',
+    requiresReasoningContentOnAssistantMessages: 'boolean',
+    thinkingFormat: ['openai', 'openrouter', 'deepseek', 'together', 'baseten', 'zai', 'qwen', 'chat-template', 'qwen-chat-template', 'string-thinking', 'ant-ling'],
+    chatTemplateKwargs: 'object',
+    chatTemplateArgs: 'object',
+    openRouterRouting: 'object',
+    vercelGatewayRouting: 'object',
+    zaiToolStream: 'boolean',
+    thinkingTokenBudgetField: ['thinking_token_budget', 'thinking_budget', 'thinking_budget_tokens'],
+    supportsThinkingTokenBudget: 'boolean',
+    supportsOpenAIGrammarTools: 'boolean',
+    supportsMidConvoSystemMessages: 'boolean',
+    supportsMidConvoToolAdditions: 'boolean',
+    supportsStrictMode: 'boolean',
+    cacheControlFormat: ['anthropic'],
+    sendSessionAffinityHeaders: 'boolean',
+    sessionAffinityFormat: SESSION_AFFINITY_FORMATS,
+    supportsLongCacheRetention: 'boolean',
+    vllmPriority: 'number',
+  },
+  'openai-responses': {
+    supportsDeveloperRole: 'boolean',
+    supportsMidConvoSystemMessages: 'boolean',
+    sessionAffinityFormat: SESSION_AFFINITY_FORMATS,
+    supportsLongCacheRetention: 'boolean',
+    supportsStrictMode: 'boolean',
+    supportsOpenAIGrammarTools: 'boolean',
+    supportsAdditionalTools: 'boolean',
+    supportsToolSearch: 'boolean',
+    supportsExplicitPromptCacheMode: 'boolean',
+    supportsMaxOutputTokens: 'boolean',
+  },
+  'anthropic-messages': {
+    supportsEagerToolInputStreaming: 'boolean',
+    supportsLongCacheRetention: 'boolean',
+    sendSessionAffinityHeaders: 'boolean',
+    sessionAffinityFormat: ['openrouter'],
+    supportsCacheControlOnTools: 'boolean',
+    supportsTemperature: 'boolean',
+    forceAdaptiveThinking: 'boolean',
+    allowEmptySignature: 'boolean',
+    supportsStrictTools: 'boolean',
+    supportsMidConvoEffort: 'boolean',
+    supportsMidConvoSystemMessages: 'boolean',
+    supportsMidConvoToolChanges: 'boolean',
+    allowedFallbackModels: 'array',
+  },
+}
+
+function compatValueMatches(kind: CompatFieldKind, value: unknown): boolean {
+  if (typeof kind !== 'string') return typeof value === 'string' && kind.includes(value)
+  if (kind === 'object') return typeof value === 'object' && value !== null && !Array.isArray(value)
+  if (kind === 'array') return Array.isArray(value)
+  if (kind === 'number') return typeof value === 'number' && Number.isFinite(value)
+  return typeof value === kind
+}
+
+function describeCompatKind(kind: CompatFieldKind): string {
+  return typeof kind === 'string' ? `a ${kind}` : `one of ${kind.map(v => `"${v}"`).join(', ')}`
+}
+
+/**
+ * Validate a pi-ai `compat` object for the given wire API. Accepts the object
+ * itself or a pasted pi provider/model entry that contains a `compat` key.
+ */
+export function validateModelCompat(
+  apiType: CompatApiTypeContract,
+  value: unknown,
+): { ok: true; value: Record<string, unknown> } | { ok: false; error: string } {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return { ok: false, error: 'compat must be a JSON object' }
+  }
+  const source = value as Record<string, unknown>
+  const compat = typeof source.compat === 'object' && source.compat !== null && !Array.isArray(source.compat)
+    ? source.compat as Record<string, unknown>
+    : source
+  const fields = MODEL_COMPAT_FIELDS[apiType]
+  for (const [key, entry] of Object.entries(compat)) {
+    const kind = fields[key]
+    if (!kind) {
+      return { ok: false, error: `compat option "${key}" is not supported for ${apiType}. Supported: ${Object.keys(fields).join(', ')}` }
+    }
+    if (!compatValueMatches(kind, entry)) {
+      return { ok: false, error: `compat.${key} must be ${describeCompatKind(kind)}` }
+    }
+  }
+  return { ok: true, value: { ...compat } }
 }

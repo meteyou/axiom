@@ -1,0 +1,42 @@
+import { describe, expect, it } from 'vitest'
+import { buildProviderModelOptions, getModelDisplayName } from './providerModelOptions'
+
+const providers = [
+  { id: 'a', name: 'A', enabledModels: ['a1', 'a2'], disabledModels: ['a2'] },
+  { id: 'b', name: 'B', enabledModels: ['b1'], disabled: true },
+]
+
+describe('buildProviderModelOptions', () => {
+  it('omits disabled providers and models by default', () => {
+    expect(buildProviderModelOptions(providers).map(o => o.value)).toEqual(['a:a1'])
+  })
+
+  it('includes disabled providers and models when requested', () => {
+    expect(buildProviderModelOptions(providers, { includeDisabled: true }).map(o => o.value))
+      .toEqual(['a:a1', 'a:a2', 'b:b1'])
+  })
+})
+
+describe('model display names', () => {
+  const customGateway = {
+    id: 'n',
+    name: 'Custom Gateway',
+    enabledModels: ['DeepSeek-V4-Flash', 'gemma'],
+    models: [{ id: 'DeepSeek-V4-Flash', name: 'DeepSeek V4 Flash' }, { id: 'gemma', name: '  ' }],
+  }
+
+  it('prefers the configured name and falls back to the id', () => {
+    expect(getModelDisplayName(customGateway, 'DeepSeek-V4-Flash')).toBe('DeepSeek V4 Flash')
+    expect(getModelDisplayName(customGateway, 'gemma')).toBe('gemma')
+    expect(getModelDisplayName(undefined, 'x')).toBe('x')
+    expect(getModelDisplayName({ modelSpecs: { x: { name: 'Catalog X' } } }, 'x')).toBe('Catalog X')
+    expect(getModelDisplayName({ models: [{ id: 'x', name: 'Mine' }], modelSpecs: { x: { name: 'Catalog X' } } }, 'x')).toBe('Mine')
+  })
+
+  it('labels select options with the display name but keeps the id as value', () => {
+    expect(buildProviderModelOptions([customGateway])[0]).toEqual({
+      value: 'n:DeepSeek-V4-Flash',
+      label: 'Custom Gateway (DeepSeek V4 Flash)',
+    })
+  })
+})

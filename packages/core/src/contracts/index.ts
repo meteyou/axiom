@@ -51,6 +51,13 @@ export type {
 
 export {
   canonicalizeProviderModelRef,
+  clampThinkingLevel,
+  COMPAT_API_TYPES,
+  isCompatApiType,
+  MODEL_COMPAT_FIELDS,
+  validateModelCompat,
+  getSupportedThinkingLevels,
+  MODEL_THINKING_LEVELS,
 } from './providers.js'
 
 export type {
@@ -73,6 +80,8 @@ export type {
   ProvidersListResponseContract,
   ProviderMutationResponseContract,
   ProviderQuotaRefreshResponseContract,
+  ProviderCatalogRefreshResultContract,
+  ProviderCatalogRefreshResponseContract,
   ProviderTestResultContract,
   ProviderActivationResponseContract,
   ProviderFallbackResponseContract,
@@ -86,5 +95,10 @@ export type {
   ProviderModelSelectionPayloadContract,
   ProviderModelUpdatePayloadContract,
   ProviderModelContract,
+  ProviderModelSpecContract,
+  CompatApiTypeContract,
+  ModelThinkingLevelContract,
+  ModelThinkingLevelMapContract,
+  ModelInputModalityContract,
   ProviderReferenceContract,
 } from './providers.js'

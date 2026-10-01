@@ -4,6 +4,7 @@ import {
   getActiveProvider,
   getProviderDefaultModel,
   getApiKeyForProvider,
+  isProviderModelUsable,
   loadConfig,
   loadProvidersDecrypted,
   parseProviderModelId,
@@ -104,6 +105,12 @@ export async function resolveFactExtractionExecutionContext(
         resolvedDeps.console.warn(
           `[fact-extraction] Configured provider '${parsed.providerId}' not found, using active provider`,
         )
+      } else if (!isProviderModelUsable(provider, modelId)) {
+        resolvedDeps.console.warn(
+          `[fact-extraction] Configured provider/model '${settings.providerId}' is disabled, using active provider`,
+        )
+        provider = null
+        modelId = undefined
       }
     }
   }

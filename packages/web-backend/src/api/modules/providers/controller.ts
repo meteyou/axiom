@@ -15,7 +15,6 @@ import {
   parseModelNamePayload,
   parseOAuthCodePayload,
   parseOAuthLoginPayload,
-  parseOpenAiCompatibleModelsProbePayload,
   parseOllamaProbePayload,
   parseOllamaPullPayload,
   parseProviderCreatePayload,
@@ -42,7 +41,6 @@ export interface ProvidersController {
   getOAuthStatus: (req: AuthenticatedRequest, res: ExpressResponse) => Promise<void>
   postOAuthCode: (req: AuthenticatedRequest, res: ExpressResponse) => void
   postProvider: (req: AuthenticatedRequest, res: ExpressResponse) => void
-  postOpenAiCompatibleModelsProbe: (req: AuthenticatedRequest, res: ExpressResponse) => Promise<void>
   postOllamaProbe: (req: AuthenticatedRequest, res: ExpressResponse) => Promise<void>
   postOllamaProbePull: (req: AuthenticatedRequest, res: ExpressResponse) => Promise<void>
   getOllamaModels: (req: AuthenticatedRequest, res: ExpressResponse) => Promise<void>
@@ -54,6 +52,7 @@ export interface ProvidersController {
   postProviderTest: (req: AuthenticatedRequest, res: ExpressResponse) => Promise<void>
   postProviderActivate: (req: AuthenticatedRequest, res: ExpressResponse) => void
   postRefreshQuota: (req: AuthenticatedRequest, res: ExpressResponse) => Promise<void>
+  postRefreshCatalogs: (req: AuthenticatedRequest, res: ExpressResponse) => Promise<void>
 }
 
 export function createProvidersController(options: ProvidersRouterOptions = {}): ProvidersController {
@@ -228,25 +227,6 @@ export function createProvidersController(options: ProvidersRouterOptions = {}):
         }
 
         res.status(500).json({ error: (err as Error).message })
-      }
-    },
-
-    async postOpenAiCompatibleModelsProbe(req, res) {
-      const parsed = parseOpenAiCompatibleModelsProbePayload(req.body)
-      if (!parsed.ok) {
-        res.status(400).json({ error: parsed.error })
-        return
-      }
-
-      try {
-        const models = await service.probeOpenAiCompatibleModels(parsed.value.baseUrl, parsed.value.apiKey)
-        res.json({ models })
-      } catch (err) {
-        if (err instanceof ProvidersValidationError) {
-          res.status(400).json({ error: err.message })
-          return
-        }
-        res.status(502).json({ error: `Failed to load models: ${(err as Error).message}` })
       }
     },
 
@@ -452,6 +432,15 @@ export function createProvidersController(options: ProvidersRouterOptions = {}):
         }
 
         res.status(500).json({ error: (err as Error).message })
+      }
+    },
+
+    async postRefreshCatalogs(_req, res) {
+      try {
+        const results = await service.refreshModelCatalogs()
+        res.json({ results })
+      } catch (err) {
+        res.status(500).json({ error: `Failed to refresh model catalogs: ${(err as Error).message}` })
       }
     },
 

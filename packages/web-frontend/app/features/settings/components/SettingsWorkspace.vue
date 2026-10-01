@@ -209,7 +209,7 @@
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem v-for="lvl in thinkingLevelOptions" :key="lvl.value" :value="lvl.value">
+                      <SelectItem v-for="lvl in agentThinkingLevelOptions" :key="lvl.value" :value="lvl.value">
                         {{ lvl.label }}
                       </SelectItem>
                     </SelectContent>
@@ -1213,7 +1213,7 @@
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem v-for="lvl in thinkingLevelOptions" :key="lvl.value" :value="lvl.value">
+                      <SelectItem v-for="lvl in backgroundThinkingLevelOptions" :key="lvl.value" :value="lvl.value">
                         {{ lvl.label }}
                       </SelectItem>
                     </SelectContent>
@@ -1795,12 +1795,12 @@
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <template v-for="opt in providerModelOptions" :key="opt.value">
+                        <template v-for="opt in sttRewriteProviderModelOptions" :key="opt.value">
                           <SelectItem :value="opt.value">
                             {{ opt.label }}
                           </SelectItem>
                         </template>
-                        <SelectItem v-if="providerModelOptions.length === 0" value="" disabled>
+                        <SelectItem v-if="sttRewriteProviderModelOptions.length === 0" value="" disabled>
                           {{ $t('settings.sttRewriteProviderNone') }}
                         </SelectItem>
                       </SelectContent>
@@ -2021,7 +2021,8 @@
 </template>
 
 <script setup lang="ts">
-import { canonicalizeProviderModelRef, SETTINGS_THINKING_LEVELS, type SettingsThinkingLevel } from '@axiom/core/contracts'
+import { canonicalizeProviderModelRef, type ProviderModelSpecContract, type SettingsThinkingLevel } from '@axiom/core/contracts'
+import { buildThinkingLevelSelectOptions, findModelSpec, findModelSpecByComposite } from '~/utils/thinkingLevels'
 import { buildProviderModelOptions } from '~/utils/providerModelOptions'
 import { useSettingsApi } from '~/api/settings'
 import EmailAccountsWorkspace from '~/features/email/components/EmailAccountsWorkspace.vue'
@@ -2130,6 +2131,7 @@ async function handleActivateProvider(value: string) {
 
 /** Flattened list of provider+model combinations for all provider select dropdowns */
 const providerModelOptions = computed(() => buildProviderModelOptions(providers.value))
+const sttRewriteProviderModelOptions = computed(() => buildProviderModelOptions(providers.value, { includeDisabled: true }))
 
 /* ── Users (for telegram user assignment) ── */
 const { users, fetchUsers } = useUsers()
@@ -2308,13 +2310,24 @@ async function handleRunConsolidation() {
   }
 }
 
-/* ── Thinking level options (shared by Agent + Tasks tabs) ── */
-const thinkingLevelOptions = computed(() =>
-  SETTINGS_THINKING_LEVELS.map(value => ({
-    value,
-    label: t(`settings.thinkingLevelOptions.${value}`),
-  })),
+/* ── Thinking level options, limited to what the selected model supports ── */
+function buildThinkingLevelOptions(spec: ProviderModelSpecContract | undefined, current: SettingsThinkingLevel) {
+  const label = (level: SettingsThinkingLevel) => t(`settings.thinkingLevelOptions.${level}`)
+  return buildThinkingLevelSelectOptions(spec, current, label, (level, effective) =>
+    t('settings.thinkingLevelUnsupported', { level: label(level), effective: label(effective) }))
+}
+
+const activeModelSpec = computed(() => findModelSpec(providers.value, activeProviderId.value, activeModelId.value))
+
+const agentThinkingLevelOptions = computed(() =>
+  buildThinkingLevelOptions(activeModelSpec.value, form.value?.thinkingLevel ?? 'off'),
 )
+
+const backgroundThinkingLevelOptions = computed(() => {
+  const taskProvider = form.value?.tasks.defaultProvider
+  const spec = taskProvider ? findModelSpecByComposite(providers.value, taskProvider) : activeModelSpec.value
+  return buildThinkingLevelOptions(spec, form.value?.tasks.backgroundThinkingLevel ?? 'off')
+})
 
 /* ── Form state ── */
 interface SettingsForm {

@@ -80,6 +80,7 @@ export {
   getApiKeyForProvider,
   getAvailableModels,
   isDynamicCatalogProvider,
+  supportsModelSpecOverrides,
   isRadiusProviderType,
   addOAuthProvider,
   updateOAuthCredentials,
@@ -87,6 +88,12 @@ export {
   storedToOAuthCredentials,
   buildModel,
   getProviderDefaultModel,
+  getUsableModels,
+  isModelDisabled,
+  isProviderDisabled,
+  isProviderModelUsable,
+  setProviderDisabled,
+  setProviderModelDisabled,
   estimateCost,
   parseProviderModelId,
   resolveProviderModelId,
@@ -100,6 +107,8 @@ export {
   getProviderExtraFieldDefs,
   maskProviderExtraFields,
 } from './provider-config.js'
+export { isDisabledProviderReference, resetDisabledProviderReferences } from './provider-references.js'
+export type { ResetDisabledProviderReferencesResult } from './provider-references.js'
 export type { ProviderConfig, MaskedProviderConfig, MaskedProvidersFile, ProviderModelConfig, ProvidersFile, ProviderType, ProviderTypePreset, ProviderExtraFieldDef, AuthMethod, TextVerbosity, AvailableModel, OAuthCredentialsStored, TokenPriceTable } from './provider-config.js'
 export {
   refreshRadiusCatalog,
@@ -109,6 +118,8 @@ export {
   __setRadiusCatalogForTests,
 } from './radius-catalog.js'
 export type { RadiusCatalog, RadiusCatalogModel } from './radius-catalog.js'
+export { getPiCatalogModels, refreshPiCatalogs, __setPiCatalogForTests } from './pi-catalog.js'
+export type { PiCatalogRefreshResult } from './pi-catalog.js'
 export {
   fetchAnthropicQuota,
   getAnthropicQuotaForProvider,

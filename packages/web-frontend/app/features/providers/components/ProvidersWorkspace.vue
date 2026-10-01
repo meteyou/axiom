@@ -2,6 +2,17 @@
   <div class="flex h-full flex-col overflow-y-auto">
     <PageHeader :title="$t('providers.title')" :subtitle="$t('providers.subtitle')">
       <template #actions>
+        <Button
+          v-if="providers.length > 0"
+          variant="outline"
+          class="h-8 px-3 text-xs md:h-10 md:px-4 md:py-2 md:text-sm"
+          :disabled="catalogRefreshing"
+          :title="$t('providers.catalogRefresh.hint')"
+          @click="handleRefreshCatalogs"
+        >
+          <AppIcon name="refresh" :class="['mr-1 h-4 w-4', catalogRefreshing ? 'animate-spin' : '']" />
+          {{ $t('providers.catalogRefresh.button') }}
+        </Button>
         <Button class="h-8 px-3 text-xs md:h-10 md:px-4 md:py-2 md:text-sm" @click="openCreate">
           <AppIcon name="add" class="mr-1 h-4 w-4" />
           {{ $t('providers.addProvider') }}
@@ -34,6 +45,37 @@
             class="ml-2 opacity-70 transition-opacity hover:opacity-100"
             :aria-label="$t('aria.closeAlert')"
             @click="successMessage = null"
+          >
+            <AppIcon name="close" class="h-4 w-4" />
+          </button>
+        </AlertDescription>
+      </Alert>
+
+      <Alert v-if="catalogResults" class="mb-4">
+        <AlertDescription class="flex items-start justify-between gap-3">
+          <div class="flex min-w-0 flex-col gap-1.5 text-sm">
+            <span class="font-medium">{{ $t('providers.catalogRefresh.title') }}</span>
+            <span v-if="catalogResults.length === 0">{{ $t('providers.catalogRefresh.none') }}</span>
+            <span v-for="r in catalogChanged" :key="`added-${r.providerId}`">
+              {{ $t('providers.catalogRefresh.added', { provider: r.providerName, count: r.addedModelIds.length }) }}
+              <span class="font-mono text-xs text-muted-foreground">{{ formatModelList(r.addedModelIds) }}</span>
+            </span>
+            <span v-for="r in catalogMissing" :key="`missing-${r.providerId}`" class="text-amber-600 dark:text-amber-400">
+              {{ $t('providers.catalogRefresh.missing', { provider: r.providerName }) }}
+              <span class="font-mono text-xs">{{ r.missingModelIds.join(', ') }}</span>
+            </span>
+            <span v-for="r in catalogErrors" :key="`error-${r.providerId}`" class="text-destructive">
+              {{ $t('providers.catalogRefresh.error', { provider: r.providerName, error: r.error ?? '' }) }}
+            </span>
+            <span v-if="catalogUnchanged.length > 0" class="text-muted-foreground">
+              {{ $t('providers.catalogRefresh.unchanged', { providers: catalogUnchanged.join(', ') }) }}
+            </span>
+          </div>
+          <button
+            type="button"
+            class="ml-2 shrink-0 opacity-70 transition-opacity hover:opacity-100"
+            :aria-label="$t('aria.closeAlert')"
+            @click="catalogResults = null"
           >
             <AppIcon name="close" class="h-4 w-4" />
           </button>
@@ -81,9 +123,14 @@
                 >
                   <TableCell>
                     <div class="min-w-0">
-                      <span class="font-semibold text-foreground">{{ provider.name }}</span>
+                      <div class="flex items-center gap-2">
+                        <span class="font-semibold" :class="provider.disabled ? 'text-muted-foreground' : 'text-foreground'">{{ provider.name }}</span>
+                        <Badge v-if="provider.disabled" variant="outline" class="px-1.5 py-0 text-[10px]">
+                          {{ $t('providers.disabled') }}
+                        </Badge>
+                      </div>
                       <div class="text-xs text-muted-foreground">
-                        {{ getTypeLabel(provider.providerType) }}
+                        {{ getTypeLabel(provider) }}
                         <template v-if="provider.authMethod === 'oauth' && provider.oauthCredentials">
                           <span class="opacity-40">·</span>
                           OAuth
@@ -146,6 +193,13 @@
                           <AppIcon name="refresh" class="h-4 w-4" />
                           {{ $t('providers.quota.refresh') }}
                         </DropdownMenuItem>
+                        <DropdownMenuItem
+                          :disabled="!provider.disabled && provider.id === activeProviderId"
+                          @click="handleToggleProviderDisabled(provider)"
+                        >
+                          <AppIcon :name="provider.disabled ? 'power' : 'powerOff'" class="h-4 w-4" />
+                          {{ provider.disabled ? $t('providers.enable') : $t('providers.disable') }}
+                        </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           destructive
@@ -165,12 +219,20 @@
                   v-for="modelId in getDisplayModels(provider)"
                   :key="`${provider.id}-${modelId}`"
                   class="bg-muted/30 hover:bg-muted/50"
+                  :class="isModelUnavailable(provider, modelId) ? 'opacity-60' : ''"
                 >
                   <!-- Model name (indented, compact) -->
                   <TableCell class="py-1.5">
                     <div class="flex items-center gap-2">
                       <span class="text-xs text-muted-foreground">└</span>
-                      <span class="text-sm text-foreground">{{ modelId }}</span>
+                      <span class="text-sm" :class="isModelUnavailable(provider, modelId) ? 'text-muted-foreground line-through' : 'text-foreground'">{{ getModelDisplayName(provider, modelId) }}</span>
+                      <span
+                        v-if="getModelDisplayName(provider, modelId) !== modelId"
+                        class="font-mono text-[11px] text-muted-foreground"
+                      >{{ modelId }}</span>
+                      <Badge v-if="isModelDisabled(provider, modelId)" variant="outline" class="px-1.5 py-0 text-[10px]">
+                        {{ $t('providers.disabled') }}
+                      </Badge>
                       <Badge v-if="isActiveModel(provider.id, modelId)" variant="default" class="px-1.5 py-0 text-[10px]">
                         {{ $t('providers.active') }}
                       </Badge>
@@ -221,14 +283,14 @@
                           {{ $t('providers.testConnection') }}
                         </DropdownMenuItem>
                         <DropdownMenuItem
-                          v-if="!isActiveModel(provider.id, modelId)"
+                          v-if="!isActiveModel(provider.id, modelId) && !isModelUnavailable(provider, modelId)"
                           @click="handleActivateModel(provider.id, modelId)"
                         >
                           <AppIcon name="check" class="h-4 w-4" />
                           {{ $t('providers.setActive') }}
                         </DropdownMenuItem>
                         <DropdownMenuItem
-                          v-if="!isFallbackModel(provider.id, modelId) && !isActiveModel(provider.id, modelId)"
+                          v-if="!isFallbackModel(provider.id, modelId) && !isActiveModel(provider.id, modelId) && !isModelUnavailable(provider, modelId)"
                           @click="handleSetFallbackModel(provider.id, modelId)"
                         >
                           <AppIcon name="shield" class="h-4 w-4" />
@@ -244,6 +306,13 @@
                         <DropdownMenuItem @click="openEditModel(provider, modelId)">
                           <AppIcon name="edit" class="h-4 w-4" />
                           {{ $t('providers.editModelMenu') }}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          :disabled="!isModelDisabled(provider, modelId) && isActiveModel(provider.id, modelId)"
+                          @click="handleToggleModelDisabled(provider, modelId)"
+                        >
+                          <AppIcon :name="isModelDisabled(provider, modelId) ? 'power' : 'powerOff'" class="h-4 w-4" />
+                          {{ isModelDisabled(provider, modelId) ? $t('providers.enable') : $t('providers.disable') }}
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
@@ -320,11 +389,13 @@
 </template>
 
 <script setup lang="ts">
-import type { ProviderUpdatePayloadContract } from '@axiom/core/contracts'
+import type { ProviderCatalogRefreshResultContract, ProviderUpdatePayloadContract } from '@axiom/core/contracts'
 import type { Provider } from '~/features/providers/composables/useProviders'
 import type { ProviderFormPayload } from '~/components/ProviderFormDialog.vue'
 import { useProviders } from '~/features/providers/composables/useProviders'
 import { formatModelCost as formatCost } from '~/utils/modelFormat'
+import { getModelDisplayName } from '~/utils/providerModelOptions'
+import { providerTypeLabel } from '~/utils/providerTypeOptions'
 
 const { t } = useI18n()
 const { quotaWindowParts } = useQuotaFormat()
@@ -343,11 +414,39 @@ const {
   addProvider,
   updateProvider,
   deleteProvider,
+  updateProviderModel,
   testProvider,
   activateProvider,
   refreshQuota,
+  refreshModelCatalogs,
   setFallbackProvider,
 } = useProviders()
+
+const catalogRefreshing = ref(false)
+const catalogResults = ref<ProviderCatalogRefreshResultContract[] | null>(null)
+
+const catalogChanged = computed(() => (catalogResults.value ?? []).filter(r => r.status === 'updated'))
+const catalogMissing = computed(() => (catalogResults.value ?? []).filter(r => r.missingModelIds.length > 0))
+const catalogErrors = computed(() => (catalogResults.value ?? []).filter(r => r.status === 'error'))
+const catalogUnchanged = computed(() =>
+  (catalogResults.value ?? []).filter(r => r.status === 'unchanged').map(r => r.providerName),
+)
+
+const MODEL_LIST_PREVIEW = 6
+
+function formatModelList(ids: string[]): string {
+  if (ids.length <= MODEL_LIST_PREVIEW) return ids.join(', ')
+  return `${ids.slice(0, MODEL_LIST_PREVIEW).join(', ')} ${t('providers.catalogRefresh.more', { count: ids.length - MODEL_LIST_PREVIEW })}`
+}
+
+async function handleRefreshCatalogs() {
+  catalogRefreshing.value = true
+  try {
+    catalogResults.value = await refreshModelCatalogs()
+  } finally {
+    catalogRefreshing.value = false
+  }
+}
 
 const refreshingQuotaIds = ref<Set<string>>(new Set())
 
@@ -387,9 +486,8 @@ onUnmounted(() => {
 })
 
 /* ── Helpers ── */
-function getTypeLabel(providerType: string): string {
-  const preset = presets.value[providerType]
-  return preset?.label ?? providerType
+function getTypeLabel(provider: Provider): string {
+  return providerTypeLabel(provider.providerType, presets.value[provider.providerType], t)
 }
 
 type ProviderQuota = NonNullable<Provider['quota']>
@@ -448,6 +546,14 @@ function getStatusVariant(status?: string): 'success' | 'destructive' | 'muted' 
 
 function getDisplayModels(provider: Provider): string[] {
   return provider.enabledModels ?? []
+}
+
+function isModelDisabled(provider: Provider, modelId: string): boolean {
+  return provider.disabledModels?.includes(modelId) ?? false
+}
+
+function isModelUnavailable(provider: Provider, modelId: string): boolean {
+  return provider.disabled === true || isModelDisabled(provider, modelId)
 }
 
 function getModelCost(provider: Provider, modelId: string): { input: number; output: number } | null {
@@ -566,6 +672,7 @@ async function handleSubmit(payload: ProviderFormPayload) {
       textVerbosity: payload.textVerbosity,
       transport: payload.transport,
       extraFields: payload.extraFields,
+      ...(payload.compat !== undefined && { compat: payload.compat }),
     }
     if (payload.apiKey) {
       input.apiKey = payload.apiKey
@@ -583,6 +690,7 @@ async function handleSubmit(payload: ProviderFormPayload) {
       textVerbosity: payload.textVerbosity,
       transport: payload.transport,
       extraFields: payload.extraFields,
+      ...(payload.compat !== undefined && { compat: payload.compat }),
     })
     if (result) closeForm()
   }
@@ -625,6 +733,23 @@ async function handleSetFallback(id: string | null) {
 async function handleSetFallbackModel(providerId: string, modelId: string) {
   await setFallbackProvider(providerId, modelId)
   await fetchProviders()
+}
+
+/* ── Enable / disable ── */
+async function handleToggleProviderDisabled(provider: Provider) {
+  const disabled = !provider.disabled
+  const result = await updateProvider(provider.id, { disabled })
+  if (!result) return
+  successMessage.value = t(disabled ? 'providers.disableSuccess' : 'providers.enableSuccess', { name: provider.name })
+  autoHideSuccess()
+}
+
+async function handleToggleModelDisabled(provider: Provider, modelId: string) {
+  const disabled = !isModelDisabled(provider, modelId)
+  const result = await updateProviderModel(provider.id, modelId, { disabled })
+  if (!result) return
+  successMessage.value = t(disabled ? 'providers.disableSuccess' : 'providers.enableSuccess', { name: modelId })
+  autoHideSuccess()
 }
 
 /* ── Remove model from provider ── */

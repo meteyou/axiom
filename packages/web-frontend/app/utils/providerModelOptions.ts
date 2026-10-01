@@ -2,6 +2,10 @@ export interface ProviderModelSource {
   id: string
   name: string
   enabledModels?: string[]
+  disabled?: boolean
+  disabledModels?: string[]
+  models?: { id: string; name?: string }[]
+  modelSpecs?: Record<string, { name?: string }>
 }
 
 export interface ProviderModelOption {
@@ -9,14 +13,32 @@ export interface ProviderModelOption {
   label: string
 }
 
-/** Flattened `providerId:modelId` options for provider/model select dropdowns. */
-export function buildProviderModelOptions(providers: ProviderModelSource[]): ProviderModelOption[] {
-  return providers.flatMap(provider =>
-    (provider.enabledModels ?? []).map(modelId => ({
-      value: `${provider.id}:${modelId}`,
-      label: `${provider.name} (${modelId})`,
-    })),
-  )
+/** Display name of a model: user override → catalog name → id. */
+export function getModelDisplayName(provider: Pick<ProviderModelSource, 'models' | 'modelSpecs'> | undefined, modelId: string): string {
+  return provider?.models?.find(m => m.id === modelId)?.name?.trim()
+    || provider?.modelSpecs?.[modelId]?.name?.trim()
+    || modelId
+}
+
+/**
+ * Flattened `providerId:modelId` options for provider/model select dropdowns.
+ * Disabled providers/models are skipped unless `includeDisabled` is set (STT
+ * rewrite may still use them).
+ */
+export function buildProviderModelOptions(
+  providers: ProviderModelSource[],
+  { includeDisabled = false }: { includeDisabled?: boolean } = {},
+): ProviderModelOption[] {
+  return providers
+    .filter(provider => includeDisabled || !provider.disabled)
+    .flatMap(provider =>
+      (provider.enabledModels ?? [])
+        .filter(modelId => includeDisabled || !provider.disabledModels?.includes(modelId))
+        .map(modelId => ({
+          value: `${provider.id}:${modelId}`,
+          label: `${provider.name} (${getModelDisplayName(provider, modelId)})`,
+        })),
+    )
 }
 
 /** Resolve a provider by id or (case-insensitive) display name. */

@@ -69,16 +69,12 @@ function buildOpenAiCompatibleRequest(provider: ProviderConfig): {
     headers.Authorization = `Bearer ${provider.apiKey}`
   }
 
-  const tokenLimitField = provider.providerType === 'openai-compatible'
-    ? { max_tokens: 5 }
-    : { max_completion_tokens: 5 }
-
   return {
     url: `${provider.baseUrl}/chat/completions`,
     headers,
     body: {
       model: getProviderDefaultModel(provider),
-      ...tokenLimitField,
+      max_completion_tokens: 5,
       temperature: resolveModelTemperature(provider, getProviderDefaultModel(provider), 0),
       messages: [{ role: 'user', content: 'Respond with OK only.' }],
     },
@@ -158,7 +154,11 @@ async function performPiAiHealthCheck(
     const timer = setTimeout(() => controller.abort(), timeoutMs)
 
     try {
+      // Custom providers get a system prompt too: the system/developer role is
+      // a common incompatibility (`compat.supportsDeveloperRole`) the check should catch.
+      const isCustomProvider = Boolean(PROVIDER_TYPE_PRESETS[provider.providerType as keyof typeof PROVIDER_TYPE_PRESETS]?.custom)
       const response = await completeSimple(model, {
+        ...(isCustomProvider && { systemPrompt: 'You are a connection test.' }),
         messages: [{ role: 'user', content: [{ type: 'text', text: 'Respond with OK only.' }], timestamp: Date.now() }],
       }, {
         apiKey,
@@ -232,11 +232,12 @@ export async function performProviderHealthCheck(
   const startedAt = Date.now()
 
   try {
-    // For OAuth providers or non-standard API types (e.g. mistral-conversations),
-    // use pi-ai's completeSimple for proper API-type-aware health check
+    // OAuth providers, non-standard API types and custom providers (whose API
+    // type and compat options only pi-ai applies) go through completeSimple so
+    // the check sends exactly the request the agent will send.
     const preset = PROVIDER_TYPE_PRESETS[provider.providerType as keyof typeof PROVIDER_TYPE_PRESETS]
     const hasCustomRequestBuilder = provider.type === 'anthropic-messages' || provider.type === 'openai-completions'
-    if (preset?.authMethod === 'oauth' || preset?.resolveModelsFromCatalog || !hasCustomRequestBuilder) {
+    if (preset?.authMethod === 'oauth' || preset?.resolveModelsFromCatalog || preset?.custom || !hasCustomRequestBuilder) {
       return await performPiAiHealthCheck(provider, startedAt, checkedAt, timeoutMs, degradedThresholdMs)
     }
 

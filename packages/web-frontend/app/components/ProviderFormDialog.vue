@@ -35,15 +35,15 @@
             <SelectContent>
               <SelectGroup>
                 <SelectLabel>{{ $t('providers.groupApiKey') }}</SelectLabel>
-                <SelectItem v-for="(preset, key) in apiKeyPresets" :key="key" :value="String(key)">
-                  {{ presetLabel(String(key), preset) }}
+                <SelectItem v-for="option in apiKeyTypeOptions" :key="option.value" :value="option.value">
+                  {{ option.label }}
                 </SelectItem>
               </SelectGroup>
               <SelectSeparator />
               <SelectGroup>
                 <SelectLabel>{{ $t('providers.groupSubscription') }}</SelectLabel>
-                <SelectItem v-for="(preset, key) in subscriptionPresets" :key="key" :value="String(key)">
-                  {{ presetLabel(String(key), preset) }}
+                <SelectItem v-for="option in subscriptionTypeOptions" :key="option.value" :value="option.value">
+                  {{ option.label }}
                 </SelectItem>
               </SelectGroup>
             </SelectContent>
@@ -57,14 +57,14 @@
             id="provider-url"
             v-model="form.baseUrl"
             type="url"
-            :placeholder="isOpenAiCompatibleProvider ? openAiCompatibleBaseUrlPlaceholder : 'https://...'"
-            :required="isOpenAiCompatibleProvider"
+            :placeholder="isCustomProvider ? customBaseUrlPlaceholder : 'https://...'"
+            :required="isCustomProvider"
           />
           <p v-if="selectedPreset?.type === 'ollama'" class="text-xs text-muted-foreground">
             {{ $t('providers.ollamaUrlHint') }}
           </p>
-          <p v-else-if="isOpenAiCompatibleProvider" class="text-xs text-muted-foreground">
-            {{ openAiCompatibleBaseUrlHint }}
+          <p v-else-if="isCustomProvider" class="text-xs text-muted-foreground">
+            {{ $t(`providers.customBaseUrlHint.${selectedPreset?.apiType}`) }}
           </p>
         </div>
 
@@ -82,6 +82,30 @@
           />
           <p v-if="mode === 'edit'" class="text-xs text-muted-foreground">{{ $t('providers.apiKeyHint') }}</p>
           <p v-if="!selectedPreset?.requiresApiKey && mode !== 'edit'" class="text-xs text-muted-foreground">{{ $t('providers.apiKeyOptionalHint') }}</p>
+        </div>
+
+        <!-- pi-ai compat options (custom provider only) -->
+        <div v-if="isCustomProvider" class="flex flex-col gap-1.5">
+          <Label for="provider-compat">
+            {{ $t('providers.compat') }}
+            <span class="text-xs font-normal text-muted-foreground">({{ $t('providers.optional') }})</span>
+          </Label>
+          <textarea
+            id="provider-compat"
+            v-model="form.compatText"
+            rows="4"
+            spellcheck="false"
+            class="flex w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            :placeholder="compatPlaceholder"
+          />
+          <p v-if="compatError" class="text-xs text-destructive">{{ compatError }}</p>
+          <p v-else class="text-xs text-muted-foreground">{{ $t('providers.compatHint') }}</p>
+          <details class="text-xs text-muted-foreground">
+            <summary class="cursor-pointer select-none">{{ $t('providers.compatOptions') }}</summary>
+            <ul class="mt-1 flex flex-col gap-0.5 font-mono text-[11px]">
+              <li v-for="option in compatOptionList" :key="option.key">{{ option.key }}: {{ option.kind }}</li>
+            </ul>
+          </details>
         </div>
 
         <!-- Provider-specific extra fields declared by the selected preset -->
@@ -397,6 +421,8 @@
 
 <script setup lang="ts">
 import type { Provider, ProviderTypePreset, OllamaModel, OllamaPullEvent } from '~/features/providers/composables/useProviders'
+import { isCompatApiType, MODEL_COMPAT_FIELDS, validateModelCompat } from '@axiom/core/contracts'
+import { buildProviderTypeOptions } from '~/utils/providerTypeOptions'
 
 export interface ProviderFormPayload {
   name: string
@@ -408,6 +434,8 @@ export interface ProviderFormPayload {
   textVerbosity: null | 'low' | 'medium' | 'high'
   transport: null | 'sse' | 'websocket' | 'websocket-cached' | 'auto'
   extraFields: Record<string, string>
+  /** Custom presets only; `null` clears all options. */
+  compat?: Record<string, unknown> | null
 }
 
 const props = defineProps<{
@@ -445,7 +473,47 @@ const form = reactive({
   textVerbosity: 'default' as 'default' | 'low' | 'medium' | 'high',
   transport: 'default' as 'default' | 'sse' | 'websocket' | 'websocket-cached' | 'auto',
   extraFields: {} as Record<string, string>,
+  compatText: '',
 })
+
+/** Wire API of the selected custom preset (undefined for every other preset). */
+const customApiType = computed(() => {
+  const preset = props.presets[form.providerType]
+  return preset?.custom && isCompatApiType(preset.apiType) ? preset.apiType : undefined
+})
+
+const isCustomProvider = computed(() => customApiType.value !== undefined)
+
+type ParsedCompat = { ok: true; value: Record<string, unknown> | null } | { ok: false; error: string }
+
+const parsedCompat = computed((): ParsedCompat => {
+  const text = form.compatText.trim()
+  if (!text) return { ok: true, value: null }
+  let raw: unknown
+  try {
+    raw = JSON.parse(text)
+  } catch (err) {
+    return { ok: false, error: t('providers.compatInvalidJson', { error: (err as Error).message }) }
+  }
+  if (!customApiType.value) return { ok: true, value: null }
+  const validated = validateModelCompat(customApiType.value, raw)
+  if (!validated.ok) return validated
+  return { ok: true, value: Object.keys(validated.value).length > 0 ? validated.value : null }
+})
+
+const compatError = computed(() => (parsedCompat.value.ok ? null : parsedCompat.value.error))
+
+const compatOptionList = computed(() => {
+  if (!customApiType.value) return []
+  return Object.entries(MODEL_COMPAT_FIELDS[customApiType.value]).map(([key, kind]) => ({
+    key,
+    kind: typeof kind === 'string' ? kind : kind.join(' | '),
+  }))
+})
+
+const compatPlaceholder = computed(() => customApiType.value === 'openai-completions'
+  ? '{ "supportsDeveloperRole": false, "maxTokensField": "max_tokens" }'
+  : '{}')
 
 const oauthInProgress = ref(false)
 const oauthError = ref<string | null>(null)
@@ -482,10 +550,6 @@ const isOAuthProvider = computed(() => {
   return selectedPreset.value?.authMethod === 'oauth'
 })
 
-const isOpenAiCompatibleProvider = computed(() => {
-  return form.providerType === 'openai-compatible' || selectedPreset.value?.type === 'openai-compatible'
-})
-
 const supportsTextVerbosity = computed(() => {
   return selectedPreset.value?.apiType === 'openai-codex-responses'
 })
@@ -505,7 +569,7 @@ const canStartOAuth = computed(() => {
 })
 
 const canSubmit = computed(() => {
-  return Boolean(form.name.trim() && form.providerType)
+  return Boolean(form.name.trim() && form.providerType && !compatError.value)
 })
 
 function translatedOr(key: string, fallback: string): string {
@@ -513,15 +577,9 @@ function translatedOr(key: string, fallback: string): string {
   return translated && translated !== key ? translated : fallback
 }
 
-const openAiCompatibleBaseUrlPlaceholder = computed(() => translatedOr(
-  'providers.openaiCompatibleBaseUrlPlaceholder',
-  'https://integrate.api.nvidia.com/v1',
-))
-
-const openAiCompatibleBaseUrlHint = computed(() => translatedOr(
-  'providers.openaiCompatibleBaseUrlHint',
-  'Required. Endpoint root that exposes /v1/chat/completions (e.g. NVIDIA NIM, LM Studio, vLLM).',
-))
+const customBaseUrlPlaceholder = computed(() => customApiType.value === 'anthropic-messages'
+  ? 'https://api.example.com/anthropic'
+  : 'https://api.example.com/v1')
 
 function extraFieldTranslation(field: ExtraFieldDef, part: 'label' | 'placeholder' | 'hint', fallback: string): string {
   return translatedOr(`providers.providerExtraFields.${form.providerType}.${field.key}.${part}`, fallback)
@@ -542,44 +600,20 @@ function extraFieldPlaceholder(field: ExtraFieldDef): string {
   return extraFieldTranslation(field, 'placeholder', field.placeholder ?? '')
 }
 
-function sortPresetsByLabel(entries: [string, ProviderTypePreset][]): Record<string, ProviderTypePreset> {
-  return Object.fromEntries(
-    [...entries].sort(([aKey, a], [bKey, b]) =>
-      presetLabel(aKey, a).localeCompare(presetLabel(bKey, b))
-    )
-  )
-}
-
-const apiKeyPresets = computed(() => {
-  return sortPresetsByLabel(
-    Object.entries(props.presets).filter(([, p]) => p.authMethod !== 'oauth' && !p.subscription)
-  )
-})
-
-/**
- * Resolve the dropdown label for a preset.
- *
- * The backend ships English labels (e.g. "OpenAI-compatible (custom)"); for
- * a select few preset keys we expose a translatable override under
- * `providers.providerTypes.<key>` so non-English UIs can localize them.
- * Falls back to the backend label when no translation exists.
- */
-function presetLabel(key: string, preset: ProviderTypePreset): string {
-  const translationKey = `providers.providerTypes.${key}`
-  const translated = t(translationKey)
-  // vue-i18n returns the key itself when no translation is registered
-  return translated && translated !== translationKey ? translated : preset.label
-}
+const apiKeyTypeOptions = computed(() => buildProviderTypeOptions(
+  Object.entries(props.presets).filter(([, p]) => p.authMethod !== 'oauth' && !p.subscription),
+  t,
+))
 
 // Grouped under "Subscription / OAuth" in the dropdown. Includes OAuth
 // providers plus API-key providers flagged as subscriptions (e.g. OpenCode
 // Go). The flag only affects this visual grouping; `isOAuthProvider` still
 // drives the actual auth flow.
-const subscriptionPresets = computed(() => {
-  return sortPresetsByLabel(
-    Object.entries(props.presets).filter(([, p]) => p.authMethod === 'oauth' || p.subscription)
-  )
-})
+const subscriptionTypeOptions = computed(() => buildProviderTypeOptions(
+  Object.entries(props.presets).filter(([, p]) => p.authMethod === 'oauth' || p.subscription),
+  t,
+))
+
 
 // Sync form state when dialog opens or provider changes
 watch(() => [props.open, props.provider] as const, ([isOpen, entry]) => {
@@ -593,6 +627,7 @@ watch(() => [props.open, props.provider] as const, ([isOpen, entry]) => {
     form.textVerbosity = entry.textVerbosity ?? 'default'
     form.transport = entry.transport ?? 'default'
     form.extraFields = { ...(entry.extraFields ?? {}) }
+    form.compatText = entry.compat && Object.keys(entry.compat).length > 0 ? JSON.stringify(entry.compat, null, 2) : ''
     // Reset Ollama state
     resetOllamaState()
     if (entry.providerType === 'ollama') {
@@ -610,6 +645,7 @@ watch(() => [props.open, props.provider] as const, ([isOpen, entry]) => {
     form.textVerbosity = 'default'
     form.transport = 'default'
     form.extraFields = {}
+    form.compatText = ''
     resetOllamaState()
     oauthInProgress.value = false
     oauthError.value = null
@@ -757,6 +793,8 @@ function onTypeChange() {
     form.enabledModels = []
     form.extraFields = {}
   }
+  // Switching between custom presets keeps the compat text; the form flags keys the new API rejects.
+  if (!isCustomProvider.value) form.compatText = ''
   oauthError.value = null
   resetOllamaState()
 }
@@ -768,12 +806,14 @@ function normalizeExtraFieldsPayload(): Record<string, string> {
 }
 
 function handleSubmit() {
+  const { compatText: _compatText, ...rest } = form
   emit('submit', {
-    ...form,
+    ...rest,
     textVerbosity: normalizeTextVerbosityPayload(),
     transport: normalizeTransportPayload(),
     enabledModels: [...form.enabledModels],
     extraFields: normalizeExtraFieldsPayload(),
+    ...(isCustomProvider.value && { compat: parsedCompat.value.ok ? parsedCompat.value.value : null }),
   })
 }
 

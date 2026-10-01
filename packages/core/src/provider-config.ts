@@ -2,14 +2,16 @@ import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import type { Api, Model, Transport } from '@earendil-works/pi-ai'
-import { getBuiltinModels as getPiAiModels } from '@earendil-works/pi-ai/providers/all'
-import type { BuiltinProvider } from '@earendil-works/pi-ai/providers/all'
+import { getPiCatalogModels } from './pi-catalog.js'
 import { getOAuthApiKey } from './pi-oauth.js'
 import type { OAuthCredentials } from '@earendil-works/pi-ai/oauth'
 import { streamSimple } from './pi-models.js'
 import { getConfigDir, ensureConfigTemplates, loadConfig } from './config.js'
 import { encrypt, decrypt, isEncrypted, maskApiKey } from './encryption.js'
 import { RADIUS_BASE_URL, findRadiusCatalogModel, radiusCatalogToAvailableModels } from './radius-catalog.js'
+import { validateModelCompat } from './contracts/providers.js'
+import type { CompatApiTypeContract } from './contracts/providers.js'
+import type { ModelInputModalityContract, ModelThinkingLevelMapContract, ProviderModelUpdatePayloadContract } from './contracts/providers.js'
 
 /**
  * Claude Code CLI version to advertise in the user-agent header for Anthropic requests.
@@ -17,13 +19,13 @@ import { RADIUS_BASE_URL, findRadiusCatalogModel, radiusCatalogToAvailableModels
  * Model headers override pi-ai's own OAuth user-agent, so keep this in sync with
  * `claudeCodeVersion` in `@earendil-works/pi-ai/dist/api/anthropic-messages.js`.
  */
-export const CLAUDE_CODE_VERSION = '2.1.280'
+export const CLAUDE_CODE_VERSION = '2.1.287'
 
 /**
  * Supported provider types with presets
  */
 export type ProviderType =
-  | 'openai' | 'anthropic' | 'mistral' | 'ollama' | 'openrouter' | 'deepseek' | 'kimi' | 'minimax' | 'zai' | 'zai-coding' | 'xai' | 'opencode-go' | 'opencode-zen' | 'openai-compatible' | 'google'
+  | 'openai' | 'anthropic' | 'mistral' | 'ollama' | 'openrouter' | 'deepseek' | 'kimi' | 'minimax' | 'zai' | 'zai-coding' | 'xai' | 'opencode-go' | 'opencode-zen' | CustomProviderType | 'google'
   | 'radius' | 'radius-api-key'
   // Legacy aliases kept for migration
   | 'ollama-local' | 'ollama-cloud'
@@ -64,6 +66,11 @@ export interface ProviderTypePreset {
    */
   resolveModelsFromCatalog?: boolean
   /**
+   * Generic preset for any endpoint speaking `apiType`: no catalog, editable
+   * URL, models listed live, and pi-ai `compat` options per provider.
+   */
+  custom?: boolean
+  /**
    * Display-only hint: group this preset under "Subscription / OAuth" in the
    * UI even though it authenticates with an API key (e.g. OpenCode Go is a
    * flat-fee subscription that issues an API key rather than using OAuth).
@@ -85,8 +92,9 @@ export interface AvailableModel {
   id: string
   name: string
   contextWindow?: number
+  maxTokens?: number
   /** USD per 1M tokens. */
-  cost?: { input: number; output: number }
+  cost?: { input: number; output: number; cacheRead?: number; cacheWrite?: number }
 }
 
 /**
@@ -103,6 +111,24 @@ export interface ProviderExtraFieldDef {
   required?: boolean
   placeholder?: string
   hint?: string
+}
+
+export type CustomProviderType = `custom-${CompatApiTypeContract}`
+
+function customPreset(type: CustomProviderType, apiType: CompatApiTypeContract, label: string): ProviderTypePreset {
+  return {
+    type,
+    label,
+    apiType,
+    providerName: 'custom',
+    baseUrl: '',
+    requiresApiKey: false,
+    urlEditable: true,
+    piAiProvider: null,
+    authMethod: 'api-key',
+    dynamicCatalog: true,
+    custom: true,
+  }
 }
 
 export const PROVIDER_TYPE_PRESETS: Record<ProviderType, ProviderTypePreset> = {
@@ -294,18 +320,9 @@ export const PROVIDER_TYPE_PRESETS: Record<ProviderType, ProviderTypePreset> = {
     authMethod: 'api-key',
     resolveModelsFromCatalog: true,
   },
-  'openai-compatible': {
-    type: 'openai-compatible',
-    label: 'OpenAI-compatible (custom)',
-    description: 'Any OpenAI-compatible API (NVIDIA NIM, LM Studio, vLLM, Cloudflare AI Gateway, …)',
-    apiType: 'openai-completions',
-    providerName: 'openai-compatible',
-    baseUrl: '',
-    requiresApiKey: false,
-    urlEditable: true,
-    piAiProvider: null,
-    authMethod: 'api-key',
-  },
+  'custom-openai-completions': customPreset('custom-openai-completions', 'openai-completions', 'Custom – OpenAI Chat Completions'),
+  'custom-openai-responses': customPreset('custom-openai-responses', 'openai-responses', 'Custom – OpenAI Responses'),
+  'custom-anthropic-messages': customPreset('custom-anthropic-messages', 'anthropic-messages', 'Custom – Anthropic Messages'),
 
   google: {
     type: 'google',
@@ -540,6 +557,17 @@ export function isDynamicCatalogProvider(providerType: ProviderType | string): b
 }
 
 /**
+ * Whether per-model spec overrides (limits, reasoning, input, thinking map)
+ * reach the runtime model. Catalog-resolved and Radius models are built from
+ * their upstream catalog in `buildModel()` and ignore these overrides.
+ */
+export function supportsModelSpecOverrides(providerType: ProviderType | string): boolean {
+  const preset = PROVIDER_TYPE_PRESETS[providerType as ProviderType]
+  if (!preset || isRadiusProviderType(providerType)) return false
+  return !(preset.piAiProvider && (preset.authMethod === 'oauth' || preset.resolveModelsFromCatalog))
+}
+
+/**
  * Get available models for a given provider type: pi-ai's generated catalog
  * for the preset's piAiProvider, with PROVIDER_TYPE_MODEL_OVERRIDES entries
  * layered on top (added, or replacing a catalog entry of the same id).
@@ -549,34 +577,40 @@ export function getAvailableModels(providerType: ProviderType): AvailableModel[]
 
   const preset = PROVIDER_TYPE_PRESETS[providerType]
   const catalogModels: AvailableModel[] = preset?.piAiProvider
-    ? (() => {
-        try {
-          return getPiAiModels(preset.piAiProvider as BuiltinProvider).map(m => toAvailableModel(m.id, m.name, m.contextWindow, m.cost))
-        } catch {
-          return []
-        }
-      })()
+    ? getPiCatalogModels(preset.piAiProvider).map(m => toAvailableModel(m))
     : []
 
   const overrides = PROVIDER_TYPE_MODEL_OVERRIDES[providerType] ?? []
   const merged = new Map(catalogModels.map(m => [m.id, m]))
   for (const override of overrides) {
-    merged.set(override.id, toAvailableModel(override.id, override.name ?? override.id, override.contextWindow, override.cost))
+    merged.set(override.id, toAvailableModel({ ...override, name: override.name ?? override.id }))
   }
   return Array.from(merged.values())
 }
 
-function toAvailableModel(
-  id: string,
-  name: string,
-  contextWindow?: number,
-  cost?: { input: number; output: number },
-): AvailableModel {
+function toAvailableModel(model: {
+  id: string
+  name: string
+  contextWindow?: number
+  maxTokens?: number
+  cost?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number }
+}): AvailableModel {
+  const { cost } = model
   return {
-    id,
-    name,
-    ...(contextWindow ? { contextWindow } : {}),
-    ...(cost ? { cost: { input: cost.input, output: cost.output } } : {}),
+    id: model.id,
+    name: model.name,
+    ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
+    ...(model.maxTokens ? { maxTokens: model.maxTokens } : {}),
+    ...(cost?.input !== undefined && cost.output !== undefined
+      ? {
+          cost: {
+            input: cost.input,
+            output: cost.output,
+            ...(cost.cacheRead ? { cacheRead: cost.cacheRead } : {}),
+            ...(cost.cacheWrite ? { cacheWrite: cost.cacheWrite } : {}),
+          },
+        }
+      : {}),
   }
 }
 
@@ -593,10 +627,27 @@ function findPiAiCatalogModel(providerType: ProviderType | undefined, modelId: s
   if (!providerType) return undefined
   const preset = PROVIDER_TYPE_PRESETS[providerType]
   if (!preset?.piAiProvider) return undefined
-  try {
-    return (getPiAiModels(preset.piAiProvider as BuiltinProvider) as Model<Api>[]).find(m => m.id === modelId)
-  } catch {
-    return undefined
+  return getPiCatalogModels(preset.piAiProvider).find(m => m.id === modelId)
+}
+
+/**
+ * Effective per-model overrides: the user's `provider.models[]` entry layered
+ * field by field over the local `PROVIDER_TYPE_MODEL_OVERRIDES` entry. Entries
+ * only hold what the user changed, so everything else keeps following the
+ * catalog (including catalog refreshes).
+ */
+function resolveModelConfig(provider: Pick<ProviderConfig, 'providerType' | 'models'>, modelId: string): ProviderModelConfig | undefined {
+  const entry = provider.models?.find(m => m.id === modelId)
+  const override = findOverrideModel(provider.providerType, modelId)
+  if (!entry) return override
+  if (!override) return entry
+  const defined = <T extends object>(value: T | undefined): Partial<T> =>
+    Object.fromEntries(Object.entries(value ?? {}).filter(([, v]) => v !== undefined)) as Partial<T>
+  const cost = { ...defined(override.cost), ...defined(entry.cost) }
+  return {
+    ...override,
+    ...defined(entry),
+    ...(Object.keys(cost).length > 0 ? { cost } : {}),
   }
 }
 
@@ -652,6 +703,13 @@ export interface ProviderConfig {
   baseUrl: string
   apiKey: string // encrypted at rest
   enabledModels?: string[] // list of model IDs enabled for this provider; first entry is the default/primary model
+  /**
+   * Hides the provider from every LLM model picker and from the agent. Its
+   * credentials stay usable for TTS/STT.
+   */
+  disabled?: boolean
+  /** Subset of `enabledModels` hidden from model pickers and the agent. */
+  disabledModels?: string[]
   degradedThresholdMs?: number
   textVerbosity?: TextVerbosity
   transport?: ProviderTransport
@@ -660,6 +718,11 @@ export interface ProviderConfig {
   modelStatuses?: Record<string, 'connected' | 'error' | 'untested'>
   authMethod?: AuthMethod
   oauthCredentials?: OAuthCredentialsStored // encrypted at rest
+  /**
+   * pi-ai `compat` options passed to every model of this provider. Only
+   * custom presets set this.
+   */
+  compat?: Record<string, unknown>
   /**
    * Provider-specific extra field values (see `ProviderTypePreset.extraFields`).
    * Values for fields declared `secret` are encrypted at rest.
@@ -690,6 +753,8 @@ export interface ProviderModelConfig {
   contextWindow?: number
   maxTokens?: number
   reasoning?: boolean
+  input?: ModelInputModalityContract[]
+  thinkingLevelMap?: ModelThinkingLevelMapContract
   /**
    * If set, the upstream API only accepts this exact `temperature` value and
    * rejects any other value (e.g. Moonshot's Kimi K2 thinking models require
@@ -697,9 +762,10 @@ export interface ProviderModelConfig {
    * `resolveModelTemperature()` so this constraint is honored.
    */
   fixedTemperature?: number
+  /** USD per 1M tokens; unset fields fall back to the catalog. */
   cost?: {
-    input: number
-    output: number
+    input?: number
+    output?: number
     cacheRead?: number
     cacheWrite?: number
   }
@@ -859,6 +925,13 @@ export function loadProviders(): ProvidersFile {
       p.providerType = 'ollama' as ProviderType
       p.type = 'openai-completions'
       p.provider = 'ollama'
+      migrated = true
+    }
+
+    // Migrate the former single custom preset → its Chat Completions successor
+    if ((p.providerType as string) === 'openai-compatible') {
+      p.providerType = 'custom-openai-completions'
+      p.provider = 'custom'
       migrated = true
     }
 
@@ -1046,11 +1119,13 @@ export function addProvider(input: {
   textVerbosity?: TextVerbosity
   transport?: ProviderTransport
   extraFields?: Record<string, string>
+  compat?: Record<string, unknown> | null
 }): ProviderConfig {
   const preset = PROVIDER_TYPE_PRESETS[input.providerType]
   if (!preset) {
     throw new Error(`Unknown provider type: ${input.providerType}`)
   }
+  const compat = resolveCustomCompat(preset, input.compat)
 
   const file = loadProviders()
 
@@ -1081,6 +1156,7 @@ export function addProvider(input: {
       const extra = sanitizeExtraFieldsForStorage(input.providerType, input.extraFields)
       return extra ? { extraFields: extra } : {}
     })()),
+    ...(compat && { compat }),
     status: 'untested',
     authMethod: preset.authMethod,
   }
@@ -1169,6 +1245,7 @@ export function updateProvider(id: string, input: {
   textVerbosity?: TextVerbosity | null
   transport?: ProviderTransport | null
   extraFields?: Record<string, string>
+  compat?: Record<string, unknown> | null
 }): ProviderConfig {
   const file = loadProviders()
   const index = file.providers.findIndex(p => p.id === id)
@@ -1196,6 +1273,7 @@ export function updateProvider(id: string, input: {
     existing.provider = preset.providerName
     existing.authMethod = preset.authMethod
     delete existing.extraFields
+    delete existing.compat
     if (!input.baseUrl) {
       existing.baseUrl = preset.baseUrl
     }
@@ -1206,6 +1284,10 @@ export function updateProvider(id: string, input: {
   if (input.apiKey !== undefined) existing.apiKey = input.apiKey ? encrypt(input.apiKey) : ''
   if (input.enabledModels !== undefined) {
     existing.enabledModels = input.enabledModels
+    if (existing.disabledModels) {
+      existing.disabledModels = existing.disabledModels.filter(m => input.enabledModels!.includes(m))
+      if (existing.disabledModels.length === 0) delete existing.disabledModels
+    }
   }
   if (input.degradedThresholdMs !== undefined) existing.degradedThresholdMs = input.degradedThresholdMs
   if (input.extraFields !== undefined) {
@@ -1240,8 +1322,14 @@ export function updateProvider(id: string, input: {
     delete existing.transport
   }
 
-  // For providers with fixed URLs, always sync from preset
   const currentPreset = PROVIDER_TYPE_PRESETS[existing.providerType]
+  if (input.compat !== undefined && currentPreset) {
+    const compat = resolveCustomCompat(currentPreset, input.compat)
+    if (compat) existing.compat = compat
+    else delete existing.compat
+  }
+
+  // For providers with fixed URLs, always sync from preset
   if (currentPreset && !currentPreset.urlEditable) {
     existing.baseUrl = currentPreset.baseUrl
   }
@@ -1254,6 +1342,17 @@ export function updateProvider(id: string, input: {
   return existing
 }
 
+/** Compat options are validated against the preset's wire API; other presets never store them. */
+function resolveCustomCompat(
+  preset: ProviderTypePreset,
+  compat: Record<string, unknown> | null | undefined,
+): Record<string, unknown> | undefined {
+  if (!compat || !preset.custom) return undefined
+  const validated = validateModelCompat(preset.apiType as CompatApiTypeContract, compat)
+  if (!validated.ok) throw new Error(validated.error)
+  return Object.keys(validated.value).length > 0 ? validated.value : undefined
+}
+
 /** Thrown when a provider id does not resolve to a configured provider. */
 export class ProviderNotFoundError extends Error {
   constructor(providerId: string) {
@@ -1264,21 +1363,14 @@ export class ProviderNotFoundError extends Error {
 
 /**
  * Patch a single model entry within a provider's `models[]` array, creating
- * the entry on the fly when it does not exist yet. Default metadata
- * (name, context window, reasoning, cost) is populated from the local
- * `PROVIDER_TYPE_MODEL_OVERRIDES` catalog or the pi-ai catalog so a freshly
- * created entry is usable by `buildModel()` immediately; only the fields
- * supplied in `patch` are overwritten.
+ * the entry on the fly when it does not exist yet. The entry only stores the
+ * patched fields; `buildModel()` resolves everything else from the local
+ * overrides and the (refreshable) catalog.
  */
 export function updateProviderModel(
   providerId: string,
   modelId: string,
-  patch: {
-    name?: string
-    description?: string
-    contextWindow?: number
-    cost?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number }
-  },
+  patch: ProviderModelUpdatePayloadContract,
 ): ProviderConfig {
   const file = loadProviders()
   const provider = file.providers.find(p => p.id === providerId)
@@ -1289,51 +1381,46 @@ export function updateProviderModel(
   if (!provider.models) provider.models = []
   let entry = provider.models.find(m => m.id === modelId)
   if (!entry) {
-    const override = findOverrideModel(provider.providerType, modelId)
-      ?? (isRadiusProviderType(provider.providerType) ? radiusCatalogModelConfig(modelId) : undefined)
-    if (override) {
-      entry = { ...override, cost: override.cost ? { ...override.cost } : undefined }
-    } else {
-      const piModel = findPiAiCatalogModel(provider.providerType, modelId)
-      entry = piModel
-        ? {
-            id: modelId,
-            name: piModel.name,
-            contextWindow: piModel.contextWindow,
-            maxTokens: piModel.maxTokens,
-            reasoning: piModel.reasoning,
-            cost: {
-              input: piModel.cost.input,
-              output: piModel.cost.output,
-              cacheRead: piModel.cost.cacheRead,
-              cacheWrite: piModel.cost.cacheWrite,
-            },
-          }
-        : { id: modelId }
-    }
+    entry = { id: modelId }
     provider.models.push(entry)
   }
 
-  if (patch.name !== undefined) {
-    const trimmed = patch.name.trim()
-    entry.name = trimmed ? trimmed : undefined
+  const setText = (key: 'name' | 'description', value: string | undefined) => {
+    if (value === undefined) return
+    const trimmed = value.trim()
+    if (trimmed) entry[key] = trimmed
+    else delete entry[key]
   }
+  setText('name', patch.name)
+  setText('description', patch.description)
 
-  if (patch.description !== undefined) {
-    const trimmed = patch.description.trim()
-    entry.description = trimmed ? trimmed : undefined
+  const setOverride = <K extends 'contextWindow' | 'maxTokens' | 'reasoning' | 'input' | 'thinkingLevelMap'>(
+    key: K,
+    value: ProviderModelConfig[K] | null | undefined,
+  ) => {
+    if (value === undefined) return
+    if (value === null) delete entry[key]
+    else entry[key] = value
   }
-
-  if (patch.contextWindow !== undefined && patch.contextWindow > 0) {
-    entry.contextWindow = patch.contextWindow
-  }
+  setOverride('contextWindow', patch.contextWindow !== undefined && patch.contextWindow !== null && patch.contextWindow <= 0 ? undefined : patch.contextWindow)
+  setOverride('maxTokens', patch.maxTokens !== undefined && patch.maxTokens !== null && patch.maxTokens <= 0 ? undefined : patch.maxTokens)
+  setOverride('reasoning', patch.reasoning)
+  setOverride('input', patch.input?.length === 0 ? undefined : patch.input && [...patch.input])
+  setOverride('thinkingLevelMap', patch.thinkingLevelMap && { ...patch.thinkingLevelMap })
 
   if (patch.cost) {
-    if (!entry.cost) entry.cost = { input: 0, output: 0 }
-    if (patch.cost.input !== undefined) entry.cost.input = patch.cost.input
-    if (patch.cost.output !== undefined) entry.cost.output = patch.cost.output
-    if (patch.cost.cacheRead !== undefined) entry.cost.cacheRead = patch.cost.cacheRead
-    if (patch.cost.cacheWrite !== undefined) entry.cost.cacheWrite = patch.cost.cacheWrite
+    const cost = { ...entry.cost }
+    for (const key of ['input', 'output', 'cacheRead', 'cacheWrite'] as const) {
+      const value = patch.cost[key]
+      if (value === null) delete cost[key]
+      else if (value !== undefined) cost[key] = value
+    }
+    if (Object.keys(cost).length > 0) entry.cost = cost
+    else delete entry.cost
+  }
+
+  if (Object.keys(entry).length === 1) {
+    provider.models = provider.models.filter(m => m !== entry)
   }
 
   saveProviders(file)
@@ -1376,6 +1463,96 @@ export function deleteProvider(id: string): void {
   saveProviders(file)
 }
 
+function resolveSelectedModel(file: ProvidersFile, providerId: string | undefined, modelId: string | undefined): string | undefined {
+  if (!providerId) return undefined
+  const provider = file.providers.find(p => p.id === providerId)
+  if (!provider) return undefined
+  return modelId ?? (getProviderDefaultModel(provider) || undefined)
+}
+
+function assertNotActiveSelection(file: ProvidersFile, providerId: string, modelId?: string): void {
+  if (file.activeProvider !== providerId) return
+  const activeModel = resolveSelectedModel(file, file.activeProvider, file.activeModel)
+  if (modelId === undefined) {
+    throw new Error('Cannot disable the active provider. Set another provider as active first.')
+  }
+  if (activeModel === modelId) {
+    throw new Error('Cannot disable the active model. Set another model as active first.')
+  }
+}
+
+function clearFallbackIfUnusable(file: ProvidersFile): void {
+  if (!file.fallbackProvider) return
+  const provider = file.providers.find(p => p.id === file.fallbackProvider)
+  if (!provider) return
+  const fallbackModel = resolveSelectedModel(file, file.fallbackProvider, file.fallbackModel)
+  if (!isProviderModelUsable(provider, fallbackModel)) {
+    delete file.fallbackProvider
+    delete file.fallbackModel
+  }
+}
+
+/**
+ * Enable or disable a provider for LLM use. Disabling the active provider is
+ * rejected; a fallback pointing at it is cleared.
+ */
+export function setProviderDisabled(id: string, disabled: boolean): ProviderConfig {
+  const file = loadProviders()
+  const provider = file.providers.find(p => p.id === id)
+  if (!provider) throw new ProviderNotFoundError(id)
+
+  if (disabled) {
+    assertNotActiveSelection(file, id)
+    provider.disabled = true
+    clearFallbackIfUnusable(file)
+  } else {
+    delete provider.disabled
+  }
+
+  saveProviders(file)
+  return provider
+}
+
+/**
+ * Enable or disable a single model of a provider. Disabling the active model is
+ * rejected; a fallback pointing at it is cleared.
+ */
+export function setProviderModelDisabled(providerId: string, modelId: string, disabled: boolean): ProviderConfig {
+  const file = loadProviders()
+  const provider = file.providers.find(p => p.id === providerId)
+  if (!provider) throw new ProviderNotFoundError(providerId)
+  if (!(provider.enabledModels ?? []).includes(modelId)) {
+    throw new Error(`Model "${modelId}" is not configured for provider "${provider.name}"`)
+  }
+
+  const current = new Set(provider.disabledModels ?? [])
+  if (disabled) {
+    assertNotActiveSelection(file, providerId, modelId)
+    current.add(modelId)
+  } else {
+    current.delete(modelId)
+  }
+
+  if (current.size > 0) {
+    provider.disabledModels = (provider.enabledModels ?? []).filter(m => current.has(m))
+  } else {
+    delete provider.disabledModels
+  }
+  if (disabled) clearFallbackIfUnusable(file)
+
+  saveProviders(file)
+  return provider
+}
+
+function assertSelectable(provider: ProviderConfig, modelId: string | undefined): void {
+  if (isProviderDisabled(provider)) {
+    throw new Error(`Provider "${provider.name}" is disabled`)
+  }
+  if (modelId && isModelDisabled(provider, modelId)) {
+    throw new Error(`Model "${modelId}" is disabled for provider "${provider.name}"`)
+  }
+}
+
 /**
  * Set the active provider
  */
@@ -1385,12 +1562,10 @@ export function setActiveProvider(id: string, modelId?: string): void {
   if (!provider) {
     throw new Error(`Provider not found: ${id}`)
   }
+  const resolvedModel = modelId ?? getProviderDefaultModel(provider)
+  assertSelectable(provider, resolvedModel)
   file.activeProvider = id
-  if (modelId !== undefined) {
-    file.activeModel = modelId
-  } else {
-    file.activeModel = getProviderDefaultModel(provider)
-  }
+  file.activeModel = resolvedModel
   saveProviders(file)
 }
 
@@ -1410,6 +1585,7 @@ export function setActiveModel(modelId: string): void {
   if (!enabled.includes(modelId)) {
     throw new Error(`Model "${modelId}" is not enabled for provider "${provider.name}"`)
   }
+  assertSelectable(provider, modelId)
   file.activeModel = modelId
   saveProviders(file)
 }
@@ -1470,6 +1646,7 @@ export function setFallbackProvider(id: string, modelId?: string): void {
   if (!provider) {
     throw new Error(`Provider not found: ${id}`)
   }
+  assertSelectable(provider, modelId ?? getProviderDefaultModel(provider))
   if (file.activeProvider === id) {
     // Only reject if both provider AND model match the active selection
     const activeProviderConfig = file.providers.find(p => p.id === file.activeProvider)
@@ -1521,8 +1698,7 @@ export function getActiveProvider(): ProviderConfig | null {
     if (found) return found
   }
 
-  // Default to first provider
-  return file.providers[0]
+  return file.providers.find(p => !isProviderDisabled(p)) ?? file.providers[0]
 }
 
 /**
@@ -1587,8 +1763,40 @@ export function getConfiguredPriceTable(): TokenPriceTable {
  * The provider's default/primary model id. Historically a dedicated
  * `defaultModel` field; now derived as the first enabled model.
  */
-export function getProviderDefaultModel(provider: Pick<ProviderConfig, 'enabledModels'>): string {
-  return provider.enabledModels?.[0] ?? ''
+export function getProviderDefaultModel(provider: Pick<ProviderConfig, 'enabledModels' | 'disabledModels'>): string {
+  const enabled = provider.enabledModels ?? []
+  // Falls back to the first entry when every model is disabled so provider
+  // clones pinned to a single model (`{ ...p, enabledModels: [id] }`) keep
+  // resolving to that model.
+  return enabled.find(m => !provider.disabledModels?.includes(m)) ?? enabled[0] ?? ''
+}
+
+export function isProviderDisabled(provider: Pick<ProviderConfig, 'disabled'>): boolean {
+  return provider.disabled === true
+}
+
+export function isModelDisabled(provider: Pick<ProviderConfig, 'disabledModels'>, modelId: string): boolean {
+  return provider.disabledModels?.includes(modelId) ?? false
+}
+
+/** Models of a provider that may be offered to the agent and in LLM model pickers. */
+export function getUsableModels(provider: Pick<ProviderConfig, 'enabledModels' | 'disabled' | 'disabledModels'>): string[] {
+  if (isProviderDisabled(provider)) return []
+  return (provider.enabledModels ?? []).filter(m => !isModelDisabled(provider, m))
+}
+
+/**
+ * Whether `modelId` (or the provider's default model when omitted) may be used
+ * for LLM work. False for disabled providers, disabled models, and providers
+ * without any usable model.
+ */
+export function isProviderModelUsable(
+  provider: Pick<ProviderConfig, 'enabledModels' | 'disabled' | 'disabledModels'>,
+  modelId?: string,
+): boolean {
+  if (isProviderDisabled(provider)) return false
+  if (modelId) return !isModelDisabled(provider, modelId)
+  return getUsableModels(provider).length > 0
 }
 
 /** Copilot token format: `tid=...;exp=...;proxy-ep=proxy.individual.githubcopilot.com;...` */
@@ -1606,7 +1814,7 @@ export function buildModel(provider: ProviderConfig, modelId?: string): Model<Ap
   // (OpenCode Zen/Go) whose catalog spans multiple wire APIs under one entry.
   if (preset?.piAiProvider && (preset.authMethod === 'oauth' || preset.resolveModelsFromCatalog)) {
     try {
-      const piAiModels = getPiAiModels(preset.piAiProvider as BuiltinProvider)
+      const piAiModels = getPiCatalogModels(preset.piAiProvider)
 
       // GitHub Copilot routes each account through its own proxy endpoint,
       // encoded in the access token; the catalog only carries the default one.
@@ -1618,7 +1826,11 @@ export function buildModel(provider: ProviderConfig, modelId?: string): Model<Ap
         if (baseUrl) models = models.map(m => ({ ...m, baseUrl }))
       }
 
-      const piModel = models.find(m => m.id === id)
+      const catalogEntry = models.find(m => m.id === id)
+      const costOverride = provider.models?.find(m => m.id === id)?.cost
+      const piModel = catalogEntry && costOverride
+        ? { ...catalogEntry, cost: { ...catalogEntry.cost, ...Object.fromEntries(Object.entries(costOverride).filter(([, v]) => v !== undefined)) } }
+        : catalogEntry
       if (piModel) {
         // For Anthropic OAuth, inject the Claude Code CLI user-agent header
         if (provider.providerType === 'anthropic-oauth') {
@@ -1637,39 +1849,43 @@ export function buildModel(provider: ProviderConfig, modelId?: string): Model<Ap
     }
   }
 
-  // Generic build for API key providers or fallback.
-  // Resolution for per-model metadata: provider.models (user override) → local
-  // PROVIDER_TYPE_MODEL_OVERRIDES catalog → configured price table → zero.
-  const modelConfig = provider.models?.find(m => m.id === id)
-    ?? findOverrideModel(provider.providerType, id)
+  // Generic build for API key providers or fallback. Each field resolves
+  // independently: provider.models (user override) → local
+  // PROVIDER_TYPE_MODEL_OVERRIDES → configured price table (cost only) →
+  // pi catalog → defaults.
+  const modelConfig = resolveModelConfig(provider, id)
+  const catalogModel = findPiAiCatalogModel(provider.providerType, id)
 
   if (isRadiusProviderType(provider.providerType)) {
     const radiusModel = buildRadiusModel(provider, id, modelConfig)
     if (radiusModel) return radiusModel
   }
-  const priceFallback = getConfiguredPriceTable()[id] ?? { input: 0, output: 0 }
+  const configuredPrice = getConfiguredPriceTable()[id]
 
   // For Anthropic providers, set the user-agent header to advertise as Claude Code CLI
   const isAnthropicProvider = provider.providerType === 'anthropic' || provider.providerType === 'anthropic-oauth'
   const headers = isAnthropicProvider ? { 'user-agent': `claude-cli/${CLAUDE_CODE_VERSION}` } : undefined
+  const thinkingLevelMap = modelConfig?.thinkingLevelMap ?? catalogModel?.thinkingLevelMap
 
   return {
     id,
-    name: modelConfig?.name ?? id,
+    name: modelConfig?.name ?? catalogModel?.name ?? id,
     api: provider.type as Api,
     provider: provider.provider,
     baseUrl: provider.baseUrl,
-    reasoning: modelConfig?.reasoning ?? false,
-    input: ['text', 'image'],
+    reasoning: modelConfig?.reasoning ?? catalogModel?.reasoning ?? false,
+    ...(thinkingLevelMap && { thinkingLevelMap }),
+    input: [...(modelConfig?.input?.length ? modelConfig.input : catalogModel?.input ?? ['text', 'image'])],
     cost: {
-      input: modelConfig?.cost?.input ?? priceFallback.input,
-      output: modelConfig?.cost?.output ?? priceFallback.output,
-      cacheRead: modelConfig?.cost?.cacheRead ?? 0,
-      cacheWrite: modelConfig?.cost?.cacheWrite ?? 0,
+      input: modelConfig?.cost?.input ?? configuredPrice?.input ?? catalogModel?.cost.input ?? 0,
+      output: modelConfig?.cost?.output ?? configuredPrice?.output ?? catalogModel?.cost.output ?? 0,
+      cacheRead: modelConfig?.cost?.cacheRead ?? catalogModel?.cost.cacheRead ?? 0,
+      cacheWrite: modelConfig?.cost?.cacheWrite ?? catalogModel?.cost.cacheWrite ?? 0,
     },
-    contextWindow: modelConfig?.contextWindow ?? 128000,
-    maxTokens: modelConfig?.maxTokens ?? 16384,
+    contextWindow: modelConfig?.contextWindow ?? catalogModel?.contextWindow ?? 128000,
+    maxTokens: modelConfig?.maxTokens ?? catalogModel?.maxTokens ?? 16384,
     ...(headers && { headers }),
+    ...(provider.compat && { compat: provider.compat }),
   }
 }
 
@@ -1679,19 +1895,6 @@ export function buildModel(provider: ProviderConfig, modelId?: string): Model<Ap
  * base URL) that the generic build cannot guess. User edits in
  * `provider.models` win for display name, context window and pricing.
  */
-function radiusCatalogModelConfig(modelId: string): ProviderModelConfig | undefined {
-  const m = findRadiusCatalogModel(modelId)
-  if (!m) return undefined
-  return {
-    id: m.id,
-    name: m.name,
-    contextWindow: m.contextWindow,
-    maxTokens: m.maxTokens,
-    reasoning: m.reasoning,
-    cost: { ...m.cost },
-  }
-}
-
 function buildRadiusModel(
   provider: ProviderConfig,
   id: string,
@@ -1779,7 +1982,7 @@ export function resolveProviderModelInput(input: {
     return { ok: false, error: 'No provider or model specified.' }
   }
 
-  const providers = loadProvidersDecrypted().providers
+  const providers = loadProvidersDecrypted().providers.filter(p => getUsableModels(p).length > 0)
 
   // Case 1 & 2: provider (with or without model) given
   if (providerKey) {
@@ -1790,7 +1993,7 @@ export function resolveProviderModelInput(input: {
       return { ok: false, error: `Provider "${providerKey}" not found. Available providers: ${providers.map(p => p.name).join(', ') || '(none)'}.` }
     }
 
-    const enabledModels = match.enabledModels ?? []
+    const enabledModels = getUsableModels(match)
 
     let modelId: string
     if (modelKey) {
@@ -1809,13 +2012,13 @@ export function resolveProviderModelInput(input: {
   // Case 3: model only — search all providers for any enabled model that matches
   const hits: Array<{ provider: ProviderConfig; modelId: string }> = []
   for (const p of providers) {
-    const enabledModels = p.enabledModels ?? []
+    const enabledModels = getUsableModels(p)
     const modelMatch = enabledModels.find(m => m.toLowerCase() === modelKey.toLowerCase())
     if (modelMatch) hits.push({ provider: p, modelId: modelMatch })
   }
 
   if (hits.length === 0) {
-    return { ok: false, error: `Model "${modelKey}" not found in any configured provider. Configured providers: ${providers.map(p => `${p.name} (${(p.enabledModels ?? []).join(', ')})`).join('; ') || '(none)'}.` }
+    return { ok: false, error: `Model "${modelKey}" not found in any configured provider. Configured providers: ${providers.map(p => `${p.name} (${getUsableModels(p).join(', ')})`).join('; ') || '(none)'}.` }
   }
   if (hits.length > 1) {
     return { ok: false, error: `Model "${modelKey}" is ambiguous — enabled in multiple providers: ${hits.map(h => h.provider.name).join(', ')}. Specify the provider explicitly.` }

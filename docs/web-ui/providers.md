@@ -8,11 +8,12 @@ The Providers page is where you configure which LLM endpoints Axiom can talk to 
 
 ## Header
 
-A single primary button on the right:
+Two buttons on the right:
 
+- **Refresh models** (shown once at least one provider exists) — reloads the model catalogs behind your providers, see [Refreshing model catalogs](#refreshing-model-catalogs).
 - **Add Provider** — opens the [provider form dialog](#add-edit-dialog).
 
-There is no Refresh button — the list re-loads after every successful add / edit / delete / test.
+The provider list itself re-loads after every successful add / edit / delete / test.
 
 ## Two-level table
 
@@ -27,10 +28,10 @@ Providers are sorted alphabetically by display name; sub-rows follow the order c
 
 | Column      | Notes                                                                                                |
 |-------------|------------------------------------------------------------------------------------------------------|
-| **Name**    | Bold display name; below it, the provider type label (e.g. *"Anthropic"*, *"Anthropic (Claude Pro/Max) · OAuth"*). |
+| **Name**    | Bold display name plus a `Disabled` badge when the provider is [disabled](#disabling-providers-and-models); below it, the provider type label (e.g. *"Anthropic"*, *"Anthropic (Claude Pro/Max) · OAuth"*). |
 | **Cost**    | Empty — costs live on the model rows.                                                                |
 | **Status**  | Empty for most providers (status lives on the model rows). For **subscription (OAuth)** providers it shows the live [subscriber usage quota](#subscriber-usage-quota-oauth-plans). |
-| **⋮**       | **Add Model**, Edit, Delete, and — for quota-capable OAuth providers — **Refresh quota**. *Delete* is disabled for the provider that owns the currently active model. |
+| **⋮**       | **Add Model**, Edit, **Disable** / **Enable**, Delete, and — for quota-capable OAuth providers — **Refresh quota**. *Delete* and *Disable* are unavailable for the provider that owns the currently active model. |
 
 Clicking anywhere on a header row opens the [Edit dialog](#add-edit-dialog).
 
@@ -38,10 +39,10 @@ Clicking anywhere on a header row opens the [Edit dialog](#add-edit-dialog).
 
 | Column      | Notes                                                                                                |
 |-------------|------------------------------------------------------------------------------------------------------|
-| **Model**   | Indented model id; small badges for `Active` (green) and `Fallback` (outline). Both can appear on the same row in theory, but the active model is never also the fallback. |
+| **Model**   | Indented model id; small badges for `Active` (green), `Fallback` (outline) and `Disabled` (outline). Both `Active` and `Fallback` can appear on the same row in theory, but the active model is never also the fallback. Models of a disabled provider and disabled models are shown dimmed and struck through. |
 | **Cost**    | `$<input>` / `$<output>` per million tokens. Shown as `—` when no cost is configured for that model. |
 | **Status**  | One of `Untested`, `Connected`, `Error` — see [Statuses](#statuses).                                 |
-| **⋮**       | Test Connection, Set Active, Set Fallback, Remove Fallback, **Edit Model**, Remove Model — context-aware (see [Per-model actions](#per-model-actions)). |
+| **⋮**       | Test Connection, Set Active, Set Fallback, Remove Fallback, **Edit Model**, Disable / Enable, Remove Model — context-aware (see [Per-model actions](#per-model-actions)). |
 
 ### Statuses
 
@@ -68,16 +69,35 @@ You set both from the row menu — see [Per-model actions](#per-model-actions). 
 
 ## Per-model actions
 
-The ⋮ menu on each model row carries up to six items, shown only when relevant:
+The ⋮ menu on each model row carries up to seven items, shown only when relevant:
 
 | Item                  | When it appears                                                                  |
 |-----------------------|----------------------------------------------------------------------------------|
 | **Test Connection**   | Always. Sends a small request to the provider/model and updates the status badge. |
-| **Set Active**        | When this model is *not* already active. Promotes it to the global active model.  |
-| **Set Fallback**      | When this model is neither active nor the current fallback.                       |
+| **Set Active**        | When this model is *not* already active and neither it nor its provider is disabled. Promotes it to the global active model.  |
+| **Set Fallback**      | When this model is neither active nor the current fallback, and neither it nor its provider is disabled. |
 | **Remove Fallback**   | Only on the current fallback model. Clears the fallback selection.                |
 | **Edit Model**        | Always. Opens the [Edit Model dialog](#edit-model-dialog) to set or clear a description and per-token costs. |
+| **Disable** / **Enable** | Always (*Disable* is unavailable on the active model). See [Disabling providers and models](#disabling-providers-and-models). |
 | **Remove Model**      | Always (but disabled in two cases — see below).                                   |
+
+## Disabling providers and models
+
+Instead of deleting a provider or removing a model, you can **disable** it from the ⋮ menu of the provider header row or the model row. A disabled provider or model keeps its configuration (API key, description, costs) and can be re-enabled at any time with **Enable**.
+
+While disabled, it is treated as if it were not configured for LLM work:
+
+- It no longer appears in any provider/model dropdown (Settings → Agent, Tasks, Memory, Cronjobs, task restart, …) or in the `/model` picker in chat and Telegram.
+- It is removed from the agent's [`<available_providers>`](../concepts/system-prompt#_8-available_providers-configured-llm-providers) list, and the agent can no longer start tasks or cronjobs on it.
+- It can't be set as active or fallback.
+
+Disabling a whole provider affects all of its models. **TTS and STT are not affected:** a disabled provider's credentials can still be used for text-to-speech, speech-to-text and the STT rewrite model.
+
+Guards and automatic adjustments:
+
+- **The active provider/model can't be disabled.** Set a different model as active first.
+- **Fallback is cleared.** If the disabled provider/model was the fallback, the fallback is removed.
+- **References are reset to default.** Settings that pointed at the disabled provider/model (session summary, fact extraction, memory consolidation, task default, smart loop detection) and cronjobs pinned to it are reset to their default.
 
 ### Removing a model
 
@@ -106,8 +126,8 @@ The dialog keeps connection details first, then model selection, then advanced h
 | Field                  | Notes                                                                                                |
 |------------------------|------------------------------------------------------------------------------------------------------|
 | **Name**               | Free text, your label for this provider — appears in the table, in `<task_injection>` blocks, on the Dashboard. |
-| **Type**               | Dropdown grouped into two sections: **API Key** (OpenAI, Anthropic, Mistral, OpenRouter, DeepSeek, Kimi / Moonshot, MiniMax, xAI (Grok), Google Gemini, OpenCode Zen, OpenCode Go, Radius (API key), Ollama, generic OpenAI-compatible, …) and **Subscription / OAuth** (Anthropic Claude Pro/Max, OpenAI ChatGPT Plus/Pro, GitHub Copilot, Radius, z.ai (GLM Coding Plan), …). |
-| **Base URL**           | Shown directly after Type when the preset has an editable URL (Ollama, generic OpenAI-compatible, …). |
+| **Type**               | Dropdown grouped into two sections: **API Key** (OpenAI, Anthropic, Mistral, OpenRouter, DeepSeek, Kimi / Moonshot, MiniMax, xAI (Grok), Google Gemini, OpenCode Zen, OpenCode Go, Radius (API key), Ollama, Custom – OpenAI Chat Completions / OpenAI Responses / Anthropic Messages, …) and **Subscription / OAuth** (Anthropic Claude Pro/Max, OpenAI ChatGPT Plus/Pro, GitHub Copilot, Radius, z.ai (GLM Coding Plan), …). |
+| **Base URL**           | Shown directly after Type when the preset has an editable URL (Ollama, Custom, …). |
 | **API Key**            | Shown after Base URL for API-key providers. Required for most hosted presets, optional for local/custom providers that do not need auth. |
 | **Model**              | Model selector for this provider. Shown **only in create mode** — after creation, models are managed via [Add Model](#add-model-dialog) and [Edit Model](#edit-model-dialog) from the row menus. The exact control depends on the provider type. The first enabled model acts as the provider's default/primary model. |
 | **Degraded Threshold** | Last field in the form. Latency in ms above which the provider is marked *Degraded* in health checks. Default `5000`. Lower = more sensitive. |
@@ -120,11 +140,11 @@ When you pick a type from the *API Key* group, the fields appear in this order:
 
 #### Base URL
 
-Only visible for presets where the URL is editable (Ollama, generic OpenAI-compatible, …). For Ollama the placeholder shows the default `http://localhost:11434/v1`.
+Only visible for presets where the URL is editable (Ollama, Custom, …). For Ollama the placeholder shows the default `http://localhost:11434/v1`.
 
 #### API Key
 
-A password field. Required for most presets, optional for ones that don't strictly need authentication (e.g. an unauthenticated local OpenAI-compatible server). In edit mode the field is empty and the hint reads *"Leave empty to keep existing key"* — only type a value if you want to replace the stored secret.
+A password field. Required for most presets, optional for ones that don't strictly need authentication (e.g. an unauthenticated local server added as a Custom provider). In edit mode the field is empty and the hint reads *"Leave empty to keep existing key"* — only type a value if you want to replace the stored secret.
 
 Stored encrypted at rest in `/data/config/providers.json` using `ENCRYPTION_KEY`. See [Configuration](../guide/configuration#why-encryption-key-matters).
 
@@ -135,40 +155,62 @@ The model selector adapts to the preset. It is shown **only in create mode** —
 - **Curated providers (OpenAI, Anthropic, Mistral, DeepSeek, Kimi / Moonshot, MiniMax, xAI (Grok), OpenCode Zen, OpenCode Go, …)** — a dropdown of known models. Pick the one you want; it becomes the provider's initial enabled model and acts as its default until you enable more. If the model you need isn't in the catalog, type its id in the custom-model field below the dropdown and click **Add**. OpenCode Zen and Go source their catalog (models, per-token costs, per-model API type) directly from the bundled `@earendil-works/pi-ai` registry, so they stay in sync with [OpenCode Zen](https://opencode.ai/docs/zen) whenever that dependency is updated — no manual price table to maintain.
 - **Dynamic-catalog providers (OpenRouter)** — in create mode this behaves like the curated dropdown above (bundled catalog). Once the provider exists, the [Add Model dialog](#add-model-dialog) fetches the model list **live** from the provider's own `/models` endpoint (using the stored base URL and API key) instead of the bundled catalog, so newly published models appear without waiting for an Axiom release. If the live fetch fails, Axiom falls back to the bundled `@earendil-works/pi-ai` catalog so the picker still works offline.
 - **Radius** (`radius` via OAuth, `radius-api-key` via an organization API key) — [Radius](https://radius.earendil.com/) is Earendil's Pi-native gateway (prepaid credits, routing, rewrite rules). It has no bundled catalog: the model list, prices, context windows and thinking-level support are fetched from the gateway's public `/v1/config` endpoint and cached in `config/radius-catalog.json`. The cache is refreshed when the create-mode model dropdown loads (if older than six hours), every time you open the Add Model dialog, and on backend start when a Radius provider exists and the cache is stale. Refreshes triggered by an existing provider use its credential so organization-private (BYOK) models are included. The OAuth variant uses the device-code flow: Axiom opens the Radius pairing page (with the code pre-filled) and also shows the code in the dialog, so it works for remote deployments. Radius speaks Pi's native `pi-messages` wire protocol, not the OpenAI API.
-- **Generic OpenAI-compatible** — free-text model-id entry plus an optional **Load models** button for providers that implement OpenAI's `/models` endpoint.
+- **Custom** — has no bundled catalog. After creating the provider, the [Add Model dialog](#add-model-dialog) loads the model list live from `<Base URL>/models` (or `<Base URL>/v1/models`) using the stored API key.
 - **Ollama** — a separate panel with its own controls (see below).
 
 #### Degraded Threshold
 
 Always shown last once a provider type is selected. It controls the latency threshold used by health checks.
 
-### Custom OpenAI-compatible providers
+### Custom providers
 
-Pick **OpenAI-compatible (custom)** from the *API Key* group whenever you want to talk to a service that exposes the OpenAI `POST /v1/chat/completions` wire format but doesn't have a dedicated preset in Axiom — for example NVIDIA NIM (`build.nvidia.com`), self-hosted vLLM, LM Studio, llama.cpp's OpenAI server, Cloudflare AI Gateway proxies, or in-house deployments.
+Pick one of the three **Custom** entries from the *API Key* group whenever you want to talk to a service that doesn't have a dedicated preset in Axiom — for example NVIDIA NIM (`build.nvidia.com`), self-hosted vLLM, LM Studio, llama.cpp's OpenAI server, LiteLLM proxies, Anthropic-compatible gateways, or in-house deployments. The entry decides the wire format:
+
+| Type entry | `providerType` | Requests go to | API key sent as | Model list from |
+|---|---|---|---|---|
+| **Custom – OpenAI Chat Completions** | `custom-openai-completions` | `<Base URL>/chat/completions` | `Authorization: Bearer` | `/models` |
+| **Custom – OpenAI Responses** | `custom-openai-responses` | `<Base URL>/responses` | `Authorization: Bearer` | `/models` |
+| **Custom – Anthropic Messages** | `custom-anthropic-messages` | `<Base URL>/v1/messages` | `x-api-key` | `/v1/models` |
+
+In edit mode you can switch between the three entries; the form flags compatibility options the new format doesn't support.
 
 Unlike the curated presets, this type carries no model catalog and no fixed endpoint:
 
 | Field              | What to enter                                                                                              |
 |--------------------|------------------------------------------------------------------------------------------------------------|
 | **Name**           | Any label (e.g. `NVIDIA NIM`, `Local LM Studio`).                                                          |
-| **Type**           | `OpenAI-compatible (custom)`.                                                                              |
-| **Base URL**       | The endpoint root that exposes `/v1/chat/completions`. Required.                                           |
+| **Type**           | One of the **Custom – …** entries above.                                                                   |
+| **Base URL**       | Required. For Chat Completions / Responses the root that exposes `/chat/completions` or `/responses` (usually ending in `/v1`); for Anthropic Messages the root **without** `/v1` — requests go to `<Base URL>/v1/messages`. |
 | **API Key**        | Optional. Leave blank for unauthenticated local servers; paste the upstream key for hosted services.       |
-| **Model**          | Add one or more exact model ids the upstream API expects (e.g. `meta/llama-3.1-405b-instruct`, `qwen2.5-coder-32b`). Use **Load models** when the provider supports OpenAI's `/models` endpoint. No prefix is stripped. Shown only in create mode; after creation, use [Add Model](#add-model-dialog) from the provider menu. The first model added acts as the provider's default. |
+| **Compatibility options (compat)** | Optional JSON object with pi-ai `compat` options — the same format as the `compat` block of a pi `models.json` (pasting a provider entry that contains a `compat` key works too). The options apply to every model of the provider. The dialog lists the options valid for the selected type and rejects unknown keys or values. Leave empty to let pi-ai auto-detect behaviour from the URL. |
+| **Models**         | Added after creation via [Add Model](#add-model-dialog), which loads the provider's model list live (or lets you type an exact model id such as `meta/llama-3.1-405b-instruct`). No prefix is stripped. The first model added acts as the provider's default. |
 | **Degraded Threshold** | Optional latency threshold override; defaults to `5000` ms.                                           |
 
-The provider is wired through pi-ai's `openai-completions` API, so streaming, tool-calling, and reasoning capture work the same way they do for the regular `openai` preset.
+The provider is wired through the matching pi-ai API (`openai-completions`, `openai-responses` or `anthropic-messages`), so streaming, tool-calling, and reasoning capture work the same way they do for the built-in presets.
+
+#### When to set compat options
+
+For URLs pi-ai doesn't recognize it assumes the official OpenAI behaviour. Self-hosted or proxied endpoints often differ; typical Chat Completions settings:
+
+| Symptom | compat |
+|---|---|
+| Error about the `developer` role / system prompt ignored | `"supportsDeveloperRole": false` |
+| Error about `max_completion_tokens` | `"maxTokensField": "max_tokens"` |
+| Error about the `store` field | `"supportsStore": false` |
+| Thinking level has no effect or the server rejects `reasoning_effort` | `"thinkingFormat"` matching the server (e.g. `"qwen"`, `"deepseek"`, `"chat-template"`), or `"supportsReasoningEffort": false` |
+
+**Test Connection** sends the request through pi-ai with a short system prompt, so it uses the API type and compat options exactly like the agent does and surfaces role or field errors.
 
 #### Example: NVIDIA NIM (`build.nvidia.com`)
 
 1. Grab a key from <https://build.nvidia.com> (header `Authorization: Bearer nvapi-…`).
-2. **Add Provider** → pick **OpenAI-compatible (custom)**.
+2. **Add Provider** → pick **Custom – OpenAI Chat Completions**.
 3. Fill the form:
    - **Name** → `NVIDIA NIM`
    - **Base URL** → `https://integrate.api.nvidia.com/v1`
    - **API Key** → `nvapi-…`
-   - **Enabled Models** → click **Load models** or add ids manually, e.g. `mistralai/mistral-medium-3.5-128b`
-4. **Save**, then hit **Test** on the model row to confirm the endpoint and key are good.
+4. **Save**, then open **Add Model** in the provider's ⋮ menu and pick a model (or type an id such as `mistralai/mistral-medium-3.5-128b`).
+5. Hit **Test** on the model row to confirm the endpoint and key are good.
 
 ##### Possible NVIDIA NIM chat models (as of 05/2026)
 
@@ -176,7 +218,7 @@ NVIDIA's catalog changes over time and includes non-chat models (embedding, rera
 
 > **Current reliability note (05/2026):** NVIDIA NIM's hosted/free endpoints can be very slow or intermittently fail with API errors/timeouts. The service appears overloaded at times. Treat these models as experimental until repeated **Test Connection** runs and real chat usage are stable for your account/region.
 
-Models that fit Axiom's OpenAI-compatible chat-completions integration:
+Models that work with **Custom – OpenAI Chat Completions**:
 
 - `mistralai/mistral-medium-3.5-128b`
 - `google/gemma-4-31b-it`
@@ -186,15 +228,21 @@ Models that fit Axiom's OpenAI-compatible chat-completions integration:
 #### Example: Local LM Studio / vLLM
 
 1. Start LM Studio's OpenAI server (defaults to `http://localhost:1234/v1`) or a `vllm serve …` instance.
-2. **Add Provider** → **OpenAI-compatible (custom)**.
+2. **Add Provider** → **Custom – OpenAI Chat Completions**.
 3. Fill in:
    - **Name** → `LM Studio`
    - **Base URL** → `http://localhost:1234/v1`
    - **API Key** → leave blank (LM Studio ignores it)
-   - **Enabled Models** → click **Load models** or add the loaded model id manually, e.g. `qwen2.5-coder-32b-instruct`
-4. **Save** → **Test**.
+   - **Compatibility options** → if the test complains about roles or fields, e.g. `{ "supportsDeveloperRole": false, "maxTokensField": "max_tokens" }`
+4. **Save** → **Add Model** → pick the loaded model (e.g. `qwen2.5-coder-32b-instruct`) → **Test**.
 
-If the upstream service requires a non-standard wire format (Anthropic-Messages, Google Gemini, …) use the matching dedicated preset instead — this type is strictly for OpenAI chat-completions semantics.
+#### Example: Anthropic-compatible gateway
+
+1. **Add Provider** → **Custom – Anthropic Messages**.
+2. **Base URL** → the root without `/v1` (e.g. `https://gateway.example.com/anthropic`), **API Key** → the gateway key (sent as `x-api-key`).
+3. **Save** → **Add Model** (loaded from `<Base URL>/v1/models` when the gateway offers it) → **Test**.
+
+Wire formats other than these three (Google Gemini, Bedrock, Azure OpenAI with `api-key` headers, …) need a dedicated preset.
 
 ### Ollama-specific controls
 
@@ -272,11 +320,26 @@ These usage endpoints are aggressively rate-limited. Axiom applies a per-provide
 
 In **edit** mode for an OAuth provider, the dialog footer shows a **Renew Token** button on the left. OAuth refresh tokens have a fixed lifetime — when they expire, the model status flips to `Error` with an authentication failure. Click **Renew Token** to start the OAuth flow again with the existing provider record (no new row, no lost configuration).
 
+## Refreshing model catalogs
+
+Most presets get their model list, prices, limits and thinking-level support from the model catalog bundled with `@earendil-works/pi-ai`. New models (e.g. a new Claude release) would otherwise only appear after an Axiom update. **Refresh models** in the page header fixes that without an update:
+
+- **pi catalog** — for every configured provider whose preset uses the bundled catalog (Anthropic, Claude Pro/Max, OpenAI, ChatGPT/Codex, GitHub Copilot, Google, DeepSeek, xAI, Mistral, OpenCode Zen/Go, OpenRouter, …) Axiom loads the current catalog from `https://pi.dev/api/models/providers/<provider>` — the same source the pi CLI uses for `pi update --models`. Only the provider id is sent, never an API key. Providers that share a catalog (e.g. *Anthropic* and *Claude Pro/Max*) are fetched once.
+- **Radius** — reloads the gateway catalog with the provider's credential.
+
+The result is cached in `config/pi-catalog.json` and stays in effect across restarts and offline. Refreshed entries replace bundled entries with the same id; models only present in the bundled catalog are kept. Models whose wire API this Axiom build cannot talk to are ignored. Nothing refreshes automatically — the catalog only changes when you click the button.
+
+After a refresh, a summary lists new models per provider, providers without changes, failed refreshes, and — for subscription, OpenCode and Radius providers — enabled models the catalog no longer lists. Such models fall back to a generic configuration and may stop working; remove or replace them.
+
+Custom providers, Ollama and the live OpenRouter list are not part of this refresh: their models are loaded live in the [Add Model dialog](#add-model-dialog) (with its own refresh button).
+
 ## Add Model dialog
 
 Opened from the provider header row's ⋮ menu → **Add Model**. Lets you enable additional models on an existing provider without reopening the provider form.
 
-- **Search** — filters the provider's model catalog by name or id. For most providers the catalog is fetched from the bundled `@earendil-works/pi-ai` registry (same source as the create-mode dropdown). **Dynamic-catalog providers (OpenRouter, Radius)** instead fetch the list live from the provider (OpenRouter's `/models`, Radius' `/v1/config`), falling back to the bundled/cached catalog if that request fails.
+- **Search** — filters the provider's model catalog by name or id. For most providers the catalog is fetched from the bundled `@earendil-works/pi-ai` registry (same source as the create-mode dropdown). **Dynamic-catalog providers (OpenRouter, Radius, Custom)** instead fetch the list live from the provider (the `/models` endpoint, Anthropic-style `/v1/models`, or Radius' `/v1/config`), falling back to the bundled/cached catalog if that request fails. Custom providers have no fallback catalog, so a failed request shows the upstream error instead.
+- **Refresh** — the button next to the search field (dynamic-catalog providers only) reloads the live list.
+- **Metadata from `/models`** — when the endpoint reports it, the context window (`context_length` or `max_input_tokens`), max output tokens (`max_output_tokens`) and pricing (OpenRouter's `pricing`, including `input_cache_read` / `input_cache_write`) are stored with the model when you add it. Entries whose `mode` is not a chat mode (e.g. `embedding`, as reported by LiteLLM-style proxies) are hidden.
 - **Model list** — scrollable, multi-select. Models already enabled on this provider appear greyed out with an *"already enabled"* label. Tick the ones you want to add.
 - **Custom model fallback** — when your search text doesn't match any catalog entry, a button appears to add the typed id as a custom model (e.g. a manually published model not yet in pi-ai).
 - **Add** — merges the selected models into the provider's enabled list. The footer shows the number selected.
@@ -285,12 +348,23 @@ If the catalog fetch fails, an error message with a retry link is shown.
 
 ## Edit Model dialog
 
-Opened from a model sub-row's ⋮ menu → **Edit Model**. Sets two things per model:
+Opened from a model sub-row's ⋮ menu → **Edit Model**. Sets per model:
 
 - **Description** — a free-form note describing what this model is suited for (e.g. *"Fast model for text processing like Twitter/Reddit Digest"*). The description is surfaced in the system prompt's [`<available_providers>` block](../concepts/system-prompt#_8-available_providers-configured-llm-providers) and doubles as the opt-in gate for agent model routing: a model without a description (and that isn't the active or default task model) is hidden from the agent's routing list. Clear the field to remove a model from the routing list.
-- **Cost** — per-million-token input and output costs in USD. **Cache read** and **cache write** fields appear only for models whose resolved cost already carries cache values, or for Anthropic providers (which always support prompt caching). Leave any field empty to keep the existing value; enter `0` for a free model.
+- **Cost** — per-million-token input and output costs in USD. **Cache read** and **cache write** fields are always shown for providers whose models are built from Axiom's own configuration (see below); for other providers they appear only when the resolved cost already carries cache values, or for Anthropic providers. Enter `0` for a free model. Cache prices apply to the cache tokens the provider reports (e.g. OpenAI-style `cached_tokens`) and flow into the cost shown on the [Token Usage page](./token-usage).
 
-Costs entered here override the catalog defaults. The dialog pre-fills with the model's existing entry (or catalog defaults if no entry exists yet).
+For providers whose models are built from Axiom's own configuration (API-key presets such as Custom, OpenRouter, DeepSeek, …) the dialog additionally offers:
+
+- **Display name**.
+- **Token limits** — context window and max output tokens. Without a value Axiom assumes 128k context and 16,384 output tokens.
+- **Image input** — whether the model accepts images.
+- **Reasoning / thinking** — must be on for the configured [thinking level](../settings/agent#thinking-level) to be sent to this model.
+- **Supported thinking levels** — per level (`minimal` … `max`), whether the model supports it and which value is sent to the API (empty = the level name). Unsupported levels are rounded to the nearest supported one. `xhigh` and `max` are only used when ticked. This mirrors pi's `thinkingLevelMap`.
+- **Import from pi config** — paste a pi `models.json` (a single model object, a provider, or the whole file); the entry matching the model id fills `name`, `contextWindow`, `maxTokens`, `input`, `reasoning`, `thinkingLevelMap` and `cost` (including `cacheRead` / `cacheWrite`). Review and save afterwards.
+
+Subscription/OAuth providers, OpenCode Zen/Go and Radius take these values from their upstream catalog, so the section is hidden for them.
+
+**Your values vs. catalog values.** A filled field is your own value and overrides the catalog. An empty field shows the current catalog value as placeholder and keeps following the catalog — including after [Refresh models](#refreshing-model-catalogs). Only the fields you change are stored; clearing a field removes your value again. **Reset to catalog values** (bottom left, shown when the model has own values) removes all own values except the description. Entries saved by older Axiom versions stored a full copy of the catalog values; reset them once to let them follow the catalog.
 
 ## Delete provider
 

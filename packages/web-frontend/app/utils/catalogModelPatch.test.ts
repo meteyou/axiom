@@ -15,6 +15,19 @@ describe('buildCatalogModelPatch', () => {
     })
   })
 
+  it('keeps cache prices from the live catalog', () => {
+    expect(buildCatalogModelPatch({ id: 'x/y', name: 'x/y', cost: { input: 1, output: 2, cacheRead: 0.1 } })).toEqual({
+      cost: { input: 1, output: 2, cacheRead: 0.1 },
+    })
+  })
+
+  it('maps the max output tokens', () => {
+    expect(buildCatalogModelPatch({ id: 'x/y', name: 'x/y', contextWindow: 1_000_000, maxTokens: 393_216 })).toEqual({
+      contextWindow: 1_000_000,
+      maxTokens: 393_216,
+    })
+  })
+
   it('omits a name that merely repeats the id', () => {
     expect(buildCatalogModelPatch({ id: 'x/y', name: 'x/y', cost: { input: 1, output: 2 } })).toEqual({
       cost: { input: 1, output: 2 },

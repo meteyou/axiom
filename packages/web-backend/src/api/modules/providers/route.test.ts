@@ -375,4 +375,84 @@ describe('providers route module', () => {
     )
     expect(missing.status).toBe(404)
   })
+
+  it('disables and re-enables providers and models, blocking the active selection', async () => {
+    const jsonHeaders = { ...authHeaders(adminToken), 'Content-Type': 'application/json' }
+    const create = await fetch(`${baseUrl}/api/providers`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({
+        name: 'Disable Provider',
+        providerType: 'openai',
+        apiKey: 'sk-disable',
+        enabledModels: ['gpt-4o-mini', 'gpt-4o'],
+      }),
+    })
+    expect(create.status).toBe(201)
+    const { provider } = await create.json() as { provider: { id: string } }
+
+    const listBefore = await (await fetch(`${baseUrl}/api/providers`, { headers: authHeaders(adminToken) })).json() as {
+      activeProvider: string | null
+      activeModel: string | null
+    }
+    expect(listBefore.activeProvider).not.toBe(provider.id)
+
+    const invalid = await fetch(`${baseUrl}/api/providers/${provider.id}`, {
+      method: 'PUT',
+      headers: jsonHeaders,
+      body: JSON.stringify({ disabled: 'yes' }),
+    })
+    expect(invalid.status).toBe(400)
+
+    const disableModel = await fetch(`${baseUrl}/api/providers/${provider.id}/models/gpt-4o`, {
+      method: 'PATCH',
+      headers: jsonHeaders,
+      body: JSON.stringify({ disabled: true }),
+    })
+    expect(disableModel.status).toBe(200)
+    const modelResult = await disableModel.json() as { provider: { disabledModels?: string[]; models?: unknown[] } }
+    expect(modelResult.provider.disabledModels).toEqual(['gpt-4o'])
+    expect(modelResult.provider.models ?? []).toEqual([])
+
+    const disableProvider = await fetch(`${baseUrl}/api/providers/${provider.id}`, {
+      method: 'PUT',
+      headers: jsonHeaders,
+      body: JSON.stringify({ disabled: true }),
+    })
+    expect(disableProvider.status).toBe(200)
+
+    const list = await (await fetch(`${baseUrl}/api/providers`, { headers: authHeaders(adminToken) })).json() as {
+      providers: Array<{ id: string; disabled?: boolean; disabledModels?: string[] }>
+    }
+    const listed = list.providers.find(p => p.id === provider.id)
+    expect(listed?.disabled).toBe(true)
+    expect(listed?.disabledModels).toEqual(['gpt-4o'])
+
+    const activate = await fetch(`${baseUrl}/api/providers/${provider.id}/activate`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ modelId: 'gpt-4o-mini' }),
+    })
+    expect(activate.status).toBe(400)
+
+    const enable = await fetch(`${baseUrl}/api/providers/${provider.id}`, {
+      method: 'PUT',
+      headers: jsonHeaders,
+      body: JSON.stringify({ disabled: false }),
+    })
+    expect(enable.status).toBe(200)
+
+    const disableActive = await fetch(`${baseUrl}/api/providers/${listBefore.activeProvider}`, {
+      method: 'PUT',
+      headers: jsonHeaders,
+      body: JSON.stringify({ disabled: true }),
+    })
+    expect(disableActive.status).toBe(400)
+
+    const disableActiveModel = await fetch(
+      `${baseUrl}/api/providers/${listBefore.activeProvider}/models/${encodeURIComponent(listBefore.activeModel ?? '')}`,
+      { method: 'PATCH', headers: jsonHeaders, body: JSON.stringify({ disabled: true }) },
+    )
+    expect(disableActiveModel.status).toBe(400)
+  })
 })

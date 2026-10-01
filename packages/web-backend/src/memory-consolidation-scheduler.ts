@@ -9,6 +9,7 @@ import { generateSessionId } from '@axiom/core'
 import {
   getActiveProvider,
   getProviderDefaultModel,
+  isProviderModelUsable,
   loadProvidersDecrypted,
   parseProviderModelId,
   ensureConfigTemplates,
@@ -528,14 +529,7 @@ export class MemoryConsolidationScheduler {
   private resolveProvider(): ProviderConfig | null {
     const rawId = this.settings.providerId
 
-    if (!rawId || rawId === 'default') {
-      // Try the injected getDefaultProvider first, then fall back to getActiveProvider
-      if (this.getDefaultProviderFn) {
-        const provider = this.getDefaultProviderFn()
-        if (provider) return provider
-      }
-      return getActiveProvider()
-    }
+    if (!rawId || rawId === 'default') return this.resolveDefaultProvider()
 
     // Parse composite "providerId:modelId" format
     const { providerId, modelId } = parseProviderModelId(rawId)
@@ -545,12 +539,22 @@ export class MemoryConsolidationScheduler {
     const file = loadProvidersDecrypted()
     let provider = file.providers.find(p => p.id === providerId) ?? null
     if (!provider) return getActiveProvider()
+    if (!isProviderModelUsable(provider, modelId)) return this.resolveDefaultProvider()
 
     // Pin a specific model by cloning the provider with a single enabled model
     if (modelId) {
       provider = { ...provider, enabledModels: [modelId] }
     }
     return provider
+  }
+
+  private resolveDefaultProvider(): ProviderConfig | null {
+    // Try the injected getDefaultProvider first, then fall back to getActiveProvider
+    if (this.getDefaultProviderFn) {
+      const provider = this.getDefaultProviderFn()
+      if (provider) return provider
+    }
+    return getActiveProvider()
   }
 
   private loadSettings(): ConsolidationSettings {

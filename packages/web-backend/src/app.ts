@@ -127,11 +127,15 @@ export function createApp(options?: AppOptions): express.Express {
     }))
     app.use('/api/logs', createLogsRouter(options.db))
     app.use('/api/providers', createProvidersRouter({
+      db: options.db,
       getQuotaSnapshot: options.getQuotaSnapshot,
       refreshQuota: options.refreshQuota,
       onActiveProviderChanged: () => {
         options.healthMonitorService?.restart({ resetState: true })
         options.onActiveProviderChanged?.()
+      },
+      onProviderReferencesReset: () => {
+        options.consolidationScheduler?.restart()
       },
     }))
     app.use('/api/memory', createMemoryRouter({

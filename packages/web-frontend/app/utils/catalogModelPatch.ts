@@ -8,6 +8,15 @@ export function buildCatalogModelPatch(entry: AvailableModelContract): ProviderM
   const patch: ProviderModelUpdatePayloadContract = {}
   if (entry.name && entry.name !== entry.id) patch.name = entry.name
   if (entry.contextWindow) patch.contextWindow = entry.contextWindow
-  if (entry.cost) patch.cost = { input: entry.cost.input, output: entry.cost.output }
+  if (entry.maxTokens) patch.maxTokens = entry.maxTokens
+  if (entry.cost) {
+    const { input, output, cacheRead, cacheWrite } = entry.cost
+    patch.cost = {
+      input,
+      output,
+      ...(cacheRead !== undefined ? { cacheRead } : {}),
+      ...(cacheWrite !== undefined ? { cacheWrite } : {}),
+    }
+  }
   return Object.keys(patch).length > 0 ? patch : null
 }

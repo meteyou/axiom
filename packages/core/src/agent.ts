@@ -529,12 +529,14 @@ export class AgentCore {
       const summarySettings = loadConfig<{ sessionSummaryProviderId?: string }>('settings.json')
       const summaryProviderId = summarySettings.sessionSummaryProviderId
       if (summaryProviderId) {
-        const { parseProviderModelId, loadProvidersDecrypted, getProviderDefaultModel } = await import('./provider-config.js')
+        const { parseProviderModelId, loadProvidersDecrypted, getProviderDefaultModel, isProviderModelUsable } = await import('./provider-config.js')
         const { providerId, modelId } = parseProviderModelId(summaryProviderId)
         if (providerId) {
           const file = loadProvidersDecrypted()
           const summaryProvider = file.providers.find(p => p.id === providerId)
-          if (summaryProvider) {
+          if (summaryProvider && !isProviderModelUsable(summaryProvider, modelId)) {
+            console.warn(`[session-summary] Configured summary provider/model '${summaryProviderId}' is disabled, using active provider`)
+          } else if (summaryProvider) {
             const resolvedModelId = modelId ?? getProviderDefaultModel(summaryProvider)
             summaryModel = buildModel(summaryProvider, resolvedModelId)
             summaryApiKey = await getApiKeyForProvider(summaryProvider)

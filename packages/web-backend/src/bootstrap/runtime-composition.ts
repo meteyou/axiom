@@ -34,6 +34,7 @@ import {
   logToolCall,
   parseProviderModelId,
   getProviderDefaultModel,
+  isProviderModelUsable,
   ProviderManager,
   refreshRadiusCatalog,
   SessionManager,
@@ -333,13 +334,17 @@ export function resolveTaskDefaultProvider(deps: {
   if (taskDefaultProvider) {
     const { providerId, modelId } = parseProviderModelId(taskDefaultProvider)
     const resolved = providerId ? resolveProvider(providerId) : null
-    if (resolved && modelId) return { ...resolved, enabledModels: [modelId] }
-    if (resolved && getProviderDefaultModel(resolved)) return resolved
+    const pinnedModel = resolved ? modelId ?? getProviderDefaultModel(resolved) : ''
+    if (resolved && pinnedModel && isProviderModelUsable(resolved, pinnedModel)) {
+      return modelId ? { ...resolved, enabledModels: [modelId] } : resolved
+    }
 
     onFallback?.(
-      resolved
-        ? `provider "${resolved.name}" has no enabled models`
-        : `provider "${providerId || taskDefaultProvider}" could not be resolved`,
+      !resolved
+        ? `provider "${providerId || taskDefaultProvider}" could not be resolved`
+        : !pinnedModel
+          ? `provider "${resolved.name}" has no enabled models`
+          : `provider "${resolved.name}" or model "${pinnedModel}" is disabled`,
     )
   }
 

@@ -101,8 +101,10 @@
       "low": "Low",
       "medium": "Medium",
       "high": "High",
-      "xhigh": "Extra high"
+      "xhigh": "Extra high",
+      "max": "Max"
     },
+    "thinkingLevelClamped": "Set to {level} — this model runs it as {effective}.",
     "micRecording": "Recording...",
     "micTranscribing": "Transcribing...",
     "micError": "Microphone error",
@@ -162,10 +164,19 @@
     "modelsLoadError": "Failed to load models",
     "modelsRetry": "↻ Retry loading models",
     "ollamaUrlHint": "Default: http://localhost:11434/v1",
-    "openaiCompatibleBaseUrlPlaceholder": "https://integrate.api.nvidia.com/v1",
-    "openaiCompatibleBaseUrlHint": "Required. Endpoint root that exposes /v1/chat/completions (e.g. NVIDIA NIM, LM Studio, vLLM).",
+    "compat": "Compatibility options (compat)",
+    "compatHint": "pi-ai compat options as JSON, as in a pi models.json — a pasted provider entry with a \"compat\" key works too. Empty = auto-detected from the URL.",
+    "compatOptions": "Supported options for this API type",
+    "compatInvalidJson": "Invalid JSON: {error}",
     "providerTypes": {
-      "openai-compatible": "OpenAI-compatible (custom)"
+      "custom-openai-completions": "Custom – OpenAI Chat Completions",
+      "custom-openai-responses": "Custom – OpenAI Responses",
+      "custom-anthropic-messages": "Custom – Anthropic Messages"
+    },
+    "customBaseUrlHint": {
+      "openai-completions": "Required. Endpoint root that exposes /chat/completions, usually ending in /v1 (e.g. LiteLLM, vLLM, LM Studio, NVIDIA NIM).",
+      "openai-responses": "Required. Endpoint root that exposes /responses, usually ending in /v1.",
+      "anthropic-messages": "Required. Endpoint root without /v1 — requests go to /v1/messages, the key is sent as x-api-key."
     },
     "oauthLogin": "Login & Connect",
     "oauthConnecting": "Connecting...",
@@ -204,6 +215,11 @@
     "deleteCancel": "Cancel",
     "deleteConfirmButton": "Delete",
     "cannotDeleteActive": "Cannot delete the active provider",
+    "disable": "Disable",
+    "enable": "Enable",
+    "disabled": "Disabled",
+    "disableSuccess": "\"{name}\" disabled",
+    "enableSuccess": "\"{name}\" enabled",
     "removeModel": "Remove model",
     "removeModelConfirm": "Remove model \"{model}\" from provider \"{provider}\"? This does not uninstall the model, it only removes it from this provider's list.",
     "removeModelConfirmButton": "Remove",
@@ -267,6 +283,7 @@
     "addModelDialogTitle": "Add Models",
     "addModelDialogDescription": "Search models from the catalog and add them to this provider. You can edit more models later from the model menu.",
     "addModelSearch": "Search models…",
+    "addModelRefresh": "Reload models from provider",
     "addModelCustom": "Add model \"{name}\"",
     "addModelEmpty": "No models found.",
     "addModelContext": "{size} ctx",
@@ -276,7 +293,25 @@
     "addModelAlreadyEnabled": "already enabled",
     "editModelMenu": "Edit Model",
     "editModelDialogTitle": "Edit Model",
-    "editModelDialogDescription": "Set a description and costs for this model. The description controls whether the model is offered to the agent as a routing option in the system prompt.",
+    "editModelDialogDescription": "Set the description, limits, capabilities and costs for this model. The description controls whether the model is offered to the agent as a routing option in the system prompt.",
+    "editModelNameLabel": "Display name",
+    "editModelLimitsSection": "Token limits",
+    "editModelContextWindow": "Context window",
+    "editModelMaxTokens": "Max output tokens",
+    "editModelCapabilitiesSection": "Capabilities",
+    "editModelImageInput": "Image input",
+    "editModelImageInputHint": "The model accepts images (vision).",
+    "editModelReasoning": "Reasoning / thinking",
+    "editModelReasoningHint": "Without this, the configured thinking level is ignored for this model.",
+    "editModelThinkingSection": "Supported thinking levels",
+    "editModelThinkingValue": "API value for {level}",
+    "editModelThinkingHint": "Uncheck levels the model does not support – unsupported levels are rounded to the nearest supported one. The value is sent to the API; leave it empty to send the level name.",
+    "editModelImportToggle": "Import from pi config",
+    "editModelImportLabel": "pi models.json",
+    "editModelImportPlaceholder": "Paste a model object, a provider or a full models.json",
+    "editModelImportHint": "Fills the form; review and save afterwards.",
+    "editModelImportApply": "Apply",
+    "editModelImportError": "Invalid JSON or no model with id \"{id}\" found.",
     "editModelDescriptionLabel": "Description",
     "editModelDescriptionPlaceholder": "e.g. Fast model for text processing like Twitter/Reddit Digest",
     "editModelCostSection": "Cost ($ per 1M tokens)",
@@ -284,7 +319,9 @@
     "editModelCostOutput": "Output",
     "editModelCostCacheRead": "Cache read",
     "editModelCostCacheWrite": "Cache write",
-    "editModelCostHint": "Leave empty to keep existing values. 0 means free.",
+    "editModelCostHint": "0 means free.",
+    "editModelOverrideHint": "Filled fields are your own values. Empty fields use the catalog value shown as placeholder and follow catalog updates.",
+    "editModelReset": "Reset to catalog values",
     "editModelSave": "Save",
     "editModelSuccess": "Model saved",
     "extraFieldSecretKeep": "Leave blank to keep the stored value",
@@ -300,6 +337,17 @@
           "hint": "The authenticated dashboard cookie (the `auth=` prefix is optional). Used only to read your Go usage quota."
         }
       }
+    },
+    "catalogRefresh": {
+      "button": "Refresh models",
+      "hint": "Reload the model catalogs of all configured providers (pi.dev catalog, Radius gateway)",
+      "title": "Model catalogs refreshed",
+      "none": "None of the configured providers uses a catalog. OpenAI-compatible and OpenRouter models are loaded live in \"Add Model\".",
+      "added": "{provider}: {count} new model(s) –",
+      "more": "+{count} more",
+      "missing": "{provider}: enabled models no longer in the catalog –",
+      "error": "{provider}: refresh failed ({error})",
+      "unchanged": "No changes: {providers}"
     }
   },
   "logs": {
@@ -434,8 +482,10 @@
       "low": "Low",
       "medium": "Medium",
       "high": "High",
-      "xhigh": "Extra high (select models only)"
+      "xhigh": "Extra high",
+      "max": "Max"
     },
+    "thinkingLevelUnsupported": "{level} (not supported, runs as {effective})",
     "languageMatch": "Match user's language",
     "languages": {
       "english": "English",
@@ -994,6 +1044,18 @@
       "cacheRead": "Cache read",
       "cacheWrite": "Cache write",
       "cacheHitRate": "Cache hit rate"
+    },
+    "thinking": "Thinking: {level}",
+    "thinkingDefault": "Thinking: {level} (default)",
+    "thinkingClamped": "Thinking: {requested} → {level}",
+    "thinkingLevels": {
+      "off": "Off",
+      "minimal": "Minimal",
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "xhigh": "Extra high",
+      "max": "Max"
     }
   },
   "email": {
@@ -1193,7 +1255,10 @@
       "skillKindInstalled": "installed",
       "systemPromptOverride": "System Prompt Override",
       "systemPromptOverrideHelp": "When set, this completely replaces the default task agent system prompt.",
-      "systemPromptPlaceholder": "You are a background task agent. Your task: ...\n\nLeave empty to use the default system prompt."
+      "systemPromptPlaceholder": "You are a background task agent. Your task: ...\n\nLeave empty to use the default system prompt.",
+      "thinkingLevel": "Thinking level",
+      "thinkingLevelDefault": "Default (background thinking level)",
+      "thinkingLevelHelp": "Reasoning effort of the task agent on each run. Only levels the selected model supports are offered."
     },
     "badges": {
       "customTools": "custom tools",
@@ -1229,6 +1294,8 @@
     "fieldPrompt": "Prompt",
     "fieldProvider": "Provider / Model",
     "fieldProviderDefault": "Use task default",
-    "fieldMaxDuration": "Max duration (minutes)"
+    "fieldMaxDuration": "Max duration (minutes)",
+    "fieldThinkingLevel": "Thinking level",
+    "fieldThinkingLevelDefault": "Default (background thinking level)"
   }
 }

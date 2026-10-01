@@ -9,6 +9,7 @@ import {
   clearFallbackProvider,
   getAvailableModels,
   isDynamicCatalogProvider,
+  supportsModelSpecOverrides,
   buildModel,
   estimateCost,
   resolveModelTemperature,
@@ -279,6 +280,65 @@ describe('provider-config', () => {
     expect(model.cost.input).toBe(0.15)
   })
 
+  it('buildModel applies per-model spec overrides', () => {
+    const provider = {
+      id: 'custom-gateway',
+      name: 'Custom Gateway',
+      type: 'openai-completions',
+      providerType: 'custom-openai-completions' as const,
+      provider: 'custom',
+      baseUrl: 'https://llm.example.com/v1',
+      apiKey: 'sk-test',
+      enabledModels: ['DeepSeek-V4-Flash'],
+      models: [
+        {
+          id: 'DeepSeek-V4-Flash',
+          contextWindow: 1_048_576,
+          maxTokens: 393_216,
+          reasoning: true,
+          input: ['text' as const],
+          thinkingLevelMap: { minimal: null, low: 'low', high: 'high', max: 'max' },
+        },
+      ],
+    }
+
+    const model = buildModel(provider, 'DeepSeek-V4-Flash')
+    expect(model).toMatchObject({
+      contextWindow: 1_048_576,
+      maxTokens: 393_216,
+      reasoning: true,
+      input: ['text'],
+      thinkingLevelMap: { minimal: null, low: 'low', high: 'high', max: 'max' },
+    })
+
+    const unconfigured = buildModel(provider, 'other-model')
+    expect(unconfigured.input).toEqual(['text', 'image'])
+    expect(unconfigured.thinkingLevelMap).toBeUndefined()
+  })
+
+  it('buildModel falls back to pi-ai catalog capabilities for api-key presets', () => {
+    const model = buildModel({
+      id: 'openai-id',
+      name: 'OpenAI',
+      type: 'openai-completions',
+      providerType: 'openai',
+      provider: 'openai',
+      baseUrl: 'https://api.openai.com/v1',
+      apiKey: 'sk-test',
+      enabledModels: ['gpt-5'],
+    }, 'gpt-5')
+    expect(model.reasoning).toBe(true)
+    expect(model.contextWindow).toBeGreaterThan(128_000)
+  })
+
+  it('supportsModelSpecOverrides is false for catalog-resolved providers', () => {
+    expect(supportsModelSpecOverrides('custom-openai-completions')).toBe(true)
+    expect(supportsModelSpecOverrides('openai')).toBe(true)
+    expect(supportsModelSpecOverrides('openai-codex')).toBe(false)
+    expect(supportsModelSpecOverrides('opencode-zen')).toBe(false)
+    expect(supportsModelSpecOverrides('radius')).toBe(false)
+  })
+
   it('estimateCost calculates correctly', () => {
     const model = buildModel({
       id: 'test-id',
@@ -318,7 +378,7 @@ describe('provider-config', () => {
     expect(cost).toBeCloseTo(0.035, 6)
   })
 
-  it('updateProviderModel creates an entry with catalog defaults and applies description/cost patches', () => {
+  it('updateProviderModel stores only the patched fields and keeps catalog defaults live', () => {
     setupTmpConfig({
       providers: [
         {
@@ -334,32 +394,50 @@ describe('provider-config', () => {
       ],
     })
 
-    // No models[] entry yet → created on the fly from PROVIDER_TYPE_MODEL_OVERRIDES.
-    // Use a custom input price to ensure the shared catalog object is not mutated.
     const patched = updateProviderModel('kimi-id', 'kimi-k2.6', {
       description: 'Fast model for digests',
-      cost: { input: 1.5, output: 2.5 },
+      cost: { input: 1.5 },
     })
-    // The module-level catalog default must stay untouched (no shared reference).
     const catalogDefault = PROVIDER_TYPE_MODEL_OVERRIDES.kimi?.find(m => m.id === 'kimi-k2.6')
     expect(catalogDefault?.cost?.input).toBe(0.95)
     const entry = patched.models?.find(m => m.id === 'kimi-k2.6')
-    expect(entry).toBeDefined()
-    expect(entry?.description).toBe('Fast model for digests')
-    // Catalog defaults populated (contextWindow, reasoning) …
-    expect(entry?.contextWindow).toBe(262_144)
-    expect(entry?.reasoning).toBe(true)
-    // … and the patched cost applied
-    expect(entry?.cost?.input).toBe(1.5)
-    expect(entry?.cost?.output).toBe(2.5)
-    // Catalog cache cost preserved when not overridden
-    expect(entry?.cost?.cacheRead).toBe(0.16)
+    expect(entry).toEqual({ id: 'kimi-k2.6', description: 'Fast model for digests', cost: { input: 1.5 } })
+
+    // Unpatched fields keep resolving from the local catalog, field by field.
+    const model = buildModel(patched, 'kimi-k2.6')
+    expect(model.contextWindow).toBe(262_144)
+    expect(model.reasoning).toBe(true)
+    expect(model.cost.input).toBe(1.5)
+    expect(model.cost.output).toBe(catalogDefault?.cost?.output)
+    expect(model.cost.cacheRead).toBe(0.16)
 
     // Clearing the description removes it; cost stays
+    const withSpecs = updateProviderModel('kimi-id', 'kimi-k2.6', {
+      maxTokens: 65_536,
+      reasoning: false,
+      input: ['text'],
+      thinkingLevelMap: { minimal: null, high: 'high' },
+    })
+    expect(withSpecs.models?.find(m => m.id === 'kimi-k2.6')).toMatchObject({
+      maxTokens: 65_536,
+      reasoning: false,
+      input: ['text'],
+      thinkingLevelMap: { minimal: null, high: 'high' },
+    })
+
+    const clearedMap = updateProviderModel('kimi-id', 'kimi-k2.6', { thinkingLevelMap: null })
+    expect(clearedMap.models?.find(m => m.id === 'kimi-k2.6')?.thinkingLevelMap).toBeUndefined()
+
     const cleared = updateProviderModel('kimi-id', 'kimi-k2.6', { description: '   ' })
     const clearedEntry = cleared.models?.find(m => m.id === 'kimi-k2.6')
     expect(clearedEntry?.description).toBeUndefined()
     expect(clearedEntry?.cost?.input).toBe(1.5)
+
+    // null resets an override; an entry without overrides is removed entirely.
+    updateProviderModel('kimi-id', 'kimi-k2.6', { cost: { input: null }, maxTokens: null, reasoning: null, input: null })
+    const reset = updateProviderModel('kimi-id', 'kimi-k2.6', { description: '' })
+    expect(reset.models?.find(m => m.id === 'kimi-k2.6')).toBeUndefined()
+    expect(buildModel(reset, 'kimi-k2.6').cost.input).toBe(catalogDefault?.cost?.input)
 
     // Unknown provider throws
     expect(() => updateProviderModel('no-such', 'kimi-k2.6', { description: 'x' })).toThrowError(
@@ -1047,7 +1125,9 @@ describe('provider CRUD', () => {
     expect(PROVIDER_TYPE_PRESETS).toHaveProperty('minimax')
     expect(PROVIDER_TYPE_PRESETS).toHaveProperty('zai')
     expect(PROVIDER_TYPE_PRESETS).toHaveProperty('zai-coding')
-    expect(PROVIDER_TYPE_PRESETS).toHaveProperty('openai-compatible')
+    expect(PROVIDER_TYPE_PRESETS).toHaveProperty('custom-openai-completions')
+    expect(PROVIDER_TYPE_PRESETS).toHaveProperty('custom-openai-responses')
+    expect(PROVIDER_TYPE_PRESETS).toHaveProperty('custom-anthropic-messages')
   })
 
   it('zai is the pay-per-token General API, zai-coding the GLM Coding Plan subscription', () => {
@@ -1061,7 +1141,7 @@ describe('provider CRUD', () => {
 
 })
 
-describe('openai-compatible provider type', () => {
+describe('custom provider types', () => {
   let tmpDir: string
   const originalDataDir = process.env.DATA_DIR
 
@@ -1082,46 +1162,41 @@ describe('openai-compatible provider type', () => {
     process.env.DATA_DIR = tmpDir
   }
 
-  it('preset is configured as a generic, BYO-URL, optional-key endpoint', () => {
-    const preset = PROVIDER_TYPE_PRESETS['openai-compatible']
-    expect(preset).toBeDefined()
-    // Must use the OpenAI completions wire format so streaming/tool-calling
-    // is identical to the regular `openai` provider type.
-    expect(preset.apiType).toBe('openai-completions')
-    expect(preset.authMethod).toBe('api-key')
-    // Generic by design: URL is user-supplied, key is optional, and there is
-    // no upstream catalog to fetch a model list from.
-    expect(preset.urlEditable).toBe(true)
-    expect(preset.requiresApiKey).toBe(false)
-    expect(preset.piAiProvider).toBeNull()
-    expect(preset.baseUrl).toBe('')
-    // Label is used for the dropdown entry; the (custom) suffix is the
-    // contract that distinguishes it from the regular `openai` preset.
-    expect(preset.label.toLowerCase()).toContain('custom')
-  })
-
-  it('returns no catalog models (free-text input is expected)', () => {
-    expect(getAvailableModels('openai-compatible')).toEqual([])
-  })
-
-  it('does not advertise textVerbosity support', () => {
-    expect(presetSupportsTextVerbosity('openai-compatible')).toBe(false)
+  it.each([
+    ['custom-openai-completions', 'openai-completions'],
+    ['custom-openai-responses', 'openai-responses'],
+    ['custom-anthropic-messages', 'anthropic-messages'],
+  ] as const)('%s is a generic, BYO-URL, optional-key preset speaking %s', (type, apiType) => {
+    const preset = PROVIDER_TYPE_PRESETS[type]
+    expect(preset).toMatchObject({
+      type,
+      apiType,
+      custom: true,
+      authMethod: 'api-key',
+      urlEditable: true,
+      requiresApiKey: false,
+      piAiProvider: null,
+      baseUrl: '',
+      dynamicCatalog: true,
+    })
+    expect(getAvailableModels(type)).toEqual([])
+    expect(presetSupportsTextVerbosity(type)).toBe(false)
   })
 
   it('addProvider persists a user-supplied baseUrl, encrypts the key, and round-trips via decrypted load', () => {
     setupTmp()
     const created = addProvider({
       name: 'NVIDIA NIM',
-      providerType: 'openai-compatible',
+      providerType: 'custom-openai-completions',
       baseUrl: 'https://integrate.api.nvidia.com/v1',
       apiKey: 'nvapi-secret-token',
       enabledModels: ['meta/llama-3.1-405b-instruct'],
     })
 
     // Stored config should track exactly what the user typed (not a preset URL)
-    expect(created.providerType).toBe('openai-compatible')
+    expect(created.providerType).toBe('custom-openai-completions')
     expect(created.type).toBe('openai-completions')
-    expect(created.provider).toBe('openai-compatible')
+    expect(created.provider).toBe('custom')
     expect(created.baseUrl).toBe('https://integrate.api.nvidia.com/v1')
     expect(created.enabledModels?.[0]).toBe('meta/llama-3.1-405b-instruct')
 
@@ -1142,7 +1217,7 @@ describe('openai-compatible provider type', () => {
     setupTmp()
     const created = addProvider({
       name: 'Local LM Studio',
-      providerType: 'openai-compatible',
+      providerType: 'custom-openai-completions',
       baseUrl: 'http://localhost:1234/v1',
       enabledModels: ['qwen2.5-coder-32b'],
     })
@@ -1156,7 +1231,7 @@ describe('openai-compatible provider type', () => {
     setupTmp()
     const provider = addProvider({
       name: 'NIM',
-      providerType: 'openai-compatible',
+      providerType: 'custom-openai-completions',
       baseUrl: 'https://integrate.api.nvidia.com/v1',
       apiKey: 'nvapi-key',
       enabledModels: ['meta/llama-3.1-70b-instruct'],
@@ -1168,7 +1243,7 @@ describe('openai-compatible provider type', () => {
     expect(model.id).toBe('meta/llama-3.1-70b-instruct')
     expect(model.api).toBe('openai-completions')
     expect(model.baseUrl).toBe('https://integrate.api.nvidia.com/v1')
-    expect(model.provider).toBe('openai-compatible')
+    expect(model.provider).toBe('custom')
   })
 })
 
@@ -1211,6 +1286,7 @@ describe('getAvailableModels', () => {
 
   it('marks openrouter as a dynamic-catalog provider and others as static', () => {
     expect(isDynamicCatalogProvider('openrouter')).toBe(true)
+    expect(isDynamicCatalogProvider('custom-openai-completions')).toBe(true)
     expect(isDynamicCatalogProvider('openai')).toBe(false)
     expect(isDynamicCatalogProvider('ollama')).toBe(false)
   })
@@ -1269,9 +1345,9 @@ describe('getAvailableModels', () => {
 
   it('resolveModelTemperature applies pi-ai catalog Kimi K2 constraints for OpenCode presets', () => {
     expect(resolveModelTemperature({ providerType: 'opencode-go' as const }, 'kimi-k2.7-code', 0)).toBe(1)
-    expect(resolveModelTemperature({ providerType: 'opencode-go' as const }, 'kimi-k2.6', 0)).toBe(1)
+    expect(resolveModelTemperature({ providerType: 'opencode-zen' as const }, 'kimi-k2.6', 0)).toBe(1)
     expect(resolveModelTemperature({ providerType: 'opencode-zen' as const }, 'kimi-k2.5', 0)).toBe(1)
-    expect(resolveModelTemperature({ providerType: 'opencode-go' as const }, 'glm-5.1', 0)).toBe(0)
+    expect(resolveModelTemperature({ providerType: 'opencode-go' as const }, 'glm-5.3', 0)).toBe(0)
   })
 
   it('presetSupportsTextVerbosity is true only for openai-codex-responses presets', () => {
@@ -1335,8 +1411,8 @@ describe('OpenCode Zen/Go catalog presets (sourced from pi-ai)', () => {
   it('getAvailableModels resolves the OpenCode Go catalog from pi-ai', () => {
     const ids = getAvailableModels('opencode-go').map(m => m.id)
     expect(ids.length).toBeGreaterThan(0)
-    expect(ids).toContain('glm-5.1')
-    expect(ids).toContain('kimi-k2.6')
+    expect(ids).toContain('glm-5.3')
+    expect(ids).toContain('kimi-k2.7-code')
   })
 
   it('getAvailableModels resolves the OpenCode Zen catalog from pi-ai', () => {
@@ -1348,8 +1424,8 @@ describe('OpenCode Zen/Go catalog presets (sourced from pi-ai)', () => {
   })
 
   it('buildModel uses real per-token costs for OpenCode Go (not the old zeroed override)', () => {
-    const model = buildModel(makeProvider('opencode-go', 'glm-5.1'))
-    expect(model.id).toBe('glm-5.1')
+    const model = buildModel(makeProvider('opencode-go', 'glm-5.3'))
+    expect(model.id).toBe('glm-5.3')
     expect(model.api).toBe('openai-completions')
     expect(model.baseUrl).toBe('https://opencode.ai/zen/go/v1')
     expect(model.cost.input).toBeGreaterThan(0)

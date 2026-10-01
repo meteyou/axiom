@@ -1,4 +1,4 @@
-import { buildModel, getProviderDefaultModel, isQuotaProvider, maskProviderExtraFields, PROVIDER_TYPE_MODEL_OVERRIDES, PROVIDER_TYPE_PRESETS } from '@axiom/core'
+import { buildModel, getPiCatalogModels, getProviderDefaultModel, isQuotaProvider, maskProviderExtraFields, PROVIDER_TYPE_MODEL_OVERRIDES, PROVIDER_TYPE_PRESETS, supportsModelSpecOverrides } from '@axiom/core'
 import type {
   ProviderConfig,
   ProviderType,
@@ -10,11 +10,10 @@ import type {
   ProviderActivationResponseContract,
   ProviderContract,
   ProviderFallbackResponseContract,
+  ProviderModelSpecContract,
   ProviderMutationResponseContract,
   ProvidersListResponseContract,
 } from '@axiom/core/contracts'
-import { getBuiltinModels as getPiAiModels } from '@earendil-works/pi-ai/providers/all'
-import type { BuiltinProvider as PiAiKnownProvider } from '@earendil-works/pi-ai/providers/all'
 import type { OllamaTagsResponse } from './types.js'
 
 function maskApiKey(apiKey: string): string {
@@ -43,8 +42,7 @@ function resolveModelCost(provider: ProviderConfig, modelId: string): { input: n
   }
 
   try {
-    const models = getPiAiModels(preset.piAiProvider as PiAiKnownProvider)
-    const match = models.find((entry) => entry.id === modelId)
+    const match = getPiCatalogModels(preset.piAiProvider).find((entry) => entry.id === modelId)
     if (match && (match.cost.input > 0 || match.cost.output > 0)) {
       const cost: { input: number; output: number; cacheRead?: number; cacheWrite?: number } = {
         input: match.cost.input,
@@ -61,6 +59,22 @@ function resolveModelCost(provider: ProviderConfig, modelId: string): { input: n
   return null
 }
 
+function resolveModelSpec(provider: ProviderConfig, modelId: string): ProviderModelSpecContract | null {
+  try {
+    const model = buildModel(provider, modelId)
+    return {
+      name: model.name,
+      contextWindow: model.contextWindow,
+      maxTokens: model.maxTokens,
+      reasoning: model.reasoning,
+      input: [...model.input],
+      ...(model.thinkingLevelMap && { thinkingLevelMap: { ...model.thinkingLevelMap } }),
+    }
+  } catch {
+    return null
+  }
+}
+
 export function mapProvidersListResponse(
   masked: ProvidersFile,
   decrypted: ProvidersFile,
@@ -70,6 +84,7 @@ export function mapProvidersListResponse(
     const fullProvider = decrypted.providers.find((candidate) => candidate.id === provider.id)
     let cost: { input: number; output: number } | null = null
     const modelCosts: Record<string, { input: number; output: number; cacheRead?: number; cacheWrite?: number }> = {}
+    const modelSpecs: Record<string, ProviderModelSpecContract> = {}
 
     if (fullProvider) {
       cost = resolveModelCost(fullProvider, getProviderDefaultModel(fullProvider))
@@ -80,6 +95,10 @@ export function mapProvidersListResponse(
         if (modelCost) {
           modelCosts[modelId] = modelCost
         }
+        const modelSpec = resolveModelSpec(fullProvider, modelId)
+        if (modelSpec) {
+          modelSpecs[modelId] = modelSpec
+        }
       }
     }
 
@@ -88,6 +107,7 @@ export function mapProvidersListResponse(
       apiKeyMasked: (provider as unknown as { apiKeyMasked?: string }).apiKeyMasked ?? provider.apiKey,
       cost,
       modelCosts,
+      modelSpecs,
       supportsQuota: fullProvider ? isQuotaProvider(fullProvider) : false,
       quota: quotaSnapshot?.[provider.id] ?? null,
     } as ProviderContract
@@ -99,7 +119,7 @@ export function mapProvidersListResponse(
       .map(([key, preset]) => {
         const overrides = PROVIDER_TYPE_MODEL_OVERRIDES[key as ProviderType]
         const hasKnownModels = preset.piAiProvider != null || (overrides?.length ?? 0) > 0
-        return [key, { ...preset, hasKnownModels }]
+        return [key, { ...preset, hasKnownModels, editableModelSpecs: supportsModelSpecOverrides(key) }]
       }),
   )
 

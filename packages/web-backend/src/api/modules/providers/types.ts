@@ -1,9 +1,13 @@
 import type { OAuthCredentials } from '@earendil-works/pi-ai/oauth'
+import type { Database } from '@axiom/core'
 import type { ProviderQuotaContract } from '@axiom/core/contracts'
 
 export interface ProvidersRouterOptions {
+  db?: Database
   onActiveProviderChanged?: () => void
   onFallbackProviderChanged?: () => void
+  /** Called after settings/cronjob references to a disabled provider or model were reset to default. */
+  onProviderReferencesReset?: () => void
   getQuotaSnapshot?: () => Record<string, ProviderQuotaContract>
   refreshQuota?: (providerId: string) => Promise<ProviderQuotaContract | null>
 }

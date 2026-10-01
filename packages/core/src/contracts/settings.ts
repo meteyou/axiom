@@ -25,12 +25,12 @@ export type SttOpenAiModel = (typeof SETTINGS_STT_OPENAI_MODELS)[number]
 /**
  * Thinking / reasoning level for the agent.
  * - `off`: no reasoning (fastest, cheapest, default)
- * - `minimal` → `xhigh`: progressively more reasoning effort
+ * - `minimal` → `max`: progressively more reasoning effort
  *
- * Note: `xhigh` is only supported by a subset of models (e.g. OpenAI gpt-5.x).
- * Providers that don't support the requested level usually map it down.
+ * pi-ai clamps a level the model does not support to the nearest supported one
+ * (see `clampThinkingLevel` in contracts/providers).
  */
-export const SETTINGS_THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'] as const
+export const SETTINGS_THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
 export type SettingsThinkingLevel = (typeof SETTINGS_THINKING_LEVELS)[number]
 
 export interface HealthMonitorNotificationTogglesContract {

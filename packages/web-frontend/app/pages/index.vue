@@ -560,11 +560,11 @@
                   {{ $t('settings.thinkingLevel') }}
                 </p>
                 <button
-                  v-for="lvl in THINKING_LEVELS"
+                  v-for="lvl in thinkingChoices.levels"
                   :key="lvl"
                   type="button"
                   class="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
-                  :class="currentThinkingLevel === lvl ? 'bg-accent/60 text-accent-foreground' : 'text-foreground'"
+                  :class="thinkingChoices.effective === lvl ? 'bg-accent/60 text-accent-foreground' : 'text-foreground'"
                   :disabled="thinkingLevelSaving"
                   @click="handleThinkingLevelChange(lvl)"
                 >
@@ -578,12 +578,22 @@
                         'bg-orange-500': lvl === 'medium',
                         'bg-red-500': lvl === 'high',
                         'bg-red-600': lvl === 'xhigh',
+                        'bg-fuchsia-600': lvl === 'max',
                       }"
                     />
                     <span>{{ $t(`chat.thinkingLevelMenu.${lvl}`) }}</span>
                   </div>
-                  <AppIcon v-if="currentThinkingLevel === lvl" name="check" class="h-4 w-4 text-primary" />
+                  <AppIcon v-if="thinkingChoices.effective === lvl" name="check" class="h-4 w-4 text-primary" />
                 </button>
+                <p
+                  v-if="thinkingChoices.effective !== currentThinkingLevel"
+                  class="px-2 pb-1 pt-1.5 text-[11px] leading-snug text-muted-foreground"
+                >
+                  {{ $t('chat.thinkingLevelClamped', {
+                    level: $t(`chat.thinkingLevelMenu.${currentThinkingLevel}`),
+                    effective: $t(`chat.thinkingLevelMenu.${thinkingChoices.effective}`),
+                  }) }}
+                </p>
               </PopoverContent>
             </Popover>
 
@@ -659,6 +669,7 @@
 import type { ChatMessage, ToolCallData } from '~/composables/useChat'
 import type { LoadableSkill } from '~/composables/useSkillAutocomplete'
 import { SETTINGS_THINKING_LEVELS, type SettingsThinkingLevel } from '@axiom/core/contracts'
+import { findModelSpec, getThinkingLevelChoices } from '~/utils/thinkingLevels'
 import { useSettingsApi } from '~/api/settings'
 const { t } = useI18n()
 const { formatTimeShort } = useFormat()
@@ -672,10 +683,22 @@ const settingsApi = useSettingsApi()
    live-applied to the agent (see `AgentCore.setThinkingLevel`). Admin-only
    because the main agent is single-tenant — flipping this affects everyone's
    next turn. */
-const THINKING_LEVELS = SETTINGS_THINKING_LEVELS
 const currentThinkingLevel = ref<SettingsThinkingLevel>('off')
 const thinkingLevelPickerOpen = ref(false)
 const thinkingLevelSaving = ref(false)
+
+const { providers, activeProviderId, activeModelId, fetchProviders } = useProviders()
+
+// Levels offered for the active model; `effective` is what pi-ai clamps the
+// stored setting to, so the picker shows what actually runs.
+const thinkingChoices = computed(() => getThinkingLevelChoices(
+  findModelSpec(providers.value, activeProviderId.value, activeModelId.value),
+  currentThinkingLevel.value,
+))
+
+watch(thinkingLevelPickerOpen, (isOpen) => {
+  if (isOpen) void fetchProviders()
+})
 
 // Brain button color encodes thinking intensity (no text label needed):
 // off=gray, minimal=white, low→xhigh progressively to red
@@ -687,12 +710,14 @@ const thinkingBrainColorClass = computed(() => {
     medium: 'text-orange-500 dark:text-orange-400',
     high: 'text-red-500 dark:text-red-400',
     xhigh: 'text-red-600 dark:text-red-500',
+    max: 'text-fuchsia-600 dark:text-fuchsia-500',
   }
-  return map[currentThinkingLevel.value] ?? 'text-muted-foreground'
+  return map[thinkingChoices.value.effective] ?? 'text-muted-foreground'
 })
 
 async function loadThinkingLevel() {
   if (!isAdmin.value) return
+  void fetchProviders()
   try {
     const settings = await settingsApi.getSettings()
     if (settings.thinkingLevel && (SETTINGS_THINKING_LEVELS as readonly string[]).includes(settings.thinkingLevel)) {

@@ -101,8 +101,10 @@
       "low": "Niedrig",
       "medium": "Mittel",
       "high": "Hoch",
-      "xhigh": "Sehr hoch"
+      "xhigh": "Sehr hoch",
+      "max": "Maximum"
     },
+    "thinkingLevelClamped": "Eingestellt: {level} – dieses Modell nutzt {effective}.",
     "micRecording": "Aufnahme...",
     "micTranscribing": "Transkribiere...",
     "micError": "Mikrofonfehler",
@@ -162,10 +164,19 @@
     "modelsLoadError": "Modelle konnten nicht geladen werden",
     "modelsRetry": "↻ Modelle erneut laden",
     "ollamaUrlHint": "Standard: http://localhost:11434/v1",
-    "openaiCompatibleBaseUrlPlaceholder": "https://integrate.api.nvidia.com/v1",
-    "openaiCompatibleBaseUrlHint": "Pflichtfeld. Endpunkt-Wurzel, die /v1/chat/completions bereitstellt (z. B. NVIDIA NIM, LM Studio, vLLM).",
+    "compat": "Kompatibilitätsoptionen (compat)",
+    "compatHint": "pi-ai-compat-Optionen als JSON wie in einer pi models.json – ein eingefügter Provider-Eintrag mit „compat“-Schlüssel funktioniert auch. Leer = automatische Erkennung anhand der URL.",
+    "compatOptions": "Unterstützte Optionen für diesen API-Typ",
+    "compatInvalidJson": "Ungültiges JSON: {error}",
     "providerTypes": {
-      "openai-compatible": "OpenAI-kompatibel (benutzerdefiniert)"
+      "custom-openai-completions": "Benutzerdefiniert – OpenAI Chat Completions",
+      "custom-openai-responses": "Benutzerdefiniert – OpenAI Responses",
+      "custom-anthropic-messages": "Benutzerdefiniert – Anthropic Messages"
+    },
+    "customBaseUrlHint": {
+      "openai-completions": "Pflichtfeld. Endpunkt-Wurzel, die /chat/completions bereitstellt, endet meist auf /v1 (z. B. LiteLLM, vLLM, LM Studio, NVIDIA NIM).",
+      "openai-responses": "Pflichtfeld. Endpunkt-Wurzel, die /responses bereitstellt, endet meist auf /v1.",
+      "anthropic-messages": "Pflichtfeld. Endpunkt-Wurzel ohne /v1 – Anfragen gehen an /v1/messages, der Key wird als x-api-key gesendet."
     },
     "oauthLogin": "Anmelden & Verbinden",
     "oauthConnecting": "Verbinde...",
@@ -204,6 +215,11 @@
     "deleteCancel": "Abbrechen",
     "deleteConfirmButton": "Löschen",
     "cannotDeleteActive": "Der aktive Anbieter kann nicht gelöscht werden",
+    "disable": "Deaktivieren",
+    "enable": "Reaktivieren",
+    "disabled": "Deaktiviert",
+    "disableSuccess": "\"{name}\" deaktiviert",
+    "enableSuccess": "\"{name}\" reaktiviert",
     "removeModel": "Modell entfernen",
     "removeModelConfirm": "Modell \"{model}\" von Anbieter \"{provider}\" entfernen? Das Modell wird dadurch nicht deinstalliert, sondern nur aus der Liste dieses Anbieters entfernt.",
     "removeModelConfirmButton": "Entfernen",
@@ -267,6 +283,7 @@
     "addModelDialogTitle": "Modelle hinzufügen",
     "addModelDialogDescription": "Suche Modelle aus dem Katalog und füge sie zu diesem Anbieter hinzu. Weitere Modelle kannst du später über das Modell-Menü bearbeiten.",
     "addModelSearch": "Modelle suchen…",
+    "addModelRefresh": "Modelle vom Anbieter neu laden",
     "addModelCustom": "Modell „{name}“ hinzufügen",
     "addModelEmpty": "Keine Modelle gefunden.",
     "addModelContext": "{size} Kontext",
@@ -276,7 +293,25 @@
     "addModelAlreadyEnabled": "bereits aktiviert",
     "editModelMenu": "Modell bearbeiten",
     "editModelDialogTitle": "Modell bearbeiten",
-    "editModelDialogDescription": "Beschreibung und Kosten für dieses Modell festlegen. Die Beschreibung steuert, ob das Modell dem Agenten im System-Prompt als Routing-Option angeboten wird.",
+    "editModelDialogDescription": "Beschreibung, Limits, Fähigkeiten und Kosten für dieses Modell festlegen. Die Beschreibung steuert, ob das Modell dem Agenten im System-Prompt als Routing-Option angeboten wird.",
+    "editModelNameLabel": "Anzeigename",
+    "editModelLimitsSection": "Token-Limits",
+    "editModelContextWindow": "Kontextfenster",
+    "editModelMaxTokens": "Max. Ausgabe-Tokens",
+    "editModelCapabilitiesSection": "Fähigkeiten",
+    "editModelImageInput": "Bildeingabe",
+    "editModelImageInputHint": "Das Modell akzeptiert Bilder (Vision).",
+    "editModelReasoning": "Reasoning / Thinking",
+    "editModelReasoningHint": "Ohne diese Option wird die eingestellte Thinking-Stufe für dieses Modell ignoriert.",
+    "editModelThinkingSection": "Unterstützte Thinking-Stufen",
+    "editModelThinkingValue": "API-Wert für {level}",
+    "editModelThinkingHint": "Nicht unterstützte Stufen abwählen – sie werden auf die nächste unterstützte Stufe gerundet. Der Wert wird an die API gesendet; leer lassen, um den Stufennamen zu senden.",
+    "editModelImportToggle": "Aus pi-Config importieren",
+    "editModelImportLabel": "pi models.json",
+    "editModelImportPlaceholder": "Ein Modell-Objekt, einen Provider oder eine komplette models.json einfügen",
+    "editModelImportHint": "Füllt das Formular aus; danach prüfen und speichern.",
+    "editModelImportApply": "Übernehmen",
+    "editModelImportError": "Ungültiges JSON oder kein Modell mit der ID „{id}“ gefunden.",
     "editModelDescriptionLabel": "Beschreibung",
     "editModelDescriptionPlaceholder": "z. B. Schnelles Modell für Textverarbeitung wie Twitter/Reddit Digest",
     "editModelCostSection": "Kosten ($ pro 1M Tokens)",
@@ -284,7 +319,9 @@
     "editModelCostOutput": "Ausgabe",
     "editModelCostCacheRead": "Cache-Read",
     "editModelCostCacheWrite": "Cache-Write",
-    "editModelCostHint": "Leer lassen, um bestehende Werte beizubehalten. 0 bedeutet kostenlos.",
+    "editModelCostHint": "0 bedeutet kostenlos.",
+    "editModelOverrideHint": "Ausgefüllte Felder sind eigene Werte. Leere Felder nutzen den Katalogwert (Platzhalter) und folgen Katalog-Updates.",
+    "editModelReset": "Auf Katalogwerte zurücksetzen",
     "editModelSave": "Speichern",
     "editModelSuccess": "Modell gespeichert",
     "extraFieldSecretKeep": "Leer lassen, um den gespeicherten Wert beizubehalten",
@@ -300,6 +337,17 @@
           "hint": "Der authentifizierte Dashboard-Cookie (das Präfix `auth=` ist optional). Wird nur zum Lesen der Go-Nutzungsquota verwendet."
         }
       }
+    },
+    "catalogRefresh": {
+      "button": "Modelle aktualisieren",
+      "hint": "Modellkataloge aller konfigurierten Anbieter neu laden (pi.dev-Katalog, Radius-Gateway)",
+      "title": "Modellkataloge aktualisiert",
+      "none": "Keiner der konfigurierten Anbieter nutzt einen Katalog. Modelle von OpenAI-kompatiblen Anbietern und OpenRouter werden in „Modell hinzufügen“ live geladen.",
+      "added": "{provider}: {count} neue(s) Modell(e) –",
+      "more": "+{count} weitere",
+      "missing": "{provider}: aktivierte Modelle nicht mehr im Katalog –",
+      "error": "{provider}: Aktualisierung fehlgeschlagen ({error})",
+      "unchanged": "Keine Änderungen: {providers}"
     }
   },
   "logs": {
@@ -434,8 +482,10 @@
       "low": "Niedrig",
       "medium": "Mittel",
       "high": "Hoch",
-      "xhigh": "Sehr hoch (nur ausgewählte Modelle)"
+      "xhigh": "Sehr hoch",
+      "max": "Maximum"
     },
+    "thinkingLevelUnsupported": "{level} (nicht unterstützt, läuft als {effective})",
     "languageMatch": "Sprache des Nutzers übernehmen",
     "languages": {
       "english": "Englisch",
@@ -994,6 +1044,18 @@
       "cacheRead": "Cache-Lesen",
       "cacheWrite": "Cache-Schreiben",
       "cacheHitRate": "Cache-Trefferquote"
+    },
+    "thinking": "Thinking: {level}",
+    "thinkingDefault": "Thinking: {level} (Standard)",
+    "thinkingClamped": "Thinking: {requested} → {level}",
+    "thinkingLevels": {
+      "off": "Aus",
+      "minimal": "Minimal",
+      "low": "Niedrig",
+      "medium": "Mittel",
+      "high": "Hoch",
+      "xhigh": "Sehr hoch",
+      "max": "Maximum"
     }
   },
   "email": {
@@ -1193,7 +1255,10 @@
       "skillKindInstalled": "installiert",
       "systemPromptOverride": "System-Prompt-Überschreibung",
       "systemPromptOverrideHelp": "Wenn gesetzt, ersetzt dies den Standard-System-Prompt des Task-Agenten vollständig.",
-      "systemPromptPlaceholder": "Du bist ein Hintergrund-Task-Agent. Deine Aufgabe: ...\n\nLeer lassen, um den Standard-System-Prompt zu verwenden."
+      "systemPromptPlaceholder": "Du bist ein Hintergrund-Task-Agent. Deine Aufgabe: ...\n\nLeer lassen, um den Standard-System-Prompt zu verwenden.",
+      "thinkingLevel": "Thinking-Stufe",
+      "thinkingLevelDefault": "Standard (Hintergrund-Thinking-Stufe)",
+      "thinkingLevelHelp": "Denkaufwand des Task-Agenten bei jedem Lauf. Angeboten werden nur Stufen, die das gewählte Modell unterstützt."
     },
     "badges": {
       "customTools": "eigene Tools",
@@ -1229,6 +1294,8 @@
     "fieldPrompt": "Prompt",
     "fieldProvider": "Provider / Modell",
     "fieldProviderDefault": "Task-Standard verwenden",
-    "fieldMaxDuration": "Max. Laufzeit (Minuten)"
+    "fieldMaxDuration": "Max. Laufzeit (Minuten)",
+    "fieldThinkingLevel": "Thinking-Stufe",
+    "fieldThinkingLevelDefault": "Standard (Hintergrund-Thinking-Stufe)"
   }
 }

@@ -10,6 +10,8 @@ import {
   getRadiusCatalog,
   isDynamicCatalogProvider,
   isRadiusProviderType,
+  refreshPiCatalogs,
+  supportsModelSpecOverrides,
   refreshRadiusCatalog,
   radiusCatalogToAvailableModels,
   getFallbackModelId,
@@ -19,8 +21,12 @@ import {
   loadProvidersMasked,
   performProviderHealthCheck,
   PROVIDER_TYPE_PRESETS,
+  resetDisabledProviderReferences,
+  ScheduledTaskStore,
   setActiveProvider,
   setFallbackProvider,
+  setProviderDisabled,
+  setProviderModelDisabled,
   updateOAuthCredentials,
   updateProvider as updateProviderConfig,
   updateProviderModel as updateProviderModelConfig,
@@ -30,6 +36,7 @@ import {
 import type { AvailableModel, ProviderConfig, ProviderType, ProvidersFile } from '@axiom/core'
 import type {
   OAuthLoginResponseContract,
+  ProviderCatalogRefreshResultContract,
   ProviderCreatePayloadContract,
   ProviderFallbackUpdatePayloadContract,
   ProviderModelSelectionPayloadContract,
@@ -59,6 +66,7 @@ export interface ProvidersService {
   listProviders: () => { masked: ProvidersFile; decrypted: ProvidersFile }
   getModelsByProviderType: (providerType: string) => Promise<AvailableModel[]>
   getLiveModels: (providerId: string) => Promise<AvailableModel[]>
+  refreshModelCatalogs: () => Promise<ProviderCatalogRefreshResultContract[]>
   setFallback: (payload: ProviderFallbackUpdatePayloadContract) => { fallbackProvider: string | null; fallbackModel: string | null }
   startOAuthLogin: (payload: ProviderOAuthLoginStartPayloadContract) => Promise<OAuthLoginResponseContract>
   getOAuthStatus: (loginId: string) => Promise<
@@ -83,7 +91,6 @@ export interface ProvidersService {
     modelId: string
   }>
   activateProvider: (id: string, payload: ProviderModelSelectionPayloadContract) => { activeProvider: string; activeModel: string | null }
-  probeOpenAiCompatibleModels: (baseUrl: string, apiKey?: string) => Promise<AvailableModel[]>
   probeOllamaModels: (baseUrl: string) => Promise<OllamaTagsResponse>
   listOllamaModels: (providerId: string) => Promise<OllamaTagsResponse>
   requestOllamaProbePull: (baseUrl: string, modelName: string, signal: AbortSignal) => Promise<Response>
@@ -176,11 +183,75 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
           force: true,
         }))
       }
-      return await probeOpenAiCompatibleModelsFromBase(provider.baseUrl, provider.apiKey || undefined)
+      return await fetchModelsFromBase(provider.baseUrl, provider.apiKey || undefined, provider.type)
     } catch (err) {
+      const fallback = getAvailableModels(provider.providerType as ProviderType)
+      if (fallback.length === 0) throw err
       console.warn(`[axiom] Live model fetch failed for provider "${provider.name}", using bundled catalog: ${(err as Error).message}`)
-      return getAvailableModels(provider.providerType as ProviderType)
+      return fallback
     }
+  }
+
+  /**
+   * Refresh every catalog behind the configured providers: the pi.dev overlay
+   * per pi-ai provider (shared by e.g. `anthropic` and `anthropic-oauth`) and
+   * the Radius gateway catalog. Providers without a catalog (custom presets,
+   * Ollama, …) are skipped; their models are fetched live in the Add Model dialog.
+   */
+  async function refreshModelCatalogs(): Promise<ProviderCatalogRefreshResultContract[]> {
+    const providers = loadProvidersDecrypted().providers
+    const piProviders = providers
+      .map(p => PROVIDER_TYPE_PRESETS[p.providerType as ProviderType]?.piAiProvider)
+      .filter((id): id is string => Boolean(id))
+    const radiusProvider = providers.find(p => isRadiusProviderType(p.providerType))
+
+    const [piResults, radiusResult] = await Promise.all([
+      refreshPiCatalogs(piProviders),
+      radiusProvider ? refreshRadiusForCatalogs(radiusProvider) : Promise.resolve(null),
+    ])
+    const piResultByProvider = new Map(piResults.map(r => [r.piProvider, r]))
+
+    return providers.flatMap((provider): ProviderCatalogRefreshResultContract[] => {
+      const result = isRadiusProviderType(provider.providerType)
+        ? radiusResult
+        : piResultByProvider.get(PROVIDER_TYPE_PRESETS[provider.providerType as ProviderType]?.piAiProvider ?? '')
+      if (!result) return []
+      return [{
+        providerId: provider.id,
+        providerName: provider.name,
+        status: result.status,
+        addedModelIds: result.addedModelIds,
+        missingModelIds: findMissingCatalogModels(provider),
+        ...(result.error ? { error: result.error } : {}),
+      }]
+    })
+  }
+
+  async function refreshRadiusForCatalogs(provider: ProviderConfig): Promise<{
+    status: 'updated' | 'unchanged' | 'error'
+    addedModelIds: string[]
+    error?: string
+  }> {
+    const before = new Set((getRadiusCatalog()?.models ?? []).map(m => m.id))
+    try {
+      const catalog = await refreshRadiusCatalog({ apiKey: await resolveCatalogApiKey(provider), force: true })
+      const addedModelIds = catalog.models.map(m => m.id).filter(id => !before.has(id))
+      return { status: addedModelIds.length > 0 ? 'updated' : 'unchanged', addedModelIds }
+    } catch (err) {
+      return { status: 'error', addedModelIds: [], error: (err as Error).message }
+    }
+  }
+
+  /**
+   * Catalog-resolved providers (subscriptions, OpenCode, Radius) take wire
+   * details from the catalog, so an enabled model the catalog dropped falls
+   * back to a generic build that may not work. Other providers accept custom
+   * model ids by design and are not checked.
+   */
+  function findMissingCatalogModels(provider: ProviderConfig): string[] {
+    if (supportsModelSpecOverrides(provider.providerType)) return []
+    const available = new Set(getAvailableModels(provider.providerType as ProviderType).map(m => m.id))
+    return (provider.enabledModels ?? []).filter(id => !available.has(id))
   }
 
   function setFallback(payload: ProviderFallbackUpdatePayloadContract) {
@@ -412,6 +483,7 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
         textVerbosity: payload.textVerbosity ?? undefined,
         transport: payload.transport ?? undefined,
         extraFields: payload.extraFields,
+        compat: payload.compat,
       })
 
       const afterActiveProvider = loadProviders().activeProvider ?? null
@@ -425,19 +497,48 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
     }
   }
 
+  function resetDisabledReferences(): void {
+    const scheduledTaskStore = options.db ? new ScheduledTaskStore(options.db) : undefined
+    const { settingsPaths, cronjobIds } = resetDisabledProviderReferences({ scheduledTaskStore })
+    if (settingsPaths.length > 0 || cronjobIds.length > 0) {
+      options.onProviderReferencesReset?.()
+    }
+  }
+
+  function applyDisabledChange(disabled: boolean | undefined, apply: (disabled: boolean) => unknown): void {
+    if (disabled === undefined) return
+    const fallbackBefore = loadProviders().fallbackProvider ?? null
+    apply(disabled)
+    if (disabled) resetDisabledReferences()
+    if ((loadProviders().fallbackProvider ?? null) !== fallbackBefore) {
+      options.onFallbackProviderChanged?.()
+    }
+  }
+
   function updateProvider(id: string, payload: ProviderUpdatePayloadContract): ProviderConfig {
     try {
+      const { disabled, ...configPayload } = payload
+      applyDisabledChange(disabled, value => setProviderDisabled(id, value))
+
+      const hasConfigChanges = Object.values(configPayload).some(value => value !== undefined)
+      if (!hasConfigChanges) {
+        const provider = loadProviders().providers.find(entry => entry.id === id)
+        if (!provider) throw new ProvidersNotFoundError(`Provider not found: ${id}`)
+        return provider
+      }
+
       const activeProvider = loadProviders().activeProvider ?? null
       const provider = updateProviderConfig(id, {
-        name: payload.name,
-        providerType: payload.providerType as ProviderType | undefined,
-        baseUrl: payload.baseUrl,
-        apiKey: payload.apiKey,
-        enabledModels: payload.enabledModels,
-        degradedThresholdMs: payload.degradedThresholdMs,
-        textVerbosity: payload.textVerbosity,
-        transport: payload.transport,
-        extraFields: payload.extraFields,
+        name: configPayload.name,
+        providerType: configPayload.providerType as ProviderType | undefined,
+        baseUrl: configPayload.baseUrl,
+        apiKey: configPayload.apiKey,
+        enabledModels: configPayload.enabledModels,
+        degradedThresholdMs: configPayload.degradedThresholdMs,
+        textVerbosity: configPayload.textVerbosity,
+        transport: configPayload.transport,
+        extraFields: configPayload.extraFields,
+        compat: configPayload.compat,
       })
 
       if (activeProvider === id) {
@@ -468,7 +569,15 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
 
   function updateProviderModel(providerId: string, modelId: string, payload: ProviderModelUpdatePayloadContract): ProviderConfig {
     try {
-      return updateProviderModelConfig(providerId, modelId, payload)
+      const { disabled, ...metadataPatch } = payload
+      let provider: ProviderConfig | undefined
+      applyDisabledChange(disabled, value => {
+        provider = setProviderModelDisabled(providerId, modelId, value)
+      })
+      if (Object.keys(metadataPatch).length > 0) {
+        provider = updateProviderModelConfig(providerId, modelId, metadataPatch)
+      }
+      return provider!
     } catch (err) {
       if (err instanceof ProviderNotFoundError) {
         throw new ProvidersNotFoundError(err.message)
@@ -557,10 +666,6 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
     }
   }
 
-  async function probeOpenAiCompatibleModels(baseUrl: string, apiKey?: string): Promise<AvailableModel[]> {
-    return probeOpenAiCompatibleModelsFromBase(baseUrl, apiKey)
-  }
-
   async function probeOllamaModels(baseUrl: string): Promise<OllamaTagsResponse> {
     const ollamaBase = normalizeOllamaBaseUrl(baseUrl)
     validateOllamaUrl(ollamaBase)
@@ -630,6 +735,7 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
     listProviders,
     getModelsByProviderType,
     getLiveModels,
+    refreshModelCatalogs,
     setFallback,
     startOAuthLogin,
     getOAuthStatus,
@@ -640,7 +746,6 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
     deleteProvider,
     testProvider,
     activateProvider,
-    probeOpenAiCompatibleModels,
     probeOllamaModels,
     listOllamaModels,
     requestOllamaProbePull,
@@ -667,10 +772,19 @@ async function resolveCatalogApiKey(provider: ProviderConfig): Promise<string | 
   return key && key !== 'no-key' ? key : undefined
 }
 
-async function probeOpenAiCompatibleModelsFromBase(baseUrl: string, apiKey?: string): Promise<AvailableModel[]> {
-  validateOpenAiCompatibleUrl(baseUrl)
+/** List models from a provider's own `/models` endpoint (OpenAI- or Anthropic-style). */
+async function fetchModelsFromBase(baseUrl: string, apiKey: string | undefined, apiType: string): Promise<AvailableModel[]> {
+  validateBaseUrl(baseUrl)
 
-  const urls = buildOpenAiModelsProbeUrls(baseUrl)
+  // Anthropic-style endpoints take the key as `x-api-key` and their base URL
+  // excludes `/v1` (the SDK appends `/v1/messages`).
+  const isAnthropic = apiType === 'anthropic-messages'
+  const authHeaders: Record<string, string> = !apiKey
+    ? {}
+    : isAnthropic
+      ? { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' }
+      : { Authorization: `Bearer ${apiKey}` }
+  const urls = isAnthropic ? buildAnthropicModelsProbeUrls(baseUrl) : buildOpenAiModelsProbeUrls(baseUrl)
   let lastError = 'No /models endpoint responded successfully'
 
   for (const url of urls) {
@@ -678,7 +792,7 @@ async function probeOpenAiCompatibleModelsFromBase(baseUrl: string, apiKey?: str
       const response = await fetch(url, {
         headers: {
           Accept: 'application/json',
-          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+          ...authHeaders,
         },
         signal: AbortSignal.timeout(15_000),
       })
@@ -693,16 +807,18 @@ async function probeOpenAiCompatibleModelsFromBase(baseUrl: string, apiKey?: str
       const models: AvailableModel[] = []
       for (const entry of body.data ?? []) {
         const id = typeof entry.id === 'string' ? entry.id.trim() : ''
-        if (!id || seen.has(id)) continue
+        if (!id || seen.has(id) || !isChatCapableMode(entry.mode)) continue
         seen.add(id)
-        const name = typeof entry.name === 'string' && entry.name.trim() ? entry.name.trim() : id
+        const displayName = [entry.name, entry.display_name].find(v => typeof v === 'string' && v.trim()) as string | undefined
+        const name = displayName?.trim() ?? id
         const cost = parseProbedModelCost(entry.pricing)
+        const contextWindow = firstPositiveInteger(entry.context_length, entry.max_input_tokens)
+        const maxTokens = firstPositiveInteger(entry.max_output_tokens)
         models.push({
           id,
           name,
-          ...(typeof entry.context_length === 'number' && entry.context_length > 0
-            ? { contextWindow: entry.context_length }
-            : {}),
+          ...(contextWindow ? { contextWindow } : {}),
+          ...(maxTokens ? { maxTokens } : {}),
           ...(cost ? { cost } : {}),
         })
       }
@@ -715,20 +831,47 @@ async function probeOpenAiCompatibleModelsFromBase(baseUrl: string, apiKey?: str
   throw new ProvidersExternalError(lastError)
 }
 
+/** OpenRouter uses `context_length`; LiteLLM-style proxies use `max_input_tokens` / `max_output_tokens` / `mode`. */
 interface ProbedModelEntry {
   id?: unknown
   name?: unknown
+  /** Anthropic `/v1/models`. */
+  display_name?: unknown
+  mode?: unknown
   context_length?: unknown
-  pricing?: { prompt?: unknown; completion?: unknown }
+  max_input_tokens?: unknown
+  max_output_tokens?: unknown
+  pricing?: { prompt?: unknown; completion?: unknown; input_cache_read?: unknown; input_cache_write?: unknown }
+}
+
+const CHAT_CAPABLE_MODES = new Set(['chat', 'completion', 'responses'])
+
+function isChatCapableMode(mode: unknown): boolean {
+  return typeof mode !== 'string' || CHAT_CAPABLE_MODES.has(mode)
+}
+
+function firstPositiveInteger(...values: unknown[]): number | undefined {
+  return values.find((value): value is number => Number.isInteger(value) && (value as number) > 0)
 }
 
 /** OpenRouter reports pricing in USD per token; convert to USD per 1M tokens. */
-function parseProbedModelCost(pricing: ProbedModelEntry['pricing']): { input: number; output: number } | undefined {
-  const input = Number(pricing?.prompt) * 1_000_000
-  const output = Number(pricing?.completion) * 1_000_000
-  if (!Number.isFinite(input) || !Number.isFinite(output) || input < 0 || output < 0) return undefined
-  const round = (value: number) => Math.round(value * 1e6) / 1e6
-  return { input: round(input), output: round(output) }
+function parseProbedModelCost(pricing: ProbedModelEntry['pricing']): AvailableModel['cost'] {
+  const perMillion = (value: unknown): number | undefined => {
+    if (value === undefined || value === null || value === '') return undefined
+    const num = Number(value) * 1_000_000
+    return Number.isFinite(num) && num >= 0 ? Math.round(num * 1e6) / 1e6 : undefined
+  }
+  const input = perMillion(pricing?.prompt)
+  const output = perMillion(pricing?.completion)
+  if (input === undefined || output === undefined) return undefined
+  const cacheRead = perMillion(pricing?.input_cache_read)
+  const cacheWrite = perMillion(pricing?.input_cache_write)
+  return {
+    input,
+    output,
+    ...(cacheRead !== undefined ? { cacheRead } : {}),
+    ...(cacheWrite !== undefined ? { cacheWrite } : {}),
+  }
 }
 
 async function requestOllamaPullFromBase(
@@ -751,7 +894,7 @@ async function requestOllamaPullFromBase(
   return pullResponse
 }
 
-function validateOpenAiCompatibleUrl(urlStr: string): void {
+function validateBaseUrl(urlStr: string): void {
   let parsed: URL
   try {
     parsed = new URL(urlStr)
@@ -762,6 +905,13 @@ function validateOpenAiCompatibleUrl(urlStr: string): void {
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     throw new ProvidersValidationError('Only http/https URLs are allowed')
   }
+}
+
+function buildAnthropicModelsProbeUrls(baseUrl: string): string[] {
+  const normalized = baseUrl.replace(/\/+$/, '')
+  return /\/v1$/i.test(normalized)
+    ? [`${normalized}/models`]
+    : [`${normalized}/v1/models`, `${normalized}/models`]
 }
 
 function buildOpenAiModelsProbeUrls(baseUrl: string): string[] {
