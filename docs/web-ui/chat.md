@@ -84,7 +84,7 @@ When you start a new session — or the agent does, after a long inactivity gap 
 
 The composer at the bottom has, from left to right:
 
-- **Brain icon (admin-only)** — quick switch for the [thinking level](../settings/agent#thinking-level) (`off`, `minimal`, `low`, `medium`, `high`, `extra high`). The icon color encodes the current level (gray → red). Changes apply immediately to the next turn.
+- **Brain icon (admin-only)** — quick switch for the [thinking level](../settings/agent#thinking-level); it lists only the levels the active model supports. The icon color encodes the level the model actually runs with (gray → red → purple for `max`); if the stored level isn't supported, a note below the list shows which level is used instead. Changes apply immediately to the next turn.
 
   > This is a *global* setting — the main agent is single-tenant, so switching here affects every chat. For a per-task override, use [Cronjobs](./cronjobs) or `create_task` instead.
 
@@ -124,7 +124,7 @@ interactive button group: provider picker → model picker → confirmation.
 Selecting a model writes `providers.json` and switches the active model for
 the next turn.
 
-`/thinking` accepts `off`, `minimal`, `low`, `medium`, `high`, or `xhigh`.
+`/thinking` accepts `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`. Levels the active model doesn't support are rounded to the nearest supported one.
 Like the brain-icon selector, it changes the global main-agent setting and
 applies to the next turn.
 

@@ -4,7 +4,7 @@ Token Usage is the consumption analytics page — how many requests went out, ho
 
 > **Admin only.** Regular users don't see this page.
 
-> **Where do the numbers come from?** The agent records input and output token counts (plus cache read/write tokens, where the provider reports them) on every model response. Cost is *estimated* by multiplying those counts against the `tokenPriceTable` from your [`settings.json`](../reference/settings) - if a model isn't in that table, its cost shows as `$0.00` even though tokens were used. Add a price entry to fix it.
+> **Where do the numbers come from?** The agent records input and output token counts (plus cache read/write tokens, where the provider reports them) on every model response. Cost is *estimated* when the response arrives, by multiplying input, output, cache-read and cache-write tokens with the model's per-million-token prices. Prices resolve per field: your own value from [Edit Model](./providers#edit-model-dialog) → an entry in the `tokenPriceTable` of your [`settings.json`](../reference/settings) (input/output only) → the model catalog (refreshable via [Refresh models](./providers#refreshing-model-catalogs)). If none of them has a price, the cost shows as `$0.00` even though tokens were used. Changing a price later does not re-price requests that were already recorded.
 
 ![Screenshot of the Token Usage page](../assets/screenshot-token-usage.png)
 

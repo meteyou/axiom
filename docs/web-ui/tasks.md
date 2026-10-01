@@ -37,7 +37,7 @@ See [Tasks & Cronjobs → Triggers](../concepts/tasks-and-cronjobs#triggers) for
 |---------------|-------------------------------------------------------------------------------------|
 | **Name**      | The task name, truncated. Click anywhere on the row to open the detail view.        |
 | **Status**    | Colored badge: gray (running), green (completed), red (failed), amber (paused).     |
-| **Trigger**   | Trigger badge plus, on a second line, the provider/model the task ran on.           |
+| **Trigger**   | Trigger badge plus the provider/model the task ran on and its thinking level (*"(default)"* when it came from the background thinking level, *"medium → high"* when the requested level was rounded to what the model supports). |
 | **Duration**  | Live for running tasks (counts up), final for completed ones, `—` if never started. |
 | **Tokens**    | Total input + output tokens. Tasks that used prompt caching show a smaller `CH <rate>%` cache-hit line beneath the total. Hover for a structured tooltip with the full breakdown — input, output, cache read, cache write, and cache hit rate. |
 | **Est. cost** | USD estimate from the [token price table](../reference/settings).                   |
@@ -72,6 +72,7 @@ Click a row to open the **task viewer**. The list slides out and the viewer take
 - **Back to tasks** — closes the viewer and returns to the list.
 - **Task name + status badge** — the same colored badge as in the list.
 - **Live badge** — pulsing green dot. Only visible while the task is actually streaming events. When the task finishes (or you load a historical one), the dot disappears.
+- **Model and thinking level** — the provider/model the task runs on and its thinking level, next to the badges (desktop only).
 - **Edit & restart** — opens the restart form (see below). Only enabled for `completed` or `failed` tasks; `running` and `paused` tasks show a disabled button with a tooltip explaining why.
 
 ### Prompt block
@@ -114,6 +115,7 @@ Available for completed or failed tasks. Click **Edit & restart** in the header 
 - **Name** — defaults to the original.
 - **Prompt** — defaults to the original. Edit freely.
 - **Provider / Model** — pre-filled with what the original task used, or *Use task default* if the task ran on the default at the time.
+- **Thinking level** — pre-filled with the level the original task requested, or *Default* if it used the background thinking level. Only levels the selected model supports are offered.
 - **Max duration (minutes)** — pre-filled with the original. Hard-capped by the system maximum from [Settings → Tasks](../settings/tasks#max-duration).
 
 When you click **Save & restart**:

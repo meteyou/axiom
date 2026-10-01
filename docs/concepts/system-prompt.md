@@ -69,7 +69,7 @@ A bullet list of every built-in tool the agent can call this turn, with a one-li
 
 A listing of provider/model pairs that the agent can route background tasks to. Only models that carry a **description** (set via the [Edit Model dialog](./../web-ui/providers#edit-model-dialog)) or are the active agent model / default task model are included — models without a description and without a default flag are hidden, so the description doubles as an opt-in gate for agent model routing.
 
-Each entry shows the provider name, the model id, default-model labels (*"default agent model"*, *"default task model"*), and the free-form description. The block also instructs the agent to autonomously choose models based on these descriptions (preferring cost-effective models for simple work, stronger models for complex tasks) rather than only passing through user-specified names. Dropped entirely if no provider has a routable model. See [Providers](./../web-ui/providers).
+Each entry shows the provider name, the model id, default-model labels (*"default agent model"*, *"default task model"*), the free-form description, and the thinking levels the model supports (`thinking: off, low, high, …`). The block also states the current background thinking level and tells the agent it may pass `thinking_level` to `create_task` / `create_cronjob` / `edit_cronjob`. The block also instructs the agent to autonomously choose models based on these descriptions (preferring cost-effective models for simple work, stronger models for complex tasks) rather than only passing through user-specified names. Dropped entirely if no provider has a routable model. See [Providers](./../web-ui/providers).
 
 ### 9. `<wiki_pages>`: `memory/wiki/*.md`
 

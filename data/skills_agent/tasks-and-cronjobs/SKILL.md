@@ -1,6 +1,6 @@
 ---
 name: tasks-and-cronjobs
-version: 1.1.0
+version: 1.2.0
 description: Use Axiom's background-execution system — one-off background tasks (create_task), recurring cronjobs (create_cronjob), and static scheduled reminders (create_reminder). Load this skill before creating any of them, and ALWAYS load it when you receive a <task_injection> message so you respond correctly.
 ---
 
@@ -70,6 +70,15 @@ Both `create_task` and `create_cronjob` accept optional `provider` and `model`. 
 - Pass `model` only when the user **explicitly** names one ("run this with kimi-k2.6"). The provider is auto-detected from `<available_providers>` if unique.
 - Pass `provider` + `model` together to pin both.
 - Otherwise omit both — the default task provider is used.
+
+### `thinking_level`
+
+`create_task`, `create_cronjob` and `edit_cronjob` accept an optional `thinking_level` (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`). Omit it to use the background thinking level from **Settings → Tasks** (the current value is shown in `<available_providers>`).
+
+- `<available_providers>` lists the levels each model supports (`thinking: off, low, high, …`). Pick one from that list — unsupported levels are rounded to the nearest supported one.
+- Raise it for hard reasoning, planning or complex coding; lower it (or `off`) for simple, mechanical work like fetching and reformatting. Honour an explicit user request ("think hard about this").
+- `edit_cronjob` with `thinking_level: "default"` resets a cronjob to the background level.
+- The tool result and `list_tasks` report the level the task actually runs with.
 
 ### `max_duration_minutes`
 
@@ -201,7 +210,7 @@ prompt: "Read /data/memory/state/hn-digest.md for the list of story IDs already 
 
 - `list_cronjobs` — overview of all cronjobs (id, name, schedule, status).
 - `get_cronjob` — full configuration of one cronjob, **including the complete prompt**. Use this before editing — never edit a prompt blind.
-- `edit_cronjob` — partial update; only fields you pass are changed. Pass `attached_skills: []` to clear all attached skills.
+- `edit_cronjob` — partial update; only fields you pass are changed. Pass `attached_skills: []` to clear all attached skills, `thinking_level: "default"` to reset the thinking level.
 - `remove_cronjob` — deletes the cronjob. Confirm with the user first if the cronjob wasn't created in this conversation.
 
 ---
@@ -336,11 +345,11 @@ create_cronjob(
 
 | Tool | What it does |
 |---|---|
-| `create_task` | Spawn a one-shot background agent with a self-contained prompt. Optional `attached_skills` bakes the listed SKILL.md files into the task prompt. |
+| `create_task` | Spawn a one-shot background agent with a self-contained prompt. Optional `attached_skills` bakes the listed SKILL.md files into the task prompt; optional `thinking_level` sets the reasoning effort. |
 | `resume_task` | Send a message to a paused task (used after a `status: question` injection). |
 | `list_tasks` | List background tasks with their status. |
 | `create_cronjob` | Schedule a recurring task or injection. |
-| `edit_cronjob` | Partial-update an existing cronjob (prompt, schedule, action_type, provider/model, enabled, attached_skills). |
+| `edit_cronjob` | Partial-update an existing cronjob (prompt, schedule, action_type, provider/model, thinking_level, enabled, attached_skills). |
 | `remove_cronjob` | Delete a cronjob. |
 | `list_cronjobs` | List all cronjobs (id, name, schedule, status). |
 | `get_cronjob` | Full configuration of one cronjob, including the full prompt. Use before editing. |

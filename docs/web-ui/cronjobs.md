@@ -48,7 +48,7 @@ A few details worth knowing:
 | **Name**      | The cronjob name, plus badges for any customizations (see [Name badges](#name-badges)).           |
 | **Schedule**  | Top line: human-readable (e.g. *"At 09:00 on Sat"*). Bottom line: the raw 5-field cron expression. |
 | **Action**    | `Task` (green) or `Injection` (amber). See [Action types](#action-types).                          |
-| **Provider**  | `Default` (uses [Settings → Tasks](../settings/tasks)), a specific `Provider (model)`, or `—` for injections (no agent runs). |
+| **Provider**  | `Default` (uses [Settings → Tasks](../settings/tasks)), a specific `Provider (model)`, or `—` for injections (no agent runs). A pinned thinking level is appended (e.g. *· Thinking: High*). |
 | **Enabled**   | A live toggle. Flipping it pauses or resumes the cronjob without deleting it.                     |
 | **Last Run**  | Status badge (`completed` / `failed` / `running`) plus the local timestamp of the last firing. `—` if never fired. |
 | **⋮**         | Row menu — Edit, Run Now, Delete.                                                                  |
@@ -145,6 +145,10 @@ Only visible when **Action Type** is `Task`. Pick:
 - A specific `Provider (model)` pairing — pins the cronjob to that exact provider/model combination regardless of any future default changes.
 
 Each entry expands every provider's *enabled* models into its own option, so the same provider can appear multiple times for different models.
+
+### Thinking level
+
+Only visible when **Action Type** is `Task`. *Default* uses the [background thinking level](../settings/tasks#background-thinking-level) at run time; any other value pins the reasoning effort for every run. The list only offers the levels the selected model supports; a stored level the model doesn't support is marked *not supported* and runs as the nearest supported level.
 
 ### Advanced Configuration
 

@@ -56,7 +56,9 @@ Configure providers themselves (add new ones, enable/disable models, set API key
 
 ## Thinking level
 
-How hard the main chat agent reasons before replying. Higher levels are slower and more expensive; they are silently ignored by models that don't support reasoning (e.g. plain GPT‑4o).
+How hard the main chat agent reasons before replying. Higher levels are slower and more expensive.
+
+The dropdown only offers the levels the **active model** supports (from the model catalog or the model's [Edit Model](../web-ui/providers#edit-model-dialog) settings). A model without reasoning only offers `off`. If the stored level isn't supported by the current model — e.g. after switching models — it is marked *not supported* and the model runs with the nearest supported level instead (the next higher one first, otherwise the next lower one).
 
 | Value     | Use for                                             |
 |-----------|-----------------------------------------------------|
@@ -65,6 +67,8 @@ How hard the main chat agent reasons before replying. Higher levels are slower a
 | `low`     | Quick internal planning.                            |
 | `medium`  | Multi-step problems.                                |
 | `high`    | Hard reasoning, tool-heavy flows.                   |
+| `xhigh`   | Extra effort — only models that explicitly support it. |
+| `max`     | Maximum effort — only models that explicitly support it. |
 
 This only applies to the **interactive chat agent**. Background jobs (tasks, heartbeat) have their own setting in [Tasks → Background thinking level](./tasks#background-thinking-level).
 

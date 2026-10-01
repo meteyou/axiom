@@ -45,7 +45,7 @@ How task results are pushed to the user who owns them (if Telegram is configured
 
 Reasoning level for tasks and other internal background jobs (heartbeat, consolidation-side work). Separate from the main [chat thinking level](./agent#thinking-level) so you can keep chat snappy and background jobs thoughtful (or vice versa).
 
-Values: `off`, `minimal`, `low`, `medium`, `high`.
+Values: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. Like the chat setting, the dropdown only offers the levels supported by the selected **Default provider** model (or the active model when tasks use the active provider); unsupported levels are rounded to the nearest supported one.
 
 ```json
 { "tasks": { "backgroundThinkingLevel": "minimal" } }
