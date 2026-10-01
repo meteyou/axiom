@@ -37,6 +37,8 @@ export function mapTaskEventsResponse(input: { task: Task; events: TaskTimelineE
       provider: input.task.provider,
       model: input.task.model,
       isDefaultModel: input.task.isDefaultModel,
+      thinkingLevel: input.task.thinkingLevel,
+      effectiveThinkingLevel: input.task.effectiveThinkingLevel,
       maxDurationMinutes: input.task.maxDurationMinutes,
       resultSummary: input.task.resultSummary,
       errorMessage: input.task.errorMessage,

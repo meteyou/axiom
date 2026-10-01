@@ -85,6 +85,23 @@
             </Select>
           </div>
 
+          <!-- Thinking level (only for task type) -->
+          <div v-if="form.actionType !== 'injection'" class="space-y-2">
+            <Label for="cronjob-thinking">{{ $t('cronjobs.form.thinkingLevel') }}</Label>
+            <Select v-model="form.thinkingLevel">
+              <SelectTrigger id="cronjob-thinking">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">{{ $t('cronjobs.form.thinkingLevelDefault') }}</SelectItem>
+                <SelectItem v-for="opt in thinkingLevelOptions" :key="opt.value" :value="opt.value">
+                  {{ opt.label }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <p class="text-xs text-muted-foreground">{{ $t('cronjobs.form.thinkingLevelHelp') }}</p>
+          </div>
+
           <!-- Advanced Section (Collapsible) — only for task type -->
           <div v-if="form.actionType !== 'injection'" class="border border-border rounded-md">
             <button
@@ -278,6 +295,8 @@
 import type { Cronjob, CronjobMeta } from '~/composables/useCronjobs'
 import { normalizeCronjobProviderValue } from '~/features/cronjobs/utils/providerValue'
 import { buildProviderModelOptions } from '~/utils/providerModelOptions'
+import { buildThinkingLevelSelectOptions, findModelSpecByComposite } from '~/utils/thinkingLevels'
+import type { SettingsThinkingLevel } from '@axiom/core/contracts'
 
 const props = defineProps<{
   open: boolean
@@ -298,13 +317,26 @@ const emit = defineEmits<{
     skillsOverride?: string | null
     systemPromptOverride?: string | null
     attachedSkills?: string[] | null
+    thinkingLevel?: SettingsThinkingLevel | null
   }]
 }>()
 
 const { providers, fetchProviders } = useProviders()
 const { fetchCronjobMeta } = useCronjobs()
 
+const { t } = useI18n()
+
 const providerModelOptions = computed(() => buildProviderModelOptions(providers.value))
+
+const thinkingLevelOptions = computed(() => {
+  const label = (level: SettingsThinkingLevel) => t(`tasks.thinkingLevels.${level}`)
+  return buildThinkingLevelSelectOptions(
+    findModelSpecByComposite(providers.value, form.provider),
+    form.thinkingLevel,
+    label,
+    (level, effective) => t('settings.thinkingLevelUnsupported', { level: label(level), effective: label(effective) }),
+  )
+})
 
 const advancedOpen = ref(false)
 
@@ -345,6 +377,7 @@ const form = reactive({
   schedule: '',
   actionType: 'task' as 'task' | 'injection',
   provider: '',
+  thinkingLevel: '' as SettingsThinkingLevel | '',
   systemPromptOverride: '',
 })
 
@@ -411,6 +444,7 @@ function applyCronjob(cronjob: Cronjob) {
   form.schedule = cronjob.schedule
   form.actionType = cronjob.actionType ?? 'task'
   form.provider = normalizeCronjobProviderValue(cronjob.provider, providers.value)
+  form.thinkingLevel = cronjob.thinkingLevel ?? ''
   form.systemPromptOverride = cronjob.systemPromptOverride ?? ''
   disabledTools.value = parseStringArray(cronjob.toolsOverride)
   disabledSkills.value = parseStringArray(cronjob.skillsOverride)
@@ -424,6 +458,7 @@ function resetForm() {
   form.schedule = ''
   form.actionType = 'task'
   form.provider = ''
+  form.thinkingLevel = ''
   form.systemPromptOverride = ''
   disabledTools.value = []
   disabledSkills.value = []
@@ -483,6 +518,7 @@ function nonEmptyJson(values: string[]): string | null {
 function taskOverrides() {
   return {
     provider: form.provider || undefined,
+    thinkingLevel: form.thinkingLevel || null,
     toolsOverride: nonEmptyJson(disabledTools.value),
     skillsOverride: nonEmptyJson(disabledSkills.value),
     systemPromptOverride: form.systemPromptOverride.trim() || null,
@@ -492,6 +528,7 @@ function taskOverrides() {
 
 const INJECTION_OVERRIDES = {
   provider: undefined,
+  thinkingLevel: null,
   toolsOverride: null,
   skillsOverride: null,
   systemPromptOverride: null,

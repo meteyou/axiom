@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Database } from './database.js'
+import type { SettingsThinkingLevel } from './contracts/settings.js'
+import { normalizeThinkingLevel } from './thinking-level.js'
 
 export type ScheduledTaskActionType = 'task' | 'injection'
 
@@ -22,6 +24,8 @@ export interface ScheduledTask {
    * instead of requiring the task agent to `read_file` them on every run.
    */
   attachedSkills: string[] | null
+  /** Thinking level for the spawned task; `null` = the background default at run time. */
+  thinkingLevel: SettingsThinkingLevel | null
   lastRunAt: string | null
   lastRunTaskId: string | null
   lastRunStatus: string | null
@@ -37,6 +41,7 @@ export interface CreateScheduledTaskInput {
   provider?: string
   enabled?: boolean
   attachedSkills?: string[] | null
+  thinkingLevel?: SettingsThinkingLevel | null
 }
 
 export interface UpdateScheduledTaskInput {
@@ -50,6 +55,8 @@ export interface UpdateScheduledTaskInput {
   skillsOverride?: string | null
   systemPromptOverride?: string | null
   attachedSkills?: string[] | null
+  /** `null` resets to the background default. */
+  thinkingLevel?: SettingsThinkingLevel | null
   lastRunAt?: string
   lastRunTaskId?: string
   lastRunStatus?: string
@@ -67,6 +74,7 @@ interface ScheduledTaskRow {
   skills_override: string | null
   system_prompt_override: string | null
   attached_skills: string | null
+  thinking_level: string | null
   last_run_at: string | null
   last_run_task_id: string | null
   last_run_status: string | null
@@ -106,6 +114,7 @@ function rowToScheduledTask(row: ScheduledTaskRow): ScheduledTask {
     skillsOverride: row.skills_override,
     systemPromptOverride: row.system_prompt_override,
     attachedSkills: parseAttachedSkills(row.attached_skills),
+    thinkingLevel: normalizeThinkingLevel(row.thinking_level) ?? null,
     lastRunAt: row.last_run_at,
     lastRunTaskId: row.last_run_task_id,
     lastRunStatus: row.last_run_status,
@@ -130,6 +139,7 @@ export function initScheduledTasksTable(db: Database): void {
       skills_override TEXT,
       system_prompt_override TEXT,
       attached_skills TEXT,
+      thinking_level TEXT,
       last_run_at TEXT,
       last_run_task_id TEXT,
       last_run_status TEXT,
@@ -153,8 +163,8 @@ export class ScheduledTaskStore {
     const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
 
     this.db.prepare(`
-      INSERT INTO scheduled_tasks (id, name, prompt, schedule, action_type, provider, enabled, attached_skills, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO scheduled_tasks (id, name, prompt, schedule, action_type, provider, enabled, attached_skills, thinking_level, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       input.name,
@@ -164,6 +174,7 @@ export class ScheduledTaskStore {
       input.provider ?? null,
       input.enabled !== undefined ? (input.enabled ? 1 : 0) : 1,
       serializeAttachedSkills(input.attachedSkills ?? null),
+      input.thinkingLevel ?? null,
       now,
       now,
     )
@@ -241,6 +252,10 @@ export class ScheduledTaskStore {
     if (input.attachedSkills !== undefined) {
       setClauses.push('attached_skills = ?')
       params.push(serializeAttachedSkills(input.attachedSkills))
+    }
+    if (input.thinkingLevel !== undefined) {
+      setClauses.push('thinking_level = ?')
+      params.push(input.thinkingLevel)
     }
     if (input.lastRunAt !== undefined) {
       setClauses.push('last_run_at = ?')

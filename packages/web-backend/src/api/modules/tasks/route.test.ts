@@ -406,6 +406,13 @@ describe('tasks route module', () => {
         body: JSON.stringify({ maxDurationMinutes: 0 }),
       })
       expect(badDurationZero.status).toBe(400)
+
+      const badThinking = await fetch(`${baseUrl}/api/tasks/${task.id}/restart`, {
+        method: 'POST',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ thinkingLevel: 'turbo' }),
+      })
+      expect(badThinking.status).toBe(400)
     })
 
     it('returns 503 when the task runtime is not available', async () => {

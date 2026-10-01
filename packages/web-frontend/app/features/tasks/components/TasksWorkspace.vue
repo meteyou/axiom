@@ -188,6 +188,9 @@
                     >
                       {{ formatTaskTriggerModel(task, t) }}
                     </span>
+                    <span v-if="formatTaskThinking(task, t)" class="text-xs text-muted-foreground">
+                      {{ formatTaskThinking(task, t) }}
+                    </span>
                   </div>
                 </TableCell>
                 <TableCell class="text-right tabular-nums text-muted-foreground">
@@ -300,6 +303,7 @@ import {
   cacheHitRate,
   cacheSummary,
   formatTaskDuration,
+  formatTaskThinking,
   formatTaskTriggerModel,
   hasCacheTokens,
   taskStatusVariant,

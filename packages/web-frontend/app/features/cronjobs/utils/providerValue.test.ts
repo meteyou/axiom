@@ -16,6 +16,11 @@ describe('formatCronjobProvider', () => {
     expect(formatCronjobProvider('p-openai:gpt-5-mini', providers)).toBe('OpenAI API (gpt-5-mini)')
   })
 
+  it('uses the configured model display name', () => {
+    const named = [{ id: 'n', name: 'Custom Gateway', enabledModels: ['ds'], models: [{ id: 'ds', name: 'DeepSeek V4' }] }]
+    expect(formatCronjobProvider('n:ds', named)).toBe('Custom Gateway (DeepSeek V4)')
+  })
+
   it('expands legacy names to the first enabled model', () => {
     expect(formatCronjobProvider('openai api', providers)).toBe('OpenAI API (gpt-5)')
     expect(formatCronjobProvider('p-empty', providers)).toBe('Empty')

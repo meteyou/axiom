@@ -1,4 +1,4 @@
-import { TaskStore, buildTaskFilterClause, getToolCalls, resolveProviderModelInput, getProviderDefaultModel } from '@axiom/core'
+import { TaskStore, buildTaskFilterClause, getToolCalls, resolveProviderModelInput, getProviderDefaultModel, isDisabledProviderReference, loadProvidersDecrypted } from '@axiom/core'
 import type {
   Database,
   ProviderConfig,
@@ -267,8 +267,12 @@ export class TasksService {
     // Resolve (provider, model): explicit override wins; otherwise inherit
     // the original's pinned provider/model; otherwise fall back to the
     // configured task default. This matches the behaviour of `create_task`.
-    const providerInput = overrides.provider ?? original.provider ?? undefined
-    const modelInput = overrides.model ?? original.model ?? undefined
+    const hasOverride = overrides.provider !== undefined || overrides.model !== undefined
+    const inheritsDisabledModel = !hasOverride && original.provider
+      ? isDisabledProviderReference(`${original.provider}:${original.model ?? ''}`, loadProvidersDecrypted().providers)
+      : false
+    const providerInput = inheritsDisabledModel ? undefined : overrides.provider ?? original.provider ?? undefined
+    const modelInput = inheritsDisabledModel ? undefined : overrides.model ?? original.model ?? undefined
 
     let provider: ProviderConfig
     let isDefaultModel: boolean
@@ -311,6 +315,7 @@ export class TasksService {
       provider: provider.name,
       model: getProviderDefaultModel(provider),
       isDefaultModel,
+      thinkingLevel: overrides.thinkingLevel !== undefined ? overrides.thinkingLevel : original.thinkingLevel,
       maxDurationMinutes: overrides.maxDurationMinutes
         ?? (original.maxDurationMinutes ?? undefined),
     })

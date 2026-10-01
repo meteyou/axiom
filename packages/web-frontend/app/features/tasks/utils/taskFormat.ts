@@ -53,6 +53,24 @@ export function cacheSummary(task: Pick<Task, 'promptTokens' | 'cacheRead' | 'ca
   return `CH ${rate.toFixed(1)}%`
 }
 
+/**
+ * Short thinking-level label for a task, or null when unknown (legacy rows).
+ * Marks default levels and levels that were clamped to what the model supports.
+ */
+export function formatTaskThinking(
+  task: Pick<Task, 'thinkingLevel' | 'effectiveThinkingLevel'>,
+  t: (key: string, values?: Record<string, string>) => string,
+): string | null {
+  const effective = task.effectiveThinkingLevel ?? task.thinkingLevel
+  if (!effective) return null
+  const level = t(`tasks.thinkingLevels.${effective}`)
+  if (!task.thinkingLevel) return t('tasks.thinkingDefault', { level })
+  if (task.effectiveThinkingLevel && task.thinkingLevel !== task.effectiveThinkingLevel) {
+    return t('tasks.thinkingClamped', { requested: t(`tasks.thinkingLevels.${task.thinkingLevel}`), level })
+  }
+  return t('tasks.thinking', { level })
+}
+
 export function formatTaskTriggerModel(
   task: Pick<Task, 'provider' | 'model' | 'isDefaultModel'>,
   t: (key: string, values: Record<string, string>) => string,

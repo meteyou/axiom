@@ -5,6 +5,7 @@ import type { TaskRuntimeScheduleBoundary } from './task-runtime.js'
 import { validateCronExpression, cronToHumanReadable, parseCronExpression, getNextRunTime } from './cron-parser.js'
 import { resolveProviderModelInput } from './provider-config.js'
 import { normalizeAttachedSkills } from './attached-skills.js'
+import { parseThinkingLevelArg, THINKING_LEVEL_PARAM_DESCRIPTION } from './task-tools.js'
 
 /**
  * Resolve the (provider, model) pair a user may pass to a cronjob tool into
@@ -92,9 +93,12 @@ export function createCronjobTool(options: CronjobToolsOptions): AgentTool {
           description: 'Optional list of agent-skill names (directory names under /data/skills_agent/<name>/) whose SKILL.md should be injected directly into the task prompt on each run. Use this to bake skill rules into the prompt deterministically instead of requiring the task agent to read_file them at run time. Only relevant for action_type "task". Example: ["nitter", "reddit"]. Missing SKILL.md files are skipped with a warning, the task still runs.',
         })
       ),
+      thinking_level: Type.Optional(
+        Type.String({ description: `${THINKING_LEVEL_PARAM_DESCRIPTION} Only relevant for action_type "task".` })
+      ),
     }),
     execute: async (_toolCallId, params) => {
-      const { prompt, name, schedule, action_type, provider, model, attached_skills } = params as {
+      const { prompt, name, schedule, action_type, provider, model, attached_skills, thinking_level } = params as {
         prompt: string
         name: string
         schedule: string
@@ -102,9 +106,18 @@ export function createCronjobTool(options: CronjobToolsOptions): AgentTool {
         provider?: string
         model?: string
         attached_skills?: string[]
+        thinking_level?: string
       }
 
       try {
+        const thinking = parseThinkingLevelArg(thinking_level)
+        if (!thinking.ok) {
+          return {
+            content: [{ type: 'text' as const, text: `Error: ${thinking.error}` }],
+            details: { error: true },
+          }
+        }
+
         // Validate cron expression
         const validationError = validateCronExpression(schedule)
         if (validationError) {
@@ -140,6 +153,7 @@ export function createCronjobTool(options: CronjobToolsOptions): AgentTool {
           provider: providerValue,
           enabled: true,
           attachedSkills: normalizedAttachedSkills ?? undefined,
+          thinkingLevel: actionType === 'task' ? thinking.value ?? null : null,
         })
 
         // Register with scheduler
@@ -156,7 +170,7 @@ export function createCronjobTool(options: CronjobToolsOptions): AgentTool {
         return {
           content: [{
             type: 'text' as const,
-            text: `Cronjob created successfully.\n\nID: ${scheduledTask.id}\nName: ${name}\nSchedule: ${humanSchedule} (${schedule})\nAction: ${actionLabel}\n${providerLabel ? `Provider: ${providerLabel}\n` : ''}${attachedSkillsLine}Status: Enabled\n\nThe cronjob is now active and will run on the specified schedule.`,
+            text: `Cronjob created successfully.\n\nID: ${scheduledTask.id}\nName: ${name}\nSchedule: ${humanSchedule} (${schedule})\nAction: ${actionLabel}\n${providerLabel ? `Provider: ${providerLabel}\n` : ''}${actionType === 'task' ? `Thinking: ${scheduledTask.thinkingLevel ?? 'default'}\n` : ''}${attachedSkillsLine}Status: Enabled\n\nThe cronjob is now active and will run on the specified schedule.`,
           }],
           details: {
             cronjobId: scheduledTask.id,
@@ -167,6 +181,7 @@ export function createCronjobTool(options: CronjobToolsOptions): AgentTool {
             provider: providerValue ?? null,
             providerLabel,
             attachedSkills: scheduledTask.attachedSkills ?? null,
+            thinkingLevel: scheduledTask.thinkingLevel,
           },
         }
       } catch (err) {
@@ -188,7 +203,7 @@ export function editCronjobTool(options: CronjobToolsOptions): AgentTool {
     name: 'edit_cronjob',
     label: 'Edit Cronjob',
     description:
-      'Edit an existing cronjob. You can update the prompt, name, schedule, action_type, provider, or enabled status. ' +
+      'Edit an existing cronjob. You can update the prompt, name, schedule, action_type, provider, thinking level, or enabled status. ' +
       'Only provide the fields you want to change.',
     parameters: Type.Object({
       id: Type.String({
@@ -234,9 +249,12 @@ export function editCronjobTool(options: CronjobToolsOptions): AgentTool {
           description: 'Replace the list of agent skills attached to this cronjob. Pass an array of skill names (directory names under /data/skills_agent/<name>/). Pass an empty array [] to clear all attached skills. Omit to leave unchanged.',
         })
       ),
+      thinking_level: Type.Optional(
+        Type.String({ description: `${THINKING_LEVEL_PARAM_DESCRIPTION} Pass "default" to reset to the configured background thinking level. Omit to leave unchanged.` })
+      ),
     }),
     execute: async (_toolCallId, params) => {
-      const { id, prompt, name, schedule, action_type, provider, model, enabled, attached_skills } = params as {
+      const { id, prompt, name, schedule, action_type, provider, model, enabled, attached_skills, thinking_level } = params as {
         id: string
         prompt?: string
         name?: string
@@ -246,9 +264,20 @@ export function editCronjobTool(options: CronjobToolsOptions): AgentTool {
         model?: string
         enabled?: boolean
         attached_skills?: string[]
+        thinking_level?: string
       }
 
       try {
+        const resetThinking = thinking_level?.trim().toLowerCase() === 'default'
+        const thinking = resetThinking ? { ok: true as const, value: undefined } : parseThinkingLevelArg(thinking_level)
+        if (!thinking.ok) {
+          return {
+            content: [{ type: 'text' as const, text: `Error: ${thinking.error}` }],
+            details: { error: true },
+          }
+        }
+        const thinkingLevelUpdate = resetThinking ? null : thinking.value
+
         // Check exists
         const existing = options.taskRuntime.getById(id)
         if (!existing) {
@@ -306,6 +335,7 @@ export function editCronjobTool(options: CronjobToolsOptions): AgentTool {
           provider: providerUpdate,
           enabled,
           attachedSkills: attachedSkillsUpdate,
+          thinkingLevel: thinkingLevelUpdate,
         })
 
         if (!updated) {
@@ -329,7 +359,7 @@ export function editCronjobTool(options: CronjobToolsOptions): AgentTool {
         return {
           content: [{
             type: 'text' as const,
-            text: `Cronjob updated successfully.\n\nID: ${updated.id}\nName: ${updated.name}\nSchedule: ${humanSchedule} (${updated.schedule})\nAction: ${actionLabel}\nProvider: ${updated.provider ?? 'default'}\nAttached skills: ${attachedSkillsText}\nStatus: ${updated.enabled ? 'Enabled' : 'Disabled'}`,
+            text: `Cronjob updated successfully.\n\nID: ${updated.id}\nName: ${updated.name}\nSchedule: ${humanSchedule} (${updated.schedule})\nAction: ${actionLabel}\nProvider: ${updated.provider ?? 'default'}\nThinking: ${updated.thinkingLevel ?? 'default'}\nAttached skills: ${attachedSkillsText}\nStatus: ${updated.enabled ? 'Enabled' : 'Disabled'}`,
           }],
           details: {
             cronjobId: updated.id,
@@ -340,6 +370,7 @@ export function editCronjobTool(options: CronjobToolsOptions): AgentTool {
             provider: updated.provider,
             enabled: updated.enabled,
             attachedSkills: updated.attachedSkills ?? null,
+            thinkingLevel: updated.thinkingLevel,
           },
         }
       } catch (err) {
@@ -495,7 +526,7 @@ export function listCronjobsTool(options: CronjobToolsOptions): AgentTool {
             ? `\n  Attached skills: ${cj.attachedSkills.join(', ')}`
             : ''
 
-          return `\u2022 [${status}] ${cj.name}\n  ID: ${cj.id}\n  Schedule: ${humanSchedule} (${cj.schedule})\n  Action: ${actionLabel}\n  Provider: ${cj.provider ?? 'default'}${attachedSkillsLine}\n  Last run: ${lastRun}${nextRunsStr}`
+          return `\u2022 [${status}] ${cj.name}\n  ID: ${cj.id}\n  Schedule: ${humanSchedule} (${cj.schedule})\n  Action: ${actionLabel}\n  Provider: ${cj.provider ?? 'default'}${cj.actionType === 'task' ? ` | Thinking: ${cj.thinkingLevel ?? 'default'}` : ''}${attachedSkillsLine}\n  Last run: ${lastRun}${nextRunsStr}`
         })
 
         return {
@@ -557,6 +588,7 @@ export function getCronjobTool(options: CronjobToolsOptions): AgentTool {
           `Schedule: ${humanSchedule} (${cj.schedule})`,
           `Action: ${actionLabel}`,
           `Provider: ${cj.provider ?? 'default'}`,
+          `Thinking: ${cj.thinkingLevel ?? 'default'}`,
           `Attached skills: ${attachedSkillsText}`,
           `Last run: ${lastRun}`,
           ``,

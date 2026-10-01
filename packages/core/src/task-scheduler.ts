@@ -5,7 +5,7 @@ import type { TaskStore } from './task-store.js'
 import type { TaskRunner } from './task-runner.js'
 import type { TaskOverrides } from './task-runner.js'
 import type { ProviderConfig } from './provider-config.js'
-import { parseProviderModelId, getProviderDefaultModel } from './provider-config.js'
+import { parseProviderModelId, getProviderDefaultModel, isProviderModelUsable } from './provider-config.js'
 import { parseCronExpression, getNextRunTime } from './cron-parser.js'
 
 export interface TaskSchedulerOptions {
@@ -350,8 +350,12 @@ export class TaskScheduler {
     if (scheduledTask.provider) {
       const { providerId, modelId } = parseProviderModelId(scheduledTask.provider)
       const resolved = providerId ? this.options.resolveProvider(providerId) : null
-      provider = resolved ?? this.options.getDefaultProvider()
-      modelOverride = modelId
+      if (resolved && isProviderModelUsable(resolved, modelId)) {
+        provider = resolved
+        modelOverride = modelId
+      } else {
+        provider = this.options.getDefaultProvider()
+      }
     } else {
       provider = this.options.getDefaultProvider()
     }
@@ -382,6 +386,7 @@ export class TaskScheduler {
       provider: provider.name,
       model: getProviderDefaultModel(provider),
       isDefaultModel: !scheduledTask.provider,
+      thinkingLevel: scheduledTask.thinkingLevel,
     })
 
     // Update last_run_at on the scheduled task

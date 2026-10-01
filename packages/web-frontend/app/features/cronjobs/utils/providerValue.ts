@@ -1,4 +1,4 @@
-import { findProviderByKey, type ProviderModelSource } from '../../../utils/providerModelOptions'
+import { findProviderByKey, getModelDisplayName, type ProviderModelSource } from '../../../utils/providerModelOptions'
 
 /**
  * Stored cronjob provider values come in two shapes: the modern
@@ -20,7 +20,7 @@ export function formatCronjobProvider(raw: string | null | undefined, providers:
   const match = findProviderByKey(providers, providerKey)
   if (!match) return raw
   const model = modelId ?? match.enabledModels?.[0]
-  return model ? `${match.name} (${model})` : match.name
+  return model ? `${match.name} (${getModelDisplayName(match, model)})` : match.name
 }
 
 /**

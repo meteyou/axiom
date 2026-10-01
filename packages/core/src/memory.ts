@@ -809,6 +809,8 @@ export interface AvailableProviderModelPromptEntry {
   description?: string
   isDefaultAgentModel?: boolean
   isDefaultTaskModel?: boolean
+  /** Thinking levels the model supports, in ascending order. */
+  thinkingLevels?: string[]
 }
 
 export function assembleSystemPrompt(options?: {
@@ -831,6 +833,8 @@ export function assembleSystemPrompt(options?: {
    * can route background tasks to annotated models.
    */
   availableProviders?: Array<{ name: string; models: AvailableProviderModelPromptEntry[] }>
+  /** Background thinking level tasks run with when `thinking_level` is omitted. */
+  defaultTaskThinkingLevel?: string
 }): string {
   const memoryDir = options?.memoryDir
   const recentDays = options?.recentDays ?? 3
@@ -945,6 +949,7 @@ ${dailyContext}
         if (model.isDefaultAgentModel) labels.push('default agent model')
         if (model.isDefaultTaskModel) labels.push('default task model')
         if (model.description) labels.push(model.description)
+        if (model.thinkingLevels && model.thinkingLevels.length > 0) labels.push(`thinking: ${model.thinkingLevels.join(', ')}`)
         const suffix = labels.join('. ')
         providerLines.push(
           suffix ? `- ${provider.name} — ${model.id}: ${suffix}` : `- ${provider.name} — ${model.id}`,
@@ -957,6 +962,8 @@ ${dailyContext}
 Configured LLM providers and their enabled models. When the user asks for a task or cronjob with a specific model or provider, pass it through to \`create_task\` / \`create_cronjob\` / \`edit_cronjob\` via their \`provider\` and/or \`model\` parameters. If the user names only a model (e.g. "run this with kimi-k2.6"), pass it as \`model\` — the tool will auto-detect the provider from this list.
 
 For background tasks, you may choose the most appropriate model based on the descriptions below. Prefer cost-effective models for simple work; use stronger models for complex coding or research. When a description indicates a model is suited for a specific task type (e.g. "Textverarbeitung wie Twitter/Reddit Digest"), prefer that model for matching tasks.
+
+\`thinking:\` lists the reasoning levels a model supports. Tasks and cronjobs run with the background thinking level${options.defaultTaskThinkingLevel ? ` (currently \`${options.defaultTaskThinkingLevel}\`)` : ''} unless you pass \`thinking_level\` to \`create_task\` / \`create_cronjob\` / \`edit_cronjob\`. Only override it when the task clearly needs more (hard reasoning, planning, complex coding) or less (simple, mechanical work) effort, and pick a level from the model's list.
 
 ${providerLines.join('\n')}
 </available_providers>`)

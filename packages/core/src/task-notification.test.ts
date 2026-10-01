@@ -27,6 +27,8 @@ function makeTask(overrides: Partial<Task> = {}): Task {
     provider: 'openai',
     model: 'gpt-4o',
     isDefaultModel: null,
+    thinkingLevel: null,
+    effectiveThinkingLevel: null,
     maxDurationMinutes: 60,
     promptTokens: 5000,
     completionTokens: 3000,

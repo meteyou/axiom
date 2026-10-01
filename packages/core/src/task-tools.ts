@@ -5,6 +5,29 @@ import type { ProviderConfig } from './provider-config.js'
 import { resolveProviderModelInput, getProviderDefaultModel } from './provider-config.js'
 import { normalizeAttachedSkills } from './attached-skills.js'
 import type { TaskRuntimeTaskBoundary } from './task-runtime.js'
+import { SETTINGS_THINKING_LEVELS } from './contracts/settings.js'
+import { normalizeThinkingLevel } from './thinking-level.js'
+
+export const THINKING_LEVEL_PARAM_DESCRIPTION =
+  `Optional reasoning effort for the task agent: ${SETTINGS_THINKING_LEVELS.join(', ')}. ` +
+  'Omit to use the configured background thinking level. Pick a level the chosen model supports ' +
+  '(see the `thinking:` list per model in `<available_providers>`); unsupported levels are rounded to the nearest supported one. ' +
+  'Use higher levels for hard reasoning, planning or coding, lower levels (or off) for simple, mechanical work.'
+
+/**
+ * Parse an optional thinking level tool argument. `undefined` means "not
+ * passed"; an unknown value is reported as an error string.
+ */
+export function parseThinkingLevelArg(value: unknown):
+  | { ok: true; value: ReturnType<typeof normalizeThinkingLevel> }
+  | { ok: false; error: string } {
+  if (value === undefined || value === null || value === '') return { ok: true, value: undefined }
+  const level = normalizeThinkingLevel(typeof value === 'string' ? value.trim().toLowerCase() : value)
+  if (!level) {
+    return { ok: false, error: `Invalid thinking_level "${String(value)}". Valid levels: ${SETTINGS_THINKING_LEVELS.join(', ')}.` }
+  }
+  return { ok: true, value: level }
+}
 
 export interface TaskToolsOptions {
   taskRuntime: TaskRuntimeTaskBoundary
@@ -23,6 +46,15 @@ export interface TaskToolsOptions {
    * from a background context).
    */
   getParentSessionId?: () => string | null
+}
+
+/** e.g. "Thinking: high", "Thinking: high (default)", "Thinking: medium → high (clamped to model)". */
+export function formatThinkingLine(requested: string | null, effective: string | null): string {
+  if (!effective) return `Thinking: ${requested ?? 'default'}`
+  if (!requested) return `Thinking: ${effective} (default)`
+  return requested === effective
+    ? `Thinking: ${effective}`
+    : `Thinking: ${requested} → ${effective} (clamped to model)`
 }
 
 /**
@@ -142,18 +174,30 @@ export function createTaskTool(options: TaskToolsOptions): AgentTool {
           description: 'Optional list of agent-skill names (directory names under /data/skills_agent/<name>/) or installed skill ids ("owner/name") whose SKILL.md should be injected directly into the task prompt. Use this to bake skill rules into the prompt deterministically instead of requiring the task agent to read_file them. Example: ["nitter", "reddit"]. Missing SKILL.md files are skipped with a warning, the task still runs.',
         })
       ),
+      thinking_level: Type.Optional(
+        Type.String({ description: THINKING_LEVEL_PARAM_DESCRIPTION })
+      ),
     }),
     execute: async (_toolCallId, params) => {
-      const { prompt, name, provider: providerName, model: modelName, max_duration_minutes, attached_skills } = params as {
+      const { prompt, name, provider: providerName, model: modelName, max_duration_minutes, attached_skills, thinking_level } = params as {
         prompt: string
         name: string
         provider?: string
         model?: string
         max_duration_minutes?: number
         attached_skills?: string[]
+        thinking_level?: string
       }
 
       try {
+        const thinking = parseThinkingLevelArg(thinking_level)
+        if (!thinking.ok) {
+          return {
+            content: [{ type: 'text' as const, text: `Error: ${thinking.error}` }],
+            details: { error: true },
+          }
+        }
+
         // Resolve (provider, model) into a concrete provider config.
         // - Both empty       → use default task provider
         // - Any combination  → run through the shared resolver so a bare
@@ -210,6 +254,7 @@ export function createTaskTool(options: TaskToolsOptions): AgentTool {
           provider: provider.name,
           model: getProviderDefaultModel(provider),
           isDefaultModel,
+          thinkingLevel: thinking.value ?? null,
           maxDurationMinutes: maxDuration,
         })
 
@@ -221,16 +266,21 @@ export function createTaskTool(options: TaskToolsOptions): AgentTool {
         const attachedSkillsLine = attachedSkills
           ? `Attached skills: ${attachedSkills.join(', ')}\n`
           : ''
+        const effectiveThinkingLevel = options.taskRuntime.getById(task.id)?.effectiveThinkingLevel ?? null
+        const thinkingLine = formatThinkingLine(thinking.value ?? null, effectiveThinkingLevel)
 
         return {
           content: [{
             type: 'text' as const,
-            text: `Background task started successfully.\n\nTask ID: ${task.id}\nName: ${name}\nProvider: ${provider.name}\nMax Duration: ${maxDuration} minutes\n${attachedSkillsLine}\nThe task is now running in the background. You will receive a notification when it completes or fails.`,
+            text: `Background task started successfully.\n\nTask ID: ${task.id}\nName: ${name}\nProvider: ${provider.name}\nModel: ${getProviderDefaultModel(provider)}\n${thinkingLine}\nMax Duration: ${maxDuration} minutes\n${attachedSkillsLine}\nThe task is now running in the background. You will receive a notification when it completes or fails.`,
           }],
           details: {
             taskId: task.id,
             name,
             provider: provider.name,
+            model: getProviderDefaultModel(provider),
+            thinkingLevel: thinking.value ?? null,
+            effectiveThinkingLevel,
             maxDurationMinutes: maxDuration,
             attachedSkills,
           },
@@ -310,7 +360,8 @@ export function listTasksTool(options: Pick<TaskToolsOptions, 'taskRuntime'>): A
               })()
             : '\u2014'
           const tokens = t.promptTokens + t.completionTokens
-          return `\u2022 [${t.status.toUpperCase()}] ${t.name}\n  ID: ${t.id}\n  Trigger: ${t.triggerType} | Duration: ${duration} | Tokens: ${tokens} | Cost: $${t.estimatedCost.toFixed(4)}\n  Created: ${t.createdAt}`
+          const modelLine = t.provider ? `\n  Model: ${t.provider}${t.model ? ` / ${t.model}` : ''} | ${formatThinkingLine(t.thinkingLevel, t.effectiveThinkingLevel)}` : ''
+          return `\u2022 [${t.status.toUpperCase()}] ${t.name}\n  ID: ${t.id}\n  Trigger: ${t.triggerType} | Duration: ${duration} | Tokens: ${tokens} | Cost: $${t.estimatedCost.toFixed(4)}${modelLine}\n  Created: ${t.createdAt}`
         })
 
         return {

@@ -7,11 +7,12 @@ import type { Api, AssistantMessage, Message, ImageContent, Model } from '@earen
 import { Type, getCurrentSystemMessage } from '@earendil-works/pi-ai'
 import type { Database } from './database.js'
 import { logTokenUsage, logToolCall } from './token-logger.js'
-import { estimateCost, getApiKeyForProvider, buildModel, buildStreamFn, loadProvidersDecrypted, parseProviderModelId, getProviderDefaultModel } from './provider-config.js'
+import { estimateCost, getApiKeyForProvider, buildModel, buildStreamFn, loadProvidersDecrypted, parseProviderModelId, getProviderDefaultModel, getUsableModels } from './provider-config.js'
 import type { ProviderConfig } from './provider-config.js'
 import type { ProviderManager } from './provider-manager.js'
 import type { SettingsThinkingLevel } from './contracts/settings.js'
-import { normalizeThinkingLevel } from './thinking-level.js'
+import { normalizeThinkingLevel, readBackgroundThinkingLevelFromConfig } from './thinking-level.js'
+import { getSupportedThinkingLevels } from './contracts/providers.js'
 import { assembleSystemPrompt, ensureMemoryStructure, ensureConfigStructure, formatCurrentTimeContext } from './memory.js'
 import type { SkillPromptEntry, AvailableProviderModelPromptEntry } from './memory.js'
 import { getWorkspaceDir } from './workspace.js'
@@ -521,6 +522,14 @@ function getActiveSkillEntries(): SkillPromptEntry[] {
   }
 }
 
+function supportedThinkingLevels(provider: ProviderConfig, modelId: string): string[] | undefined {
+  try {
+    return getSupportedThinkingLevels(buildModel(provider, modelId))
+  } catch {
+    return undefined
+  }
+}
+
 class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess {
   private agent: PiAgent
   private model: Model<Api>
@@ -786,8 +795,8 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
         // settings not available yet — no task default label
       }
 
-      availableProviders = file.providers.map(p => {
-        const enabled = p.enabledModels ?? []
+      availableProviders = file.providers.filter(p => getUsableModels(p).length > 0).map(p => {
+        const enabled = getUsableModels(p)
         const activeModelForProvider = p.id === activeProviderId ? (file.activeModel ?? getProviderDefaultModel(p)) : null
         const models: AvailableProviderModelPromptEntry[] = enabled.map(id => {
           const entry = p.models?.find(m => m.id === id)
@@ -798,6 +807,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
             description: entry?.description,
             isDefaultAgentModel: isDefaultAgentModel || undefined,
             isDefaultTaskModel: isDefaultTaskModel || undefined,
+            thinkingLevels: supportedThinkingLevels(p, id),
           }
         })
         return { name: p.name, models }
@@ -818,6 +828,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
       builtinTools: builtinToolsPromptConfig,
       agentSkillsDir: getAgentSkillsDir(),
       availableProviders,
+      defaultTaskThinkingLevel: readBackgroundThinkingLevelFromConfig() ?? 'off',
     })
   }
 

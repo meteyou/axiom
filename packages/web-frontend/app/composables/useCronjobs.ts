@@ -1,3 +1,5 @@
+import type { SettingsThinkingLevel } from '@axiom/core/contracts'
+
 export type CronjobActionType = 'task' | 'injection'
 
 export interface Cronjob {
@@ -13,6 +15,8 @@ export interface Cronjob {
   skillsOverride: string | null
   systemPromptOverride: string | null
   attachedSkills: string[] | null
+  /** `null` = background default at run time. */
+  thinkingLevel: SettingsThinkingLevel | null
   lastRunAt: string | null
   lastRunTaskId: string | null
   lastRunStatus: string | null
@@ -59,6 +63,7 @@ export interface CronjobFormData {
   skillsOverride?: string | null
   systemPromptOverride?: string | null
   attachedSkills?: string[] | null
+  thinkingLevel?: SettingsThinkingLevel | null
 }
 
 export function useCronjobs() {

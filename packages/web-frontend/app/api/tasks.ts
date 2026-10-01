@@ -1,3 +1,5 @@
+import type { SettingsThinkingLevel } from '@axiom/core/contracts'
+
 export interface Task {
   id: string
   name: string
@@ -14,6 +16,10 @@ export interface Task {
    * column.
    */
   isDefaultModel: boolean | null
+  /** Explicitly requested thinking level; `null` = background default. */
+  thinkingLevel: SettingsThinkingLevel | null
+  /** Level the task actually ran with; `null` until started (or legacy rows). */
+  effectiveThinkingLevel: SettingsThinkingLevel | null
   maxDurationMinutes: number | null
   promptTokens: number
   completionTokens: number
@@ -60,6 +66,8 @@ export interface TaskInfo {
   provider?: string | null
   model?: string | null
   isDefaultModel?: boolean | null
+  thinkingLevel?: SettingsThinkingLevel | null
+  effectiveThinkingLevel?: SettingsThinkingLevel | null
   maxDurationMinutes?: number | null
   resultSummary?: string | null
   errorMessage?: string | null
@@ -167,4 +175,6 @@ interface RestartTaskPayload {
   provider?: string
   model?: string
   maxDurationMinutes?: number
+  /** `null` = background default; omitted = inherit from the original task. */
+  thinkingLevel?: SettingsThinkingLevel | null
 }

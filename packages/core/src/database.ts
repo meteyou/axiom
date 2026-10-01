@@ -345,6 +345,10 @@ export function initDatabase(dbPath?: string): Database {
     db.exec("ALTER TABLE scheduled_tasks ADD COLUMN attached_skills TEXT")
   }
 
+  if (!scheduledCols.find(c => c.name === 'thinking_level')) {
+    db.exec("ALTER TABLE scheduled_tasks ADD COLUMN thinking_level TEXT")
+  }
+
   // Migration: add 'paused' to tasks status CHECK constraint
   // Test by inserting a paused row — if CHECK fails, recreate the table
   try {
@@ -515,6 +519,13 @@ export function initDatabase(dbPath?: string): Database {
   }
   if (!taskColsForCache.find(c => c.name === 'cache_write')) {
     db.exec("ALTER TABLE tasks ADD COLUMN cache_write INTEGER NOT NULL DEFAULT 0")
+  }
+
+  if (!taskColsForCache.find(c => c.name === 'thinking_level')) {
+    db.exec("ALTER TABLE tasks ADD COLUMN thinking_level TEXT")
+  }
+  if (!taskColsForCache.find(c => c.name === 'effective_thinking_level')) {
+    db.exec("ALTER TABLE tasks ADD COLUMN effective_thinking_level TEXT")
   }
 
   // Provider/model task filters can otherwise fall back to a full task scan

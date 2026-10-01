@@ -303,7 +303,10 @@ const isAdmin = computed(() => user.value?.role === 'admin')
 const { providers, fetchProviders } = useProviders()
 
 function providerLabel(cj: Cronjob): string {
-  return formatCronjobProvider(cj.provider, providers.value) || t('cronjobs.defaultProvider')
+  const provider = formatCronjobProvider(cj.provider, providers.value) || t('cronjobs.defaultProvider')
+  return cj.thinkingLevel
+    ? `${provider} · ${t('tasks.thinking', { level: t(`tasks.thinkingLevels.${cj.thinkingLevel}`) })}`
+    : provider
 }
 
 // === Cronjobs ===

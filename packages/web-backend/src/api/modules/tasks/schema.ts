@@ -1,4 +1,5 @@
-import type { TaskStatus, TaskTriggerType } from '@axiom/core'
+import { normalizeThinkingLevel, SETTINGS_THINKING_LEVELS } from '@axiom/core'
+import type { SettingsThinkingLevel, TaskStatus, TaskTriggerType } from '@axiom/core'
 
 const VALID_STATUSES: TaskStatus[] = ['running', 'paused', 'completed', 'failed']
 const VALID_TRIGGER_TYPES: TaskTriggerType[] = ['user', 'agent', 'cronjob', 'heartbeat', 'consolidation']
@@ -146,6 +147,8 @@ export interface RestartTaskInput {
   provider?: string
   model?: string
   maxDurationMinutes?: number
+  /** `undefined` inherits the original task's level, `null` uses the background default. */
+  thinkingLevel?: SettingsThinkingLevel | null
 }
 
 /**
@@ -191,6 +194,16 @@ export function parseRestartTaskBody(body: unknown): ParseResult<RestartTaskInpu
       return { ok: false, error: 'maxDurationMinutes must be a positive integer' }
     }
     out.maxDurationMinutes = n
+  }
+
+  if (b.thinkingLevel !== undefined) {
+    if (b.thinkingLevel === null || b.thinkingLevel === '') {
+      out.thinkingLevel = null
+    } else {
+      const level = normalizeThinkingLevel(b.thinkingLevel)
+      if (!level) return { ok: false, error: `thinkingLevel must be one of: ${SETTINGS_THINKING_LEVELS.join(', ')}` }
+      out.thinkingLevel = level
+    }
   }
 
   return { ok: true, value: out }

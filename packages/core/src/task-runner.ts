@@ -7,11 +7,12 @@ import { renderAttachedSkillsBlock } from './attached-skills.js'
 import { readTasksGuidelinesFile } from './memory.js'
 import type { SettingsThinkingLevel } from './contracts/settings.js'
 import { readBackgroundThinkingLevelFromConfig } from './thinking-level.js'
+import { clampThinkingLevel } from './contracts/providers.js'
 import { TaskStore } from './task-store.js'
 import type { Task, TaskResultStatus, TaskTriggerType } from './task-store.js'
 import type { SessionManager, SessionType } from './session-manager.js'
 import { logTokenUsage, logToolCall } from './token-logger.js'
-import { estimateCost, parseProviderModelId, buildStreamFn, getProviderDefaultModel } from './provider-config.js'
+import { estimateCost, parseProviderModelId, buildStreamFn, getProviderDefaultModel, isProviderModelUsable } from './provider-config.js'
 import type { ProviderConfig } from './provider-config.js'
 import {
   ToolCallTracker,
@@ -340,6 +341,13 @@ export class TaskRunner {
       const model = this.options.buildModel(provider)
       const initialApiKey = await this.options.getApiKey(provider)
 
+      const thinkingLevel = clampThinkingLevel(
+        model,
+        task.thinkingLevel ?? this.resolveBackgroundThinkingLevel(),
+      ) as SettingsThinkingLevel
+      this.store.update(taskId, { effectiveThinkingLevel: thinkingLevel })
+      task.effectiveThinkingLevel = thinkingLevel
+
       // Determine effective system prompt
       const baseSystemPrompt = overrides?.systemPromptOverride
         ? overrides.systemPromptOverride
@@ -381,7 +389,7 @@ export class TaskRunner {
           systemPrompt,
           model,
           tools: effectiveTools,
-          thinkingLevel: this.resolveBackgroundThinkingLevel(),
+          thinkingLevel,
         },
         streamFn: buildStreamFn(provider),
         ...(provider.transport && provider.transport !== 'sse'
@@ -801,7 +809,7 @@ export class TaskRunner {
     if (!providerId) return
 
     const resolvedProvider = this.options.getProviderById(providerId)
-    if (!resolvedProvider) return
+    if (!resolvedProvider || !isProviderModelUsable(resolvedProvider, modelId)) return
 
     // Apply specific model override if provided
     const provider = modelId ? { ...resolvedProvider, enabledModels: [modelId] } : resolvedProvider
@@ -1523,6 +1531,7 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
         provider: task.provider ?? undefined,
         model: task.model ?? undefined,
         isDefaultModel: task.isDefaultModel ?? undefined,
+        thinkingLevel: task.thinkingLevel,
         maxDurationMinutes: task.maxDurationMinutes ?? undefined,
         sessionId: task.sessionId ?? undefined,
       })

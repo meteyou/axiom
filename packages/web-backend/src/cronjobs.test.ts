@@ -130,6 +130,33 @@ describe('Cronjobs REST API', () => {
       expect(body.cronjob.schedule).toBe('0 10 * * *')
     })
 
+    it('sets, keeps and resets the thinking level', async () => {
+      const set = await apiFetch(`/api/cronjobs/${createdId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ thinkingLevel: 'high' }),
+      })
+      expect(set.status).toBe(200)
+      expect((await set.json() as { cronjob: { thinkingLevel: string | null } }).cronjob.thinkingLevel).toBe('high')
+
+      const untouched = await apiFetch(`/api/cronjobs/${createdId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ name: 'Updated Summary' }),
+      })
+      expect((await untouched.json() as { cronjob: { thinkingLevel: string | null } }).cronjob.thinkingLevel).toBe('high')
+
+      const reset = await apiFetch(`/api/cronjobs/${createdId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ thinkingLevel: null }),
+      })
+      expect((await reset.json() as { cronjob: { thinkingLevel: string | null } }).cronjob.thinkingLevel).toBeNull()
+
+      const invalid = await apiFetch(`/api/cronjobs/${createdId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ thinkingLevel: 'turbo' }),
+      })
+      expect(invalid.status).toBe(400)
+    })
+
     it('validates cron expression on update', async () => {
       const res = await apiFetch(`/api/cronjobs/${createdId}`, {
         method: 'PUT',

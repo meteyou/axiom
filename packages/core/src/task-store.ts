@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Database } from './database.js'
+import type { SettingsThinkingLevel } from './contracts/settings.js'
+import { normalizeThinkingLevel } from './thinking-level.js'
 
 export type TaskStatus = 'running' | 'paused' | 'completed' | 'failed'
 export type TaskTriggerType = 'user' | 'agent' | 'cronjob' | 'heartbeat' | 'consolidation'
@@ -21,6 +23,10 @@ export interface Task {
    * recorded (legacy rows created before this column existed).
    */
   isDefaultModel: boolean | null
+  /** Explicitly requested thinking level; `null` = the background default at start time. */
+  thinkingLevel: SettingsThinkingLevel | null
+  /** Level the task agent actually ran with (requested level clamped to the model); `null` until started. */
+  effectiveThinkingLevel: SettingsThinkingLevel | null
   maxDurationMinutes: number | null
   promptTokens: number
   completionTokens: number
@@ -50,6 +56,7 @@ export interface CreateTaskInput {
    * Leave unset for legacy paths that do not track this distinction.
    */
   isDefaultModel?: boolean
+  thinkingLevel?: SettingsThinkingLevel | null
   maxDurationMinutes?: number
   sessionId?: string
 }
@@ -58,6 +65,7 @@ export interface UpdateTaskInput {
   status?: TaskStatus
   provider?: string
   model?: string
+  effectiveThinkingLevel?: SettingsThinkingLevel
   promptTokens?: number
   completionTokens?: number
   cacheRead?: number
@@ -144,6 +152,8 @@ interface TaskRow {
   provider: string | null
   model: string | null
   is_default_model: number | null
+  thinking_level: string | null
+  effective_thinking_level: string | null
   max_duration_minutes: number | null
   prompt_tokens: number
   completion_tokens: number
@@ -174,6 +184,8 @@ function rowToTask(row: TaskRow): Task {
       row.is_default_model === null || row.is_default_model === undefined
         ? null
         : row.is_default_model === 1,
+    thinkingLevel: normalizeThinkingLevel(row.thinking_level) ?? null,
+    effectiveThinkingLevel: normalizeThinkingLevel(row.effective_thinking_level) ?? null,
     maxDurationMinutes: row.max_duration_minutes,
     promptTokens: row.prompt_tokens,
     completionTokens: row.completion_tokens,
@@ -206,6 +218,8 @@ export function initTasksTable(db: Database): void {
       provider TEXT,
       model TEXT,
       is_default_model INTEGER,
+      thinking_level TEXT,
+      effective_thinking_level TEXT,
       max_duration_minutes INTEGER,
       prompt_tokens INTEGER NOT NULL DEFAULT 0,
       completion_tokens INTEGER NOT NULL DEFAULT 0,
@@ -246,8 +260,8 @@ export class TaskStore {
     const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
 
     this.db.prepare(`
-      INSERT INTO tasks (id, name, prompt, status, trigger_type, trigger_source_id, provider, model, is_default_model, max_duration_minutes, session_id, created_at)
-      VALUES (?, ?, ?, 'running', ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO tasks (id, name, prompt, status, trigger_type, trigger_source_id, provider, model, is_default_model, thinking_level, max_duration_minutes, session_id, created_at)
+      VALUES (?, ?, ?, 'running', ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       input.name,
@@ -257,6 +271,7 @@ export class TaskStore {
       input.provider ?? null,
       input.model ?? null,
       input.isDefaultModel === undefined ? null : (input.isDefaultModel ? 1 : 0),
+      input.thinkingLevel ?? null,
       input.maxDurationMinutes ?? null,
       input.sessionId ?? null,
       now,
@@ -315,6 +330,10 @@ export class TaskStore {
     if (input.model !== undefined) {
       setClauses.push('model = ?')
       params.push(input.model)
+    }
+    if (input.effectiveThinkingLevel !== undefined) {
+      setClauses.push('effective_thinking_level = ?')
+      params.push(input.effectiveThinkingLevel)
     }
     if (input.promptTokens !== undefined) {
       setClauses.push('prompt_tokens = ?')

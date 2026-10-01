@@ -29,6 +29,11 @@
             </span>
             {{ $t('taskViewer.live') }}
           </Badge>
+          <span
+            v-if="taskMeta"
+            class="hidden truncate text-xs text-muted-foreground md:inline"
+            :title="taskMeta"
+          >{{ taskMeta }}</span>
         </div>
 
         <Button
@@ -156,6 +161,21 @@
                     :key="opt.value"
                     :value="opt.value"
                   >
+                    {{ opt.label }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div class="space-y-2">
+              <Label for="restart-thinking">{{ $t('taskViewer.fieldThinkingLevel') }}</Label>
+              <Select v-model="form.thinkingLevel" :disabled="submitting">
+                <SelectTrigger id="restart-thinking">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">{{ $t('taskViewer.fieldThinkingLevelDefault') }}</SelectItem>
+                  <SelectItem v-for="opt in thinkingLevelOptions" :key="opt.value" :value="opt.value">
                     {{ opt.label }}
                   </SelectItem>
                 </SelectContent>
@@ -330,7 +350,9 @@ import { useTaskEvents } from '~/features/tasks/composables/useTaskEvents'
 import { useTasksApi } from '~/api/tasks'
 import { formatToolName, getToolCallSummary } from '~/utils/toolNameFormat'
 import { useProviders } from '~/composables/useProviders'
-import { taskStatusVariant } from '~/features/tasks/utils/taskFormat'
+import { formatTaskThinking, formatTaskTriggerModel, taskStatusVariant } from '~/features/tasks/utils/taskFormat'
+import { buildThinkingLevelSelectOptions, findModelSpecByComposite } from '~/utils/thinkingLevels'
+import type { SettingsThinkingLevel } from '@axiom/core/contracts'
 
 const props = defineProps<{
   taskId: string
@@ -343,6 +365,7 @@ const emit = defineEmits<{
   restarted: [taskId: string]
 }>()
 
+const { t } = useI18n()
 const { renderMarkdown } = useMarkdown()
 const { formatTime } = useFormat()
 const tasksApi = useTasksApi()
@@ -374,6 +397,32 @@ const form = reactive({
   // Use `''` as the empty sentinel so the Input component's v-model stays
   // happy (it rejects `null`). Converted to undefined at submit time.
   maxDurationMinutes: '' as number | '',
+  thinkingLevel: '' as SettingsThinkingLevel | '', // '' = background default
+})
+
+const taskMeta = computed(() => {
+  const info = taskInfo.value
+  if (!info) return null
+  const model = formatTaskTriggerModel({
+    provider: info.provider ?? null,
+    model: info.model ?? null,
+    isDefaultModel: info.isDefaultModel ?? null,
+  }, t)
+  const thinking = formatTaskThinking({
+    thinkingLevel: info.thinkingLevel ?? null,
+    effectiveThinkingLevel: info.effectiveThinkingLevel ?? null,
+  }, t)
+  return [model, thinking].filter(Boolean).join(' · ') || null
+})
+
+const thinkingLevelOptions = computed(() => {
+  const label = (level: SettingsThinkingLevel) => t(`tasks.thinkingLevels.${level}`)
+  return buildThinkingLevelSelectOptions(
+    findModelSpecByComposite(providers.value, form.providerComposite),
+    form.thinkingLevel,
+    label,
+    (level, effective) => t('settings.thinkingLevelUnsupported', { level: label(level), effective: label(effective) }),
+  )
 })
 
 /** Only terminal tasks can be restarted. `running` / `paused` must be
@@ -399,8 +448,8 @@ const providerModelOptions = computed(() => buildProviderModelOptions(providers.
 
 /** Map the task's stored (provider, model) strings onto the composite
  *  `providerId:modelId` used by the select. Falls back to '' when the
- *  stored provider is unknown (e.g. deleted) — the user can then pick a
- *  fresh one or leave it on Default. */
+ *  stored provider is unknown (e.g. deleted) or disabled — the user can then
+ *  pick a fresh one or leave it on Default. */
 function deriveCompositeFromTask(): string {
   const provider = taskInfo.value?.provider
   const model = taskInfo.value?.model
@@ -412,7 +461,8 @@ function deriveCompositeFromTask(): string {
   const modelId = model && match.enabledModels?.includes(model)
     ? model
     : match.enabledModels?.[0] ?? ''
-  return `${match.id}:${modelId}`
+  const composite = `${match.id}:${modelId}`
+  return providerModelOptions.value.some(opt => opt.value === composite) ? composite : ''
 }
 
 async function startEdit() {
@@ -431,6 +481,7 @@ async function startEdit() {
   form.name = taskInfo.value?.name ?? ''
   form.prompt = taskInfo.value?.prompt ?? ''
   form.maxDurationMinutes = taskInfo.value?.maxDurationMinutes ?? ''
+  form.thinkingLevel = taskInfo.value?.thinkingLevel ?? ''
   form.providerComposite = taskInfo.value?.isDefaultModel
     ? ''
     : deriveCompositeFromTask()
@@ -476,6 +527,7 @@ async function submitRestart() {
         typeof form.maxDurationMinutes === 'number' && form.maxDurationMinutes > 0
           ? form.maxDurationMinutes
           : undefined,
+      thinkingLevel: form.thinkingLevel || null,
     }
 
     const response = await tasksApi.restartTask(props.taskId, payload)

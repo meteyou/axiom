@@ -27,6 +27,7 @@
       </Badge>
       <span v-if="triggerModel" class="truncate" :title="triggerModel">{{ triggerModel }}</span>
     </div>
+    <div v-if="thinking" class="text-xs text-muted-foreground">{{ thinking }}</div>
 
     <dl class="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
       <div v-for="cell in statCells" :key="cell.label" class="min-w-0">
@@ -47,6 +48,7 @@ import type { Task } from '~/api/tasks'
 import {
   cacheSummary,
   formatTaskDuration,
+  formatTaskThinking,
   formatTaskTriggerModel,
   hasCacheTokens,
   taskStatusVariant,
@@ -65,6 +67,7 @@ const { t } = useI18n()
 const { formatNumber, formatCurrency, formatTimestamp } = useFormat()
 
 const triggerModel = computed(() => formatTaskTriggerModel(props.task, t))
+const thinking = computed(() => formatTaskThinking(props.task, t))
 
 const statCells = computed(() => [
   { label: t('tasks.columns.duration'), value: formatTaskDuration(props.task) },
