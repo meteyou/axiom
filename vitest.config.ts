@@ -3,11 +3,12 @@ import path from 'node:path'
 
 export default defineConfig({
   resolve: {
-    alias: {
-      '@axiom/core': path.resolve(__dirname, 'packages/core/src/index.ts'),
-      '@axiom/telegram': path.resolve(__dirname, 'packages/telegram/src/index.ts'),
-      '@axiom/web-backend': path.resolve(__dirname, 'packages/web-backend/src/index.ts'),
-    },
+    alias: [
+      { find: /^@axiom\/core\/contracts$/, replacement: path.resolve(__dirname, 'packages/core/src/contracts/index.ts') },
+      { find: /^@axiom\/core$/, replacement: path.resolve(__dirname, 'packages/core/src/index.ts') },
+      { find: /^@axiom\/telegram$/, replacement: path.resolve(__dirname, 'packages/telegram/src/index.ts') },
+      { find: /^@axiom\/web-backend$/, replacement: path.resolve(__dirname, 'packages/web-backend/src/index.ts') },
+    ],
   },
   test: {
     globals: true,
