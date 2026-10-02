@@ -108,6 +108,22 @@ When the user replies after a `status="question"` injection, the agent calls [`r
 
 If both checks pass, the task transitions back to `running` and the next `<task_injection>` arrives when it's done or has another question.
 
+### Recovery after a server restart
+
+When the backend restarts, `recoverTasks()` handles every task the database still lists as active:
+
+- **`paused`** tasks are marked `failed` — their in-memory agent is gone. Re-ask the question to start over.
+- **`running`** tasks are restarted as a new task named `<name> (resumed)` with the original prompt. The old row is marked `failed` and its summary points to the new task ID.
+
+The resumed prompt carries a `<recovery_context>` block built from the task tool journal (`task_tool_journal` table). The runner writes a journal row *before* each tool call starts and finalizes it when the call ends, so the resumed agent sees:
+
+- **Finished calls** in order, with arguments and a result preview. The 25 most recent calls are shown in full; older ones as a name + status line.
+- **Interrupted calls** — started but never finished because the process died mid-call. Each tool is classified as replay-safe or not:
+  - **Safe** (reads like `read_file`, `web_fetch`, `email_list`, `list_tasks`, plus the idempotent `email_read` / `email_mark_read` / `email_mark_unread`): *"Interrupted; safe to re-run."*
+  - **Unsafe** (everything else, e.g. `shell`, `write_file`, `email_send`, `create_task`): *"Interrupted; outcome UNKNOWN."* The agent has to check the current state (git remote, sent folder, file contents) before deciding whether to repeat the call.
+
+Unknown tools default to unsafe. Tasks that crashed before the journal existed fall back to a short summary of their last ten `tool_calls` rows. Journal rows are deleted once a task is no longer running or paused.
+
 ### Provider, model, and duration
 
 `create_task` accepts optional `provider`, `model`, and `max_duration_minutes`:

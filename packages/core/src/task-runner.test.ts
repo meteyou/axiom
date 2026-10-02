@@ -1158,6 +1158,93 @@ describe('TaskRunner', () => {
       expect(resumedTask).toBeDefined()
       expect(resumedTask!.prompt).toContain('Build an app')
       expect(resumedTask!.prompt).toContain('server restart')
+      expect(resumedTask!.prompt).toContain('Progress from previous run (1 tool calls made):\n- read_file: "file contents"')
+      expect(resumedTask!.prompt).not.toContain('<recovery_context>')
+      expect(original.resultSummary).toBe(`server restart — task being resumed as ${resumedTask!.id}`)
+    })
+
+    function createCrashedTask(sessionId: string) {
+      const task = store.create({ name: 'Crashed Task', prompt: 'Ship the release', triggerType: 'agent', sessionId })
+      store.update(task.id, { status: 'running', provider: 'test-provider', model: 'test-model' })
+      return task
+    }
+
+    async function recoverAndGetResumedPrompt(): Promise<string> {
+      await runner.recoverTasks(() => mockProvider, mockProvider)
+      const resumedTask = store.list().find(t => t.name === 'Crashed Task (resumed)')
+      expect(resumedTask).toBeDefined()
+      return resumedTask!.prompt
+    }
+
+    it('builds the resume prompt from the tool journal including arguments', async () => {
+      const task = createCrashedTask('journal-recovery-session')
+      const journal = new TaskToolJournal(db)
+      journal.recordStarted({ taskId: task.id, sessionId: 'journal-recovery-session', toolCallId: 'call-1', toolName: 'read_file', args: { path: 'CHANGELOG.md' }, replay: 'safe' })
+      journal.recordEnded({ taskId: task.id, toolCallId: 'call-1', isError: false, result: { content: [{ type: 'text', text: '## 1.2.0' }] } })
+      db.prepare(
+        "INSERT INTO tool_calls (session_id, tool_name, input, output, duration_ms, status) VALUES (?, 'read_file', '{}', 'legacy output', 1, 'success')"
+      ).run('journal-recovery-session')
+
+      const prompt = await recoverAndGetResumedPrompt()
+
+      expect(prompt).toContain('Ship the release')
+      expect(prompt).toContain('<recovery_context>')
+      expect(prompt).toContain('1. read_file {"path":"CHANGELOG.md"} → completed\n   Result: ## 1.2.0')
+      expect(prompt).not.toContain('legacy output')
+      expect(prompt).not.toContain('Continue from where you left off')
+    })
+
+    it('flags an interrupted unsafe call as outcome unknown', async () => {
+      const task = createCrashedTask('journal-unsafe-session')
+      new TaskToolJournal(db).recordStarted({ taskId: task.id, sessionId: 'journal-unsafe-session', toolCallId: 'call-1', toolName: 'shell', args: { command: 'git push origin main' }, replay: 'unsafe' })
+
+      const prompt = await recoverAndGetResumedPrompt()
+
+      expect(prompt).toContain('Interrupted tool calls (started, never finished):\n- shell {"command":"git push origin main"}\n  Interrupted; outcome UNKNOWN. Do NOT repeat blindly.')
+    })
+
+    it('flags an interrupted safe call as safe to re-run', async () => {
+      const task = createCrashedTask('journal-safe-session')
+      new TaskToolJournal(db).recordStarted({ taskId: task.id, sessionId: 'journal-safe-session', toolCallId: 'call-1', toolName: 'web_fetch', args: { url: 'https://example.com' }, replay: 'safe' })
+
+      const prompt = await recoverAndGetResumedPrompt()
+
+      expect(prompt).toContain('- web_fetch {"url":"https://example.com"}\n  Interrupted; safe to re-run.')
+    })
+
+    it('reports a tool call cut off by a server crash as outcome unknown after restart', async () => {
+      const { Agent } = await import('@earendil-works/pi-agent-core')
+      const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
+      let subscribeFn: ((event: unknown) => void) | null = null
+      MockAgent.mockImplementationOnce(() => ({
+        subscribe: vi.fn((fn: (event: unknown) => void) => {
+          subscribeFn = fn
+          return () => { subscribeFn = null }
+        }),
+        prompt: vi.fn(() => new Promise<void>(() => {})),
+        abort: vi.fn(),
+        state: { messages: [] },
+      }))
+      const task = store.create({ name: 'Crashed Task', prompt: 'Wait a minute', triggerType: 'agent', sessionId: 'crash-sim-session' })
+      await runner.startTask(task, mockProvider)
+      subscribeFn!({ type: 'tool_execution_start', toolCallId: 'call-1', toolName: 'shell', args: { command: 'sleep 60' } })
+
+      // The process dies mid-call: the in-memory runner is gone, the DB row stays 'running'.
+      runner.dispose()
+      runner = new TaskRunner({
+        db,
+        buildModel: () => ({} as ReturnType<TaskRunnerOptions['buildModel']>),
+        getApiKey: async () => 'test-key',
+        tools: [],
+        onTaskComplete: () => {},
+        onTaskPaused: () => {},
+        sessionManager,
+      })
+
+      const prompt = await recoverAndGetResumedPrompt()
+
+      expect(store.getById(task.id)!.status).toBe('failed')
+      expect(prompt).toContain('- shell {"command":"sleep 60"}\n  Interrupted; outcome UNKNOWN.')
     })
 
     it('handles recovery with no orphaned tasks', async () => {
