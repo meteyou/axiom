@@ -34,6 +34,7 @@ describe('TaskToolJournal', () => {
       toolCallId: 'call-1',
       toolName: 'shell',
       args: { command: 'git push' },
+      replay: 'unsafe',
     })
 
     const [entry] = journal.listForTask('task-1')
@@ -43,12 +44,13 @@ describe('TaskToolJournal', () => {
       args: '{"command":"git push"}',
       status: 'started',
       result: null,
+      replay: 'unsafe',
       endedAt: null,
     })
   })
 
   it('finalizes the call with the model-facing result text', () => {
-    journal.recordStarted({ taskId: 'task-1', sessionId: null, toolCallId: 'call-1', toolName: 'read_file', args: { path: 'a.txt' } })
+    journal.recordStarted({ taskId: 'task-1', sessionId: null, toolCallId: 'call-1', toolName: 'read_file', args: { path: 'a.txt' }, replay: 'safe' })
     journal.recordEnded({
       taskId: 'task-1',
       toolCallId: 'call-1',
@@ -63,7 +65,7 @@ describe('TaskToolJournal', () => {
   })
 
   it('marks failed calls as error', () => {
-    journal.recordStarted({ taskId: 'task-1', sessionId: null, toolCallId: 'call-1', toolName: 'shell', args: {} })
+    journal.recordStarted({ taskId: 'task-1', sessionId: null, toolCallId: 'call-1', toolName: 'shell', args: {}, replay: 'unsafe' })
     journal.recordEnded({ taskId: 'task-1', toolCallId: 'call-1', isError: true, result: 'Error: boom' })
 
     const [entry] = journal.listForTask('task-1')
@@ -72,9 +74,9 @@ describe('TaskToolJournal', () => {
   })
 
   it('leaves a call without an end event in started state (crash simulation)', () => {
-    journal.recordStarted({ taskId: 'task-1', sessionId: null, toolCallId: 'call-1', toolName: 'read_file', args: {} })
+    journal.recordStarted({ taskId: 'task-1', sessionId: null, toolCallId: 'call-1', toolName: 'read_file', args: {}, replay: 'safe' })
     journal.recordEnded({ taskId: 'task-1', toolCallId: 'call-1', isError: false, result: 'done' })
-    journal.recordStarted({ taskId: 'task-1', sessionId: null, toolCallId: 'call-2', toolName: 'email_send', args: { to: ['a@b.c'] } })
+    journal.recordStarted({ taskId: 'task-1', sessionId: null, toolCallId: 'call-2', toolName: 'email_send', args: { to: ['a@b.c'] }, replay: 'unsafe' })
 
     const reopened = new TaskToolJournal(db)
     expect(reopened.listForTask('task-1').map(e => [e.toolCallId, e.status])).toEqual([
@@ -85,7 +87,7 @@ describe('TaskToolJournal', () => {
 
   it('truncates oversized args and results with a marker', () => {
     const huge = 'x'.repeat(MAX_JOURNAL_FIELD_CHARS + 100)
-    journal.recordStarted({ taskId: 'task-1', sessionId: null, toolCallId: 'call-1', toolName: 'write_file', args: huge })
+    journal.recordStarted({ taskId: 'task-1', sessionId: null, toolCallId: 'call-1', toolName: 'write_file', args: huge, replay: 'unsafe' })
     journal.recordEnded({ taskId: 'task-1', toolCallId: 'call-1', isError: false, result: huge })
 
     const [entry] = journal.listForTask('task-1')
@@ -95,10 +97,10 @@ describe('TaskToolJournal', () => {
   })
 
   it('replaces the row when a tool call id repeats within a task', () => {
-    journal.recordStarted({ taskId: 'task-1', sessionId: null, toolCallId: 'call-1', toolName: 'read_file', args: { path: 'a' } })
+    journal.recordStarted({ taskId: 'task-1', sessionId: null, toolCallId: 'call-1', toolName: 'read_file', args: { path: 'a' }, replay: 'safe' })
     journal.recordEnded({ taskId: 'task-1', toolCallId: 'call-1', isError: false, result: 'a' })
-    journal.recordStarted({ taskId: 'task-1', sessionId: null, toolCallId: 'call-2', toolName: 'list_files', args: {} })
-    journal.recordStarted({ taskId: 'task-1', sessionId: null, toolCallId: 'call-1', toolName: 'shell', args: { command: 'ls' } })
+    journal.recordStarted({ taskId: 'task-1', sessionId: null, toolCallId: 'call-2', toolName: 'list_files', args: {}, replay: 'safe' })
+    journal.recordStarted({ taskId: 'task-1', sessionId: null, toolCallId: 'call-1', toolName: 'shell', args: { command: 'ls' }, replay: 'unsafe' })
 
     const entries = journal.listForTask('task-1')
     expect(entries.map(e => e.toolCallId)).toEqual(['call-2', 'call-1'])
@@ -113,7 +115,7 @@ describe('TaskToolJournal', () => {
     store.update(completed.id, { status: 'completed' })
 
     for (const taskId of [running.id, paused.id, completed.id, 'deleted-task']) {
-      journal.recordStarted({ taskId, sessionId: null, toolCallId: 'call-1', toolName: 'shell', args: {} })
+      journal.recordStarted({ taskId, sessionId: null, toolCallId: 'call-1', toolName: 'shell', args: {}, replay: 'unsafe' })
     }
 
     expect(journal.pruneFinishedTasks()).toBe(2)
@@ -124,7 +126,7 @@ describe('TaskToolJournal', () => {
   })
 
   it('keeps existing journal rows when the database is initialized again', () => {
-    journal.recordStarted({ taskId: 'task-1', sessionId: null, toolCallId: 'call-1', toolName: 'shell', args: {} })
+    journal.recordStarted({ taskId: 'task-1', sessionId: null, toolCallId: 'call-1', toolName: 'shell', args: {}, replay: 'unsafe' })
     db.close()
 
     db = initDatabase(dbPath)

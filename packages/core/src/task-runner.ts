@@ -10,6 +10,7 @@ import { readBackgroundThinkingLevelFromConfig } from './thinking-level.js'
 import { clampThinkingLevel } from './contracts/providers.js'
 import { TaskStore } from './task-store.js'
 import { TaskToolJournal } from './task-tool-journal.js'
+import { getToolReplayPolicy } from './tool-replay.js'
 import type { Task, TaskResultStatus, TaskTriggerType } from './task-store.js'
 import type { SessionManager, SessionType } from './session-manager.js'
 import { logTokenUsage, logToolCall } from './token-logger.js'
@@ -759,6 +760,7 @@ export class TaskRunner {
           toolCallId: event.toolCallId,
           toolName: event.toolName,
           args: event.args,
+          replay: getToolReplayPolicy(event.toolName),
         }))
 
         // Emit to task event bus

@@ -1955,6 +1955,20 @@ describe('TaskRunner', () => {
       expect(toolCallRows).toEqual([{ tool_name: 'shell', input: '{"command":"git push"}' }])
     })
 
+    it('records the replay policy of each tool', async () => {
+      const { task, emit } = await startTaskWithControllableAgent('journal-replay-session')
+
+      emit({ type: 'tool_execution_start', toolCallId: 'call-1', toolName: 'read_file', args: { path: 'a.txt' } })
+      emit({ type: 'tool_execution_start', toolCallId: 'call-2', toolName: 'shell', args: { command: 'ls' } })
+      emit({ type: 'tool_execution_start', toolCallId: 'call-3', toolName: 'unclassified_tool', args: {} })
+
+      expect(new TaskToolJournal(db).listForTask(task.id).map(entry => [entry.toolName, entry.replay])).toEqual([
+        ['read_file', 'safe'],
+        ['shell', 'unsafe'],
+        ['unclassified_tool', 'unsafe'],
+      ])
+    })
+
     it('keeps a call without end event as started (crash simulation)', async () => {
       const { task, emit } = await startTaskWithControllableAgent('journal-crash-session')
 
@@ -1970,10 +1984,10 @@ describe('TaskRunner', () => {
     it('drops journal rows of finished tasks during restart recovery', async () => {
       const journal = new TaskToolJournal(db)
       const crashed = store.create({ name: 'Crashed', prompt: 'work', triggerType: 'agent', sessionId: 'crashed-session' })
-      journal.recordStarted({ taskId: crashed.id, sessionId: 'crashed-session', toolCallId: 'call-1', toolName: 'shell', args: {} })
+      journal.recordStarted({ taskId: crashed.id, sessionId: 'crashed-session', toolCallId: 'call-1', toolName: 'shell', args: {}, replay: 'unsafe' })
       const finished = store.create({ name: 'Finished', prompt: 'work', triggerType: 'agent' })
       store.update(finished.id, { status: 'completed' })
-      journal.recordStarted({ taskId: finished.id, sessionId: null, toolCallId: 'call-1', toolName: 'shell', args: {} })
+      journal.recordStarted({ taskId: finished.id, sessionId: null, toolCallId: 'call-1', toolName: 'shell', args: {}, replay: 'unsafe' })
 
       await runner.recoverTasks(() => mockProvider, mockProvider)
 
