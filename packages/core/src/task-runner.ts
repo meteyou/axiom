@@ -11,6 +11,7 @@ import { clampThinkingLevel } from './contracts/providers.js'
 import { TaskStore } from './task-store.js'
 import { TaskToolJournal } from './task-tool-journal.js'
 import { getToolReplayPolicy } from './tool-replay.js'
+import { formatJournalRecoveryContext } from './task-recovery-prompt.js'
 import type { Task, TaskResultStatus, TaskTriggerType } from './task-store.js'
 import type { SessionManager, SessionType } from './session-manager.js'
 import { logTokenUsage, logToolCall } from './token-logger.js'
@@ -1578,29 +1579,13 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
       failed++
     }
 
-    // Handle running tasks — build summary from stored tool_calls and re-start
     const runningTasks = this.store.list({ status: 'running' })
     for (const task of runningTasks) {
       const provider = (task.provider ? getProvider(task.provider) : null) ?? defaultProvider
 
-      // Build a progress summary from stored tool calls
-      const toolCalls = this.db.prepare(
-        'SELECT tool_name, output FROM tool_calls WHERE session_id = ? ORDER BY timestamp ASC'
-      ).all(task.sessionId ?? '') as { tool_name: string; output: string }[]
-
-      let progressSummary = ''
-      if (toolCalls.length > 0) {
-        const toolSummaries = toolCalls.slice(-10).map(tc => {
-          const outputPreview = tc.output?.slice(0, 200) ?? ''
-          return `- ${tc.tool_name}: ${outputPreview}`
-        })
-        progressSummary = `\n\nProgress from previous run (${toolCalls.length} tool calls made):\n${toolSummaries.join('\n')}`
-      }
-
-      // Create a new task entry for the resumed run
       const resumedTask = this.store.create({
         name: `${task.name} (resumed)`,
-        prompt: `${task.prompt}${progressSummary}\n\nNote: This task was interrupted by a server restart. Continue from where you left off.`,
+        prompt: `${task.prompt}${this.buildRecoveryNote(task)}`,
         triggerType: task.triggerType,
         triggerSourceId: task.triggerSourceId ?? undefined,
         provider: task.provider ?? undefined,
@@ -1616,7 +1601,7 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
       this.store.update(task.id, {
         status: 'failed',
         resultStatus: 'failed',
-        resultSummary: 'server restart — task being resumed',
+        resultSummary: `server restart — task being resumed as ${resumedTask.id}`,
         errorMessage: 'server restart',
         completedAt: now,
       })
@@ -1640,6 +1625,32 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
     this.pruneToolJournal()
 
     return { resumed, failed }
+  }
+
+  private buildRecoveryNote(task: Task): string {
+    const journalEntries = this.journal.listForTask(task.id)
+    if (journalEntries.length > 0) {
+      return `\n\n${formatJournalRecoveryContext(journalEntries)}`
+    }
+    return this.buildLegacyRecoveryNote(task)
+  }
+
+  /** Fallback for tasks without journal entries, e.g. ones that crashed before the journal existed. */
+  private buildLegacyRecoveryNote(task: Task): string {
+    const toolCalls = this.db.prepare(
+      'SELECT tool_name, output FROM tool_calls WHERE session_id = ? ORDER BY timestamp ASC'
+    ).all(task.sessionId ?? '') as { tool_name: string; output: string }[]
+
+    let progressSummary = ''
+    if (toolCalls.length > 0) {
+      const toolSummaries = toolCalls.slice(-10).map(tc => {
+        const outputPreview = tc.output?.slice(0, 200) ?? ''
+        return `- ${tc.tool_name}: ${outputPreview}`
+      })
+      progressSummary = `\n\nProgress from previous run (${toolCalls.length} tool calls made):\n${toolSummaries.join('\n')}`
+    }
+
+    return `${progressSummary}\n\nNote: This task was interrupted by a server restart. Continue from where you left off.`
   }
 
   /**
