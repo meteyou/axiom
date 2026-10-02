@@ -34,7 +34,7 @@ The two environment variables `DATA_DIR` and `WORKSPACE_DIR` are the only knobs.
 
 | File | Purpose | Helper |
 |---|---|---|
-| `/data/db/axiom.db` | Single SQLite database: sessions, chat_messages, tasks, scheduled_tasks, token_usage, tool_calls, telegram_users, memories (atomic facts). WAL mode + FK on. | `initDatabase()` in `packages/core/src/database.ts` |
+| `/data/db/axiom.db` | Single SQLite database: sessions, chat_messages, tasks, task_tool_journal, scheduled_tasks, token_usage, tool_calls, telegram_users, memories (atomic facts). WAL mode + FK on. | `initDatabase()` in `packages/core/src/database.ts` |
 
 Schema is defined inline in `database.ts` (`SCHEMA` const). Migrations are idempotent and run on startup. Session-ID conventions: see `agent_docs/session-id-architecture.md` and `agent_docs/architecture-conventions.md` §8.
 

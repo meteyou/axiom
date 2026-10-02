@@ -9,6 +9,7 @@ import type { SettingsThinkingLevel } from './contracts/settings.js'
 import { readBackgroundThinkingLevelFromConfig } from './thinking-level.js'
 import { clampThinkingLevel } from './contracts/providers.js'
 import { TaskStore } from './task-store.js'
+import { TaskToolJournal } from './task-tool-journal.js'
 import type { Task, TaskResultStatus, TaskTriggerType } from './task-store.js'
 import type { SessionManager, SessionType } from './session-manager.js'
 import { logTokenUsage, logToolCall } from './token-logger.js'
@@ -266,6 +267,7 @@ ${task.resultSummary ?? task.errorMessage ?? 'Task completed without summary.'}
  */
 export class TaskRunner {
   private store: TaskStore
+  private journal: TaskToolJournal
   private db: Database
   private runningTasks: Map<string, RunningTask> = new Map()
   private pausedTasks: Map<string, PausedTask> = new Map()
@@ -276,9 +278,12 @@ export class TaskRunner {
     this.options = options
     this.db = options.db
     this.store = new TaskStore(options.db)
+    this.journal = new TaskToolJournal(options.db)
 
-    // Start periodic cleanup of stale paused tasks
-    this.cleanupTimer = setInterval(() => this.cleanupStalePausedTasks(), CLEANUP_INTERVAL_MS)
+    this.cleanupTimer = setInterval(() => {
+      this.cleanupStalePausedTasks()
+      this.pruneToolJournal()
+    }, CLEANUP_INTERVAL_MS)
   }
 
   /**
@@ -718,6 +723,13 @@ export class TaskRunner {
       case 'tool_execution_start': {
         runningTask.toolCallTimers.set(event.toolCallId, Date.now())
         runningTask.toolCallArgs.set(event.toolCallId, event.args)
+        this.writeToolJournal(runningTask.taskId, journal => journal.recordStarted({
+          taskId: runningTask.taskId,
+          sessionId,
+          toolCallId: event.toolCallId,
+          toolName: event.toolName,
+          args: event.args,
+        }))
 
         // Emit to task event bus
         this.options.taskEventBus?.emitTaskEvent({
@@ -744,6 +756,12 @@ export class TaskRunner {
 
         const outputStr = JSON.stringify(event.result ?? {})
         const isError = event.isError === true || (typeof event.result === 'string' && event.result.startsWith('Error'))
+        this.writeToolJournal(runningTask.taskId, journal => journal.recordEnded({
+          taskId: runningTask.taskId,
+          toolCallId: event.toolCallId,
+          isError,
+          result: event.result,
+        }))
 
         // Track for loop detection
         runningTask.toolCallTracker.record(event.toolName, args, outputStr, isError)
@@ -1148,6 +1166,23 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
     runningTask.timeoutTimer = setTimeout(() => {
       this.abortTask(runningTask.taskId, 'Max duration exceeded')
     }, remaining)
+  }
+
+  private writeToolJournal(taskId: string, write: (journal: TaskToolJournal) => void): void {
+    try {
+      write(this.journal)
+    } catch (err) {
+      console.warn(`[task-runner] tool journal write failed for ${taskId}:`, err)
+    }
+  }
+
+  private pruneToolJournal(): number {
+    try {
+      return this.journal.pruneFinishedTasks()
+    } catch (err) {
+      console.warn('[task-runner] tool journal prune failed:', err)
+      return 0
+    }
   }
 
   private persistLiveMetrics(runningTask: RunningTask): void {
@@ -1567,6 +1602,8 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
         failed++
       }
     }
+
+    this.pruneToolJournal()
 
     return { resumed, failed }
   }

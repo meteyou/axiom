@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { initDatabase } from './database.js'
 import { TaskStore } from './task-store.js'
+import { TaskToolJournal } from './task-tool-journal.js'
 import { TaskRunner, formatTaskInjection, parseTaskTimestampMs } from './task-runner.js'
 import type { TaskRunnerOptions, TaskOverrides } from './task-runner.js'
 import type { Database } from './database.js'
@@ -1809,6 +1810,79 @@ describe('TaskRunner', () => {
       expect(finalRow.promptTokens).toBe(250)
       expect(finalRow.completionTokens).toBe(90)
       expect(finalRow.toolCallCount).toBe(1)
+    })
+  })
+
+  describe('tool journal', () => {
+    async function startTaskWithControllableAgent(sessionId: string) {
+      const { Agent } = await import('@earendil-works/pi-agent-core')
+      const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
+
+      let subscribeFn: ((event: unknown) => void) | null = null
+      MockAgent.mockImplementationOnce(() => ({
+        subscribe: vi.fn((fn: (event: unknown) => void) => {
+          subscribeFn = fn
+          return () => { subscribeFn = null }
+        }),
+        prompt: vi.fn(() => new Promise<void>(() => {})),
+        abort: vi.fn(),
+        state: { messages: [] },
+      }))
+
+      const task = store.create({ name: 'Journal Task', prompt: 'work', triggerType: 'agent', sessionId })
+      await runner.startTask(task, mockProvider)
+      expect(subscribeFn).not.toBeNull()
+      return { task, emit: (event: unknown) => subscribeFn!(event) }
+    }
+
+    it('writes a started entry before the tool ends and finalizes it on end', async () => {
+      const { task, emit } = await startTaskWithControllableAgent('journal-session')
+      const journal = new TaskToolJournal(db)
+
+      emit({ type: 'tool_execution_start', toolCallId: 'call-1', toolName: 'shell', args: { command: 'git push' } })
+      expect(journal.listForTask(task.id)).toEqual([
+        expect.objectContaining({ toolCallId: 'call-1', toolName: 'shell', args: '{"command":"git push"}', status: 'started' }),
+      ])
+
+      emit({
+        type: 'tool_execution_end',
+        toolCallId: 'call-1',
+        toolName: 'shell',
+        result: { content: [{ type: 'text', text: 'pushed' }], details: {} },
+        isError: false,
+      })
+      expect(journal.listForTask(task.id)).toEqual([
+        expect.objectContaining({ toolCallId: 'call-1', status: 'completed', result: 'pushed' }),
+      ])
+
+      const toolCallRows = db.prepare('SELECT tool_name, input FROM tool_calls WHERE session_id = ?').all('journal-session')
+      expect(toolCallRows).toEqual([{ tool_name: 'shell', input: '{"command":"git push"}' }])
+    })
+
+    it('keeps a call without end event as started (crash simulation)', async () => {
+      const { task, emit } = await startTaskWithControllableAgent('journal-crash-session')
+
+      emit({ type: 'tool_execution_start', toolCallId: 'call-1', toolName: 'email_send', args: { to: ['a@example.com'] } })
+
+      expect(new TaskToolJournal(db).listForTask(task.id)).toEqual([
+        expect.objectContaining({ toolCallId: 'call-1', toolName: 'email_send', status: 'started', endedAt: null }),
+      ])
+      const toolCallRows = db.prepare('SELECT COUNT(*) AS count FROM tool_calls WHERE session_id = ?').get('journal-crash-session')
+      expect(toolCallRows).toEqual({ count: 0 })
+    })
+
+    it('drops journal rows of finished tasks during restart recovery', async () => {
+      const journal = new TaskToolJournal(db)
+      const crashed = store.create({ name: 'Crashed', prompt: 'work', triggerType: 'agent', sessionId: 'crashed-session' })
+      journal.recordStarted({ taskId: crashed.id, sessionId: 'crashed-session', toolCallId: 'call-1', toolName: 'shell', args: {} })
+      const finished = store.create({ name: 'Finished', prompt: 'work', triggerType: 'agent' })
+      store.update(finished.id, { status: 'completed' })
+      journal.recordStarted({ taskId: finished.id, sessionId: null, toolCallId: 'call-1', toolName: 'shell', args: {} })
+
+      await runner.recoverTasks(() => mockProvider, mockProvider)
+
+      expect(journal.listForTask(crashed.id)).toEqual([])
+      expect(journal.listForTask(finished.id)).toEqual([])
     })
   })
 

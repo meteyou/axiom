@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 import fs from 'node:fs'
 import { initEmailSendLogTable } from './email-send-log.js'
+import { initTaskToolJournalTable } from './task-tool-journal.js'
 
 export type Database = BetterSqlite3.Database
 
@@ -313,6 +314,7 @@ export function initDatabase(dbPath?: string): Database {
   `)
 
   initEmailSendLogTable(db)
+  initTaskToolJournalTable(db)
 
   // Create scheduled_tasks table
   db.exec(`
