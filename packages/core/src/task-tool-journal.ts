@@ -1,4 +1,5 @@
 import type { Database } from './database.js'
+import type { ToolReplayPolicy } from './tool-replay.js'
 
 export type ToolJournalStatus = 'started' | 'completed' | 'error'
 
@@ -8,6 +9,7 @@ export interface ToolJournalEntry {
   args: string | null
   status: ToolJournalStatus
   result: string | null
+  replay: ToolReplayPolicy | null
   startedAt: string
   endedAt: string | null
 }
@@ -18,6 +20,7 @@ export interface ToolCallStartedInput {
   toolCallId: string
   toolName: string
   args: unknown
+  replay: ToolReplayPolicy
 }
 
 export interface ToolCallEndedInput {
@@ -35,6 +38,7 @@ interface ToolJournalRow {
   args: string | null
   status: ToolJournalStatus
   result: string | null
+  replay: ToolReplayPolicy | null
   started_at: string
   ended_at: string | null
 }
@@ -105,9 +109,9 @@ export class TaskToolJournal {
     // across a whole task; on a collision the latest call replaces the old row
     // instead of the insert failing.
     this.db.prepare(`
-      INSERT OR REPLACE INTO task_tool_journal (task_id, session_id, tool_call_id, tool_name, args, status)
-      VALUES (?, ?, ?, ?, ?, 'started')
-    `).run(input.taskId, input.sessionId, input.toolCallId, input.toolName, serializeForJournal(input.args))
+      INSERT OR REPLACE INTO task_tool_journal (task_id, session_id, tool_call_id, tool_name, args, status, replay)
+      VALUES (?, ?, ?, ?, ?, 'started', ?)
+    `).run(input.taskId, input.sessionId, input.toolCallId, input.toolName, serializeForJournal(input.args), input.replay)
   }
 
   recordEnded(input: ToolCallEndedInput): void {
@@ -120,7 +124,7 @@ export class TaskToolJournal {
 
   listForTask(taskId: string): ToolJournalEntry[] {
     const rows = this.db.prepare(`
-      SELECT tool_call_id, tool_name, args, status, result, started_at, ended_at
+      SELECT tool_call_id, tool_name, args, status, result, replay, started_at, ended_at
       FROM task_tool_journal
       WHERE task_id = ?
       ORDER BY id ASC
@@ -132,6 +136,7 @@ export class TaskToolJournal {
       args: row.args,
       status: row.status,
       result: row.result,
+      replay: row.replay,
       startedAt: row.started_at,
       endedAt: row.ended_at,
     }))
