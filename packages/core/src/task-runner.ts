@@ -392,6 +392,7 @@ export class TaskRunner {
           thinkingLevel,
         },
         streamFn: buildStreamFn(provider),
+        sessionId,
         ...(provider.transport && provider.transport !== 'sse'
           && { transport: provider.transport }),
         getApiKey: resolveApiKey,

@@ -9,12 +9,14 @@ import { logToolCall } from './token-logger.js'
 const runtimeHarness = vi.hoisted(() => ({
   promptBehaviors: [] as Array<(agent: { emit: (event: unknown) => void }, text: string) => Promise<void>>,
   promptCalls: [] as string[],
+  promptSessionIds: [] as Array<string | undefined>,
   continueCalls: 0,
 }))
 
 vi.mock('@earendil-works/pi-agent-core', () => {
   class MockAgent {
     public state: { model: unknown; tools: AgentTool[]; messages: unknown[] }
+    public sessionId: string | undefined
     private listeners = new Set<(event: unknown) => void>()
 
     constructor(options: { initialState: { systemPrompt: string; model: unknown; tools: AgentTool[] } }) {
@@ -32,6 +34,7 @@ vi.mock('@earendil-works/pi-agent-core', () => {
 
     async prompt(text: string): Promise<void> {
       runtimeHarness.promptCalls.push(text)
+      runtimeHarness.promptSessionIds.push(this.sessionId)
       const behavior = runtimeHarness.promptBehaviors.shift()
       if (behavior) {
         await behavior(this, text)
@@ -40,6 +43,7 @@ vi.mock('@earendil-works/pi-agent-core', () => {
 
     async continue(): Promise<void> {
       runtimeHarness.continueCalls++
+      runtimeHarness.promptSessionIds.push(this.sessionId)
       const behavior = runtimeHarness.promptBehaviors.shift()
       if (behavior) {
         await behavior(this, '<continue>')
@@ -144,6 +148,7 @@ describe('AgentRuntime boundary', () => {
   beforeEach(() => {
     runtimeHarness.promptBehaviors = []
     runtimeHarness.promptCalls = []
+    runtimeHarness.promptSessionIds = []
     runtimeHarness.continueCalls = 0
     vi.mocked(assembleSystemPrompt).mockClear()
     vi.mocked(logToolCall).mockClear()
@@ -425,5 +430,37 @@ describe('AgentRuntime boundary', () => {
 
     expect(runtimeHarness.continueCalls).toBe(0)
     expect(runtimeHarness.promptCalls).toEqual(['hello'])
+  })
+
+  it('forwards the per-prompt session id to the pi agent for provider prompt caching', async () => {
+    const db = initDatabase(':memory:')
+    const runtime = createAgentRuntime({
+      model: makeModel(),
+      apiKey: 'sk-primary',
+      db,
+      tools: [],
+    })
+    const piAgent = (runtime as unknown as AgentRuntimePiAgentAccess).getAgent()
+    const endTurn = async (agent: { emit: (event: unknown) => void }) => {
+      agent.emit({ type: 'agent_end', messages: [] })
+    }
+
+    runtimeHarness.promptBehaviors.push(endTurn)
+    for await (const _chunk of runtime.streamPrompt('x', 'sess-A')) { /* drain */ }
+    expect(piAgent.sessionId).toBe('sess-A')
+
+    runtimeHarness.promptBehaviors.push(endTurn)
+    for await (const _chunk of runtime.streamPrompt('y', 'sess-B')) { /* drain */ }
+    expect(piAgent.sessionId).toBe('sess-B')
+
+    piAgent.state.messages = [
+      { role: 'system', content: 'prompt', timestamp: 0 },
+      { role: 'user', content: 'hello' },
+      { role: 'assistant', content: [], stopReason: 'error', errorMessage: '429' },
+    ] as never
+    runtimeHarness.promptBehaviors.push(endTurn)
+    for await (const _chunk of runtime.retryLastTurn('hello', 'sess-C')) { /* drain */ }
+
+    expect(runtimeHarness.promptSessionIds).toEqual(['sess-A', 'sess-B', 'sess-C'])
   })
 })
