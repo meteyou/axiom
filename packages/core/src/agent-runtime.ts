@@ -850,6 +850,9 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
       }
     })
 
+    // One runtime serves many sessions sequentially; pi-ai derives prompt_cache_key from this.
+    this.agent.sessionId = sessionId
+
     // Start the prompt (non-blocking)
     const started = continueTranscript ? this.agent.continue() : this.agent.prompt(text, images)
     const promptPromise = started.then(() => {

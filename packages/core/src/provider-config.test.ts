@@ -29,6 +29,8 @@ import {
   presetSupportsTransport,
 } from './provider-config.js'
 import { encrypt, decrypt, maskApiKey } from './encryption.js'
+import { Agent as PiAgent } from '@earendil-works/pi-agent-core'
+import type { Api, Model } from '@earendil-works/pi-ai'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
@@ -572,6 +574,38 @@ describe('streamFn injection', () => {
     const [, , opts] = fakeStream.mock.calls[0]!
     expect(opts).toBe(inputOpts) // identity — no spread when not needed
     expect(opts).not.toHaveProperty('transport')
+  })
+
+  it('buildStreamFn lets the pi agent session id reach openai-responses as prompt_cache_key', async () => {
+    const model = {
+      id: 'gpt-test',
+      name: 'GPT Test',
+      api: 'openai-responses',
+      provider: 'axiom-cache-key-test',
+      baseUrl: 'http://127.0.0.1:9/v1',
+      reasoning: false,
+      input: ['text'],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 128000,
+      maxTokens: 1024,
+    } as Model<Api>
+    const payloads: Array<Record<string, unknown>> = []
+    const agent = new PiAgent({
+      initialState: { systemPrompt: 'sys', model, tools: [] },
+      streamFn: buildStreamFn({}),
+      sessionId: 'sess-A',
+      getApiKey: () => 'sk-test',
+      onPayload: (payload) => {
+        payloads.push(payload as Record<string, unknown>)
+        throw new Error('stop before network')
+      },
+    })
+
+    await agent.prompt('hello')
+    agent.sessionId = 'sess-B'
+    await agent.prompt('again')
+
+    expect(payloads.map(p => p.prompt_cache_key)).toEqual(['sess-A', 'sess-B'])
   })
 
   it('presetSupportsTransport is true only for openai-codex-responses presets', () => {

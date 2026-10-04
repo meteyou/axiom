@@ -21,6 +21,7 @@ vi.mock('./provider-config.js', async (importOriginal) => {
 
 interface CapturedAgentOptions {
   getApiKey?: () => unknown
+  sessionId?: string
 }
 interface AgentOptionsBox {
   value: CapturedAgentOptions | null
@@ -175,6 +176,35 @@ describe('TaskRunner', () => {
       expect(updated.completedAt).toBeTruthy()
       expect(updated.provider).toBe('test-provider')
       expect(updated.model).toBe('test-model')
+    })
+
+    it('passes the task session id to the pi agent for provider prompt caching', async () => {
+      resetAgentOptions()
+      const task = store.create({
+        name: 'Cache Key Task',
+        prompt: 'Do work',
+        triggerType: 'agent',
+        sessionId: 'task-cache-session',
+      })
+
+      await runner.startTask(task, mockProvider)
+
+      expect(getCapturedAgentOptions().sessionId).toBe('task-cache-session')
+      expect(getCapturedAgentOptions().sessionId).toBe(task.sessionId)
+    })
+
+    it('passes a freshly created task session id to the pi agent', async () => {
+      resetAgentOptions()
+      const task = store.create({
+        name: 'Fresh Session Task',
+        prompt: 'Do work',
+        triggerType: 'agent',
+      })
+
+      await runner.startTask(task, mockProvider)
+
+      expect(task.sessionId).toBeTruthy()
+      expect(getCapturedAgentOptions().sessionId).toBe(task.sessionId)
     })
 
     it('calls onTaskComplete with injection message', async () => {
