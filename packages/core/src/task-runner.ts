@@ -258,16 +258,17 @@ function parseTaskOutput(text: string): { status: TaskResultStatus; summary: str
 
 /**
  * Text of the task agent's final answer. pi-agent resolves `prompt()` normally
- * even when the last turn produced no answer, so a provider error, or an
- * output-token limit hit while the model was still reasoning, would otherwise
- * be recorded as a successful task with an empty summary. Those cases throw
- * so the run is recorded as failed with the reason.
+ * even when the last turn produced no answer, so a provider error, an
+ * output-token limit hit while the model was still reasoning, or a reasoning
+ * model that stops after thinking only would otherwise be recorded as a
+ * successful task with an empty summary. Those cases throw so the run is
+ * recorded as failed with the reason.
  */
 function readFinalAnswerText(agent: Pick<PiAgent, 'state'>): string {
   const lastAssistantMsg = [...agent.state.messages].reverse().find(
     (m) => 'role' in m && m.role === 'assistant'
   ) as AssistantMessage | undefined
-  if (!lastAssistantMsg) return ''
+  if (!lastAssistantMsg) throw new Error('The run produced no assistant response.')
 
   assertLlmResponseOk(lastAssistantMsg, 'Final turn failed')
 
@@ -276,11 +277,16 @@ function readFinalAnswerText(agent: Pick<PiAgent, 'state'>): string {
     .map(c => c.text)
     .join('')
 
-  if (lastAssistantMsg.stopReason === 'length' && answerText.trim() === '') {
-    throw new Error(describeOutputLimitWithoutAnswer(agent.state.model, lastAssistantMsg.usage.output))
-  }
+  if (answerText.trim() !== '') return answerText
 
-  return answerText
+  const outputTokens = lastAssistantMsg.usage.output
+  if (lastAssistantMsg.stopReason === 'length') {
+    throw new Error(describeOutputLimitWithoutAnswer(agent.state.model, outputTokens))
+  }
+  throw new Error(
+    `Model ${agent.state.model.id} ended its final turn without an answer `
+    + `(stop reason: ${lastAssistantMsg.stopReason}, ${outputTokens} output tokens).`,
+  )
 }
 
 function describeOutputLimitWithoutAnswer(model: Model<Api>, outputTokens: number): string {

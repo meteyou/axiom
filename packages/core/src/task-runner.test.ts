@@ -369,6 +369,102 @@ describe('TaskRunner', () => {
       expect(updated.errorMessage).toContain('502 Bad Gateway')
     })
 
+    // Reasoning models behind OpenAI-compatible endpoints sometimes stream only
+    // reasoning_content and then finish with finish_reason "stop".
+    const stoppedAfterThinkingOnly = {
+      role: 'assistant',
+      content: [{ type: 'thinking', thinking: 'The report is ready.', thinkingSignature: 'reasoning_content' }],
+      stopReason: 'stop',
+      usage: { input: 30000, output: 412, cacheRead: 0, cacheWrite: 0 },
+    }
+
+    it('fails the task when the final turn stopped with only thinking', async () => {
+      await nextAgentFinalMessage(stoppedAfterThinkingOnly)
+
+      const updated = await runTaskToEnd('Thinking Only Task')
+
+      expect(updated.status).toBe('failed')
+      expect(updated.resultStatus).toBe('failed')
+      expect(updated.errorMessage).toBe(
+        'Model Qwen3.8-27B-FP8 ended its final turn without an answer (stop reason: stop, 412 output tokens).',
+      )
+      expect(onTaskCompleteCalls[0].injection).toContain('status="failed"')
+    })
+
+    it('fails the task when the final turn stopped with whitespace-only text', async () => {
+      await nextAgentFinalMessage({
+        ...stoppedAfterThinkingOnly,
+        content: [
+          { type: 'thinking', thinking: 'Done.' },
+          { type: 'text', text: '\n  \n' },
+        ],
+      })
+
+      const updated = await runTaskToEnd('Whitespace Answer Task')
+
+      expect(updated.status).toBe('failed')
+      expect(updated.errorMessage).toContain('ended its final turn without an answer')
+    })
+
+    it('fails the task when the run produced no assistant message', async () => {
+      const { Agent } = await import('@earendil-works/pi-agent-core')
+      vi.mocked(Agent as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(() => ({
+        subscribe: vi.fn(() => () => {}),
+        prompt: vi.fn(async () => {}),
+        abort: vi.fn(),
+        state: { messages: [] },
+      }))
+
+      const updated = await runTaskToEnd('Silent Run Task')
+
+      expect(updated.status).toBe('failed')
+      expect(updated.errorMessage).toBe('The run produced no assistant response.')
+    })
+
+    it('fails a resumed task whose final turn stopped with only thinking', async () => {
+      const { Agent } = await import('@earendil-works/pi-agent-core')
+      const messages: unknown[] = []
+      vi.mocked(Agent as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(() => ({
+        subscribe: vi.fn(() => () => {}),
+        prompt: vi.fn(async () => {
+          messages.push(messages.length === 0
+            ? { role: 'assistant', content: [{ type: 'text', text: 'STATUS: question\nSUMMARY: Which branch?' }], stopReason: 'stop' }
+            : stoppedAfterThinkingOnly)
+        }),
+        abort: vi.fn(),
+        state: {
+          messages,
+          model: { id: 'Qwen3.8-27B-FP8', contextWindow: 128000, maxTokens: 16384 },
+        },
+      }))
+      const task = store.create({ name: 'Resumed Thinking Only Task', prompt: 'Do work', triggerType: 'agent' })
+      await runner.startTask(task, mockProvider)
+      await new Promise(resolve => setTimeout(resolve, 50))
+      expect(store.getById(task.id)!.status).toBe('paused')
+
+      await runner.resumeTask(task.id, 'Use main')
+      await new Promise(resolve => setTimeout(resolve, 50))
+
+      const updated = store.getById(task.id)!
+      expect(updated.status).toBe('failed')
+      expect(updated.errorMessage).toContain('ended its final turn without an answer (stop reason: stop')
+    })
+
+    it('completes the task when the final turn stopped with answer text', async () => {
+      await nextAgentFinalMessage({
+        ...stoppedAfterThinkingOnly,
+        content: [
+          { type: 'thinking', thinking: 'The report is ready.' },
+          { type: 'text', text: 'STATUS: completed\nSUMMARY: Report attached' },
+        ],
+      })
+
+      const updated = await runTaskToEnd('Answered Task')
+
+      expect(updated.status).toBe('completed')
+      expect(updated.resultSummary).toBe('Report attached')
+    })
+
     it('does not overwrite an aborted task once the agent run settles', async () => {
       const { Agent } = await import('@earendil-works/pi-agent-core')
       let resolvePrompt: (() => void) | null = null
