@@ -76,6 +76,11 @@ The runner parses this with `parseTaskOutput` in `task-runner.ts`. If the agent 
 | `question` | The agent is blocked and needs the user. The `SUMMARY` contains *one* concrete question. The task transitions to `paused` instead of terminating, and the `<task_injection>` block flags `status="question"` so the parent agent relays the question conversationally. |
 | `silent` | Nothing to report — terminate cleanly without delivering a chat message. The task is recorded as `completed` but no `<task_injection>` is emitted to the user. Use case: periodic checks that found no changes. |
 
+If the final turn ends without an answer, the task is marked `failed` instead of `completed` with an empty summary, and the reason becomes the error message:
+
+- **Provider error** — the request failed (HTTP error, dropped stream). The provider's error message is reported.
+- **Output token limit hit before any answer text** — the model used up its output budget while still reasoning. When the conversation approaches the model's context window, the output budget shrinks to fit the remaining space, down to a single token. A reasoning model then emits one thinking token and stops. If the error mentions the configured context window, set the model's real context window under **Token limits** in the [Edit Model dialog](../web-ui/providers#edit-model-dialog). Custom OpenAI-compatible models without a value default to 128k.
+
 ### `<task_injection>`: how results come back
 
 When a task terminates (or pauses), the `TaskRunner` builds a `<task_injection>` block and calls the configured `onTaskComplete` / `onTaskPaused` callback. The orchestrator in `agent.ts` calls `injectTaskResult` which inserts that block into the parent session as a system message and resumes the parent agent if it isn't already running.

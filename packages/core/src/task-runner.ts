@@ -1,6 +1,6 @@
 import { Agent as PiAgent } from '@earendil-works/pi-agent-core'
 import type { AgentEvent, AgentTool } from '@earendil-works/pi-agent-core'
-import type { AssistantMessage, Message, Model, Api } from '@earendil-works/pi-ai'
+import type { AssistantMessage, Message, Model, Api, TextContent } from '@earendil-works/pi-ai'
 
 import type { Database } from './database.js'
 import { renderAttachedSkillsBlock } from './attached-skills.js'
@@ -15,6 +15,7 @@ import { logTokenUsage, logToolCall } from './token-logger.js'
 import { estimateCost, parseProviderModelId, buildStreamFn, getProviderDefaultModel, isProviderModelUsable } from './provider-config.js'
 import type { ProviderConfig } from './provider-config.js'
 import { releaseProviderSession } from './pi-models.js'
+import { assertLlmResponseOk } from './llm-response.js'
 import {
   ToolCallTracker,
   buildSmartDetectionPrompt,
@@ -250,6 +251,42 @@ function parseTaskOutput(text: string): { status: TaskResultStatus; summary: str
     .trim()
 
   return { status, summary: fullText || text.trim() }
+}
+
+/**
+ * Text of the task agent's final answer. pi-agent resolves `prompt()` normally
+ * even when the last turn produced no answer, so a provider error, or an
+ * output-token limit hit while the model was still reasoning, would otherwise
+ * be recorded as a successful task with an empty summary. Those cases throw
+ * so the run is recorded as failed with the reason.
+ */
+function readFinalAnswerText(agent: Pick<PiAgent, 'state'>): string {
+  const lastAssistantMsg = [...agent.state.messages].reverse().find(
+    (m) => 'role' in m && m.role === 'assistant'
+  ) as AssistantMessage | undefined
+  if (!lastAssistantMsg) return ''
+
+  assertLlmResponseOk(lastAssistantMsg, 'Final turn failed')
+
+  const answerText = lastAssistantMsg.content
+    .filter((c): c is TextContent => c.type === 'text')
+    .map(c => c.text)
+    .join('')
+
+  if (lastAssistantMsg.stopReason === 'length' && answerText.trim() === '') {
+    throw new Error(describeOutputLimitWithoutAnswer(agent.state.model, lastAssistantMsg.usage.output))
+  }
+
+  return answerText
+}
+
+function describeOutputLimitWithoutAnswer(model: Model<Api>, outputTokens: number): string {
+  const reason = `Model ${model.id} hit its output token limit after ${outputTokens} tokens, before writing a final answer.`
+  // pi-ai shrinks max_tokens below model.maxTokens only to fit the remaining
+  // context window, so a smaller output means the context is (nearly) full.
+  if (outputTokens >= model.maxTokens) return reason
+  return `${reason} The request was capped to fit the configured context window of ${model.contextWindow} tokens; `
+    + 'raise the model\'s context window in the provider settings if the model supports more.'
 }
 
 /**
@@ -490,24 +527,17 @@ export class TaskRunner {
       // Prompt the task agent with the task — the system prompt already contains the full task description
       await agent.prompt('Begin working on the task described in your system prompt. Work autonomously and report your results when done.')
 
+      if (this.wasFinalizedElsewhere(taskId)) {
+        unsubscribe()
+        return
+      }
+
       // Task completed successfully
       unsubscribe()
       this.cleanupRunningTask(taskId)
 
       // Extract result from agent messages
-      const messages = agent.state.messages
-      const lastAssistantMsg = [...messages].reverse().find(
-        (m) => 'role' in m && m.role === 'assistant'
-      ) as AssistantMessage | undefined
-
-      let resultText = ''
-      if (lastAssistantMsg && 'content' in lastAssistantMsg && Array.isArray(lastAssistantMsg.content)) {
-        resultText = lastAssistantMsg.content
-          .filter((c: { type: string }) => c.type === 'text')
-          .map((c: { type: string; text?: string }) => c.text ?? '')
-          .join('')
-      }
-
+      const resultText = readFinalAnswerText(agent)
       const { status, summary } = parseTaskOutput(resultText)
       const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
 
@@ -1166,6 +1196,15 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
   }
 
   /**
+   * `abortTask()` and `dispose()` drop the task from `runningTasks` and record
+   * the outcome themselves; the agent run settles afterwards and must not
+   * overwrite that outcome with an empty "completed" result.
+   */
+  private wasFinalizedElsewhere(taskId: string): boolean {
+    return !this.runningTasks.has(taskId)
+  }
+
+  /**
    * Clean up a running task's resources
    */
   private cleanupRunningTask(taskId: string): void {
@@ -1281,23 +1320,16 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
       // Send the follow-up via prompt (which adds a user message and continues the agentic loop)
       await agent.prompt(message)
 
+      if (this.wasFinalizedElsewhere(taskId)) {
+        unsubscribe()
+        return
+      }
+
       // Task completed after resume
       unsubscribe()
       this.cleanupRunningTask(taskId)
 
-      const messages = agent.state.messages
-      const lastAssistantMsg = [...messages].reverse().find(
-        (m) => 'role' in m && m.role === 'assistant'
-      ) as AssistantMessage | undefined
-
-      let resultText = ''
-      if (lastAssistantMsg && 'content' in lastAssistantMsg && Array.isArray(lastAssistantMsg.content)) {
-        resultText = lastAssistantMsg.content
-          .filter((c: { type: string }) => c.type === 'text')
-          .map((c: { type: string; text?: string }) => c.text ?? '')
-          .join('')
-      }
-
+      const resultText = readFinalAnswerText(agent)
       const { status, summary } = parseTaskOutput(resultText)
       const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
 
