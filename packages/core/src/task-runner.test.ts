@@ -295,6 +295,102 @@ describe('TaskRunner', () => {
     })
   })
 
+  describe('final turn without an answer', () => {
+    async function nextAgentFinalMessage(finalMessage: Record<string, unknown>): Promise<void> {
+      const { Agent } = await import('@earendil-works/pi-agent-core')
+      const messages: unknown[] = []
+      vi.mocked(Agent as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(() => ({
+        subscribe: vi.fn(() => () => {}),
+        prompt: vi.fn(async () => { messages.push(finalMessage) }),
+        abort: vi.fn(),
+        state: {
+          messages,
+          model: { id: 'Qwen3.8-27B-FP8', contextWindow: 128000, maxTokens: 16384 },
+        },
+      }))
+    }
+
+    async function runTaskToEnd(name: string) {
+      const task = store.create({ name, prompt: 'Do work', triggerType: 'agent' })
+      await runner.startTask(task, mockProvider)
+      await new Promise(resolve => setTimeout(resolve, 50))
+      return store.getById(task.id)!
+    }
+
+    // What pi-ai builds from a Qwen3.8-27B-FP8 stream (OpenAI-compatible endpoint) when the request is
+    // clamped to max_tokens=1 near the context window: one reasoning_content
+    // token, finish_reason "length", no content.
+    const outputLimitHitWhileThinking = {
+      role: 'assistant',
+      content: [{ type: 'thinking', thinking: 'The', thinkingSignature: 'reasoning_content' }],
+      stopReason: 'length',
+      usage: { input: 44802, output: 1, cacheRead: 116800, cacheWrite: 0 },
+    }
+
+    it('fails the task when the output token limit is hit before any answer text', async () => {
+      await nextAgentFinalMessage(outputLimitHitWhileThinking)
+
+      const updated = await runTaskToEnd('Truncated Task')
+
+      expect(updated.status).toBe('failed')
+      expect(updated.resultStatus).toBe('failed')
+      expect(updated.errorMessage).toContain('output token limit')
+      expect(updated.errorMessage).toContain('128000')
+      expect(onTaskCompleteCalls[0].injection).toContain('status="failed"')
+    })
+
+    it('keeps a truncated answer when the output token limit is hit mid-answer', async () => {
+      await nextAgentFinalMessage({
+        ...outputLimitHitWhileThinking,
+        content: [
+          { type: 'thinking', thinking: 'Writing the report.' },
+          { type: 'text', text: 'STATUS: completed\nSUMMARY: Partial report' },
+        ],
+      })
+
+      const updated = await runTaskToEnd('Long Report Task')
+
+      expect(updated.status).toBe('completed')
+      expect(updated.resultSummary).toBe('Partial report')
+    })
+
+    it('fails the task with the provider error when the final turn errored', async () => {
+      await nextAgentFinalMessage({
+        role: 'assistant',
+        content: [{ type: 'thinking', thinking: 'Let me check the frontend' }],
+        stopReason: 'error',
+        errorMessage: '502 Bad Gateway',
+        usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      })
+
+      const updated = await runTaskToEnd('Provider Error Task')
+
+      expect(updated.status).toBe('failed')
+      expect(updated.errorMessage).toContain('502 Bad Gateway')
+    })
+
+    it('does not overwrite an aborted task once the agent run settles', async () => {
+      const { Agent } = await import('@earendil-works/pi-agent-core')
+      let resolvePrompt: (() => void) | null = null
+      vi.mocked(Agent as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(() => ({
+        subscribe: vi.fn(() => () => {}),
+        prompt: vi.fn(() => new Promise<void>((resolve) => { resolvePrompt = resolve })),
+        abort: vi.fn(() => resolvePrompt?.()),
+        state: { messages: [] },
+      }))
+      const task = store.create({ name: 'Timeout Task', prompt: 'Do work', triggerType: 'agent' })
+      await runner.startTask(task, mockProvider)
+
+      runner.abortTask(task.id, 'Max duration exceeded')
+      await new Promise(resolve => setTimeout(resolve, 50))
+
+      const updated = store.getById(task.id)!
+      expect(updated.status).toBe('failed')
+      expect(updated.resultSummary).toBe('Max duration exceeded')
+      expect(onTaskCompleteCalls).toHaveLength(1)
+    })
+  })
+
   describe('max duration timeout', () => {
     it('aborts task via abortTask method', async () => {
       const { Agent } = await import('@earendil-works/pi-agent-core')
