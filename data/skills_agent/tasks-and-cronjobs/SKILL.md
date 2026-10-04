@@ -1,6 +1,6 @@
 ---
 name: tasks-and-cronjobs
-version: 1.2.0
+version: 1.3.0
 description: Use Axiom's background-execution system — one-off background tasks (create_task), recurring cronjobs (create_cronjob), and static scheduled reminders (create_reminder). Load this skill before creating any of them, and ALWAYS load it when you receive a <task_injection> message so you respond correctly.
 ---
 
