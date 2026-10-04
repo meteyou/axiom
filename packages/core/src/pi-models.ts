@@ -1,4 +1,5 @@
 import {
+  cleanupSessionResources,
   createModels,
   createProvider,
   envApiKeyAuth,
@@ -107,4 +108,17 @@ export function completeSimple(
   const models = getModelsInstance()
   ensureProvider(models, model.provider)
   return models.completeSimple(model, context, options)
+}
+
+/**
+ * Release provider-side resources pooled per session (e.g. Codex WebSockets).
+ */
+export function releaseProviderSession(sessionId: string | null | undefined): void {
+  // pi-ai treats a missing id as "close every session", which would tear down unrelated live turns.
+  if (!sessionId) return
+  try {
+    cleanupSessionResources(sessionId)
+  } catch (err) {
+    console.error(`[pi-models] Failed to release provider session ${sessionId}:`, err)
+  }
 }

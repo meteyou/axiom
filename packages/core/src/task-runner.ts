@@ -14,6 +14,7 @@ import type { SessionManager, SessionType } from './session-manager.js'
 import { logTokenUsage, logToolCall } from './token-logger.js'
 import { estimateCost, parseProviderModelId, buildStreamFn, getProviderDefaultModel, isProviderModelUsable } from './provider-config.js'
 import type { ProviderConfig } from './provider-config.js'
+import { releaseProviderSession } from './pi-models.js'
 import {
   ToolCallTracker,
   buildSmartDetectionPrompt,
@@ -141,6 +142,7 @@ function triggerTypeToSessionType(triggerType: TaskTriggerType): SessionType {
 
 interface RunningTask {
   taskId: string
+  sessionId: string
   agent: PiAgent
   abortController: AbortController
   timeoutTimer: ReturnType<typeof setTimeout> | null
@@ -402,6 +404,7 @@ export class TaskRunner {
 
       const runningTask: RunningTask = {
         taskId,
+        sessionId,
         agent,
         abortController,
         timeoutTimer: null,
@@ -1176,6 +1179,7 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
       clearInterval(runningTask.statusUpdateTimer)
     }
     this.runningTasks.delete(taskId)
+    releaseProviderSession(runningTask.sessionId)
   }
 
   /**
@@ -1220,6 +1224,7 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
     const task = this.store.getById(taskId)!
     const runningTask: RunningTask = {
       taskId,
+      sessionId,
       agent,
       abortController: new AbortController(),
       timeoutTimer: null,
@@ -1585,6 +1590,7 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
       if (runningTask.statusUpdateTimer) {
         clearInterval(runningTask.statusUpdateTimer)
       }
+      releaseProviderSession(runningTask.sessionId)
     }
     this.runningTasks.clear()
 

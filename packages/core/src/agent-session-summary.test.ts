@@ -78,6 +78,7 @@ vi.mock('./pi-models.js', async (importOriginal) => {
   return {
     ...original,
     completeSimple: vi.fn(),
+    releaseProviderSession: vi.fn(),
   }
 })
 
@@ -86,8 +87,9 @@ vi.mock('./pi-models.js', async (importOriginal) => {
 import { AgentCore } from './agent.js'
 import { initDatabase } from './database.js'
 import type { Database } from './database.js'
-import { completeSimple } from './pi-models.js'
+import { completeSimple, releaseProviderSession } from './pi-models.js'
 import { appendToDailyFile } from './memory.js'
+import type { SessionManager } from './session-manager.js'
 
 const mockCompleteSimple = vi.mocked(completeSimple)
 const mockAppendToDailyFile = vi.mocked(appendToDailyFile)
@@ -350,5 +352,43 @@ describe('generateSessionSummary — open threads prompt', () => {
     expect(summary).toMatch(/^Reviewed PR structure/)
     expect(summary).toContain('\n\n### Open Threads\n')
     expect(summary).toContain('- Open threads feature: PR not yet created')
+  })
+})
+
+describe('session end releases pooled provider resources', () => {
+  let db: Database
+
+  beforeEach(() => {
+    db = initDatabase(':memory:')
+    vi.mocked(releaseProviderSession).mockReset()
+  })
+
+  afterEach(() => {
+    db.close()
+  })
+
+  function createAgent() {
+    const agent = new AgentCore({ model: makeModel(), apiKey: 'sk-test', db, tools: [] })
+    const internals = agent as unknown as { sessionManager: SessionManager; currentInteractiveSessionId?: string }
+    return { agent, internals }
+  }
+
+  it('releases the ended chat session id', async () => {
+    const { agent, internals } = createAgent()
+    const session = internals.sessionManager.getOrCreateSession('user1', 'web')
+
+    await agent.resetSession('user1')
+
+    expect(releaseProviderSession).toHaveBeenCalledWith(session.id)
+  })
+
+  it('does not release a session that is still serving a turn', async () => {
+    const { agent, internals } = createAgent()
+    const session = internals.sessionManager.getOrCreateSession('user1', 'web')
+    internals.currentInteractiveSessionId = session.id
+
+    await agent.resetSession('user1')
+
+    expect(releaseProviderSession).not.toHaveBeenCalledWith(session.id)
   })
 })
