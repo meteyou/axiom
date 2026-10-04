@@ -850,7 +850,8 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
       }
     })
 
-    // One runtime serves many sessions sequentially; pi-ai derives prompt_cache_key from this.
+    // Safe only because AgentCore serializes prompts via MessageQueue.
+    // If prompts ever run concurrently on one runtime, pass sessionId per request instead.
     this.agent.sessionId = sessionId
 
     // Start the prompt (non-blocking)
