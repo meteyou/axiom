@@ -80,6 +80,8 @@ If the final turn ends without an answer, the task is marked `failed` instead of
 
 - **Provider error** — the request failed (HTTP error, dropped stream). The provider's error message is reported.
 - **Output token limit hit before any answer text** — the model used up its output budget while still reasoning. When the conversation approaches the model's context window, the output budget shrinks to fit the remaining space, down to a single token. A reasoning model then emits one thinking token and stops. If the error mentions the configured context window, set the model's real context window under **Token limits** in the [Edit Model dialog](../web-ui/providers#edit-model-dialog). Custom OpenAI-compatible models without a value default to 128k.
+- **Turn ended without answer text** — the model finished normally but wrote no text, or only whitespace. Some reasoning models emit only reasoning content and then stop. The error names the model, the stop reason and the output token count.
+- **No assistant response** — the run ended without any assistant message.
 
 ### `<task_injection>`: how results come back
 
