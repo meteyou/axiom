@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import nodePath from 'node:path'
 import type { Agent as PiAgent } from '@earendil-works/pi-agent-core'
 import type { Api, ImageContent, Model } from '@earendil-works/pi-ai'
-import { completeSimple } from './pi-models.js'
+import { completeSimple, releaseProviderSession } from './pi-models.js'
 import type { Database } from './database.js'
 import { getApiKeyForProvider, buildModel } from './provider-config.js'
 import { assertLlmResponseOk } from './llm-response.js'
@@ -113,6 +113,10 @@ export class AgentCore {
         if (!opts?.background) {
           this.runtime.clearMessages()
           this.refreshSystemPrompt()
+        }
+        // A background end can fire while a turn still streams on this session; let pi-ai's idle timer reap it then.
+        if (this.currentInteractiveSessionId !== session.id) {
+          releaseProviderSession(session.id)
         }
         if (this.onSessionEndCallback) {
           this.onSessionEndCallback(session.userId, session.id, summary, opts)
@@ -655,7 +659,6 @@ Do NOT add this section if everything discussed was resolved or if there is noth
    * returning). Prefer `resetSessionAsync` for interactive UIs where
    * users should not wait for the LLM summary call to finish.
    */
-  // fallow-ignore-next-line unused-class-member
   async resetSession(userId: string): Promise<string | null> {
     const summary = await this.sessionManager.handleNewCommand(userId)
     return summary

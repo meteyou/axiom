@@ -6,6 +6,7 @@ import type { TaskRunnerOptions, TaskOverrides } from './task-runner.js'
 import type { Database } from './database.js'
 import type { ProviderConfig } from './provider-config.js'
 import { SessionManager } from './session-manager.js'
+import { releaseProviderSession } from './pi-models.js'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
@@ -16,6 +17,14 @@ vi.mock('./provider-config.js', async (importOriginal) => {
   return {
     ...original,
     estimateCost: vi.fn(() => 0.001),
+  }
+})
+
+vi.mock('./pi-models.js', async (importOriginal) => {
+  const original = await importOriginal() as Record<string, unknown>
+  return {
+    ...original,
+    releaseProviderSession: vi.fn(),
   }
 })
 
@@ -327,6 +336,70 @@ describe('TaskRunner', () => {
       expect(updated.errorMessage).toBe('Max duration exceeded')
       expect(runner.isRunning(task.id)).toBe(false)
       expect(abortCalled).toBe(true)
+    })
+  })
+
+  describe('provider session release', () => {
+    beforeEach(() => {
+      vi.mocked(releaseProviderSession).mockClear()
+    })
+
+    async function nextAgentPrompt(prompt: () => Promise<void>, abort: () => void = () => {}): Promise<void> {
+      const { Agent } = await import('@earendil-works/pi-agent-core')
+      vi.mocked(Agent as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(() => ({
+        subscribe: vi.fn(() => () => {}),
+        prompt: vi.fn(prompt),
+        abort: vi.fn(abort),
+        state: { messages: [] },
+      }))
+    }
+
+    function createTask(sessionId: string) {
+      return store.create({ name: 'Release Task', prompt: 'Do work', triggerType: 'agent', sessionId })
+    }
+
+    it('releases the task session when the task completes', async () => {
+      const task = createTask('release-success')
+      await runner.startTask(task, mockProvider)
+      await new Promise(resolve => setTimeout(resolve, 50))
+
+      expect(store.getById(task.id)!.status).toBe('completed')
+      expect(releaseProviderSession).toHaveBeenCalledWith('release-success')
+    })
+
+    it('releases the task session when the task fails', async () => {
+      await nextAgentPrompt(async () => { throw new Error('LLM API error') })
+      const task = createTask('release-failure')
+      await runner.startTask(task, mockProvider)
+      await new Promise(resolve => setTimeout(resolve, 50))
+
+      expect(store.getById(task.id)!.status).toBe('failed')
+      expect(releaseProviderSession).toHaveBeenCalledWith('release-failure')
+    })
+
+    it('releases the task session when the task is aborted', async () => {
+      let resolvePrompt: (() => void) | null = null
+      await nextAgentPrompt(
+        () => new Promise<void>((resolve) => { resolvePrompt = resolve }),
+        () => resolvePrompt?.(),
+      )
+      const task = createTask('release-abort')
+      await runner.startTask(task, mockProvider)
+      expect(releaseProviderSession).not.toHaveBeenCalled()
+
+      runner.abortTask(task.id, 'Aborted by user')
+
+      expect(releaseProviderSession).toHaveBeenCalledWith('release-abort')
+    })
+
+    it('releases running task sessions on dispose', async () => {
+      await nextAgentPrompt(() => new Promise<void>(() => {}))
+      const task = createTask('release-dispose')
+      await runner.startTask(task, mockProvider)
+
+      runner.dispose()
+
+      expect(releaseProviderSession).toHaveBeenCalledWith('release-dispose')
     })
   })
 
