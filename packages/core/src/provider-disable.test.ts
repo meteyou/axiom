@@ -4,6 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import {
   getProviderDefaultModel,
+  getUsableImageModels,
   getUsableModels,
   loadProviders,
   resolveProviderModelInput,
@@ -135,6 +136,40 @@ describe('setProviderModelDisabled', () => {
     setProviderModelDisabled('b', 'b2', true)
     updateProvider('b', { enabledModels: ['b1'] })
     expect(loadProviders().providers[1]!.disabledModels).toBeUndefined()
+  })
+})
+
+describe('image model disabling', () => {
+  beforeEach(() => {
+    writeProviders({
+      providers: [provider('a', ['a1']), provider('img', [], { enabledImageModels: ['gpt-image-1', 'gpt-image-2'] })],
+      activeProvider: 'a',
+      activeModel: 'a1',
+    })
+  })
+
+  it('hides disabled image models from the usable list and re-enables them', () => {
+    setProviderModelDisabled('img', 'gpt-image-1', true)
+    let stored = loadProviders().providers[1]!
+    expect(stored.disabledImageModels).toEqual(['gpt-image-1'])
+    expect(getUsableImageModels(stored)).toEqual(['gpt-image-2'])
+
+    setProviderModelDisabled('img', 'gpt-image-1', false)
+    stored = loadProviders().providers[1]!
+    expect(stored.disabledImageModels).toBeUndefined()
+    expect(getUsableImageModels(stored)).toEqual(['gpt-image-1', 'gpt-image-2'])
+  })
+
+  it('drops the disabled marker when the image model is removed', () => {
+    setProviderModelDisabled('img', 'gpt-image-1', true)
+    updateProvider('img', { enabledImageModels: ['gpt-image-2'] })
+    expect(loadProviders().providers[1]!.disabledImageModels).toBeUndefined()
+  })
+
+  it('resets the default image model setting when it gets disabled', () => {
+    writeSettings({ imageGeneration: { defaultModel: 'img:gpt-image-1' } })
+    setProviderModelDisabled('img', 'gpt-image-1', true)
+    expect(resetDisabledProviderReferences().settingsPaths).toEqual(['imageGeneration.defaultModel'])
   })
 })
 

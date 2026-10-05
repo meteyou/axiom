@@ -618,6 +618,10 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
   }
 
   function updateProviderModel(providerId: string, modelId: string, payload: ProviderModelUpdatePayloadContract): ProviderConfig {
+    return notifyOnImageModelChange(() => applyProviderModelUpdate(providerId, modelId, payload))
+  }
+
+  function applyProviderModelUpdate(providerId: string, modelId: string, payload: ProviderModelUpdatePayloadContract): ProviderConfig {
     try {
       const { disabled, ...metadataPatch } = payload
       let provider: ProviderConfig | undefined

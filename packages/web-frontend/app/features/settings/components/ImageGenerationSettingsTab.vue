@@ -89,37 +89,94 @@
             :key="`${model.providerId}:${model.modelId}`"
             class="flex items-start justify-between gap-3 px-4 py-3"
           >
-            <div class="min-w-0">
-              <div class="text-sm font-medium text-foreground">{{ model.displayName }}</div>
-              <div class="truncate font-mono text-[11px] text-muted-foreground">{{ model.providerName }} · {{ model.modelId }}</div>
+            <div class="min-w-0" :class="model.disabled ? 'opacity-60' : ''">
+              <div class="flex items-center gap-2">
+                <span class="text-sm font-medium text-foreground">{{ model.displayName }}</span>
+                <Badge v-if="model.disabled" variant="outline" class="px-1.5 py-0 text-[10px]">
+                  {{ $t('providers.disabled') }}
+                </Badge>
+              </div>
+              <div class="truncate font-mono text-[11px] text-muted-foreground">
+                <NuxtLink
+                  :to="{ path: '/providers', query: { provider: model.providerId } }"
+                  class="underline-offset-2 hover:text-foreground hover:underline"
+                >{{ model.providerName }}</NuxtLink> · {{ model.modelId }}
+              </div>
               <p class="mt-1 text-xs" :class="model.description ? 'text-muted-foreground' : 'italic text-muted-foreground/70'">
                 {{ model.description || $t('settings.imageGenerationModelNoDescription') }}
               </p>
             </div>
-            <Button as-child variant="ghost" size="sm" class="shrink-0">
-              <NuxtLink :to="{ path: '/providers', query: { provider: model.providerId } }">
-                {{ model.providerName }}
-                <AppIcon name="externalLink" size="sm" />
-              </NuxtLink>
-            </Button>
+            <div class="flex shrink-0 items-center gap-2">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                :aria-label="$t('providers.editModelMenu')"
+                :title="$t('providers.editModelMenu')"
+                @click="openEdit(model)"
+              >
+                <AppIcon name="edit" class="h-4 w-4" />
+              </Button>
+              <Switch
+                :checked="!model.disabled"
+                :disabled="togglingKey === modelKey(model)"
+                :aria-label="model.disabled ? $t('providers.enable') : $t('providers.disable')"
+                @update:checked="(enabled: boolean) => toggleModel(model, enabled)"
+              />
+            </div>
           </li>
         </ul>
       </div>
     </div>
+
+    <EditImageModelDialog
+      :open="!!editTarget"
+      :provider="editTarget?.provider ?? null"
+      :model-id="editTarget?.modelId ?? null"
+      @close="editTarget = null"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { IMAGE_GENERATION_MAX_VARIANTS_BOUNDS } from '@axiom/core/contracts'
 import type { ImageGenerationSettings } from '~/composables/useSettings'
-import { buildImageModelOptions, listUsableImageModels, type ProviderModelSource } from '~/utils/providerModelOptions'
+import type { Provider } from '~/features/providers/composables/useProviders'
+import { buildImageModelOptions, listImageModels, type ImageModelOverviewEntry } from '~/utils/providerModelOptions'
 
 const props = defineProps<{
-  providers: ProviderModelSource[]
+  providers: Provider[]
 }>()
 
 const settings = defineModel<ImageGenerationSettings>({ required: true })
 
-const imageModels = computed(() => listUsableImageModels(props.providers))
+const { updateProviderModel } = useProviders()
+
+const imageModels = computed(() => listImageModels(props.providers))
 const imageModelOptions = computed(() => buildImageModelOptions(props.providers))
+
+const editTarget = ref<{ provider: Provider; modelId: string } | null>(null)
+const togglingKey = ref<string | null>(null)
+
+function modelKey(model: ImageModelOverviewEntry): string {
+  return `${model.providerId}:${model.modelId}`
+}
+
+function openEdit(model: ImageModelOverviewEntry) {
+  const provider = props.providers.find(p => p.id === model.providerId)
+  if (provider) editTarget.value = { provider, modelId: model.modelId }
+}
+
+async function toggleModel(model: ImageModelOverviewEntry, enabled: boolean) {
+  togglingKey.value = modelKey(model)
+  try {
+    await updateProviderModel(model.providerId, model.modelId, { disabled: !enabled })
+  } finally {
+    togglingKey.value = null
+  }
+}
+
+watch(imageModelOptions, (options) => {
+  const current = settings.value.defaultModel
+  if (current && !options.some(opt => opt.value === current)) settings.value.defaultModel = ''
+})
 </script>
