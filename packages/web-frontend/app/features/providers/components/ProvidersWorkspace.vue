@@ -969,7 +969,7 @@ async function handleToggleProviderDisabled(provider: Provider) {
 
 async function handleToggleModelDisabled(provider: Provider, modelId: string) {
   const disabled = !isModelDisabled(provider, modelId)
-  const result = await updateProviderModel(provider.id, modelId, { disabled })
+  const result = await updateProviderModel(provider.id, modelId, { disabled, modelType: 'text' })
   if (!result) return
   successMessage.value = t(disabled ? 'providers.disableSuccess' : 'providers.enableSuccess', { name: modelId })
   autoHideSuccess()
@@ -977,7 +977,7 @@ async function handleToggleModelDisabled(provider: Provider, modelId: string) {
 
 async function handleToggleImageModelDisabled(provider: Provider, modelId: string) {
   const disabled = !isImageModelDisabled(provider, modelId)
-  const result = await updateProviderModel(provider.id, modelId, { disabled })
+  const result = await updateProviderModel(provider.id, modelId, { disabled, modelType: 'image' })
   if (!result) return
   successMessage.value = t(disabled ? 'providers.disableSuccess' : 'providers.enableSuccess', { name: getImageModelDisplayName(provider, modelId) })
   autoHideSuccess()

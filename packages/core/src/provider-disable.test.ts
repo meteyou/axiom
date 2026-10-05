@@ -171,6 +171,35 @@ describe('image model disabling', () => {
     setProviderModelDisabled('img', 'gpt-image-1', true)
     expect(resetDisabledProviderReferences().settingsPaths).toEqual(['imageGeneration.defaultModel'])
   })
+
+  it('keeps the text and image disable state apart for an id that is in both lists', () => {
+    writeProviders({
+      providers: [provider('a', ['a1']), provider('both', ['shared', 'b1'], { enabledImageModels: ['shared'] })],
+      activeProvider: 'a',
+      activeModel: 'a1',
+    })
+    writeSettings({ tasks: { defaultProvider: 'both:shared' }, imageGeneration: { defaultModel: 'both:shared' } })
+
+    setProviderModelDisabled('both', 'shared', true, 'image')
+    let stored = loadProviders().providers[1]!
+    expect(stored.disabledImageModels).toEqual(['shared'])
+    expect(stored.disabledModels).toBeUndefined()
+    expect(getUsableModels(stored)).toEqual(['shared', 'b1'])
+    expect(() => setActiveProvider('both', 'shared')).not.toThrow()
+    setActiveProvider('a', 'a1')
+    expect(resetDisabledProviderReferences().settingsPaths).toEqual(['imageGeneration.defaultModel'])
+
+    setProviderModelDisabled('both', 'shared', false, 'image')
+    setProviderModelDisabled('both', 'shared', true, 'text')
+    stored = loadProviders().providers[1]!
+    expect(stored.disabledModels).toEqual(['shared'])
+    expect(getUsableImageModels(stored)).toEqual(['shared'])
+    expect(resetDisabledProviderReferences().settingsPaths).toEqual(['tasks.defaultProvider'])
+  })
+
+  it('rejects disabling an image model that is not configured as one', () => {
+    expect(() => setProviderModelDisabled('a', 'a1', true, 'image')).toThrow(/Image model "a1" is not configured/)
+  })
 })
 
 describe('resolveProviderModelInput', () => {

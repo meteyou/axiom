@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { getConfigDir } from './config.js'
-import { isProviderModelUsable, loadProviders, parseProviderModelId } from './provider-config.js'
+import { isProviderImageModelUsable, isProviderModelUsable, loadProviders, parseProviderModelId } from './provider-config.js'
 import type { ProviderConfig } from './provider-config.js'
 import type { ScheduledTaskStore } from './scheduled-task-store.js'
 
@@ -10,13 +10,13 @@ import type { ScheduledTaskStore } from './scheduled-task-store.js'
  * work. TTS/STT references are intentionally absent: disabled providers stay
  * usable there.
  */
-const SETTINGS_PROVIDER_REFERENCE_PATHS: ReadonlyArray<readonly string[]> = [
-  ['sessionSummaryProviderId'],
-  ['factExtraction', 'providerId'],
-  ['memoryConsolidation', 'providerId'],
-  ['tasks', 'defaultProvider'],
-  ['tasks', 'loopDetection', 'smartProvider'],
-  ['imageGeneration', 'defaultModel'],
+const SETTINGS_PROVIDER_REFERENCE_PATHS: ReadonlyArray<{ path: readonly string[]; image?: true }> = [
+  { path: ['sessionSummaryProviderId'] },
+  { path: ['factExtraction', 'providerId'] },
+  { path: ['memoryConsolidation', 'providerId'] },
+  { path: ['tasks', 'defaultProvider'] },
+  { path: ['tasks', 'loopDetection', 'smartProvider'] },
+  { path: ['imageGeneration', 'defaultModel'], image: true },
 ]
 
 export interface ResetDisabledProviderReferencesResult {
@@ -24,13 +24,23 @@ export interface ResetDisabledProviderReferencesResult {
   cronjobIds: string[]
 }
 
-export function isDisabledProviderReference(value: string | null | undefined, providers: ProviderConfig[]): boolean {
+function findReferencedProvider(value: string | null | undefined, providers: ProviderConfig[]) {
   const { providerId, modelId } = parseProviderModelId(value ?? undefined)
-  if (!providerId) return false
+  if (!providerId) return undefined
   const key = providerId.toLowerCase()
   const provider = providers.find(p => p.id === providerId || p.name.toLowerCase() === key)
-  if (!provider) return false
-  return !isProviderModelUsable(provider, modelId)
+  return provider ? { provider, modelId } : undefined
+}
+
+export function isDisabledProviderReference(value: string | null | undefined, providers: ProviderConfig[]): boolean {
+  const ref = findReferencedProvider(value, providers)
+  return ref ? !isProviderModelUsable(ref.provider, ref.modelId) : false
+}
+
+function isDisabledImageModelReference(value: string, providers: ProviderConfig[]): boolean {
+  const ref = findReferencedProvider(value, providers)
+  if (!ref?.modelId) return false
+  return !isProviderImageModelUsable(ref.provider, ref.modelId)
 }
 
 function resetSettingsReferences(providers: ProviderConfig[]): string[] {
@@ -40,14 +50,15 @@ function resetSettingsReferences(providers: ProviderConfig[]): string[] {
   const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as Record<string, unknown>
   const resetPaths: string[] = []
 
-  for (const refPath of SETTINGS_PROVIDER_REFERENCE_PATHS) {
+  for (const { path: refPath, image } of SETTINGS_PROVIDER_REFERENCE_PATHS) {
     const parent = refPath.slice(0, -1).reduce<unknown>(
       (node, key) => (node && typeof node === 'object' ? (node as Record<string, unknown>)[key] : undefined),
       settings,
     ) as Record<string, unknown> | undefined
     const leaf = refPath[refPath.length - 1]!
     const value = parent?.[leaf]
-    if (typeof value === 'string' && isDisabledProviderReference(value, providers)) {
+    const isDisabled = image ? isDisabledImageModelReference : isDisabledProviderReference
+    if (typeof value === 'string' && isDisabled(value, providers)) {
       parent![leaf] = ''
       resetPaths.push(refPath.join('.'))
     }

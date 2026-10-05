@@ -156,6 +156,11 @@ describe('providers schema', () => {
     expect(metadata.ok).toBe(true)
     if (metadata.ok) expect(metadata.value).toEqual({ name: 'Qwen3.8 Flash', contextWindow: 1_000_000, maxTokens: 65_536 })
 
+    const imageToggle = parseProviderModelUpdatePayload({ disabled: true, modelType: 'image' })
+    expect(imageToggle).toEqual({ ok: true, value: { disabled: true, modelType: 'image' } })
+    const badModelType = parseProviderModelUpdatePayload({ disabled: true, modelType: 'audio' })
+    expect(badModelType.ok).toBe(false)
+
     const badMaxTokens = parseProviderModelUpdatePayload({ maxTokens: 1.5 })
     expect(badMaxTokens.ok).toBe(false)
     if (!badMaxTokens.ok) expect(badMaxTokens.error).toContain('maxTokens must be a positive integer')
