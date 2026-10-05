@@ -6,6 +6,8 @@ export interface ToolCallData {
   toolArgs?: unknown
   toolResult?: unknown
   toolIsError?: boolean
+  /** Set from `tool_call_start` until `tool_call_end`; history rows never carry it. */
+  running?: boolean
 }
 
 /**
@@ -878,6 +880,7 @@ export function useChat() {
               toolName: msg.toolName,
               toolCallId: msg.toolCallId ?? '',
               toolArgs: msg.toolArgs,
+              running: true,
             },
           }]
         }
@@ -997,6 +1000,7 @@ export function useChat() {
                 ...existingMsg.toolData!,
                 toolResult: msg.toolResult,
                 toolIsError: msg.toolIsError,
+                running: false,
               },
             }
             messages.value = updated

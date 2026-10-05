@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseBackendTimestamp } from './datetime'
+import { formatDurationSeconds, parseBackendTimestamp } from './datetime'
 
 describe('parseBackendTimestamp', () => {
   it('treats SQLite naked datetime strings as UTC', () => {
@@ -43,5 +43,13 @@ describe('parseBackendTimestamp', () => {
 
   it('returns null for malformed input', () => {
     expect(parseBackendTimestamp('not a date')).toBeNull()
+  })
+})
+
+describe('formatDurationSeconds', () => {
+  it('shows seconds below a minute and minutes with seconds above', () => {
+    expect(formatDurationSeconds(0)).toBe('0s')
+    expect(formatDurationSeconds(45.9)).toBe('45s')
+    expect(formatDurationSeconds(125)).toBe('2m 5s')
   })
 })

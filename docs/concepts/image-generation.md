@@ -108,6 +108,8 @@ Provider errors (invalid key, insufficient credits, an exhausted ChatGPT usage l
 
 Each request times out after **6 minutes**. Most models finish in 20–60 s, but GPT Image 2 at high quality regularly needs 2–5 minutes per image, and an abandoned request is still billed.
 
+While `generate_image` runs, the chat shows a spinner and the elapsed time on the tool card.
+
 ## Cost tracking
 
 pi-ai's token-based estimate is far off for image models (zero for most of them), so the cost comes from the backend:
