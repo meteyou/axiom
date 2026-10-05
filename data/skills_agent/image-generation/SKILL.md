@@ -28,17 +28,13 @@ requires_toolsets: [generate_image]
 4. **Files are saved for you** under the output folder named in the tool description (default `images/YYYY-MM-DD/`) in the workspace, each with a `.json` sidecar (model, prompt, parameters, cost, generation id). The tool result lists the paths, format, file size, billed cost and duration — it never contains image data.
 5. **Optional self-check.** You usually cannot see the generated pixels: Axiom's file tools return text, not images. If a vision-capable text model is configured and the user has given you a way to query it (for example a script or skill that sends an image to that model), use it to verify what matters — readable text, correct subject, no obvious artefacts. Without such a path, do not claim the image is correct; tell the user what to check (e.g. spelling of rendered text). For SVG output, `read_file` shows the markup, which is enough to check `viewBox`, colours and whether text was converted to paths.
 6. **Deliver** every image the user should see with `send_file_to_user` (one call per file, with a one-line caption). Then summarise what you generated, which model you used and the cost from the tool result.
-7. **Iterate with `input_images`.** For "make it bluer", "remove the background", "same logo but round", pass the previous file path in `input_images` together with a prompt describing only the change. This keeps composition and identity; re-rolling from scratch usually loses them. Only models that accept image input can edit (the Providers UI marks them with "edits images"). SVG files cannot be passed as `input_images`: iterate on vector output by generating again with a refined prompt, or edit the SVG markup directly for small changes (colours, text).
+7. **Iterate with `input_images`.** For "make it bluer", "remove the background", "same logo but round", pass the previous file path in `input_images` together with a prompt describing only the change. This keeps composition and identity; re-rolling from scratch usually loses them. Not every model accepts input images; if the call fails for that reason, tell the user. SVG files cannot be passed as `input_images`: iterate on vector output by generating again with a refined prompt, or edit the SVG markup directly for small changes (colours, text).
 
 ## Choosing a model
 
-Prefer the model the user named, then the descriptions in `<available_providers>`, then the default. Rules of thumb:
-
-- **Logos, icons, flat illustrations, anything that must scale** → a Recraft *vector* model (e.g. `recraft/recraft-v4.1-vector`); it returns SVG.
-- **Text inside the image** (posters, signs, labels) → GPT image models or Gemini image models render text most reliably; keep the text short and quote it exactly.
-- **Photorealism, product shots, people** → GPT image or Gemini image models, or Recraft (non-vector) for stylised realism.
-- **Editing existing images** → a model that accepts image input (Gemini and GPT image models do; some Recraft variants do not).
-- **Cost.** Prices differ by model and are billed per image — from roughly $0.03 to well over $0.10. Prefer the cheaper model for drafts and exploration, and the stronger one for the final version. Do not generate more variants than asked for.
+- Only one image model enabled → omit `model`; the default is used.
+- The user named a model → use it.
+- Otherwise pick the model whose description in `<available_providers>` best fits the request (the user writes these descriptions to tell you what each model is for). If no description fits, use the default.
 
 ## Cost and quota
 
