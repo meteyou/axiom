@@ -79,6 +79,10 @@ export {
   clearFallbackProvider,
   getApiKeyForProvider,
   getAvailableModels,
+  getAvailableImageModels,
+  supportsImageModels,
+  createImageOnlyModelIdMatcher,
+  getUsableImageModels,
   isDynamicCatalogProvider,
   supportsModelSpecOverrides,
   isRadiusProviderType,
@@ -381,6 +385,8 @@ export type { TaskToolsOptions } from './task-tools.js'
 export { createReadChatHistoryTool } from './chat-history-tools.js'
 export type { ChatHistoryToolsOptions } from './chat-history-tools.js'
 export { createSendFileTool, extractUploadsFromToolResult } from './send-file-tool.js'
+export { checkImageModelAvailability, generateImagesWithProvider, IMAGE_TEST_PROMPT } from './image-generation.js'
+export type { AvailableImageModel } from './image-catalog.js'
 export type { SendFileToolOptions, SendFileToolDetails } from './send-file-tool.js'
 export {
   searchMemories,

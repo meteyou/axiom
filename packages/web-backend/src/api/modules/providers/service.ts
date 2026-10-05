@@ -3,11 +3,18 @@ import { URL } from 'node:url'
 import {
   addOAuthProvider,
   addProvider as addProviderConfig,
+  checkImageModelAvailability,
   clearFallbackProvider,
+  createImageOnlyModelIdMatcher,
   deleteProvider as deleteProviderConfig,
   getApiKeyForProvider,
+  generateImagesWithProvider,
+  getAvailableImageModels,
   getAvailableModels,
   getRadiusCatalog,
+  getUsableImageModels,
+  IMAGE_TEST_PROMPT,
+  logTokenUsage,
   isDynamicCatalogProvider,
   isRadiusProviderType,
   refreshPiCatalogs,
@@ -33,9 +40,10 @@ import {
   updateProviderStatus,
   ProviderNotFoundError,
 } from '@axiom/core'
-import type { AvailableModel, ProviderConfig, ProviderType, ProvidersFile } from '@axiom/core'
+import type { AvailableImageModel, AvailableModel, ProviderConfig, ProviderType, ProvidersFile } from '@axiom/core'
 import type {
   OAuthLoginResponseContract,
+  ProviderImageTestResultContract,
   ProviderCatalogRefreshResultContract,
   ProviderCreatePayloadContract,
   ProviderFallbackUpdatePayloadContract,
@@ -66,6 +74,7 @@ export interface ProvidersService {
   listProviders: () => { masked: ProvidersFile; decrypted: ProvidersFile }
   getModelsByProviderType: (providerType: string) => Promise<AvailableModel[]>
   getLiveModels: (providerId: string) => Promise<AvailableModel[]>
+  getImageModelsByProviderType: (providerType: string) => AvailableImageModel[]
   refreshModelCatalogs: () => Promise<ProviderCatalogRefreshResultContract[]>
   setFallback: (payload: ProviderFallbackUpdatePayloadContract) => { fallbackProvider: string | null; fallbackModel: string | null }
   startOAuthLogin: (payload: ProviderOAuthLoginStartPayloadContract) => Promise<OAuthLoginResponseContract>
@@ -90,6 +99,7 @@ export interface ProvidersService {
     status?: string
     modelId: string
   }>
+  testImageModel: (id: string, modelId: string) => Promise<ProviderImageTestResultContract>
   activateProvider: (id: string, payload: ProviderModelSelectionPayloadContract) => { activeProvider: string; activeModel: string | null }
   probeOllamaModels: (baseUrl: string) => Promise<OllamaTagsResponse>
   listOllamaModels: (providerId: string) => Promise<OllamaTagsResponse>
@@ -183,13 +193,31 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
           force: true,
         }))
       }
-      return await fetchModelsFromBase(provider.baseUrl, provider.apiKey || undefined, provider.type)
+      const isImageOnly = createImageOnlyModelIdMatcher(provider.providerType)
+      const models = await fetchModelsFromBase(provider.baseUrl, provider.apiKey || undefined, provider.type)
+      return models.filter(model => !isImageOnly(model.id))
     } catch (err) {
       const fallback = getAvailableModels(provider.providerType as ProviderType)
       if (fallback.length === 0) throw err
       console.warn(`[axiom] Live model fetch failed for provider "${provider.name}", using bundled catalog: ${(err as Error).message}`)
       return fallback
     }
+  }
+
+  function getImageModelsByProviderType(providerType: string): AvailableImageModel[] {
+    return getAvailableImageModels(providerType as ProviderType)
+  }
+
+  function usableImageModelSignature(): string {
+    return JSON.stringify(loadProviders().providers.map(p => [p.id, getUsableImageModels(p)]))
+  }
+
+  /** Background agents build their tool set once; tell them when `generate_image` may have to appear or vanish. */
+  function notifyOnImageModelChange<T>(mutate: () => T): T {
+    const before = usableImageModelSignature()
+    const result = mutate()
+    if (usableImageModelSignature() !== before) options.onImageModelsChanged?.()
+    return result
   }
 
   /**
@@ -516,6 +544,10 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
   }
 
   function updateProvider(id: string, payload: ProviderUpdatePayloadContract): ProviderConfig {
+    return notifyOnImageModelChange(() => applyProviderUpdate(id, payload))
+  }
+
+  function applyProviderUpdate(id: string, payload: ProviderUpdatePayloadContract): ProviderConfig {
     try {
       const { disabled, ...configPayload } = payload
       applyDisabledChange(disabled, value => setProviderDisabled(id, value))
@@ -534,6 +566,7 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
         baseUrl: configPayload.baseUrl,
         apiKey: configPayload.apiKey,
         enabledModels: configPayload.enabledModels,
+        enabledImageModels: configPayload.enabledImageModels,
         degradedThresholdMs: configPayload.degradedThresholdMs,
         textVerbosity: configPayload.textVerbosity,
         transport: configPayload.transport,
@@ -557,7 +590,7 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
 
   function deleteProvider(id: string): void {
     try {
-      deleteProviderConfig(id)
+      notifyOnImageModelChange(() => deleteProviderConfig(id))
     } catch (err) {
       const message = (err as Error).message
       if (message.includes('not found')) {
@@ -604,6 +637,9 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
     }
 
     const modelId = payload.modelId
+    if (payload.modelType === 'image') {
+      return testImageModelAvailability(provider, modelId)
+    }
     const testProviderConfig = modelId ? { ...provider, enabledModels: [modelId] } : provider
     const testModelId = modelId ?? getProviderDefaultModel(provider)
 
@@ -634,6 +670,70 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
       latencyMs: result.latencyMs ?? undefined,
       status: result.status,
       modelId: testModelId,
+    }
+  }
+
+  function requireEnabledImageModel(provider: ProviderConfig, modelId: string | undefined): string {
+    if (!modelId || !(provider.enabledImageModels ?? []).includes(modelId)) {
+      throw new ProvidersValidationError(`Image model "${modelId ?? ''}" is not enabled for provider "${provider.name}"`)
+    }
+    return modelId
+  }
+
+  async function testImageModelAvailability(provider: ProviderConfig, requestedModelId: string | undefined) {
+    const modelId = requireEnabledImageModel(provider, requestedModelId)
+    const result = await checkImageModelAvailability(provider, modelId)
+    updateProviderStatus(provider.id, result.status === 'down' ? 'error' : 'connected', modelId)
+
+    if (result.status === 'down') {
+      return { success: false, error: result.errorMessage ?? 'Availability check failed', modelId }
+    }
+    return {
+      success: true,
+      message: result.status === 'degraded'
+        ? `Available, but slow response (${result.latencyMs}ms)`
+        : `Available. Image model: ${modelId}`,
+      latencyMs: result.latencyMs ?? undefined,
+      status: result.status,
+      modelId,
+    }
+  }
+
+  async function testImageModel(id: string, requestedModelId: string): Promise<ProviderImageTestResultContract> {
+    const provider = requireProvider(id)
+    const modelId = requireEnabledImageModel(provider, requestedModelId)
+    const result = await generateImagesWithProvider({ provider, modelId, prompt: IMAGE_TEST_PROMPT, count: 1 })
+
+    if (options.db) {
+      logTokenUsage(options.db, {
+        provider: result.model.provider,
+        model: result.model.id,
+        promptTokens: result.usage.input,
+        completionTokens: result.usage.output,
+        cacheRead: result.usage.cacheRead,
+        cacheWrite: result.usage.cacheWrite,
+        estimatedCost: result.costUsd ?? 0,
+      })
+    }
+
+    const image = result.images[0]
+    updateProviderStatus(id, image ? 'connected' : 'error', modelId)
+    if (!image) {
+      return {
+        success: false,
+        modelId,
+        error: result.errors.join(' ') || 'No image returned',
+        costUsd: result.costUsd,
+        durationMs: result.durationMs,
+      }
+    }
+    return {
+      success: true,
+      modelId,
+      dataUrl: `data:${image.mimeType};base64,${image.data}`,
+      mimeType: image.mimeType,
+      costUsd: result.costUsd,
+      durationMs: result.durationMs,
     }
   }
 
@@ -735,6 +835,7 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
     listProviders,
     getModelsByProviderType,
     getLiveModels,
+    getImageModelsByProviderType,
     refreshModelCatalogs,
     setFallback,
     startOAuthLogin,
@@ -745,6 +846,7 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
     updateProviderModel,
     deleteProvider,
     testProvider,
+    testImageModel,
     activateProvider,
     probeOllamaModels,
     listOllamaModels,

@@ -63,6 +63,8 @@ export interface ProviderContract {
   apiKey: string
   apiKeyMasked: string
   enabledModels?: string[]
+  /** Image generation models; never part of `enabledModels` or any text-model picker. */
+  enabledImageModels?: string[]
   disabled?: boolean
   disabledModels?: string[]
   degradedThresholdMs?: number
@@ -76,6 +78,8 @@ export interface ProviderContract {
   modelCosts?: Record<string, { input: number; output: number; cacheRead?: number; cacheWrite?: number }>
   /** Effective runtime specs per enabled model (overrides layered on catalog defaults). */
   modelSpecs?: Record<string, ProviderModelSpecContract>
+  /** Catalog details per enabled image model. */
+  imageModelSpecs?: Record<string, ImageModelSpecContract>
   /** Per-model user overrides (description, cost, limits). Not masked. */
   models?: ProviderModelContract[]
   /** True when this provider exposes a subscriber usage quota endpoint. */
@@ -122,6 +126,13 @@ export interface ProviderModelSpecContract {
   reasoning: boolean
   input: ModelInputModalityContract[]
   thinkingLevelMap?: ModelThinkingLevelMapContract
+}
+
+export interface ImageModelSpecContract {
+  /** Effective display name (user override → catalog → id). */
+  name: string
+  input: ModelInputModalityContract[]
+  output: ModelInputModalityContract[]
 }
 
 /** Mirrors pi-ai's `getSupportedThinkingLevels`. */
@@ -199,6 +210,8 @@ export interface ProviderTypePresetContract {
   editableModelSpecs?: boolean
   /** Generic preset for any endpoint speaking `apiType`; accepts pi-ai `compat` options. */
   custom?: boolean
+  /** True when the provider can serve image generation models. */
+  supportsImageModels?: boolean
 }
 
 export interface AvailableModelContract {
@@ -208,6 +221,13 @@ export interface AvailableModelContract {
   maxTokens?: number
   /** USD per 1M tokens. */
   cost?: { input: number; output: number; cacheRead?: number; cacheWrite?: number }
+}
+
+export interface AvailableImageModelContract {
+  id: string
+  name: string
+  input: ModelInputModalityContract[]
+  output: ModelInputModalityContract[]
 }
 
 export interface OllamaModelContract {
@@ -265,6 +285,19 @@ export interface ProviderTestResultContract {
   error?: string
 }
 
+/** Result of the paid "Generate test image" action. */
+export interface ProviderImageTestResultContract {
+  success: boolean
+  modelId: string
+  error?: string
+  /** `data:` URL for the preview; only returned to the admin UI. */
+  dataUrl?: string
+  mimeType?: string
+  /** Billed cost reported by the provider, `null` when not reported. */
+  costUsd: number | null
+  durationMs?: number
+}
+
 export interface ProviderActivationResponseContract {
   activeProvider: string
   activeModel: string | null
@@ -308,6 +341,7 @@ export interface ProviderUpdatePayloadContract {
   baseUrl?: string
   apiKey?: string
   enabledModels?: string[]
+  enabledImageModels?: string[]
   degradedThresholdMs?: number
   textVerbosity?: ProviderTextVerbosityContract | null
   transport?: ProviderTransportContract | null
@@ -335,8 +369,12 @@ export interface ProviderOAuthCodePayloadContract {
   code: string
 }
 
+export type ProviderModelTypeContract = 'text' | 'image'
+
 export interface ProviderModelSelectionPayloadContract {
   modelId?: string
+  /** `image` runs the free image-model availability check instead of a chat request. */
+  modelType?: ProviderModelTypeContract
 }
 
 /**

@@ -6,11 +6,17 @@ import {
 } from '@earendil-works/pi-ai'
 import type {
   Api,
+  AssistantImages,
   AssistantMessage,
   AssistantMessageEventStream,
   Context,
+  ImageApi,
+  ImageModel,
+  ImagesContext,
+  ImagesOptions,
   Model,
   MutableModels,
+  ProviderImages,
   ProviderStreams,
   SimpleStreamOptions,
 } from '@earendil-works/pi-ai'
@@ -20,6 +26,7 @@ import { mistralConversationsApi } from '@earendil-works/pi-ai/api/mistral-conve
 import { openAICodexResponsesApi } from '@earendil-works/pi-ai/api/openai-codex-responses.lazy'
 import { openAICompletionsApi } from '@earendil-works/pi-ai/api/openai-completions.lazy'
 import { openAIResponsesApi } from '@earendil-works/pi-ai/api/openai-responses.lazy'
+import { openrouterImagesApi } from '@earendil-works/pi-ai/api/openrouter-images.lazy'
 import { piMessagesApi } from '@earendil-works/pi-ai/api/pi-messages.lazy'
 
 /**
@@ -51,6 +58,17 @@ const API_MAP: Partial<Record<Api, ProviderStreams>> = Object.fromEntries(
   Object.entries(API_IMPLEMENTATIONS).map(([api, factory]) => [api, factory()]),
 )
 
+const IMAGE_API_IMPLEMENTATIONS = {
+  'openrouter-images': openrouterImagesApi,
+} satisfies Partial<Record<ImageApi, () => ProviderImages>>
+
+/** Image APIs this module can dispatch to; image catalog entries on other APIs are not offered. */
+export const SUPPORTED_IMAGE_APIS: ReadonlySet<ImageApi> = new Set(Object.keys(IMAGE_API_IMPLEMENTATIONS) as ImageApi[])
+
+const IMAGE_API_MAP: Partial<Record<ImageApi, ProviderImages>> = Object.fromEntries(
+  Object.entries(IMAGE_API_IMPLEMENTATIONS).map(([api, factory]) => [api, factory()]),
+)
+
 /**
  * Single shared collection reused across every completion/stream call site so
  * provider registration and auth resolution happen once. Axiom resolves its
@@ -79,6 +97,7 @@ function ensureProvider(models: MutableModels, providerId: string): void {
     auth: { apiKey: envApiKeyAuth(`${providerId} API key`, []) },
     models: [],
     api: API_MAP,
+    images: IMAGE_API_MAP,
   }))
 }
 
@@ -108,6 +127,20 @@ export function completeSimple(
   const models = getModelsInstance()
   ensureProvider(models, model.provider)
   return models.completeSimple(model, context, options)
+}
+
+/**
+ * Image generation through the shared `Models` instance. Like the text calls,
+ * pi-ai reports provider failures as `stopReason: "error"` instead of throwing.
+ */
+export function generateImages(
+  model: ImageModel<ImageApi>,
+  context: ImagesContext,
+  options?: ImagesOptions,
+): Promise<AssistantImages> {
+  const models = getModelsInstance()
+  ensureProvider(models, model.provider)
+  return models.generateImages(model, context, options)
 }
 
 /**

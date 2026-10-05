@@ -37,6 +37,7 @@ export interface ProvidersController {
   getProviders: (req: AuthenticatedRequest, res: ExpressResponse) => void
   getModelsByProviderType: (req: AuthenticatedRequest, res: ExpressResponse) => Promise<void>
   getLiveModels: (req: AuthenticatedRequest, res: ExpressResponse) => Promise<void>
+  getImageModelsByProviderType: (req: AuthenticatedRequest, res: ExpressResponse) => void
   postOAuthLogin: (req: AuthenticatedRequest, res: ExpressResponse) => Promise<void>
   getOAuthStatus: (req: AuthenticatedRequest, res: ExpressResponse) => Promise<void>
   postOAuthCode: (req: AuthenticatedRequest, res: ExpressResponse) => void
@@ -50,6 +51,7 @@ export interface ProvidersController {
   patchProviderModel: (req: AuthenticatedRequest, res: ExpressResponse) => void
   deleteProvider: (req: AuthenticatedRequest, res: ExpressResponse) => void
   postProviderTest: (req: AuthenticatedRequest, res: ExpressResponse) => Promise<void>
+  postImageModelTest: (req: AuthenticatedRequest, res: ExpressResponse) => Promise<void>
   postProviderActivate: (req: AuthenticatedRequest, res: ExpressResponse) => void
   postRefreshQuota: (req: AuthenticatedRequest, res: ExpressResponse) => Promise<void>
   postRefreshCatalogs: (req: AuthenticatedRequest, res: ExpressResponse) => Promise<void>
@@ -111,6 +113,15 @@ export function createProvidersController(options: ProvidersRouterOptions = {}):
 
         res.status(500).json({ error: `Failed to get models: ${(err as Error).message}` })
       }
+    },
+
+    getImageModelsByProviderType(req, res) {
+      const parsedProviderType = parseProviderTypeParam(req.params.providerType)
+      if (!parsedProviderType.ok) {
+        res.status(400).json({ error: parsedProviderType.error })
+        return
+      }
+      res.json({ models: service.getImageModelsByProviderType(parsedProviderType.value) })
     },
 
     async getLiveModels(req, res) {
@@ -411,7 +422,36 @@ export function createProvidersController(options: ProvidersRouterOptions = {}):
           return
         }
 
+        if (err instanceof ProvidersValidationError) {
+          res.status(400).json({ success: false, error: err.message })
+          return
+        }
+
         res.status(500).json({ success: false, error: `Test failed: ${(err as Error).message}` })
+      }
+    },
+
+    async postImageModelTest(req, res) {
+      const { modelId } = parseProviderModelSelectionPayload(req.body)
+      if (!modelId) {
+        res.status(400).json({ success: false, error: 'modelId is required' })
+        return
+      }
+
+      try {
+        res.json(await service.testImageModel(String(req.params.id ?? ''), modelId))
+      } catch (err) {
+        if (err instanceof ProvidersNotFoundError) {
+          res.status(404).json({ error: err.message })
+          return
+        }
+
+        if (err instanceof ProvidersValidationError) {
+          res.status(400).json({ success: false, error: err.message })
+          return
+        }
+
+        res.status(500).json({ success: false, error: `Test image failed: ${(err as Error).message}` })
       }
     },
 

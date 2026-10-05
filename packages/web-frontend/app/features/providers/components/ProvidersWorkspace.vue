@@ -185,6 +185,10 @@
                           <AppIcon name="add" class="h-4 w-4" />
                           {{ $t('providers.addModelMenu') }}
                         </DropdownMenuItem>
+                        <DropdownMenuItem v-if="supportsImageModels(provider)" @click="openAddImageModel(provider)">
+                          <AppIcon name="image" class="h-4 w-4" />
+                          {{ $t('providers.imageModels.addMenu') }}
+                        </DropdownMenuItem>
                         <DropdownMenuItem
                             v-if="providerSupportsQuota(provider)"
                             :disabled="isRefreshingQuota(provider.id)"
@@ -327,6 +331,77 @@
                     </DropdownMenu>
                   </TableCell>
                 </TableRow>
+
+                <template v-if="getImageModels(provider).length > 0">
+                  <TableRow class="bg-muted/30 hover:bg-muted/30">
+                    <TableCell colspan="4" class="py-1.5">
+                      <div class="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                        <AppIcon name="image" class="h-3.5 w-3.5" />
+                        {{ $t('providers.imageModels.sectionTitle') }}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                  <TableRow
+                    v-for="modelId in getImageModels(provider)"
+                    :key="`${provider.id}-image-${modelId}`"
+                    class="bg-muted/30 hover:bg-muted/50"
+                    :class="provider.disabled ? 'opacity-60' : ''"
+                  >
+                    <TableCell class="py-1.5">
+                      <div class="flex items-center gap-2">
+                        <span class="text-xs text-muted-foreground">└</span>
+                        <span class="text-sm" :class="provider.disabled ? 'text-muted-foreground line-through' : 'text-foreground'">{{ getImageModelDisplayName(provider, modelId) }}</span>
+                        <span
+                          v-if="getImageModelDisplayName(provider, modelId) !== modelId"
+                          class="font-mono text-[11px] text-muted-foreground"
+                        >{{ modelId }}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell class="py-1.5">
+                      <span class="text-xs text-muted-foreground" :title="$t('providers.imageModels.costHint')">{{ $t('providers.imageModels.costPerImage') }}</span>
+                    </TableCell>
+                    <TableCell class="py-1.5">
+                      <div v-if="isTestingModel(provider.id, modelId)" class="flex items-center gap-1.5">
+                        <span
+                          class="h-3.5 w-3.5 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent"
+                          aria-hidden="true"
+                        />
+                        <span class="text-xs text-muted-foreground">{{ $t('providers.testing') }}</span>
+                      </div>
+                      <Badge v-else :variant="getStatusVariant(provider.modelStatuses?.[modelId])">
+                        {{ getStatusLabel(provider.modelStatuses?.[modelId]) }}
+                      </Badge>
+                    </TableCell>
+                    <TableCell class="py-1.5 text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger as-child>
+                          <Button variant="ghost" size="icon-sm" :aria-label="$t('providers.columns.actions')">
+                            <AppIcon name="moreVertical" class="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem @click="handleCheckImageModel(provider.id, modelId)">
+                            <AppIcon name="refresh" class="h-4 w-4" />
+                            {{ $t('providers.imageModels.checkAvailability') }}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem @click="openImageTest(provider, modelId)">
+                            <AppIcon name="image" class="h-4 w-4" />
+                            {{ $t('providers.imageModels.testImageMenu') }}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem @click="openEditImageModel(provider, modelId)">
+                            <AppIcon name="edit" class="h-4 w-4" />
+                            {{ $t('providers.editModelMenu') }}
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem destructive @click="removeImageModelTarget = { provider, modelId }">
+                            <AppIcon name="trash" class="h-4 w-4" />
+                            {{ $t('providers.removeModel') }}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                </template>
               </template>
             </TableBody>
           </Table>
@@ -352,6 +427,39 @@
     :provider="addModelTarget"
     @close="closeAddModel"
     @added="handleModelsAdded"
+  />
+
+  <AddImageModelDialog
+    :open="!!addImageModelTarget"
+    :provider="addImageModelTarget"
+    @close="addImageModelTarget = null"
+    @added="showSuccess(t('providers.addModelSuccess'))"
+  />
+
+  <EditImageModelDialog
+    :open="!!editImageModelTarget"
+    :provider="editImageModelTarget?.provider ?? null"
+    :model-id="editImageModelTarget?.modelId ?? null"
+    @close="editImageModelTarget = null"
+    @saved="showSuccess(t('providers.editModelSuccess'))"
+  />
+
+  <ImageModelTestDialog
+    :open="!!imageTestTarget"
+    :provider="imageTestTarget?.provider ?? null"
+    :model-id="imageTestTarget?.modelId ?? null"
+    @close="imageTestTarget = null"
+  />
+
+  <ConfirmDialog
+    :open="!!removeImageModelTarget"
+    :title="$t('providers.removeModel')"
+    :description="$t('providers.removeModelConfirm', { model: removeImageModelTarget?.modelId ?? '', provider: removeImageModelTarget?.provider.name ?? '' })"
+    :confirm-label="$t('providers.removeModelConfirmButton')"
+    :cancel-label="$t('providers.deleteCancel')"
+    destructive
+    @confirm="handleRemoveImageModel"
+    @cancel="removeImageModelTarget = null"
   />
 
   <!-- Edit Model dialog -->
@@ -394,7 +502,7 @@ import type { Provider } from '~/features/providers/composables/useProviders'
 import type { ProviderFormPayload } from '~/components/ProviderFormDialog.vue'
 import { useProviders } from '~/features/providers/composables/useProviders'
 import { formatModelCost as formatCost } from '~/utils/modelFormat'
-import { getModelDisplayName } from '~/utils/providerModelOptions'
+import { getImageModelDisplayName, getModelDisplayName } from '~/utils/providerModelOptions'
 import { providerTypeLabel } from '~/utils/providerTypeOptions'
 
 const { t } = useI18n()
@@ -463,6 +571,12 @@ const addModelTarget = ref<Provider | null>(null)
 
 const showEditModel = ref(false)
 const editModelTarget = ref<{ provider: Provider; modelId: string } | null>(null)
+
+type ProviderModelRef = { provider: Provider; modelId: string }
+const addImageModelTarget = ref<Provider | null>(null)
+const editImageModelTarget = ref<ProviderModelRef | null>(null)
+const imageTestTarget = ref<ProviderModelRef | null>(null)
+const removeImageModelTarget = ref<ProviderModelRef | null>(null)
 
 const sortedProviders = computed(() =>
   [...providers.value].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })),
@@ -611,6 +725,49 @@ function getStatusLabel(status?: string): string {
 
 function autoHideSuccess() {
   setTimeout(() => { successMessage.value = null }, 4000)
+}
+
+function showSuccess(message: string) {
+  successMessage.value = message
+  autoHideSuccess()
+}
+
+/* ── Image models ── */
+function supportsImageModels(provider: Provider): boolean {
+  return presets.value[provider.providerType]?.supportsImageModels === true
+}
+
+function getImageModels(provider: Provider): string[] {
+  return provider.enabledImageModels ?? []
+}
+
+function openAddImageModel(provider: Provider) {
+  addImageModelTarget.value = provider
+}
+
+function openEditImageModel(provider: Provider, modelId: string) {
+  editImageModelTarget.value = { provider, modelId }
+}
+
+function openImageTest(provider: Provider, modelId: string) {
+  imageTestTarget.value = { provider, modelId }
+}
+
+async function handleCheckImageModel(providerId: string, modelId: string) {
+  const result = await testProvider(providerId, modelId, 'image')
+  if (result.success) {
+    showSuccess(result.message ?? t('providers.testSuccess'))
+  } else {
+    error.value = result.error ?? t('providers.testFailed')
+  }
+}
+
+async function handleRemoveImageModel() {
+  const target = removeImageModelTarget.value
+  if (!target) return
+  const enabledImageModels = getImageModels(target.provider).filter(id => id !== target.modelId)
+  const result = await updateProvider(target.provider.id, { enabledImageModels })
+  if (result) removeImageModelTarget.value = null
 }
 
 /* ── Create / Edit ── */
