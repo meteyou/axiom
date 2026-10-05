@@ -134,7 +134,7 @@ Resolution order:
 2. `<DATA_DIR>/workspace` (auto-created if missing)
 3. `/workspace` (Docker default)
 
-`send_file_tool` and `stt_tool` resolve relative paths against this directory.
+`send_file_tool` and `stt_tool` resolve relative paths against this directory. `generate_image` saves its results under `/workspace/images/YYYY-MM-DD/` (one JSON sidecar per image).
 
 ## `/app/` — read-only image
 
@@ -179,3 +179,4 @@ Browse them as your host user via `sudo` or a temporary bind-mount. Backup recip
 | Where are built-in / agent-created skills? | `/data/skills_agent/<name>/SKILL.md`. |
 | Where do uploaded chat files land? | `/data/uploads/`. |
 | Where should I put a free-form scratch file? | `/workspace/` (this is your home). |
+| Where do generated images land? | `/workspace/images/YYYY-MM-DD/<slug>.<ext>` plus `<file>.json` sidecar (see [Image Generation](../concepts/image-generation)). |
