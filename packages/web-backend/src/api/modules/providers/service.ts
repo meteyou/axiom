@@ -14,6 +14,7 @@ import {
   getRadiusCatalog,
   getUsableImageModels,
   IMAGE_TEST_PROMPT,
+  ImageProviderAuthError,
   listLiveImageModels,
   logTokenUsage,
   isDynamicCatalogProvider,
@@ -220,6 +221,7 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
     try {
       return await listLiveImageModels(provider)
     } catch (err) {
+      if (err instanceof ImageProviderAuthError) throw err
       console.warn(`[axiom] Live image model fetch failed for provider "${provider.name}", using bundled catalog: ${(err as Error).message}`)
       return catalog
     }

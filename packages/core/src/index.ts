@@ -395,6 +395,7 @@ export {
 } from './image-generation.js'
 export type { ImageBilling, ImageProviderCapabilities } from './image-generation.js'
 export type { AvailableImageModel } from './image-catalog.js'
+export { ImageProviderAuthError } from './image-backends.js'
 export type { SendFileToolOptions, SendFileToolDetails } from './send-file-tool.js'
 export {
   searchMemories,
