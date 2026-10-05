@@ -5,7 +5,7 @@ export interface ProviderModelSource {
   enabledImageModels?: string[]
   disabled?: boolean
   disabledModels?: string[]
-  models?: { id: string; name?: string }[]
+  models?: { id: string; name?: string; description?: string }[]
   modelSpecs?: Record<string, { name?: string }>
   imageModelSpecs?: Record<string, { name?: string }>
 }
@@ -28,16 +28,35 @@ export function getImageModelDisplayName(provider: Pick<ProviderModelSource, 'mo
     || modelId
 }
 
-/** `providerId:modelId` options for the default image model; image models never appear in text-model pickers. */
-export function buildImageModelOptions(providers: ProviderModelSource[]): ProviderModelOption[] {
+export interface ImageModelOverviewEntry {
+  providerId: string
+  providerName: string
+  modelId: string
+  displayName: string
+  description: string
+}
+
+/** Image models the agent can use: enabled image models of enabled providers. */
+export function listUsableImageModels(providers: ProviderModelSource[]): ImageModelOverviewEntry[] {
   return providers
     .filter(provider => !provider.disabled)
     .flatMap(provider =>
       (provider.enabledImageModels ?? []).map(modelId => ({
-        value: `${provider.id}:${modelId}`,
-        label: `${provider.name} (${getImageModelDisplayName(provider, modelId)})`,
+        providerId: provider.id,
+        providerName: provider.name,
+        modelId,
+        displayName: getImageModelDisplayName(provider, modelId),
+        description: provider.models?.find(m => m.id === modelId)?.description?.trim() ?? '',
       })),
     )
+}
+
+/** `providerId:modelId` options for the default image model; image models never appear in text-model pickers. */
+export function buildImageModelOptions(providers: ProviderModelSource[]): ProviderModelOption[] {
+  return listUsableImageModels(providers).map(entry => ({
+    value: `${entry.providerId}:${entry.modelId}`,
+    label: `${entry.providerName} (${entry.displayName})`,
+  }))
 }
 
 /**
