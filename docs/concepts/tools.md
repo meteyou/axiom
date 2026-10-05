@@ -68,6 +68,14 @@ When enabled, the agent gets a `transcribe_audio` tool that takes an audio file 
 
 **Where to configure:** [Settings → Speech-to-Text](../settings/speech-to-text) (`/settings?tab=stt`).
 
+### `generate_image`
+
+Generates or edits images with an [image generation model](./image-generation). **Registered only while at least one image model is enabled** under [Providers → Image models](../web-ui/providers#image-models); the interactive agent picks up changes before the next turn, background agents as soon as the image model list changes.
+
+Parameters: `prompt` (required), `model` (optional, defaults to the [default image model](../settings/tasks#default-image-model)), `aspect_ratio` (optional), `n` (optional, 1–4 variants) and `input_images` (optional workspace paths to edit or combine). Images are saved under `/workspace/images/YYYY-MM-DD/` with a JSON sidecar; the result reports paths, format, size, the billed cost and the duration — never image data. Deliver files with `send_file_to_user`. The tool description points the agent to the built-in `image-generation` skill. Details: [Image Generation](./image-generation).
+
+**Where to configure:** [Providers](../web-ui/providers#image-models) (models) and [Settings → Tasks](../settings/tasks#default-image-model) (default model).
+
 ### `web_fetch`
 
 Fetches a single URL and returns extracted readable text — scripts, styles, and HTML chrome are stripped, whitespace is normalized. **Enabled by default**, no provider choice and no key required.
@@ -122,3 +130,4 @@ Only the keys relevant to the chosen `provider` are read — the others are igno
 - [Memory System](./memory) — what `read_chat_history` and `search_memories` actually search.
 - [Provider Management → Subscriber usage quota](../web-ui/providers#subscriber-usage-quota) — how the quota monitor polls providers behind the scenes.
 - [Skills](./skills) — how to extend the agent beyond the built-in tool list.
+- [Image Generation](./image-generation) — image models, the `generate_image` tool and its output files.

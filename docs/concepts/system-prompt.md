@@ -61,15 +61,19 @@ The profile of the *currently authenticated* user — name, location, communicat
 
 *Always present.*
 
-A bullet list of every built-in tool the agent can call this turn, with a one-line description of each. The list is computed from the active tool settings — toggling `web_search` or `web_fetch` off under **Skills → Built-in Tools** in the Web UI, for example, drops that line; disabling speech-to-text under [Settings → Speech-to-Text](./../settings/speech-to-text) drops `transcribe_audio`. See [Built-in Tools](./tools).
+A bullet list of every built-in tool the agent can call this turn, with a one-line description of each. The list is computed from the active tool settings — toggling `web_search` or `web_fetch` off under **Skills → Built-in Tools** in the Web UI, for example, drops that line; disabling speech-to-text under [Settings → Speech-to-Text](./../settings/speech-to-text) drops `transcribe_audio`; `generate_image` is only listed while an image model is enabled. See [Built-in Tools](./tools).
 
 ### 8. `<available_providers>`: configured LLM providers
 
-*Present when at least one LLM provider has a routable model (see below).*
+*Present when at least one LLM provider has a routable model or at least one image generation model is enabled (see below).*
 
 A listing of provider/model pairs that the agent can route background tasks to. Only models that carry a **description** (set via the [Edit Model dialog](./../web-ui/providers#edit-model-dialog)) or are the active agent model / default task model are included — models without a description and without a default flag are hidden, so the description doubles as an opt-in gate for agent model routing.
 
-Each entry shows the provider name, the model id, default-model labels (*"default agent model"*, *"default task model"*), the free-form description, and the thinking levels the model supports (`thinking: off, low, high, …`). The block also states the current background thinking level and tells the agent it may pass `thinking_level` to `create_task` / `create_cronjob` / `edit_cronjob`. The block also instructs the agent to autonomously choose models based on these descriptions (preferring cost-effective models for simple work, stronger models for complex tasks) rather than only passing through user-specified names. Dropped entirely if no provider has a routable model. See [Providers](./../web-ui/providers).
+Each entry shows the provider name, the model id, default-model labels (*"default agent model"*, *"default task model"*), the free-form description, and the thinking levels the model supports (`thinking: off, low, high, …`). The block also states the current background thinking level and tells the agent it may pass `thinking_level` to `create_task` / `create_cronjob` / `edit_cronjob`. The block also instructs the agent to autonomously choose models based on these descriptions (preferring cost-effective models for simple work, stronger models for complex tasks) rather than only passing through user-specified names. See [Providers](./../web-ui/providers).
+
+When image generation models are enabled, the block additionally contains a separate **Image generation models** list. It names every usable image model (no description gate) as `- <provider> — <model id>: <labels>`, marks the [default image model](./../settings/tasks#default-image-model) and appends the image model's description. The list states that these models can only be used with `generate_image` (via its `model` parameter) and never for chat, tasks or cronjobs. Image models never appear in the text-model list above it. See [Image Generation](./image-generation).
+
+The block is dropped entirely if no provider has a routable text model and no image model is enabled.
 
 ### 9. `<wiki_pages>`: `memory/wiki/*.md`
 

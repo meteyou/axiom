@@ -21,6 +21,7 @@ The table renders providers in **two tiers**:
 
 - **Provider header rows** — one per configured provider. Show the display name and the underlying type (e.g. `Anthropic`, `OpenAI`, `Mistral`, `z.ai`). OAuth providers additionally show `OAuth` after the type label.
 - **Model sub-rows** — one per *enabled model* on that provider, indented with `└`. Each carries its own cost, status, and per-model actions.
+- **Image models section** — for providers with enabled [image generation models](#image-models), an *Image models* divider followed by one row per image model.
 
 Providers are sorted alphabetically by display name; sub-rows follow the order configured in the provider form.
 
@@ -31,7 +32,7 @@ Providers are sorted alphabetically by display name; sub-rows follow the order c
 | **Name**    | Bold display name plus a `Disabled` badge when the provider is [disabled](#disabling-providers-and-models); below it, the provider type label (e.g. *"Anthropic"*, *"Anthropic (Claude Pro/Max) · OAuth"*). |
 | **Cost**    | Empty — costs live on the model rows.                                                                |
 | **Status**  | Empty for most providers (status lives on the model rows). For **subscription (OAuth)** providers it shows the live [subscriber usage quota](#subscriber-usage-quota-oauth-plans). |
-| **⋮**       | **Add Model**, Edit, **Disable** / **Enable**, Delete, and — for quota-capable OAuth providers — **Refresh quota**. *Delete* and *Disable* are unavailable for the provider that owns the currently active model. |
+| **⋮**       | **Add Model**, **Add image model** (only for providers with an image backend, currently OpenRouter), Edit, **Disable** / **Enable**, Delete, and — for quota-capable providers — **Refresh quota**. *Delete* and *Disable* are unavailable for the provider that owns the currently active model. |
 
 Clicking anywhere on a header row opens the [Edit dialog](#add-edit-dialog).
 
@@ -376,6 +377,38 @@ Subscription/OAuth providers, OpenCode Zen/Go and Radius take these values from 
 
 **Your values vs. catalog values.** A filled field is your own value and overrides the catalog. An empty field shows the current catalog value as placeholder and keeps following the catalog — including after [Refresh models](#refreshing-model-catalogs). Only the fields you change are stored; clearing a field removes your value again. **Reset to catalog values** (bottom left, shown when the model has own values) removes all own values except the description. Entries saved by older Axiom versions stored a full copy of the catalog values; reset them once to let them follow the catalog.
 
+## Image models
+
+Image generation models are configured separately from text models. They come from pi-ai's **image catalog** (not the text catalog), are only used by the agent's [`generate_image`](../concepts/image-generation) tool, and never appear in chat, task, cronjob, consolidation or other text-model selectors, nor in the text-model list of the system prompt. Currently only **OpenRouter** providers offer image models.
+
+### Add image model dialog
+
+Opened from the provider header row's ⋮ menu → **Add image model**.
+
+- **Search** — filters the provider's image catalog by name or id, e.g. `vector` finds `recraft/recraft-v4.1-vector`.
+- **Model list** — multi-select. Models that accept input images (and can therefore edit or vary existing images) carry an *edits images* badge. Models already enabled are greyed out.
+- **Custom model fallback** — when the search text matches no catalog entry, you can add the typed id (e.g. a model OpenRouter published after the bundled catalog). Such models are sent as image-only requests.
+- **Add** — stores the selection in the provider's `enabledImageModels`.
+
+### Image model rows
+
+Below the text models, an *Image models* divider lists the enabled image models. They show no thinking levels and no context window; the cost column reads *per image* because image models are billed per image — the real cost is reported after every generation (tool result, sidecar file, [Token Usage](./token-usage)).
+
+The ⋮ menu of an image model row offers:
+
+| Item | What it does |
+|---|---|
+| **Check availability (free)** | Replaces *Test Connection* for image models, which would otherwise send a chat request. For OpenRouter it calls `GET /api/v1/models/<id>/endpoints` (the model exists, generates images and has live endpoints) and `GET /api/v1/key` (the API key is valid). Neither call generates anything or costs money. Updates the status badge and shows the latency like a text-model test; above the provider's *Degraded Threshold* the result is reported as slow. |
+| **Generate test image (paid)…** | Opens a dialog with a cost warning. Only after you confirm it generates **one** small image with a fixed prompt, shows the preview, the billed cost reported by the provider and the duration, and books the cost in [Token Usage](./token-usage). |
+| **Edit Model** | Display name and **description**. The description is shown to the agent in the *Image generation models* list of the system prompt and helps it choose a model (e.g. *"Logos and icons as SVG"*). |
+| **Remove Model** | Removes the model from `enabledImageModels`. |
+
+Which image model the agent uses by default is set in [Settings → Tasks → Default image model](../settings/tasks#default-image-model) — there is no default toggle on this page.
+
+### Migration of image models added as text models
+
+Before this section existed, image models could only be added through **Add Model** as text models, where every chat request to them failed. On the first start after the update, ids that pi-ai lists **only** as image models (e.g. `openai/gpt-5-image-mini`, `google/gemini-3.1-flash-image`, `recraft/recraft-v4.1`) are moved from the text models to the image models automatically. Ids that are also chat models (e.g. `google/gemini-3-pro-image`) and the current active or fallback model stay text models. Descriptions and display names are kept. The live OpenRouter list in **Add Model** no longer offers image-only models. Details: [Image Generation → Migration](../concepts/image-generation#migration-of-existing-configurations).
+
 ## Delete provider
 
 The provider's row menu has a **Delete** item. Confirm dialog:
@@ -401,3 +434,4 @@ This is what you see right after first install — until at least one provider i
 - [Settings → Tasks](../settings/tasks) — separate default provider for background task agents.
 - [Settings → Health Monitor](../settings/health-monitor) — periodic health checks, automatic fallback switchover.
 - [Token Usage](./token-usage) — actual spend per provider and model over time.
+- [Image Generation](../concepts/image-generation) — how image models, the default image model and `generate_image` fit together.

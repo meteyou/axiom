@@ -51,6 +51,7 @@ The on-disk shape is a **superset** of [`SettingsContract`](https://github.com/)
 | `factExtraction`                   | object                                                            | see below      | nested                                  | Per-session fact extraction.                                                                                      |
 | `agentHeartbeat`                   | object                                                            | see below      | nested                                  | Background reflection loop.                                                                                       |
 | `tasks`                            | object                                                            | see below      | nested                                  | Task & cronjob defaults.                                                                                          |
+| `imageGeneration`                  | object                                                            | see below      | nested                                  | Default image model for `generate_image`.                                                                         |
 | `tts`                              | object                                                            | see below      | nested                                  | Voice output config.                                                                                              |
 | `stt`                              | object                                                            | see below      | nested                                  | Voice input config.                                                                                               |
 | `tokenPriceTable`                  | `Record<string, { input: number; output: number }>`               | seed prices    | not validated by API                    | Per-model USD/1M-token costs used by [Token Usage](../web-ui/token-usage). Merged on top of `DEFAULT_PRICE_TABLE`. |
@@ -218,6 +219,14 @@ Companion file: `/data/config/HEARTBEAT.md` — the prompt the agent receives ev
 A flat `tasks.statusUpdateIntervalMinutes` may exist on disk from older installs. PUT still accepts it (validated as integer `1–120`) and writes it through to `tasks.statusUpdates.intervalMinutes` without flipping `enabled` to `true` — opting in is explicit. After the next save, the flat key is no longer needed.
 :::
 
+### `imageGeneration`
+
+[Tasks UI → Default image model](../settings/tasks#default-image-model). See [Image Generation](../concepts/image-generation).
+
+| Key                            | Type                                  | Default | Range / enum |
+|--------------------------------|---------------------------------------|---------|--------------|
+| `imageGeneration.defaultModel` | `string` (`providerId:modelId`)       | `""`    | string; `""` = first enabled image model. Reset to `""` when its provider is disabled. |
+
 ### `tts`
 
 [Text-to-Speech UI](../settings/text-to-speech).
@@ -361,7 +370,8 @@ This is the literal file written by `ensureConfigTemplates()`:
     },
     "statusUpdates": { "enabled": false, "intervalMinutes": 10 },
     "backgroundThinkingLevel": "off"
-  }
+  },
+  "imageGeneration": { "defaultModel": "" }
 }
 ```
 
@@ -432,6 +442,7 @@ LLM provider catalog. UI-managed via the [Providers page](../web-ui/providers); 
 | `baseUrl`                | `string`                                        | API base URL.                                                                                  |
 | `apiKey`                 | `string` (**encrypted**)                        | Encrypted with `ENCRYPTION_KEY` (`packages/core/src/encryption.ts`). Use the UI to write.      |
 | `enabledModels`          | `string[]?`                                     | Model ids the user has enabled for this provider. The first entry is the default/primary model used when `activeModel` is unset. |
+| `enabledImageModels`     | `string[]?`                                     | Image generation model ids (pi-ai image catalog) enabled for this provider. Only used by `generate_image`; never part of `enabledModels` or any text-model picker. Only stored for provider types with an image backend (currently OpenRouter). See [Image Generation](../concepts/image-generation). |
 | `disabled`               | `boolean?`                                      | `true` hides the provider from all LLM model pickers and the agent; TTS/STT can still use it. See [Disabling providers and models](../web-ui/providers#disabling-providers-and-models). |
 | `disabledModels`         | `string[]?`                                     | Subset of `enabledModels` that is disabled. The default model is the first enabled model that is not disabled. |
 | `degradedThresholdMs`    | `number?`                                       | Latency threshold for `healthy → degraded` transitions in [Health Monitor](../settings/health-monitor). |
@@ -625,8 +636,9 @@ Things that may exist in older `settings.json` files and how the runtime handles
 | `braveSearchApiKey` (top-level)            | `builtinTools.webSearch.braveSearchApiKey`             | Folded in at boot if the new key is empty.                                            |
 | `searxngUrl` (top-level)                   | `builtinTools.webSearch.searxngUrl`                    | Folded in at boot if the new key is empty.                                            |
 | `tavilyApiKey` (top-level)                 | `builtinTools.webSearch.tavilyApiKey`                  | Folded in at boot if the new key is empty.                                            |
+| `providers.json` → image-only ids in `enabledModels` | `enabledImageModels`                     | **Rewritten automatically** on the first load: ids pi-ai lists only as image models move to `enabledImageModels`, except the active/fallback model. See [Image Generation → Migration](../concepts/image-generation#migration-of-existing-configurations). |
 
-There is **no automatic rewrite** of these legacy fields. The new shape lands the next time the user saves the relevant panel; until then both shapes coexist and the runtime prefers the new one if both are present.
+Apart from the `providers.json` image-model migration, there is **no automatic rewrite** of these legacy fields. The new shape lands the next time the user saves the relevant panel; until then both shapes coexist and the runtime prefers the new one if both are present.
 
 ---
 
