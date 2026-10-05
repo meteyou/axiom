@@ -244,7 +244,9 @@ describe('generate_image tool', () => {
 
     expect(textOf(await run(tool, { prompt: 'p', input_images: ['missing.png'] }))).toMatch(/not found/)
     fs.writeFileSync(path.join(workspace, 'logo.svg'), '<svg/>')
-    expect(textOf(await run(tool, { prompt: 'p', input_images: ['logo.svg'] }))).toMatch(/PNG, JPEG, WebP or GIF/)
+    expect(textOf(await run(tool, { prompt: 'p', input_images: ['logo.svg'] }))).toMatch(/is an SVG/)
+    fs.writeFileSync(path.join(workspace, 'image.bmp'), IMAGE_BYTES)
+    expect(textOf(await run(tool, { prompt: 'p', input_images: ['image.bmp'] }))).toMatch(/PNG, JPEG, WebP or GIF/)
 
     fs.writeFileSync(path.join(workspace, 'source.png'), IMAGE_BYTES)
     const textOnlyInput = createTool(generate, 'recraft/recraft-v4.1-flash')
