@@ -15,6 +15,8 @@ import {
   slugifyPrompt,
 } from './image-tool.js'
 import type { GenerateImageToolDetails } from './image-tool.js'
+import { normalizeImageGenerationSettings } from './contracts/settings.js'
+import type { ImageGenerationSettingsContract } from './contracts/settings.js'
 
 const IMAGE_BYTES = Buffer.from('generated-image-bytes')
 const IMAGE_BASE64 = IMAGE_BYTES.toString('base64')
@@ -39,10 +41,15 @@ function resultWith(overrides: Partial<ImageGenerationResult> = {}, modelId = 'r
     texts: [],
     costUsd: 0.035,
     usage: { input: 44, output: 4175, cacheRead: 0, cacheWrite: 0 },
+    requests: [{ costUsd: 0.035, usage: { input: 44, output: 4175, cacheRead: 0, cacheWrite: 0 } }],
     durationMs: 5736,
     errors: [],
     ...overrides,
   }
+}
+
+function settingsWith(overrides: Partial<ImageGenerationSettingsContract> = {}): () => ImageGenerationSettingsContract {
+  return () => normalizeImageGenerationSettings(overrides)
 }
 
 function resolvesTo(modelId: string): (requested: string | undefined) => ImageModelResolution {
@@ -84,14 +91,25 @@ describe('generate_image tool', () => {
     else delete process.env.DATA_DIR
   })
 
-  function createTool(generate: (request: ImageGenerationRequest) => Promise<ImageGenerationResult>, modelId = 'recraft/recraft-v4.1') {
+  function createTool(
+    generate: (request: ImageGenerationRequest) => Promise<ImageGenerationResult>,
+    modelId = 'recraft/recraft-v4.1',
+    settings: Partial<ImageGenerationSettingsContract> = {},
+  ) {
     return createGenerateImageTool({
       db,
       getSessionId: () => 'session-1',
+      readSettings: settingsWith(settings),
       generate,
       resolveModel: resolvesTo(modelId),
       now: () => FIXED_NOW,
     })
+  }
+
+  function recordBilledRequests(modelId: string, costs: number[]) {
+    for (const cost of costs) {
+      db.prepare('INSERT INTO token_usage (provider, model, estimated_cost) VALUES (?, ?, ?)').run('openrouter', modelId, cost)
+    }
   }
 
   it('saves the image with a sidecar and returns paths, size, cost and duration but no image data', async () => {
@@ -164,10 +182,89 @@ describe('generate_image tool', () => {
     expect(second.details.files?.map(f => path.basename(f.path))).toEqual(['logo-2-1.png', 'logo-2-2.png'])
   })
 
-  it('caps n at 4', async () => {
+  it('books one token_usage row per request', async () => {
+    const usage = { input: 10, output: 20, cacheRead: 0, cacheWrite: 0 }
+    await run(createTool(async () => resultWith({
+      costUsd: 0.07,
+      requests: [{ costUsd: 0.03, usage }, { costUsd: 0.04, usage }],
+    })), { prompt: 'p', n: 2 })
+    expect(db.prepare('SELECT estimated_cost FROM token_usage ORDER BY id').all()).toEqual([
+      { estimated_cost: 0.03 },
+      { estimated_cost: 0.04 },
+    ])
+  })
+
+  it('declares and enforces the configured max variants', async () => {
     const generate = vi.fn(async () => resultWith())
-    await run(createTool(generate), { prompt: 'p', n: 10 })
-    expect(generate).toHaveBeenCalledWith(expect.objectContaining({ count: 4 }))
+    const tool = createTool(generate, 'recraft/recraft-v4.1', { maxVariants: 2 })
+    const n = (tool.parameters as unknown as { properties: { n: { maximum: number; description: string } } }).properties.n
+    expect(n.maximum).toBe(2)
+    expect(n.description).toContain('1-2')
+
+    const refused = await run(tool, { prompt: 'p', n: 3 })
+    expect(refused.details.error).toBe(true)
+    expect(textOf(refused)).toContain('n must be an integer from 1 to 2')
+    expect(generate).not.toHaveBeenCalled()
+
+    await run(tool, { prompt: 'p', n: 2 })
+    expect(generate).toHaveBeenCalledWith(expect.objectContaining({ count: 2 }))
+  })
+
+  it('defaults to at most 4 variants', async () => {
+    const generate = vi.fn(async () => resultWith())
+    expect(textOf(await run(createTool(generate), { prompt: 'p', n: 5 }))).toContain('from 1 to 4')
+    expect(generate).not.toHaveBeenCalled()
+  })
+
+  it('refuses a call whose estimated cost exceeds the limit without calling the provider', async () => {
+    recordBilledRequests('recraft/recraft-v4.1', [0.04, 0.04])
+    const generate = vi.fn(async () => resultWith())
+    const output = await run(createTool(generate, 'recraft/recraft-v4.1', { maxCostPerCallUsd: 0.1 }), { prompt: 'p', n: 3 })
+
+    expect(output.details.error).toBe(true)
+    expect(textOf(output)).toContain('Cost limit exceeded')
+    expect(textOf(output)).toContain('$0.1200')
+    expect(textOf(output)).toContain('$0.1000')
+    expect(generate).not.toHaveBeenCalled()
+    expect(db.prepare('SELECT COUNT(*) AS rows FROM token_usage').get()).toEqual({ rows: 2 })
+  })
+
+  it('generates when the estimated cost is within the limit', async () => {
+    recordBilledRequests('recraft/recraft-v4.1', [0.04, 0.05, 0.03])
+    const generate = vi.fn(async () => resultWith())
+    const output = await run(createTool(generate, 'recraft/recraft-v4.1', { maxCostPerCallUsd: 0.1 }), { prompt: 'p', n: 2 })
+
+    expect(output.details.error).toBeUndefined()
+    expect(generate).toHaveBeenCalledWith(expect.objectContaining({ count: 2 }))
+    expect(textOf(output)).not.toContain('Cost limit')
+  })
+
+  it('says so when the cost limit cannot be checked yet', async () => {
+    recordBilledRequests('recraft/recraft-v4.1-flash', [0.5])
+    const generate = vi.fn(async () => resultWith())
+    const output = await run(createTool(generate, 'recraft/recraft-v4.1', { maxCostPerCallUsd: 0.1 }), { prompt: 'p' })
+
+    expect(generate).toHaveBeenCalled()
+    expect(textOf(output)).toContain('Cost limit of $0.1000 per call not checked: no billed cost is on record for this model yet.')
+  })
+
+  it('saves images in the configured output folder', async () => {
+    const tool = createTool(async () => resultWith(), 'recraft/recraft-v4.1', { outputDir: 'assets/generated' })
+    expect(tool.description).toContain('assets/generated/YYYY-MM-DD/')
+
+    const output = await run(tool, { prompt: 'Logo' })
+    const relativePath = path.join('assets', 'generated', '2026-10-05', 'logo.webp')
+    expect(fs.existsSync(path.join(workspace, relativePath))).toBe(true)
+    expect(output.details.files?.[0]?.path).toBe(relativePath)
+    expect(fs.existsSync(path.join(workspace, 'images'))).toBe(false)
+  })
+
+  it('refuses to run while image generation is switched off', async () => {
+    const generate = vi.fn(async () => resultWith())
+    const output = await run(createTool(generate, 'recraft/recraft-v4.1', { enabled: false }), { prompt: 'p' })
+    expect(output.details.error).toBe(true)
+    expect(textOf(output)).toContain('switched off')
+    expect(generate).not.toHaveBeenCalled()
   })
 
   it('loads input_images from the workspace as base64 image content', async () => {
@@ -203,6 +300,7 @@ describe('generate_image tool', () => {
 
   it('returns the model resolution error', async () => {
     const tool = createGenerateImageTool({
+      readSettings: settingsWith(),
       generate: vi.fn(),
       resolveModel: () => ({ ok: false, error: 'Image model "x" is not enabled.' }),
     })
@@ -217,6 +315,7 @@ describe('generate_image tool', () => {
       errors: ['The model returned no image.'],
       texts: ['Content policy refusal'],
       costUsd: 0.01,
+      requests: [{ costUsd: 0.01, usage: { input: 44, output: 0, cacheRead: 0, cacheWrite: 0 } }],
     })), { prompt: 'p' })
 
     expect(output.details.error).toBe(true)
@@ -245,6 +344,22 @@ describe('generate_image tool', () => {
 
     fs.writeFileSync(providersPath, JSON.stringify({ providers: [{ ...provider, disabled: true }] }))
     expect(createImageGenerationTools()).toEqual([])
+  })
+
+  it('is not registered while image generation is switched off, even with usable image models', () => {
+    const configDir = path.join(dataDir, 'config')
+    fs.mkdirSync(configDir, { recursive: true })
+    fs.writeFileSync(path.join(configDir, 'providers.json'), JSON.stringify({ providers: [provider] }))
+    const writeSettings = (enabled: boolean) => fs.writeFileSync(
+      path.join(configDir, 'settings.json'),
+      JSON.stringify({ imageGeneration: { enabled } }),
+    )
+
+    writeSettings(false)
+    expect(createImageGenerationTools()).toEqual([])
+
+    writeSettings(true)
+    expect(createImageGenerationTools().map(tool => tool.name)).toEqual(['generate_image'])
   })
 })
 

@@ -4,10 +4,12 @@ import type { AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core'
 import type { ImageContent } from '@earendil-works/pi-ai'
 import { Type } from '@earendil-works/pi-ai'
 import type { Database } from './database.js'
+import type { ImageGenerationSettingsContract } from './contracts/settings.js'
+import { estimateImageCostPerRequest } from './image-cost-estimate.js'
 import {
   generateImagesWithProvider,
-  hasUsableImageModels,
-  MAX_IMAGES_PER_CALL,
+  isImageGenerationAvailable,
+  readImageGenerationSettings,
   resolveImageModel,
 } from './image-generation.js'
 import type { GeneratedImage, ImageGenerationRequest, ImageGenerationResult, ImageModelResolution } from './image-generation.js'
@@ -43,6 +45,7 @@ export interface GenerateImageToolOptions {
   /** Session the generation cost is booked on in `token_usage`; background tools have none. */
   getSessionId?: () => string | null | undefined
   /** Test seams. */
+  readSettings?: () => ImageGenerationSettingsContract
   generate?: (request: ImageGenerationRequest) => Promise<ImageGenerationResult>
   resolveModel?: (requested: string | undefined) => ImageModelResolution
   now?: () => Date
@@ -76,9 +79,9 @@ export interface GenerateImageToolDetails {
 
 type GenerateImageToolResult = AgentToolResult<GenerateImageToolDetails>
 
-/** `generate_image` is only registered while at least one image model is usable. */
+/** `generate_image` is only registered while image generation is on and at least one image model is usable. */
 export function createImageGenerationTools(options: GenerateImageToolOptions = {}): AgentTool[] {
-  return hasUsableImageModels() ? [createGenerateImageTool(options)] : []
+  return isImageGenerationAvailable() ? [createGenerateImageTool(options)] : []
 }
 
 export function imageExtensionForMimeType(mimeType: string): string {
@@ -174,17 +177,51 @@ function formatCost(costUsd: number | null): string {
   return costUsd === null ? 'not reported by the provider' : `$${costUsd.toFixed(4)}`
 }
 
+function formatUsd(amount: number): string {
+  return `$${amount.toFixed(4)}`
+}
+
+type CostLimitCheck =
+  | { verdict: 'off' | 'within' }
+  | { verdict: 'unknown'; note: string }
+  | { verdict: 'exceeded'; message: string }
+
+function checkCostLimit(
+  limitUsd: number | null,
+  costPerRequestUsd: number | null,
+  count: number,
+): CostLimitCheck {
+  if (limitUsd === null) return { verdict: 'off' }
+  if (costPerRequestUsd === null) {
+    return {
+      verdict: 'unknown',
+      note: `Cost limit of ${formatUsd(limitUsd)} per call not checked: no billed cost is on record for this model yet.`,
+    }
+  }
+  const estimateUsd = costPerRequestUsd * count
+  if (estimateUsd <= limitUsd) return { verdict: 'within' }
+  return {
+    verdict: 'exceeded',
+    message: `Cost limit exceeded. The estimated cost of ${formatUsd(estimateUsd)} (${count} × ${formatUsd(costPerRequestUsd)}, `
+      + `based on recent billed generations with this model) is above the limit of ${formatUsd(limitUsd)} per call. `
+      + 'Nothing was generated or billed. Request fewer variants, pick a cheaper model, or ask the user to raise '
+      + 'the limit under Settings → Image generation.',
+  }
+}
+
 export function createGenerateImageTool(options: GenerateImageToolOptions = {}): AgentTool {
   const generate = options.generate ?? generateImagesWithProvider
   const resolveModel = options.resolveModel ?? ((requested: string | undefined) => resolveImageModel(requested))
   const now = options.now ?? (() => new Date())
+  const readSettings = options.readSettings ?? readImageGenerationSettings
+  const declared = readSettings()
 
   return {
     name: GENERATE_IMAGE_TOOL_NAME,
     label: 'Generate Image',
     description:
       'Generate images with an enabled image generation model (listed under "Image generation models" in available_providers). '
-      + 'Files are saved in the workspace under images/YYYY-MM-DD/ with a JSON sidecar; the result lists paths, format, '
+      + `Files are saved in the workspace under ${declared.outputDir}/YYYY-MM-DD/ with a JSON sidecar; the result lists paths, format, `
       + 'size, the billed cost and the duration, never image data. To edit or vary an existing image, pass it via '
       + 'input_images instead of generating from scratch. Deliver results to the user with send_file_to_user. '
       + 'Load the image-generation skill before the first use for prompt writing, model choice and cost guidance.',
@@ -198,14 +235,17 @@ export function createGenerateImageTool(options: GenerateImageToolOptions = {}):
       })),
       n: Type.Optional(Type.Integer({
         minimum: 1,
-        maximum: MAX_IMAGES_PER_CALL,
-        description: `Number of variants (1-${MAX_IMAGES_PER_CALL}, default 1). Each variant is billed separately.`,
+        maximum: declared.maxVariants,
+        description: `Number of variants (1-${declared.maxVariants}, default 1). Each variant is billed separately.`,
       })),
       input_images: Type.Optional(Type.Array(Type.String(), {
         description: `Workspace-relative (or absolute) paths of PNG/JPEG/WebP/GIF images to edit, combine or use as reference (max ${MAX_INPUT_IMAGES}).`,
       })),
     }),
     execute: async (_toolCallId, rawParams, signal): Promise<GenerateImageToolResult> => {
+      const settings = readSettings()
+      if (!settings.enabled) return errorResult('Image generation is switched off under Settings → Image generation.')
+
       const params = rawParams as GenerateImageParams
       const prompt = params.prompt?.trim()
       if (!prompt) return errorResult('prompt must not be empty.')
@@ -214,7 +254,10 @@ export function createGenerateImageTool(options: GenerateImageToolOptions = {}):
       if (aspectRatio && !ASPECT_RATIO_PATTERN.test(aspectRatio)) {
         return errorResult(`aspect_ratio must look like "16:9", got "${params.aspect_ratio}".`)
       }
-      const count = Math.min(Math.max(1, Math.floor(params.n ?? 1)), MAX_IMAGES_PER_CALL)
+      const count = params.n ?? 1
+      if (!Number.isInteger(count) || count < 1 || count > settings.maxVariants) {
+        return errorResult(`n must be an integer from 1 to ${settings.maxVariants} (Settings → Image generation → Max variants per call).`)
+      }
 
       const resolution = resolveModel(params.model)
       if (!resolution.ok) return errorResult(resolution.error)
@@ -229,6 +272,13 @@ export function createGenerateImageTool(options: GenerateImageToolOptions = {}):
       } catch (err) {
         return errorResult((err as Error).message)
       }
+
+      const costPerRequestUsd = options.db && settings.maxCostPerCallUsd !== null
+        ? estimateImageCostPerRequest(options.db, buildImageModel(provider, modelId).provider, modelId)
+        : null
+      const costLimit = checkCostLimit(settings.maxCostPerCallUsd, costPerRequestUsd, count)
+      if (costLimit.verdict === 'exceeded') return errorResult(costLimit.message)
+      const costLimitNote = costLimit.verdict === 'unknown' ? `\n${costLimit.note}` : ''
 
       let result: ImageGenerationResult
       try {
@@ -246,16 +296,19 @@ export function createGenerateImageTool(options: GenerateImageToolOptions = {}):
       }
 
       if (options.db) {
-        logTokenUsage(options.db, {
-          provider: result.model.provider,
-          model: result.model.id,
-          promptTokens: result.usage.input,
-          completionTokens: result.usage.output,
-          cacheRead: result.usage.cacheRead,
-          cacheWrite: result.usage.cacheWrite,
-          estimatedCost: result.costUsd ?? 0,
-          sessionId: options.getSessionId?.() ?? undefined,
-        })
+        // One row per request: the cost limit estimates from per-request billed costs.
+        for (const request of result.requests) {
+          logTokenUsage(options.db, {
+            provider: result.model.provider,
+            model: result.model.id,
+            promptTokens: request.usage.input,
+            completionTokens: request.usage.output,
+            cacheRead: request.usage.cacheRead,
+            cacheWrite: request.usage.cacheWrite,
+            estimatedCost: request.costUsd ?? 0,
+            sessionId: options.getSessionId?.() ?? undefined,
+          })
+        }
       }
 
       const summary = {
@@ -269,13 +322,14 @@ export function createGenerateImageTool(options: GenerateImageToolOptions = {}):
 
       if (result.images.length === 0) {
         return errorResult(
-          `${result.errors.join(' ') || 'The model returned no image.'} Cost: ${formatCost(result.costUsd)}.${modelText}`,
+          `${result.errors.join(' ') || 'The model returned no image.'} Cost: ${formatCost(result.costUsd)}.${modelText}${costLimitNote}`,
           summary,
         )
       }
 
       const createdAt = now()
-      const directory = path.join(getWorkspaceDir(), 'images', formatLocalDate(createdAt))
+      // `outputDir` is normalized to stay inside the workspace (normalizeImageOutputDir).
+      const directory = path.join(getWorkspaceDir(), settings.outputDir, formatLocalDate(createdAt))
       fs.mkdirSync(directory, { recursive: true })
       const fileNames = planFileNames(directory, slugifyPrompt(prompt), result.images)
 
@@ -316,7 +370,7 @@ export function createGenerateImageTool(options: GenerateImageToolOptions = {}):
       lines.push(`Paths are relative to ${getWorkspaceDir()}. Deliver them with send_file_to_user; never paste image data into the chat.`)
 
       return {
-        content: [{ type: 'text', text: lines.join('\n') + modelText }],
+        content: [{ type: 'text', text: lines.join('\n') + modelText + costLimitNote }],
         details: { ...summary, files },
       }
     },
