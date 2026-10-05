@@ -95,6 +95,14 @@ describe('OpenAI Images API (API key)', () => {
     expect(result.output).toEqual([])
   })
 
+  it('reports a successful response without a JSON body as an error, not as a refusal', async () => {
+    const { fetchImpl } = stubFetch(() => new Response('<html>Gateway page</html>', { status: 200 }))
+    const result = await openAIImagesApi().generateImages(openAIModel, { input: [{ type: 'text', text: 'x' }] }, { apiKey: 'sk', fetch: fetchImpl })
+
+    expect(result.stopReason).toBe('error')
+    expect(result.errorMessage).toBe('HTTP 200: The provider answered without a JSON object: <html>Gateway page</html>')
+  })
+
   it('fails without an API key and reports aborts', async () => {
     const { fetchImpl } = stubFetch(() => imagesResponse())
     const missingKey = await openAIImagesApi().generateImages(openAIModel, { input: [{ type: 'text', text: 'x' }] }, { fetch: fetchImpl })
