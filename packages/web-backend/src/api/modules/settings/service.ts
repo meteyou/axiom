@@ -7,6 +7,7 @@ import {
   mergeConsolidation,
   mergeFactExtraction,
   mergeHealthMonitor,
+  mergeImageGeneration,
   mergeRetry,
   mergeStt,
   mergeTasks,
@@ -122,6 +123,9 @@ export function createSettingsService(options: SettingsRouterOptions = {}): Sett
 
     const tasksMerge = mergeTasks(body, settingsRaw)
     if (tasksMerge.error) throw new SettingsValidationError(tasksMerge.error)
+
+    const imageGenerationMerge = mergeImageGeneration(body, settingsRaw)
+    if (imageGenerationMerge.error) throw new SettingsValidationError(imageGenerationMerge.error)
 
     const ttsMerge = mergeTts(body, settingsRaw)
     if (ttsMerge.error) throw new SettingsValidationError(ttsMerge.error)

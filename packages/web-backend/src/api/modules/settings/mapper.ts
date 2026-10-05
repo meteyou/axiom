@@ -95,6 +95,13 @@ function buildTasksResponse(settingsRaw: Record<string, unknown>) {
   }
 }
 
+function buildImageGenerationResponse(settingsRaw: Record<string, unknown>) {
+  const imageGeneration = (settingsRaw.imageGeneration ?? {}) as Record<string, unknown>
+  return {
+    defaultModel: typeof imageGeneration.defaultModel === 'string' ? imageGeneration.defaultModel : '',
+  }
+}
+
 function buildTtsResponse(settingsRaw: Record<string, unknown>) {
   const tts = (settingsRaw.tts ?? {}) as Record<string, unknown>
 
@@ -200,6 +207,7 @@ export function mapSettingsResponse(context: SettingsResponseContext) {
     factExtraction: buildFactExtractionResponse(settingsRaw),
     agentHeartbeat: buildAgentHeartbeatResponse(settingsRaw),
     tasks: buildTasksResponse(settingsRaw),
+    imageGeneration: buildImageGenerationResponse(settingsRaw),
     tts: buildTtsResponse(settingsRaw),
     stt: buildSttResponse(settingsRaw),
   }

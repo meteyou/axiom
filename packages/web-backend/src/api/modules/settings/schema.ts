@@ -329,6 +329,26 @@ export function mergeTasks(
   return { error: null }
 }
 
+export function mergeImageGeneration(
+  body: Record<string, unknown>,
+  settingsRaw: Record<string, unknown>,
+): { error: string | null } {
+  const imageGeneration = body.imageGeneration as Record<string, unknown> | undefined
+  if (!imageGeneration) return { error: null }
+
+  const existing = (settingsRaw.imageGeneration ?? {}) as Record<string, unknown>
+
+  if (imageGeneration.defaultModel !== undefined) {
+    if (typeof imageGeneration.defaultModel !== 'string') {
+      return { error: 'imageGeneration.defaultModel must be a string' }
+    }
+    existing.defaultModel = imageGeneration.defaultModel.trim()
+  }
+
+  settingsRaw.imageGeneration = existing
+  return { error: null }
+}
+
 export function mergeTts(
   body: Record<string, unknown>,
   settingsRaw: Record<string, unknown>,

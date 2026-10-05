@@ -16,6 +16,7 @@ const SETTINGS_PROVIDER_REFERENCE_PATHS: ReadonlyArray<readonly string[]> = [
   ['memoryConsolidation', 'providerId'],
   ['tasks', 'defaultProvider'],
   ['tasks', 'loopDetection', 'smartProvider'],
+  ['imageGeneration', 'defaultModel'],
 ]
 
 export interface ResetDisabledProviderReferencesResult {
