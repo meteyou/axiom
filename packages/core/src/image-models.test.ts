@@ -199,7 +199,17 @@ describe('providers.json image model handling', () => {
     expect(loadProviders().providers[0]!.enabledImageModels).toBeUndefined()
   })
 
-  it('derives the provider status from text and image models', () => {
+  it('derives the provider status from text models, ignoring image model results', () => {
+    writeProviders({ providers: [openRouterProvider({ enabledModels: ['qwen/qwen3.8-flash'], enabledImageModels: ['recraft/recraft-v4.1'] })] })
+
+    updateProviderStatus(OPENROUTER_ID, 'connected', 'qwen/qwen3.8-flash')
+    updateProviderStatus(OPENROUTER_ID, 'error', 'recraft/recraft-v4.1')
+    const provider = loadProviders().providers[0]!
+    expect(provider.status).toBe('connected')
+    expect(provider.modelStatuses?.['recraft/recraft-v4.1']).toBe('error')
+  })
+
+  it('derives the status of an image-only provider from its image models', () => {
     writeProviders({ providers: [openRouterProvider({ enabledModels: [], enabledImageModels: ['recraft/recraft-v4.1'] })] })
 
     updateProviderStatus(OPENROUTER_ID, 'error', 'recraft/recraft-v4.1')

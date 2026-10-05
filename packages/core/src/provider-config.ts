@@ -1692,8 +1692,9 @@ export function updateProviderStatus(id: string, status: 'connected' | 'error' |
     // Update per-model status
     if (!provider.modelStatuses) provider.modelStatuses = {}
     provider.modelStatuses[modelId] = status
-    // Also derive overall provider status from model statuses
-    const enabled = [...(provider.enabledModels ?? []), ...(provider.enabledImageModels ?? [])]
+    // Image-model results (content refusals, no live endpoint) must not flag a working chat provider.
+    const textModels = provider.enabledModels ?? []
+    const enabled = textModels.length > 0 ? textModels : (provider.enabledImageModels ?? [])
     const statuses = enabled.map(m => provider.modelStatuses?.[m] ?? 'untested')
     if (statuses.every(s => s === 'connected')) provider.status = 'connected'
     else if (statuses.some(s => s === 'error')) provider.status = 'error'
