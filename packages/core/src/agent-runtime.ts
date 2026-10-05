@@ -27,6 +27,7 @@ import { createSearchMemoriesTool } from './memories-tool.js'
 import { createReadChatHistoryTool } from './chat-history-tools.js'
 import { createEmailTools } from './email-tools.js'
 import { createProviderQuotaTool } from './quota-tool.js'
+import { createImageGenerationTools, GENERATE_IMAGE_TOOL_NAME } from './image-tool.js'
 import { listUsableImageModels, readDefaultImageModelRef, resolveDefaultImageModel } from './image-generation.js'
 import type { QuotaServiceLike } from './quota-tool.js'
 import type { AgentRuntimeStateSnapshot, ResponseChunk } from './agent-runtime-types.js'
@@ -43,6 +44,8 @@ export interface BaseAgentToolsOptions {
   /** Called by search_memories to scope results to the current user. */
   getCurrentUserId?: () => number | undefined
   quotaService?: QuotaServiceLike
+  /** Session that `generate_image` books its cost on; omitted for background agents. */
+  getSessionId?: () => string | null | undefined
 }
 
 /**
@@ -68,6 +71,7 @@ export function createBaseAgentTools(options: BaseAgentToolsOptions): AgentTool[
           isAuthorized: () => isQuotaVisibleToUser(options.db, options.getCurrentUserId?.()),
         })]
       : []),
+    ...createImageGenerationTools({ db: options.db, getSessionId: options.getSessionId }),
   ]
 }
 
@@ -571,6 +575,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
         sttEnabled,
         getCurrentUserId: () => this.getCurrentToolUserId(),
         quotaService: options.quotaService,
+        getSessionId: () => this.agent.sessionId,
       }),
     ]
 
@@ -635,6 +640,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
   }
 
   refreshSystemPrompt(channel?: string, currentUser?: { username: string }): void {
+    this.syncImageGenerationTool()
     const systemPrompt = this.buildSystemPrompt(channel, currentUser)
     const messages = this.agent.state.messages
     const leading = messages[0]
@@ -644,6 +650,20 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
       return
     }
     this.agent.state.messages = [{ role: 'system', content: systemPrompt, timestamp: 0 }, ...messages]
+  }
+
+  /**
+   * Image models can be enabled or removed while a chat runtime lives, so
+   * `generate_image` is added or dropped before each turn; pi-agent-core
+   * declares the change to the model.
+   */
+  private syncImageGenerationTool(): void {
+    const tools = this.agent.state.tools
+    const withoutImageTool = tools.filter(tool => tool.name !== GENERATE_IMAGE_TOOL_NAME)
+    const imageTools = createImageGenerationTools({ db: this.db, getSessionId: () => this.agent.sessionId })
+    const registered = withoutImageTool.length !== tools.length
+    if (registered === (imageTools.length > 0)) return
+    this.agent.state.tools = [...withoutImageTool, ...imageTools]
   }
 
   getCurrentTimeContext(): string {
@@ -757,6 +777,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
     if (sttEnabled) activeTools.add('transcribe_audio')
 
     const availableImageModels = this.listImageModelsForPrompt()
+    if (availableImageModels.length > 0) activeTools.add(GENERATE_IMAGE_TOOL_NAME)
 
     const agentSkillEntries = getAgentSkillsForPrompt({
       platform: currentPlatform(),

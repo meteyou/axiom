@@ -50,6 +50,7 @@ export interface AppOptions {
   getTelegramBot?: () => TelegramBot | null
   onTelegramSettingsChanged?: () => void
   onActiveProviderChanged?: () => void
+  onImageModelsChanged?: () => void
   getTaskRuntime?: () => TaskRuntimeBoundary | null
   /**
    * Look up a provider by id/name. Used by the tasks restart endpoint to
@@ -137,6 +138,7 @@ export function createApp(options?: AppOptions): express.Express {
       onProviderReferencesReset: () => {
         options.consolidationScheduler?.restart()
       },
+      onImageModelsChanged: options.onImageModelsChanged,
     }))
     app.use('/api/memory', createMemoryRouter({
       db: options.db,

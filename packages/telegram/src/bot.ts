@@ -1013,7 +1013,8 @@ export class TelegramBot {
     }
 
     const inputFile = new InputFile(absolutePath, file.originalName)
-    if (file.kind === 'image') {
+    // Telegram's sendPhoto rejects SVG, so vector images go out as documents.
+    if (file.kind === 'image' && file.mimeType !== 'image/svg+xml') {
       await this.bot.api.sendPhoto(chatId, inputFile)
     } else {
       await this.bot.api.sendDocument(chatId, inputFile)

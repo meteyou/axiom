@@ -21,6 +21,7 @@ import {
 } from './cronjob-tools.js'
 import type { CronjobToolsOptions } from './cronjob-tools.js'
 import { createSendFileTool } from './send-file-tool.js'
+import { createGenerateImageTool } from './image-tool.js'
 import type { QuotaServiceLike } from './quota-tool.js'
 import { getToolReplayPolicy, hasExplicitToolReplayPolicy } from './tool-replay.js'
 
@@ -62,16 +63,22 @@ function buildEveryRegisteredTool(db: Database): AgentTool[] {
     getCronjobTool(cronjobToolsOptions),
     createReminderTool(cronjobToolsOptions),
     createSendFileTool({ getCurrentToolUserId: () => undefined }),
+    createGenerateImageTool(),
   ]
 }
 
 describe('tool replay policy', () => {
   let db: Database
   let dbPath: string
+  let dataDir: string
+  const originalDataDir = process.env.DATA_DIR
 
   beforeAll(() => {
     dbPath = path.join(os.tmpdir(), `axiom-tool-replay-test-${Date.now()}-${Math.random().toString(36).slice(2)}.db`)
     db = initDatabase(dbPath)
+    // createBaseAgentTools reads providers.json (to decide on generate_image); never let it touch a real /data.
+    dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'axiom-tool-replay-data-'))
+    process.env.DATA_DIR = dataDir
   })
 
   afterAll(() => {
@@ -79,6 +86,9 @@ describe('tool replay policy', () => {
     for (const suffix of ['', '-wal', '-shm']) {
       try { fs.unlinkSync(`${dbPath}${suffix}`) } catch { /* ignore */ }
     }
+    fs.rmSync(dataDir, { recursive: true, force: true })
+    if (originalDataDir !== undefined) process.env.DATA_DIR = originalDataDir
+    else delete process.env.DATA_DIR
   })
 
   it('has an explicit classification for every registered agent tool', () => {
@@ -91,7 +101,7 @@ describe('tool replay policy', () => {
   })
 
   it('treats file, shell and outbound tools as unsafe', () => {
-    for (const name of ['shell', 'write_file', 'edit_file', 'email_send', 'create_task', 'send_file_to_user']) {
+    for (const name of ['shell', 'write_file', 'edit_file', 'email_send', 'create_task', 'send_file_to_user', 'generate_image']) {
       expect(getToolReplayPolicy(name)).toBe('unsafe')
     }
   })

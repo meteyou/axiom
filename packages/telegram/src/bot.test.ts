@@ -21,6 +21,8 @@ vi.mock('grammy', () => {
     editMessageText: vi.fn().mockResolvedValue(true),
     deleteWebhook: vi.fn().mockResolvedValue(true),
     setMyCommands: vi.fn().mockResolvedValue(true),
+    sendPhoto: vi.fn().mockResolvedValue({ message_id: 2 }),
+    sendDocument: vi.fn().mockResolvedValue({ message_id: 3 }),
   }
 
   const MockBot = vi.fn().mockImplementation(() => ({
@@ -62,9 +64,14 @@ vi.mock('grammy', () => {
     }
   }
 
+  class MockInputFile {
+    constructor(public file: unknown, public filename?: string) {}
+  }
+
   return {
     Bot: MockBot,
     InlineKeyboard: MockInlineKeyboard,
+    InputFile: MockInputFile,
     GrammyError: class GrammyError extends Error {
       error_code: number
       description: string
@@ -233,6 +240,42 @@ describe('TelegramBot', () => {
   afterEach(() => {
     vi.clearAllTimers()
     vi.useRealTimers()
+  })
+
+  describe('assistant file uploads', () => {
+    const originalDataDir = process.env.DATA_DIR
+    let dataDir: string
+
+    beforeEach(() => {
+      dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'axiom-telegram-uploads-'))
+      process.env.DATA_DIR = dataDir
+      fs.mkdirSync(path.join(dataDir, 'uploads'), { recursive: true })
+    })
+
+    afterEach(() => {
+      fs.rmSync(dataDir, { recursive: true, force: true })
+      if (originalDataDir !== undefined) process.env.DATA_DIR = originalDataDir
+      else delete process.env.DATA_DIR
+    })
+
+    async function sendUpload(originalName: string, mimeType: string) {
+      fs.writeFileSync(path.join(dataDir, 'uploads', originalName), 'bytes')
+      const bot = new TelegramBot({ agentCore, config: defaultConfig })
+      await (bot as any).sendUploadToTelegram(42, { kind: 'image', originalName, relativePath: originalName, mimeType })
+      return (bot.getBot() as any).api
+    }
+
+    it('sends raster images as photos', async () => {
+      const api = await sendUpload('logo.png', 'image/png')
+      expect(api.sendPhoto).toHaveBeenCalledTimes(1)
+      expect(api.sendDocument).not.toHaveBeenCalled()
+    })
+
+    it('sends SVG images as documents because Telegram photos cannot be SVG', async () => {
+      const api = await sendUpload('logo.svg', 'image/svg+xml')
+      expect(api.sendDocument).toHaveBeenCalledTimes(1)
+      expect(api.sendPhoto).not.toHaveBeenCalled()
+    })
   })
 
   describe('constructor', () => {
