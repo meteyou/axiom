@@ -330,13 +330,14 @@ describe('image generation models', () => {
         { id: 'openai/gpt-5-image-mini' },
         { id: 'google/gemini-3-pro-image' },
         { id: 'qwen/qwen3.8-flash' },
+        { id: 'recraft/recraft-v4.1' },
         { id: 'vendor/brand-new-image-model', architecture: { output_modalities: ['image'] } },
       ],
     }))
 
     const models = await createProvidersService().getLiveModels(provider.id)
 
-    expect(models.map(m => m.id)).toEqual(['google/gemini-3-pro-image', 'qwen/qwen3.8-flash'])
+    expect(models.map(m => m.id)).toEqual(['google/gemini-3-pro-image', 'openai/gpt-5-image-mini', 'qwen/qwen3.8-flash'])
   })
 
   it('lists image models live and falls back to the bundled catalog when that fails', async () => {

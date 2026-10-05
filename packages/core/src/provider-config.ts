@@ -583,12 +583,13 @@ export function getImageBaseUrl(provider: Pick<ProviderConfig, 'providerType' | 
 }
 
 /**
- * Ids pi-ai lists as image models but not as chat models for this provider
- * type. Such ids cannot serve chat turns, so they belong in
- * `enabledImageModels`, never in `enabledModels`.
+ * Ids pi-ai lists as image models that produce no text and are not chat
+ * models for this provider type. Such ids cannot serve chat turns, so they
+ * belong in `enabledImageModels`, never in `enabledModels`. Image models that
+ * also answer with text (e.g. Gemini image models) stay usable for chat.
  */
 export function createImageOnlyModelIdMatcher(providerType: ProviderType | string): (modelId: string) => boolean {
-  const imageIds = new Set(getImageCatalogForType(providerType).map(m => m.id))
+  const imageIds = new Set(getImageCatalogForType(providerType).filter(m => !m.output.includes('text')).map(m => m.id))
   if (imageIds.size === 0) return () => false
   const piAiProvider = PROVIDER_TYPE_PRESETS[providerType as ProviderType]?.piAiProvider
   // Built on first use: providers.json loads run this for every provider, and most ids are no image models.

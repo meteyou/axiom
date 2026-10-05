@@ -73,10 +73,11 @@ describe('image model catalog', () => {
     expect(getAvailableImageModels('anthropic')).toEqual([])
   })
 
-  it('classifies ids that exist only in the image catalog as image-only', () => {
+  it('classifies ids that exist only in the image catalog and produce no text as image-only', () => {
     const isImageOnly = createImageOnlyModelIdMatcher('openrouter')
     expect(isImageOnly('recraft/recraft-v4.1')).toBe(true)
-    expect(isImageOnly('openai/gpt-5-image-mini')).toBe(true)
+    expect(isImageOnly('openai/gpt-5-image-mini')).toBe(false)
+    expect(isImageOnly('google/gemini-3.1-flash-image')).toBe(false)
     expect(isImageOnly('google/gemini-3-pro-image')).toBe(false)
     expect(isImageOnly('openrouter/auto')).toBe(false)
     expect(isImageOnly('qwen/qwen3.8-flash')).toBe(false)
@@ -177,27 +178,27 @@ describe('providers.json image model handling', () => {
   it('moves image-only ids from enabledModels to enabledImageModels and persists it', () => {
     writeProviders({
       providers: [openRouterProvider({
-        enabledModels: ['openai/gpt-5-image-mini', 'qwen/qwen3.8-flash', 'google/gemini-3.1-flash-image', 'recraft/recraft-v4.1'],
+        enabledModels: ['openai/gpt-5-image-mini', 'qwen/qwen3.8-flash', 'google/gemini-3.1-flash-image', 'recraft/recraft-v4.1', 'black-forest-labs/flux.2-pro'],
         disabledModels: ['recraft/recraft-v4.1'],
       })],
     })
 
     const provider = loadProviders().providers[0]!
-    expect(provider.enabledModels).toEqual(['qwen/qwen3.8-flash'])
-    expect(provider.enabledImageModels).toEqual(['openai/gpt-5-image-mini', 'google/gemini-3.1-flash-image', 'recraft/recraft-v4.1'])
+    expect(provider.enabledModels).toEqual(['openai/gpt-5-image-mini', 'qwen/qwen3.8-flash', 'google/gemini-3.1-flash-image'])
+    expect(provider.enabledImageModels).toEqual(['recraft/recraft-v4.1', 'black-forest-labs/flux.2-pro'])
     expect(provider.disabledModels).toBeUndefined()
-    expect(readProvidersFromDisk().providers[0]!.enabledImageModels).toHaveLength(3)
+    expect(readProvidersFromDisk().providers[0]!.enabledImageModels).toHaveLength(2)
   })
 
   it('migrates a provider whose only models are image models to zero text models', () => {
     writeProviders({
-      providers: [openRouterProvider({ enabledModels: ['openai/gpt-5-image-mini', 'google/gemini-3.1-flash-image', 'recraft/recraft-v4.1'] })],
+      providers: [openRouterProvider({ enabledModels: ['recraft/recraft-v4.1', 'black-forest-labs/flux.2-pro'] })],
     })
 
     const provider = loadProviders().providers[0]!
     expect(provider.enabledModels).toEqual([])
     expect(getUsableModels(provider)).toEqual([])
-    expect(getUsableImageModels(provider)).toEqual(['openai/gpt-5-image-mini', 'google/gemini-3.1-flash-image', 'recraft/recraft-v4.1'])
+    expect(getUsableImageModels(provider)).toEqual(['recraft/recraft-v4.1', 'black-forest-labs/flux.2-pro'])
   })
 
   it('keeps ids that are also chat models and the active/fallback selection as text models', () => {
