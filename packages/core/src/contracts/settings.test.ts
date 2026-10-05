@@ -122,12 +122,11 @@ describe('settings contracts', () => {
     })
   })
 
-  it('defaults image generation to on with 4 variants, no cost limit and the images folder', () => {
+  it('defaults image generation to on with 4 variants and the images folder', () => {
     expect(normalizeSettingsContract({}).imageGeneration).toEqual({
       enabled: true,
       defaultModel: '',
       maxVariants: 4,
-      maxCostPerCallUsd: null,
       outputDir: 'images',
     })
   })
@@ -137,17 +136,15 @@ describe('settings contracts', () => {
       enabled: false,
       defaultModel: ' or-1:recraft/recraft-v4.1 ',
       maxVariants: 11,
-      maxCostPerCallUsd: -1,
       outputDir: '../outside',
     })).toEqual({
       enabled: false,
       defaultModel: 'or-1:recraft/recraft-v4.1',
       maxVariants: 4,
-      maxCostPerCallUsd: null,
       outputDir: 'images',
     })
-    expect(normalizeImageGenerationSettings({ maxVariants: 10, maxCostPerCallUsd: 0.25, outputDir: './art/' }))
-      .toMatchObject({ maxVariants: 10, maxCostPerCallUsd: 0.25, outputDir: 'art' })
+    expect(normalizeImageGenerationSettings({ maxVariants: 10, outputDir: './art/' }))
+      .toMatchObject({ maxVariants: 10, outputDir: 'art' })
   })
 
   it('keeps image output folders inside the workspace', () => {

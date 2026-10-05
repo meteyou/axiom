@@ -28,6 +28,5 @@ describe('image generation settings placement', () => {
     for (const field of ['enabled', 'defaultModel', 'maxVariants', 'outputDir']) {
       expect(tab).toContain(`settings.${field}`)
     }
-    expect(tab).toContain('maxCostInput')
   })
 })

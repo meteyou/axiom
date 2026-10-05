@@ -43,7 +43,7 @@ Prefer the model the user named, then the descriptions in `<available_providers>
 ## Cost and quota
 
 - Every call costs real money. The tool result reports the billed cost; repeat it to the user when it is noticeable or when you ran several calls.
-- If the user set a cost limit per call, the tool refuses calls whose estimated cost exceeds it, before anything is billed. Report the estimate and the limit from the error and let the user decide; never split the request into several smaller calls to get around the limit.
+- Axiom does not cap spending per call. Spending limits belong on the provider's API key (e.g. an OpenRouter key limit); if a call fails because such a limit is reached, report it and let the user decide.
 - Before batch runs (many images, or several multi-variant calls), call `provider_quota` for credit-based providers such as OpenRouter and check the remaining balance. Tell the user the expected cost first if a batch will clearly exceed a few dollars.
 - On errors (`Insufficient credits`, rate limits, content policy refusals, "no image returned"), report the reason instead of retrying blindly. Retry at most once, and only for transient errors.
 

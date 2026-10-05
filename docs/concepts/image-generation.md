@@ -26,7 +26,6 @@ The [Image Generation settings tab](../settings/image-generation) controls how t
 | Enabled | `imageGeneration.enabled` | `true` |
 | Default image model | `imageGeneration.defaultModel` | `""` (first enabled image model) |
 | Max variants per call | `imageGeneration.maxVariants` | `4` (range 1–10) |
-| Cost limit per call | `imageGeneration.maxCostPerCallUsd` | `null` (off) |
 | Output folder | `imageGeneration.outputDir` | `images` |
 
 The tab also shows a read-only list of all enabled image models with their descriptions, each linking to its provider. Models themselves (key, availability check, credit balance) stay owned by the provider under [Providers → Image models](../web-ui/providers#image-models).
@@ -46,12 +45,6 @@ The tool is registered only while image generation is **switched on** (`imageGen
 | `aspect_ratio` | no | e.g. `"1:1"`, `"16:9"`, `"9:16"`. Sent to OpenRouter as `image_config.aspect_ratio`; not every model honours it. |
 | `n` | no | Number of variants, from `1` up to [Max variants per call](../settings/image-generation#max-variants-per-call) (default `4`). The limit is part of the parameter definition; a larger `n` is refused before anything is generated. Each variant is a separate request; they run in parallel and are billed separately. |
 | `input_images` | no | Workspace-relative (or absolute) paths of PNG/JPEG/WebP/GIF images to edit, combine or use as reference (max 8, 20 MB each). Only models that accept image input can use them. |
-
-### Cost limit per call
-
-With a [cost limit per call](../settings/image-generation#cost-limit-per-call) set, the tool estimates the cost before generating: `n` × the average billed cost per image of the last 5 generations with the same model (read from `token_usage`). If the estimate exceeds the limit, the tool refuses with a message that states the estimate and the limit — no request is sent and nothing is billed.
-
-pi-ai's image catalog carries no per-image prices (flat-priced models list zero, token-priced ones list text-token rates), so earlier billed costs are the only reliable basis. The limit is therefore **approximate**: flat-priced models such as Recraft are estimated closely, token-priced models (Gemini, GPT image) vary with the prompt and input images. A model's **first** generation cannot be checked; the tool then generates and says in its result that the limit was not checked. A paid test image under Providers seeds the estimate.
 
 ### Output files
 
@@ -81,10 +74,11 @@ Each request times out after **180 s**.
 pi-ai's token-based estimate is far off for image models (zero for most of them), so Axiom reads the **billed amount** that OpenRouter reports in each response (`usage.cost`) and uses it for:
 
 - the tool result and the sidecar file,
-- the [Token Usage](../web-ui/token-usage) page — every generated variant (one provider request) is booked as its own `token_usage` row for the image model (interactive chats on the current session, background tasks and the Providers test image without a session),
-- the estimate behind the [cost limit per call](#cost-limit-per-call).
+- the [Token Usage](../web-ui/token-usage) page — every generated variant (one provider request) is booked as its own `token_usage` row for the image model (interactive chats on the current session, background tasks and the Providers test image without a session).
 
 Typical prices seen in testing: Recraft V4.1 ≈ $0.035, GPT-5 Image Mini ≈ $0.04, Gemini 3.1 Flash Image ≈ $0.07, Recraft V4.1 Vector (SVG) ≈ $0.08 per image. Check [`provider_quota`](./tools#provider-quota) for the remaining OpenRouter credit.
+
+Axiom does not cap spending per call. Spending limits belong on the provider's API key (e.g. an OpenRouter key limit).
 
 ## System prompt
 
@@ -92,7 +86,7 @@ When image generation is switched on and at least one image model is usable, `<a
 
 ## The `image-generation` skill
 
-The built-in [`image-generation` skill](./skills#currently-shipped) carries the workflow the tool description points to: when to generate, how to write a detailed prompt, generating variants within the configured limit, respecting the cost limit, optional self-checks, delivery via `send_file_to_user`, iterating with `input_images` instead of re-rolling, model choice (Recraft vector for logos and icons, GPT/Gemini for text in images and photorealism) and cost awareness (`provider_quota` before batch runs, no base64 in chat). It declares `requires_toolsets: [generate_image]`, so it only appears in `<available_skills>` while the tool is available.
+The built-in [`image-generation` skill](./skills#currently-shipped) carries the workflow the tool description points to: when to generate, how to write a detailed prompt, generating variants within the configured limit, optional self-checks, delivery via `send_file_to_user`, iterating with `input_images` instead of re-rolling, model choice (Recraft vector for logos and icons, GPT/Gemini for text in images and photorealism) and cost awareness (`provider_quota` before batch runs, no base64 in chat). It declares `requires_toolsets: [generate_image]`, so it only appears in `<available_skills>` while the tool is available.
 
 ## Migration of existing configurations
 
