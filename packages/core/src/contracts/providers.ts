@@ -135,7 +135,16 @@ export interface ImageModelSpecContract {
   name: string
   input: ModelInputModalityContract[]
   output: ModelInputModalityContract[]
-  pricing?: ImageModelPricingContract
+  /** USD per 1M output tokens: the provider's list price, stored when the model was added, or the catalog price. */
+  outputCostPerMillion?: number
+  /** Average cost of the last generated images, once at least three were billed. */
+  averageCost?: ImageModelAverageCostContract
+}
+
+export interface ImageModelAverageCostContract {
+  usd: number
+  /** Number of images the average is based on (at most the last five). */
+  images: number
 }
 
 /**

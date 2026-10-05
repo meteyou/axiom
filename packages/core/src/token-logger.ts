@@ -54,6 +54,33 @@ export function logTokenUsage(db: Database, record: TokenUsageRecord): void {
   }
 }
 
+export interface AverageImageCost {
+  usd: number
+  /** Number of images the average is based on. */
+  images: number
+}
+
+/**
+ * Average billed cost of the last generated images of a model. Every image
+ * request is booked as its own `token_usage` row; rows without a cost
+ * (failures, subscriptions, unknown prices) are skipped. `null` until
+ * `minImages` billed images exist.
+ */
+export function getAverageImageCost(
+  db: Database,
+  provider: string,
+  model: string,
+  options: { minImages?: number; lastImages?: number } = {},
+): AverageImageCost | null {
+  const rows = db.prepare(
+    `SELECT estimated_cost AS cost FROM token_usage
+     WHERE provider = ? AND model = ? AND estimated_cost > 0
+     ORDER BY id DESC LIMIT ?`,
+  ).all(provider, model, options.lastImages ?? 5) as Array<{ cost: number }>
+  if (rows.length < (options.minImages ?? 3)) return null
+  return { usd: rows.reduce((sum, row) => sum + row.cost, 0) / rows.length, images: rows.length }
+}
+
 /**
  * Log a tool call to the SQLite database
  */

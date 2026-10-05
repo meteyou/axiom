@@ -1,7 +1,7 @@
 import type { FetchFunction, ImageApi, ImageModel } from '@earendil-works/pi-ai'
 import { extractCodexAccountId } from './codex-auth.js'
 import { compareOpenAIImageModelIds, findOpenAIImageModelInfo, openAIImageModelName } from './image-catalog.js'
-import type { AvailableImageModel, ImageModality } from './image-catalog.js'
+import type { AvailableImageModel, ImageModality, ImageModelPricing } from './image-catalog.js'
 import { OPENAI_CODEX_IMAGES_API, OPENAI_IMAGES_API } from './openai-images-api.js'
 import type { OpenAIImagesResponse } from './openai-images-api.js'
 
@@ -81,6 +81,27 @@ interface OpenRouterModelEntry {
   id?: unknown
   name?: unknown
   architecture?: { input_modalities?: unknown; output_modalities?: unknown }
+  /** USD per token, as strings. */
+  pricing?: { prompt?: unknown; completion?: unknown; image_token?: unknown; image_output?: unknown }
+}
+
+function perMillionTokens(value: unknown): number | undefined {
+  if (value === undefined || value === null || value === '') return undefined
+  const perMillion = Number(value) * 1_000_000
+  return Number.isFinite(perMillion) && perMillion >= 0 ? Math.round(perMillion * 1e6) / 1e6 : undefined
+}
+
+function openRouterPricing(pricing: OpenRouterModelEntry['pricing']): ImageModelPricing | undefined {
+  const imageOutput = perMillionTokens(pricing?.image_output)
+  if (!imageOutput) return undefined
+  const textInput = perMillionTokens(pricing?.prompt) ?? 0
+  const textOutput = perMillionTokens(pricing?.completion)
+  return {
+    textInput,
+    imageInput: perMillionTokens(pricing?.image_token) ?? textInput,
+    imageOutput,
+    ...(textOutput && { textOutput }),
+  }
 }
 
 const openRouterImageBackend: ImageBackend = {
@@ -149,11 +170,13 @@ const openRouterImageBackend: ImageBackend = {
       const output = toModalities(entry.architecture?.output_modalities)
       if (!id || !output.includes('image')) continue
       const input = toModalities(entry.architecture?.input_modalities)
+      const pricing = openRouterPricing(entry.pricing)
       models.push({
         id,
         name: typeof entry.name === 'string' && entry.name.trim() ? entry.name.trim() : id,
         input: input.includes('text') ? input : ['text', ...input],
         output,
+        ...(pricing && { pricing }),
       })
     }
     return models.sort((a, b) => a.name.localeCompare(b.name))

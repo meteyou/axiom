@@ -367,14 +367,17 @@
                       >
                         {{ $t('providers.imageModels.subscription') }}
                       </Badge>
-                      <span
-                        v-else-if="getImageBilling(provider) === 'estimated'"
-                        class="text-xs tabular-nums text-muted-foreground"
-                        :title="$t('providers.imageModels.estimatedHint')"
-                      >
-                        {{ getImageModelPrice(provider, modelId) ?? $t('providers.imageModels.costEstimated') }}
-                      </span>
-                      <span v-else class="text-xs text-muted-foreground" :title="$t('providers.imageModels.costHint')">{{ $t('providers.imageModels.costPerImage') }}</span>
+                      <div v-else class="flex flex-col text-xs tabular-nums leading-tight text-muted-foreground">
+                        <span :title="getImageBilling(provider) === 'estimated' ? $t('providers.imageModels.estimatedHint') : $t('providers.imageModels.costHint')">
+                          {{ getImageModelPrice(provider, modelId) }}
+                        </span>
+                        <span
+                          v-if="getImageAverageCost(provider, modelId)"
+                          :title="getImageAverageCostHint(provider, modelId)"
+                        >
+                          {{ getImageAverageCost(provider, modelId) }}
+                        </span>
+                      </div>
                     </TableCell>
                     <TableCell class="py-1.5">
                       <div v-if="isTestingModel(provider.id, modelId)" class="flex items-center gap-1.5">
@@ -402,7 +405,7 @@
                           </DropdownMenuItem>
                           <DropdownMenuItem @click="openImageTest(provider, modelId)">
                             <AppIcon name="image" class="h-4 w-4" />
-                            {{ getImageBilling(provider) === 'subscription' ? $t('providers.imageModels.testImageMenuSubscription') : $t('providers.imageModels.testImageMenu') }}
+                            {{ $t('providers.imageModels.testImageMenu') }}
                           </DropdownMenuItem>
                           <DropdownMenuItem @click="openEditImageModel(provider, modelId)">
                             <AppIcon name="edit" class="h-4 w-4" />
@@ -519,7 +522,7 @@ import type { ProviderFormPayload } from '~/components/ProviderFormDialog.vue'
 import { useProviders } from '~/features/providers/composables/useProviders'
 import { formatModelCost as formatCost } from '~/utils/modelFormat'
 import { getImageModelDisplayName, getModelDisplayName } from '~/utils/providerModelOptions'
-import { formatImageOutputPrice } from '~/utils/imageModelCatalog'
+import { formatImageCost, formatPerMillionPrice } from '~/utils/imageModelCatalog'
 import { providerTypeLabel } from '~/utils/providerTypeOptions'
 
 const { t } = useI18n()
@@ -772,9 +775,22 @@ function getImageBilling(provider: Provider): ImageBillingContract {
   return presets.value[provider.providerType]?.imageBilling ?? 'reported'
 }
 
-function getImageModelPrice(provider: Provider, modelId: string): string | null {
-  const pricing = provider.imageModelSpecs?.[modelId]?.pricing
-  return pricing ? t('providers.imageModels.pricePerMillion', { price: formatImageOutputPrice(pricing) }) : null
+function getImageModelPrice(provider: Provider, modelId: string): string {
+  const outputCost = provider.imageModelSpecs?.[modelId]?.outputCostPerMillion
+  if (outputCost !== undefined) return t('providers.imageModels.pricePerMillion', { price: formatPerMillionPrice(outputCost) })
+  return getImageBilling(provider) === 'estimated' ? t('providers.imageModels.costEstimated') : t('providers.imageModels.costPerImage')
+}
+
+function getImageAverageCost(provider: Provider, modelId: string): string | null {
+  const average = provider.imageModelSpecs?.[modelId]?.averageCost
+  return average ? t('providers.imageModels.averageCost', { cost: formatImageCost(average.usd) }) : null
+}
+
+function getImageAverageCostHint(provider: Provider, modelId: string): string {
+  const count = provider.imageModelSpecs?.[modelId]?.averageCost?.images ?? 0
+  return getImageBilling(provider) === 'estimated'
+    ? t('providers.imageModels.averageCostEstimatedHint', { count })
+    : t('providers.imageModels.averageCostHint', { count })
 }
 
 function openAddImageModel(provider: Provider) {

@@ -4,7 +4,7 @@ import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
 import type { Database } from '@axiom/core'
-import { initDatabase } from '@axiom/core'
+import { addProvider, initDatabase, logTokenUsage, updateProvider } from '@axiom/core'
 import { createApp } from '../../../app.js'
 import { generateAccessToken } from '../../../auth.js'
 
@@ -454,5 +454,26 @@ describe('providers route module', () => {
       { method: 'PATCH', headers: jsonHeaders, body: JSON.stringify({ disabled: true }) },
     )
     expect(disableActiveModel.status).toBe(400)
+  })
+
+  it('reports the average cost of the last generated images per image model', async () => {
+    const provider = addProvider({ name: 'OpenRouter Images', providerType: 'openrouter', apiKey: 'sk-or', enabledModels: [] })
+    updateProvider(provider.id, { enabledImageModels: ['recraft/recraft-v4.1'] })
+    const book = (estimatedCost: number) => logTokenUsage(db, {
+      provider: 'openrouter', model: 'recraft/recraft-v4.1', promptTokens: 0, completionTokens: 4000, cacheRead: 0, cacheWrite: 0, estimatedCost,
+    })
+    const imageSpec = async () => {
+      const body = await (await fetch(`${baseUrl}/api/providers`, { headers: authHeaders(adminToken) })).json() as {
+        providers: Array<{ id: string; imageModelSpecs?: Record<string, { averageCost?: unknown }> }>
+      }
+      return body.providers.find(p => p.id === provider.id)!.imageModelSpecs!['recraft/recraft-v4.1']!
+    }
+
+    book(0.03)
+    book(0.04)
+    expect(await imageSpec()).not.toHaveProperty('averageCost')
+
+    book(0.05)
+    expect((await imageSpec()).averageCost).toEqual({ usd: expect.closeTo(0.04, 10), images: 3 })
   })
 })

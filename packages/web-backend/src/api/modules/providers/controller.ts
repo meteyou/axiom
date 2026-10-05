@@ -1,5 +1,5 @@
 import type { Response as ExpressResponse } from 'express'
-import { PROVIDER_TYPE_PRESETS } from '@axiom/core'
+import { getAverageImageCost, PROVIDER_TYPE_PRESETS } from '@axiom/core'
 import type { AuthenticatedRequest } from '../../../auth.js'
 import {
   mapCreatedProviderResponse,
@@ -90,7 +90,13 @@ export function createProvidersController(options: ProvidersRouterOptions = {}):
     getProviders(_req, res) {
       try {
         const data = service.listProviders()
-        res.json(mapProvidersListResponse(data.masked, data.decrypted, options.getQuotaSnapshot?.()))
+        const db = options.db
+        res.json(mapProvidersListResponse(
+          data.masked,
+          data.decrypted,
+          options.getQuotaSnapshot?.(),
+          db ? (provider, model) => getAverageImageCost(db, provider, model) : undefined,
+        ))
       } catch (err) {
         res.status(500).json({ error: `Failed to load providers: ${(err as Error).message}` })
       }

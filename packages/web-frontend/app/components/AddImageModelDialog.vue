@@ -75,20 +75,25 @@
               <span class="truncate font-mono text-[10px] text-muted-foreground">{{ model.id }}</span>
             </span>
             <span
-              v-if="model.pricing"
-              class="shrink-0 text-[10px] tabular-nums text-muted-foreground"
-              :title="$t('providers.imageModels.priceHint')"
+              v-if="model.pricing || !model.input.includes('image')"
+              class="flex shrink-0 flex-col items-end gap-0.5"
             >
-              {{ formatImageOutputPrice(model.pricing) }}
+              <span
+                v-if="model.pricing"
+                class="text-[10px] tabular-nums text-muted-foreground"
+                :title="$t('providers.imageModels.priceHint')"
+              >
+                {{ $t('providers.imageModels.pricePerMillion', { price: formatPerMillionPrice(model.pricing.imageOutput) }) }}
+              </span>
+              <Badge
+                v-if="!model.input.includes('image')"
+                variant="outline"
+                class="px-1.5 py-0 text-[10px]"
+                :title="$t('providers.imageModels.noImageInputHint')"
+              >
+                {{ $t('providers.imageModels.noImageInput') }}
+              </Badge>
             </span>
-            <Badge
-              v-if="model.input.includes('image')"
-              variant="outline"
-              class="shrink-0 px-1.5 py-0 text-[10px]"
-              :title="$t('providers.imageModels.editingHint')"
-            >
-              {{ $t('providers.imageModels.editing') }}
-            </Badge>
             <span v-if="isAlreadyEnabled(model.id)" class="shrink-0 text-[10px] text-muted-foreground">
               {{ $t('providers.addModelAlreadyEnabled') }}
             </span>
@@ -142,7 +147,7 @@
 <script setup lang="ts">
 import type { AvailableImageModel, Provider } from '~/features/providers/composables/useProviders'
 import { useProvidersApi } from '~/api/providers'
-import { buildImageCatalogModelPatch, formatImageOutputPrice } from '~/utils/imageModelCatalog'
+import { buildImageCatalogModelPatch, formatPerMillionPrice } from '~/utils/imageModelCatalog'
 
 const props = defineProps<{
   open: boolean

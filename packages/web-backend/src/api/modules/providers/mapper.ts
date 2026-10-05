@@ -1,5 +1,6 @@
 import { buildModel, getAvailableImageModels, getImageProviderCapabilities, getPiCatalogModels, getProviderDefaultModel, isQuotaProvider, maskProviderExtraFields, PROVIDER_TYPE_MODEL_OVERRIDES, PROVIDER_TYPE_PRESETS, supportsModelSpecOverrides } from '@axiom/core'
 import type {
+  AverageImageCost,
   ProviderConfig,
   ProviderType,
   ProvidersFile,
@@ -76,16 +77,21 @@ function resolveModelSpec(provider: ProviderConfig, modelId: string): ProviderMo
   }
 }
 
-function resolveImageModelSpecs(provider: ProviderConfig): Record<string, ImageModelSpecContract> {
+export type ImageCostAverageLookup = (provider: string, model: string) => AverageImageCost | null
+
+function resolveImageModelSpecs(provider: ProviderConfig, averageCost?: ImageCostAverageLookup): Record<string, ImageModelSpecContract> {
   const catalog = new Map(getAvailableImageModels(provider.providerType).map(model => [model.id, model]))
   return Object.fromEntries((provider.enabledImageModels ?? []).map((modelId) => {
     const entry = catalog.get(modelId)
     const override = provider.models?.find(m => m.id === modelId)
+    const outputCostPerMillion = override?.cost?.output ?? entry?.pricing?.imageOutput
+    const average = averageCost?.(provider.provider, modelId)
     return [modelId, {
       name: override?.name ?? entry?.name ?? modelId,
       input: override?.input ?? entry?.input ?? ['text', 'image'],
       output: override?.output ?? entry?.output ?? ['image'],
-      ...(entry?.pricing && { pricing: entry.pricing }),
+      ...(outputCostPerMillion !== undefined && { outputCostPerMillion }),
+      ...(average && { averageCost: average }),
     }]
   }))
 }
@@ -94,6 +100,7 @@ export function mapProvidersListResponse(
   masked: ProvidersFile,
   decrypted: ProvidersFile,
   quotaSnapshot?: Record<string, ProviderQuotaContract>,
+  imageCostAverage?: ImageCostAverageLookup,
 ): ProvidersListResponseContract {
   const providers = masked.providers.map((provider) => {
     const fullProvider = decrypted.providers.find((candidate) => candidate.id === provider.id)
@@ -123,7 +130,7 @@ export function mapProvidersListResponse(
       cost,
       modelCosts,
       modelSpecs,
-      imageModelSpecs: fullProvider ? resolveImageModelSpecs(fullProvider) : {},
+      imageModelSpecs: fullProvider ? resolveImageModelSpecs(fullProvider, imageCostAverage) : {},
       supportsQuota: fullProvider ? isQuotaProvider(fullProvider) : false,
       quota: quotaSnapshot?.[provider.id] ?? null,
     } as ProviderContract
