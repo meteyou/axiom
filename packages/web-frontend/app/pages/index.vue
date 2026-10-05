@@ -177,7 +177,8 @@
           <!-- Tool call card (clickable/expandable) -->
           <template v-else-if="msg.role === 'tool' && msg.toolData">
             <ChatCollapsibleCard
-              :icon="toolIconName(msg.toolData!)"
+              :icon="isToolRunning(msg) ? 'loader' : toolIconName(msg.toolData!)"
+              :icon-class="isToolRunning(msg) ? 'animate-spin opacity-80' : undefined"
               :expanded="expandedTools.has(msg.toolData!.toolCallId)"
               @toggle="toggleTool(msg.toolData!.toolCallId)"
             >
@@ -190,6 +191,9 @@
                 >
                   {{ toolSummary(msg.toolData!) }}
                 </span>
+              </template>
+              <template v-if="isToolRunning(msg)" #trailing>
+                <ChatElapsedTime :since="msg.timestamp" />
               </template>
               <div>
                 <div v-if="!isToolSkillLoad(msg.toolData!) && !hasMemoryView(msg.toolData!)" class="border-b border-border px-3 py-2"><p class="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Input</p><ToolDataDisplay :data="msg.toolData!.toolArgs" /></div>
@@ -670,6 +674,7 @@ import type { ChatMessage, ToolCallData } from '~/composables/useChat'
 import type { LoadableSkill } from '~/composables/useSkillAutocomplete'
 import { SETTINGS_THINKING_LEVELS, type SettingsThinkingLevel } from '@axiom/core/contracts'
 import { findModelSpec, getThinkingLevelChoices } from '~/utils/thinkingLevels'
+import { formatDurationSeconds } from '~/utils/datetime'
 import { useSettingsApi } from '~/api/settings'
 const { t } = useI18n()
 const { formatTimeShort } = useFormat()
@@ -771,6 +776,9 @@ function toolSummary(toolData: ToolCallData): string | null {
   if (memInfo.isMemoryFile) return memInfo.displayPath
   return extractMemoryRelativePath(toolData.toolArgs) ?? getToolCallSummary(toolData.toolName, toolData.toolArgs)
 }
+function isToolRunning(msg: ChatMessage): boolean {
+  return Boolean(msg.toolData?.running) && isStreaming.value
+}
 function toolIconName(toolData: ToolCallData): string {
   if (isToolSkillLoad(toolData)) return 'puzzle'
   const memInfo = getToolMemoryInfo(toolData)
@@ -843,11 +851,8 @@ function formatTokenCount(count: number): string {
   if (count >= 1000) return `${(count / 1000).toFixed(1)}k`
   return String(count)
 }
-// Stall duration badge: 45000 -> "45s", 125000 -> "2m 5s".
 function formatStallDuration(durationMs: number): string {
-  const totalSeconds = Math.max(1, Math.round(durationMs / 1000))
-  if (totalSeconds < 60) return `${totalSeconds}s`
-  return `${Math.floor(totalSeconds / 60)}m ${totalSeconds % 60}s`
+  return formatDurationSeconds(Math.max(1, Math.round(durationMs / 1000)))
 }
 const { messages, connectionStatus, isStreaming, connect, disconnect, sendMessage, newSession, stopTask, resolvePicker, submitChatAction } = useChat()
 

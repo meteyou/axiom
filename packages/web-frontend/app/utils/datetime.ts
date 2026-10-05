@@ -23,3 +23,10 @@ export function parseBackendTimestamp(value: string | null | undefined): Date | 
   const date = new Date(normalised)
   return Number.isNaN(date.getTime()) ? null : date
 }
+
+/** Compact duration badge: 45 -> "45s", 125 -> "2m 5s". */
+export function formatDurationSeconds(totalSeconds: number): string {
+  const seconds = Math.max(0, Math.floor(totalSeconds))
+  if (seconds < 60) return `${seconds}s`
+  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`
+}
