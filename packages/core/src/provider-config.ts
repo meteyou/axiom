@@ -1,8 +1,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
-import type { Api, Model, Transport } from '@earendil-works/pi-ai'
+import type { Api, ImageApi, ImageModel, Model, Transport } from '@earendil-works/pi-ai'
 import { getPiCatalogModels } from './pi-catalog.js'
+import { getImageCatalogModels, toAvailableImageModel } from './image-catalog.js'
+import type { AvailableImageModel } from './image-catalog.js'
 import { getOAuthApiKey } from './pi-oauth.js'
 import type { OAuthCredentials } from '@earendil-works/pi-ai/oauth'
 import { streamSimple } from './pi-models.js'
@@ -556,6 +558,38 @@ export function isDynamicCatalogProvider(providerType: ProviderType | string): b
   return Boolean(PROVIDER_TYPE_PRESETS[providerType as ProviderType]?.dynamicCatalog)
 }
 
+function getImageCatalogForType(providerType: ProviderType | string): ImageModel<ImageApi>[] {
+  return getImageCatalogModels(PROVIDER_TYPE_PRESETS[providerType as ProviderType]?.piAiProvider)
+}
+
+/** Whether the provider type can serve image generation models (pi-ai ships an image catalog for it). */
+export function supportsImageModels(providerType: ProviderType | string): boolean {
+  return getImageCatalogForType(providerType).length > 0
+}
+
+/** Image generation models selectable for a provider type (pi-ai image catalog, not the text catalog). */
+export function getAvailableImageModels(providerType: ProviderType | string): AvailableImageModel[] {
+  return getImageCatalogForType(providerType).map(toAvailableImageModel)
+}
+
+/**
+ * Ids pi-ai lists as image models but not as chat models for this provider
+ * type. Such ids cannot serve chat turns, so they belong in
+ * `enabledImageModels`, never in `enabledModels`.
+ */
+export function createImageOnlyModelIdMatcher(providerType: ProviderType | string): (modelId: string) => boolean {
+  const imageIds = new Set(getImageCatalogForType(providerType).map(m => m.id))
+  if (imageIds.size === 0) return () => false
+  const piAiProvider = PROVIDER_TYPE_PRESETS[providerType as ProviderType]?.piAiProvider
+  // Built on first use: providers.json loads run this for every provider, and most ids are no image models.
+  let textIds: Set<string> | undefined
+  return (modelId) => {
+    if (!imageIds.has(modelId)) return false
+    textIds ??= new Set(piAiProvider ? getPiCatalogModels(piAiProvider).map(m => m.id) : [])
+    return !textIds.has(modelId)
+  }
+}
+
 /**
  * Whether per-model spec overrides (limits, reasoning, input, thinking map)
  * reach the runtime model. Catalog-resolved and Radius models are built from
@@ -703,6 +737,12 @@ export interface ProviderConfig {
   baseUrl: string
   apiKey: string // encrypted at rest
   enabledModels?: string[] // list of model IDs enabled for this provider; first entry is the default/primary model
+  /**
+   * Image generation models enabled for this provider. Kept apart from
+   * `enabledModels` so image models never reach chat/task model pickers, the
+   * active/fallback selection or the text-model routing list.
+   */
+  enabledImageModels?: string[]
   /**
    * Hides the provider from every LLM model picker and from the agent. Its
    * credentials stay usable for TTS/STT.
@@ -947,6 +987,8 @@ export function loadProviders(): ProvidersFile {
       delete legacy.defaultModel
       migrated = true
     }
+
+    if (moveImageOnlyIdsToImageModels(p, data)) migrated = true
   }
   if (migrated) {
     // Persist the migration so it only runs once
@@ -955,6 +997,33 @@ export function loadProviders(): ProvidersFile {
   }
 
   return data
+}
+
+/**
+ * Before image models had their own list, image-only ids could only be added
+ * as text models, where every chat request to them fails. They are moved to
+ * `enabledImageModels`; the active and fallback selection stay untouched so a
+ * running chat setup never changes underneath the user.
+ */
+function moveImageOnlyIdsToImageModels(provider: ProviderConfig, file: ProvidersFile): boolean {
+  const enabled = provider.enabledModels ?? []
+  if (enabled.length === 0) return false
+  const isImageOnly = createImageOnlyModelIdMatcher(provider.providerType)
+
+  const pinned = new Set<string>()
+  if (file.activeProvider === provider.id) pinned.add(file.activeModel ?? getProviderDefaultModel(provider))
+  if (file.fallbackProvider === provider.id) pinned.add(file.fallbackModel ?? getProviderDefaultModel(provider))
+
+  const moved = enabled.filter(id => !pinned.has(id) && isImageOnly(id))
+  if (moved.length === 0) return false
+
+  provider.enabledModels = enabled.filter(id => !moved.includes(id))
+  provider.enabledImageModels = Array.from(new Set([...(provider.enabledImageModels ?? []), ...moved]))
+  if (provider.disabledModels) {
+    provider.disabledModels = provider.disabledModels.filter(id => !moved.includes(id))
+    if (provider.disabledModels.length === 0) delete provider.disabledModels
+  }
+  return true
 }
 
 /**
@@ -1241,6 +1310,7 @@ export function updateProvider(id: string, input: {
   baseUrl?: string
   apiKey?: string
   enabledModels?: string[]
+  enabledImageModels?: string[]
   degradedThresholdMs?: number
   textVerbosity?: TextVerbosity | null
   transport?: ProviderTransport | null
@@ -1274,6 +1344,7 @@ export function updateProvider(id: string, input: {
     existing.authMethod = preset.authMethod
     delete existing.extraFields
     delete existing.compat
+    if (!supportsImageModels(input.providerType)) delete existing.enabledImageModels
     if (!input.baseUrl) {
       existing.baseUrl = preset.baseUrl
     }
@@ -1288,6 +1359,14 @@ export function updateProvider(id: string, input: {
       existing.disabledModels = existing.disabledModels.filter(m => input.enabledModels!.includes(m))
       if (existing.disabledModels.length === 0) delete existing.disabledModels
     }
+  }
+  if (input.enabledImageModels !== undefined) {
+    const imageModels = Array.from(new Set(input.enabledImageModels.map(id => id.trim()).filter(Boolean)))
+    if (imageModels.length > 0 && !supportsImageModels(existing.providerType)) {
+      throw new Error(`Provider type "${existing.providerType}" does not support image generation models`)
+    }
+    if (imageModels.length > 0) existing.enabledImageModels = imageModels
+    else delete existing.enabledImageModels
   }
   if (input.degradedThresholdMs !== undefined) existing.degradedThresholdMs = input.degradedThresholdMs
   if (input.extraFields !== undefined) {
@@ -1614,7 +1693,7 @@ export function updateProviderStatus(id: string, status: 'connected' | 'error' |
     if (!provider.modelStatuses) provider.modelStatuses = {}
     provider.modelStatuses[modelId] = status
     // Also derive overall provider status from model statuses
-    const enabled = provider.enabledModels ?? []
+    const enabled = [...(provider.enabledModels ?? []), ...(provider.enabledImageModels ?? [])]
     const statuses = enabled.map(m => provider.modelStatuses?.[m] ?? 'untested')
     if (statuses.every(s => s === 'connected')) provider.status = 'connected'
     else if (statuses.some(s => s === 'error')) provider.status = 'error'
@@ -1797,6 +1876,39 @@ export function isProviderModelUsable(
   if (isProviderDisabled(provider)) return false
   if (modelId) return !isModelDisabled(provider, modelId)
   return getUsableModels(provider).length > 0
+}
+
+/** Image generation models of a provider that may be offered to the agent and the default-image-model picker. */
+export function getUsableImageModels(provider: Pick<ProviderConfig, 'providerType' | 'enabledImageModels' | 'disabled'>): string[] {
+  if (isProviderDisabled(provider) || !supportsImageModels(provider.providerType)) return []
+  return provider.enabledImageModels ?? []
+}
+
+/**
+ * pi-ai image model for an enabled image model id. Ids missing from the
+ * bundled catalog (newer upstream models) are built on the provider's image
+ * API with image-only output, which every image model supports.
+ */
+export function buildImageModel(provider: ProviderConfig, modelId: string): ImageModel<ImageApi> {
+  const catalog = getImageCatalogForType(provider.providerType)
+  const template = catalog.find(m => m.id === modelId) ?? catalog[0]
+  if (!template) {
+    throw new Error(`Provider "${provider.name}" does not support image generation`)
+  }
+  const isCatalogModel = template.id === modelId
+  const name = provider.models?.find(m => m.id === modelId)?.name ?? (isCatalogModel ? template.name : modelId)
+  return {
+    ...template,
+    id: modelId,
+    name,
+    provider: provider.provider,
+    baseUrl: provider.baseUrl || template.baseUrl,
+    ...(!isCatalogModel && {
+      input: ['text', 'image'],
+      output: ['image'],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    }),
+  }
 }
 
 /** Copilot token format: `tid=...;exp=...;proxy-ep=proxy.individual.githubcopilot.com;...` */

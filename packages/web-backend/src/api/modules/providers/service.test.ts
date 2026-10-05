@@ -2,7 +2,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { __setPiCatalogForTests, __setRadiusCatalogForTests, addOAuthProvider, addProvider, getAvailableModels } from '@axiom/core'
+import { __setPiCatalogForTests, __setRadiusCatalogForTests, addOAuthProvider, addProvider, getAvailableModels, initDatabase, loadProviders, updateProvider } from '@axiom/core'
+import { mapProvidersListResponse } from './mapper.js'
 import {
   createProvidersService,
   ProvidersNotFoundError,
@@ -295,5 +296,117 @@ describe('refreshModelCatalogs', () => {
     expect(results.map(r => r.providerName)).toEqual(['Anthropic API', 'Claude Max'])
     expect(results[0]).toMatchObject({ status: 'updated', addedModelIds: ['claude-future-9'], missingModelIds: [] })
     expect(results[1]).toMatchObject({ status: 'updated', missingModelIds: ['claude-retired-1'] })
+  })
+})
+
+describe('image generation models', () => {
+  const PNG_BASE64 = Buffer.from('png-bytes').toString('base64')
+
+  function createOpenRouterProvider(enabledImageModels: string[] = []) {
+    const provider = addProvider({
+      name: 'OpenRouter',
+      providerType: 'openrouter',
+      apiKey: 'test-key',
+      enabledModels: ['qwen/qwen3.8-flash'],
+    })
+    if (enabledImageModels.length === 0) return provider
+    return updateProvider(provider.id, { enabledImageModels })
+  }
+
+  function jsonResponse(body: unknown, status = 200): Response {
+    return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
+  }
+
+  it('lists the image catalog per provider type', () => {
+    const service = createProvidersService()
+    expect(service.getImageModelsByProviderType('openrouter').map(m => m.id)).toContain('recraft/recraft-v4.1-vector')
+    expect(service.getImageModelsByProviderType('anthropic')).toEqual([])
+  })
+
+  it('hides image-only models from the live text model list', async () => {
+    const provider = createOpenRouterProvider()
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
+      data: [{ id: 'openai/gpt-5-image-mini' }, { id: 'google/gemini-3-pro-image' }, { id: 'qwen/qwen3.8-flash' }],
+    }))
+
+    const models = await createProvidersService().getLiveModels(provider.id)
+
+    expect(models.map(m => m.id)).toEqual(['google/gemini-3-pro-image', 'qwen/qwen3.8-flash'])
+  })
+
+  it('notifies when the usable image models change, and only then', () => {
+    addProvider({ name: 'Active', providerType: 'anthropic', apiKey: 'test-key', enabledModels: ['claude-sonnet-4-5'] })
+    const provider = createOpenRouterProvider()
+    const onImageModelsChanged = vi.fn()
+    const service = createProvidersService({ onImageModelsChanged })
+
+    service.updateProvider(provider.id, { name: 'OpenRouter 2' })
+    expect(onImageModelsChanged).not.toHaveBeenCalled()
+
+    service.updateProvider(provider.id, { enabledImageModels: ['recraft/recraft-v4.1'] })
+    expect(onImageModelsChanged).toHaveBeenCalledTimes(1)
+    expect(loadProviders().providers.find(p => p.id === provider.id)!.enabledImageModels).toEqual(['recraft/recraft-v4.1'])
+
+    service.updateProvider(provider.id, { disabled: true })
+    expect(onImageModelsChanged).toHaveBeenCalledTimes(2)
+  })
+
+  it('runs the free availability check instead of a chat request for image models', async () => {
+    const provider = createOpenRouterProvider(['recraft/recraft-v4.1-vector'])
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => String(url).endsWith('/key')
+      ? jsonResponse({ data: {} })
+      : jsonResponse({ data: { architecture: { output_modalities: ['image'] }, endpoints: [{ name: 'Recraft' }] } }))
+
+    const result = await createProvidersService().testProvider(provider.id, { modelId: 'recraft/recraft-v4.1-vector', modelType: 'image' })
+
+    expect(result).toMatchObject({ success: true, modelId: 'recraft/recraft-v4.1-vector' })
+    expect(fetchSpy.mock.calls.map(([url]) => String(url))).toEqual(expect.arrayContaining([
+      'https://openrouter.ai/api/v1/models/recraft/recraft-v4.1-vector/endpoints',
+      'https://openrouter.ai/api/v1/key',
+    ]))
+    expect(fetchSpy.mock.calls.some(([url]) => String(url).includes('/chat/completions'))).toBe(false)
+    expect(loadProviders().providers[0]!.modelStatuses?.['recraft/recraft-v4.1-vector']).toBe('connected')
+  })
+
+  it('rejects image checks for models that are not enabled as image models', async () => {
+    const provider = createOpenRouterProvider()
+    await expect(createProvidersService().testProvider(provider.id, { modelId: 'qwen/qwen3.8-flash', modelType: 'image' }))
+      .rejects.toBeInstanceOf(ProvidersValidationError)
+    await expect(createProvidersService().testImageModel(provider.id, 'recraft/recraft-v4.1'))
+      .rejects.toBeInstanceOf(ProvidersValidationError)
+  })
+
+  it('generates a paid test image, returns a preview with the billed cost and books it', async () => {
+    const provider = createOpenRouterProvider(['recraft/recraft-v4.1'])
+    const db = initDatabase(path.join(tempDataDir, 'test.db'))
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
+      id: 'gen-1',
+      choices: [{ index: 0, message: { role: 'assistant', content: null, images: [{ type: 'image_url', image_url: { url: `data:image/webp;base64,${PNG_BASE64}` } }] } }],
+      usage: { prompt_tokens: 10, completion_tokens: 100, total_tokens: 110, cost: 0.035 },
+    }))
+
+    const result = await createProvidersService({ db }).testImageModel(provider.id, 'recraft/recraft-v4.1')
+
+    expect(result).toMatchObject({
+      success: true,
+      modelId: 'recraft/recraft-v4.1',
+      mimeType: 'image/webp',
+      dataUrl: `data:image/webp;base64,${PNG_BASE64}`,
+      costUsd: 0.035,
+    })
+    expect(db.prepare('SELECT model, estimated_cost FROM token_usage').get()).toEqual({ model: 'recraft/recraft-v4.1', estimated_cost: 0.035 })
+    db.close()
+  })
+
+  it('exposes image model specs and the preset capability in the list response', () => {
+    createOpenRouterProvider(['recraft/recraft-v4.1-vector'])
+    const { masked, decrypted } = createProvidersService().listProviders()
+    const response = mapProvidersListResponse(masked, decrypted)
+
+    expect(response.providers[0]!.enabledImageModels).toEqual(['recraft/recraft-v4.1-vector'])
+    expect(response.providers[0]!.imageModelSpecs?.['recraft/recraft-v4.1-vector']).toMatchObject({ name: 'Recraft: Recraft V4.1 Vector', output: ['image'] })
+    expect(response.providers[0]!.modelSpecs).not.toHaveProperty('recraft/recraft-v4.1-vector')
+    expect(response.presets.openrouter!.supportsImageModels).toBe(true)
+    expect(response.presets.anthropic!.supportsImageModels).toBe(false)
   })
 })

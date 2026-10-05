@@ -1,4 +1,5 @@
 import type {
+  AvailableImageModelContract,
   AvailableModelContract,
   OAuthLoginResponseContract,
   OAuthStatusResponseContract,
@@ -8,6 +9,8 @@ import type {
   ProviderContract,
   ProviderCreatePayloadContract,
   ProviderFallbackResponseContract,
+  ProviderImageTestResultContract,
+  ProviderModelTypeContract,
   ProviderModelUpdatePayloadContract,
   ProviderMutationResponseContract,
   ProviderQuotaRefreshResponseContract,
@@ -23,6 +26,8 @@ export type OAuthLoginResponse = OAuthLoginResponseContract
 export type OAuthStatusResponse = OAuthStatusResponseContract
 export type ProviderTypePreset = ProviderTypePresetContract
 export type AvailableModel = AvailableModelContract
+export type AvailableImageModel = AvailableImageModelContract
+export type ProviderImageTestResult = ProviderImageTestResultContract
 export type OllamaModel = OllamaModelContract
 export type OllamaPullEvent = OllamaPullEventContract
 
@@ -61,8 +66,14 @@ export function useProvidersApi() {
   const removeProvider = (id: string) =>
     apiFetch(`/api/providers/${id}`, { method: 'DELETE' })
 
-  const testProvider = (id: string, modelId?: string) =>
+  const testProvider = (id: string, modelId?: string, modelType?: ProviderModelTypeContract) =>
     apiFetch<ProviderTestResultContract>(`/api/providers/${id}/test`, {
+      method: 'POST',
+      body: JSON.stringify({ modelId, modelType }),
+    })
+
+  const generateTestImage = (id: string, modelId: string) =>
+    apiFetch<ProviderImageTestResult>(`/api/providers/${id}/image-test`, {
       method: 'POST',
       body: JSON.stringify({ modelId }),
     })
@@ -89,6 +100,9 @@ export function useProvidersApi() {
 
   const getModels = (providerType: string) =>
     apiFetch<{ models: AvailableModel[] }>(`/api/providers/models/${providerType}`)
+
+  const getImageModels = (providerType: string) =>
+    apiFetch<{ models: AvailableImageModel[] }>(`/api/providers/image-models/${providerType}`)
 
   const getLiveModels = (providerId: string) =>
     apiFetch<{ models: AvailableModel[] }>(`/api/providers/${providerId}/live-models`)
@@ -176,11 +190,13 @@ export function useProvidersApi() {
     updateProviderModel,
     removeProvider,
     testProvider,
+    generateTestImage,
     activateProvider,
     refreshQuota,
     refreshModelCatalogs,
     setFallbackProvider,
     getModels,
+    getImageModels,
     getLiveModels,
     getOllamaModels,
     probeOllamaModels,

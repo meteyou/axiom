@@ -8,6 +8,8 @@ export interface ProvidersRouterOptions {
   onFallbackProviderChanged?: () => void
   /** Called after settings/cronjob references to a disabled provider or model were reset to default. */
   onProviderReferencesReset?: () => void
+  /** Called when the set of usable image generation models changed. */
+  onImageModelsChanged?: () => void
   getQuotaSnapshot?: () => Record<string, ProviderQuotaContract>
   refreshQuota?: (providerId: string) => Promise<ProviderQuotaContract | null>
 }

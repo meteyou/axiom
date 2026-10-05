@@ -1,10 +1,11 @@
-import { buildModel, getPiCatalogModels, getProviderDefaultModel, isQuotaProvider, maskProviderExtraFields, PROVIDER_TYPE_MODEL_OVERRIDES, PROVIDER_TYPE_PRESETS, supportsModelSpecOverrides } from '@axiom/core'
+import { buildModel, getAvailableImageModels, getPiCatalogModels, getProviderDefaultModel, isQuotaProvider, maskProviderExtraFields, PROVIDER_TYPE_MODEL_OVERRIDES, PROVIDER_TYPE_PRESETS, supportsImageModels, supportsModelSpecOverrides } from '@axiom/core'
 import type {
   ProviderConfig,
   ProviderType,
   ProvidersFile,
 } from '@axiom/core'
 import type {
+  ImageModelSpecContract,
   ProviderQuotaContract,
   OllamaModelContract,
   ProviderActivationResponseContract,
@@ -75,6 +76,18 @@ function resolveModelSpec(provider: ProviderConfig, modelId: string): ProviderMo
   }
 }
 
+function resolveImageModelSpecs(provider: ProviderConfig): Record<string, ImageModelSpecContract> {
+  const catalog = new Map(getAvailableImageModels(provider.providerType).map(model => [model.id, model]))
+  return Object.fromEntries((provider.enabledImageModels ?? []).map((modelId) => {
+    const entry = catalog.get(modelId)
+    return [modelId, {
+      name: provider.models?.find(m => m.id === modelId)?.name ?? entry?.name ?? modelId,
+      input: entry?.input ?? ['text', 'image'],
+      output: entry?.output ?? ['image'],
+    }]
+  }))
+}
+
 export function mapProvidersListResponse(
   masked: ProvidersFile,
   decrypted: ProvidersFile,
@@ -108,6 +121,7 @@ export function mapProvidersListResponse(
       cost,
       modelCosts,
       modelSpecs,
+      imageModelSpecs: fullProvider ? resolveImageModelSpecs(fullProvider) : {},
       supportsQuota: fullProvider ? isQuotaProvider(fullProvider) : false,
       quota: quotaSnapshot?.[provider.id] ?? null,
     } as ProviderContract
@@ -119,7 +133,12 @@ export function mapProvidersListResponse(
       .map(([key, preset]) => {
         const overrides = PROVIDER_TYPE_MODEL_OVERRIDES[key as ProviderType]
         const hasKnownModels = preset.piAiProvider != null || (overrides?.length ?? 0) > 0
-        return [key, { ...preset, hasKnownModels, editableModelSpecs: supportsModelSpecOverrides(key) }]
+        return [key, {
+          ...preset,
+          hasKnownModels,
+          editableModelSpecs: supportsModelSpecOverrides(key),
+          supportsImageModels: supportsImageModels(key),
+        }]
       }),
   )
 

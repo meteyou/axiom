@@ -109,6 +109,7 @@ export function parseProviderModelSelectionPayload(payload: unknown): ProviderMo
   const body = toRecord(payload)
   return {
     modelId: body.modelId as string | undefined,
+    ...(body.modelType === 'image' && { modelType: 'image' as const }),
   }
 }
 
@@ -386,6 +387,7 @@ export function parseProviderUpdatePayload(payload: unknown): ParseResult<Provid
       baseUrl: asTrimmedString(body.baseUrl),
       apiKey: asTrimmedString(body.apiKey),
       enabledModels: normalizeEnabledModels(body.enabledModels),
+      enabledImageModels: normalizeEnabledModels(body.enabledImageModels),
       degradedThresholdMs: normalizeDegradedThresholdMs(body.degradedThresholdMs),
       textVerbosity: normalizeTextVerbosity(body.textVerbosity),
       transport: normalizeTransport(body.transport),

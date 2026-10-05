@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildProviderModelOptions, getModelDisplayName } from './providerModelOptions'
+import { buildImageModelOptions, buildProviderModelOptions, getImageModelDisplayName, getModelDisplayName } from './providerModelOptions'
 
 const providers = [
   { id: 'a', name: 'A', enabledModels: ['a1', 'a2'], disabledModels: ['a2'] },
@@ -38,5 +38,29 @@ describe('model display names', () => {
       value: 'n:DeepSeek-V4-Flash',
       label: 'Custom Gateway (DeepSeek V4 Flash)',
     })
+  })
+})
+
+describe('image model options', () => {
+  const openRouter = {
+    id: 'or',
+    name: 'OpenRouter',
+    enabledModels: ['qwen/qwen3.8-flash'],
+    enabledImageModels: ['recraft/recraft-v4.1-vector', 'google/gemini-3.1-flash-image'],
+    models: [{ id: 'google/gemini-3.1-flash-image', name: 'Nano Banana' }],
+    imageModelSpecs: { 'recraft/recraft-v4.1-vector': { name: 'Recraft V4.1 Vector' } },
+  }
+
+  it('keeps image models out of text model options', () => {
+    expect(buildProviderModelOptions([openRouter]).map(o => o.value)).toEqual(['or:qwen/qwen3.8-flash'])
+    expect(buildProviderModelOptions([openRouter], { includeDisabled: true }).map(o => o.value)).toEqual(['or:qwen/qwen3.8-flash'])
+  })
+
+  it('lists enabled image models of enabled providers with display names', () => {
+    expect(buildImageModelOptions([openRouter, { ...openRouter, id: 'off', disabled: true }])).toEqual([
+      { value: 'or:recraft/recraft-v4.1-vector', label: 'OpenRouter (Recraft V4.1 Vector)' },
+      { value: 'or:google/gemini-3.1-flash-image', label: 'OpenRouter (Nano Banana)' },
+    ])
+    expect(getImageModelDisplayName(openRouter, 'unknown/model')).toBe('unknown/model')
   })
 })

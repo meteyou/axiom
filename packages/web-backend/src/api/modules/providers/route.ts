@@ -23,6 +23,7 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
   router.put('/fallback', controller.putFallback)
   router.get('/', controller.getProviders)
   router.get('/models/:providerType', controller.getModelsByProviderType)
+  router.get('/image-models/:providerType', controller.getImageModelsByProviderType)
 
   router.post('/oauth/login', controller.postOAuthLogin)
   router.get('/oauth/status/:loginId', controller.getOAuthStatus)
@@ -43,6 +44,7 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
   router.patch('/:id/models/:modelId', controller.patchProviderModel)
   router.delete('/:id', controller.deleteProvider)
   router.post('/:id/test', controller.postProviderTest)
+  router.post('/:id/image-test', controller.postImageModelTest)
   router.post('/:id/activate', controller.postProviderActivate)
   router.post('/:id/refresh-quota', controller.postRefreshQuota)
 

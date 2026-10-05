@@ -1,27 +1,32 @@
 import type {
   ProviderCatalogRefreshResultContract,
   ProviderCreatePayloadContract,
+  ProviderModelTypeContract,
   ProviderModelUpdatePayloadContract,
   ProviderUpdatePayloadContract,
 } from '@axiom/core/contracts'
 import { useProvidersApi } from '~/api/providers'
 import type {
+  AvailableImageModel,
   AvailableModel,
   OAuthLoginResponse,
   OAuthStatusResponse,
   OllamaModel,
   OllamaPullEvent,
   Provider,
+  ProviderImageTestResult,
   ProviderTypePreset,
 } from '~/api/providers'
 
 export type {
+  AvailableImageModel,
   AvailableModel,
   OAuthLoginResponse,
   OAuthStatusResponse,
   OllamaModel,
   OllamaPullEvent,
   Provider,
+  ProviderImageTestResult,
   ProviderTypePreset,
 } from '~/api/providers'
 
@@ -108,16 +113,30 @@ export function useProviders() {
     }
   }
 
-  async function testProvider(id: string, modelId?: string): Promise<{ success: boolean; message?: string; error?: string }> {
+  async function testProvider(
+    id: string,
+    modelId?: string,
+    modelType?: ProviderModelTypeContract,
+  ): Promise<{ success: boolean; message?: string; error?: string }> {
     testingId.value = modelId ? `${id}:${modelId}` : id
     try {
-      const result = await providersApi.testProvider(id, modelId)
+      const result = await providersApi.testProvider(id, modelId, modelType)
       await fetchProviders()
       return result
     } catch (err) {
       return { success: false, error: (err as Error).message }
     } finally {
       testingId.value = null
+    }
+  }
+
+  async function generateTestImage(id: string, modelId: string): Promise<ProviderImageTestResult> {
+    try {
+      const result = await providersApi.generateTestImage(id, modelId)
+      await fetchProviders()
+      return result
+    } catch (err) {
+      return { success: false, modelId, error: (err as Error).message, costUsd: null }
     }
   }
 
@@ -173,6 +192,11 @@ export function useProviders() {
 
   async function fetchModels(providerType: string): Promise<AvailableModel[]> {
     const data = await providersApi.getModels(providerType)
+    return data.models
+  }
+
+  async function fetchImageModels(providerType: string): Promise<AvailableImageModel[]> {
+    const data = await providersApi.getImageModels(providerType)
     return data.models
   }
 
@@ -243,6 +267,7 @@ export function useProviders() {
     testingId,
     fetchProviders,
     fetchModels,
+    fetchImageModels,
     fetchLiveModels,
     fetchOllamaModels,
     probeOllamaModels,
@@ -254,6 +279,7 @@ export function useProviders() {
     updateProviderModel,
     deleteProvider,
     testProvider,
+    generateTestImage,
     activateProvider,
     refreshQuota,
     refreshModelCatalogs,

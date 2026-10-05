@@ -2,10 +2,12 @@ export interface ProviderModelSource {
   id: string
   name: string
   enabledModels?: string[]
+  enabledImageModels?: string[]
   disabled?: boolean
   disabledModels?: string[]
   models?: { id: string; name?: string }[]
   modelSpecs?: Record<string, { name?: string }>
+  imageModelSpecs?: Record<string, { name?: string }>
 }
 
 export interface ProviderModelOption {
@@ -18,6 +20,24 @@ export function getModelDisplayName(provider: Pick<ProviderModelSource, 'models'
   return provider?.models?.find(m => m.id === modelId)?.name?.trim()
     || provider?.modelSpecs?.[modelId]?.name?.trim()
     || modelId
+}
+
+export function getImageModelDisplayName(provider: Pick<ProviderModelSource, 'models' | 'imageModelSpecs'> | undefined, modelId: string): string {
+  return provider?.models?.find(m => m.id === modelId)?.name?.trim()
+    || provider?.imageModelSpecs?.[modelId]?.name?.trim()
+    || modelId
+}
+
+/** `providerId:modelId` options for the default image model; image models never appear in text-model pickers. */
+export function buildImageModelOptions(providers: ProviderModelSource[]): ProviderModelOption[] {
+  return providers
+    .filter(provider => !provider.disabled)
+    .flatMap(provider =>
+      (provider.enabledImageModels ?? []).map(modelId => ({
+        value: `${provider.id}:${modelId}`,
+        label: `${provider.name} (${getImageModelDisplayName(provider, modelId)})`,
+      })),
+    )
 }
 
 /**
