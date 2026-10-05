@@ -230,16 +230,17 @@ const reportedConfigFailures = new Set<string>()
 
 /**
  * Report a config file that could not be read or parsed, for callers that fall
- * back to defaults instead of failing the operation. Deduplicated per process:
+ * back to defaults (or a fail-closed state named by `fallback`) instead of
+ * failing the operation. Deduplicated per process:
  * these run per turn, and a corrupt `settings.json` must be visible in the log
  * without flooding it.
  */
-export function warnConfigReadFailed(filename: string, err: unknown): void {
+export function warnConfigReadFailed(filename: string, err: unknown, fallback = 'using defaults'): void {
   const message = err instanceof Error ? err.message : String(err)
-  const key = `${filename}:${message}`
+  const key = `${filename}:${fallback}:${message}`
   if (reportedConfigFailures.has(key)) return
   reportedConfigFailures.add(key)
-  console.warn(`[config] Failed to read ${filename}, using defaults: ${message}`)
+  console.warn(`[config] Failed to read ${filename}, ${fallback}: ${message}`)
 }
 
 export function ensureConfigTemplates(configDir?: string): void {

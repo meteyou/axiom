@@ -1,5 +1,5 @@
 import type { FetchFunction, ImageApi, ImageContent, ImageModel, ImagesInputContent } from '@earendil-works/pi-ai'
-import { ensureConfigTemplates, loadConfig } from './config.js'
+import { ensureConfigTemplates, loadConfig, warnConfigReadFailed } from './config.js'
 import { IMAGE_GENERATION_MAX_VARIANTS_BOUNDS, normalizeImageGenerationSettings } from './contracts/settings.js'
 import type { ImageGenerationSettingsContract } from './contracts/settings.js'
 import { generateImages } from './pi-models.js'
@@ -7,7 +7,6 @@ import {
   buildImageModel,
   getApiKeyForProvider,
   getUsableImageModels,
-  loadProviders,
   loadProvidersDecrypted,
 } from './provider-config.js'
 import type { ProviderConfig } from './provider-config.js'
@@ -276,32 +275,43 @@ export interface UsableImageModel {
   modelId: string
 }
 
-export function listUsableImageModels(providers: ProviderConfig[] = loadProvidersDecrypted().providers): UsableImageModel[] {
+function listUsableImageModels(providers: ProviderConfig[] = loadProvidersDecrypted().providers): UsableImageModel[] {
   return providers.flatMap(provider => getUsableImageModels(provider).map(modelId => ({ provider, modelId })))
 }
 
-function hasUsableImageModels(): boolean {
-  try {
-    return listUsableImageModels(loadProviders().providers).length > 0
-  } catch {
-    return false
-  }
-}
-
-/** `settings.json → imageGeneration`, with defaults for missing or invalid values. */
+/** `settings.json → imageGeneration`, with defaults for missing or invalid values. Throws when `settings.json` cannot be read. */
 export function readImageGenerationSettings(): ImageGenerationSettingsContract {
-  try {
-    ensureConfigTemplates()
-    const settings = loadConfig<{ imageGeneration?: Partial<ImageGenerationSettingsContract> }>('settings.json')
-    return normalizeImageGenerationSettings(settings.imageGeneration)
-  } catch {
-    return normalizeImageGenerationSettings(undefined)
-  }
+  ensureConfigTemplates()
+  const settings = loadConfig<{ imageGeneration?: Partial<ImageGenerationSettingsContract> }>('settings.json')
+  return normalizeImageGenerationSettings(settings.imageGeneration)
 }
 
-/** `generate_image` is offered only while image generation is switched on and an image model is usable. */
+interface ActiveImageGeneration {
+  settings: ImageGenerationSettingsContract
+  entries: UsableImageModel[]
+}
+
+/**
+ * Settings and usable image models while `generate_image` is offered: image
+ * generation is switched on and at least one image model is usable. Tool
+ * registration and the prompt's model list both derive from this.
+ */
+export function loadActiveImageGeneration(): ActiveImageGeneration | undefined {
+  let settings: ImageGenerationSettingsContract
+  try {
+    settings = readImageGenerationSettings()
+  } catch (err) {
+    // Fail closed: an unreadable settings.json must not re-enable a paid tool the user switched off.
+    warnConfigReadFailed('settings.json', err, 'image generation disabled')
+    return undefined
+  }
+  if (!settings.enabled) return undefined
+  const entries = listUsableImageModels()
+  return entries.length > 0 ? { settings, entries } : undefined
+}
+
 export function isImageGenerationAvailable(): boolean {
-  return readImageGenerationSettings().enabled && hasUsableImageModels()
+  return loadActiveImageGeneration() !== undefined
 }
 
 function toRef(entry: UsableImageModel): string {

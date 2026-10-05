@@ -28,7 +28,7 @@ import { createReadChatHistoryTool } from './chat-history-tools.js'
 import { createEmailTools } from './email-tools.js'
 import { createProviderQuotaTool } from './quota-tool.js'
 import { createImageGenerationTools, GENERATE_IMAGE_TOOL_NAME } from './image-tool.js'
-import { listUsableImageModels, readImageGenerationSettings, resolveDefaultImageModel } from './image-generation.js'
+import { loadActiveImageGeneration, resolveDefaultImageModel } from './image-generation.js'
 import type { QuotaServiceLike } from './quota-tool.js'
 import type { AgentRuntimeStateSnapshot, ResponseChunk } from './agent-runtime-types.js'
 
@@ -863,20 +863,15 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
   }
 
   private listImageModelsForPrompt(): AvailableImageModelPromptEntry[] {
-    try {
-      const settings = readImageGenerationSettings()
-      if (!settings.enabled) return []
-      const entries = listUsableImageModels()
-      const defaultEntry = resolveDefaultImageModel(entries, settings.defaultModel)
-      return entries.map(entry => ({
-        provider: entry.provider.name,
-        id: entry.modelId,
-        description: entry.provider.models?.find(m => m.id === entry.modelId)?.description,
-        isDefault: entry === defaultEntry || undefined,
-      }))
-    } catch {
-      return []
-    }
+    const active = loadActiveImageGeneration()
+    if (!active) return []
+    const defaultEntry = resolveDefaultImageModel(active.entries, active.settings.defaultModel)
+    return active.entries.map(entry => ({
+      provider: entry.provider.name,
+      id: entry.modelId,
+      description: entry.provider.models?.find(m => m.id === entry.modelId)?.description,
+      isDefault: entry === defaultEntry || undefined,
+    }))
   }
 
   /**
