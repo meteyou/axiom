@@ -16,6 +16,7 @@ import {
   buildProviderStallMetadata,
   formatProviderStallContent,
   loadStallThresholds,
+  toolStallThresholds,
 } from './provider-stall.js'
 import type { StallThresholds } from './provider-stall.js'
 import {
@@ -582,7 +583,7 @@ export class TurnRunner {
         : agent.sendMessage(agentUserId, input.text, input.source ?? 'web', input.attachments)
 
       for await (const chunk of stream) {
-        watchdog.recordActivity()
+        watchdog.recordActivity(chunk)
         if (this.isAttemptAborted(turn)) break
 
         // `done` is owned by the turn, not by an attempt.
@@ -747,6 +748,16 @@ export class TurnRunner {
   ) {
     let lastActivityAt = Date.now()
     let active: { startedAt: number; messageId: number | null } | null = null
+    const runningToolThresholds = new Map<string, StallThresholds>()
+
+    const currentThresholds = (): StallThresholds => {
+      let { warnMs, abortMs } = thresholds
+      for (const tool of runningToolThresholds.values()) {
+        warnMs = Math.max(warnMs, tool.warnMs)
+        abortMs = Math.max(abortMs, tool.abortMs)
+      }
+      return { warnMs, abortMs }
+    }
 
     const db = this.db
 
@@ -825,8 +836,9 @@ export class TurnRunner {
       if (this.isAttemptAborted(turn)) return
       const now = Date.now()
       const idleMs = now - lastActivityAt
+      const { warnMs, abortMs } = currentThresholds()
 
-      if (idleMs >= thresholds.abortMs) {
+      if (idleMs >= abortMs) {
         console.error(
           `[turn-runner] Provider stalled ${idleMs}ms (user=${turn.userId}, `
           + `session=${turn.sessionId}). Aborting stream.`,
@@ -846,16 +858,23 @@ export class TurnRunner {
         return
       }
 
-      if (idleMs >= thresholds.warnMs) openStall(now)
+      if (idleMs >= warnMs) openStall(now)
       // Never tick coarser than the warn threshold, otherwise a low threshold
       // would only fire on the next (much later) tick.
     }, Math.max(1, Math.min(this.watchdogIntervalMs, thresholds.warnMs)))
 
     return {
-      recordActivity: () => {
+      recordActivity: (chunk: ResponseChunk) => {
         const now = Date.now()
         closeStall(now, 'recovered')
         lastActivityAt = now
+        if (!chunk.toolCallId) return
+        if (chunk.type === 'tool_call_start') {
+          const toolThresholds = toolStallThresholds(chunk.toolName, chunk.toolArgs)
+          if (toolThresholds) runningToolThresholds.set(chunk.toolCallId, toolThresholds)
+        } else if (chunk.type === 'tool_call_end') {
+          runningToolThresholds.delete(chunk.toolCallId)
+        }
       },
       /**
        * Called once the stream is over. A stall still open at that point never

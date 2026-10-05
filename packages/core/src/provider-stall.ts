@@ -3,6 +3,8 @@ import { DEFAULT_WATCHDOG_SETTINGS } from './contracts/settings.js'
 import { STALL_OUTCOMES } from './agent-runtime-types.js'
 import type { StallInfo, StallOutcome } from './agent-runtime-types.js'
 import type { Database } from './database.js'
+import { imageGenerationStallThresholds } from './image-generation.js'
+import { GENERATE_IMAGE_TOOL_NAME } from './image-tool.js'
 
 /** `chat_messages.metadata.kind` marking a persisted provider-stall notice. */
 export const PROVIDER_STALL_KIND = 'provider_stall'
@@ -13,6 +15,18 @@ export const DEFAULT_STALL_ABORT_MS = DEFAULT_WATCHDOG_SETTINGS.stallAbortMs
 export interface StallThresholds {
   warnMs: number
   abortMs: number
+}
+
+/**
+ * Thresholds while a tool that legitimately runs for minutes is executing; the
+ * turn sees no chunks until it returns. Other tools keep the turn thresholds.
+ */
+export function toolStallThresholds(toolName: string | undefined, toolArgs: unknown): StallThresholds | undefined {
+  if (toolName === GENERATE_IMAGE_TOOL_NAME) {
+    const count = (toolArgs as { n?: unknown } | null | undefined)?.n
+    return imageGenerationStallThresholds(typeof count === 'number' ? count : 1)
+  }
+  return undefined
 }
 
 /**

@@ -19,8 +19,15 @@ import type { ProviderConfig, ProviderType } from './provider-config.js'
 
 export type { ImageBilling, ImageGenerationParameters } from './image-backends.js'
 
-/** Slow models (e.g. GPT-5 Image) take well over a minute for a single image. */
-const IMAGE_GENERATION_TIMEOUT_MS = 180_000
+/**
+ * Requests are synchronous and billed even when the client gives up, so the
+ * timeout must outlast the slowest models: GPT Image 2 at high quality takes
+ * 2-5 min per image (measured 117-280 s); typical models finish in 20-60 s.
+ */
+const IMAGE_GENERATION_TIMEOUT_MS = 360_000
+/** Above every measured single-image duration; reaching it means something is really stuck. */
+const IMAGE_GENERATION_SLOW_MS = 300_000
+const IMAGE_GENERATION_ABORT_GRACE_MS = 60_000
 const AVAILABILITY_TIMEOUT_MS = 15_000
 const MODEL_LIST_TIMEOUT_MS = 15_000
 
@@ -198,6 +205,19 @@ async function runWithConcurrency<T>(count: number, limit: number, task: () => P
   }
   await Promise.all(Array.from({ length: Math.min(count, limit) }, worker))
   return results
+}
+
+/**
+ * Stall thresholds while an image generation runs. Variants may run one after
+ * another (ChatGPT subscription), so both scale with the count; the abort only
+ * fires after every request had its own timeout.
+ */
+export function imageGenerationStallThresholds(count: number): { warnMs: number; abortMs: number } {
+  const rounds = Math.min(Math.max(1, Math.floor(count) || 1), IMAGE_GENERATION_MAX_VARIANTS_BOUNDS.max)
+  return {
+    warnMs: rounds * IMAGE_GENERATION_SLOW_MS,
+    abortMs: rounds * IMAGE_GENERATION_TIMEOUT_MS + IMAGE_GENERATION_ABORT_GRACE_MS,
+  }
 }
 
 export async function generateImagesWithProvider(request: ImageGenerationRequest): Promise<ImageGenerationResult> {
