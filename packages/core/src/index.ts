@@ -155,6 +155,13 @@ export {
   radiusQuotaAdapter,
 } from './radius-quota.js'
 export {
+  fetchOpenRouterQuota,
+  getOpenRouterQuotaForProvider,
+  isOpenRouterQuotaProvider,
+  parseOpenRouterBalance,
+  openrouterQuotaAdapter,
+} from './openrouter-quota.js'
+export {
   getQuotaAdapter,
   isQuotaProvider,
 } from './quota-registry.js'

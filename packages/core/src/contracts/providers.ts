@@ -3,7 +3,7 @@ import type { ProviderType } from '../provider-config.js'
 export type ProviderStatusContract = 'connected' | 'error' | 'untested'
 
 /** Provider families that expose a subscriber usage quota endpoint. */
-export type ProviderQuotaKindContract = 'anthropic' | 'openai-codex' | 'opencode-go' | 'zai' | 'radius'
+export type ProviderQuotaKindContract = 'anthropic' | 'openai-codex' | 'opencode-go' | 'zai' | 'radius' | 'openrouter'
 
 /**
  * A single normalized usage window, provider-agnostic. Each window carries its
@@ -42,7 +42,7 @@ export interface ProviderQuotaContract {
   kind: ProviderQuotaKindContract
   /** Normalized usage windows in display order (empty for balance-only providers). */
   windows: ProviderQuotaWindowContract[]
-  /** Prepaid credit balance (only for credit-based providers such as Radius). */
+  /** Prepaid credit balance (only for credit-based providers such as Radius or OpenRouter). */
   balance?: ProviderQuotaBalanceContract | null
   /** Optional human-readable plan label (e.g. 'Plus', 'Pro', 'Max'). */
   plan?: string | null
