@@ -615,6 +615,60 @@ describe('memory', () => {
 
       expect(prompt).not.toContain('<available_providers>')
     })
+
+    it('lists every image generation model in its own block and marks the default', () => {
+      const dir = makeTmpDir()
+      ensureMemoryStructure(dir)
+
+      const prompt = assembleSystemPrompt({
+        memoryDir: dir,
+        availableProviders: [
+          { name: 'Anthropic', models: [{ id: 'opus', isDefaultAgentModel: true }] },
+        ],
+        availableImageModels: [
+          { provider: 'OpenRouter', id: 'recraft/recraft-v4.1-vector', description: 'Logos and icons as SVG.', isDefault: true },
+          { provider: 'OpenRouter', id: 'google/gemini-3.1-flash-image' },
+        ],
+      })
+
+      const block = prompt.slice(prompt.indexOf('<available_providers>'), prompt.indexOf('</available_providers>'))
+      expect(block).toContain('- Anthropic — opus: default agent model')
+      expect(block).toContain('Image generation models (usable only with `generate_image`')
+      expect(block).toContain('- OpenRouter — recraft/recraft-v4.1-vector: default image model. Logos and icons as SVG.')
+      expect(block).toContain('- OpenRouter — google/gemini-3.1-flash-image')
+      expect(block.indexOf('- Anthropic — opus')).toBeLessThan(block.indexOf('Image generation models'))
+      expect(prompt).toContain('- **generate_image**:')
+    })
+
+    it('renders the image block even when no text model qualifies', () => {
+      const dir = makeTmpDir()
+      ensureMemoryStructure(dir)
+
+      const prompt = assembleSystemPrompt({
+        memoryDir: dir,
+        availableProviders: [{ name: 'Only Hidden', models: [{ id: 'mystery-model' }] }],
+        availableImageModels: [{ provider: 'OpenRouter', id: 'recraft/recraft-v4.1' }],
+      })
+
+      expect(prompt).toContain('<available_providers>\nImage generation models')
+      expect(prompt).not.toContain('mystery-model')
+      expect(prompt).not.toContain('Configured LLM providers')
+    })
+
+    it('omits the image block and the generate_image tool line without image models', () => {
+      const dir = makeTmpDir()
+      ensureMemoryStructure(dir)
+
+      const prompt = assembleSystemPrompt({
+        memoryDir: dir,
+        availableProviders: [{ name: 'Anthropic', models: [{ id: 'opus', isDefaultAgentModel: true }] }],
+        availableImageModels: [],
+      })
+
+      expect(prompt).toContain('<available_providers>')
+      expect(prompt).not.toContain('Image generation models')
+      expect(prompt).not.toContain('generate_image')
+    })
   })
 
   describe('parseProjectAliases', () => {

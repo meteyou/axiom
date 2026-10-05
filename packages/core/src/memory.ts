@@ -822,6 +822,14 @@ export interface AvailableProviderModelPromptEntry {
   thinkingLevels?: string[]
 }
 
+/** Enabled image generation model surfaced in `<available_providers>`. */
+export interface AvailableImageModelPromptEntry {
+  provider: string
+  id: string
+  description?: string
+  isDefault?: boolean
+}
+
 export function assembleSystemPrompt(options?: {
   memoryDir?: string
   configDir?: string
@@ -842,6 +850,8 @@ export function assembleSystemPrompt(options?: {
    * can route background tasks to annotated models.
    */
   availableProviders?: Array<{ name: string; models: AvailableProviderModelPromptEntry[] }>
+  /** Every usable image generation model; also gates the `generate_image` tool line. */
+  availableImageModels?: AvailableImageModelPromptEntry[]
   /** Background thinking level tasks run with when `thinking_level` is omitted. */
   defaultTaskThinkingLevel?: string
 }): string {
@@ -929,6 +939,10 @@ ${dailyContext}
     toolLines.push('- **read_chat_history**: Read past chat messages from the database with datetime/source/role filters. Supports a query parameter for full-text search on message content and tool call inputs/outputs.')
     toolLines.push('- **search_memories**: Search the agent\'s fact memory for previously learned information from past conversations. Use when the user asks about past decisions, preferences, or details.')
 
+    if (options?.availableImageModels && options.availableImageModels.length > 0) {
+      toolLines.push('- **generate_image**: Generate images with an enabled image generation model and save them in the workspace. Load the image-generation skill before the first use.')
+    }
+
     // Provider quota (admin-only; the tool itself enforces the role check)
     toolLines.push('- **provider_quota**: Check the subscriber usage quota of configured LLM providers (utilization per window, reset times, plan). Only available to admin users.')
 
@@ -944,6 +958,7 @@ ${dailyContext}
   // an annotated model. Only models with a description or the active/task
   // default are listed; the description is the user's opt-in gate for agent
   // autonomy (no description + not a default → hidden from the agent).
+  const providerBlocks: string[] = []
   if (options?.availableProviders && options.availableProviders.length > 0) {
     const providerLines: string[] = []
     for (const provider of options.availableProviders) {
@@ -967,16 +982,33 @@ ${dailyContext}
     }
 
     if (providerLines.length > 0) {
-      sections.push(`<available_providers>
-Configured LLM providers and their enabled models. When the user asks for a task or cronjob with a specific model or provider, pass it through to \`create_task\` / \`create_cronjob\` / \`edit_cronjob\` via their \`provider\` and/or \`model\` parameters. If the user names only a model (e.g. "run this with kimi-k2.6"), pass it as \`model\` — the tool will auto-detect the provider from this list.
+      providerBlocks.push(`Configured LLM providers and their enabled models. When the user asks for a task or cronjob with a specific model or provider, pass it through to \`create_task\` / \`create_cronjob\` / \`edit_cronjob\` via their \`provider\` and/or \`model\` parameters. If the user names only a model (e.g. "run this with kimi-k2.6"), pass it as \`model\` — the tool will auto-detect the provider from this list.
 
 For background tasks, you may choose the most appropriate model based on the descriptions below. Prefer cost-effective models for simple work; use stronger models for complex coding or research. When a description indicates a model is suited for a specific task type (e.g. "Textverarbeitung wie Twitter/Reddit Digest"), prefer that model for matching tasks.
 
 \`thinking:\` lists the reasoning levels a model supports. Tasks and cronjobs run with the background thinking level${options.defaultTaskThinkingLevel ? ` (currently \`${options.defaultTaskThinkingLevel}\`)` : ''} unless you pass \`thinking_level\` to \`create_task\` / \`create_cronjob\` / \`edit_cronjob\`. Only override it when the task clearly needs more (hard reasoning, planning, complex coding) or less (simple, mechanical work) effort, and pick a level from the model's list.
 
-${providerLines.join('\n')}
-</available_providers>`)
+${providerLines.join('\n')}`)
     }
+  }
+
+  // 7c. Image generation models — listed in full (no description gate) because
+  // the agent can only pick an image model from this block.
+  if (options?.availableImageModels && options.availableImageModels.length > 0) {
+    const imageModelLines = options.availableImageModels.map((model) => {
+      const labels: string[] = []
+      if (model.isDefault) labels.push('default image model')
+      if (model.description) labels.push(model.description)
+      const suffix = labels.join('. ')
+      return suffix ? `- ${model.provider} — ${model.id}: ${suffix}` : `- ${model.provider} — ${model.id}`
+    })
+    providerBlocks.push(`Image generation models (usable only with \`generate_image\` via its \`model\` parameter — never for chat, tasks or cronjobs). Omit \`model\` to use the default image model.
+
+${imageModelLines.join('\n')}`)
+  }
+
+  if (providerBlocks.length > 0) {
+    sections.push(`<available_providers>\n${providerBlocks.join('\n\n')}\n</available_providers>`)
   }
 
   // 8. Wiki pages (LLM-maintained knowledge base)
