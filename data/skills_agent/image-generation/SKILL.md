@@ -24,8 +24,8 @@ requires_toolsets: [generate_image]
    - colours, lighting, mood, background
    - exact text in quotes, e.g. the word "Axiom" on the sail — keep it short
    - what to avoid, phrased positively where possible ("plain white background")
-3. **Generate.** Start with `n: 1` for a quick check, or `n: 2`–`4` when the user wants options. Each variant is a separate, separately billed request. Pass `aspect_ratio` (e.g. `"1:1"`, `"16:9"`, `"9:16"`) when the format matters; not every model honours it.
-4. **Files are saved for you** under `images/YYYY-MM-DD/` in the workspace, each with a `.json` sidecar (model, prompt, parameters, cost, generation id). The tool result lists the paths, format, file size, billed cost and duration — it never contains image data.
+3. **Generate.** Start with `n: 1` for a quick check, or `n: 2` or more when the user wants options — the maximum is set by the user under Settings → Image generation and shown in the `n` parameter. Each variant is a separate, separately billed request. Pass `aspect_ratio` (e.g. `"1:1"`, `"16:9"`, `"9:16"`) when the format matters; not every model honours it.
+4. **Files are saved for you** under the output folder named in the tool description (default `images/YYYY-MM-DD/`) in the workspace, each with a `.json` sidecar (model, prompt, parameters, cost, generation id). The tool result lists the paths, format, file size, billed cost and duration — it never contains image data.
 5. **Optional self-check.** You usually cannot see the generated pixels: Axiom's file tools return text, not images. If a vision-capable text model is configured and the user has given you a way to query it (for example a script or skill that sends an image to that model), use it to verify what matters — readable text, correct subject, no obvious artefacts. Without such a path, do not claim the image is correct; tell the user what to check (e.g. spelling of rendered text). For SVG output, `read_file` shows the markup, which is enough to check `viewBox`, colours and whether text was converted to paths.
 6. **Deliver** every image the user should see with `send_file_to_user` (one call per file, with a one-line caption). Then summarise what you generated, which model you used and the cost from the tool result.
 7. **Iterate with `input_images`.** For "make it bluer", "remove the background", "same logo but round", pass the previous file path in `input_images` together with a prompt describing only the change. This keeps composition and identity; re-rolling from scratch usually loses them. Only models that accept image input can edit (the Providers UI marks them with "edits images").
@@ -43,7 +43,8 @@ Prefer the model the user named, then the descriptions in `<available_providers>
 ## Cost and quota
 
 - Every call costs real money. The tool result reports the billed cost; repeat it to the user when it is noticeable or when you ran several calls.
-- Before batch runs (many images, or `n: 4` several times), call `provider_quota` for credit-based providers such as OpenRouter and check the remaining balance. Tell the user the expected cost first if a batch will clearly exceed a few dollars.
+- If the user set a cost limit per call, the tool refuses calls whose estimated cost exceeds it, before anything is billed. Report the estimate and the limit from the error and let the user decide; never split the request into several smaller calls to get around the limit.
+- Before batch runs (many images, or several multi-variant calls), call `provider_quota` for credit-based providers such as OpenRouter and check the remaining balance. Tell the user the expected cost first if a batch will clearly exceed a few dollars.
 - On errors (`Insufficient credits`, rate limits, content policy refusals, "no image returned"), report the reason instead of retrying blindly. Retry at most once, and only for transient errors.
 
 ## Rules

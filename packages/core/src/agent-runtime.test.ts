@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { createAgentRuntime } from './agent-runtime.js'
@@ -7,6 +7,8 @@ import { initDatabase } from './database.js'
 import type { AgentTool } from '@earendil-works/pi-agent-core'
 import { assembleSystemPrompt } from './memory.js'
 import { logToolCall } from './token-logger.js'
+import { loadConfig } from './config.js'
+import { getAgentSkillsForPrompt } from './agent-skills.js'
 
 const runtimeHarness = vi.hoisted(() => ({
   promptBehaviors: [] as Array<(agent: { emit: (event: unknown) => void }, text: string) => Promise<void>>,
@@ -495,6 +497,90 @@ describe('AgentRuntime boundary', () => {
     function latestPromptOptions() {
       return vi.mocked(assembleSystemPrompt).mock.calls.at(-1)?.[0]
     }
+
+    function latestActiveTools(): Set<string> | undefined {
+      return vi.mocked(getAgentSkillsForPrompt).mock.calls.at(-1)?.[0]?.activeTools
+    }
+
+    function imageToolOf(runtime: ReturnType<typeof createAgentRuntime>): AgentTool | undefined {
+      return (runtime as unknown as AgentRuntimePiAgentAccess).getAgent().state.tools.find(tool => tool.name === 'generate_image')
+    }
+
+    const defaultLoadConfig = vi.mocked(loadConfig).getMockImplementation()!
+
+    function setImageGenerationSettings(imageGeneration: Record<string, unknown>): void {
+      vi.mocked(loadConfig).mockImplementation(((filename: string) => ({
+        ...(defaultLoadConfig(filename) as object),
+        imageGeneration,
+      })) as typeof loadConfig)
+    }
+
+    afterEach(() => {
+      vi.mocked(loadConfig).mockImplementation(defaultLoadConfig)
+    })
+
+    it('drops the tool, the image model block and the skill while image generation is switched off', () => {
+      writeProviders(['recraft/recraft-v4.1-vector'])
+      try {
+        setImageGenerationSettings({ enabled: false })
+        const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db: initDatabase(':memory:'), tools: [] })
+        runtime.refreshSystemPrompt()
+
+        expect(runtime.getStateSnapshot().toolNames).not.toContain('generate_image')
+        expect(latestPromptOptions()?.availableImageModels).toEqual([])
+        expect(latestActiveTools()?.has('generate_image')).toBe(false)
+
+        setImageGenerationSettings({ enabled: true })
+        runtime.refreshSystemPrompt()
+        expect(runtime.getStateSnapshot().toolNames).toContain('generate_image')
+        expect(latestPromptOptions()?.availableImageModels).toHaveLength(1)
+        expect(latestActiveTools()?.has('generate_image')).toBe(true)
+
+        setImageGenerationSettings({ enabled: false })
+        runtime.refreshSystemPrompt()
+        expect(runtime.getStateSnapshot().toolNames).not.toContain('generate_image')
+        expect(latestPromptOptions()?.availableImageModels).toEqual([])
+      } finally {
+        fs.rmSync(configDir, { recursive: true, force: true })
+      }
+    })
+
+    it('offers nothing when image generation is on but no image model is enabled', () => {
+      writeProviders([])
+      try {
+        setImageGenerationSettings({ enabled: true })
+        const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db: initDatabase(':memory:'), tools: [] })
+        runtime.refreshSystemPrompt()
+
+        expect(runtime.getStateSnapshot().toolNames).not.toContain('generate_image')
+        expect(latestPromptOptions()?.availableImageModels).toEqual([])
+        expect(latestActiveTools()?.has('generate_image')).toBe(false)
+      } finally {
+        fs.rmSync(configDir, { recursive: true, force: true })
+      }
+    })
+
+    it('redeclares generate_image only when its declaration changes', () => {
+      writeProviders(['recraft/recraft-v4.1-vector'])
+      try {
+        setImageGenerationSettings({ maxVariants: 2 })
+        const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db: initDatabase(':memory:'), tools: [] })
+        runtime.refreshSystemPrompt()
+        const first = imageToolOf(runtime)
+        expect((first?.parameters as unknown as { properties: { n: { maximum: number } } }).properties.n.maximum).toBe(2)
+
+        runtime.refreshSystemPrompt()
+        expect(imageToolOf(runtime)).toBe(first)
+
+        setImageGenerationSettings({ maxVariants: 6 })
+        runtime.refreshSystemPrompt()
+        const redeclared = imageToolOf(runtime)
+        expect(redeclared).not.toBe(first)
+        expect((redeclared?.parameters as unknown as { properties: { n: { maximum: number } } }).properties.n.maximum).toBe(6)
+      } finally {
+        fs.rmSync(configDir, { recursive: true, force: true })
+      }
+    })
 
     it('keeps image models out of the text model list and passes them as image models', () => {
       writeProviders(['recraft/recraft-v4.1-vector'])

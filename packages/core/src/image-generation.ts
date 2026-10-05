@@ -1,5 +1,7 @@
 import type { FetchFunction, ImageApi, ImageContent, ImageModel, ImagesInputContent } from '@earendil-works/pi-ai'
 import { ensureConfigTemplates, loadConfig } from './config.js'
+import { IMAGE_GENERATION_MAX_VARIANTS_BOUNDS, normalizeImageGenerationSettings } from './contracts/settings.js'
+import type { ImageGenerationSettingsContract } from './contracts/settings.js'
 import { generateImages } from './pi-models.js'
 import {
   buildImageModel,
@@ -12,7 +14,6 @@ import type { ProviderConfig } from './provider-config.js'
 
 /** Slow models (e.g. GPT-5 Image) take well over a minute for a single image. */
 const IMAGE_GENERATION_TIMEOUT_MS = 180_000
-export const MAX_IMAGES_PER_CALL = 4
 const AVAILABILITY_TIMEOUT_MS = 15_000
 
 /** Fixed prompt for the paid "Generate test image" action in the Providers UI. */
@@ -154,6 +155,19 @@ export interface ImageGenerationRequest {
   fetchImpl?: FetchFunction
 }
 
+export interface ImageRequestOutcome {
+  /** Billed cost the provider reported for this request, `null` when none was reported. */
+  costUsd: number | null
+  usage: ImageGenerationUsage
+}
+
+export interface ImageGenerationUsage {
+  input: number
+  output: number
+  cacheRead: number
+  cacheWrite: number
+}
+
 export interface ImageGenerationResult {
   model: ImageModel<ImageApi>
   images: GeneratedImage[]
@@ -161,7 +175,9 @@ export interface ImageGenerationResult {
   texts: string[]
   /** Sum of the billed costs the provider reported; `null` when none were reported. */
   costUsd: number | null
-  usage: { input: number; output: number; cacheRead: number; cacheWrite: number }
+  usage: ImageGenerationUsage
+  /** One entry per provider request (one per variant), so costs can be booked per image. */
+  requests: ImageRequestOutcome[]
   durationMs: number
   errors: string[]
 }
@@ -182,7 +198,7 @@ export async function generateImagesWithProvider(request: ImageGenerationRequest
   const apiKey = await getApiKeyForProvider(request.provider)
   const generate = request.generate ?? generateImages
   const fetchImpl = request.fetchImpl ?? fetch
-  const count = Math.min(Math.max(1, Math.floor(request.count ?? 1)), MAX_IMAGES_PER_CALL)
+  const count = Math.min(Math.max(1, Math.floor(request.count ?? 1)), IMAGE_GENERATION_MAX_VARIANTS_BOUNDS.max)
   const input: ImagesInputContent[] = [{ type: 'text', text: request.prompt }, ...(request.inputImages ?? [])]
   const startedAt = Date.now()
 
@@ -211,17 +227,23 @@ export async function generateImagesWithProvider(request: ImageGenerationRequest
   const images: GeneratedImage[] = []
   const texts: string[] = []
   const errors: string[] = []
-  const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
+  const usage: ImageGenerationUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
+  const requests: ImageRequestOutcome[] = []
   let costUsd: number | null = null
 
   for (const { result, reportedCost } of outcomes) {
     if (reportedCost !== undefined) costUsd = (costUsd ?? 0) + reportedCost
-    if (result.usage) {
-      usage.input += result.usage.input
-      usage.output += result.usage.output
-      usage.cacheRead += result.usage.cacheRead
-      usage.cacheWrite += result.usage.cacheWrite
+    const requestUsage: ImageGenerationUsage = {
+      input: result.usage?.input ?? 0,
+      output: result.usage?.output ?? 0,
+      cacheRead: result.usage?.cacheRead ?? 0,
+      cacheWrite: result.usage?.cacheWrite ?? 0,
     }
+    usage.input += requestUsage.input
+    usage.output += requestUsage.output
+    usage.cacheRead += requestUsage.cacheRead
+    usage.cacheWrite += requestUsage.cacheWrite
+    requests.push({ costUsd: reportedCost ?? null, usage: requestUsage })
     if (result.stopReason !== 'stop') {
       errors.push(result.errorMessage || (result.stopReason === 'aborted' ? 'Image generation was aborted' : 'Image generation failed'))
       continue
@@ -246,7 +268,7 @@ export async function generateImagesWithProvider(request: ImageGenerationRequest
     }
   }
 
-  return { model, images, texts, costUsd, usage, durationMs: Date.now() - startedAt, errors }
+  return { model, images, texts, costUsd, usage, requests, durationMs: Date.now() - startedAt, errors }
 }
 
 export interface UsableImageModel {
@@ -258,7 +280,7 @@ export function listUsableImageModels(providers: ProviderConfig[] = loadProvider
   return providers.flatMap(provider => getUsableImageModels(provider).map(modelId => ({ provider, modelId })))
 }
 
-export function hasUsableImageModels(): boolean {
+function hasUsableImageModels(): boolean {
   try {
     return listUsableImageModels(loadProviders().providers).length > 0
   } catch {
@@ -266,16 +288,20 @@ export function hasUsableImageModels(): boolean {
   }
 }
 
-/** `settings.json → imageGeneration.defaultModel` as `providerId:modelId`, or `''`. */
-export function readDefaultImageModelRef(): string {
+/** `settings.json → imageGeneration`, with defaults for missing or invalid values. */
+export function readImageGenerationSettings(): ImageGenerationSettingsContract {
   try {
     ensureConfigTemplates()
-    const settings = loadConfig<{ imageGeneration?: { defaultModel?: unknown } }>('settings.json')
-    const value = settings.imageGeneration?.defaultModel
-    return typeof value === 'string' ? value.trim() : ''
+    const settings = loadConfig<{ imageGeneration?: Partial<ImageGenerationSettingsContract> }>('settings.json')
+    return normalizeImageGenerationSettings(settings.imageGeneration)
   } catch {
-    return ''
+    return normalizeImageGenerationSettings(undefined)
   }
+}
+
+/** `generate_image` is offered only while image generation is switched on and an image model is usable. */
+export function isImageGenerationAvailable(): boolean {
+  return readImageGenerationSettings().enabled && hasUsableImageModels()
 }
 
 function toRef(entry: UsableImageModel): string {
@@ -306,7 +332,7 @@ export type ImageModelResolution =
 export function resolveImageModel(
   requested: string | undefined,
   entries: UsableImageModel[] = listUsableImageModels(),
-  defaultRef: string = readDefaultImageModelRef(),
+  defaultRef: string = readImageGenerationSettings().defaultModel,
 ): ImageModelResolution {
   if (entries.length === 0) {
     return { ok: false, error: 'No image generation model is enabled. Enable one under Providers → Image models.' }

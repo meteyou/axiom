@@ -28,7 +28,7 @@ import { createReadChatHistoryTool } from './chat-history-tools.js'
 import { createEmailTools } from './email-tools.js'
 import { createProviderQuotaTool } from './quota-tool.js'
 import { createImageGenerationTools, GENERATE_IMAGE_TOOL_NAME } from './image-tool.js'
-import { listUsableImageModels, readDefaultImageModelRef, resolveDefaultImageModel } from './image-generation.js'
+import { listUsableImageModels, readImageGenerationSettings, resolveDefaultImageModel } from './image-generation.js'
 import type { QuotaServiceLike } from './quota-tool.js'
 import type { AgentRuntimeStateSnapshot, ResponseChunk } from './agent-runtime-types.js'
 
@@ -535,6 +535,10 @@ function supportedThinkingLevels(provider: ProviderConfig, modelId: string): str
   }
 }
 
+function hasSameDeclaration(a: AgentTool, b: AgentTool): boolean {
+  return a.description === b.description && JSON.stringify(a.parameters) === JSON.stringify(b.parameters)
+}
+
 class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess {
   private agent: PiAgent
   private model: Model<Api>
@@ -653,17 +657,18 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
   }
 
   /**
-   * Image models can be enabled or removed while a chat runtime lives, so
-   * `generate_image` is added or dropped before each turn; pi-agent-core
-   * declares the change to the model.
+   * Image generation can be switched, and image models enabled or removed,
+   * while a chat runtime lives, so `generate_image` is added, dropped or
+   * redeclared before each turn; pi-agent-core declares the change to the
+   * model. An unchanged declaration is kept so the tool list stays stable.
    */
   private syncImageGenerationTool(): void {
     const tools = this.agent.state.tools
-    const withoutImageTool = tools.filter(tool => tool.name !== GENERATE_IMAGE_TOOL_NAME)
-    const imageTools = createImageGenerationTools({ db: this.db, getSessionId: () => this.agent.sessionId })
-    const registered = withoutImageTool.length !== tools.length
-    if (registered === (imageTools.length > 0)) return
-    this.agent.state.tools = [...withoutImageTool, ...imageTools]
+    const registered = tools.find(tool => tool.name === GENERATE_IMAGE_TOOL_NAME)
+    const [current] = createImageGenerationTools({ db: this.db, getSessionId: () => this.agent.sessionId })
+    if (!registered && !current) return
+    if (registered && current && hasSameDeclaration(registered, current)) return
+    this.agent.state.tools = [...tools.filter(tool => tool.name !== GENERATE_IMAGE_TOOL_NAME), ...(current ? [current] : [])]
   }
 
   getCurrentTimeContext(): string {
@@ -859,8 +864,10 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
 
   private listImageModelsForPrompt(): AvailableImageModelPromptEntry[] {
     try {
+      const settings = readImageGenerationSettings()
+      if (!settings.enabled) return []
       const entries = listUsableImageModels()
-      const defaultEntry = resolveDefaultImageModel(entries, readDefaultImageModelRef())
+      const defaultEntry = resolveDefaultImageModel(entries, settings.defaultModel)
       return entries.map(entry => ({
         provider: entry.provider.name,
         id: entry.modelId,

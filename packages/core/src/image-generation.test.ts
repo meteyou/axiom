@@ -3,10 +3,10 @@ import type { FetchFunction } from '@earendil-works/pi-ai'
 import {
   checkImageModelAvailability,
   generateImagesWithProvider,
-  MAX_IMAGES_PER_CALL,
   resolveImageModel,
 } from './image-generation.js'
 import type { UsableImageModel } from './image-generation.js'
+import { IMAGE_GENERATION_MAX_VARIANTS_BOUNDS } from './contracts/settings.js'
 import type { ProviderConfig } from './provider-config.js'
 
 const PNG_BASE64 = Buffer.from('fake-png-bytes').toString('base64')
@@ -111,12 +111,14 @@ describe('generateImagesWithProvider (pi-ai openrouter-images with a stubbed HTT
       provider: openRouterProvider(),
       modelId: 'recraft/recraft-v4.1',
       prompt: 'p',
-      count: 9,
+      count: 12,
       fetchImpl,
     })
-    expect(bodies).toHaveLength(MAX_IMAGES_PER_CALL)
-    expect(result.images).toHaveLength(MAX_IMAGES_PER_CALL)
-    expect(result.costUsd).toBeCloseTo(0.04)
+    expect(bodies).toHaveLength(IMAGE_GENERATION_MAX_VARIANTS_BOUNDS.max)
+    expect(result.images).toHaveLength(IMAGE_GENERATION_MAX_VARIANTS_BOUNDS.max)
+    expect(result.costUsd).toBeCloseTo(0.1)
+    expect(result.requests).toHaveLength(IMAGE_GENERATION_MAX_VARIANTS_BOUNDS.max)
+    expect(result.requests[0]!.costUsd).toBeCloseTo(0.01)
   })
 
   it('surfaces pi-ai error results instead of throwing', async () => {
