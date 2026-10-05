@@ -1173,6 +1173,24 @@
                   <p class="text-xs text-muted-foreground">{{ $t('settings.tasksDefaultProviderHint') }}</p>
                 </div>
 
+                <div class="flex flex-col gap-2">
+                  <Label for="image-generation-default-model">{{ $t('settings.imageGenerationDefaultModel') }}</Label>
+                  <Select v-model="form.imageGeneration.defaultModel" :disabled="imageModelOptions.length === 0">
+                    <SelectTrigger id="image-generation-default-model">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">{{ $t('settings.imageGenerationDefaultModelFirst') }}</SelectItem>
+                      <SelectItem v-for="opt in imageModelOptions" :key="opt.value" :value="opt.value">
+                        {{ opt.label }}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p class="text-xs text-muted-foreground">
+                    {{ imageModelOptions.length === 0 ? $t('settings.imageGenerationDefaultModelNone') : $t('settings.imageGenerationDefaultModelHint') }}
+                  </p>
+                </div>
+
                 <!-- Max duration -->
                 <div class="flex flex-col gap-2">
                   <Label for="tasks-max-duration">{{ $t('settings.tasksMaxDuration') }}</Label>
@@ -2023,10 +2041,10 @@
 <script setup lang="ts">
 import { canonicalizeProviderModelRef, type ProviderModelSpecContract, type SettingsThinkingLevel } from '@axiom/core/contracts'
 import { buildThinkingLevelSelectOptions, findModelSpec, findModelSpecByComposite } from '~/utils/thinkingLevels'
-import { buildProviderModelOptions } from '~/utils/providerModelOptions'
+import { buildImageModelOptions, buildProviderModelOptions } from '~/utils/providerModelOptions'
 import { useSettingsApi } from '~/api/settings'
 import EmailAccountsWorkspace from '~/features/email/components/EmailAccountsWorkspace.vue'
-import type { MemoryConsolidationSettings, FactExtractionSettings, HealthMonitorNotificationToggles, HealthMonitorSettings, AgentHeartbeatSettings, TasksSettings, TtsSettings, SttSettings, UploadsSettings, TelegramSettings, WatchdogSettings, RetrySettings } from '~/composables/useSettings'
+import type { MemoryConsolidationSettings, FactExtractionSettings, HealthMonitorNotificationToggles, HealthMonitorSettings, AgentHeartbeatSettings, TasksSettings, ImageGenerationSettings, TtsSettings, SttSettings, UploadsSettings, TelegramSettings, WatchdogSettings, RetrySettings } from '~/composables/useSettings'
 import type { TelegramUser } from '~/composables/useTelegramUsers'
 
 /* ── Auth ── */
@@ -2132,6 +2150,7 @@ async function handleActivateProvider(value: string) {
 /** Flattened list of provider+model combinations for all provider select dropdowns */
 const providerModelOptions = computed(() => buildProviderModelOptions(providers.value))
 const sttRewriteProviderModelOptions = computed(() => buildProviderModelOptions(providers.value, { includeDisabled: true }))
+const imageModelOptions = computed(() => buildImageModelOptions(providers.value))
 
 /* ── Users (for telegram user assignment) ── */
 const { users, fetchUsers } = useUsers()
@@ -2346,6 +2365,7 @@ interface SettingsForm {
   factExtraction: FactExtractionSettings
   agentHeartbeat: AgentHeartbeatSettings
   tasks: TasksSettings
+  imageGeneration: ImageGenerationSettings
   tts: TtsSettings
   stt: SttSettings
 }
@@ -2404,6 +2424,7 @@ function hydrateForm() {
       },
       statusUpdates: { ...s.tasks.statusUpdates },
     },
+    imageGeneration: { ...s.imageGeneration },
     tts: { ...s.tts },
     stt: {
       ...s.stt,

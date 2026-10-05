@@ -297,6 +297,32 @@ describe('settings route module', () => {
     expect(await invalid.json()).toEqual({ error: 'retry.maxRetries must be an integer 0-10' })
   })
 
+  it('round-trips the default image model', async () => {
+    const defaults = await fetch(`${baseUrl}/api/settings`, { headers: authHeaders(adminToken) })
+    expect((await defaults.json() as { imageGeneration: unknown }).imageGeneration).toEqual({ defaultModel: '' })
+
+    const updated = await fetch(`${baseUrl}/api/settings`, {
+      method: 'PUT',
+      headers: { ...authHeaders(adminToken), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageGeneration: { defaultModel: ' or-1:recraft/recraft-v4.1-vector ' } }),
+    })
+    expect(updated.status).toBe(200)
+    expect((await updated.json() as { imageGeneration: unknown }).imageGeneration).toEqual({ defaultModel: 'or-1:recraft/recraft-v4.1-vector' })
+
+    const settings = JSON.parse(fs.readFileSync(path.join(tempDataDir, 'config', 'settings.json'), 'utf-8')) as {
+      imageGeneration: { defaultModel: string }
+    }
+    expect(settings.imageGeneration).toEqual({ defaultModel: 'or-1:recraft/recraft-v4.1-vector' })
+
+    const invalid = await fetch(`${baseUrl}/api/settings`, {
+      method: 'PUT',
+      headers: { ...authHeaders(adminToken), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageGeneration: { defaultModel: 42 } }),
+    })
+    expect(invalid.status).toBe(400)
+    expect(await invalid.json()).toEqual({ error: 'imageGeneration.defaultModel must be a string' })
+  })
+
   it('enforces authentication and admin boundaries', async () => {
     const unauthenticated = await fetch(`${baseUrl}/api/settings`)
     expect(unauthenticated.status).toBe(401)

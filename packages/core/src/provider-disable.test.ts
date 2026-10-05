@@ -192,6 +192,14 @@ describe('resetDisabledProviderReferences', () => {
     expect(settings.tts.providerId).toBe('b')
   })
 
+  it('resets the default image model once its provider is disabled', () => {
+    writeSettings({ imageGeneration: { defaultModel: 'b:recraft/recraft-v4.1' } })
+    setProviderDisabled('b', true)
+
+    expect(resetDisabledProviderReferences().settingsPaths).toEqual(['imageGeneration.defaultModel'])
+    expect((readSettings() as unknown as { imageGeneration: { defaultModel: string } }).imageGeneration.defaultModel).toBe('')
+  })
+
   it('treats provider-only references as disabled once the whole provider is disabled', () => {
     const { providers } = loadProviders()
     const disabled = providers.map(p => (p.id === 'b' ? { ...p, disabled: true } : p))

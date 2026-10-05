@@ -114,6 +114,9 @@ const TEMPLATES: Record<string, object> = {
       },
       backgroundThinkingLevel: 'off',
     },
+    imageGeneration: {
+      defaultModel: '',
+    },
   },
   'skills.json': {
     skills: [],

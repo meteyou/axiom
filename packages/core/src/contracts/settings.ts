@@ -145,6 +145,11 @@ export interface TasksSettingsContract {
   backgroundThinkingLevel: SettingsThinkingLevel
 }
 
+export interface ImageGenerationSettingsContract {
+  /** Default model of `generate_image` as `providerId:modelId`; empty selects the first enabled image model. */
+  defaultModel: string
+}
+
 export interface TtsSettingsContract {
   enabled: boolean
   provider: TtsProvider
@@ -216,6 +221,7 @@ export interface SettingsContract {
   factExtraction: FactExtractionSettingsContract
   agentHeartbeat: AgentHeartbeatSettingsContract
   tasks: TasksSettingsContract
+  imageGeneration: ImageGenerationSettingsContract
   tts: TtsSettingsContract
   stt: SttSettingsContract
 }
@@ -237,6 +243,7 @@ export interface SettingsStorageContract {
   factExtraction?: Partial<FactExtractionSettingsContract>
   agentHeartbeat?: Partial<AgentHeartbeatSettingsContract>
   tasks?: Partial<TasksSettingsContract>
+  imageGeneration?: Partial<ImageGenerationSettingsContract>
   tts?: Partial<TtsSettingsContract>
   stt?: Partial<SttSettingsContract>
 }
@@ -332,6 +339,9 @@ export const DEFAULT_SETTINGS_CONTRACT: SettingsContract = {
       intervalMinutes: 10,
     },
     backgroundThinkingLevel: 'off',
+  },
+  imageGeneration: {
+    defaultModel: '',
   },
   tts: {
     enabled: false,
@@ -506,6 +516,9 @@ export function normalizeSettingsContract(input: DeepPartial<SettingsContract> |
         source.tasks?.backgroundThinkingLevel,
         DEFAULT_SETTINGS_CONTRACT.tasks.backgroundThinkingLevel,
       ),
+    },
+    imageGeneration: {
+      defaultModel: source.imageGeneration?.defaultModel ?? DEFAULT_SETTINGS_CONTRACT.imageGeneration.defaultModel,
     },
     tts: {
       enabled: source.tts?.enabled ?? DEFAULT_SETTINGS_CONTRACT.tts.enabled,
