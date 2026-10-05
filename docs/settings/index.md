@@ -15,7 +15,7 @@ The Settings page has one sidebar entry per concern. Each gets its own docs page
 | [Agent](./agent)                     | Language, timezone, active provider + model, reasoning level, upload retention, `AGENTS.md` rules. |
 | [Agent Heartbeat](./agent-heartbeat) | Whether (and when) the agent runs recurring self-driven tasks from `HEARTBEAT.md`.      |
 | [Health Monitor](./health-monitor)   | Provider health checks, automatic fallback, notification toggles.                       |
-| [Image Generation](./image-generation) | Switch for `generate_image`, default image model, variant and cost limits, output folder. |
+| [Image Generation](./image-generation) | Switch for `generate_image`, default image model, variant limit, output folder. |
 | [Memory](./memory)                   | Session timeout, memory consolidation, fact extraction.                                 |
 | [Secrets](./secrets)                 | API keys and other sensitive values stored in `/data/config/secrets.json`.              |
 | [Speech-to-Text](./speech-to-text)   | Transcription provider (OpenAI, Whisper URL, Ollama) and optional LLM rewrite.          |

@@ -106,12 +106,6 @@ describe('generate_image tool', () => {
     })
   }
 
-  function recordBilledRequests(modelId: string, costs: number[]) {
-    for (const cost of costs) {
-      db.prepare('INSERT INTO token_usage (provider, model, estimated_cost) VALUES (?, ?, ?)').run('openrouter', modelId, cost)
-    }
-  }
-
   it('saves the image with a sidecar and returns paths, size, cost and duration but no image data', async () => {
     const generate = vi.fn(async () => resultWith())
     const output = await run(createTool(generate), { prompt: 'Sailboat on an alpine lake at sunrise', aspect_ratio: '1:1' })
@@ -214,38 +208,6 @@ describe('generate_image tool', () => {
     const generate = vi.fn(async () => resultWith())
     expect(textOf(await run(createTool(generate), { prompt: 'p', n: 5 }))).toContain('from 1 to 4')
     expect(generate).not.toHaveBeenCalled()
-  })
-
-  it('refuses a call whose estimated cost exceeds the limit without calling the provider', async () => {
-    recordBilledRequests('recraft/recraft-v4.1', [0.04, 0.04])
-    const generate = vi.fn(async () => resultWith())
-    const output = await run(createTool(generate, 'recraft/recraft-v4.1', { maxCostPerCallUsd: 0.1 }), { prompt: 'p', n: 3 })
-
-    expect(output.details.error).toBe(true)
-    expect(textOf(output)).toContain('Cost limit exceeded')
-    expect(textOf(output)).toContain('$0.1200')
-    expect(textOf(output)).toContain('$0.1000')
-    expect(generate).not.toHaveBeenCalled()
-    expect(db.prepare('SELECT COUNT(*) AS rows FROM token_usage').get()).toEqual({ rows: 2 })
-  })
-
-  it('generates when the estimated cost is within the limit', async () => {
-    recordBilledRequests('recraft/recraft-v4.1', [0.04, 0.05, 0.03])
-    const generate = vi.fn(async () => resultWith())
-    const output = await run(createTool(generate, 'recraft/recraft-v4.1', { maxCostPerCallUsd: 0.1 }), { prompt: 'p', n: 2 })
-
-    expect(output.details.error).toBeUndefined()
-    expect(generate).toHaveBeenCalledWith(expect.objectContaining({ count: 2 }))
-    expect(textOf(output)).not.toContain('Cost limit')
-  })
-
-  it('says so when the cost limit cannot be checked yet', async () => {
-    recordBilledRequests('recraft/recraft-v4.1-flash', [0.5])
-    const generate = vi.fn(async () => resultWith())
-    const output = await run(createTool(generate, 'recraft/recraft-v4.1', { maxCostPerCallUsd: 0.1 }), { prompt: 'p' })
-
-    expect(generate).toHaveBeenCalled()
-    expect(textOf(output)).toContain('Cost limit of $0.1000 per call not checked: no billed cost is on record for this model yet.')
   })
 
   it('saves images in the configured output folder', async () => {

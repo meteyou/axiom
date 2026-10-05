@@ -118,7 +118,6 @@ const TEMPLATES: Record<string, object> = {
       enabled: true,
       defaultModel: '',
       maxVariants: 4,
-      maxCostPerCallUsd: null,
       outputDir: 'images',
     },
   },

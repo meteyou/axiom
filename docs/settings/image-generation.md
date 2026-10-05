@@ -38,21 +38,7 @@ Upper limit for the tool's `n` parameter (number of images in one call). Default
 { "imageGeneration": { "maxVariants": 4 } }
 ```
 
-## Cost limit per call
-
-Optional upper bound in USD for a single `generate_image` call. Empty (default) means no limit.
-
-Before generating, the tool estimates the cost as **variants × the average billed cost per image of the last 5 generations with that model**. If the estimate exceeds the limit, the call is refused with a message that states the estimate and the limit. Nothing is generated and nothing is billed.
-
-The limit is **approximate**:
-
-- pi-ai's image catalog has no per-image prices, so the estimate comes from the costs the provider actually billed for earlier generations (tool calls and the paid test image under Providers).
-- Token-priced models (e.g. Gemini and GPT image models) cost different amounts per prompt and per input image, so the real cost can be above or below the estimate. Flat-priced models such as Recraft cost the same every time, so their estimate is close.
-- The **first generation** with a model is not checked because no billed cost is on record yet. The tool result then says that the limit was not checked. Generate one test image under Providers first if the limit should apply from the start.
-
-```json
-{ "imageGeneration": { "maxCostPerCallUsd": 0.25 } }
-```
+Axiom has no spending limit of its own. To cap image costs, set a limit on the provider's API key (e.g. an OpenRouter key limit).
 
 ## Output folder
 

@@ -223,13 +223,12 @@ A flat `tasks.statusUpdateIntervalMinutes` may exist on disk from older installs
 
 [Image Generation UI](../settings/image-generation). See [Image Generation](../concepts/image-generation).
 
-| Key                                 | Type                            | Default    | Range / enum |
-|-------------------------------------|---------------------------------|------------|--------------|
-| `imageGeneration.enabled`           | `boolean`                       | `true`     | boolean. `false` removes `generate_image`, the *Image generation models* prompt block and the `image-generation` skill listing. |
-| `imageGeneration.defaultModel`      | `string` (`providerId:modelId`) | `""`       | string; `""` = first enabled image model. Reset to `""` when its provider is disabled. |
-| `imageGeneration.maxVariants`       | `number`                        | `4`        | integer `1–10`. Upper limit of the tool's `n` parameter. |
-| `imageGeneration.maxCostPerCallUsd` | `number \| null`                | `null`     | `> 0` or `null` (off). Approximate: estimated from recent billed costs of the model, see [Cost limit per call](../settings/image-generation#cost-limit-per-call). |
-| `imageGeneration.outputDir`         | `string`                        | `"images"` | workspace-relative folder; absolute paths and paths escaping the workspace are rejected. Stored normalized (`./a//b/` → `a/b`). |
+| Key                            | Type                            | Default    | Range / enum |
+|--------------------------------|---------------------------------|------------|--------------|
+| `imageGeneration.enabled`      | `boolean`                       | `true`     | boolean. `false` removes `generate_image`, the *Image generation models* prompt block and the `image-generation` skill listing. |
+| `imageGeneration.defaultModel` | `string` (`providerId:modelId`) | `""`       | string; `""` = first enabled image model. Reset to `""` when its provider is disabled. |
+| `imageGeneration.maxVariants`  | `number`                        | `4`        | integer `1–10`. Upper limit of the tool's `n` parameter. |
+| `imageGeneration.outputDir`    | `string`                        | `"images"` | workspace-relative folder; absolute paths and paths escaping the workspace are rejected. Stored normalized (`./a//b/` → `a/b`). |
 
 Hand-edited invalid values are ignored at runtime and the default is used instead.
 
@@ -381,7 +380,6 @@ This is the literal file written by `ensureConfigTemplates()`:
     "enabled": true,
     "defaultModel": "",
     "maxVariants": 4,
-    "maxCostPerCallUsd": null,
     "outputDir": "images"
   }
 }

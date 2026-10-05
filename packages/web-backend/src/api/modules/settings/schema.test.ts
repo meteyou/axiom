@@ -202,19 +202,16 @@ describe('settings schema', () => {
   it('validates and merges image generation settings', () => {
     const settingsRaw: Record<string, unknown> = { imageGeneration: { defaultModel: 'or-1:a' } }
     expect(mergeImageGeneration({
-      imageGeneration: { enabled: false, maxVariants: 6, maxCostPerCallUsd: 0.5, outputDir: './art//generated/' },
+      imageGeneration: { enabled: false, maxVariants: 6, outputDir: './art//generated/' },
     }, settingsRaw)).toEqual({ error: null, changed: true })
     expect(settingsRaw.imageGeneration).toEqual({
       defaultModel: 'or-1:a',
       enabled: false,
       maxVariants: 6,
-      maxCostPerCallUsd: 0.5,
       outputDir: 'art/generated',
     })
 
     expect(mergeImageGeneration({ imageGeneration: { enabled: false } }, settingsRaw)).toEqual({ error: null, changed: false })
-    expect(mergeImageGeneration({ imageGeneration: { maxCostPerCallUsd: null } }, settingsRaw)).toEqual({ error: null, changed: true })
-    expect((settingsRaw.imageGeneration as Record<string, unknown>).maxCostPerCallUsd).toBeNull()
 
     const rejected: Array<[Record<string, unknown>, string]> = [
       [{ enabled: 'yes' }, 'imageGeneration.enabled must be a boolean'],
@@ -222,8 +219,6 @@ describe('settings schema', () => {
       [{ maxVariants: 0 }, 'imageGeneration.maxVariants must be an integer 1-10'],
       [{ maxVariants: 11 }, 'imageGeneration.maxVariants must be an integer 1-10'],
       [{ maxVariants: 2.5 }, 'imageGeneration.maxVariants must be an integer 1-10'],
-      [{ maxCostPerCallUsd: 0 }, 'imageGeneration.maxCostPerCallUsd must be a positive number or null'],
-      [{ maxCostPerCallUsd: '1' }, 'imageGeneration.maxCostPerCallUsd must be a positive number or null'],
       [{ outputDir: '../outside' }, 'imageGeneration.outputDir must be a relative folder inside the workspace'],
       [{ outputDir: '/tmp/images' }, 'imageGeneration.outputDir must be a relative folder inside the workspace'],
       [{ outputDir: '' }, 'imageGeneration.outputDir must be a relative folder inside the workspace'],

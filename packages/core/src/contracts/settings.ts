@@ -154,8 +154,6 @@ export interface ImageGenerationSettingsContract {
   defaultModel: string
   /** Upper bound of the tool's `n` parameter. */
   maxVariants: number
-  /** Refuse calls whose estimated cost exceeds this amount; `null` disables the check. */
-  maxCostPerCallUsd: number | null
   /** Workspace-relative folder; images land in a `YYYY-MM-DD/` subfolder of it. */
   outputDir: string
 }
@@ -374,7 +372,6 @@ export const DEFAULT_SETTINGS_CONTRACT: SettingsContract = {
     enabled: true,
     defaultModel: '',
     maxVariants: 4,
-    maxCostPerCallUsd: null,
     outputDir: 'images',
   },
   tts: {
@@ -454,14 +451,12 @@ export function normalizeImageGenerationSettings(
   const defaults = DEFAULT_SETTINGS_CONTRACT.imageGeneration
   const { min, max } = IMAGE_GENERATION_MAX_VARIANTS_BOUNDS
   const maxVariants = source?.maxVariants
-  const maxCost = source?.maxCostPerCallUsd
   return {
     enabled: source?.enabled !== false,
     defaultModel: typeof source?.defaultModel === 'string' ? source.defaultModel.trim() : defaults.defaultModel,
     maxVariants: typeof maxVariants === 'number' && Number.isInteger(maxVariants) && maxVariants >= min && maxVariants <= max
       ? maxVariants
       : defaults.maxVariants,
-    maxCostPerCallUsd: typeof maxCost === 'number' && Number.isFinite(maxCost) && maxCost > 0 ? maxCost : defaults.maxCostPerCallUsd,
     outputDir: (typeof source?.outputDir === 'string' && normalizeImageOutputDir(source.outputDir)) || defaults.outputDir,
   }
 }

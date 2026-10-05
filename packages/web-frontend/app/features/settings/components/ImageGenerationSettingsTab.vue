@@ -57,23 +57,6 @@
         </div>
 
         <div class="flex flex-col gap-2">
-          <Label for="image-generation-max-cost">{{ $t('settings.imageGenerationMaxCost') }}</Label>
-          <div class="flex items-center gap-2">
-            <Input
-              id="image-generation-max-cost"
-              v-model="maxCostInput"
-              type="number"
-              min="0.01"
-              step="0.01"
-              :placeholder="$t('settings.imageGenerationMaxCostOff')"
-              class="w-full"
-            />
-            <span class="text-sm text-muted-foreground">USD</span>
-          </div>
-          <p class="text-xs text-muted-foreground">{{ $t('settings.imageGenerationMaxCostHint') }}</p>
-        </div>
-
-        <div class="flex flex-col gap-2">
           <Label for="image-generation-output-dir">{{ $t('settings.imageGenerationOutputDir') }}</Label>
           <Input
             id="image-generation-output-dir"
@@ -139,12 +122,4 @@ const settings = defineModel<ImageGenerationSettings>({ required: true })
 
 const imageModels = computed(() => listUsableImageModels(props.providers))
 const imageModelOptions = computed(() => buildImageModelOptions(props.providers))
-
-const maxCostInput = computed<string>({
-  get: () => settings.value.maxCostPerCallUsd === null ? '' : String(settings.value.maxCostPerCallUsd),
-  set: (value) => {
-    const trimmed = String(value ?? '').trim()
-    settings.value.maxCostPerCallUsd = trimmed === '' ? null : Number(trimmed)
-  },
-})
 </script>

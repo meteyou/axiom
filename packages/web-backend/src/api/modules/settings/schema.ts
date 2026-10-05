@@ -362,14 +362,6 @@ export function mergeImageGeneration(
     existing.maxVariants = imageGeneration.maxVariants
   }
 
-  if (imageGeneration.maxCostPerCallUsd !== undefined) {
-    const maxCost = imageGeneration.maxCostPerCallUsd
-    if (maxCost !== null && (typeof maxCost !== 'number' || !Number.isFinite(maxCost) || maxCost <= 0)) {
-      return { error: 'imageGeneration.maxCostPerCallUsd must be a positive number or null', changed: false }
-    }
-    existing.maxCostPerCallUsd = maxCost
-  }
-
   if (imageGeneration.outputDir !== undefined) {
     const outputDir = typeof imageGeneration.outputDir === 'string' ? normalizeImageOutputDir(imageGeneration.outputDir) : null
     if (!outputDir) {

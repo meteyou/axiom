@@ -306,7 +306,6 @@ describe('settings route module', () => {
       enabled: true,
       defaultModel: '',
       maxVariants: 4,
-      maxCostPerCallUsd: null,
       outputDir: 'images',
     })
 
@@ -320,7 +319,6 @@ describe('settings route module', () => {
       enabled: false,
       defaultModel: ' or-1:recraft/recraft-v4.1-vector ',
       maxVariants: 2,
-      maxCostPerCallUsd: 0.25,
       outputDir: 'assets/generated/',
     })
     expect(updated.status).toBe(200)
@@ -328,7 +326,6 @@ describe('settings route module', () => {
       enabled: false,
       defaultModel: 'or-1:recraft/recraft-v4.1-vector',
       maxVariants: 2,
-      maxCostPerCallUsd: 0.25,
       outputDir: 'assets/generated',
     }
     expect((await updated.json() as { imageGeneration: unknown }).imageGeneration).toEqual(expected)

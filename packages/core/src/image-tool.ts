@@ -5,7 +5,6 @@ import type { ImageContent } from '@earendil-works/pi-ai'
 import { Type } from '@earendil-works/pi-ai'
 import type { Database } from './database.js'
 import type { ImageGenerationSettingsContract } from './contracts/settings.js'
-import { estimateImageCostPerRequest } from './image-cost-estimate.js'
 import {
   generateImagesWithProvider,
   isImageGenerationAvailable,
@@ -177,38 +176,6 @@ function formatCost(costUsd: number | null): string {
   return costUsd === null ? 'not reported by the provider' : `$${costUsd.toFixed(4)}`
 }
 
-function formatUsd(amount: number): string {
-  return `$${amount.toFixed(4)}`
-}
-
-type CostLimitCheck =
-  | { verdict: 'off' | 'within' }
-  | { verdict: 'unknown'; note: string }
-  | { verdict: 'exceeded'; message: string }
-
-function checkCostLimit(
-  limitUsd: number | null,
-  costPerRequestUsd: number | null,
-  count: number,
-): CostLimitCheck {
-  if (limitUsd === null) return { verdict: 'off' }
-  if (costPerRequestUsd === null) {
-    return {
-      verdict: 'unknown',
-      note: `Cost limit of ${formatUsd(limitUsd)} per call not checked: no billed cost is on record for this model yet.`,
-    }
-  }
-  const estimateUsd = costPerRequestUsd * count
-  if (estimateUsd <= limitUsd) return { verdict: 'within' }
-  return {
-    verdict: 'exceeded',
-    message: `Cost limit exceeded. The estimated cost of ${formatUsd(estimateUsd)} (${count} × ${formatUsd(costPerRequestUsd)}, `
-      + `based on recent billed generations with this model) is above the limit of ${formatUsd(limitUsd)} per call. `
-      + 'Nothing was generated or billed. Request fewer variants, pick a cheaper model, or ask the user to raise '
-      + 'the limit under Settings → Image generation.',
-  }
-}
-
 export function createGenerateImageTool(options: GenerateImageToolOptions = {}): AgentTool {
   const generate = options.generate ?? generateImagesWithProvider
   const resolveModel = options.resolveModel ?? ((requested: string | undefined) => resolveImageModel(requested))
@@ -273,13 +240,6 @@ export function createGenerateImageTool(options: GenerateImageToolOptions = {}):
         return errorResult((err as Error).message)
       }
 
-      const costPerRequestUsd = options.db && settings.maxCostPerCallUsd !== null
-        ? estimateImageCostPerRequest(options.db, buildImageModel(provider, modelId).provider, modelId)
-        : null
-      const costLimit = checkCostLimit(settings.maxCostPerCallUsd, costPerRequestUsd, count)
-      if (costLimit.verdict === 'exceeded') return errorResult(costLimit.message)
-      const costLimitNote = costLimit.verdict === 'unknown' ? `\n${costLimit.note}` : ''
-
       let result: ImageGenerationResult
       try {
         result = await generate({
@@ -296,7 +256,6 @@ export function createGenerateImageTool(options: GenerateImageToolOptions = {}):
       }
 
       if (options.db) {
-        // One row per request: the cost limit estimates from per-request billed costs.
         for (const request of result.requests) {
           logTokenUsage(options.db, {
             provider: result.model.provider,
@@ -322,7 +281,7 @@ export function createGenerateImageTool(options: GenerateImageToolOptions = {}):
 
       if (result.images.length === 0) {
         return errorResult(
-          `${result.errors.join(' ') || 'The model returned no image.'} Cost: ${formatCost(result.costUsd)}.${modelText}${costLimitNote}`,
+          `${result.errors.join(' ') || 'The model returned no image.'} Cost: ${formatCost(result.costUsd)}.${modelText}`,
           summary,
         )
       }
@@ -370,7 +329,7 @@ export function createGenerateImageTool(options: GenerateImageToolOptions = {}):
       lines.push(`Paths are relative to ${getWorkspaceDir()}. Deliver them with send_file_to_user; never paste image data into the chat.`)
 
       return {
-        content: [{ type: 'text', text: lines.join('\n') + modelText + costLimitNote }],
+        content: [{ type: 'text', text: lines.join('\n') + modelText }],
         details: { ...summary, files },
       }
     },
