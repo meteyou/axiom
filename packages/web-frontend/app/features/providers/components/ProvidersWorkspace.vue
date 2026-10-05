@@ -345,16 +345,19 @@
                     v-for="modelId in getImageModels(provider)"
                     :key="`${provider.id}-image-${modelId}`"
                     class="bg-muted/30 hover:bg-muted/50"
-                    :class="provider.disabled ? 'opacity-60' : ''"
+                    :class="isImageModelUnavailable(provider, modelId) ? 'opacity-60' : ''"
                   >
                     <TableCell class="py-1.5">
                       <div class="flex items-center gap-2">
                         <span class="text-xs text-muted-foreground">└</span>
-                        <span class="text-sm" :class="provider.disabled ? 'text-muted-foreground line-through' : 'text-foreground'">{{ getImageModelDisplayName(provider, modelId) }}</span>
+                        <span class="text-sm" :class="isImageModelUnavailable(provider, modelId) ? 'text-muted-foreground line-through' : 'text-foreground'">{{ getImageModelDisplayName(provider, modelId) }}</span>
                         <span
                           v-if="getImageModelDisplayName(provider, modelId) !== modelId"
                           class="font-mono text-[11px] text-muted-foreground"
                         >{{ modelId }}</span>
+                        <Badge v-if="isImageModelDisabled(provider, modelId)" variant="outline" class="px-1.5 py-0 text-[10px]">
+                          {{ $t('providers.disabled') }}
+                        </Badge>
                       </div>
                     </TableCell>
                     <TableCell class="py-1.5">
@@ -409,6 +412,10 @@
                           <DropdownMenuItem @click="openEditImageModel(provider, modelId)">
                             <AppIcon name="edit" class="h-4 w-4" />
                             {{ $t('providers.editModelMenu') }}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem @click="handleToggleImageModelDisabled(provider, modelId)">
+                            <AppIcon :name="isImageModelDisabled(provider, modelId) ? 'power' : 'powerOff'" class="h-4 w-4" />
+                            {{ isImageModelDisabled(provider, modelId) ? $t('providers.enable') : $t('providers.disable') }}
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem destructive @click="removeImageModelTarget = { provider, modelId }">
@@ -770,6 +777,14 @@ function getImageModels(provider: Provider): string[] {
   return provider.enabledImageModels ?? []
 }
 
+function isImageModelDisabled(provider: Provider, modelId: string): boolean {
+  return provider.disabledImageModels?.includes(modelId) ?? false
+}
+
+function isImageModelUnavailable(provider: Provider, modelId: string): boolean {
+  return provider.disabled === true || isImageModelDisabled(provider, modelId)
+}
+
 function getImageBilling(provider: Provider): ImageBillingContract {
   return presets.value[provider.providerType]?.imageBilling ?? 'reported'
 }
@@ -957,6 +972,14 @@ async function handleToggleModelDisabled(provider: Provider, modelId: string) {
   const result = await updateProviderModel(provider.id, modelId, { disabled })
   if (!result) return
   successMessage.value = t(disabled ? 'providers.disableSuccess' : 'providers.enableSuccess', { name: modelId })
+  autoHideSuccess()
+}
+
+async function handleToggleImageModelDisabled(provider: Provider, modelId: string) {
+  const disabled = !isImageModelDisabled(provider, modelId)
+  const result = await updateProviderModel(provider.id, modelId, { disabled })
+  if (!result) return
+  successMessage.value = t(disabled ? 'providers.disableSuccess' : 'providers.enableSuccess', { name: getImageModelDisplayName(provider, modelId) })
   autoHideSuccess()
 }
 

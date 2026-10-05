@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildImageModelOptions, buildProviderModelOptions, getImageModelDisplayName, getModelDisplayName, listUsableImageModels } from './providerModelOptions'
+import { buildImageModelOptions, buildProviderModelOptions, getImageModelDisplayName, getModelDisplayName, listImageModels, listUsableImageModels } from './providerModelOptions'
 
 const providers = [
   { id: 'a', name: 'A', enabledModels: ['a1', 'a2'], disabledModels: ['a2'] },
@@ -76,6 +76,7 @@ describe('image model options', () => {
         modelId: 'recraft/recraft-v4.1-vector',
         displayName: 'Recraft V4.1 Vector',
         description: 'Logos and icons as SVG.',
+        disabled: false,
       },
       {
         providerId: 'or',
@@ -83,7 +84,18 @@ describe('image model options', () => {
         modelId: 'google/gemini-3.1-flash-image',
         displayName: 'Nano Banana',
         description: '',
+        disabled: false,
       },
     ])
+  })
+
+  it('keeps disabled image models in the overview but out of usable lists and options', () => {
+    const partlyDisabled = { ...openRouter, disabledImageModels: ['recraft/recraft-v4.1-vector'] }
+    expect(listImageModels([partlyDisabled]).map(e => [e.modelId, e.disabled])).toEqual([
+      ['recraft/recraft-v4.1-vector', true],
+      ['google/gemini-3.1-flash-image', false],
+    ])
+    expect(listUsableImageModels([partlyDisabled]).map(e => e.modelId)).toEqual(['google/gemini-3.1-flash-image'])
+    expect(buildImageModelOptions([partlyDisabled]).map(o => o.value)).toEqual(['or:google/gemini-3.1-flash-image'])
   })
 })

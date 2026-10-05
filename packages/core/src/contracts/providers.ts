@@ -67,6 +67,7 @@ export interface ProviderContract {
   enabledImageModels?: string[]
   disabled?: boolean
   disabledModels?: string[]
+  disabledImageModels?: string[]
   degradedThresholdMs?: number
   textVerbosity?: ProviderTextVerbosityContract
   transport?: ProviderTransportContract

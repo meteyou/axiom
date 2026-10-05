@@ -1,6 +1,6 @@
 # Image Generation
 
-Switch the [`generate_image`](../concepts/image-generation) tool on or off and set its default model, limits and output folder. The image models themselves are configured per provider under [Providers → Image models](../web-ui/providers#image-models) — this tab only reads them.
+Switch the [`generate_image`](../concepts/image-generation) tool on or off and set its default model, limits and output folder. The image models themselves are configured per provider under [Providers → Image models](../web-ui/providers#image-models) — this tab can enable, disable and rename them, but new models are only added there.
 
 **URL:** `/settings?tab=imageGeneration`
 
@@ -24,7 +24,7 @@ The remaining fields are shown while image generation is on.
 
 Image model used by `generate_image` when the agent does not pick one. The dropdown lists the enabled image models of all enabled providers; text models never appear here, and image models never appear in text-model dropdowns. This is the only place where the default is set.
 
-*First enabled image model* (empty value) picks the first enabled image model. If the selected model is removed later, the same fallback applies; disabling its provider resets the setting.
+*First enabled image model* (empty value) picks the first enabled image model. If the selected model is removed later, the same fallback applies; disabling the model or its provider resets the setting.
 
 ```json
 { "imageGeneration": { "defaultModel": "<providerId>:recraft/recraft-v4.1-vector" } }
@@ -48,9 +48,15 @@ Folder inside the workspace where images are saved. Default: `images`. Each imag
 { "imageGeneration": { "outputDir": "images" } }
 ```
 
-## Enabled image models
+## Image models
 
-A read-only list of every image model the agent can use: provider, model and the model's description. Each entry links to its provider on the Providers page, where models are added, edited (display name and description), checked and removed. The description is what the agent reads to pick a model, so describe what each model is good at.
+Every image model configured on an enabled provider, with provider, model id and the model's description. Per model:
+
+- **Switch** (top right) — enables or disables the model for the agent. Disabled models stay configured but are hidden from `generate_image` and the default-image-model dropdown; same as **Disable** / **Enable** on the Providers page.
+- **Edit** (pencil) — display name and description. The description is what the agent reads to pick a model, so describe what each model is good at.
+- **Provider name** — links to the provider on the Providers page.
+
+New image models are added, checked and removed only under [Providers → Image models](../web-ui/providers#image-models).
 
 ## See also
 

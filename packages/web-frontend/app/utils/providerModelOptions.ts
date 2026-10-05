@@ -3,6 +3,7 @@ export interface ProviderModelSource {
   name: string
   enabledModels?: string[]
   enabledImageModels?: string[]
+  disabledImageModels?: string[]
   disabled?: boolean
   disabledModels?: string[]
   models?: { id: string; name?: string; description?: string }[]
@@ -34,10 +35,11 @@ export interface ImageModelOverviewEntry {
   modelId: string
   displayName: string
   description: string
+  disabled: boolean
 }
 
-/** Image models the agent can use: enabled image models of enabled providers. */
-export function listUsableImageModels(providers: ProviderModelSource[]): ImageModelOverviewEntry[] {
+/** Configured image models of enabled providers, including individually disabled ones. */
+export function listImageModels(providers: ProviderModelSource[]): ImageModelOverviewEntry[] {
   return providers
     .filter(provider => !provider.disabled)
     .flatMap(provider =>
@@ -47,8 +49,14 @@ export function listUsableImageModels(providers: ProviderModelSource[]): ImageMo
         modelId,
         displayName: getImageModelDisplayName(provider, modelId),
         description: provider.models?.find(m => m.id === modelId)?.description?.trim() ?? '',
+        disabled: provider.disabledImageModels?.includes(modelId) ?? false,
       })),
     )
+}
+
+/** Image models the agent can use. */
+export function listUsableImageModels(providers: ProviderModelSource[]): ImageModelOverviewEntry[] {
+  return listImageModels(providers).filter(entry => !entry.disabled)
 }
 
 /** `providerId:modelId` options for the default image model; image models never appear in text-model pickers. */
