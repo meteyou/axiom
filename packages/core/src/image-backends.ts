@@ -29,6 +29,18 @@ export type PreparedImageParameters =
   | { ok: true; payload: Record<string, unknown>; notes: string[] }
   | { ok: false; error: string }
 
+/** The provider rejected the credentials; a fallback model list would hide that. */
+export class ImageProviderAuthError extends Error {
+  constructor(public readonly status: number) {
+    super(`API key rejected (HTTP ${status})`)
+    this.name = 'ImageProviderAuthError'
+  }
+}
+
+function assertAuthorized(response: Response): void {
+  if (response.status === 401 || response.status === 403) throw new ImageProviderAuthError(response.status)
+}
+
 export type ImageAvailability =
   | { ok: true }
   | { ok: false; error: string }
@@ -162,6 +174,7 @@ const openRouterImageBackend: ImageBackend = {
       headers: { Accept: 'application/json', Authorization: `Bearer ${apiKey}` },
       signal,
     })
+    assertAuthorized(response)
     if (!response.ok) throw new Error(`OpenRouter model list failed (HTTP ${response.status})`)
     const body = await response.json() as { data?: OpenRouterModelEntry[] }
     const models: AvailableImageModel[] = []
@@ -288,7 +301,7 @@ const openAIImageBackend: ImageBackend = {
       headers: { Accept: 'application/json', Authorization: `Bearer ${apiKey}` },
       signal,
     })
-    if (response.status === 401 || response.status === 403) throw new Error(`API key rejected (HTTP ${response.status})`)
+    assertAuthorized(response)
     if (!response.ok) throw new Error(`OpenAI model list failed (HTTP ${response.status})`)
     const body = await response.json() as { data?: Array<{ id?: unknown }> }
     const ids = [...new Set((body.data ?? [])

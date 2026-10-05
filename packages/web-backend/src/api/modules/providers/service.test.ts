@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { __setPiCatalogForTests, __setRadiusCatalogForTests, addOAuthProvider, addProvider, getAvailableModels, initDatabase, loadProviders, updateProvider, updateProviderModel } from '@axiom/core'
+import { __setPiCatalogForTests, __setRadiusCatalogForTests, addOAuthProvider, addProvider, getAvailableModels, ImageProviderAuthError, initDatabase, loadProviders, updateProvider, updateProviderModel } from '@axiom/core'
 import { mapProvidersListResponse } from './mapper.js'
 import {
   createProvidersService,
@@ -353,6 +353,13 @@ describe('image generation models', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     fetchSpy.mockResolvedValueOnce(jsonResponse({ error: 'down' }, 503))
     expect((await service.getLiveImageModels(provider.id)).map(m => m.id)).toContain('recraft/recraft-v4.1-vector')
+  })
+
+  it('reports a rejected API key instead of falling back to the bundled image catalog', async () => {
+    const provider = createOpenRouterProvider()
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(jsonResponse({ error: 'unauthorized' }, 401))
+
+    await expect(createProvidersService().getLiveImageModels(provider.id)).rejects.toBeInstanceOf(ImageProviderAuthError)
   })
 
   it('lists the ChatGPT image model of a Codex login without a request and rejects providers without images', async () => {
