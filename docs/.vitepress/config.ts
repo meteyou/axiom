@@ -49,6 +49,7 @@ const guideSidebar: DefaultTheme.SidebarItem[] = [
       { text: 'Agent', link: '/settings/agent' },
       { text: 'Agent Heartbeat', link: '/settings/agent-heartbeat' },
       { text: 'Health Monitor', link: '/settings/health-monitor' },
+      { text: 'Image Generation', link: '/settings/image-generation' },
       { text: 'Memory', link: '/settings/memory' },
       { text: 'Secrets', link: '/settings/secrets' },
       { text: 'Speech-to-Text', link: '/settings/speech-to-text' },

@@ -16,16 +16,6 @@ Tasks are built for **hard work** — long-running, tool-heavy jobs without a hu
 { "tasks": { "defaultProvider": "openai:gpt-5.4" } }
 ```
 
-### Default image model
-
-Image generation model used by the [`generate_image`](../concepts/image-generation) tool when the agent does not pick one. The dropdown lists the enabled image models of all enabled providers (added under [Providers → Image models](../web-ui/providers#image-models)); text models never appear here, and image models never appear in the text-model dropdowns. It is the only place where the default is set.
-
-*First enabled image model* (empty value) picks the first enabled image model. If the selected model is removed later, the same fallback applies; disabling its provider resets the setting.
-
-```json
-{ "imageGeneration": { "defaultModel": "<providerId>:recraft/recraft-v4.1-vector" } }
-```
-
 ### Max duration
 
 Hard upper bound on a single task run, in minutes. Any task hitting this limit is killed. Default: `30`. Range: 1 – 1440.
