@@ -39,7 +39,7 @@ export function createProviderQuotaTool(options: ProviderQuotaToolOptions): Agen
     name: 'provider_quota',
     label: 'Provider Quota',
     description:
-      'Check the current subscriber usage quota or prepaid credit balance for LLM providers (Anthropic Claude Pro/Max, ChatGPT Codex, OpenCode, Radius, etc.). ' +
+      'Check the current subscriber usage quota or prepaid credit balance for LLM providers (Anthropic Claude Pro/Max, ChatGPT Codex, OpenCode, Radius, OpenRouter, etc.). ' +
       'Returns normalized usage windows with utilization percentages and reset times, or the remaining credit balance for credit-based gateways. ' +
       'Use this to answer questions about remaining quota, rate limits, or usage consumption per provider. ' +
       'Only available to admin users.',

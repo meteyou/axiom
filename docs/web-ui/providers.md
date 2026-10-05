@@ -276,12 +276,22 @@ For subscription-style providers that expose a usage endpoint, the provider head
 - **OpenCode Go** (`opencode-go`) — see the credential note below
 - **z.ai (GLM Coding Plan)** (`zai-coding`) — read from the subscription API key; the pay-per-token `z.ai` (`zai`) provider has no quota endpoint
 - **Radius** (`radius` via OAuth and `radius-api-key`) — shows the organization's **prepaid credit balance** instead of usage windows (see below)
+- **OpenRouter** (`openrouter`) — shows the remaining **prepaid credit** instead of usage windows (see below)
 
 Other provider types never show quota — they have no usage endpoint.
 
 #### Radius credit balance
 
 Radius is pay-as-you-go, so there are no rate-limit windows. The Status column shows the **available** credit (balance minus the amount reserved for in-flight requests) as a currency amount, plus what has been charged in the current billing period, e.g. `Credits: $8.97 ($0.01 this period)`. It turns red once the available balance reaches zero. The data comes from the gateway's `/v1/billing` endpoint using the same credential as inference (OAuth access token or organization API key).
+
+#### OpenRouter credit balance
+
+OpenRouter is pay-as-you-go as well, so the Status column shows the **available** credit as a dollar amount, plus what the API key has spent in the current calendar month (UTC), e.g. `Credits: $13.47 ($0.42 this period)`. It turns red once nothing is left. Axiom reads two endpoints with the provider's normal API key — no management key is needed:
+
+- `/api/v1/credits` — the account balance (purchased credits minus all-time usage).
+- `/api/v1/key` — the key's own credit limit, if you set one on the OpenRouter keys page.
+
+When the key has a credit limit below the account balance, the **lower** of the two is shown, because that is what new requests can actually spend; the `provider_quota` tool reports both. If OpenRouter stops answering `/api/v1/credits` for regular keys, the key's remaining limit is shown instead; a key without a credit limit then shows *"Quota unavailable"*, since there is no balance to report.
 
 ::: warning OpenCode Go is a special case
 OpenCode Go has no official usage API. Its quota is read by scraping the authenticated web dashboard. Configure the provider's extra fields in the provider dialog:
@@ -307,7 +317,7 @@ The same active-provider quota is mirrored in the **top bar** next to the health
 
 #### Refresh quota
 
-The ⋮ menu on a quota-capable OAuth provider header carries a **Refresh quota** item that forces an immediate, on-demand fetch (bypassing the background poll's backoff). While it runs, the Status column shows a spinner with *"Refreshing…"*; on success a *"Quota updated"* banner appears briefly.
+The ⋮ menu on a quota-capable provider header carries a **Refresh quota** item that forces an immediate, on-demand fetch (bypassing the background poll's backoff). While it runs, the Status column shows a spinner with *"Refreshing…"*; on success a *"Quota updated"* banner appears briefly.
 
 #### When quota is unavailable
 
