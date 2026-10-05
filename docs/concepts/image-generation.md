@@ -27,13 +27,13 @@ Image models are added under [Providers → Image models](../web-ui/providers#im
 
 ## Image backends
 
-Each provider type talks to its own image API. pi-ai ships the OpenRouter one; the OpenAI and ChatGPT ones are part of Axiom and share one wire format (`POST …/images/generations`, `POST …/images/edits` with input images as data URLs).
+Each provider type talks to its own image API. OpenRouter uses its dedicated Image API (`POST …/images`, input images as data URLs in `input_references`); the OpenAI and ChatGPT ones share one wire format (`POST …/images/generations`, `POST …/images/edits` with input images as data URLs).
 
 | | OpenRouter | OpenAI (API key) | ChatGPT subscription (Codex login) |
 |---|---|---|---|
-| Endpoint | `https://openrouter.ai/api/v1/chat/completions` | `https://api.openai.com/v1/images/…` | `https://chatgpt.com/backend-api/codex/images/…` |
+| Endpoint | `https://openrouter.ai/api/v1/images` | `https://api.openai.com/v1/images/…` | `https://chatgpt.com/backend-api/codex/images/…` |
 | Model choice | any OpenRouter image model | any GPT Image model the key can use | none — ChatGPT picks the renderer (currently GPT Image 2) |
-| `aspect_ratio` | sent as `image_config.aspect_ratio`; the model may ignore it | converted to `size`: exact (multiples of 16, 1:3 to 3:1) for GPT Image 2 and newer, the closest of 1024x1024 / 1536x1024 / 1024x1536 for older models | ignored |
+| `aspect_ratio` | sent as `aspect_ratio`; the provider clamps it to its supported ratios | converted to `size`: exact (multiples of 16, 1:3 to 3:1) for GPT Image 2 and newer, the closest of 1024x1024 / 1536x1024 / 1024x1536 for older models | ignored |
 | `quality` | ignored | `low`, `medium`, `high`, `auto` | ignored |
 | `background` | ignored | `transparent`, `opaque`, `auto`; `gpt-image-2` cannot render transparency | `transparent`, `opaque`, `auto` |
 | Variants (`n`) | parallel | parallel | one after another |
@@ -104,7 +104,7 @@ The tool result lists the relative paths, format, file size, the cost (or *"incl
 
 ### Errors
 
-Provider errors (invalid key, insufficient credits, an exhausted ChatGPT usage limit, content policy, timeouts) are returned as a clear error message instead of failing the turn. A response without an image — for example a refusal, or a model that answers with a remote image URL instead of inline data — is reported as *"The model returned no image"*, together with any text the model sent. With `n > 1`, partial failures are listed next to the images that did succeed.
+Provider errors (invalid key, insufficient credits, an exhausted ChatGPT usage limit, content policy, timeouts) are returned as a clear error message instead of failing the turn. A response without an image — for example a refusal — is reported as *"The model returned no image"*, together with any text the model sent. With `n > 1`, partial failures are listed next to the images that did succeed.
 
 Each request times out after **180 s**.
 
