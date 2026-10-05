@@ -155,7 +155,7 @@ function parseOptionalNullableBoolean(body: Record<string, unknown>, key: 'reaso
 }
 
 const MODEL_UPDATE_FIELDS = [
-  'name', 'description', 'contextWindow', 'maxTokens', 'reasoning', 'input', 'thinkingLevelMap', 'disabled',
+  'name', 'description', 'contextWindow', 'maxTokens', 'reasoning', 'input', 'output', 'thinkingLevelMap', 'disabled',
 ] as const
 
 function parseOptionalPositiveInteger(
@@ -183,6 +183,18 @@ function parseOptionalModelInput(body: Record<string, unknown>): ParseResult<Mod
   const input = [...new Set(raw as ModelInputModalityContract[])]
   if (!input.includes('text')) return { ok: false, error: 'input must include text' }
   return { ok: true, value: input }
+}
+
+function parseOptionalModelOutput(body: Record<string, unknown>): ParseResult<ModelInputModalityContract[] | null | undefined> {
+  if (!Object.prototype.hasOwnProperty.call(body, 'output')) return { ok: true, value: undefined }
+  const raw = body.output
+  if (raw === null) return { ok: true, value: null }
+  if (!Array.isArray(raw) || !raw.every(entry => MODEL_INPUT_MODALITIES.includes(entry))) {
+    return { ok: false, error: `output must be an array of ${MODEL_INPUT_MODALITIES.join(', ')}` }
+  }
+  const output = [...new Set(raw as ModelInputModalityContract[])]
+  if (!output.includes('image')) return { ok: false, error: 'output must include image' }
+  return { ok: true, value: output }
 }
 
 function parseOptionalThinkingLevelMap(
@@ -230,6 +242,8 @@ export function parseProviderModelUpdatePayload(payload: unknown): ParseResult<P
   if (!reasoning.ok) return reasoning
   const input = parseOptionalModelInput(body)
   if (!input.ok) return input
+  const output = parseOptionalModelOutput(body)
+  if (!output.ok) return output
   const thinkingLevelMap = parseOptionalThinkingLevelMap(body)
   if (!thinkingLevelMap.ok) return thinkingLevelMap
 
@@ -241,6 +255,7 @@ export function parseProviderModelUpdatePayload(payload: unknown): ParseResult<P
   if (maxTokens.value !== undefined) value.maxTokens = maxTokens.value
   if (reasoning.value !== undefined) value.reasoning = reasoning.value
   if (input.value !== undefined) value.input = input.value
+  if (output.value !== undefined) value.output = output.value
   if (thinkingLevelMap.value !== undefined) value.thinkingLevelMap = thinkingLevelMap.value
   const cost = hasCost ? parseModelCostPatch(body.cost) : undefined
   if (cost) value.cost = cost

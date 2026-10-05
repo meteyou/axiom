@@ -6,11 +6,13 @@ import {
   buildImageModel,
   createImageOnlyModelIdMatcher,
   getAvailableImageModels,
+  getImageApiForType,
   getUsableImageModels,
   getUsableModels,
   loadProviders,
   supportsImageModels,
   updateProvider,
+  updateProviderModel,
   updateProviderStatus,
 } from './provider-config.js'
 import type { ProviderConfig, ProvidersFile } from './provider-config.js'
@@ -39,8 +41,33 @@ describe('image model catalog', () => {
     expect(ids).not.toContain('anthropic/claude-sonnet-4.5')
   })
 
+  it('offers Axiom-maintained catalogs for OpenAI (API key) and ChatGPT (Codex login)', () => {
+    expect(getAvailableImageModels('openai').map(m => m.id)).toEqual([
+      'gpt-image-2.5-flare', 'gpt-image-2.5-sunburst', 'gpt-image-2', 'gpt-image-1.5', 'gpt-image-1', 'gpt-image-1-mini',
+    ])
+    expect(getAvailableImageModels('openai')[0]).toMatchObject({
+      input: ['text', 'image'],
+      output: ['image'],
+      pricing: { textInput: 5, imageInput: 8, imageOutput: 30 },
+    })
+    expect(getAvailableImageModels('openai-codex')).toEqual([
+      { id: 'gpt-image-2', name: 'GPT Image (ChatGPT subscription)', input: ['text', 'image'], output: ['image'] },
+    ])
+    expect(getImageApiForType('openai')).toBe('openai-images')
+    expect(getImageApiForType('openai-codex')).toBe('openai-codex-images')
+    expect(getImageApiForType('anthropic')).toBeUndefined()
+  })
+
+  it('classifies OpenAI image ids as image-only', () => {
+    const isImageOnly = createImageOnlyModelIdMatcher('openai')
+    expect(isImageOnly('gpt-image-2')).toBe(true)
+    expect(isImageOnly('gpt-5.5')).toBe(false)
+  })
+
   it('only offers image models for providers with an image backend', () => {
     expect(supportsImageModels('openrouter')).toBe(true)
+    expect(supportsImageModels('openai')).toBe(true)
+    expect(supportsImageModels('openai-codex')).toBe(true)
     expect(supportsImageModels('anthropic')).toBe(false)
     expect(supportsImageModels('custom-openai-completions')).toBe(false)
     expect(getAvailableImageModels('anthropic')).toEqual([])
@@ -80,6 +107,28 @@ describe('buildImageModel', () => {
       type: 'image',
       input: ['text', 'image'],
       output: ['image'],
+    })
+  })
+
+  it('uses modalities stored when the model was added from a live list', () => {
+    const model = buildImageModel(openRouterProvider({
+      models: [{ id: 'vendor/text-and-image', input: ['text'], output: ['image', 'text'] }],
+    }), 'vendor/text-and-image')
+    expect(model).toMatchObject({ input: ['text'], output: ['image', 'text'] })
+  })
+
+  it('builds the ChatGPT image model on the Codex backend', () => {
+    const model = buildImageModel(openRouterProvider({
+      providerType: 'openai-codex',
+      provider: 'openai-codex',
+      type: 'openai-codex-responses',
+      baseUrl: '',
+      authMethod: 'oauth',
+    }), 'gpt-image-2')
+    expect(model).toMatchObject({
+      api: 'openai-codex-images',
+      provider: 'openai-codex',
+      baseUrl: 'https://chatgpt.com/backend-api/codex',
     })
   })
 
@@ -193,10 +242,23 @@ describe('providers.json image model handling', () => {
     expect(() => updateProvider('a-1', { enabledImageModels: ['recraft/recraft-v4.1'] })).toThrow(/does not support image generation/)
   })
 
-  it('drops image models when the provider type changes to one without image support', () => {
+  it('drops image models when the provider type changes to another image backend or none', () => {
     writeProviders({ providers: [openRouterProvider({ enabledImageModels: ['recraft/recraft-v4.1'] })] })
     updateProvider(OPENROUTER_ID, { providerType: 'openai' })
     expect(loadProviders().providers[0]!.enabledImageModels).toBeUndefined()
+
+    updateProvider(OPENROUTER_ID, { enabledImageModels: ['gpt-image-2'] })
+    updateProvider(OPENROUTER_ID, { providerType: 'anthropic' })
+    expect(loadProviders().providers[0]!.enabledImageModels).toBeUndefined()
+  })
+
+  it('stores and clears the output modalities of a model entry', () => {
+    writeProviders({ providers: [openRouterProvider()] })
+    updateProviderModel(OPENROUTER_ID, 'vendor/new', { name: 'New', input: ['text'], output: ['image', 'text'] })
+    expect(loadProviders().providers[0]!.models).toEqual([{ id: 'vendor/new', name: 'New', input: ['text'], output: ['image', 'text'] }])
+
+    updateProviderModel(OPENROUTER_ID, 'vendor/new', { output: null })
+    expect(loadProviders().providers[0]!.models?.[0]).not.toHaveProperty('output')
   })
 
   it('derives the provider status from text models, ignoring image model results', () => {

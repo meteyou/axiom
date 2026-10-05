@@ -106,6 +106,8 @@ export interface ProviderModelContract {
   maxTokens?: number
   reasoning?: boolean
   input?: ModelInputModalityContract[]
+  /** Output modalities of an image generation model. */
+  output?: ModelInputModalityContract[]
   thinkingLevelMap?: ModelThinkingLevelMapContract
   fixedTemperature?: number
   /** Only the fields the user overrode; the rest follows the catalog. */
@@ -133,6 +135,23 @@ export interface ImageModelSpecContract {
   name: string
   input: ModelInputModalityContract[]
   output: ModelInputModalityContract[]
+  pricing?: ImageModelPricingContract
+}
+
+/**
+ * How image generations are paid for:
+ * - `reported`: the provider reports the billed amount
+ * - `estimated`: computed from reported tokens and list prices
+ * - `subscription`: included in a plan, consumes its usage limits
+ */
+export type ImageBillingContract = 'reported' | 'estimated' | 'subscription'
+
+/** USD per 1M tokens. */
+export interface ImageModelPricingContract {
+  textInput: number
+  imageInput: number
+  imageOutput: number
+  textOutput?: number
 }
 
 /** Mirrors pi-ai's `getSupportedThinkingLevels`. */
@@ -212,6 +231,11 @@ export interface ProviderTypePresetContract {
   custom?: boolean
   /** True when the provider can serve image generation models. */
   supportsImageModels?: boolean
+  imageBilling?: ImageBillingContract
+  /** The Add image model dialog lists the provider's image models live. */
+  liveImageCatalog?: boolean
+  /** Image model ids outside the list can be added. */
+  customImageModels?: boolean
 }
 
 export interface AvailableModelContract {
@@ -228,6 +252,7 @@ export interface AvailableImageModelContract {
   name: string
   input: ModelInputModalityContract[]
   output: ModelInputModalityContract[]
+  pricing?: ImageModelPricingContract
 }
 
 export interface OllamaModelContract {
@@ -293,9 +318,14 @@ export interface ProviderImageTestResultContract {
   /** `data:` URL for the preview; only returned to the admin UI. */
   dataUrl?: string
   mimeType?: string
-  /** Billed cost reported by the provider, `null` when not reported. */
+  /** Cost in USD (billed or estimated, see `billing`), `null` when unknown. */
   costUsd: number | null
+  billing?: ImageBillingContract
   durationMs?: number
+  /** Parameter adjustments the provider made, e.g. an ignored aspect ratio. */
+  notes?: string[]
+  /** Usage-limit summary for subscription billing. */
+  usageNote?: string
 }
 
 export interface ProviderActivationResponseContract {
@@ -391,6 +421,7 @@ export interface ProviderModelUpdatePayloadContract {
   maxTokens?: number | null
   reasoning?: boolean | null
   input?: ModelInputModalityContract[] | null
+  output?: ModelInputModalityContract[] | null
   thinkingLevelMap?: ModelThinkingLevelMapContract | null
   cost?: {
     input?: number | null

@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { __setPiCatalogForTests, __setRadiusCatalogForTests, addOAuthProvider, addProvider, getAvailableModels, initDatabase, loadProviders, updateProvider } from '@axiom/core'
+import { __setPiCatalogForTests, __setRadiusCatalogForTests, addOAuthProvider, addProvider, getAvailableModels, initDatabase, loadProviders, updateProvider, updateProviderModel } from '@axiom/core'
 import { mapProvidersListResponse } from './mapper.js'
 import {
   createProvidersService,
@@ -326,12 +326,48 @@ describe('image generation models', () => {
   it('hides image-only models from the live text model list', async () => {
     const provider = createOpenRouterProvider()
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
-      data: [{ id: 'openai/gpt-5-image-mini' }, { id: 'google/gemini-3-pro-image' }, { id: 'qwen/qwen3.8-flash' }],
+      data: [
+        { id: 'openai/gpt-5-image-mini' },
+        { id: 'google/gemini-3-pro-image' },
+        { id: 'qwen/qwen3.8-flash' },
+        { id: 'vendor/brand-new-image-model', architecture: { output_modalities: ['image'] } },
+      ],
     }))
 
     const models = await createProvidersService().getLiveModels(provider.id)
 
     expect(models.map(m => m.id)).toEqual(['google/gemini-3-pro-image', 'qwen/qwen3.8-flash'])
+  })
+
+  it('lists image models live and falls back to the bundled catalog when that fails', async () => {
+    const provider = createOpenRouterProvider()
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(jsonResponse({
+      data: [{ id: 'vendor/fresh-image', name: 'Fresh', architecture: { input_modalities: ['text'], output_modalities: ['image'] } }],
+    }))
+    const service = createProvidersService()
+
+    expect(await service.getLiveImageModels(provider.id)).toEqual([{ id: 'vendor/fresh-image', name: 'Fresh', input: ['text'], output: ['image'] }])
+    expect(String(fetchSpy.mock.calls[0]![0])).toBe('https://openrouter.ai/api/v1/models?output_modalities=image')
+
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    fetchSpy.mockResolvedValueOnce(jsonResponse({ error: 'down' }, 503))
+    expect((await service.getLiveImageModels(provider.id)).map(m => m.id)).toContain('recraft/recraft-v4.1-vector')
+  })
+
+  it('lists the ChatGPT image model of a Codex login without a request and rejects providers without images', async () => {
+    const codex = addOAuthProvider({
+      name: 'ChatGPT',
+      providerType: 'openai-codex',
+      enabledModels: [],
+      oauthCredentials: { access: 'token', refresh: 'refresh', expires: Date.now() + 3_600_000 },
+    })
+    const anthropic = addProvider({ name: 'Claude', providerType: 'anthropic', apiKey: 'k', enabledModels: ['claude-sonnet-4-5'] })
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    const service = createProvidersService()
+
+    expect((await service.getLiveImageModels(codex.id)).map(m => m.id)).toEqual(['gpt-image-2'])
+    expect(fetchSpy).not.toHaveBeenCalled()
+    await expect(service.getLiveImageModels(anthropic.id)).rejects.toBeInstanceOf(ProvidersValidationError)
   })
 
   it('notifies when the usable image models change, and only then', () => {
@@ -406,7 +442,54 @@ describe('image generation models', () => {
     expect(response.providers[0]!.enabledImageModels).toEqual(['recraft/recraft-v4.1-vector'])
     expect(response.providers[0]!.imageModelSpecs?.['recraft/recraft-v4.1-vector']).toMatchObject({ name: 'Recraft: Recraft V4.1 Vector', output: ['image'] })
     expect(response.providers[0]!.modelSpecs).not.toHaveProperty('recraft/recraft-v4.1-vector')
-    expect(response.presets.openrouter!.supportsImageModels).toBe(true)
+    expect(response.presets.openrouter).toMatchObject({ supportsImageModels: true, imageBilling: 'reported', liveImageCatalog: true, customImageModels: true })
+    expect(response.presets.openai).toMatchObject({ supportsImageModels: true, imageBilling: 'estimated', liveImageCatalog: true })
+    expect(response.presets['openai-codex']).toMatchObject({ supportsImageModels: true, imageBilling: 'subscription', liveImageCatalog: false, customImageModels: false })
     expect(response.presets.anthropic!.supportsImageModels).toBe(false)
+    expect(response.presets.anthropic).not.toHaveProperty('imageBilling')
+  })
+
+  it('exposes stored modalities and OpenAI list prices in the image model specs', () => {
+    const provider = createOpenRouterProvider(['vendor/fresh-image'])
+    updateProviderModel(provider.id, 'vendor/fresh-image', { name: 'Fresh', input: ['text'], output: ['image', 'text'] })
+    const openai = addProvider({ name: 'OpenAI', providerType: 'openai', apiKey: 'sk', enabledModels: ['gpt-5.5'] })
+    updateProvider(openai.id, { enabledImageModels: ['gpt-image-1'] })
+
+    const { masked, decrypted } = createProvidersService().listProviders()
+    const response = mapProvidersListResponse(masked, decrypted)
+
+    expect(response.providers.find(p => p.id === provider.id)!.imageModelSpecs?.['vendor/fresh-image'])
+      .toEqual({ name: 'Fresh', input: ['text'], output: ['image', 'text'] })
+    expect(response.providers.find(p => p.id === openai.id)!.imageModelSpecs?.['gpt-image-1'])
+      .toMatchObject({ name: 'GPT Image 1', pricing: { imageOutput: 40 } })
+  })
+
+  it('returns billing, notes and the usage summary of a ChatGPT test image', async () => {
+    const accessToken = `h.${Buffer.from(JSON.stringify({ 'https://api.openai.com/auth': { chatgpt_account_id: 'acc-1' } })).toString('base64url')}.s`
+    const codex = addOAuthProvider({
+      name: 'ChatGPT',
+      providerType: 'openai-codex',
+      enabledModels: [],
+      oauthCredentials: { access: accessToken, refresh: 'refresh', expires: Date.now() + 3_600_000 },
+    })
+    updateProvider(codex.id, { enabledImageModels: ['gpt-image-2'] })
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      data: [{ b64_json: PNG_BASE64 }],
+      output_format: 'png',
+      usage: { input_tokens: 20, output_tokens: 500 },
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json', 'x-codex-active-limit': 'imagegen_premium', 'x-codex-primary-used-percent': '4' },
+    }))
+
+    const result = await createProvidersService().testImageModel(codex.id, 'gpt-image-2')
+
+    expect(result).toMatchObject({
+      success: true,
+      billing: 'subscription',
+      costUsd: 0,
+      mimeType: 'image/png',
+      usageNote: 'ChatGPT image limit: 4% used.',
+    })
   })
 })

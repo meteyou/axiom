@@ -28,6 +28,7 @@ import { openAICompletionsApi } from '@earendil-works/pi-ai/api/openai-completio
 import { openAIResponsesApi } from '@earendil-works/pi-ai/api/openai-responses.lazy'
 import { openrouterImagesApi } from '@earendil-works/pi-ai/api/openrouter-images.lazy'
 import { piMessagesApi } from '@earendil-works/pi-ai/api/pi-messages.lazy'
+import { OPENAI_CODEX_IMAGES_API, OPENAI_IMAGES_API, openAICodexImagesApi, openAIImagesApi } from './openai-images-api.js'
 
 /**
  * Wire-API implementations Axiom can reach. The set covers every preset
@@ -60,6 +61,8 @@ const API_MAP: Partial<Record<Api, ProviderStreams>> = Object.fromEntries(
 
 const IMAGE_API_IMPLEMENTATIONS = {
   'openrouter-images': openrouterImagesApi,
+  [OPENAI_IMAGES_API]: openAIImagesApi,
+  [OPENAI_CODEX_IMAGES_API]: openAICodexImagesApi,
 } satisfies Partial<Record<ImageApi, () => ProviderImages>>
 
 /** Image APIs this module can dispatch to; image catalog entries on other APIs are not offered. */

@@ -3,6 +3,9 @@ import type { FetchFunction } from '@earendil-works/pi-ai'
 import {
   checkImageModelAvailability,
   generateImagesWithProvider,
+  getImageProviderCapabilities,
+  listLiveImageModels,
+  planImageGeneration,
   resolveImageModel,
 } from './image-generation.js'
 import type { UsableImageModel } from './image-generation.js'
@@ -57,6 +60,55 @@ function recordingFetch(respond: () => Response): { fetchImpl: FetchFunction; bo
     return respond()
   }) as unknown as FetchFunction
   return { fetchImpl, bodies }
+}
+
+function openAIProvider(overrides: Partial<ProviderConfig> = {}): ProviderConfig {
+  return {
+    id: 'oa-1',
+    name: 'OpenAI',
+    type: 'openai-completions',
+    providerType: 'openai',
+    provider: 'openai',
+    baseUrl: 'https://api.openai.com/v1',
+    apiKey: 'sk-test',
+    authMethod: 'api-key',
+    enabledImageModels: ['gpt-image-2', 'gpt-image-1'],
+    ...overrides,
+  }
+}
+
+function fakeCodexToken(): string {
+  return `h.${Buffer.from(JSON.stringify({ 'https://api.openai.com/auth': { chatgpt_account_id: 'acc-1' } })).toString('base64url')}.s`
+}
+
+// Without stored OAuth credentials the provider's apiKey is used as the token.
+function codexProvider(): ProviderConfig {
+  return {
+    id: 'cx-1',
+    name: 'ChatGPT',
+    type: 'openai-codex-responses',
+    providerType: 'openai-codex',
+    provider: 'openai-codex',
+    baseUrl: '',
+    apiKey: fakeCodexToken(),
+    authMethod: 'oauth',
+    enabledImageModels: ['gpt-image-2'],
+  }
+}
+
+function openAIImagesResponse(headers: Record<string, string> = {}): Response {
+  return new Response(JSON.stringify({
+    created: 1,
+    data: [{ b64_json: PNG_BASE64, generation_id: 'gen-oa' }],
+    output_format: 'png',
+    usage: {
+      input_tokens: 20,
+      input_tokens_details: { text_tokens: 20, image_tokens: 0 },
+      output_tokens: 1000,
+      output_tokens_details: { image_tokens: 1000, text_tokens: 0 },
+      total_tokens: 1020,
+    },
+  }), { status: 200, headers: { 'content-type': 'application/json', ...headers } })
 }
 
 describe('generateImagesWithProvider (pi-ai openrouter-images with a stubbed HTTP layer)', () => {
@@ -152,6 +204,111 @@ describe('generateImagesWithProvider (pi-ai openrouter-images with a stubbed HTT
   })
 })
 
+describe('generateImagesWithProvider for OpenAI (API key)', () => {
+  it('sends the size for the aspect ratio and estimates the cost from list prices', async () => {
+    const { fetchImpl, bodies } = recordingFetch(() => openAIImagesResponse())
+    const result = await generateImagesWithProvider({
+      provider: openAIProvider(),
+      modelId: 'gpt-image-2',
+      prompt: 'a fox',
+      parameters: { aspectRatio: '16:9', quality: 'high' },
+      fetchImpl,
+    })
+
+    expect(result.errors).toEqual([])
+    expect(result.billing).toBe('estimated')
+    expect(result.images).toEqual([{ mimeType: 'image/png', data: PNG_BASE64, generationId: 'gen-oa', costUsd: expect.any(Number) }])
+    expect(result.costUsd).toBeCloseTo((20 * 5 + 1000 * 30) / 1_000_000, 10)
+    expect(result.usage).toMatchObject({ input: 20, output: 1000 })
+    expect(bodies[0]).toEqual({ model: 'gpt-image-2', prompt: 'a fox', size: '1360x768', quality: 'high' })
+  })
+
+  it('notes a fixed-size mapping and refuses parameters the model cannot render', async () => {
+    const { fetchImpl } = recordingFetch(() => openAIImagesResponse())
+    const result = await generateImagesWithProvider({ provider: openAIProvider(), modelId: 'gpt-image-1', prompt: 'p', parameters: { aspectRatio: '16:9' }, fetchImpl })
+    expect(result.notes).toEqual([expect.stringMatching(/sent as 1536x1024/)])
+
+    await expect(generateImagesWithProvider({
+      provider: openAIProvider(),
+      modelId: 'gpt-image-2',
+      prompt: 'p',
+      parameters: { background: 'transparent' },
+      fetchImpl,
+    })).rejects.toThrow(/transparent/)
+  })
+})
+
+describe('generateImagesWithProvider for a ChatGPT subscription (Codex login)', () => {
+  it('runs variants one after another, books no cost and reports the image limit', async () => {
+    let running = 0
+    let maxRunning = 0
+    const urls: string[] = []
+    const fetchImpl = vi.fn(async (url: unknown) => {
+      urls.push(String(url))
+      running++
+      maxRunning = Math.max(maxRunning, running)
+      await new Promise(resolve => setTimeout(resolve, 5))
+      running--
+      return openAIImagesResponse({
+        'x-codex-active-limit': 'imagegen_premium',
+        'x-codex-primary-used-percent': '3',
+        'x-codex-primary-window-minutes': '1440',
+      })
+    }) as unknown as FetchFunction
+
+    const result = await generateImagesWithProvider({
+      provider: codexProvider(),
+      modelId: 'gpt-image-2',
+      prompt: 'p',
+      parameters: { aspectRatio: '16:9' },
+      count: 2,
+      fetchImpl,
+    })
+
+    expect(result.images).toHaveLength(2)
+    expect(maxRunning).toBe(1)
+    expect(urls[0]).toBe('https://chatgpt.com/backend-api/codex/images/generations')
+    expect(result).toMatchObject({ billing: 'subscription', costUsd: 0, usageNote: 'ChatGPT image limit: 3% used of the 24 h window.' })
+    expect(result.notes).toEqual([expect.stringMatching(/aspect_ratio was ignored/)])
+  })
+})
+
+describe('planImageGeneration', () => {
+  it('accepts valid requests and returns the billing and parameter notes', () => {
+    expect(planImageGeneration(openAIProvider(), 'gpt-image-1', { aspectRatio: '1:1' }, 1)).toEqual({ ok: true, billing: 'estimated', notes: [] })
+    expect(planImageGeneration(codexProvider(), 'gpt-image-2', {}, 5)).toMatchObject({ ok: true, billing: 'subscription' })
+  })
+
+  it('rejects too many input images, image input on text-only models and unsupported parameters', () => {
+    expect(planImageGeneration(codexProvider(), 'gpt-image-2', {}, 6)).toMatchObject({ ok: false, error: expect.stringMatching(/at most 5 input images/) })
+    expect(planImageGeneration(openRouterProvider(), 'recraft/recraft-v4.1-flash', {}, 1)).toMatchObject({ ok: false, error: expect.stringMatching(/does not accept input images/) })
+    expect(planImageGeneration(openAIProvider(), 'gpt-image-2', { aspectRatio: '5:1' }, 0)).toMatchObject({ ok: false, error: expect.stringMatching(/1:3 to 3:1/) })
+  })
+})
+
+describe('image provider capabilities and live model lists', () => {
+  it('describes billing, live list and custom ids per provider type', () => {
+    expect(getImageProviderCapabilities('openrouter')).toEqual({ billing: 'reported', liveCatalog: true, customModels: true })
+    expect(getImageProviderCapabilities('openai')).toEqual({ billing: 'estimated', liveCatalog: true, customModels: true })
+    expect(getImageProviderCapabilities('openai-codex')).toEqual({ billing: 'subscription', liveCatalog: false, customModels: false })
+    expect(getImageProviderCapabilities('anthropic')).toBeNull()
+  })
+
+  it('lists models live with the provider key, or the catalog for providers without a live list', async () => {
+    const { fetchImpl } = recordingFetch(() => jsonResponse({ data: [{ id: 'gpt-image-2' }, { id: 'gpt-5.5' }] }))
+    const live = await listLiveImageModels(openAIProvider(), { fetchImpl: async (url, init) => {
+      expect(String(url)).toBe('https://api.openai.com/v1/models')
+      expect(new Headers(init?.headers).get('authorization')).toBe('Bearer sk-test')
+      return fetchImpl(url, { ...init, body: '{}' })
+    } })
+    expect(live.map(m => m.id)).toEqual(['gpt-image-2'])
+
+    const unused = vi.fn() as unknown as FetchFunction
+    expect((await listLiveImageModels(codexProvider(), { fetchImpl: unused })).map(m => m.id)).toEqual(['gpt-image-2'])
+    expect(unused).not.toHaveBeenCalled()
+  })
+})
+
 describe('checkImageModelAvailability', () => {
   function availabilityFetch(responses: { endpoints: Response; key: Response }): { fetchImpl: FetchFunction; calls: Array<{ url: string; auth: string | null }> } {
     const calls: Array<{ url: string; auth: string | null }> = []
@@ -199,6 +356,12 @@ describe('checkImageModelAvailability', () => {
       fetchImpl: availabilityFetch({ endpoints: jsonResponse({ data: { architecture: { output_modalities: ['text'] }, endpoints: [{}] } }), key: key() }).fetchImpl,
     })
     expect(textOnly.errorMessage).toMatch(/does not generate images/)
+  })
+
+  it('checks a ChatGPT login on the free usage endpoint', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ plan_type: 'free' })) as unknown as FetchFunction
+    const result = await checkImageModelAvailability(codexProvider(), 'gpt-image-2', { fetchImpl })
+    expect(result).toMatchObject({ status: 'down', errorMessage: 'Image generation is not included in the ChatGPT Free plan.' })
   })
 
   it('marks slow checks as degraded', async () => {

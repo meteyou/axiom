@@ -14,6 +14,7 @@ import {
   getRadiusCatalog,
   getUsableImageModels,
   IMAGE_TEST_PROMPT,
+  listLiveImageModels,
   logTokenUsage,
   isDynamicCatalogProvider,
   isRadiusProviderType,
@@ -75,6 +76,7 @@ export interface ProvidersService {
   getModelsByProviderType: (providerType: string) => Promise<AvailableModel[]>
   getLiveModels: (providerId: string) => Promise<AvailableModel[]>
   getImageModelsByProviderType: (providerType: string) => AvailableImageModel[]
+  getLiveImageModels: (providerId: string) => Promise<AvailableImageModel[]>
   refreshModelCatalogs: () => Promise<ProviderCatalogRefreshResultContract[]>
   setFallback: (payload: ProviderFallbackUpdatePayloadContract) => { fallbackProvider: string | null; fallbackModel: string | null }
   startOAuthLogin: (payload: ProviderOAuthLoginStartPayloadContract) => Promise<OAuthLoginResponseContract>
@@ -206,6 +208,21 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
 
   function getImageModelsByProviderType(providerType: string): AvailableImageModel[] {
     return getAvailableImageModels(providerType as ProviderType)
+  }
+
+  async function getLiveImageModels(providerId: string): Promise<AvailableImageModel[]> {
+    const provider = requireProvider(providerId)
+    const catalog = getAvailableImageModels(provider.providerType)
+    if (catalog.length === 0) {
+      throw new ProvidersValidationError('Provider type does not support image generation models')
+    }
+
+    try {
+      return await listLiveImageModels(provider)
+    } catch (err) {
+      console.warn(`[axiom] Live image model fetch failed for provider "${provider.name}", using bundled catalog: ${(err as Error).message}`)
+      return catalog
+    }
   }
 
   function usableImageModelSignature(): string {
@@ -718,22 +735,22 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
 
     const image = result.images[0]
     updateProviderStatus(id, image ? 'connected' : 'error', modelId)
+    const outcome = {
+      modelId,
+      costUsd: result.costUsd,
+      billing: result.billing,
+      durationMs: result.durationMs,
+      ...(result.notes.length > 0 && { notes: result.notes }),
+      ...(result.usageNote && { usageNote: result.usageNote }),
+    }
     if (!image) {
-      return {
-        success: false,
-        modelId,
-        error: result.errors.join(' ') || 'No image returned',
-        costUsd: result.costUsd,
-        durationMs: result.durationMs,
-      }
+      return { success: false, error: result.errors.join(' ') || 'No image returned', ...outcome }
     }
     return {
       success: true,
-      modelId,
       dataUrl: `data:${image.mimeType};base64,${image.data}`,
       mimeType: image.mimeType,
-      costUsd: result.costUsd,
-      durationMs: result.durationMs,
+      ...outcome,
     }
   }
 
@@ -836,6 +853,7 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
     getModelsByProviderType,
     getLiveModels,
     getImageModelsByProviderType,
+    getLiveImageModels,
     refreshModelCatalogs,
     setFallback,
     startOAuthLogin,
@@ -909,7 +927,7 @@ async function fetchModelsFromBase(baseUrl: string, apiKey: string | undefined, 
       const models: AvailableModel[] = []
       for (const entry of body.data ?? []) {
         const id = typeof entry.id === 'string' ? entry.id.trim() : ''
-        if (!id || seen.has(id) || !isChatCapableMode(entry.mode)) continue
+        if (!id || seen.has(id) || !isChatCapableMode(entry.mode) || !producesText(entry.architecture)) continue
         seen.add(id)
         const displayName = [entry.name, entry.display_name].find(v => typeof v === 'string' && v.trim()) as string | undefined
         const name = displayName?.trim() ?? id
@@ -944,12 +962,19 @@ interface ProbedModelEntry {
   max_input_tokens?: unknown
   max_output_tokens?: unknown
   pricing?: { prompt?: unknown; completion?: unknown; input_cache_read?: unknown; input_cache_write?: unknown }
+  /** OpenRouter: image-only models report `output_modalities: ["image"]`. */
+  architecture?: { output_modalities?: unknown }
 }
 
 const CHAT_CAPABLE_MODES = new Set(['chat', 'completion', 'responses'])
 
 function isChatCapableMode(mode: unknown): boolean {
   return typeof mode !== 'string' || CHAT_CAPABLE_MODES.has(mode)
+}
+
+function producesText(architecture: ProbedModelEntry['architecture']): boolean {
+  const output = architecture?.output_modalities
+  return !Array.isArray(output) || output.includes('text')
 }
 
 function firstPositiveInteger(...values: unknown[]): number | undefined {

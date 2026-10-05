@@ -1,99 +1,90 @@
-import type { FetchFunction, ImageApi, ImageContent, ImageModel, ImagesInputContent } from '@earendil-works/pi-ai'
+import type { AssistantImages, FetchFunction, ImageApi, ImageContent, ImageModel, ImagesInputContent } from '@earendil-works/pi-ai'
 import { ensureConfigTemplates, loadConfig, warnConfigReadFailed } from './config.js'
 import { IMAGE_GENERATION_MAX_VARIANTS_BOUNDS, normalizeImageGenerationSettings } from './contracts/settings.js'
 import type { ImageGenerationSettingsContract } from './contracts/settings.js'
+import { getImageBackend, requireImageBackend } from './image-backends.js'
+import type { ImageBilling, ImageGenerationParameters } from './image-backends.js'
+import type { AvailableImageModel } from './image-catalog.js'
 import { generateImages } from './pi-models.js'
 import {
   buildImageModel,
   getApiKeyForProvider,
+  getAvailableImageModels,
+  getImageApiForType,
+  getImageBaseUrl,
   getUsableImageModels,
   loadProvidersDecrypted,
 } from './provider-config.js'
-import type { ProviderConfig } from './provider-config.js'
+import type { ProviderConfig, ProviderType } from './provider-config.js'
+
+export type { ImageBilling, ImageGenerationParameters } from './image-backends.js'
 
 /** Slow models (e.g. GPT-5 Image) take well over a minute for a single image. */
 const IMAGE_GENERATION_TIMEOUT_MS = 180_000
 const AVAILABILITY_TIMEOUT_MS = 15_000
+const MODEL_LIST_TIMEOUT_MS = 15_000
 
-/** Fixed prompt for the paid "Generate test image" action in the Providers UI. */
+/** Fixed prompt for the "Generate test image" action in the Providers UI. */
 export const IMAGE_TEST_PROMPT = 'A small red apple on a plain white background, simple flat illustration.'
 
-export interface ImageGenerationParameters {
-  aspectRatio?: string
+export interface ImageProviderCapabilities {
+  billing: ImageBilling
+  /** The provider lists its image models live; otherwise only the bundled catalog is offered. */
+  liveCatalog: boolean
+  customModels: boolean
 }
 
-type ImageAvailability =
-  | { ok: true }
+/** Image generation traits of a provider type, `null` when it serves no image models. */
+export function getImageProviderCapabilities(providerType: ProviderType | string): ImageProviderCapabilities | null {
+  const api = getImageApiForType(providerType)
+  const backend = api ? getImageBackend(api) : undefined
+  if (!backend) return null
+  return { billing: backend.billing, liveCatalog: Boolean(backend.listModels), customModels: backend.customModels }
+}
+
+/**
+ * Image models the provider offers right now. Providers without a live list
+ * return the bundled catalog; failures propagate so callers can fall back.
+ */
+export async function listLiveImageModels(
+  provider: ProviderConfig,
+  options: { fetchImpl?: FetchFunction; timeoutMs?: number } = {},
+): Promise<AvailableImageModel[]> {
+  const api = getImageApiForType(provider.providerType)
+  const baseUrl = getImageBaseUrl(provider)
+  if (!api || !baseUrl) throw new Error(`Provider "${provider.name}" does not support image generation`)
+  const backend = requireImageBackend(api)
+  if (!backend.listModels) return getAvailableImageModels(provider.providerType)
+  const apiKey = await getApiKeyForProvider(provider)
+  return backend.listModels(baseUrl, apiKey, options.fetchImpl ?? fetch, AbortSignal.timeout(options.timeoutMs ?? MODEL_LIST_TIMEOUT_MS))
+}
+
+export type ImageGenerationPlan =
+  | { ok: true; billing: ImageBilling; notes: string[] }
   | { ok: false; error: string }
 
 /**
- * Wire-level behaviour pi-ai does not cover for an image API: optional
- * request parameters, the real billed cost and a free availability probe.
- * Keyed by pi-ai `ImageApi` so further backends plug in next to OpenRouter.
+ * Checks a request against the model before anything is sent: input images
+ * and parameters the model cannot handle are rejected up front instead of
+ * failing (and possibly being billed) at the provider.
  */
-interface ImageBackend {
-  applyParameters(payload: Record<string, unknown>, params: ImageGenerationParameters): Record<string, unknown>
-  extractCost(rawResponse: unknown): number | undefined
-  checkAvailability(model: ImageModel<ImageApi>, apiKey: string, fetchImpl: FetchFunction, signal: AbortSignal): Promise<ImageAvailability>
-}
-
-function encodeModelPath(modelId: string): string {
-  return modelId.split('/').map(encodeURIComponent).join('/')
-}
-
-const openRouterImageBackend: ImageBackend = {
-  // pi-ai sends no image options at all; OpenRouter reads them from `image_config`.
-  applyParameters(payload, params) {
-    if (!params.aspectRatio) return payload
-    return { ...payload, image_config: { aspect_ratio: params.aspectRatio } }
-  },
-
-  // pi-ai prices image models from per-token catalog rates, which are zero or
-  // far off for most image models. OpenRouter reports the billed amount here.
-  extractCost(rawResponse) {
-    const cost = (rawResponse as { usage?: { cost?: unknown } } | null)?.usage?.cost
-    return typeof cost === 'number' && Number.isFinite(cost) ? cost : undefined
-  },
-
-  async checkAvailability(model, apiKey, fetchImpl, signal) {
-    const baseUrl = model.baseUrl.replace(/\/+$/, '')
-    const [endpointsResponse, keyResponse] = await Promise.all([
-      fetchImpl(`${baseUrl}/models/${encodeModelPath(model.id)}/endpoints`, { headers: { Accept: 'application/json' }, signal }),
-      fetchImpl(`${baseUrl}/key`, { headers: { Accept: 'application/json', Authorization: `Bearer ${apiKey}` }, signal }),
-    ])
-
-    if (keyResponse.status === 401 || keyResponse.status === 403) {
-      return { ok: false, error: `API key rejected (HTTP ${keyResponse.status})` }
-    }
-    if (!keyResponse.ok) return { ok: false, error: `Key check failed (HTTP ${keyResponse.status})` }
-
-    if (endpointsResponse.status === 404) {
-      return { ok: false, error: `Model "${model.id}" is not available on OpenRouter` }
-    }
-    if (!endpointsResponse.ok) return { ok: false, error: `Endpoint check failed (HTTP ${endpointsResponse.status})` }
-
-    const body = await endpointsResponse.json() as {
-      data?: { endpoints?: unknown[]; architecture?: { output_modalities?: unknown } }
-    }
-    const outputModalities = body.data?.architecture?.output_modalities
-    if (Array.isArray(outputModalities) && !outputModalities.includes('image')) {
-      return { ok: false, error: `Model "${model.id}" does not generate images` }
-    }
-    if (!body.data?.endpoints?.length) {
-      return { ok: false, error: `Model "${model.id}" has no live endpoints right now` }
-    }
-    return { ok: true }
-  },
-}
-
-const IMAGE_BACKENDS: Partial<Record<ImageApi, ImageBackend>> = {
-  'openrouter-images': openRouterImageBackend,
-}
-
-function requireImageBackend(model: ImageModel<ImageApi>): ImageBackend {
-  const backend = IMAGE_BACKENDS[model.api]
-  if (!backend) throw new Error(`Image API "${model.api}" is not supported`)
-  return backend
+export function planImageGeneration(
+  provider: ProviderConfig,
+  modelId: string,
+  parameters: ImageGenerationParameters,
+  inputImageCount: number,
+): ImageGenerationPlan {
+  const model = buildImageModel(provider, modelId)
+  const backend = requireImageBackend(model.api)
+  if (inputImageCount > 0 && !model.input.includes('image')) {
+    return { ok: false, error: `Model "${modelId}" does not accept input images. Choose a model that supports image editing.` }
+  }
+  if (inputImageCount > backend.maxInputImages) {
+    return { ok: false, error: `Model "${modelId}" accepts at most ${backend.maxInputImages} input images.` }
+  }
+  const prepared = backend.prepare(model, parameters)
+  if (!prepared.ok) return prepared
+  return { ok: true, billing: backend.billing, notes: prepared.notes }
 }
 
 export interface ImageModelAvailabilityResult {
@@ -115,7 +106,7 @@ export async function checkImageModelAvailability(
   try {
     const model = buildImageModel(provider, modelId)
     const apiKey = await getApiKeyForProvider(provider)
-    const result = await requireImageBackend(model).checkAvailability(
+    const result = await requireImageBackend(model.api).checkAvailability(
       model,
       apiKey,
       options.fetchImpl ?? fetch,
@@ -172,13 +163,18 @@ export interface ImageGenerationResult {
   images: GeneratedImage[]
   /** Text the model returned alongside (or instead of) images, e.g. a refusal. */
   texts: string[]
-  /** Sum of the billed costs the provider reported; `null` when none were reported. */
+  /** Sum of the per-request costs (see `billing`); `null` when none were known. */
   costUsd: number | null
+  billing: ImageBilling
   usage: ImageGenerationUsage
   /** One entry per provider request (one per variant), so costs can be booked per image. */
   requests: ImageRequestOutcome[]
   durationMs: number
   errors: string[]
+  /** Parameter adjustments, e.g. an aspect ratio mapped to the closest supported size. */
+  notes: string[]
+  /** Usage-limit summary from the last response, for subscription billing. */
+  usageNote?: string
 }
 
 async function readJsonSafely(response: Response): Promise<unknown> {
@@ -191,15 +187,31 @@ async function readJsonSafely(response: Response): Promise<unknown> {
 
 const NO_IMAGE_RETURNED = 'The model returned no image. It may have refused the prompt, or answered with a remote image URL, which is not supported.'
 
+async function runWithConcurrency<T>(count: number, limit: number, task: () => Promise<T>): Promise<T[]> {
+  const results: T[] = []
+  let next = 0
+  const worker = async () => {
+    while (next < count) {
+      const index = next++
+      results[index] = await task()
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(count, limit) }, worker))
+  return results
+}
+
 export async function generateImagesWithProvider(request: ImageGenerationRequest): Promise<ImageGenerationResult> {
   const model = buildImageModel(request.provider, request.modelId)
-  const backend = requireImageBackend(model)
+  const backend = requireImageBackend(model.api)
+  const prepared = backend.prepare(model, request.parameters ?? {})
+  if (!prepared.ok) throw new Error(prepared.error)
   const apiKey = await getApiKeyForProvider(request.provider)
   const generate = request.generate ?? generateImages
   const fetchImpl = request.fetchImpl ?? fetch
   const count = Math.min(Math.max(1, Math.floor(request.count ?? 1)), IMAGE_GENERATION_MAX_VARIANTS_BOUNDS.max)
   const input: ImagesInputContent[] = [{ type: 'text', text: request.prompt }, ...(request.inputImages ?? [])]
   const startedAt = Date.now()
+  let usageNote: string | undefined
 
   const runOne = async () => {
     let reportedCost: number | undefined
@@ -207,7 +219,7 @@ export async function generateImagesWithProvider(request: ImageGenerationRequest
     // images and, for Gemini, a ~1 MB reasoning signature.
     const fetchCapturingCost: FetchFunction = async (url, init) => {
       const response = await fetchImpl(url, init)
-      reportedCost = backend.extractCost(await readJsonSafely(response.clone()))
+      if (response.ok) reportedCost = backend.extractCost(await readJsonSafely(response.clone()), model)
       return response
     }
     const result = await generate(model, { input }, {
@@ -216,13 +228,31 @@ export async function generateImagesWithProvider(request: ImageGenerationRequest
       timeoutMs: request.timeoutMs ?? IMAGE_GENERATION_TIMEOUT_MS,
       maxRetries: 0,
       signal: request.signal,
-      onPayload: (payload) => backend.applyParameters(payload as Record<string, unknown>, request.parameters ?? {}),
+      onPayload: payload => ({ ...(payload as Record<string, unknown>), ...prepared.payload }),
+      onResponse: (response) => {
+        usageNote = backend.describeUsage?.(response.headers) ?? usageNote
+      },
     })
     return { result, reportedCost }
   }
 
-  const outcomes = await Promise.all(Array.from({ length: count }, runOne))
+  const outcomes = await runWithConcurrency(count, backend.maxParallel, runOne)
+  return {
+    model,
+    ...collectOutcomes(outcomes),
+    billing: backend.billing,
+    durationMs: Date.now() - startedAt,
+    notes: prepared.notes,
+    ...(usageNote && { usageNote }),
+  }
+}
 
+interface RequestOutcome {
+  result: AssistantImages
+  reportedCost: number | undefined
+}
+
+function collectOutcomes(outcomes: RequestOutcome[]): Pick<ImageGenerationResult, 'images' | 'texts' | 'costUsd' | 'usage' | 'requests' | 'errors'> {
   const images: GeneratedImage[] = []
   const texts: string[] = []
   const errors: string[] = []
@@ -267,7 +297,7 @@ export async function generateImagesWithProvider(request: ImageGenerationRequest
     }
   }
 
-  return { model, images, texts, costUsd, usage, requests, durationMs: Date.now() - startedAt, errors }
+  return { images, texts, costUsd, usage, requests, errors }
 }
 
 export interface UsableImageModel {

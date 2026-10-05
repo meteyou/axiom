@@ -38,6 +38,7 @@ export interface ProvidersController {
   getModelsByProviderType: (req: AuthenticatedRequest, res: ExpressResponse) => Promise<void>
   getLiveModels: (req: AuthenticatedRequest, res: ExpressResponse) => Promise<void>
   getImageModelsByProviderType: (req: AuthenticatedRequest, res: ExpressResponse) => void
+  getLiveImageModels: (req: AuthenticatedRequest, res: ExpressResponse) => Promise<void>
   postOAuthLogin: (req: AuthenticatedRequest, res: ExpressResponse) => Promise<void>
   getOAuthStatus: (req: AuthenticatedRequest, res: ExpressResponse) => Promise<void>
   postOAuthCode: (req: AuthenticatedRequest, res: ExpressResponse) => void
@@ -122,6 +123,24 @@ export function createProvidersController(options: ProvidersRouterOptions = {}):
         return
       }
       res.json({ models: service.getImageModelsByProviderType(parsedProviderType.value) })
+    },
+
+    async getLiveImageModels(req, res) {
+      try {
+        res.json({ models: await service.getLiveImageModels(String(req.params.id ?? '')) })
+      } catch (err) {
+        if (err instanceof ProvidersNotFoundError) {
+          res.status(404).json({ error: err.message })
+          return
+        }
+
+        if (err instanceof ProvidersValidationError) {
+          res.status(400).json({ error: err.message })
+          return
+        }
+
+        res.status(502).json({ error: `Failed to load image models: ${(err as Error).message}` })
+      }
     },
 
     async getLiveModels(req, res) {

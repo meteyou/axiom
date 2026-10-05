@@ -40,10 +40,12 @@ function resultWith(overrides: Partial<ImageGenerationResult> = {}, modelId = 'r
     images: [{ mimeType: 'image/webp', data: IMAGE_BASE64, generationId: 'gen-1', costUsd: 0.035 }],
     texts: [],
     costUsd: 0.035,
+    billing: 'reported',
     usage: { input: 44, output: 4175, cacheRead: 0, cacheWrite: 0 },
     requests: [{ costUsd: 0.035, usage: { input: 44, output: 4175, cacheRead: 0, cacheWrite: 0 } }],
     durationMs: 5736,
     errors: [],
+    notes: [],
     ...overrides,
   }
 }
@@ -260,6 +262,52 @@ describe('generate_image tool', () => {
     expect((await run(tool, { prompt: '   ' })).details.error).toBe(true)
     expect(textOf(await run(tool, { prompt: 'p', aspect_ratio: 'wide' }))).toMatch(/aspect_ratio/)
     expect(generate).not.toHaveBeenCalled()
+  })
+
+  it('passes quality and background on and validates them', async () => {
+    const generate = vi.fn(async () => resultWith())
+    const tool = createTool(generate)
+    expect(textOf(await run(tool, { prompt: 'p', quality: 'ultra' }))).toContain('quality must be one of low, medium, high, auto')
+    expect(textOf(await run(tool, { prompt: 'p', background: 'pink' }))).toContain('background must be one of transparent, opaque, auto')
+    expect(generate).not.toHaveBeenCalled()
+
+    const output = await run(tool, { prompt: 'Logo', quality: 'HIGH', background: 'transparent' })
+    expect(generate).toHaveBeenCalledWith(expect.objectContaining({ parameters: { quality: 'high', background: 'transparent' } }))
+    const sidecar = JSON.parse(fs.readFileSync(`${output.details.files![0]!.absolutePath}.json`, 'utf-8')) as { params: unknown; billing: unknown }
+    expect(sidecar.params).toMatchObject({ aspectRatio: null, quality: 'high', background: 'transparent' })
+    expect(sidecar.billing).toBe('reported')
+  })
+
+  it('reports parameter notes next to the result', async () => {
+    const output = await run(createTool(async () => resultWith({ notes: ['quality is not supported for OpenRouter image models and was ignored.'] })), { prompt: 'p', quality: 'high' })
+    expect(textOf(output)).toContain('Note: quality is not supported for OpenRouter image models and was ignored.')
+    expect(output.details.notes).toEqual(['quality is not supported for OpenRouter image models and was ignored.'])
+  })
+
+  it('labels estimated costs and subscription usage', async () => {
+    const estimated = await run(createTool(async () => resultWith({ billing: 'estimated', costUsd: 0.0301 })), { prompt: 'p' })
+    expect(textOf(estimated)).toContain('Cost: ~$0.0301 (estimated from list prices).')
+
+    const unknownPrice = await run(createTool(async () => resultWith({ billing: 'estimated', costUsd: null })), { prompt: 'p' })
+    expect(textOf(unknownPrice)).toContain('Cost: unknown (no list price for this model).')
+
+    const failed = await run(createTool(async () => resultWith({
+      billing: 'estimated',
+      costUsd: null,
+      images: [],
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      errors: ['HTTP 429: You have no credits remaining.'],
+    })), { prompt: 'p' })
+    expect(textOf(failed)).toContain('HTTP 429: You have no credits remaining. Cost: none (no tokens were reported).')
+
+    const subscription = await run(createTool(async () => resultWith({
+      billing: 'subscription',
+      costUsd: 0,
+      usageNote: 'ChatGPT image limit: 3% used of the 24 h window.',
+    })), { prompt: 'p' })
+    expect(textOf(subscription)).toContain('Cost: included in the ChatGPT subscription (counts toward its usage limits).')
+    expect(textOf(subscription)).toContain('ChatGPT image limit: 3% used of the 24 h window.')
+    expect(subscription.details.billing).toBe('subscription')
   })
 
   it('returns the model resolution error', async () => {
