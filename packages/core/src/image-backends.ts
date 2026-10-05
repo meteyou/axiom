@@ -3,6 +3,7 @@ import { extractCodexAccountId } from './codex-auth.js'
 import { compareOpenAIImageModelIds, findOpenAIImageModelInfo, openAIImageModelName } from './image-catalog.js'
 import type { AvailableImageModel, ImageModality, ImageModelPricing } from './image-catalog.js'
 import { OPENAI_CODEX_IMAGES_API, OPENAI_IMAGES_API } from './openai-images-api.js'
+import { OPENROUTER_IMAGES_API } from './openrouter-images-api.js'
 import type { OpenAIImagesResponse } from './openai-images-api.js'
 
 /**
@@ -110,18 +111,17 @@ const openRouterImageBackend: ImageBackend = {
   maxParallel: Number.POSITIVE_INFINITY,
   maxInputImages: Number.POSITIVE_INFINITY,
 
-  // pi-ai sends no image options at all; OpenRouter reads them from `image_config`.
   prepare(_model, params) {
     const ignored = ignoredParameters(params, ['quality', 'background'])
     return {
       ok: true,
-      payload: params.aspectRatio ? { image_config: { aspect_ratio: params.aspectRatio } } : {},
+      payload: params.aspectRatio ? { aspect_ratio: params.aspectRatio } : {},
       notes: ignored.length > 0 ? [`${ignored.join(' and ')} is not supported for OpenRouter image models and was ignored.`] : [],
     }
   },
 
-  // pi-ai prices image models from per-token catalog rates, which are zero or
-  // far off for most image models. OpenRouter reports the billed amount here.
+  // Per-token catalog rates are zero or far off for most image models.
+  // OpenRouter reports the billed amount here.
   extractCost(rawResponse) {
     const cost = (rawResponse as { usage?: { cost?: unknown } } | null)?.usage?.cost
     return typeof cost === 'number' && Number.isFinite(cost) ? cost : undefined
@@ -389,7 +389,7 @@ const codexImageBackend: ImageBackend = {
 }
 
 const IMAGE_BACKENDS: Partial<Record<ImageApi, ImageBackend>> = {
-  'openrouter-images': openRouterImageBackend,
+  [OPENROUTER_IMAGES_API]: openRouterImageBackend,
   [OPENAI_IMAGES_API]: openAIImageBackend,
   [OPENAI_CODEX_IMAGES_API]: codexImageBackend,
 }

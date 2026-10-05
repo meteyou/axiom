@@ -26,9 +26,9 @@ import { mistralConversationsApi } from '@earendil-works/pi-ai/api/mistral-conve
 import { openAICodexResponsesApi } from '@earendil-works/pi-ai/api/openai-codex-responses.lazy'
 import { openAICompletionsApi } from '@earendil-works/pi-ai/api/openai-completions.lazy'
 import { openAIResponsesApi } from '@earendil-works/pi-ai/api/openai-responses.lazy'
-import { openrouterImagesApi } from '@earendil-works/pi-ai/api/openrouter-images.lazy'
 import { piMessagesApi } from '@earendil-works/pi-ai/api/pi-messages.lazy'
 import { OPENAI_CODEX_IMAGES_API, OPENAI_IMAGES_API, openAICodexImagesApi, openAIImagesApi } from './openai-images-api.js'
+import { OPENROUTER_IMAGES_API, openRouterImagesApi } from './openrouter-images-api.js'
 
 /**
  * Wire-API implementations Axiom can reach. The set covers every preset
@@ -60,7 +60,7 @@ const API_MAP: Partial<Record<Api, ProviderStreams>> = Object.fromEntries(
 )
 
 const IMAGE_API_IMPLEMENTATIONS = {
-  'openrouter-images': openrouterImagesApi,
+  [OPENROUTER_IMAGES_API]: openRouterImagesApi,
   [OPENAI_IMAGES_API]: openAIImagesApi,
   [OPENAI_CODEX_IMAGES_API]: openAICodexImagesApi,
 } satisfies Partial<Record<ImageApi, () => ProviderImages>>

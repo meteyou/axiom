@@ -33,33 +33,24 @@ function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
 }
 
-function openRouterImageResponse(options: { imageUrl?: string; cost?: number; content?: string | null } = {}): unknown {
+function openRouterImageResponse(options: { cost?: number; data?: unknown[] } = {}): unknown {
   return {
     id: 'gen-123',
-    object: 'chat.completion',
     created: 1,
-    model: 'recraft/recraft-v4.1',
-    choices: [{
-      index: 0,
-      finish_reason: 'stop',
-      message: {
-        role: 'assistant',
-        content: options.content ?? null,
-        reasoning_details: [{ type: 'reasoning.text', signature: 'x'.repeat(1000) }],
-        images: [{ type: 'image_url', image_url: { url: options.imageUrl ?? `data:image/png;base64,${PNG_BASE64}` } }],
-      },
-    }],
+    data: options.data ?? [{ b64_json: PNG_BASE64, media_type: 'image/png' }],
     usage: { prompt_tokens: 40, completion_tokens: 4000, total_tokens: 4040, cost: options.cost ?? 0.035 },
   }
 }
 
-function recordingFetch(respond: () => Response): { fetchImpl: FetchFunction; bodies: Array<Record<string, unknown>> } {
+function recordingFetch(respond: () => Response): { fetchImpl: FetchFunction; bodies: Array<Record<string, unknown>>; urls: string[] } {
   const bodies: Array<Record<string, unknown>> = []
-  const fetchImpl = vi.fn(async (_url: unknown, init?: RequestInit) => {
+  const urls: string[] = []
+  const fetchImpl = vi.fn(async (url: unknown, init?: RequestInit) => {
+    urls.push(String(url))
     bodies.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>)
     return respond()
   }) as unknown as FetchFunction
-  return { fetchImpl, bodies }
+  return { fetchImpl, bodies, urls }
 }
 
 function openAIProvider(overrides: Partial<ProviderConfig> = {}): ProviderConfig {
@@ -111,9 +102,9 @@ function openAIImagesResponse(headers: Record<string, string> = {}): Response {
   }), { status: 200, headers: { 'content-type': 'application/json', ...headers } })
 }
 
-describe('generateImagesWithProvider (pi-ai openrouter-images with a stubbed HTTP layer)', () => {
-  it('returns the image, the billed cost from the raw response and sends image_config', async () => {
-    const { fetchImpl, bodies } = recordingFetch(() => jsonResponse(openRouterImageResponse({ cost: 0.035 })))
+describe('generateImagesWithProvider for OpenRouter (Image API with a stubbed HTTP layer)', () => {
+  it('posts to /images and returns the image, the billed cost and the aspect ratio', async () => {
+    const { fetchImpl, bodies, urls } = recordingFetch(() => jsonResponse(openRouterImageResponse({ cost: 0.035 })))
 
     const result = await generateImagesWithProvider({
       provider: openRouterProvider(),
@@ -127,21 +118,25 @@ describe('generateImagesWithProvider (pi-ai openrouter-images with a stubbed HTT
     expect(result.images).toEqual([{ mimeType: 'image/png', data: PNG_BASE64, generationId: 'gen-123', costUsd: 0.035 }])
     expect(result.costUsd).toBe(0.035)
     expect(result.usage.output).toBe(4000)
-    expect(bodies[0]).toMatchObject({
-      model: 'recraft/recraft-v4.1',
-      stream: false,
-      modalities: ['image'],
-      image_config: { aspect_ratio: '16:9' },
-    })
+    expect(urls[0]).toBe('https://openrouter.ai/api/v1/images')
+    expect(bodies[0]).toEqual({ model: 'recraft/recraft-v4.1', prompt: 'a sailboat', aspect_ratio: '16:9' })
   })
 
-  it('omits image_config without an aspect ratio', async () => {
+  it('omits aspect_ratio when none is requested', async () => {
     const { fetchImpl, bodies } = recordingFetch(() => jsonResponse(openRouterImageResponse()))
     await generateImagesWithProvider({ provider: openRouterProvider(), modelId: 'recraft/recraft-v4.1', prompt: 'p', fetchImpl })
-    expect(bodies[0]).not.toHaveProperty('image_config')
+    expect(bodies[0]).toEqual({ model: 'recraft/recraft-v4.1', prompt: 'p' })
   })
 
-  it('sends input images as data URLs after the prompt', async () => {
+  it('keeps the media type the provider reports', async () => {
+    const { fetchImpl } = recordingFetch(() => jsonResponse(openRouterImageResponse({
+      data: [{ b64_json: PNG_BASE64, media_type: 'image/svg+xml' }],
+    })))
+    const result = await generateImagesWithProvider({ provider: openRouterProvider(), modelId: 'recraft/recraft-v4.1', prompt: 'p', fetchImpl })
+    expect(result.images[0]!.mimeType).toBe('image/svg+xml')
+  })
+
+  it('sends input images as data-URL input references', async () => {
     const { fetchImpl, bodies } = recordingFetch(() => jsonResponse(openRouterImageResponse()))
     await generateImagesWithProvider({
       provider: openRouterProvider(),
@@ -150,11 +145,11 @@ describe('generateImagesWithProvider (pi-ai openrouter-images with a stubbed HTT
       inputImages: [{ type: 'image', mimeType: 'image/png', data: PNG_BASE64 }],
       fetchImpl,
     })
-    const messages = bodies[0]!.messages as Array<{ content: Array<Record<string, unknown>> }>
-    expect(messages[0]!.content).toEqual([
-      { type: 'text', text: 'make it blue' },
-      { type: 'image_url', image_url: { url: `data:image/png;base64,${PNG_BASE64}` } },
-    ])
+    expect(bodies[0]).toEqual({
+      model: 'google/gemini-3.1-flash-image',
+      prompt: 'make it blue',
+      input_references: [{ type: 'image_url', image_url: { url: `data:image/png;base64,${PNG_BASE64}` } }],
+    })
   })
 
   it('runs one request per image in parallel and caps the count', async () => {
@@ -173,23 +168,25 @@ describe('generateImagesWithProvider (pi-ai openrouter-images with a stubbed HTT
     expect(result.requests[0]!.costUsd).toBeCloseTo(0.01)
   })
 
-  it('surfaces pi-ai error results instead of throwing', async () => {
+  it('surfaces error results instead of throwing', async () => {
     const { fetchImpl } = recordingFetch(() => jsonResponse({ error: { message: 'Insufficient credits', code: 402 } }, 402))
     const result = await generateImagesWithProvider({ provider: openRouterProvider(), modelId: 'recraft/recraft-v4.1', prompt: 'p', fetchImpl })
     expect(result.images).toEqual([])
     expect(result.costUsd).toBeNull()
     expect(result.errors).toHaveLength(1)
-    expect(result.errors[0]).toMatch(/Insufficient credits|402/)
+    expect(result.errors[0]).toBe('HTTP 402: Insufficient credits')
   })
 
-  it('reports "no image" when the model answers with a remote URL or only text', async () => {
-    const { fetchImpl } = recordingFetch(() => jsonResponse(openRouterImageResponse({
-      imageUrl: 'https://cdn.example.com/image.png',
-      content: 'I cannot draw that.',
-    })))
+  it('reads the flat error body OpenRouter returns for unknown routes', async () => {
+    const { fetchImpl } = recordingFetch(() => jsonResponse({ message: 'Model not found', code: 404 }, 404))
+    const result = await generateImagesWithProvider({ provider: openRouterProvider(), modelId: 'recraft/recraft-v4.1', prompt: 'p', fetchImpl })
+    expect(result.errors).toEqual(['HTTP 404: Model not found'])
+  })
+
+  it('reports "no image" when the response carries no base64 image', async () => {
+    const { fetchImpl } = recordingFetch(() => jsonResponse(openRouterImageResponse({ data: [] })))
     const result = await generateImagesWithProvider({ provider: openRouterProvider(), modelId: 'recraft/recraft-v4.1', prompt: 'p', fetchImpl })
     expect(result.images).toEqual([])
-    expect(result.texts).toEqual(['I cannot draw that.'])
     expect(result.errors[0]).toMatch(/returned no image/)
     expect(result.costUsd).toBe(0.035)
   })

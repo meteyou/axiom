@@ -166,11 +166,11 @@ describe('ChatGPT subscription image backend', () => {
 })
 
 describe('OpenRouter image backend', () => {
-  it('sends the aspect ratio as image_config and notes unsupported parameters', () => {
+  it('sends the aspect ratio and notes unsupported parameters', () => {
     const prepared = openRouter.prepare(model('openrouter-images', 'x', ''), { aspectRatio: '16:9', quality: 'high' })
     expect(prepared).toEqual({
       ok: true,
-      payload: { image_config: { aspect_ratio: '16:9' } },
+      payload: { aspect_ratio: '16:9' },
       notes: ['quality is not supported for OpenRouter image models and was ignored.'],
     })
   })
