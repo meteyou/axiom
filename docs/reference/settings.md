@@ -46,6 +46,7 @@ The on-disk shape is a **superset** of [`SettingsContract`](https://github.com/)
 | `uploads`                          | object                                                            | see below      | nested                                  | Upload retention policy.                                                                                          |
 | `watchdog`                         | object                                                            | see below      | nested                                  | Provider-stall thresholds for chat turns.                                                                         |
 | `retry`                            | object                                                            | see below      | nested                                  | Automatic retry of chat turns that hit transient provider errors.                                                 |
+| `compaction`                       | object                                                            | see below      | nested                                  | Context compaction for the main chat and background tasks.                                                        |
 | `healthMonitor`                    | object                                                            | see below      | nested                                  | Provider health checks + fallback.                                                                                |
 | `memoryConsolidation`              | object                                                            | see below      | nested                                  | Nightly memory job.                                                                                               |
 | `factExtraction`                   | object                                                            | see below      | nested                                  | Per-session fact extraction.                                                                                      |
@@ -137,6 +138,53 @@ restart.
 
 ```json
 { "retry": { "enabled": true, "maxRetries": 3, "baseDelayMs": 2000 } }
+```
+
+### `compaction`
+
+Replaces the older part of a long conversation with an LLM-written summary
+when the context approaches the model's limit — for the main chat and for
+background tasks. Concept, triggers and summary format:
+[Context Compaction](../concepts/compaction). Edited under
+[Agent → Context compaction](../settings/agent#context-compaction); read fresh
+before every check, so a save applies without a restart.
+
+Token values are upper bounds. The runtime caps them against the active
+model's context window `W`: reserve ≤ 25% of `W`, trigger = `min(W − reserve,
+maxContextTokens)`, keep ≤ 30% and summary ≤ 15% of the trigger.
+
+| Key                                | Type             | Default  | Range                         | Effect                                                                                      |
+|------------------------------------|------------------|----------|-------------------------------|---------------------------------------------------------------------------------------------|
+| `compaction.enabled`               | `boolean`        | `true`   | —                             | Master switch for automatic compaction. `/compact` works regardless.                         |
+| `compaction.reserveTokens`         | `number`         | `16384`  | integer `1024`–`1000000`      | Tokens kept free for the answer; trigger = window − reserve.                                 |
+| `compaction.keepRecentTokens`      | `number`         | `20000`  | integer `1000`–`1000000`      | Most recent conversation tokens kept verbatim.                                               |
+| `compaction.summaryMaxTokens`      | `number`         | `8192`   | integer `256`–`200000`        | Output cap for the summary call.                                                             |
+| `compaction.maxContextTokens`      | `number \| null` | `200000` | integer `8192`–`10000000` or `null` | Soft budget independent of the window; `null` = compact only near the window limit.   |
+| `compaction.toolResultMaxChars`    | `number`         | `2000`   | integer `200`–`100000`        | Tool results are cut to this many characters in the summary call's input.                   |
+| `compaction.tasks.enabled`         | `boolean`        | `true`   | —                             | Automatic compaction for background tasks (also needs `compaction.enabled`).                 |
+| `compaction.tasks.maxContextTokens`| `number \| null` | `150000` | integer `8192`–`10000000` or `null` | Soft budget for background tasks; replaces `compaction.maxContextTokens` for tasks.   |
+
+`reserveTokens` and `keepRecentTokens` can also be set per model in
+`providers.json` (see [`ProviderModelConfig.compaction`](#providermodelconfig-compaction)).
+Each field resolves on its own: model override → `compaction.tasks` (tasks
+only) → `compaction` → default.
+
+When a `PUT /api/settings` changes the `compaction` block, the response carries
+a `warnings` array listing enabled models whose window is too small for the
+system prompt plus summary and kept tail.
+
+```json
+{
+  "compaction": {
+    "enabled": true,
+    "reserveTokens": 16384,
+    "keepRecentTokens": 20000,
+    "summaryMaxTokens": 8192,
+    "maxContextTokens": 200000,
+    "toolResultMaxChars": 2000,
+    "tasks": { "enabled": true, "maxContextTokens": 150000 }
+  }
+}
 ```
 
 ### `healthMonitor`
@@ -345,6 +393,15 @@ This is the literal file written by `ensureConfigTemplates()`:
   "uploads": { "retentionDays": 30 },
   "watchdog": { "stallWarnMs": 30000, "stallAbortMs": 90000 },
   "retry": { "enabled": true, "maxRetries": 3, "baseDelayMs": 2000 },
+  "compaction": {
+    "enabled": true,
+    "reserveTokens": 16384,
+    "keepRecentTokens": 20000,
+    "summaryMaxTokens": 8192,
+    "maxContextTokens": 200000,
+    "toolResultMaxChars": 2000,
+    "tasks": { "enabled": true, "maxContextTokens": 150000 }
+  },
   "tokenPriceTable": {
     "gpt-4o":                     { "input": 2.5,  "output": 10 },
     "gpt-4o-mini":                { "input": 0.15, "output": 0.6 },
@@ -461,12 +518,28 @@ LLM provider catalog. UI-managed via the [Providers page](../web-ui/providers); 
 | `degradedThresholdMs`    | `number?`                                       | Latency threshold for `healthy → degraded` transitions in [Health Monitor](../settings/health-monitor). |
 | `textVerbosity`          | `"low" \| "medium" \| "high"` (optional)          | Response verbosity for supported OpenAI Codex/Responses-style providers. Omit to use the provider default (pi-ai currently defaults Codex to `low`). Configure via [Providers UI](../web-ui/providers#add-edit-dialog). |
 | `transport`              | `"sse" \| "websocket" \| "websocket-cached" \| "auto"` (optional) | Wire-level streaming transport. **Only honoured by the OpenAI Codex / Responses apiType today** — silently ignored on every other provider type and dropped on persist. Omit (or set to `"sse"`) to use the default HTTP+SSE streaming. See [Transport modes](#transport-modes) below. |
-| `models`                 | `ProviderModelConfig[]?`                        | Per-model overrides — context window, max tokens, reasoning support, fixed temperature, custom cost. |
+| `models`                 | `ProviderModelConfig[]?`                        | Per-model overrides — context window, max tokens, reasoning support, fixed temperature, custom cost, compaction budget. |
 | `compat`                 | `object?`                                       | pi-ai `compat` options applied to every model. Only stored for `custom-*` provider types; validated against their wire API. See [Custom providers](../web-ui/providers#custom-providers). |
 | `status`                 | `"connected" \| "error" \| "untested"`          | Last-known result of an explicit "test connection" click.                                      |
 | `modelStatuses`          | `Record<modelId, status>`                       | Per-model variant of `status`.                                                                 |
 | `authMethod`             | `"apiKey" \| "oauth"`                           | Determines whether `apiKey` or `oauthCredentials` is used.                                     |
 | `oauthCredentials`       | `OAuthCredentialsStored?` (**encrypted**)       | `{ refresh, access, expires, extra }` — only present when `authMethod === "oauth"`.            |
+
+### `ProviderModelConfig.compaction`
+
+Optional per-model override of the global [`compaction`](#compaction) budget,
+set in the [Edit Model dialog](../web-ui/providers#edit-model-dialog). Unset
+fields follow `settings.json`. Useful for small local models:
+
+```json
+{ "id": "qwen-27b", "contextWindow": 40960,
+  "compaction": { "reserveTokens": 8192, "keepRecentTokens": 8000 } }
+```
+
+| Key                           | Type      | Effect                                              |
+|-------------------------------|-----------|-----------------------------------------------------|
+| `compaction.reserveTokens`    | `number?` | Replaces `compaction.reserveTokens` for this model. |
+| `compaction.keepRecentTokens` | `number?` | Replaces `compaction.keepRecentTokens` for this model. |
 
 ### Transport modes
 

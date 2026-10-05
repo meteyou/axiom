@@ -19,6 +19,7 @@ const guideSidebar: DefaultTheme.SidebarItem[] = [
       { text: 'Agent Instructions', link: '/concepts/instructions' },
       { text: 'Built-in Tools', link: '/concepts/tools' },
       { text: 'Image Generation', link: '/concepts/image-generation' },
+      { text: 'Context Compaction', link: '/concepts/compaction' },
       { text: 'Memory System', link: '/concepts/memory' },
       { text: 'Skills', link: '/concepts/skills' },
       { text: 'System Prompt', link: '/concepts/system-prompt' },

@@ -140,6 +140,10 @@ The flag `is_default_model` records whether the resulting `(provider, model)` pa
 
 `create_task` also accepts [`attached_skills`](#attached-skills) — the same mechanism cronjobs use, applied once at spawn time. Because a one-off task has no schedule row to persist the selection in, the resolved `SKILL.md` contents are injected when the task starts and are not stored on the `tasks` row; restarting a task from the Tasks page therefore starts it without attached skills.
 
+### Long-running tasks and context compaction
+
+Tasks have no user who could start a fresh session, so long tool loops are compacted automatically: when the context exceeds the task budget (default 150k tokens, or less on small models), older turns are replaced by a structured summary and the task continues. Side-effecting actions it already performed (emails, pushes, created tasks, …) are listed deterministically in that summary so they are not repeated. If the provider still reports a context overflow, the task compacts and retries once, then fails with a clear error. Details: [Context Compaction](./compaction).
+
 ### Loop detection, status updates, killing
 
 These are operational safeguards documented in detail under [Settings → Tasks](./../settings/tasks). Briefly:
