@@ -10,7 +10,11 @@
 
       <div class="flex flex-col gap-3">
         <Alert v-if="!result" variant="warning">
-          <AlertDescription class="flex flex-col gap-1 text-sm">
+          <AlertDescription v-if="billing === 'subscription'" class="flex flex-col gap-1 text-sm">
+            <span class="font-medium">{{ $t('providers.imageModels.testImageSubscriptionWarning') }}</span>
+            <span>{{ $t('providers.imageModels.testImageSubscriptionDetail') }}</span>
+          </AlertDescription>
+          <AlertDescription v-else class="flex flex-col gap-1 text-sm">
             <span class="font-medium">{{ $t('providers.imageModels.testImageCostWarning') }}</span>
             <span>{{ $t('providers.imageModels.testImageCostDetail') }}</span>
           </AlertDescription>
@@ -30,10 +34,14 @@
           >
           <p v-else class="break-words text-sm text-destructive">{{ result.error }}</p>
           <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-            <span>{{ $t('providers.imageModels.testImageCost', { cost: formatCost(result.costUsd) }) }}</span>
+            <span>{{ $t('providers.imageModels.testImageCost', { cost: formatCost(result) }) }}</span>
             <span v-if="result.durationMs !== undefined">{{ $t('providers.imageModels.testImageDuration', { seconds: (result.durationMs / 1000).toFixed(1) }) }}</span>
             <span v-if="result.mimeType" class="font-mono">{{ result.mimeType }}</span>
           </div>
+          <ul v-if="result.notes?.length || result.usageNote" class="flex flex-col gap-0.5 text-xs text-muted-foreground">
+            <li v-for="note in result.notes ?? []" :key="note">{{ note }}</li>
+            <li v-if="result.usageNote">{{ result.usageNote }}</li>
+          </ul>
         </template>
       </div>
 
@@ -42,7 +50,7 @@
           {{ result ? $t('common.close') : $t('providers.cancel') }}
         </Button>
         <Button v-if="!result" :disabled="running" @click="handleGenerate">
-          {{ $t('providers.imageModels.testImageConfirm') }}
+          {{ billing === 'subscription' ? $t('providers.imageModels.testImageConfirmSubscription') : $t('providers.imageModels.testImageConfirm') }}
         </Button>
       </DialogFooter>
     </DialogContent>
@@ -63,13 +71,19 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
-const { generateTestImage } = useProviders()
+const { generateTestImage, presets } = useProviders()
 
 const running = ref(false)
 const result = ref<ProviderImageTestResult | null>(null)
 
-function formatCost(costUsd: number | null): string {
-  return costUsd === null ? t('providers.imageModels.costNotReported') : `$${costUsd.toFixed(4)}`
+const billing = computed(() => (props.provider ? presets.value[props.provider.providerType]?.imageBilling : undefined))
+
+function formatCost(outcome: ProviderImageTestResult): string {
+  const resultBilling = outcome.billing ?? billing.value
+  if (resultBilling === 'subscription') return t('providers.imageModels.costSubscription')
+  if (outcome.costUsd === null) return t('providers.imageModels.costNotReported')
+  const amount = `$${outcome.costUsd.toFixed(4)}`
+  return resultBilling === 'estimated' ? t('providers.imageModels.costEstimatedAmount', { cost: amount }) : amount
 }
 
 async function handleGenerate() {

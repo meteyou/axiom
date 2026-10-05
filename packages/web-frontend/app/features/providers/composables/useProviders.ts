@@ -205,6 +205,11 @@ export function useProviders() {
     return data.models
   }
 
+  async function fetchLiveImageModels(providerId: string): Promise<AvailableImageModel[]> {
+    const data = await providersApi.getLiveImageModels(providerId)
+    return data.models
+  }
+
   async function fetchOllamaModels(providerId: string): Promise<OllamaModel[]> {
     const data = await providersApi.getOllamaModels(providerId)
     return data.models
@@ -269,6 +274,7 @@ export function useProviders() {
     fetchModels,
     fetchImageModels,
     fetchLiveModels,
+    fetchLiveImageModels,
     fetchOllamaModels,
     probeOllamaModels,
     pullOllamaModel,

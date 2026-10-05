@@ -9,12 +9,32 @@
       </DialogHeader>
 
       <div class="flex flex-col gap-3">
-        <Input
-          v-model="search"
-          type="text"
-          :placeholder="$t('providers.addModelSearch')"
-          autofocus
-        />
+        <p v-if="billingHint" class="text-xs text-muted-foreground">
+          {{ billingHint }}
+        </p>
+
+        <div class="flex items-center gap-2">
+          <Input
+            v-model="search"
+            type="text"
+            class="flex-1"
+            :placeholder="$t('providers.addModelSearch')"
+            autofocus
+          />
+          <Button
+            v-if="isLiveCatalog"
+            type="button"
+            variant="outline"
+            size="icon"
+            class="shrink-0"
+            :disabled="loading"
+            :title="$t('providers.addModelRefresh')"
+            :aria-label="$t('providers.addModelRefresh')"
+            @click="loadCatalog"
+          >
+            <AppIcon name="refresh" :class="['h-4 w-4', loading ? 'animate-spin' : '']" />
+          </Button>
+        </div>
 
         <div v-if="loading" class="flex items-center gap-2 py-4 text-xs text-muted-foreground">
           <span class="h-3 w-3 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
@@ -24,6 +44,13 @@
         <div v-else-if="loadError" class="flex flex-col gap-1">
           <span class="text-xs text-destructive">{{ $t('providers.modelsLoadError') }}</span>
           <span class="break-words text-xs text-muted-foreground">{{ loadError }}</span>
+          <button
+            type="button"
+            class="self-start text-xs text-destructive hover:underline"
+            @click="loadCatalog"
+          >
+            {{ $t('providers.modelsRetry') }}
+          </button>
         </div>
 
         <div v-else class="flex max-h-72 flex-col gap-0 divide-y divide-border overflow-hidden overflow-y-auto rounded-md border border-border">
@@ -46,6 +73,13 @@
             <span class="flex min-w-0 flex-1 flex-col">
               <span class="truncate">{{ model.name }}</span>
               <span class="truncate font-mono text-[10px] text-muted-foreground">{{ model.id }}</span>
+            </span>
+            <span
+              v-if="model.pricing"
+              class="shrink-0 text-[10px] tabular-nums text-muted-foreground"
+              :title="$t('providers.imageModels.priceHint')"
+            >
+              {{ formatImageOutputPrice(model.pricing) }}
             </span>
             <Badge
               v-if="model.input.includes('image')"
@@ -107,6 +141,8 @@
 
 <script setup lang="ts">
 import type { AvailableImageModel, Provider } from '~/features/providers/composables/useProviders'
+import { useProvidersApi } from '~/api/providers'
+import { buildImageCatalogModelPatch, formatImageOutputPrice } from '~/utils/imageModelCatalog'
 
 const props = defineProps<{
   open: boolean
@@ -118,7 +154,9 @@ const emit = defineEmits<{
   added: []
 }>()
 
-const { fetchImageModels, updateProvider } = useProviders()
+const { fetchImageModels, fetchLiveImageModels, updateProvider, presets } = useProviders()
+const providersApi = useProvidersApi()
+const { t } = useI18n()
 
 const search = ref('')
 const catalog = ref<AvailableImageModel[]>([])
@@ -136,7 +174,19 @@ const filteredModels = computed(() => {
   })
 })
 
+const preset = computed(() => (props.provider ? presets.value[props.provider.providerType] : undefined))
+const isLiveCatalog = computed(() => preset.value?.liveImageCatalog === true)
+
+const billingHint = computed(() => {
+  switch (preset.value?.imageBilling) {
+    case 'estimated': return t('providers.imageModels.billingEstimatedHint')
+    case 'subscription': return t('providers.imageModels.billingSubscriptionHint')
+    default: return ''
+  }
+})
+
 const canAddCustom = computed(() => {
+  if (preset.value?.customImageModels === false) return false
   const query = search.value.trim()
   if (!query || /\s/.test(query)) return false
   return !catalog.value.some(model => model.id.toLowerCase() === query.toLowerCase())
@@ -154,11 +204,14 @@ function toggleSelected(modelId: string) {
   selected.value = next
 }
 
-async function loadCatalog(providerType: string) {
+async function loadCatalog() {
+  if (!props.provider) return
   loading.value = true
   loadError.value = ''
   try {
-    catalog.value = await fetchImageModels(providerType)
+    catalog.value = isLiveCatalog.value
+      ? await fetchLiveImageModels(props.provider.id)
+      : await fetchImageModels(props.provider.providerType)
   } catch (err) {
     loadError.value = (err as Error).message
     catalog.value = []
@@ -167,12 +220,25 @@ async function loadCatalog(providerType: string) {
   }
 }
 
+// Live lists include models newer than the bundled catalog; their name and
+// modalities are only known from the list, so they are stored per model.
+async function persistLiveCatalogMetadata(provider: Provider, modelIds: string[]) {
+  if (!isLiveCatalog.value) return
+  await Promise.allSettled(
+    catalog.value
+      .filter(entry => modelIds.includes(entry.id))
+      .map(entry => providersApi.updateProviderModel(provider.id, entry.id, buildImageCatalogModelPatch(entry))),
+  )
+}
+
 async function handleAdd() {
   if (!props.provider || selected.value.size === 0) return
   saving.value = true
   try {
     const current = props.provider.enabledImageModels ?? []
-    const enabledImageModels = Array.from(new Set([...current, ...selected.value]))
+    const added = Array.from(selected.value).filter(id => !current.includes(id))
+    const enabledImageModels = Array.from(new Set([...current, ...added]))
+    await persistLiveCatalogMetadata(props.provider, added)
     const result = await updateProvider(props.provider.id, { enabledImageModels })
     if (result) {
       emit('added')
@@ -189,7 +255,7 @@ watch(
     if (!isOpen || !props.provider) return
     search.value = ''
     selected.value = new Set()
-    loadCatalog(props.provider.providerType)
+    loadCatalog()
   },
   { immediate: true },
 )
