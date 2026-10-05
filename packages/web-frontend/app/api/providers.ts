@@ -107,6 +107,9 @@ export function useProvidersApi() {
   const getLiveModels = (providerId: string) =>
     apiFetch<{ models: AvailableModel[] }>(`/api/providers/${providerId}/live-models`)
 
+  const getLiveImageModels = (providerId: string) =>
+    apiFetch<{ models: AvailableImageModel[] }>(`/api/providers/${providerId}/live-image-models`)
+
   const getOllamaModels = (providerId: string) =>
     apiFetch<{ models: OllamaModel[] }>(`/api/providers/${providerId}/ollama-models`)
 
@@ -198,6 +201,7 @@ export function useProvidersApi() {
     getModels,
     getImageModels,
     getLiveModels,
+    getLiveImageModels,
     getOllamaModels,
     probeOllamaModels,
     deleteOllamaModel,

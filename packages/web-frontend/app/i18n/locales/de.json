@@ -346,7 +346,21 @@
       "testImageAlt": "Generiertes Testbild",
       "testImageCost": "Kosten: {cost}",
       "testImageDuration": "Dauer: {seconds} s",
-      "costNotReported": "nicht gemeldet"
+      "costNotReported": "nicht gemeldet",
+      "billingEstimatedHint": "OpenAI rechnet diese Modelle pro Token ab. Axiom schätzt die Kosten jedes Bildes aus den gemeldeten Tokens und den OpenAI-Listenpreisen.",
+      "billingSubscriptionHint": "Nutzt dein ChatGPT-Abo: keine API-Kosten, aber Bildgenerierungen zählen zu den Codex-Nutzungslimits. ChatGPT wählt Bildmodell, Größe und Qualität selbst.",
+      "priceHint": "Listenpreis für Bild-Output-Tokens",
+      "pricePerMillion": "{price} Bild-Tokens",
+      "costEstimated": "pro Bild (geschätzt)",
+      "estimatedHint": "Abrechnung pro Token. Die Kosten jedes Bildes werden aus den gemeldeten Tokens und den OpenAI-Listenpreisen geschätzt.",
+      "subscription": "Abo",
+      "subscriptionHint": "Im ChatGPT-Abo enthalten; zählt zu den Codex-Nutzungslimits.",
+      "testImageMenuSubscription": "Testbild generieren (nutzt ChatGPT-Limits)…",
+      "testImageSubscriptionWarning": "Dies sendet eine echte Generierungsanfrage über dein ChatGPT-Abo.",
+      "testImageSubscriptionDetail": "Keine API-Kosten, aber es zählt zu den Codex-Nutzungslimits, die Bildgenerierungen schneller verbrauchen als Chat-Anfragen. ChatGPT wählt Größe und Qualität selbst.",
+      "testImageConfirmSubscription": "Generieren",
+      "costSubscription": "im ChatGPT-Abo enthalten",
+      "costEstimatedAmount": "~{cost} (geschätzt)"
     },
     "extraFieldSecretKeep": "Leer lassen, um den gespeicherten Wert beizubehalten",
     "providerExtraFields": {

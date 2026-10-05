@@ -359,7 +359,22 @@
                       </div>
                     </TableCell>
                     <TableCell class="py-1.5">
-                      <span class="text-xs text-muted-foreground" :title="$t('providers.imageModels.costHint')">{{ $t('providers.imageModels.costPerImage') }}</span>
+                      <Badge
+                        v-if="getImageBilling(provider) === 'subscription'"
+                        variant="outline"
+                        class="px-1.5 py-0 text-[10px]"
+                        :title="$t('providers.imageModels.subscriptionHint')"
+                      >
+                        {{ $t('providers.imageModels.subscription') }}
+                      </Badge>
+                      <span
+                        v-else-if="getImageBilling(provider) === 'estimated'"
+                        class="text-xs tabular-nums text-muted-foreground"
+                        :title="$t('providers.imageModels.estimatedHint')"
+                      >
+                        {{ getImageModelPrice(provider, modelId) ?? $t('providers.imageModels.costEstimated') }}
+                      </span>
+                      <span v-else class="text-xs text-muted-foreground" :title="$t('providers.imageModels.costHint')">{{ $t('providers.imageModels.costPerImage') }}</span>
                     </TableCell>
                     <TableCell class="py-1.5">
                       <div v-if="isTestingModel(provider.id, modelId)" class="flex items-center gap-1.5">
@@ -387,7 +402,7 @@
                           </DropdownMenuItem>
                           <DropdownMenuItem @click="openImageTest(provider, modelId)">
                             <AppIcon name="image" class="h-4 w-4" />
-                            {{ $t('providers.imageModels.testImageMenu') }}
+                            {{ getImageBilling(provider) === 'subscription' ? $t('providers.imageModels.testImageMenuSubscription') : $t('providers.imageModels.testImageMenu') }}
                           </DropdownMenuItem>
                           <DropdownMenuItem @click="openEditImageModel(provider, modelId)">
                             <AppIcon name="edit" class="h-4 w-4" />
@@ -498,12 +513,13 @@
 </template>
 
 <script setup lang="ts">
-import type { ProviderCatalogRefreshResultContract, ProviderUpdatePayloadContract } from '@axiom/core/contracts'
+import type { ImageBillingContract, ProviderCatalogRefreshResultContract, ProviderUpdatePayloadContract } from '@axiom/core/contracts'
 import type { Provider } from '~/features/providers/composables/useProviders'
 import type { ProviderFormPayload } from '~/components/ProviderFormDialog.vue'
 import { useProviders } from '~/features/providers/composables/useProviders'
 import { formatModelCost as formatCost } from '~/utils/modelFormat'
 import { getImageModelDisplayName, getModelDisplayName } from '~/utils/providerModelOptions'
+import { formatImageOutputPrice } from '~/utils/imageModelCatalog'
 import { providerTypeLabel } from '~/utils/providerTypeOptions'
 
 const { t } = useI18n()
@@ -750,6 +766,15 @@ function supportsImageModels(provider: Provider): boolean {
 
 function getImageModels(provider: Provider): string[] {
   return provider.enabledImageModels ?? []
+}
+
+function getImageBilling(provider: Provider): ImageBillingContract {
+  return presets.value[provider.providerType]?.imageBilling ?? 'reported'
+}
+
+function getImageModelPrice(provider: Provider, modelId: string): string | null {
+  const pricing = provider.imageModelSpecs?.[modelId]?.pricing
+  return pricing ? t('providers.imageModels.pricePerMillion', { price: formatImageOutputPrice(pricing) }) : null
 }
 
 function openAddImageModel(provider: Provider) {
