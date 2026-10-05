@@ -169,7 +169,7 @@ function openEdit(model: ImageModelOverviewEntry) {
 async function toggleModel(model: ImageModelOverviewEntry, enabled: boolean) {
   togglingKey.value = modelKey(model)
   try {
-    await updateProviderModel(model.providerId, model.modelId, { disabled: !enabled })
+    await updateProviderModel(model.providerId, model.modelId, { disabled: !enabled, modelType: 'image' })
   } finally {
     togglingKey.value = null
   }

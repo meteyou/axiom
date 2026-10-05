@@ -424,6 +424,8 @@ export interface ProviderModelSelectionPayloadContract {
  */
 export interface ProviderModelUpdatePayloadContract {
   disabled?: boolean
+  /** List `disabled` applies to; needed when an id is both a text and an image model. */
+  modelType?: ProviderModelTypeContract
   name?: string
   description?: string
   /** For every spec/cost field, `null` removes the override so the value follows the catalog again. */

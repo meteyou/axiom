@@ -229,6 +229,10 @@ export function parseProviderModelUpdatePayload(payload: unknown): ParseResult<P
 
   const disabled = parseOptionalBooleanField(body, 'disabled')
   if (!disabled.ok) return disabled
+  const modelType = body.modelType
+  if (modelType !== undefined && modelType !== 'text' && modelType !== 'image') {
+    return { ok: false, error: 'modelType must be text or image' }
+  }
 
   const name = parseOptionalStringField(body, 'name')
   if (!name.ok) return name
@@ -249,6 +253,7 @@ export function parseProviderModelUpdatePayload(payload: unknown): ParseResult<P
 
   const value: ProviderModelUpdatePayloadContract = {}
   if (disabled.value !== undefined) value.disabled = disabled.value
+  if (modelType !== undefined) value.modelType = modelType
   if (name.value !== undefined) value.name = name.value
   if (description.value !== undefined) value.description = description.value
   if (contextWindow.value !== undefined) value.contextWindow = contextWindow.value
@@ -384,6 +389,10 @@ export function parseProviderUpdatePayload(payload: unknown): ParseResult<Provid
   const providerType = asTrimmedString(body.providerType)
   const disabled = parseOptionalBooleanField(body, 'disabled')
   if (!disabled.ok) return disabled
+  const modelType = body.modelType
+  if (modelType !== undefined && modelType !== 'text' && modelType !== 'image') {
+    return { ok: false, error: 'modelType must be text or image' }
+  }
   const compat = parseCompatField(body)
   if (!compat.ok) return compat
 

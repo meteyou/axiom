@@ -623,10 +623,10 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
 
   function applyProviderModelUpdate(providerId: string, modelId: string, payload: ProviderModelUpdatePayloadContract): ProviderConfig {
     try {
-      const { disabled, ...metadataPatch } = payload
+      const { disabled, modelType, ...metadataPatch } = payload
       let provider: ProviderConfig | undefined
       applyDisabledChange(disabled, value => {
-        provider = setProviderModelDisabled(providerId, modelId, value)
+        provider = setProviderModelDisabled(providerId, modelId, value, modelType)
       })
       if (Object.keys(metadataPatch).length > 0) {
         provider = updateProviderModelConfig(providerId, modelId, metadataPatch)

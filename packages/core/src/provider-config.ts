@@ -13,7 +13,7 @@ import { encrypt, decrypt, isEncrypted, maskApiKey } from './encryption.js'
 import { RADIUS_BASE_URL, findRadiusCatalogModel, radiusCatalogToAvailableModels } from './radius-catalog.js'
 import { validateModelCompat } from './contracts/providers.js'
 import type { CompatApiTypeContract } from './contracts/providers.js'
-import type { ModelInputModalityContract, ModelThinkingLevelMapContract, ProviderModelUpdatePayloadContract } from './contracts/providers.js'
+import type { ModelInputModalityContract, ModelThinkingLevelMapContract, ProviderModelTypeContract, ProviderModelUpdatePayloadContract } from './contracts/providers.js'
 
 /**
  * Claude Code CLI version to advertise in the user-agent header for Anthropic requests.
@@ -1614,18 +1614,29 @@ export function setProviderDisabled(id: string, disabled: boolean): ProviderConf
 
 /**
  * Enable or disable a single text or image model of a provider. Disabling the
- * active model is rejected; a fallback pointing at it is cleared.
+ * active model is rejected; a fallback pointing at it is cleared. An id can be
+ * both a text and an image model, so `modelType` picks the list; without it,
+ * the text list wins when the id is in both.
  */
-export function setProviderModelDisabled(providerId: string, modelId: string, disabled: boolean): ProviderConfig {
+export function setProviderModelDisabled(
+  providerId: string,
+  modelId: string,
+  disabled: boolean,
+  modelType?: ProviderModelTypeContract,
+): ProviderConfig {
   const file = loadProviders()
   const provider = file.providers.find(p => p.id === providerId)
   if (!provider) throw new ProviderNotFoundError(providerId)
-  if (!(provider.enabledModels ?? []).includes(modelId)) {
-    if ((provider.enabledImageModels ?? []).includes(modelId)) {
-      setImageModelDisabled(provider, modelId, disabled)
-      saveProviders(file)
-      return provider
-    }
+  const isTextModel = (provider.enabledModels ?? []).includes(modelId)
+  const isImageModel = (provider.enabledImageModels ?? []).includes(modelId)
+  const target = modelType ?? (isTextModel || !isImageModel ? 'text' : 'image')
+  if (target === 'image') {
+    if (!isImageModel) throw new Error(`Image model "${modelId}" is not configured for provider "${provider.name}"`)
+    setImageModelDisabled(provider, modelId, disabled)
+    saveProviders(file)
+    return provider
+  }
+  if (!isTextModel) {
     throw new Error(`Model "${modelId}" is not configured for provider "${provider.name}"`)
   }
 
@@ -1895,14 +1906,14 @@ export function isProviderDisabled(provider: Pick<ProviderConfig, 'disabled'>): 
   return provider.disabled === true
 }
 
-export function isModelDisabled(provider: Pick<ProviderConfig, 'disabledModels' | 'disabledImageModels'>, modelId: string): boolean {
-  return (provider.disabledModels?.includes(modelId) || provider.disabledImageModels?.includes(modelId)) ?? false
+export function isModelDisabled(provider: Pick<ProviderConfig, 'disabledModels'>, modelId: string): boolean {
+  return provider.disabledModels?.includes(modelId) ?? false
 }
 
 /** Models of a provider that may be offered to the agent and in LLM model pickers. */
 export function getUsableModels(provider: Pick<ProviderConfig, 'enabledModels' | 'disabled' | 'disabledModels'>): string[] {
   if (isProviderDisabled(provider)) return []
-  return (provider.enabledModels ?? []).filter(m => !provider.disabledModels?.includes(m))
+  return (provider.enabledModels ?? []).filter(m => !isModelDisabled(provider, m))
 }
 
 /**
@@ -1911,7 +1922,7 @@ export function getUsableModels(provider: Pick<ProviderConfig, 'enabledModels' |
  * without any usable model.
  */
 export function isProviderModelUsable(
-  provider: Pick<ProviderConfig, 'enabledModels' | 'disabled' | 'disabledModels' | 'disabledImageModels'>,
+  provider: Pick<ProviderConfig, 'enabledModels' | 'disabled' | 'disabledModels'>,
   modelId?: string,
 ): boolean {
   if (isProviderDisabled(provider)) return false
@@ -1922,7 +1933,16 @@ export function isProviderModelUsable(
 /** Image generation models of a provider that may be offered to the agent and the default-image-model picker. */
 export function getUsableImageModels(provider: Pick<ProviderConfig, 'providerType' | 'enabledImageModels' | 'disabledImageModels' | 'disabled'>): string[] {
   if (isProviderDisabled(provider) || !supportsImageModels(provider.providerType)) return []
-  return (provider.enabledImageModels ?? []).filter(m => !provider.disabledImageModels?.includes(m))
+  return (provider.enabledImageModels ?? []).filter(m => !isImageModelDisabled(provider, m))
+}
+
+function isImageModelDisabled(provider: Pick<ProviderConfig, 'disabledImageModels'>, modelId: string): boolean {
+  return provider.disabledImageModels?.includes(modelId) ?? false
+}
+
+/** Whether `modelId` may be used as an image generation model of this provider. */
+export function isProviderImageModelUsable(provider: Pick<ProviderConfig, 'disabled' | 'disabledImageModels'>, modelId: string): boolean {
+  return !isProviderDisabled(provider) && !isImageModelDisabled(provider, modelId)
 }
 
 /**
