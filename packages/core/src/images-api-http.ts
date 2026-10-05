@@ -34,12 +34,21 @@ function requestSignal(options: ImagesOptions | undefined): AbortSignal | undefi
   return signals.length === 1 ? signals[0] : AbortSignal.any(signals)
 }
 
-function parseJson(text: string): unknown {
+function tryParseJson(text: string): unknown {
   try {
     return JSON.parse(text)
   } catch {
     return null
   }
+}
+
+/** Unlike error bodies (often plain text or HTML), a 2xx body must be a JSON object. */
+function parseSuccessBody(status: number, text: string): Record<string, unknown> {
+  const body = tryParseJson(text)
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    throw new Error(`HTTP ${status}: The provider answered without a JSON object: ${text.trim().slice(0, 200) || '(empty body)'}`)
+  }
+  return body as Record<string, unknown>
 }
 
 export function splitImagesInput(context: ImagesContext): { prompt: string; images: ImageContent[] } {
@@ -96,9 +105,8 @@ export async function postImagesRequest(
   await options?.onResponse?.({ status: response.status, headers: Object.fromEntries(response.headers) }, model)
 
   const text = await response.text()
-  const body = parseJson(text)
-  if (!response.ok) throw new Error(spec.describeError(response.status, body, text))
-  return { payload, body: body ?? {} }
+  if (!response.ok) throw new Error(spec.describeError(response.status, tryParseJson(text), text))
+  return { payload, body: parseSuccessBody(response.status, text) }
 }
 
 /** Runs `fill` on a fresh result and turns any thrown error into an error result, as pi-ai image APIs do. */
