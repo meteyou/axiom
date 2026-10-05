@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_SETTINGS_CONTRACT,
+  normalizeImageGenerationSettings,
+  normalizeImageOutputDir,
   normalizeSettingsContract,
   withLegacySettingsPayloadCompatibility,
 } from './settings.js'
@@ -118,5 +120,46 @@ describe('settings contracts', () => {
       expect(normalized.thinkingLevel).toBe('off')
       expect(normalized.tasks.backgroundThinkingLevel).toBe('off')
     })
+  })
+
+  it('defaults image generation to on with 4 variants, no cost limit and the images folder', () => {
+    expect(normalizeSettingsContract({}).imageGeneration).toEqual({
+      enabled: true,
+      defaultModel: '',
+      maxVariants: 4,
+      maxCostPerCallUsd: null,
+      outputDir: 'images',
+    })
+  })
+
+  it('replaces invalid hand-edited image generation values with defaults', () => {
+    expect(normalizeImageGenerationSettings({
+      enabled: false,
+      defaultModel: ' or-1:recraft/recraft-v4.1 ',
+      maxVariants: 11,
+      maxCostPerCallUsd: -1,
+      outputDir: '../outside',
+    })).toEqual({
+      enabled: false,
+      defaultModel: 'or-1:recraft/recraft-v4.1',
+      maxVariants: 4,
+      maxCostPerCallUsd: null,
+      outputDir: 'images',
+    })
+    expect(normalizeImageGenerationSettings({ maxVariants: 10, maxCostPerCallUsd: 0.25, outputDir: './art/' }))
+      .toMatchObject({ maxVariants: 10, maxCostPerCallUsd: 0.25, outputDir: 'art' })
+  })
+
+  it('keeps image output folders inside the workspace', () => {
+    expect(normalizeImageOutputDir('images')).toBe('images')
+    expect(normalizeImageOutputDir(' ./assets//generated/ ')).toBe('assets/generated')
+    expect(normalizeImageOutputDir('assets\\generated')).toBe('assets/generated')
+    expect(normalizeImageOutputDir('a/../b')).toBe('b')
+    expect(normalizeImageOutputDir('../images')).toBeNull()
+    expect(normalizeImageOutputDir('a/../../images')).toBeNull()
+    expect(normalizeImageOutputDir('/data/images')).toBeNull()
+    expect(normalizeImageOutputDir('C:\\images')).toBeNull()
+    expect(normalizeImageOutputDir('.')).toBeNull()
+    expect(normalizeImageOutputDir('')).toBeNull()
   })
 })

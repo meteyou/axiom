@@ -202,6 +202,10 @@ export function createSettingsService(options: SettingsRouterOptions = {}): Sett
       options.onAgentHeartbeatSettingsChanged?.()
     }
 
+    if (imageGenerationMerge.changed) {
+      options.onImageGenerationSettingsChanged?.()
+    }
+
     if (telegram.enabled !== previousTelegramEnabled || telegram.botToken !== previousTelegramBotToken) {
       options.onTelegramSettingsChanged?.()
     }

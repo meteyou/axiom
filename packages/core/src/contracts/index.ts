@@ -8,11 +8,14 @@ export {
   SETTINGS_STT_PROVIDERS,
   SETTINGS_STT_OPENAI_MODELS,
   SETTINGS_THINKING_LEVELS,
+  IMAGE_GENERATION_MAX_VARIANTS_BOUNDS,
   DEFAULT_HEALTH_MONITOR_NOTIFICATION_TOGGLES,
   DEFAULT_WATCHDOG_SETTINGS,
   DEFAULT_RETRY_SETTINGS,
   DEFAULT_SETTINGS_CONTRACT,
   normalizeSettingsContract,
+  normalizeImageGenerationSettings,
+  normalizeImageOutputDir,
   withLegacySettingsPayloadCompatibility,
 } from './settings.js'
 

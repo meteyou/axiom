@@ -2,6 +2,8 @@ import {
   DEFAULT_WATCHDOG_SETTINGS,
   encrypt,
   HEALTH_MONITOR_FALLBACK_TRIGGERS,
+  IMAGE_GENERATION_MAX_VARIANTS_BOUNDS,
+  normalizeImageOutputDir,
   SETTINGS_STT_OPENAI_MODELS,
   SETTINGS_STT_PROVIDERS,
   SETTINGS_THINKING_LEVELS,
@@ -332,21 +334,52 @@ export function mergeTasks(
 export function mergeImageGeneration(
   body: Record<string, unknown>,
   settingsRaw: Record<string, unknown>,
-): { error: string | null } {
+): MergeGroupResult {
   const imageGeneration = body.imageGeneration as Record<string, unknown> | undefined
-  if (!imageGeneration) return { error: null }
+  if (!imageGeneration) return { error: null, changed: false }
 
   const existing = (settingsRaw.imageGeneration ?? {}) as Record<string, unknown>
+  const before = JSON.stringify(existing)
+
+  if (imageGeneration.enabled !== undefined) {
+    if (typeof imageGeneration.enabled !== 'boolean') {
+      return { error: 'imageGeneration.enabled must be a boolean', changed: false }
+    }
+    existing.enabled = imageGeneration.enabled
+  }
 
   if (imageGeneration.defaultModel !== undefined) {
     if (typeof imageGeneration.defaultModel !== 'string') {
-      return { error: 'imageGeneration.defaultModel must be a string' }
+      return { error: 'imageGeneration.defaultModel must be a string', changed: false }
     }
     existing.defaultModel = imageGeneration.defaultModel.trim()
   }
 
+  if (imageGeneration.maxVariants !== undefined) {
+    const { min, max } = IMAGE_GENERATION_MAX_VARIANTS_BOUNDS
+    const err = validateIntegerRange(imageGeneration.maxVariants, 'imageGeneration.maxVariants', min, max)
+    if (err) return { error: err, changed: false }
+    existing.maxVariants = imageGeneration.maxVariants
+  }
+
+  if (imageGeneration.maxCostPerCallUsd !== undefined) {
+    const maxCost = imageGeneration.maxCostPerCallUsd
+    if (maxCost !== null && (typeof maxCost !== 'number' || !Number.isFinite(maxCost) || maxCost <= 0)) {
+      return { error: 'imageGeneration.maxCostPerCallUsd must be a positive number or null', changed: false }
+    }
+    existing.maxCostPerCallUsd = maxCost
+  }
+
+  if (imageGeneration.outputDir !== undefined) {
+    const outputDir = typeof imageGeneration.outputDir === 'string' ? normalizeImageOutputDir(imageGeneration.outputDir) : null
+    if (!outputDir) {
+      return { error: 'imageGeneration.outputDir must be a relative folder inside the workspace', changed: false }
+    }
+    existing.outputDir = outputDir
+  }
+
   settingsRaw.imageGeneration = existing
-  return { error: null }
+  return { error: null, changed: JSON.stringify(existing) !== before }
 }
 
 export function mergeTts(
