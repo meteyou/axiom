@@ -75,7 +75,7 @@
               <span class="truncate font-mono text-[10px] text-muted-foreground">{{ model.id }}</span>
             </span>
             <span
-              v-if="model.pricing || !model.input.includes('image')"
+              v-if="model.pricing || !model.input.includes('image') || isAlreadyEnabled(model.id)"
               class="flex shrink-0 flex-col items-end gap-0.5"
             >
               <span
@@ -93,9 +93,9 @@
               >
                 {{ $t('providers.imageModels.noImageInput') }}
               </Badge>
-            </span>
-            <span v-if="isAlreadyEnabled(model.id)" class="shrink-0 text-[10px] text-muted-foreground">
-              {{ $t('providers.addModelAlreadyEnabled') }}
+              <span v-if="isAlreadyEnabled(model.id)" class="text-[10px] text-muted-foreground">
+                {{ $t('providers.addModelAlreadyEnabled') }}
+              </span>
             </span>
           </label>
 
