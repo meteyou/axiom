@@ -113,7 +113,7 @@ Each request times out after **180 s**.
 pi-ai's token-based estimate is far off for image models (zero for most of them), so the cost comes from the backend:
 
 - **OpenRouter** — the **billed amount** OpenRouter reports in each response (`usage.cost`).
-- **OpenAI** — an **estimate**: the reported text-input, image-input and image-output tokens multiplied by OpenAI's list prices, which Axiom ships per model (e.g. $30 per 1M image output tokens for GPT Image 2/2.5, $8 for GPT Image 1 Mini). Dated snapshots such as `gpt-image-2-2026-04-21` use the price of their base model; models without a known price report the cost as *unknown*. The Providers page shows the image output price next to each OpenAI image model.
+- **OpenAI** — an **estimate**: the reported text-input, image-input and image-output tokens multiplied by OpenAI's list prices, which Axiom ships per model (e.g. $30 per 1M image output tokens for GPT Image 2/2.5, $8 for GPT Image 1 Mini). Dated snapshots such as `gpt-image-2-2026-04-21` use the price of their base model; models without a known price report the cost as *unknown*. The Providers page shows the price per 1M output tokens next to each OpenRouter and OpenAI image model and, once three images were billed, the average cost of the last five images.
 - **ChatGPT subscription** — no cost (`0`); the image counts toward the plan's usage limits instead.
 
 The cost is used for:

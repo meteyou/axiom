@@ -449,19 +449,23 @@ describe('image generation models', () => {
     expect(response.presets.anthropic).not.toHaveProperty('imageBilling')
   })
 
-  it('exposes stored modalities and OpenAI list prices in the image model specs', () => {
-    const provider = createOpenRouterProvider(['vendor/fresh-image'])
-    updateProviderModel(provider.id, 'vendor/fresh-image', { name: 'Fresh', input: ['text'], output: ['image', 'text'] })
+  it('exposes stored modalities, output prices and the average cost in the image model specs', () => {
+    const provider = createOpenRouterProvider(['vendor/fresh-image', 'recraft/recraft-v4.1'])
+    updateProviderModel(provider.id, 'vendor/fresh-image', { name: 'Fresh', input: ['text'], output: ['image', 'text'], cost: { output: 8.38 } })
     const openai = addProvider({ name: 'OpenAI', providerType: 'openai', apiKey: 'sk', enabledModels: ['gpt-5.5'] })
     updateProvider(openai.id, { enabledImageModels: ['gpt-image-1'] })
+    const averages = vi.fn((providerName: string, model: string) =>
+      providerName === 'openrouter' && model === 'recraft/recraft-v4.1' ? { usd: 0.035, images: 4 } : null)
 
     const { masked, decrypted } = createProvidersService().listProviders()
-    const response = mapProvidersListResponse(masked, decrypted)
+    const response = mapProvidersListResponse(masked, decrypted, undefined, averages)
 
-    expect(response.providers.find(p => p.id === provider.id)!.imageModelSpecs?.['vendor/fresh-image'])
-      .toEqual({ name: 'Fresh', input: ['text'], output: ['image', 'text'] })
+    const openRouterSpecs = response.providers.find(p => p.id === provider.id)!.imageModelSpecs!
+    expect(openRouterSpecs['vendor/fresh-image']).toEqual({ name: 'Fresh', input: ['text'], output: ['image', 'text'], outputCostPerMillion: 8.38 })
+    expect(openRouterSpecs['recraft/recraft-v4.1']).toMatchObject({ averageCost: { usd: 0.035, images: 4 } })
+    expect(openRouterSpecs['recraft/recraft-v4.1']).not.toHaveProperty('outputCostPerMillion')
     expect(response.providers.find(p => p.id === openai.id)!.imageModelSpecs?.['gpt-image-1'])
-      .toMatchObject({ name: 'GPT Image 1', pricing: { imageOutput: 40 } })
+      .toMatchObject({ name: 'GPT Image 1', outputCostPerMillion: 40 })
   })
 
   it('returns billing, notes and the usage summary of a ChatGPT test image', async () => {

@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { initDatabase } from './database.js'
-import { logTokenUsage, logToolCall, getTokenUsage, getToolCalls, queryToolCalls, getToolCallById, getDistinctToolNames, getMemoryUsageStats } from './token-logger.js'
+import { getAverageImageCost, logTokenUsage, logToolCall, getTokenUsage, getToolCalls, queryToolCalls, getToolCallById, getDistinctToolNames, getMemoryUsageStats } from './token-logger.js'
 import type { Database } from './database.js'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -188,6 +188,28 @@ describe('token-logger', () => {
 
       expect(session.prompt_tokens).toBe(0)
       expect(session.completion_tokens).toBe(0)
+    })
+  })
+
+  describe('getAverageImageCost', () => {
+    function book(model: string, estimatedCost: number, provider = 'openrouter') {
+      logTokenUsage(db, { provider, model, promptTokens: 1, completionTokens: 1, cacheRead: 0, cacheWrite: 0, estimatedCost })
+    }
+
+    it('waits for three billed images and then averages the last five', () => {
+      createDb()
+      book('recraft/recraft-v4.1', 0.03)
+      book('recraft/recraft-v4.1', 0)
+      book('recraft/recraft-v4.1', 0.04)
+      book('recraft/recraft-v4.1', 0.5, 'other')
+      book('flux', 0.9)
+      expect(getAverageImageCost(db, 'openrouter', 'recraft/recraft-v4.1')).toBeNull()
+
+      book('recraft/recraft-v4.1', 0.05)
+      expect(getAverageImageCost(db, 'openrouter', 'recraft/recraft-v4.1')).toEqual({ usd: expect.closeTo(0.04, 10), images: 3 })
+
+      for (const cost of [0.1, 0.1, 0.1, 0.1]) book('recraft/recraft-v4.1', cost)
+      expect(getAverageImageCost(db, 'openrouter', 'recraft/recraft-v4.1')).toEqual({ usd: expect.closeTo(0.09, 10), images: 5 })
     })
   })
 

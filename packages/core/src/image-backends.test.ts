@@ -179,14 +179,25 @@ describe('OpenRouter image backend', () => {
     const { fetchImpl, urls } = fetchReturning(jsonResponse({
       data: [
         { id: 'vendor/b-image', name: 'B Image', architecture: { input_modalities: ['text', 'image'], output_modalities: ['image', 'text'] } },
-        { id: 'vendor/a-image', name: 'A Image', architecture: { input_modalities: ['text'], output_modalities: ['image'] } },
+        {
+          id: 'vendor/a-image',
+          name: 'A Image',
+          architecture: { input_modalities: ['text'], output_modalities: ['image'] },
+          pricing: { prompt: '0', completion: '0', image_token: '0.00000838323353293413', image_output: '0.00000838323353293413' },
+        },
         { id: 'vendor/chat', name: 'Chat', architecture: { input_modalities: ['text'], output_modalities: ['text'] } },
       ],
     }))
     const models = await openRouter.listModels!('https://openrouter.ai/api/v1', 'key', fetchImpl, signal)
     expect(urls).toEqual(['https://openrouter.ai/api/v1/models?output_modalities=image'])
     expect(models).toEqual([
-      { id: 'vendor/a-image', name: 'A Image', input: ['text'], output: ['image'] },
+      {
+        id: 'vendor/a-image',
+        name: 'A Image',
+        input: ['text'],
+        output: ['image'],
+        pricing: { textInput: 0, imageInput: 8.383234, imageOutput: 8.383234 },
+      },
       { id: 'vendor/b-image', name: 'B Image', input: ['text', 'image'], output: ['image', 'text'] },
     ])
   })

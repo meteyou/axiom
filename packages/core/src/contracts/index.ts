@@ -81,6 +81,7 @@ export type {
   AvailableModelContract,
   AvailableImageModelContract,
   ImageBillingContract,
+  ImageModelAverageCostContract,
   ImageModelPricingContract,
   ImageModelSpecContract,
   OllamaModelContract,
