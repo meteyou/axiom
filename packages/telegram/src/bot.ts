@@ -34,6 +34,7 @@ import {
   registerBuiltInSlashCommands,
   isSlashCommandPicker,
   isSlashCommandAgentTurn,
+  isSlashCommandCompaction,
   TaskStore,
   ScheduledTaskStore,
 } from '@axiom/core'
@@ -170,6 +171,7 @@ interface TurnRequest {
   source: string
   attachments?: UploadDescriptor[]
   preambleToolCalls?: TurnPreambleToolCall[]
+  compact?: { instructions?: string }
 }
 
 /** What the runner produced, collected for delivery to Telegram. */
@@ -589,6 +591,9 @@ export class TelegramBot {
     })
     this.bot.command('skill', async (ctx) => {
       await this.handleRegistryCommand(ctx, 'skill')
+    })
+    this.bot.command('compact', async (ctx) => {
+      await this.handleRegistryCommand(ctx, 'compact')
     })
 
     // Inline-keyboard button taps from picker messages (e.g. /model).
@@ -1191,6 +1196,7 @@ export class TelegramBot {
         source: input.source,
         attachments: input.attachments,
         preambleToolCalls: input.preambleToolCalls,
+        compact: input.compact,
       })
 
       const detach = this.turnRunner.subscribe(input.agentUserId, (event: TurnEvent) => {
@@ -1228,6 +1234,16 @@ export class TelegramBot {
 
     if (chunk.type === 'error' && chunk.errorInfo) {
       outcome.error = chunk.errorInfo
+      return
+    }
+
+    // The keepalive `running` chunks only matter to the watchdog; the outcome
+    // is worth one short line because the next answer may refer to less detail.
+    if (chunk.type === 'compaction') {
+      if (!chunk.text || chunk.compaction?.status === 'running') return
+      void this.sendPlainOrFormatted(chatId, chunk.text).catch((err) => {
+        console.error('[telegram] Failed to deliver compaction notice:', err)
+      })
       return
     }
 
@@ -1272,6 +1288,10 @@ export class TelegramBot {
         await this.sendPicker(ctx, result.reply)
         return
       }
+      if (isSlashCommandCompaction(result.reply)) {
+        await this.runCompaction(ctx, result.reply.instructions)
+        return
+      }
       if (isSlashCommandAgentTurn(result.reply)) {
         await this.enqueueAgentTurn(ctx, text, result.reply)
         return
@@ -1288,6 +1308,27 @@ export class TelegramBot {
       return
     }
     await ctx.reply(`Cannot handle /${name}.`)
+  }
+
+  /**
+   * `/compact` goes through the shared runner like a turn, so it waits for a
+   * running answer, reaches the web chat too and can be stopped with `/stop`.
+   */
+  private async runCompaction(ctx: Context, instructions?: string): Promise<void> {
+    const agentUserId = this.resolveUserId(ctx)
+    const source = this.isDMChat(ctx) ? 'telegram' : 'telegram-group'
+    const session = this.agentCore.getSessionManager().getOrCreateSession(agentUserId, source)
+    const chatId = ctx.chat!.id
+    const outcome = await this.consumeTurn({
+      chatId,
+      agentUserId,
+      userId: this.resolveNumericUserId(ctx),
+      sessionId: session.id,
+      text: '/compact',
+      source,
+      compact: { instructions },
+    })
+    if (outcome.error) await this.sendTurnErrorPrompt(chatId, outcome.error)
   }
 
   /**
@@ -1408,6 +1449,12 @@ export class TelegramBot {
       // acknowledges, and the user's next message carries the actual request.
       await this.editPickerMessage(ctx, result.reply.label ?? entry.command)
       await this.enqueueAgentTurn(ctx, entry.command, result.reply)
+      return
+    }
+
+    if (isSlashCommandCompaction(result.reply)) {
+      await this.editPickerMessage(ctx, entry.command)
+      await this.runCompaction(ctx, result.reply.instructions)
       return
     }
 

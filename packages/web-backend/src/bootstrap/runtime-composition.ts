@@ -1,6 +1,7 @@
 import {
   AgentCore,
   AgentHeartbeatService,
+  buildContextCompactionMetadata,
   buildModel,
   createBaseAgentTools,
   createCronjobTool,
@@ -35,6 +36,7 @@ import {
   parseProviderModelId,
   getProviderDefaultModel,
   isProviderModelUsable,
+  isPersistableCompaction,
   ProviderManager,
   refreshRadiusCatalog,
   SessionManager,
@@ -46,6 +48,7 @@ import {
 } from '@axiom/core'
 import type {
   BuiltinToolsConfig,
+  ContextCompactionInfo,
   Database,
   LoopDetectionConfig,
   ProviderConfig,
@@ -1169,6 +1172,26 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
     }
     const streamStateByInjection = new Map<string, InjectionStreamState>()
 
+    // Injection turns bypass the TurnRunner, so a compaction they trigger is
+    // persisted here to keep its divider in the chat history.
+    function persistInjectionCompaction(
+      sessionId: string,
+      userId: number,
+      content: string,
+      info: ContextCompactionInfo,
+    ): ContextCompactionInfo {
+      if (!isPersistableCompaction(info)) return info
+      try {
+        const result = db.prepare(
+          'INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)'
+        ).run(sessionId, userId, 'system', content, JSON.stringify(buildContextCompactionMetadata(info)))
+        return { ...info, messageId: Number(result.lastInsertRowid) }
+      } catch (err) {
+        logger.error('[axiom] Failed to persist task injection compaction:', err)
+        return info
+      }
+    }
+
     agentCore.setOnTaskInjectionChunk((chunk) => {
       // Correlate the chunk with its pending metadata via `chunk.injectionId`,
       // which AgentCore guarantees to equal the per-injection UUID we
@@ -1233,12 +1256,17 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
           }
         }
 
+        const compaction = chunk.type === 'compaction' && chunk.compaction
+          ? persistInjectionCompaction(persistSessionId, pendingMeta.userId, chunk.text ?? '', chunk.compaction)
+          : undefined
+
         try {
           chatEventBus.broadcast({
             type: chunk.type === 'done' ? 'done' : chunk.type,
             userId: pendingMeta.userId,
             source: 'task',
             sessionId: persistSessionId,
+            compaction,
             text: chunk.text,
             toolName: chunk.toolName,
             toolCallId: chunk.toolCallId,

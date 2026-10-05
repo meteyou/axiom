@@ -8,6 +8,7 @@ import type {
   TurnErrorInfo,
 } from './agent-runtime-types.js'
 import { buildTurnErrorMetadata, formatTurnErrorContent } from './turn-error.js'
+import { buildContextCompactionMetadata, isPersistableCompaction } from './context-compaction-notice.js'
 import { newTurnRetryActionId } from './turn-retry-action.js'
 import type { UploadDescriptor } from './uploads.js'
 import { serializeUploadsMetadata } from './uploads.js'
@@ -21,6 +22,7 @@ import {
 import type { StallThresholds } from './provider-stall.js'
 import {
   formatRetryScheduledContent,
+  isContextOverflowError,
   isRetryableTurnError,
   loadRetryPolicy,
   retryDelayMs,
@@ -50,6 +52,8 @@ export interface TurnAgentLike {
     source?: string,
     attachments?: UploadDescriptor[],
   ): AsyncIterable<ResponseChunk>
+  /** Compact the user's conversation (`/compact`); streams `compaction` chunks. */
+  compactContext?(userId: string, source?: string, instructions?: string): AsyncIterable<ResponseChunk>
   abort(): void
 }
 
@@ -116,6 +120,12 @@ export interface StartTurnInput {
   continueFromTranscript?: boolean
   /** Synthetic tool calls emitted at the start of the turn, before the agent streams. */
   preambleToolCalls?: TurnPreambleToolCall[]
+  /**
+   * Run a manual context compaction instead of a prompt. Goes through the
+   * runner so it is serialized with turns, streams to every channel and can
+   * be stopped like a turn.
+   */
+  compact?: { instructions?: string }
 }
 
 export interface TurnRunnerOptions {
@@ -507,7 +517,9 @@ export class TurnRunner {
 
       if (!result.willRetry) {
         this.failTurn(turn, {
-          cause: result.retryable ? 'retry_exhausted' : 'non_retryable',
+          cause: isContextOverflowError(result.error)
+            ? 'context_overflow'
+            : result.retryable ? 'retry_exhausted' : 'non_retryable',
           error: result.error,
           attempts: attempt,
           retryable: result.retryable,
@@ -578,9 +590,7 @@ export class TurnRunner {
           this.emitChunk(turn, chunk)
         }
       }
-      const stream = continueTurn && agent.retryTurn
-        ? agent.retryTurn(agentUserId, input.text, input.source ?? 'web', input.attachments)
-        : agent.sendMessage(agentUserId, input.text, input.source ?? 'web', input.attachments)
+      const stream = this.openStream(agent, agentUserId, input, continueTurn)
 
       for await (const chunk of stream) {
         watchdog.recordActivity(chunk)
@@ -593,6 +603,11 @@ export class TurnRunner {
           const error = chunk.error ?? 'Unknown provider error'
           failure = { error, retryable: isRetryableTurnError(error) }
           break
+        }
+
+        if (chunk.type === 'compaction') {
+          this.emitChunk(turn, this.persistCompaction(turn, chunk))
+          continue
         }
 
         // Attachments are emitted before their tool chunk so consumers render
@@ -629,7 +644,7 @@ export class TurnRunner {
       return { status: 'completed' }
     }
 
-    const willRetry = policy.enabled && attempt < policy.maxRetries && failure.retryable
+    const willRetry = policy.enabled && attempt < policy.maxRetries && failure.retryable && !input.compact
     // Discarding keeps the transcript free of half-written answers from the
     // attempt that is about to be replaced; a terminal failure keeps whatever
     // the provider managed to produce.
@@ -637,6 +652,46 @@ export class TurnRunner {
     else this.commitTranscript(transcript)
 
     return { status: 'failed', error: failure.error, retryable: failure.retryable, willRetry }
+  }
+
+  private openStream(
+    agent: TurnAgentLike,
+    agentUserId: string,
+    input: StartTurnInput,
+    continueTurn: boolean,
+  ): AsyncIterable<ResponseChunk> {
+    const source = input.source ?? 'web'
+    if (input.compact) {
+      if (!agent.compactContext) throw new Error('This agent does not support context compaction')
+      return agent.compactContext(agentUserId, source, input.compact.instructions)
+    }
+    return continueTurn && agent.retryTurn
+      ? agent.retryTurn(agentUserId, input.text, source, input.attachments)
+      : agent.sendMessage(agentUserId, input.text, source, input.attachments)
+  }
+
+  /**
+   * Persist a finished compaction as a chat row so its divider survives a
+   * reload. Written outside the attempt transcript on purpose: a retried
+   * attempt does not undo a compaction that already happened.
+   */
+  private persistCompaction(turn: TurnState, chunk: ResponseChunk): ResponseChunk {
+    const info = chunk.compaction
+    if (!info || !isPersistableCompaction(info)) return chunk
+    try {
+      const messageId = saveChatMessage(
+        this.db,
+        turn.sessionId,
+        turn.userId,
+        'system',
+        chunk.text ?? '',
+        JSON.stringify(buildContextCompactionMetadata(info)),
+      )
+      return messageId === null ? chunk : { ...chunk, compaction: { ...info, messageId } }
+    } catch (err) {
+      console.error('[turn-runner] Failed to persist compaction notice:', err)
+      return chunk
+    }
   }
 
   /**

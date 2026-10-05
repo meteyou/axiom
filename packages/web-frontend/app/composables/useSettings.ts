@@ -14,6 +14,7 @@ import {
   type UploadsSettingsContract,
   type WatchdogSettingsContract,
   type RetrySettingsContract,
+  type CompactionSettingsContract,
   type AgentHeartbeatNightModeContract,
   type TelegramSettingsContract,
 } from '@axiom/core/contracts'
@@ -32,6 +33,7 @@ export type SttSettings = SttSettingsContract
 export type UploadsSettings = UploadsSettingsContract
 export type WatchdogSettings = WatchdogSettingsContract
 export type RetrySettings = RetrySettingsContract
+export type CompactionSettings = CompactionSettingsContract
 export type TelegramSettings = TelegramSettingsContract
 export type Settings = SettingsContract
 
@@ -43,6 +45,8 @@ export function useSettings() {
   const saving = ref(false)
   const error = ref<string | null>(null)
   const successMessage = ref<string | null>(null)
+  /** Models too small for the compaction settings, as reported by the last save. */
+  const compactionWarnings = ref<string[]>([])
 
   async function fetchSettings(): Promise<void> {
     loading.value = true
@@ -67,6 +71,7 @@ export function useSettings() {
       const result = await settingsApi.updateSettings(updates)
 
       settings.value = normalizeSettingsContract(result)
+      compactionWarnings.value = result.warnings ?? []
       successMessage.value = 'saved'
 
       // Refresh global connection status so the topbar reflects changes
@@ -93,6 +98,7 @@ export function useSettings() {
     saving,
     error,
     successMessage,
+    compactionWarnings,
     fetchSettings,
     updateSettings,
     clearMessages,

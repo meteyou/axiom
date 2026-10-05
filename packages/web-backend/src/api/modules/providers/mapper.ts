@@ -1,6 +1,7 @@
-import { buildModel, getAvailableImageModels, getImageProviderCapabilities, getPiCatalogModels, getProviderDefaultModel, isQuotaProvider, maskProviderExtraFields, PROVIDER_TYPE_MODEL_OVERRIDES, PROVIDER_TYPE_PRESETS, supportsModelSpecOverrides } from '@axiom/core'
+import { buildModel, getAvailableImageModels, getCompactionWarningScopes, getImageProviderCapabilities, getModelCompactionOverride, getPiCatalogModels, getProviderDefaultModel, isQuotaProvider, loadCompactionSettings, maskProviderExtraFields, PROVIDER_TYPE_MODEL_OVERRIDES, PROVIDER_TYPE_PRESETS, supportsModelSpecOverrides } from '@axiom/core'
 import type {
   AverageImageCost,
+  CompactionSettingsSource,
   ProviderConfig,
   ProviderType,
   ProvidersFile,
@@ -61,9 +62,18 @@ function resolveModelCost(provider: ProviderConfig, modelId: string): { input: n
   return null
 }
 
-function resolveModelSpec(provider: ProviderConfig, modelId: string): ProviderModelSpecContract | null {
+function resolveModelSpec(
+  provider: ProviderConfig,
+  modelId: string,
+  compactionSettings: CompactionSettingsSource | undefined,
+): ProviderModelSpecContract | null {
   try {
     const model = buildModel(provider, modelId)
+    const compactionWarnings = getCompactionWarningScopes(
+      model.contextWindow,
+      compactionSettings,
+      getModelCompactionOverride(provider, modelId),
+    )
     return {
       name: model.name,
       contextWindow: model.contextWindow,
@@ -71,6 +81,7 @@ function resolveModelSpec(provider: ProviderConfig, modelId: string): ProviderMo
       reasoning: model.reasoning,
       input: [...model.input],
       ...(model.thinkingLevelMap && { thinkingLevelMap: { ...model.thinkingLevelMap } }),
+      ...(compactionWarnings.length > 0 && { compactionWarnings }),
     }
   } catch {
     return null
@@ -102,6 +113,7 @@ export function mapProvidersListResponse(
   quotaSnapshot?: Record<string, ProviderQuotaContract>,
   imageCostAverage?: ImageCostAverageLookup,
 ): ProvidersListResponseContract {
+  const compactionSettings = loadCompactionSettings()
   const providers = masked.providers.map((provider) => {
     const fullProvider = decrypted.providers.find((candidate) => candidate.id === provider.id)
     let cost: { input: number; output: number } | null = null
@@ -117,7 +129,7 @@ export function mapProvidersListResponse(
         if (modelCost) {
           modelCosts[modelId] = modelCost
         }
-        const modelSpec = resolveModelSpec(fullProvider, modelId)
+        const modelSpec = resolveModelSpec(fullProvider, modelId, compactionSettings)
         if (modelSpec) {
           modelSpecs[modelId] = modelSpec
         }

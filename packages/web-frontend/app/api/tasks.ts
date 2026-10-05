@@ -1,4 +1,5 @@
 import type { SettingsThinkingLevel } from '@axiom/core/contracts'
+import type { ChatCompactionInfo } from '~/composables/useChat'
 
 export interface Task {
   id: string
@@ -93,6 +94,8 @@ export interface TaskEventItem {
   content?: string
   metadata?: unknown
   thinking?: string
+  /** Context-compaction progress (for type='compaction') */
+  compaction?: ChatCompactionInfo
 }
 
 interface TaskEventsResponse {

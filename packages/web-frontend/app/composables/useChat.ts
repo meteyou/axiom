@@ -99,6 +99,25 @@ export interface ChatTurnErrorInfo {
   occurredAt: string
 }
 
+export type ChatCompactionStatus = 'running' | 'completed' | 'skipped' | 'failed'
+
+/**
+ * Context-compaction progress. Mirrors the backend `ContextCompactionInfo`;
+ * finished compactions are persisted rows, so `compactionId` matches the live
+ * notice with the one rebuilt from history after a reload.
+ */
+export interface ChatCompactionInfo {
+  compactionId: string
+  messageId?: number
+  status: ChatCompactionStatus
+  reason: string
+  tokensBefore: number
+  tokensAfter?: number
+  summary?: string
+  error?: string
+  occurredAt: string
+}
+
 export interface ChatAttachment {
   kind: 'image' | 'file'
   originalName: string
@@ -174,6 +193,8 @@ export interface ChatMessage {
    * `turn_error` row), so the failure never silently disappears.
    */
   errorInfo?: ChatTurnErrorInfo
+  /** Context-compaction notice for a `role: 'system'` row (live and from history). */
+  compactionInfo?: ChatCompactionInfo
   /**
    * Excerpt of the message the user replied to (e.g. Telegram reply-to), truncated to 500 chars.
    * When present, the UI renders a WhatsApp/Telegram-style quote bubble above the
@@ -205,8 +226,10 @@ export interface ChatMessage {
 }
 
 interface WsMessage {
-  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'session_summary' | 'reminder' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'pong' | 'attachment' | 'chat_action' | 'chat_action_resolved' | 'turn_replay_start' | 'turn_replay_end' | 'stall_warning' | 'stall_resolved' | 'retry_scheduled'
+  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'session_summary' | 'reminder' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'pong' | 'attachment' | 'chat_action' | 'chat_action_resolved' | 'turn_replay_start' | 'turn_replay_end' | 'stall_warning' | 'stall_resolved' | 'retry_scheduled' | 'compaction'
   text?: string
+  /** Context-compaction progress (for type='compaction') */
+  compaction?: ChatCompactionInfo
   /** Provider-stall details (for stall_warning / stall_resolved) */
   stall?: ChatStallInfo
   /** Auto-retry details (for retry_scheduled) */
@@ -332,7 +355,7 @@ export function stripTrailingTurn(list: ChatMessage[]): ChatMessage[] {
     // replay re-emits both, so nothing is lost.
     const belongsToTurn = message.role === 'assistant'
       || message.role === 'tool'
-      || (message.role === 'system' && (!!message.stallInfo || !!message.errorInfo))
+      || (message.role === 'system' && (!!message.stallInfo || !!message.errorInfo || !!message.compactionInfo))
     if (!belongsToTurn) break
     end--
   }
@@ -352,7 +375,7 @@ export function stripFailedAttempt(list: ChatMessage[]): ChatMessage[] {
       result.splice(i, 1)
       continue
     }
-    if (message.role === 'system' && message.stallInfo) continue
+    if (message.role === 'system' && (message.stallInfo || message.compactionInfo)) continue
     break
   }
   return result
@@ -381,6 +404,54 @@ export function upsertStallMessage(list: ChatMessage[], stall: ChatStallInfo, co
     timestamp: new Date().toISOString(),
     stallInfo: stall,
   })
+}
+
+/**
+ * Insert or update the notice for one compaction. The `running` keepalives,
+ * the terminal status, a mid-turn replay and a history reload all share the
+ * compaction id, so the notice is a single row that changes state in place.
+ */
+export function upsertCompactionMessage(
+  list: ChatMessage[],
+  info: ChatCompactionInfo,
+  content: string,
+): ChatMessage[] {
+  const index = list.findIndex(m => m.compactionInfo?.compactionId === info.compactionId)
+  if (index >= 0) {
+    const updated = [...list]
+    const existing = updated[index]!
+    updated[index] = { ...existing, id: info.messageId ?? existing.id, content, compactionInfo: info }
+    return updated
+  }
+
+  return insertBeforeTrailingStreams(list, {
+    id: info.messageId,
+    role: 'system',
+    content,
+    timestamp: info.occurredAt || new Date().toISOString(),
+    compactionInfo: info,
+  })
+}
+
+const COMPACTION_STATUSES: readonly ChatCompactionStatus[] = ['running', 'completed', 'skipped', 'failed']
+
+/** Rebuild a persisted `context_compaction` row on a history load. */
+export function compactionFromHistoryMetadata(metadata: unknown, messageId?: number): ChatCompactionInfo | null {
+  if (!metadata || typeof metadata !== 'object') return null
+  const meta = metadata as Record<string, unknown>
+  if (meta.kind !== 'context_compaction' || typeof meta.compactionId !== 'string') return null
+  const status = COMPACTION_STATUSES.find(candidate => candidate === meta.status) ?? 'completed'
+  return {
+    compactionId: meta.compactionId,
+    messageId,
+    status,
+    reason: typeof meta.reason === 'string' ? meta.reason : 'threshold',
+    tokensBefore: typeof meta.tokensBefore === 'number' ? meta.tokensBefore : 0,
+    tokensAfter: typeof meta.tokensAfter === 'number' ? meta.tokensAfter : undefined,
+    summary: typeof meta.summary === 'string' ? meta.summary : undefined,
+    error: typeof meta.error === 'string' ? meta.error : undefined,
+    occurredAt: typeof meta.occurredAt === 'string' ? meta.occurredAt : '',
+  }
 }
 
 /**
@@ -902,6 +973,10 @@ export function useChat() {
         // The backend sends the same text it persisted on the row, so live
         // rendering and a history reload never disagree.
         if (msg.stall) messages.value = upsertStallMessage(messages.value, msg.stall, msg.text ?? '')
+        break
+
+      case 'compaction':
+        if (msg.compaction) messages.value = upsertCompactionMessage(messages.value, msg.compaction, msg.text ?? '')
         break
 
       case 'retry_scheduled':

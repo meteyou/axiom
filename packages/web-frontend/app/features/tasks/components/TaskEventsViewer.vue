@@ -319,6 +319,11 @@
           </TaskEventCard>
         </template>
 
+        <ChatCompactionDivider
+          v-if="event.type === 'compaction' && event.compaction"
+          :info="event.compaction"
+        />
+
         <!-- Status change event -->
         <TaskEventCard
           v-if="event.type === 'status_change'"

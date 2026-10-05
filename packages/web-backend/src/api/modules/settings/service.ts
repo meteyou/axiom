@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { ensureConfigTemplates, getConfigDir, loadConfig, SETTINGS_THINKING_LEVELS } from '@axiom/core'
+import { ensureConfigTemplates, getConfigDir, listCompactionWarnings, loadConfig, loadProviders, SETTINGS_THINKING_LEVELS } from '@axiom/core'
 import type { SettingsData, SettingsRouterOptions, TelegramData } from './types.js'
 import {
   mergeAgentHeartbeat,
@@ -9,6 +9,7 @@ import {
   mergeHealthMonitor,
   mergeImageGeneration,
   mergeRetry,
+  mergeCompaction,
   mergeStt,
   mergeTasks,
   mergeTts,
@@ -142,6 +143,9 @@ export function createSettingsService(options: SettingsRouterOptions = {}): Sett
     const retryMerge = mergeRetry(body, settingsRaw)
     if (retryMerge.error) throw new SettingsValidationError(retryMerge.error)
 
+    const compactionMerge = mergeCompaction(body, settingsRaw)
+    if (compactionMerge.error) throw new SettingsValidationError(compactionMerge.error)
+
     const telegramBody = body.telegram as Record<string, unknown> | undefined
     if (telegramBody !== undefined) {
       if (telegramBody.enabled !== undefined) {
@@ -214,11 +218,21 @@ export function createSettingsService(options: SettingsRouterOptions = {}): Sett
       settings,
       telegram,
       batchingDelayMs: telegram.batchingDelayMs ?? previousBatchingDelayMs,
+      warnings: compactionMerge.changed ? readCompactionWarnings(settings) : undefined,
     })
   }
 
   return {
     readSettings,
     updateSettings,
+  }
+}
+
+function readCompactionWarnings(settings: SettingsData): string[] {
+  try {
+    return listCompactionWarnings(loadProviders().providers, settings.compaction)
+  } catch (err) {
+    console.warn('[settings] Failed to check models against compaction settings:', err)
+    return []
   }
 }

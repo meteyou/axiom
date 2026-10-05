@@ -2,13 +2,15 @@ import { describe, expect, it } from 'vitest'
 import {
   buildTurnRetryAction,
   closeOpenStreams,
+  compactionFromHistoryMetadata,
   stripFailedAttempt,
   stripTrailingTurn,
   turnErrorFromHistoryMetadata,
+  upsertCompactionMessage,
   upsertErrorMessage,
   upsertStallMessage,
 } from './useChat'
-import type { ChatMessage, ChatStallInfo, ChatTurnErrorInfo } from './useChat'
+import type { ChatCompactionInfo, ChatMessage, ChatStallInfo, ChatTurnErrorInfo } from './useChat'
 
 function msg(role: ChatMessage['role'], content: string): ChatMessage {
   return { role, content }
@@ -312,5 +314,71 @@ describe('closeOpenStreams', () => {
   it('returns the same list when nothing is streaming', () => {
     const list = [msg('user', 'hi'), msg('assistant', 'hello')]
     expect(closeOpenStreams(list)).toBe(list)
+  })
+})
+
+function compaction(overrides: Partial<ChatCompactionInfo> = {}): ChatCompactionInfo {
+  return {
+    compactionId: 'c-1',
+    status: 'running',
+    reason: 'threshold',
+    tokensBefore: 368_000,
+    occurredAt: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  }
+}
+
+describe('upsertCompactionMessage', () => {
+  it('turns the running notice into the completed one in place', () => {
+    const running = upsertCompactionMessage([msg('user', 'hi')], compaction(), 'Compacting…')
+    const again = upsertCompactionMessage(running, compaction(), 'Compacting…')
+    expect(again).toHaveLength(2)
+
+    const done = upsertCompactionMessage(again, compaction({
+      status: 'completed', tokensAfter: 41_000, summary: '## Goal', messageId: 7,
+    }), 'Context compacted')
+    expect(done).toHaveLength(2)
+    expect(done[1]).toMatchObject({ id: 7, content: 'Context compacted', compactionInfo: { status: 'completed', tokensAfter: 41_000 } })
+  })
+
+  it('is kept when a failed attempt is discarded and dropped with a replayed turn', () => {
+    const list: ChatMessage[] = [
+      msg('user', 'hi'),
+      { role: 'system', content: 'compacted', compactionInfo: compaction({ status: 'completed' }) },
+      msg('assistant', 'partial'),
+    ]
+    expect(stripFailedAttempt(list)).toHaveLength(2)
+    expect(stripTrailingTurn(list)).toHaveLength(1)
+  })
+})
+
+describe('compactionFromHistoryMetadata', () => {
+  it('rebuilds a persisted compaction row', () => {
+    const info = compactionFromHistoryMetadata({
+      kind: 'context_compaction',
+      compactionId: 'c-9',
+      status: 'completed',
+      reason: 'manual',
+      tokensBefore: 120_000,
+      tokensAfter: 30_000,
+      summary: '## Goal',
+      occurredAt: '2026-01-01T00:00:00.000Z',
+    }, 5)
+    expect(info).toEqual({
+      compactionId: 'c-9',
+      messageId: 5,
+      status: 'completed',
+      reason: 'manual',
+      tokensBefore: 120_000,
+      tokensAfter: 30_000,
+      summary: '## Goal',
+      error: undefined,
+      occurredAt: '2026-01-01T00:00:00.000Z',
+    })
+  })
+
+  it('ignores other system rows', () => {
+    expect(compactionFromHistoryMetadata({ kind: 'turn_error', error: 'x' }, 1)).toBeNull()
+    expect(compactionFromHistoryMetadata(null, 1)).toBeNull()
   })
 })

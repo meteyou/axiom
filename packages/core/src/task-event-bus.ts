@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events'
+import type { ContextCompactionInfo } from './agent-runtime-types.js'
 
 /**
  * Event types emitted during task execution
@@ -8,6 +9,7 @@ export type TaskEventType =
   | 'tool_call_end'
   | 'text_delta'
   | 'status_change'
+  | 'compaction'
 
 export interface TaskEvent {
   /** The type of event */
@@ -34,6 +36,8 @@ export interface TaskEvent {
   status?: string
   /** Additional info for status changes (e.g. error message, summary) */
   statusMessage?: string
+  /** Context compaction progress (for compaction) */
+  compaction?: ContextCompactionInfo
 }
 
 /**

@@ -66,6 +66,7 @@ export {
   addProvider,
   updateProvider,
   updateProviderModel,
+  getModelCompactionOverride,
   ProviderNotFoundError,
   deleteProvider,
   setActiveProvider,
@@ -298,8 +299,43 @@ export type {
   StallOutcome,
   TurnErrorCause,
   TurnErrorInfo,
+  ContextCompactionInfo,
+  ContextCompactionReason,
+  ContextCompactionStatus,
 } from './agent-runtime-types.js'
-export { STALL_OUTCOMES, TURN_ERROR_CAUSES } from './agent-runtime-types.js'
+export {
+  STALL_OUTCOMES,
+  TURN_ERROR_CAUSES,
+  CONTEXT_COMPACTION_REASONS,
+  CONTEXT_COMPACTION_STATUSES,
+} from './agent-runtime-types.js'
+export {
+  CONTEXT_COMPACTION_KIND,
+  buildContextCompactionMetadata,
+  parseContextCompactionMetadata,
+  formatContextCompactionContent,
+  formatTokenCount,
+  isPersistableCompaction,
+} from './context-compaction-notice.js'
+export type { ContextCompactionMetadata } from './context-compaction-notice.js'
+export { listCompactionWarnings, loadCompactionSettings } from './compaction-diagnostics.js'
+export {
+  TYPICAL_SYSTEM_PROMPT_TOKENS,
+  getCompactionWarningScopes,
+  checkCompactionInvariant,
+  resolveCompactionSettings,
+  resolveEffectiveCompactionBudget,
+} from './compaction.js'
+export type {
+  CompactionScope,
+  CompactionReason,
+  CompactionInvariantCheck,
+  CompactionSettingsSource,
+  EffectiveCompactionBudget,
+  ResolvedCompactionSettings,
+} from './compaction.js'
+export { listContextCompactions } from './compaction-store.js'
+export type { ContextCompactionRecord } from './compaction-store.js'
 export {
   TURN_ERROR_KIND,
   buildTurnErrorMetadata,
@@ -627,6 +663,7 @@ export {
   formatCronjobsReply,
   isSlashCommandPicker,
   isSlashCommandAgentTurn,
+  isSlashCommandCompaction,
   listLoadableSkills,
 } from './slash-commands.js'
 export type {
@@ -640,5 +677,6 @@ export type {
   SlashCommandPickerOption,
   SlashCommandReply,
   SlashCommandAgentTurn,
+  SlashCommandCompaction,
   LoadableSkill,
 } from './slash-commands.js'

@@ -12,7 +12,9 @@ export {
   DEFAULT_HEALTH_MONITOR_NOTIFICATION_TOGGLES,
   DEFAULT_WATCHDOG_SETTINGS,
   DEFAULT_RETRY_SETTINGS,
+  DEFAULT_COMPACTION_SETTINGS,
   DEFAULT_SETTINGS_CONTRACT,
+  normalizeCompactionSettings,
   normalizeSettingsContract,
   normalizeImageGenerationSettings,
   normalizeImageOutputDir,
@@ -42,6 +44,8 @@ export type {
   UploadsSettingsContract,
   WatchdogSettingsContract,
   RetrySettingsContract,
+  CompactionSettingsContract,
+  CompactionTasksSettingsContract,
   SttRewriteSettingsContract,
   SttSettingsContract,
   SettingsContract,
@@ -62,6 +66,7 @@ export {
   validateModelCompat,
   getSupportedThinkingLevels,
   MODEL_THINKING_LEVELS,
+  COMPACTION_SCOPES,
 } from './providers.js'
 
 export type {
@@ -111,5 +116,7 @@ export type {
   ModelThinkingLevelContract,
   ModelThinkingLevelMapContract,
   ModelInputModalityContract,
+  ModelCompactionOverrideContract,
+  CompactionScopeContract,
   ProviderReferenceContract,
 } from './providers.js'

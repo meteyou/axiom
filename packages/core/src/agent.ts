@@ -201,6 +201,24 @@ export class AgentCore {
   }
 
   /**
+   * Compact the main agent's conversation now (`/compact`). Queued like a
+   * message so it never runs in the middle of a turn. The main agent has one
+   * shared runtime, so this compacts the context every channel talks to.
+   */
+  // Called by the turn runner through the structural TurnAgentLike interface.
+  // fallow-ignore-next-line unused-class-member
+  async *compactContext(userId: string, source: string = 'web', instructions?: string): AsyncIterable<ResponseChunk> {
+    const iterable = await this.messageQueue.enqueue<ResponseChunk>(
+      'user_message',
+      userId,
+      instructions ?? '',
+      source,
+      (msg) => this.runtime.compact(instructions, this.sessionManager.getSession(msg.payload.userId)?.id),
+    )
+    yield* iterable
+  }
+
+  /**
    * Inject a task result into the main agent via the message queue.
    * The injection is queued and processed sequentially like any other message.
    *
