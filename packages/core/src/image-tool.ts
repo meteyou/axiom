@@ -234,6 +234,7 @@ function bookImageUsage(db: Database, result: ImageGenerationResult, sessionId: 
       cacheWrite: request.usage.cacheWrite,
       estimatedCost: request.costUsd ?? 0,
       sessionId,
+      kind: 'image',
     })
   }
 }

@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS token_usage (
   cache_read INTEGER NOT NULL DEFAULT 0,
   cache_write INTEGER NOT NULL DEFAULT 0,
   estimated_cost REAL NOT NULL DEFAULT 0.0,
-  session_id TEXT
+  session_id TEXT,
+  kind TEXT NOT NULL DEFAULT 'text' CHECK(kind IN ('text', 'image'))
 );
 
 CREATE TABLE IF NOT EXISTS tool_calls (
@@ -184,6 +185,9 @@ export function initDatabase(dbPath?: string): Database {
   }
   if (!tokenUsageCols.find(c => c.name === 'cache_write')) {
     db.exec("ALTER TABLE token_usage ADD COLUMN cache_write INTEGER NOT NULL DEFAULT 0")
+  }
+  if (!tokenUsageCols.find(c => c.name === 'kind')) {
+    db.exec("ALTER TABLE token_usage ADD COLUMN kind TEXT NOT NULL DEFAULT 'text' CHECK(kind IN ('text', 'image'))")
   }
 
   // Migration: add metadata column and tool role to chat_messages if missing

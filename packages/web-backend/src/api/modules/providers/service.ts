@@ -734,6 +734,7 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
         cacheRead: result.usage.cacheRead,
         cacheWrite: result.usage.cacheWrite,
         estimatedCost: result.costUsd ?? 0,
+        kind: 'image',
       })
     }
 
