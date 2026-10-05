@@ -323,6 +323,18 @@ describe('generate_image tool', () => {
     writeSettings(true)
     expect(createImageGenerationTools().map(tool => tool.name)).toEqual(['generate_image'])
   })
+
+  it('is not registered while settings.json cannot be read, even with usable image models', () => {
+    const configDir = path.join(dataDir, 'config')
+    fs.mkdirSync(configDir, { recursive: true })
+    fs.writeFileSync(path.join(configDir, 'providers.json'), JSON.stringify({ providers: [provider] }))
+    fs.writeFileSync(path.join(configDir, 'settings.json'), '{ not json')
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    expect(createImageGenerationTools()).toEqual([])
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('image generation disabled'))
+    warn.mockRestore()
+  })
 })
 
 describe('image file naming', () => {
