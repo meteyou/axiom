@@ -126,6 +126,7 @@
         <p v-if="selected.size > 0" class="text-xs text-muted-foreground">
           {{ $t('providers.addModelSelected', { count: selected.size }) }}
         </p>
+        <p v-if="saveError" class="break-words text-xs text-destructive">{{ saveError }}</p>
       </div>
 
       <DialogFooter>
@@ -169,6 +170,7 @@ const loading = ref(false)
 const loadError = ref('')
 const selected = ref<Set<string>>(new Set())
 const saving = ref(false)
+const saveError = ref('')
 
 const filteredModels = computed(() => {
   const terms = search.value.trim().toLowerCase().split(/\s+/).filter(Boolean)
@@ -227,9 +229,10 @@ async function loadCatalog() {
 
 // Live lists include models newer than the bundled catalog; their name and
 // modalities are only known from the list, so they are stored per model.
+// Enabling a model without them would build it with default modalities.
 async function persistLiveCatalogMetadata(provider: Provider, modelIds: string[]) {
   if (!isLiveCatalog.value) return
-  await Promise.allSettled(
+  await Promise.all(
     catalog.value
       .filter(entry => modelIds.includes(entry.id))
       .map(entry => providersApi.updateProviderModel(provider.id, entry.id, buildImageCatalogModelPatch(entry))),
@@ -239,11 +242,17 @@ async function persistLiveCatalogMetadata(provider: Provider, modelIds: string[]
 async function handleAdd() {
   if (!props.provider || selected.value.size === 0) return
   saving.value = true
+  saveError.value = ''
   try {
     const current = props.provider.enabledImageModels ?? []
     const added = Array.from(selected.value).filter(id => !current.includes(id))
     const enabledImageModels = Array.from(new Set([...current, ...added]))
-    await persistLiveCatalogMetadata(props.provider, added)
+    try {
+      await persistLiveCatalogMetadata(props.provider, added)
+    } catch (err) {
+      saveError.value = (err as Error).message
+      return
+    }
     const result = await updateProvider(props.provider.id, { enabledImageModels })
     if (result) {
       emit('added')
@@ -260,6 +269,7 @@ watch(
     if (!isOpen || !props.provider) return
     search.value = ''
     selected.value = new Set()
+    saveError.value = ''
     loadCatalog()
   },
   { immediate: true },
