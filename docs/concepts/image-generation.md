@@ -137,9 +137,9 @@ The built-in [`image-generation` skill](./skills#currently-shipped) carries the 
 
 ## Migration of existing configurations
 
-Before image models had their own list, image-only models could only be added as text models (where every chat request to them failed). On the first load after the update, Axiom moves every id from `enabledModels` to `enabledImageModels` when the provider type's image catalog lists it and its text catalog does not — for example `openai/gpt-5-image-mini`, `google/gemini-3.1-flash-image` or `recraft/recraft-v4.1` on OpenRouter, or `gpt-image-1` on OpenAI. The change is written back to `providers.json` once.
+Before image models had their own list, image-only models could only be added as text models (where every chat request to them failed). On the first load after the update, Axiom moves every id from `enabledModels` to `enabledImageModels` when the provider type's image catalog lists it as an image-only model (no text output) and its text catalog does not — for example `recraft/recraft-v4.1` or `black-forest-labs/flux.2-pro` on OpenRouter, or `gpt-image-1` on OpenAI. The change is written back to `providers.json` once.
 
-Ids are left as text models when they are also chat models in pi-ai's text catalog (e.g. `google/gemini-3-pro-image`, `openrouter/auto`) or when they are currently the active or fallback model, so a running chat setup never changes underneath you. Per-model descriptions and display names are kept. A provider that only had image models ends up with no text models — it simply disappears from the text model pickers.
+Ids are left as text models when they also answer with text (e.g. `google/gemini-3.1-flash-image`, `openai/gpt-5-image-mini`), when they are also chat models in pi-ai's text catalog (e.g. `google/gemini-3-pro-image`, `openrouter/auto`) or when they are currently the active or fallback model, so a running chat setup never changes underneath you. Per-model descriptions and display names are kept. A provider that only had image models ends up with no text models — it simply disappears from the text model pickers.
 
 ## Limitations
 

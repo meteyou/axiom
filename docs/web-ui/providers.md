@@ -417,7 +417,7 @@ Which image model the agent uses by default, and whether image generation is swi
 
 ### Migration of image models added as text models
 
-Before this section existed, image models could only be added through **Add Model** as text models, where every chat request to them failed. On the first start after the update, ids that pi-ai lists **only** as image models (e.g. `openai/gpt-5-image-mini`, `google/gemini-3.1-flash-image`, `recraft/recraft-v4.1`) are moved from the text models to the image models automatically. Ids that are also chat models (e.g. `google/gemini-3-pro-image`) and the current active or fallback model stay text models. Descriptions and display names are kept. The live OpenRouter list in **Add Model** no longer offers image-only models. Details: [Image Generation → Migration](../concepts/image-generation#migration-of-existing-configurations).
+Before this section existed, image models could only be added through **Add Model** as text models, where every chat request to them failed. On the first start after the update, ids that pi-ai lists **only** as image models without text output (e.g. `recraft/recraft-v4.1`, `black-forest-labs/flux.2-pro`) are moved from the text models to the image models automatically. Image models that also answer with text (e.g. `google/gemini-3.1-flash-image`, `openai/gpt-5-image-mini`), ids that are also chat models (e.g. `google/gemini-3-pro-image`) and the current active or fallback model stay text models. Descriptions and display names are kept. The live OpenRouter list in **Add Model** no longer offers image-only models. Details: [Image Generation → Migration](../concepts/image-generation#migration-of-existing-configurations).
 
 ## Delete provider
 
