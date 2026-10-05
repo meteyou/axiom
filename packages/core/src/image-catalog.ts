@@ -114,11 +114,7 @@ const LOCAL_IMAGE_CATALOGS: Record<string, ImageModel<ImageApi>[]> = {
 
 function getBuiltinImageCatalog(piAiProvider: string | null | undefined): ImageModel<ImageApi>[] {
   if (!piAiProvider) return []
-  try {
-    return getBuiltinImageModels(piAiProvider as BuiltinProvider) as ImageModel<ImageApi>[]
-  } catch {
-    return []
-  }
+  return getBuiltinImageModels(piAiProvider as BuiltinProvider) as ImageModel<ImageApi>[]
 }
 
 /**
