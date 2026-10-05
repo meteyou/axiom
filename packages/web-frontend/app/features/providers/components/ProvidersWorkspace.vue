@@ -110,7 +110,7 @@
               <TableRow class="hover:bg-transparent">
                 <TableHead>{{ $t('providers.columns.name') }}</TableHead>
                 <TableHead>{{ $t('providers.columns.cost') }}</TableHead>
-                <TableHead>{{ $t('providers.columns.status') }}</TableHead>
+                <TableHead class="text-right">{{ $t('providers.columns.status') }}</TableHead>
                 <TableHead class="w-12" />
               </TableRow>
             </TableHeader>
@@ -139,16 +139,15 @@
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell />
-                  <TableCell>
-                    <div v-if="isRefreshingQuota(provider.id)" class="flex items-center gap-1.5">
+                  <TableCell colspan="2">
+                    <div v-if="isRefreshingQuota(provider.id)" class="flex items-center justify-end gap-1.5">
                       <span
                         class="h-3.5 w-3.5 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent"
                         aria-hidden="true"
                       />
                       <span class="text-xs text-muted-foreground">{{ $t('providers.quota.refreshing') }}</span>
                     </div>
-                    <div v-else-if="getQuota(provider)" class="flex flex-col gap-0.5 text-xs">
+                    <div v-else-if="getQuota(provider)" class="flex flex-col items-end gap-0.5 text-right text-xs">
                       <span
                         v-if="getQuota(provider)!.error"
                         class="text-muted-foreground"
@@ -160,7 +159,7 @@
                         <div
                           v-for="part in quotaWindowParts(getQuota(provider)!)"
                           :key="part.key"
-                          class="flex items-center gap-1 whitespace-nowrap"
+                          :class="part.key === 'balance' ? 'flex flex-col items-end' : 'flex items-center gap-1 whitespace-nowrap'"
                         >
                           <span class="font-medium" :class="part.colorClass">
                             {{ part.label }}: {{ part.value }}
@@ -261,8 +260,8 @@
                   </TableCell>
 
                   <!-- Status per model -->
-                  <TableCell class="py-1.5">
-                    <div v-if="isTestingModel(provider.id, modelId)" class="flex items-center gap-1.5">
+                  <TableCell class="py-1.5 text-right">
+                    <div v-if="isTestingModel(provider.id, modelId)" class="flex items-center justify-end gap-1.5">
                       <span
                         class="h-3.5 w-3.5 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent"
                         aria-hidden="true"
@@ -379,8 +378,8 @@
                         </span>
                       </div>
                     </TableCell>
-                    <TableCell class="py-1.5">
-                      <div v-if="isTestingModel(provider.id, modelId)" class="flex items-center gap-1.5">
+                    <TableCell class="py-1.5 text-right">
+                      <div v-if="isTestingModel(provider.id, modelId)" class="flex items-center justify-end gap-1.5">
                         <span
                           class="h-3.5 w-3.5 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent"
                           aria-hidden="true"
