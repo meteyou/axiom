@@ -1,0 +1,324 @@
+import fs from 'node:fs'
+import path from 'node:path'
+import type { AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core'
+import type { ImageContent } from '@earendil-works/pi-ai'
+import { Type } from '@earendil-works/pi-ai'
+import type { Database } from './database.js'
+import {
+  generateImagesWithProvider,
+  hasUsableImageModels,
+  MAX_IMAGES_PER_CALL,
+  resolveImageModel,
+} from './image-generation.js'
+import type { GeneratedImage, ImageGenerationRequest, ImageGenerationResult, ImageModelResolution } from './image-generation.js'
+import { buildImageModel } from './provider-config.js'
+import { logTokenUsage } from './token-logger.js'
+import { getWorkspaceDir } from './workspace.js'
+
+export const GENERATE_IMAGE_TOOL_NAME = 'generate_image'
+
+const MAX_INPUT_IMAGES = 8
+const MAX_INPUT_IMAGE_BYTES = 20 * 1024 * 1024
+const ASPECT_RATIO_PATTERN = /^\d{1,2}:\d{1,2}$/
+
+const INPUT_IMAGE_MIME_TYPES: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+}
+
+const EXTENSION_BY_MIME_TYPE: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+  'image/svg+xml': 'svg',
+}
+
+export interface GenerateImageToolOptions {
+  db?: Database
+  /** Session the generation cost is booked on in `token_usage`; background tools have none. */
+  getSessionId?: () => string | null | undefined
+  /** Test seams. */
+  generate?: (request: ImageGenerationRequest) => Promise<ImageGenerationResult>
+  resolveModel?: (requested: string | undefined) => ImageModelResolution
+  now?: () => Date
+}
+
+interface GenerateImageParams {
+  prompt: string
+  model?: string
+  aspect_ratio?: string
+  n?: number
+  input_images?: string[]
+}
+
+export interface SavedImageFile {
+  path: string
+  absolutePath: string
+  sidecarPath: string
+  mimeType: string
+  bytes: number
+}
+
+export interface GenerateImageToolDetails {
+  files?: SavedImageFile[]
+  provider?: string
+  model?: string
+  costUsd?: number | null
+  durationMs?: number
+  errors?: string[]
+  error?: boolean
+}
+
+type GenerateImageToolResult = AgentToolResult<GenerateImageToolDetails>
+
+/** `generate_image` is only registered while at least one image model is usable. */
+export function createImageGenerationTools(options: GenerateImageToolOptions = {}): AgentTool[] {
+  return hasUsableImageModels() ? [createGenerateImageTool(options)] : []
+}
+
+export function imageExtensionForMimeType(mimeType: string): string {
+  const normalized = mimeType.toLowerCase().split(';')[0]!.trim()
+  const known = EXTENSION_BY_MIME_TYPE[normalized]
+  if (known) return known
+  const subtype = normalized.startsWith('image/') ? normalized.slice('image/'.length).replace(/[^a-z0-9]/g, '') : ''
+  return subtype || 'bin'
+}
+
+export function slugifyPrompt(prompt: string): string {
+  const slug = prompt
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/ß/g, 'ss')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .split('-')
+    .slice(0, 6)
+    .join('-')
+    .slice(0, 48)
+    .replace(/-+$/g, '')
+  return slug || 'image'
+}
+
+function formatLocalDate(date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+
+function resolveWorkspacePath(filePath: string): string {
+  return path.isAbsolute(filePath) ? filePath : path.resolve(getWorkspaceDir(), filePath)
+}
+
+function errorResult(message: string, extra: Partial<GenerateImageToolDetails> = {}): GenerateImageToolResult {
+  return {
+    content: [{ type: 'text', text: `Error: ${message}` }],
+    details: { error: true, ...extra },
+  }
+}
+
+function loadInputImages(paths: string[]): ImageContent[] {
+  if (paths.length > MAX_INPUT_IMAGES) {
+    throw new Error(`At most ${MAX_INPUT_IMAGES} input images are supported per call.`)
+  }
+  return paths.map((inputPath) => {
+    const absolutePath = resolveWorkspacePath(inputPath)
+    const mimeType = INPUT_IMAGE_MIME_TYPES[path.extname(absolutePath).toLowerCase()]
+    if (!mimeType) {
+      throw new Error(`Input image "${inputPath}" must be a PNG, JPEG, WebP or GIF file.`)
+    }
+    let stat: fs.Stats
+    try {
+      stat = fs.statSync(absolutePath)
+    } catch {
+      throw new Error(`Input image "${inputPath}" not found.`)
+    }
+    if (!stat.isFile()) throw new Error(`Input image "${inputPath}" is not a file.`)
+    if (stat.size > MAX_INPUT_IMAGE_BYTES) {
+      throw new Error(`Input image "${inputPath}" is larger than ${MAX_INPUT_IMAGE_BYTES / 1024 / 1024} MB.`)
+    }
+    return { type: 'image', mimeType, data: fs.readFileSync(absolutePath).toString('base64') }
+  })
+}
+
+/**
+ * Picks a file stem that collides with nothing already in `directory`, so a
+ * repeated prompt never overwrites earlier results or their sidecars.
+ */
+function planFileNames(directory: string, slug: string, images: GeneratedImage[]): string[] {
+  const namesFor = (stem: string) => images.map((image, index) => {
+    const suffix = images.length > 1 ? `-${index + 1}` : ''
+    return `${stem}${suffix}.${imageExtensionForMimeType(image.mimeType)}`
+  })
+  const isFree = (names: string[]) => names.every(name =>
+    !fs.existsSync(path.join(directory, name)) && !fs.existsSync(path.join(directory, `${name}.json`)),
+  )
+  let names = namesFor(slug)
+  for (let attempt = 2; !isFree(names); attempt++) {
+    names = namesFor(`${slug}-${attempt}`)
+  }
+  return names
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
+function formatCost(costUsd: number | null): string {
+  return costUsd === null ? 'not reported by the provider' : `$${costUsd.toFixed(4)}`
+}
+
+export function createGenerateImageTool(options: GenerateImageToolOptions = {}): AgentTool {
+  const generate = options.generate ?? generateImagesWithProvider
+  const resolveModel = options.resolveModel ?? ((requested: string | undefined) => resolveImageModel(requested))
+  const now = options.now ?? (() => new Date())
+
+  return {
+    name: GENERATE_IMAGE_TOOL_NAME,
+    label: 'Generate Image',
+    description:
+      'Generate images with an enabled image generation model (listed under "Image generation models" in available_providers). '
+      + 'Files are saved in the workspace under images/YYYY-MM-DD/ with a JSON sidecar; the result lists paths, format, '
+      + 'size, the billed cost and the duration, never image data. To edit or vary an existing image, pass it via '
+      + 'input_images instead of generating from scratch. Deliver results to the user with send_file_to_user. '
+      + 'Load the image-generation skill before the first use for prompt writing, model choice and cost guidance.',
+    parameters: Type.Object({
+      prompt: Type.String({ description: 'Detailed description of the image: subject, composition, style, colours, any text that must appear.' }),
+      model: Type.Optional(Type.String({
+        description: 'Image model as "<provider>:<model id>" or a model id from the image generation model list. Defaults to the default image model.',
+      })),
+      aspect_ratio: Type.Optional(Type.String({
+        description: 'Aspect ratio such as "1:1", "16:9", "9:16", "4:3" or "3:2". Not every model honours it.',
+      })),
+      n: Type.Optional(Type.Integer({
+        minimum: 1,
+        maximum: MAX_IMAGES_PER_CALL,
+        description: `Number of variants (1-${MAX_IMAGES_PER_CALL}, default 1). Each variant is billed separately.`,
+      })),
+      input_images: Type.Optional(Type.Array(Type.String(), {
+        description: `Workspace-relative (or absolute) paths of PNG/JPEG/WebP/GIF images to edit, combine or use as reference (max ${MAX_INPUT_IMAGES}).`,
+      })),
+    }),
+    execute: async (_toolCallId, rawParams, signal): Promise<GenerateImageToolResult> => {
+      const params = rawParams as GenerateImageParams
+      const prompt = params.prompt?.trim()
+      if (!prompt) return errorResult('prompt must not be empty.')
+
+      const aspectRatio = params.aspect_ratio?.trim() || undefined
+      if (aspectRatio && !ASPECT_RATIO_PATTERN.test(aspectRatio)) {
+        return errorResult(`aspect_ratio must look like "16:9", got "${params.aspect_ratio}".`)
+      }
+      const count = Math.min(Math.max(1, Math.floor(params.n ?? 1)), MAX_IMAGES_PER_CALL)
+
+      const resolution = resolveModel(params.model)
+      if (!resolution.ok) return errorResult(resolution.error)
+      const { provider, modelId } = resolution
+
+      let inputImages: ImageContent[] = []
+      try {
+        inputImages = loadInputImages(params.input_images ?? [])
+        if (inputImages.length > 0 && !buildImageModel(provider, modelId).input.includes('image')) {
+          return errorResult(`Model "${modelId}" does not accept input images. Choose a model that supports image editing.`)
+        }
+      } catch (err) {
+        return errorResult((err as Error).message)
+      }
+
+      let result: ImageGenerationResult
+      try {
+        result = await generate({
+          provider,
+          modelId,
+          prompt,
+          inputImages,
+          parameters: { aspectRatio },
+          count,
+          signal,
+        })
+      } catch (err) {
+        return errorResult(`Image generation failed: ${(err as Error).message}`)
+      }
+
+      if (options.db) {
+        logTokenUsage(options.db, {
+          provider: result.model.provider,
+          model: result.model.id,
+          promptTokens: result.usage.input,
+          completionTokens: result.usage.output,
+          cacheRead: result.usage.cacheRead,
+          cacheWrite: result.usage.cacheWrite,
+          estimatedCost: result.costUsd ?? 0,
+          sessionId: options.getSessionId?.() ?? undefined,
+        })
+      }
+
+      const summary = {
+        provider: provider.name,
+        model: modelId,
+        costUsd: result.costUsd,
+        durationMs: result.durationMs,
+        errors: result.errors,
+      }
+      const modelText = result.texts.length > 0 ? `\nModel text: ${result.texts.join(' ')}` : ''
+
+      if (result.images.length === 0) {
+        return errorResult(
+          `${result.errors.join(' ') || 'The model returned no image.'} Cost: ${formatCost(result.costUsd)}.${modelText}`,
+          summary,
+        )
+      }
+
+      const createdAt = now()
+      const directory = path.join(getWorkspaceDir(), 'images', formatLocalDate(createdAt))
+      fs.mkdirSync(directory, { recursive: true })
+      const fileNames = planFileNames(directory, slugifyPrompt(prompt), result.images)
+
+      const files: SavedImageFile[] = result.images.map((image, index) => {
+        const absolutePath = path.join(directory, fileNames[index]!)
+        const buffer = Buffer.from(image.data, 'base64')
+        fs.writeFileSync(absolutePath, buffer)
+        const sidecarPath = `${absolutePath}.json`
+        fs.writeFileSync(sidecarPath, `${JSON.stringify({
+          model: modelId,
+          provider: provider.name,
+          providerId: provider.id,
+          prompt,
+          params: { aspectRatio: aspectRatio ?? null, n: count, inputImages: params.input_images ?? [] },
+          mimeType: image.mimeType,
+          bytes: buffer.length,
+          durationMs: result.durationMs,
+          costUsd: image.costUsd ?? null,
+          generationId: image.generationId ?? null,
+          createdAt: createdAt.toISOString(),
+        }, null, 2)}\n`, 'utf-8')
+        return {
+          path: path.relative(getWorkspaceDir(), absolutePath),
+          absolutePath,
+          sidecarPath,
+          mimeType: image.mimeType,
+          bytes: buffer.length,
+        }
+      })
+
+      const lines = [
+        `Generated ${files.length} image${files.length === 1 ? '' : 's'} with ${provider.name}: ${modelId} in ${(result.durationMs / 1000).toFixed(1)} s. Cost: ${formatCost(result.costUsd)}.`,
+        ...files.map(file => `- ${file.path} (${file.mimeType}, ${formatBytes(file.bytes)})`),
+      ]
+      if (result.errors.length > 0) {
+        lines.push(`${result.errors.length} of ${count} requests failed: ${result.errors.join(' | ')}`)
+      }
+      lines.push(`Paths are relative to ${getWorkspaceDir()}. Deliver them with send_file_to_user; never paste image data into the chat.`)
+
+      return {
+        content: [{ type: 'text', text: lines.join('\n') + modelText }],
+        details: { ...summary, files },
+      }
+    },
+  }
+}

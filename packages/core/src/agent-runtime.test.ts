@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import fs from 'node:fs'
+import path from 'node:path'
 import { createAgentRuntime } from './agent-runtime.js'
 import type { AgentRuntimePiAgentAccess } from './agent-runtime.js'
 import { initDatabase } from './database.js'
@@ -462,5 +464,76 @@ describe('AgentRuntime boundary', () => {
     for await (const _chunk of runtime.retryLastTurn('hello', 'sess-C')) { /* drain */ }
 
     expect(runtimeHarness.promptSessionIds).toEqual(['sess-A', 'sess-B', 'sess-C'])
+  })
+
+  describe('image generation models', () => {
+    const configDir = '/tmp/axiom-agent-runtime-test-config'
+    const providersPath = path.join(configDir, 'providers.json')
+
+    function writeProviders(enabledImageModels: string[]): void {
+      fs.mkdirSync(configDir, { recursive: true })
+      fs.writeFileSync(providersPath, JSON.stringify({
+        providers: [{
+          id: 'or-1',
+          name: 'OpenRouter',
+          type: 'openai-completions',
+          providerType: 'openrouter',
+          provider: 'openrouter',
+          baseUrl: 'https://openrouter.ai/api/v1',
+          apiKey: 'test-key',
+          authMethod: 'api-key',
+          enabledModels: ['qwen/qwen3.8-flash'],
+          enabledImageModels,
+          models: [
+            { id: 'qwen/qwen3.8-flash', description: 'Cheap coding model.' },
+            { id: 'recraft/recraft-v4.1-vector', description: 'SVG logos.' },
+          ],
+        }],
+      }))
+    }
+
+    function latestPromptOptions() {
+      return vi.mocked(assembleSystemPrompt).mock.calls.at(-1)?.[0]
+    }
+
+    it('keeps image models out of the text model list and passes them as image models', () => {
+      writeProviders(['recraft/recraft-v4.1-vector'])
+      try {
+        const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db: initDatabase(':memory:'), tools: [] })
+        runtime.refreshSystemPrompt()
+
+        const options = latestPromptOptions()
+        const textModelIds = options?.availableProviders?.flatMap(p => p.models.map(m => m.id))
+        expect(textModelIds).toEqual(['qwen/qwen3.8-flash'])
+        expect(options?.availableImageModels).toEqual([
+          { provider: 'OpenRouter', id: 'recraft/recraft-v4.1-vector', description: 'SVG logos.', isDefault: true },
+        ])
+        expect(runtime.getStateSnapshot().toolNames).toContain('generate_image')
+      } finally {
+        fs.rmSync(configDir, { recursive: true, force: true })
+      }
+    })
+
+    it('adds and removes generate_image as image models are enabled or removed', () => {
+      writeProviders([])
+      try {
+        const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db: initDatabase(':memory:'), tools: [] })
+        expect(runtime.getStateSnapshot().toolNames).not.toContain('generate_image')
+        expect(latestPromptOptions()?.availableImageModels).toEqual([])
+
+        writeProviders(['recraft/recraft-v4.1-vector'])
+        runtime.refreshSystemPrompt()
+        expect(runtime.getStateSnapshot().toolNames.filter(name => name === 'generate_image')).toHaveLength(1)
+
+        runtime.refreshSystemPrompt()
+        expect(runtime.getStateSnapshot().toolNames.filter(name => name === 'generate_image')).toHaveLength(1)
+
+        writeProviders([])
+        runtime.refreshSystemPrompt()
+        expect(runtime.getStateSnapshot().toolNames).not.toContain('generate_image')
+      } finally {
+        fs.rmSync(configDir, { recursive: true, force: true })
+      }
+    })
   })
 })

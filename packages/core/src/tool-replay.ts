@@ -40,6 +40,7 @@ const TOOL_REPLAY_POLICIES: ReadonlyMap<string, ToolReplayPolicy> = new Map([
   ['remove_cronjob', 'unsafe'],
   ['create_reminder', 'unsafe'],
   ['send_file_to_user', 'unsafe'],
+  ['generate_image', 'unsafe'],
 ])
 
 export function hasExplicitToolReplayPolicy(toolName: string): boolean {
