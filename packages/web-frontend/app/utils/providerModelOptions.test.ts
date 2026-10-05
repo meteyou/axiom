@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildImageModelOptions, buildProviderModelOptions, getImageModelDisplayName, getModelDisplayName } from './providerModelOptions'
+import { buildImageModelOptions, buildProviderModelOptions, getImageModelDisplayName, getModelDisplayName, listUsableImageModels } from './providerModelOptions'
 
 const providers = [
   { id: 'a', name: 'A', enabledModels: ['a1', 'a2'], disabledModels: ['a2'] },
@@ -62,5 +62,28 @@ describe('image model options', () => {
       { value: 'or:google/gemini-3.1-flash-image', label: 'OpenRouter (Nano Banana)' },
     ])
     expect(getImageModelDisplayName(openRouter, 'unknown/model')).toBe('unknown/model')
+  })
+
+  it('lists usable image models with provider and description for the settings overview', () => {
+    const described = {
+      ...openRouter,
+      models: [...openRouter.models, { id: 'recraft/recraft-v4.1-vector', description: ' Logos and icons as SVG. ' }],
+    }
+    expect(listUsableImageModels([described, { ...described, id: 'off', disabled: true }])).toEqual([
+      {
+        providerId: 'or',
+        providerName: 'OpenRouter',
+        modelId: 'recraft/recraft-v4.1-vector',
+        displayName: 'Recraft V4.1 Vector',
+        description: 'Logos and icons as SVG.',
+      },
+      {
+        providerId: 'or',
+        providerName: 'OpenRouter',
+        modelId: 'google/gemini-3.1-flash-image',
+        displayName: 'Nano Banana',
+        description: '',
+      },
+    ])
   })
 })

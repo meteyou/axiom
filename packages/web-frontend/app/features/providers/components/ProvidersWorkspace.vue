@@ -118,7 +118,8 @@
               <template v-for="provider in sortedProviders" :key="provider.id">
                 <!-- Provider header row -->
                 <TableRow
-                  class="cursor-pointer"
+                  :id="`provider-${provider.id}`"
+                  class="cursor-pointer scroll-mt-4"
                   @click="openEdit(provider)"
                 >
                   <TableCell>
@@ -585,8 +586,18 @@ const sortedProviders = computed(() =>
 const QUOTA_REFRESH_MS = 60_000
 let quotaRefreshTimer: ReturnType<typeof setInterval> | null = null
 
+const route = useRoute()
+
+/** `/providers?provider=<id>` (linked from Settings → Image generation) scrolls to that provider once loaded. */
+async function scrollToLinkedProvider() {
+  const providerId = route.query.provider
+  if (typeof providerId !== 'string' || !providerId) return
+  await nextTick()
+  document.getElementById(`provider-${providerId}`)?.scrollIntoView({ block: 'start' })
+}
+
 onMounted(() => {
-  fetchProviders()
+  fetchProviders().then(scrollToLinkedProvider)
   quotaRefreshTimer = setInterval(() => {
     fetchProviders()
   }, QUOTA_REFRESH_MS)

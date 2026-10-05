@@ -1134,6 +1134,13 @@
               </div>
             </div>
 
+            <!-- ═══ Image generation ═══ -->
+            <ImageGenerationSettingsTab
+              v-else-if="activeTab === 'imageGeneration'"
+              v-model="form.imageGeneration"
+              :providers="providers"
+            />
+
             <!-- ═══ Tasks ═══ -->
             <div v-else-if="activeTab === 'tasks'">
               <div class="mb-8">
@@ -1171,24 +1178,6 @@
                     </SelectContent>
                   </Select>
                   <p class="text-xs text-muted-foreground">{{ $t('settings.tasksDefaultProviderHint') }}</p>
-                </div>
-
-                <div class="flex flex-col gap-2">
-                  <Label for="image-generation-default-model">{{ $t('settings.imageGenerationDefaultModel') }}</Label>
-                  <Select v-model="form.imageGeneration.defaultModel" :disabled="imageModelOptions.length === 0">
-                    <SelectTrigger id="image-generation-default-model">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="">{{ $t('settings.imageGenerationDefaultModelFirst') }}</SelectItem>
-                      <SelectItem v-for="opt in imageModelOptions" :key="opt.value" :value="opt.value">
-                        {{ opt.label }}
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <p class="text-xs text-muted-foreground">
-                    {{ imageModelOptions.length === 0 ? $t('settings.imageGenerationDefaultModelNone') : $t('settings.imageGenerationDefaultModelHint') }}
-                  </p>
                 </div>
 
                 <!-- Max duration -->
@@ -2041,9 +2030,10 @@
 <script setup lang="ts">
 import { canonicalizeProviderModelRef, type ProviderModelSpecContract, type SettingsThinkingLevel } from '@axiom/core/contracts'
 import { buildThinkingLevelSelectOptions, findModelSpec, findModelSpecByComposite } from '~/utils/thinkingLevels'
-import { buildImageModelOptions, buildProviderModelOptions } from '~/utils/providerModelOptions'
+import { buildProviderModelOptions } from '~/utils/providerModelOptions'
 import { useSettingsApi } from '~/api/settings'
 import EmailAccountsWorkspace from '~/features/email/components/EmailAccountsWorkspace.vue'
+import ImageGenerationSettingsTab from './ImageGenerationSettingsTab.vue'
 import type { MemoryConsolidationSettings, FactExtractionSettings, HealthMonitorNotificationToggles, HealthMonitorSettings, AgentHeartbeatSettings, TasksSettings, ImageGenerationSettings, TtsSettings, SttSettings, UploadsSettings, TelegramSettings, WatchdogSettings, RetrySettings } from '~/composables/useSettings'
 import type { TelegramUser } from '~/composables/useTelegramUsers'
 
@@ -2089,7 +2079,7 @@ const timezones = [
   'America/Argentina/Buenos_Aires',
 ]
 
-const VALID_TABS = ['agent', 'memory', 'agentHeartbeat', 'healthMonitor', 'telegram', 'tasks', 'tts', 'stt', 'secrets', 'email'] as const
+const VALID_TABS = ['agent', 'memory', 'agentHeartbeat', 'healthMonitor', 'imageGeneration', 'telegram', 'tasks', 'tts', 'stt', 'secrets', 'email'] as const
 type TabId = (typeof VALID_TABS)[number]
 
 const activeTab = computed<TabId>({
@@ -2107,6 +2097,7 @@ const tabs = computed(() => [
   { id: 'agentHeartbeat' as TabId, icon: 'activity', label: t('settings.tabs.agentHeartbeat') },
   { id: 'email' as TabId, icon: 'mail', label: t('settings.tabs.email') },
   { id: 'healthMonitor' as TabId, icon: 'activity', label: t('settings.tabs.healthMonitor') },
+  { id: 'imageGeneration' as TabId, icon: 'image', label: t('settings.tabs.imageGeneration') },
   { id: 'memory' as TabId, icon: 'brain', label: t('settings.tabs.memory') },
   { id: 'secrets' as TabId, icon: 'key', label: t('settings.tabs.secrets') },
   { id: 'stt' as TabId, icon: 'mic', label: t('settings.sttTitle') },
@@ -2150,7 +2141,6 @@ async function handleActivateProvider(value: string) {
 /** Flattened list of provider+model combinations for all provider select dropdowns */
 const providerModelOptions = computed(() => buildProviderModelOptions(providers.value))
 const sttRewriteProviderModelOptions = computed(() => buildProviderModelOptions(providers.value, { includeDisabled: true }))
-const imageModelOptions = computed(() => buildImageModelOptions(providers.value))
 
 /* ── Users (for telegram user assignment) ── */
 const { users, fetchUsers } = useUsers()
