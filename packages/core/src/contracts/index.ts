@@ -80,6 +80,8 @@ export type {
   ProviderTypePresetContract,
   AvailableModelContract,
   AvailableImageModelContract,
+  ImageBillingContract,
+  ImageModelPricingContract,
   ImageModelSpecContract,
   OllamaModelContract,
   OllamaPullEventContract,

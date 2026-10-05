@@ -1,4 +1,4 @@
-import { buildModel, getAvailableImageModels, getPiCatalogModels, getProviderDefaultModel, isQuotaProvider, maskProviderExtraFields, PROVIDER_TYPE_MODEL_OVERRIDES, PROVIDER_TYPE_PRESETS, supportsImageModels, supportsModelSpecOverrides } from '@axiom/core'
+import { buildModel, getAvailableImageModels, getImageProviderCapabilities, getPiCatalogModels, getProviderDefaultModel, isQuotaProvider, maskProviderExtraFields, PROVIDER_TYPE_MODEL_OVERRIDES, PROVIDER_TYPE_PRESETS, supportsModelSpecOverrides } from '@axiom/core'
 import type {
   ProviderConfig,
   ProviderType,
@@ -80,10 +80,12 @@ function resolveImageModelSpecs(provider: ProviderConfig): Record<string, ImageM
   const catalog = new Map(getAvailableImageModels(provider.providerType).map(model => [model.id, model]))
   return Object.fromEntries((provider.enabledImageModels ?? []).map((modelId) => {
     const entry = catalog.get(modelId)
+    const override = provider.models?.find(m => m.id === modelId)
     return [modelId, {
-      name: provider.models?.find(m => m.id === modelId)?.name ?? entry?.name ?? modelId,
-      input: entry?.input ?? ['text', 'image'],
-      output: entry?.output ?? ['image'],
+      name: override?.name ?? entry?.name ?? modelId,
+      input: override?.input ?? entry?.input ?? ['text', 'image'],
+      output: override?.output ?? entry?.output ?? ['image'],
+      ...(entry?.pricing && { pricing: entry.pricing }),
     }]
   }))
 }
@@ -133,11 +135,17 @@ export function mapProvidersListResponse(
       .map(([key, preset]) => {
         const overrides = PROVIDER_TYPE_MODEL_OVERRIDES[key as ProviderType]
         const hasKnownModels = preset.piAiProvider != null || (overrides?.length ?? 0) > 0
+        const imageCapabilities = getImageProviderCapabilities(key)
         return [key, {
           ...preset,
           hasKnownModels,
           editableModelSpecs: supportsModelSpecOverrides(key),
-          supportsImageModels: supportsImageModels(key),
+          supportsImageModels: imageCapabilities !== null,
+          ...(imageCapabilities && {
+            imageBilling: imageCapabilities.billing,
+            liveImageCatalog: imageCapabilities.liveCatalog,
+            customImageModels: imageCapabilities.customModels,
+          }),
         }]
       }),
   )

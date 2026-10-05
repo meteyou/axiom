@@ -187,6 +187,13 @@ describe('providers schema', () => {
     const imageOnly = parseProviderModelUpdatePayload({ input: ['image'] })
     expect(imageOnly.ok).toBe(false)
 
+    const imageOutput = parseProviderModelUpdatePayload({ output: ['image', 'text', 'image'] })
+    expect(imageOutput.ok && imageOutput.value).toEqual({ output: ['image', 'text'] })
+    expect(parseProviderModelUpdatePayload({ output: null }).ok).toBe(true)
+    const textOnlyOutput = parseProviderModelUpdatePayload({ output: ['text'] })
+    expect(textOnlyOutput.ok).toBe(false)
+    if (!textOnlyOutput.ok) expect(textOnlyOutput.error).toBe('output must include image')
+
     const unknownLevel = parseProviderModelUpdatePayload({ thinkingLevelMap: { ultra: 'ultra' } })
     expect(unknownLevel.ok).toBe(false)
     if (!unknownLevel.ok) expect(unknownLevel.error).toContain('unknown level "ultra"')

@@ -559,17 +559,27 @@ export function isDynamicCatalogProvider(providerType: ProviderType | string): b
 }
 
 function getImageCatalogForType(providerType: ProviderType | string): ImageModel<ImageApi>[] {
-  return getImageCatalogModels(PROVIDER_TYPE_PRESETS[providerType as ProviderType]?.piAiProvider)
+  return getImageCatalogModels(PROVIDER_TYPE_PRESETS[providerType as ProviderType]?.piAiProvider, providerType)
 }
 
-/** Whether the provider type can serve image generation models (pi-ai ships an image catalog for it). */
+/** Whether the provider type can serve image generation models (an image catalog exists for it). */
 export function supportsImageModels(providerType: ProviderType | string): boolean {
   return getImageCatalogForType(providerType).length > 0
 }
 
-/** Image generation models selectable for a provider type (pi-ai image catalog, not the text catalog). */
+/** Image generation models selectable for a provider type (image catalog, not the text catalog). */
 export function getAvailableImageModels(providerType: ProviderType | string): AvailableImageModel[] {
   return getImageCatalogForType(providerType).map(toAvailableImageModel)
+}
+
+/** The image API a provider type's image models are served on. */
+export function getImageApiForType(providerType: ProviderType | string): ImageApi | undefined {
+  return getImageCatalogForType(providerType)[0]?.api
+}
+
+/** Base URL image requests of a provider go to. */
+export function getImageBaseUrl(provider: Pick<ProviderConfig, 'providerType' | 'baseUrl'>): string | undefined {
+  return provider.baseUrl || getImageCatalogForType(provider.providerType)[0]?.baseUrl
 }
 
 /**
@@ -794,6 +804,8 @@ export interface ProviderModelConfig {
   maxTokens?: number
   reasoning?: boolean
   input?: ModelInputModalityContract[]
+  /** Output modalities of an image generation model; text models ignore it. */
+  output?: ModelInputModalityContract[]
   thinkingLevelMap?: ModelThinkingLevelMapContract
   /**
    * If set, the upstream API only accepts this exact `temperature` value and
@@ -1338,13 +1350,13 @@ export function updateProvider(id: string, input: {
     if (!preset) {
       throw new Error(`Unknown provider type: ${input.providerType}`)
     }
+    if (getImageApiForType(existing.providerType) !== getImageApiForType(input.providerType)) delete existing.enabledImageModels
     existing.providerType = input.providerType
     existing.type = preset.apiType
     existing.provider = preset.providerName
     existing.authMethod = preset.authMethod
     delete existing.extraFields
     delete existing.compat
-    if (!supportsImageModels(input.providerType)) delete existing.enabledImageModels
     if (!input.baseUrl) {
       existing.baseUrl = preset.baseUrl
     }
@@ -1473,7 +1485,7 @@ export function updateProviderModel(
   setText('name', patch.name)
   setText('description', patch.description)
 
-  const setOverride = <K extends 'contextWindow' | 'maxTokens' | 'reasoning' | 'input' | 'thinkingLevelMap'>(
+  const setOverride = <K extends 'contextWindow' | 'maxTokens' | 'reasoning' | 'input' | 'output' | 'thinkingLevelMap'>(
     key: K,
     value: ProviderModelConfig[K] | null | undefined,
   ) => {
@@ -1485,6 +1497,7 @@ export function updateProviderModel(
   setOverride('maxTokens', patch.maxTokens !== undefined && patch.maxTokens !== null && patch.maxTokens <= 0 ? undefined : patch.maxTokens)
   setOverride('reasoning', patch.reasoning)
   setOverride('input', patch.input?.length === 0 ? undefined : patch.input && [...patch.input])
+  setOverride('output', patch.output?.length === 0 ? undefined : patch.output && [...patch.output])
   setOverride('thinkingLevelMap', patch.thinkingLevelMap && { ...patch.thinkingLevelMap })
 
   if (patch.cost) {
@@ -1888,7 +1901,8 @@ export function getUsableImageModels(provider: Pick<ProviderConfig, 'providerTyp
 /**
  * pi-ai image model for an enabled image model id. Ids missing from the
  * bundled catalog (newer upstream models) are built on the provider's image
- * API with image-only output, which every image model supports.
+ * API with image-only output, which every image model supports, unless the
+ * modalities were stored when the model was added from a live list.
  */
 export function buildImageModel(provider: ProviderConfig, modelId: string): ImageModel<ImageApi> {
   const catalog = getImageCatalogForType(provider.providerType)
@@ -1897,18 +1911,18 @@ export function buildImageModel(provider: ProviderConfig, modelId: string): Imag
     throw new Error(`Provider "${provider.name}" does not support image generation`)
   }
   const isCatalogModel = template.id === modelId
-  const name = provider.models?.find(m => m.id === modelId)?.name ?? (isCatalogModel ? template.name : modelId)
+  const entry = provider.models?.find(m => m.id === modelId)
+  const input: ImageModel<ImageApi>['input'] = entry?.input ?? (isCatalogModel ? template.input : ['text', 'image'])
+  const output: ImageModel<ImageApi>['output'] = entry?.output?.includes('image') ? entry.output : (isCatalogModel ? template.output : ['image'])
   return {
     ...template,
     id: modelId,
-    name,
+    name: entry?.name ?? (isCatalogModel ? template.name : modelId),
     provider: provider.provider,
     baseUrl: provider.baseUrl || template.baseUrl,
-    ...(!isCatalogModel && {
-      input: ['text', 'image'],
-      output: ['image'],
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    }),
+    input: [...input],
+    output: [...output],
+    ...(!isCatalogModel && { cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }),
   }
 }
 
