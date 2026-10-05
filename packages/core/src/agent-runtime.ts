@@ -14,7 +14,7 @@ import type { SettingsThinkingLevel } from './contracts/settings.js'
 import { normalizeThinkingLevel, readBackgroundThinkingLevelFromConfig } from './thinking-level.js'
 import { getSupportedThinkingLevels } from './contracts/providers.js'
 import { assembleSystemPrompt, ensureMemoryStructure, ensureConfigStructure, formatCurrentTimeContext } from './memory.js'
-import type { SkillPromptEntry, AvailableProviderModelPromptEntry } from './memory.js'
+import type { SkillPromptEntry, AvailableProviderModelPromptEntry, AvailableImageModelPromptEntry } from './memory.js'
 import { getWorkspaceDir } from './workspace.js'
 import { loadConfig, ensureConfigTemplates } from './config.js'
 import { loadSkills, getSkillDecrypted } from './skill-config.js'
@@ -27,6 +27,7 @@ import { createSearchMemoriesTool } from './memories-tool.js'
 import { createReadChatHistoryTool } from './chat-history-tools.js'
 import { createEmailTools } from './email-tools.js'
 import { createProviderQuotaTool } from './quota-tool.js'
+import { listUsableImageModels, readDefaultImageModelRef, resolveDefaultImageModel } from './image-generation.js'
 import type { QuotaServiceLike } from './quota-tool.js'
 import type { AgentRuntimeStateSnapshot, ResponseChunk } from './agent-runtime-types.js'
 
@@ -755,6 +756,8 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
     if (builtinToolsConfig?.webFetch?.enabled !== false) activeTools.add('web_fetch')
     if (sttEnabled) activeTools.add('transcribe_audio')
 
+    const availableImageModels = this.listImageModelsForPrompt()
+
     const agentSkillEntries = getAgentSkillsForPrompt({
       platform: currentPlatform(),
       activeTools,
@@ -828,8 +831,24 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
       builtinTools: builtinToolsPromptConfig,
       agentSkillsDir: getAgentSkillsDir(),
       availableProviders,
+      availableImageModels,
       defaultTaskThinkingLevel: readBackgroundThinkingLevelFromConfig() ?? 'off',
     })
+  }
+
+  private listImageModelsForPrompt(): AvailableImageModelPromptEntry[] {
+    try {
+      const entries = listUsableImageModels()
+      const defaultEntry = resolveDefaultImageModel(entries, readDefaultImageModelRef())
+      return entries.map(entry => ({
+        provider: entry.provider.name,
+        id: entry.modelId,
+        description: entry.provider.models?.find(m => m.id === entry.modelId)?.description,
+        isDefault: entry === defaultEntry || undefined,
+      }))
+    } catch {
+      return []
+    }
   }
 
   /**
