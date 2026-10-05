@@ -129,7 +129,11 @@ function loadInputImages(paths: string[]): ImageContent[] {
   }
   return paths.map((inputPath) => {
     const absolutePath = resolveWorkspacePath(inputPath)
-    const mimeType = INPUT_IMAGE_MIME_TYPES[path.extname(absolutePath).toLowerCase()]
+    const extension = path.extname(absolutePath).toLowerCase()
+    if (extension === '.svg') {
+      throw new Error(`Input image "${inputPath}" is an SVG; image models only accept raster input. Generate again with a refined prompt or edit the SVG markup directly.`)
+    }
+    const mimeType = INPUT_IMAGE_MIME_TYPES[extension]
     if (!mimeType) {
       throw new Error(`Input image "${inputPath}" must be a PNG, JPEG, WebP or GIF file.`)
     }
