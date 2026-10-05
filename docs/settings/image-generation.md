@@ -38,7 +38,7 @@ Upper limit for the tool's `n` parameter (number of images in one call). Default
 { "imageGeneration": { "maxVariants": 4 } }
 ```
 
-Axiom has no spending limit of its own. To cap image costs, set a limit on the provider's API key (e.g. an OpenRouter key limit).
+Axiom has no spending limit of its own. To cap image costs, set a limit on the provider's API key (e.g. an OpenRouter key limit or an OpenAI project budget). Images generated through a ChatGPT subscription cost nothing extra but count toward its Codex usage limits.
 
 ## Output folder
 

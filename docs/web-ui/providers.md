@@ -32,7 +32,7 @@ Providers are sorted alphabetically by display name; sub-rows follow the order c
 | **Name**    | Bold display name plus a `Disabled` badge when the provider is [disabled](#disabling-providers-and-models); below it, the provider type label (e.g. *"Anthropic"*, *"Anthropic (Claude Pro/Max) · OAuth"*). |
 | **Cost**    | Empty — costs live on the model rows.                                                                |
 | **Status**  | Empty for most providers (status lives on the model rows). For **subscription (OAuth)** providers it shows the live [subscriber usage quota](#subscriber-usage-quota-oauth-plans). |
-| **⋮**       | **Add Model**, **Add image model** (only for providers with an image backend, currently OpenRouter), Edit, **Disable** / **Enable**, Delete, and — for quota-capable providers — **Refresh quota**. *Delete* and *Disable* are unavailable for the provider that owns the currently active model. |
+| **⋮**       | **Add Model**, **Add image model** (only for providers with an image backend: OpenRouter, OpenAI, ChatGPT Plus/Pro), Edit, **Disable** / **Enable**, Delete, and — for quota-capable providers — **Refresh quota**. *Delete* and *Disable* are unavailable for the provider that owns the currently active model. |
 
 Clicking anywhere on a header row opens the [Edit dialog](#add-edit-dialog).
 
@@ -350,7 +350,7 @@ Opened from the provider header row's ⋮ menu → **Add Model**. Lets you enabl
 
 - **Search** — filters the provider's model catalog by name or id. For most providers the catalog is fetched from the bundled `@earendil-works/pi-ai` registry (same source as the create-mode dropdown). **Dynamic-catalog providers (OpenRouter, Radius, Custom)** instead fetch the list live from the provider (the `/models` endpoint, Anthropic-style `/v1/models`, or Radius' `/v1/config`), falling back to the bundled/cached catalog if that request fails. Custom providers have no fallback catalog, so a failed request shows the upstream error instead.
 - **Refresh** — the button next to the search field (dynamic-catalog providers only) reloads the live list.
-- **Metadata from `/models`** — when the endpoint reports it, the context window (`context_length` or `max_input_tokens`), max output tokens (`max_output_tokens`) and pricing (OpenRouter's `pricing`, including `input_cache_read` / `input_cache_write`) are stored with the model when you add it. Entries whose `mode` is not a chat mode (e.g. `embedding`, as reported by LiteLLM-style proxies) are hidden.
+- **Metadata from `/models`** — when the endpoint reports it, the context window (`context_length` or `max_input_tokens`), max output tokens (`max_output_tokens`) and pricing (OpenRouter's `pricing`, including `input_cache_read` / `input_cache_write`) are stored with the model when you add it. Entries whose `mode` is not a chat mode (e.g. `embedding`, as reported by LiteLLM-style proxies) are hidden, as are entries that only output images (OpenRouter's `architecture.output_modalities`) — add those under [Image models](#image-models).
 - **Model list** — scrollable, multi-select. Models already enabled on this provider appear greyed out with an *"already enabled"* label. Tick the ones you want to add.
 - **Custom model fallback** — when your search text doesn't match any catalog entry, a button appears to add the typed id as a custom model (e.g. a manually published model not yet in pi-ai).
 - **Add** — merges the selected models into the provider's enabled list. The footer shows the number selected.
@@ -379,27 +379,37 @@ Subscription/OAuth providers, OpenCode Zen/Go and Radius take these values from 
 
 ## Image models
 
-Image generation models are configured separately from text models. They come from pi-ai's **image catalog** (not the text catalog), are only used by the agent's [`generate_image`](../concepts/image-generation) tool, and never appear in chat, task, cronjob, consolidation or other text-model selectors, nor in the text-model list of the system prompt. Currently only **OpenRouter** providers offer image models.
+Image generation models are configured separately from text models. They come from an **image catalog** (not the text catalog), are only used by the agent's [`generate_image`](../concepts/image-generation) tool, and never appear in chat, task, cronjob, consolidation or other text-model selectors, nor in the text-model list of the system prompt. Three provider types offer image models:
+
+- **OpenRouter** — billed per image; OpenRouter reports the amount.
+- **OpenAI** (API key) — GPT Image models, billed per token; Axiom estimates the cost from OpenAI's list prices.
+- **ChatGPT Plus/Pro** (Codex login) — one model, *GPT Image (ChatGPT subscription)*; no API costs, but it counts toward the Codex usage limits, and ChatGPT picks model, size and quality itself. See [Image Generation → ChatGPT subscription](../concepts/image-generation#chatgpt-subscription).
 
 ### Add image model dialog
 
 Opened from the provider header row's ⋮ menu → **Add image model**.
 
-- **Search** — filters the provider's image catalog by name or id, e.g. `vector` finds `recraft/recraft-v4.1-vector`.
-- **Model list** — multi-select. Models that accept input images (and can therefore edit or vary existing images) carry an *edits images* badge. Models already enabled are greyed out.
-- **Custom model fallback** — when the search text matches no catalog entry, you can add the typed id (e.g. a model OpenRouter published after the bundled catalog). Such models are sent as image-only requests.
-- **Add** — stores the selection in the provider's `enabledImageModels`.
+- **Billing hint** — for OpenAI and ChatGPT providers a line above the list explains how generations are paid for.
+- **Search** — filters the image models by name or id, e.g. `vector` finds `recraft/recraft-v4.1-vector`.
+- **Live list** — OpenRouter and OpenAI list their image models **live**, with the provider's stored API key (OpenRouter: `GET /models?output_modalities=image`, OpenAI: `GET /v1/models` filtered to `gpt-image-*` and `chatgpt-image-*`). New models and dated snapshots appear without an Axiom release. The refresh button next to the search field loads the list again. If the request fails, the bundled catalog is shown instead. ChatGPT has no live list; it always offers its one model.
+- **Model list** — multi-select. Models that accept input images (and can therefore edit or vary existing images) carry an *edits images* badge. OpenAI models show their image output list price (e.g. *$30.00 / 1M*). Models already enabled are greyed out.
+- **Custom model fallback** — when the search text matches no entry, you can add the typed id (e.g. a model published after the list was loaded). Such models are sent as image-only requests. Not available for ChatGPT, which ignores the model id.
+- **Add** — stores the selection in the provider's `enabledImageModels`. For models taken from a live list, the display name and the input/output modalities are stored with the model, so models newer than the bundled catalog are called correctly (e.g. models that return text and image, or accept no input images).
 
 ### Image model rows
 
-Below the text models, an *Image models* divider lists the enabled image models. They show no thinking levels and no context window; the cost column reads *per image* because image models are billed per image — the real cost is reported after every generation (tool result, sidecar file, [Token Usage](./token-usage)).
+Below the text models, an *Image models* divider lists the enabled image models. They show no thinking levels and no context window. The cost column depends on the provider:
+
+- **OpenRouter** — *per image*; the billed cost is reported after every generation (tool result, sidecar file, [Token Usage](./token-usage)).
+- **OpenAI** — the image output list price per 1M tokens (*per image (estimated)* for models without a known price); the estimated cost is reported after every generation.
+- **ChatGPT** — a *Subscription* badge; generations cost nothing extra but count toward the Codex usage limits.
 
 The ⋮ menu of an image model row offers:
 
 | Item | What it does |
 |---|---|
-| **Check availability (free)** | Replaces *Test Connection* for image models, which would otherwise send a chat request. For OpenRouter it calls `GET /api/v1/models/<id>/endpoints` (the model exists, generates images and has live endpoints) and `GET /api/v1/key` (the API key is valid). Neither call generates anything or costs money. Updates the status badge and shows the latency like a text-model test; above the provider's *Degraded Threshold* the result is reported as slow. |
-| **Generate test image (paid)…** | Opens a dialog with a cost warning. Only after you confirm it generates **one** small image with a fixed prompt, shows the preview, the billed cost reported by the provider and the duration, and books the cost in [Token Usage](./token-usage). |
+| **Check availability (free)** | Replaces *Test Connection* for image models, which would otherwise send a chat request. Nothing is generated and nothing is billed. **OpenRouter:** `GET /api/v1/models/<id>/endpoints` (the model exists, generates images and has live endpoints) and `GET /api/v1/key` (the API key is valid). **OpenAI:** `GET /v1/models/<id>` (the key is valid and may use the model; it cannot tell whether the account has credits or a verified organization). **ChatGPT:** `GET /backend-api/wham/usage` (the login is valid, the plan is not *Free*, the usage limit is not reached). Updates the status badge and shows the latency like a text-model test; above the provider's *Degraded Threshold* the result is reported as slow. |
+| **Generate test image (paid)…** | Opens a dialog with a cost warning. Only after you confirm it generates **one** small image with a fixed prompt, shows the preview, the cost (billed or estimated) and the duration, plus any parameter notes, and books the cost in [Token Usage](./token-usage). For ChatGPT the entry reads **Generate test image (uses ChatGPT limits)…**; the dialog warns about the usage limits instead of costs and shows the current image limit after the generation. |
 | **Edit Model** | Display name and **description**. The description is shown to the agent in the *Image generation models* list of the system prompt and helps it choose a model (e.g. *"Logos and icons as SVG"*). |
 | **Remove Model** | Removes the model from `enabledImageModels`. |
 
