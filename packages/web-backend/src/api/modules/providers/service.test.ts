@@ -425,7 +425,7 @@ describe('image generation models', () => {
     const db = initDatabase(path.join(tempDataDir, 'test.db'))
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
       id: 'gen-1',
-      choices: [{ index: 0, message: { role: 'assistant', content: null, images: [{ type: 'image_url', image_url: { url: `data:image/webp;base64,${PNG_BASE64}` } }] } }],
+      data: [{ b64_json: PNG_BASE64, media_type: 'image/webp' }],
       usage: { prompt_tokens: 10, completion_tokens: 100, total_tokens: 110, cost: 0.035 },
     }))
 
