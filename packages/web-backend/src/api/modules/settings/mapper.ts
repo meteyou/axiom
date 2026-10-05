@@ -4,6 +4,7 @@ import {
   DEFAULT_WATCHDOG_SETTINGS,
   getDefaultTimezone,
   maskApiKey,
+  normalizeImageGenerationSettings,
 } from '@axiom/core'
 import type { HealthMonitorNotificationToggles, SettingsData, TelegramData } from './types.js'
 
@@ -96,10 +97,7 @@ function buildTasksResponse(settingsRaw: Record<string, unknown>) {
 }
 
 function buildImageGenerationResponse(settingsRaw: Record<string, unknown>) {
-  const imageGeneration = (settingsRaw.imageGeneration ?? {}) as Record<string, unknown>
-  return {
-    defaultModel: typeof imageGeneration.defaultModel === 'string' ? imageGeneration.defaultModel : '',
-  }
+  return normalizeImageGenerationSettings(settingsRaw.imageGeneration as SettingsData['imageGeneration'])
 }
 
 function buildTtsResponse(settingsRaw: Record<string, unknown>) {

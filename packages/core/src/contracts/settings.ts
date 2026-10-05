@@ -145,9 +145,39 @@ export interface TasksSettingsContract {
   backgroundThinkingLevel: SettingsThinkingLevel
 }
 
+export const IMAGE_GENERATION_MAX_VARIANTS_BOUNDS = { min: 1, max: 10 } as const
+
 export interface ImageGenerationSettingsContract {
+  /** Master switch for `generate_image`; enabled image models are still required. */
+  enabled: boolean
   /** Default model of `generate_image` as `providerId:modelId`; empty selects the first enabled image model. */
   defaultModel: string
+  /** Upper bound of the tool's `n` parameter. */
+  maxVariants: number
+  /** Refuse calls whose estimated cost exceeds this amount; `null` disables the check. */
+  maxCostPerCallUsd: number | null
+  /** Workspace-relative folder; images land in a `YYYY-MM-DD/` subfolder of it. */
+  outputDir: string
+}
+
+/**
+ * Normalizes a workspace-relative output folder to `a/b` form. Returns `null`
+ * for absolute paths, paths that leave the workspace and the workspace root.
+ */
+export function normalizeImageOutputDir(value: string): string | null {
+  const trimmed = value.trim()
+  if (/^([/\\]|[A-Za-z]:)/.test(trimmed)) return null
+  const segments: string[] = []
+  for (const segment of trimmed.split(/[/\\]+/)) {
+    if (segment === '' || segment === '.') continue
+    if (segment === '..') {
+      if (segments.length === 0) return null
+      segments.pop()
+      continue
+    }
+    segments.push(segment)
+  }
+  return segments.length > 0 ? segments.join('/') : null
 }
 
 export interface TtsSettingsContract {
@@ -341,7 +371,11 @@ export const DEFAULT_SETTINGS_CONTRACT: SettingsContract = {
     backgroundThinkingLevel: 'off',
   },
   imageGeneration: {
+    enabled: true,
     defaultModel: '',
+    maxVariants: 4,
+    maxCostPerCallUsd: null,
+    outputDir: 'images',
   },
   tts: {
     enabled: false,
@@ -411,6 +445,25 @@ function normalizeTasksStatusUpdates(
     }
   }
   return { ...fallback }
+}
+
+/** Tolerates hand-edited `settings.json`: invalid values fall back to their defaults. */
+export function normalizeImageGenerationSettings(
+  source: DeepPartial<ImageGenerationSettingsContract> | null | undefined,
+): ImageGenerationSettingsContract {
+  const defaults = DEFAULT_SETTINGS_CONTRACT.imageGeneration
+  const { min, max } = IMAGE_GENERATION_MAX_VARIANTS_BOUNDS
+  const maxVariants = source?.maxVariants
+  const maxCost = source?.maxCostPerCallUsd
+  return {
+    enabled: source?.enabled !== false,
+    defaultModel: typeof source?.defaultModel === 'string' ? source.defaultModel.trim() : defaults.defaultModel,
+    maxVariants: typeof maxVariants === 'number' && Number.isInteger(maxVariants) && maxVariants >= min && maxVariants <= max
+      ? maxVariants
+      : defaults.maxVariants,
+    maxCostPerCallUsd: typeof maxCost === 'number' && Number.isFinite(maxCost) && maxCost > 0 ? maxCost : defaults.maxCostPerCallUsd,
+    outputDir: (typeof source?.outputDir === 'string' && normalizeImageOutputDir(source.outputDir)) || defaults.outputDir,
+  }
 }
 
 export function normalizeSettingsContract(input: DeepPartial<SettingsContract> | null | undefined): SettingsContract {
@@ -517,9 +570,7 @@ export function normalizeSettingsContract(input: DeepPartial<SettingsContract> |
         DEFAULT_SETTINGS_CONTRACT.tasks.backgroundThinkingLevel,
       ),
     },
-    imageGeneration: {
-      defaultModel: source.imageGeneration?.defaultModel ?? DEFAULT_SETTINGS_CONTRACT.imageGeneration.defaultModel,
-    },
+    imageGeneration: normalizeImageGenerationSettings(source.imageGeneration),
     tts: {
       enabled: source.tts?.enabled ?? DEFAULT_SETTINGS_CONTRACT.tts.enabled,
       provider: source.tts?.provider ?? DEFAULT_SETTINGS_CONTRACT.tts.provider,

@@ -160,6 +160,7 @@ export function createApp(options?: AppOptions): express.Express {
       onTelegramSettingsChanged: () => {
         options.onTelegramSettingsChanged?.()
       },
+      onImageGenerationSettingsChanged: options.onImageModelsChanged,
     }))
     app.use('/api/users', createUsersRouter(options.db))
     app.use('/api/telegram-users', createTelegramUsersRouter({

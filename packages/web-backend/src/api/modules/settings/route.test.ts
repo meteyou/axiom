@@ -23,6 +23,7 @@ const onHealthMonitorSettingsChanged = vi.fn()
 const onConsolidationSettingsChanged = vi.fn()
 const onAgentHeartbeatSettingsChanged = vi.fn()
 const onTelegramSettingsChanged = vi.fn()
+const onImageModelsChanged = vi.fn()
 
 beforeAll(async () => {
   previousDataDir = process.env.DATA_DIR
@@ -41,6 +42,7 @@ beforeAll(async () => {
     getAgentCore,
     onAgentHeartbeatSettingsChanged,
     onTelegramSettingsChanged,
+    onImageModelsChanged,
     healthMonitorService: {
       restart: onHealthMonitorSettingsChanged,
     } as unknown as NonNullable<AppOptions['healthMonitorService']>,
@@ -80,6 +82,7 @@ beforeEach(() => {
   onConsolidationSettingsChanged.mockClear()
   onAgentHeartbeatSettingsChanged.mockClear()
   onTelegramSettingsChanged.mockClear()
+  onImageModelsChanged.mockClear()
 })
 
 function authHeaders(token: string): Record<string, string> {
@@ -297,30 +300,55 @@ describe('settings route module', () => {
     expect(await invalid.json()).toEqual({ error: 'retry.maxRetries must be an integer 0-10' })
   })
 
-  it('round-trips the default image model', async () => {
+  it('round-trips image generation settings and reports changes', async () => {
     const defaults = await fetch(`${baseUrl}/api/settings`, { headers: authHeaders(adminToken) })
-    expect((await defaults.json() as { imageGeneration: unknown }).imageGeneration).toEqual({ defaultModel: '' })
+    expect((await defaults.json() as { imageGeneration: unknown }).imageGeneration).toEqual({
+      enabled: true,
+      defaultModel: '',
+      maxVariants: 4,
+      maxCostPerCallUsd: null,
+      outputDir: 'images',
+    })
 
-    const updated = await fetch(`${baseUrl}/api/settings`, {
+    const put = (imageGeneration: Record<string, unknown>) => fetch(`${baseUrl}/api/settings`, {
       method: 'PUT',
       headers: { ...authHeaders(adminToken), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ imageGeneration: { defaultModel: ' or-1:recraft/recraft-v4.1-vector ' } }),
+      body: JSON.stringify({ imageGeneration }),
+    })
+
+    const updated = await put({
+      enabled: false,
+      defaultModel: ' or-1:recraft/recraft-v4.1-vector ',
+      maxVariants: 2,
+      maxCostPerCallUsd: 0.25,
+      outputDir: 'assets/generated/',
     })
     expect(updated.status).toBe(200)
-    expect((await updated.json() as { imageGeneration: unknown }).imageGeneration).toEqual({ defaultModel: 'or-1:recraft/recraft-v4.1-vector' })
+    const expected = {
+      enabled: false,
+      defaultModel: 'or-1:recraft/recraft-v4.1-vector',
+      maxVariants: 2,
+      maxCostPerCallUsd: 0.25,
+      outputDir: 'assets/generated',
+    }
+    expect((await updated.json() as { imageGeneration: unknown }).imageGeneration).toEqual(expected)
+    expect(onImageModelsChanged).toHaveBeenCalledTimes(1)
 
     const settings = JSON.parse(fs.readFileSync(path.join(tempDataDir, 'config', 'settings.json'), 'utf-8')) as {
-      imageGeneration: { defaultModel: string }
+      imageGeneration: unknown
     }
-    expect(settings.imageGeneration).toEqual({ defaultModel: 'or-1:recraft/recraft-v4.1-vector' })
+    expect(settings.imageGeneration).toEqual(expected)
 
-    const invalid = await fetch(`${baseUrl}/api/settings`, {
-      method: 'PUT',
-      headers: { ...authHeaders(adminToken), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ imageGeneration: { defaultModel: 42 } }),
-    })
+    expect((await put({ enabled: false })).status).toBe(200)
+    expect(onImageModelsChanged).toHaveBeenCalledTimes(1)
+
+    const invalid = await put({ defaultModel: 42 })
     expect(invalid.status).toBe(400)
     expect(await invalid.json()).toEqual({ error: 'imageGeneration.defaultModel must be a string' })
+
+    const escaping = await put({ outputDir: '../outside' })
+    expect(escaping.status).toBe(400)
+    expect(await escaping.json()).toEqual({ error: 'imageGeneration.outputDir must be a relative folder inside the workspace' })
   })
 
   it('enforces authentication and admin boundaries', async () => {

@@ -115,7 +115,11 @@ const TEMPLATES: Record<string, object> = {
       backgroundThinkingLevel: 'off',
     },
     imageGeneration: {
+      enabled: true,
       defaultModel: '',
+      maxVariants: 4,
+      maxCostPerCallUsd: null,
+      outputDir: 'images',
     },
   },
   'skills.json': {
