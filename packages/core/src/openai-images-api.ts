@@ -1,15 +1,7 @@
-import type {
-  AssistantImages,
-  ImageApi,
-  ImageContent,
-  ImageModel,
-  ImagesContext,
-  ImagesOptions,
-  ProviderHeaders,
-  ProviderImages,
-  Usage,
-} from '@earendil-works/pi-ai'
+import type { ImageApi, ImageModel, ImagesContext, ProviderImages } from '@earendil-works/pi-ai'
 import { extractCodexAccountId } from './codex-auth.js'
+import { generateImagesSafely, imageDataUrl, postImagesRequest, splitImagesInput, tokenUsage } from './images-api-http.js'
+import type { ImagesRequestSpec } from './images-api-http.js'
 
 /** OpenAI Images API (`/v1/images/generations` and `/v1/images/edits`), API-key billed. */
 export const OPENAI_IMAGES_API = 'openai-images'
@@ -70,51 +62,11 @@ const codexHeaders: AuthHeaders = (accessToken) => {
 }
 
 function buildPayload(model: ImageModel<ImageApi>, context: ImagesContext): Record<string, unknown> {
-  const prompt = context.input
-    .filter(part => part.type === 'text')
-    .map(part => part.text)
-    .join('\n\n')
-  const images = context.input.filter((part): part is ImageContent => part.type === 'image')
+  const { prompt, images } = splitImagesInput(context)
   return {
     model: model.id,
     prompt,
-    ...(images.length > 0 && {
-      images: images.map(image => ({ image_url: `data:${image.mimeType};base64,${image.data}` })),
-    }),
-  }
-}
-
-function mergeHeaders(base: Record<string, string>, extra: ProviderHeaders | undefined): Record<string, string> {
-  const headers = { ...base }
-  for (const [key, value] of Object.entries(extra ?? {})) {
-    if (value === null) delete headers[key]
-    else headers[key] = value
-  }
-  return headers
-}
-
-function requestSignal(options: ImagesOptions | undefined): AbortSignal | undefined {
-  const signals = [
-    options?.signal,
-    options?.timeoutMs !== undefined ? AbortSignal.timeout(options.timeoutMs) : undefined,
-  ].filter((signal): signal is AbortSignal => signal !== undefined)
-  if (signals.length === 0) return undefined
-  return signals.length === 1 ? signals[0] : AbortSignal.any(signals)
-}
-
-function toUsage(raw: OpenAIImagesUsage | undefined, model: ImageModel<ImageApi>): Usage | undefined {
-  if (!raw) return undefined
-  const input = raw.input_tokens ?? 0
-  const output = raw.output_tokens ?? 0
-  const inputCost = (model.cost.input / 1_000_000) * input
-  const outputCost = (model.cost.output / 1_000_000) * output
-  return {
-    input,
-    output,
-    cacheRead: 0,
-    cacheWrite: 0,
-    totalTokens: raw.total_tokens ?? input + output,
-    cost: { input: inputCost, output: outputCost, cacheRead: 0, cacheWrite: 0, total: inputCost + outputCost },
+    ...(images.length > 0 && { images: images.map(image => ({ image_url: imageDataUrl(image) })) }),
   }
 }
 
@@ -146,80 +98,26 @@ export function describeImagesApiError(status: number, body: unknown, fallbackTe
   return `HTTP ${status}: ${message}${suffix}`
 }
 
-function parseJson(text: string): unknown {
-  try {
-    return JSON.parse(text)
-  } catch {
-    return null
-  }
-}
-
-async function postImagesRequest(
-  model: ImageModel<ImageApi>,
-  context: ImagesContext,
-  options: ImagesOptions | undefined,
-  authHeaders: AuthHeaders,
-): Promise<{ payload: Record<string, unknown>; result: OpenAIImagesResponse }> {
-  const apiKey = options?.apiKey
-  if (!apiKey) throw new Error(`No API key for provider: ${model.provider}`)
-
-  const initialPayload = buildPayload(model, context)
-  const payload = ((await options?.onPayload?.(initialPayload, model)) ?? initialPayload) as Record<string, unknown>
-  const endpoint = Array.isArray(payload.images) && payload.images.length > 0 ? 'edits' : 'generations'
-  const headers = mergeHeaders({
-    'Content-Type': 'application/json',
-    Accept: 'application/json',
-    ...model.headers,
-    ...authHeaders(apiKey),
-  }, options?.headers)
-
-  const response = await (options?.fetch ?? globalThis.fetch)(`${model.baseUrl.replace(/\/+$/, '')}/images/${endpoint}`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(payload),
-    signal: requestSignal(options),
-  })
-  await options?.onResponse?.({ status: response.status, headers: Object.fromEntries(response.headers) }, model)
-
-  const text = await response.text()
-  const body = parseJson(text)
-  if (!response.ok) throw new Error(describeImagesApiError(response.status, body, text))
-  return { payload, result: (body ?? {}) as OpenAIImagesResponse }
-}
-
-function describeFailure(error: unknown, options: ImagesOptions | undefined): string {
-  return (error as Error).name === 'TimeoutError'
-    ? `Image generation timed out after ${Math.round((options?.timeoutMs ?? 0) / 1000)} s`
-    : (error as Error).message
-}
-
 function createImagesApi(authHeaders: AuthHeaders): ProviderImages {
+  const spec: ImagesRequestSpec = {
+    path: payload => (Array.isArray(payload.images) && payload.images.length > 0 ? 'images/edits' : 'images/generations'),
+    authHeaders,
+    describeError: describeImagesApiError,
+  }
   return {
-    async generateImages(model, context, options): Promise<AssistantImages> {
-      const output: AssistantImages = {
-        api: model.api,
-        provider: model.provider,
-        model: model.id,
-        output: [],
-        stopReason: 'stop',
-        timestamp: Date.now(),
+    generateImages: (model, context, options) => generateImagesSafely(model, options, async (output) => {
+      const { payload, body } = await postImagesRequest(model, buildPayload(model, context), options, spec)
+      const result = body as OpenAIImagesResponse
+      const format = String(result.output_format ?? payload.output_format ?? 'png').toLowerCase()
+      const mimeType = MIME_TYPE_BY_FORMAT[format] ?? `image/${format}`
+      output.responseId = result.data?.find(entry => entry.generation_id)?.generation_id
+      if (result.usage) {
+        output.usage = tokenUsage(model, result.usage.input_tokens ?? 0, result.usage.output_tokens ?? 0, result.usage.total_tokens)
       }
-
-      try {
-        const { payload, result } = await postImagesRequest(model, context, options, authHeaders)
-        const format = String(result.output_format ?? payload.output_format ?? 'png').toLowerCase()
-        const mimeType = MIME_TYPE_BY_FORMAT[format] ?? `image/${format}`
-        output.responseId = result.data?.find(entry => entry.generation_id)?.generation_id
-        output.usage = toUsage(result.usage, model)
-        for (const entry of result.data ?? []) {
-          if (entry.b64_json) output.output.push({ type: 'image', mimeType, data: entry.b64_json })
-        }
-      } catch (error) {
-        output.stopReason = options?.signal?.aborted ? 'aborted' : 'error'
-        output.errorMessage = describeFailure(error, options)
+      for (const entry of result.data ?? []) {
+        if (entry.b64_json) output.output.push({ type: 'image', mimeType, data: entry.b64_json })
       }
-      return output
-    },
+    }),
   }
 }
 
