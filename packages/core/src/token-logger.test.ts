@@ -192,14 +192,15 @@ describe('token-logger', () => {
   })
 
   describe('getAverageImageCost', () => {
-    function book(model: string, estimatedCost: number, provider = 'openrouter') {
-      logTokenUsage(db, { provider, model, promptTokens: 1, completionTokens: 1, cacheRead: 0, cacheWrite: 0, estimatedCost })
+    function book(model: string, estimatedCost: number, provider = 'openrouter', kind: 'text' | 'image' = 'image') {
+      logTokenUsage(db, { provider, model, promptTokens: 1, completionTokens: 1, cacheRead: 0, cacheWrite: 0, estimatedCost, kind })
     }
 
     it('waits for three billed images and then averages the last five', () => {
       createDb()
       book('recraft/recraft-v4.1', 0.03)
       book('recraft/recraft-v4.1', 0)
+      book('recraft/recraft-v4.1', 0.7, 'openrouter', 'text')
       book('recraft/recraft-v4.1', 0.04)
       book('recraft/recraft-v4.1', 0.5, 'other')
       book('flux', 0.9)

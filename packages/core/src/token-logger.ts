@@ -9,6 +9,8 @@ export interface TokenUsageRecord {
   cacheWrite: number
   estimatedCost: number
   sessionId?: string
+  /** `image` for image generation requests, which `getAverageImageCost` averages. */
+  kind?: 'text' | 'image'
 }
 
 export interface ToolCallRecord {
@@ -31,8 +33,8 @@ export interface ToolCallRecord {
  */
 export function logTokenUsage(db: Database, record: TokenUsageRecord): void {
   db.prepare(
-    `INSERT INTO token_usage (provider, model, prompt_tokens, completion_tokens, cache_read, cache_write, estimated_cost, session_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO token_usage (provider, model, prompt_tokens, completion_tokens, cache_read, cache_write, estimated_cost, session_id, kind)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     record.provider,
     record.model,
@@ -42,6 +44,7 @@ export function logTokenUsage(db: Database, record: TokenUsageRecord): void {
     record.cacheWrite,
     record.estimatedCost,
     record.sessionId ?? null,
+    record.kind ?? 'text',
   )
 
   if (record.sessionId) {
@@ -74,7 +77,7 @@ export function getAverageImageCost(
 ): AverageImageCost | null {
   const rows = db.prepare(
     `SELECT estimated_cost AS cost FROM token_usage
-     WHERE provider = ? AND model = ? AND estimated_cost > 0
+     WHERE kind = 'image' AND provider = ? AND model = ? AND estimated_cost > 0
      ORDER BY id DESC LIMIT ?`,
   ).all(provider, model, options.lastImages ?? 5) as Array<{ cost: number }>
   if (rows.length < (options.minImages ?? 3)) return null

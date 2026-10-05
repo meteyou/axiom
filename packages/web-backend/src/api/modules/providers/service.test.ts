@@ -431,7 +431,7 @@ describe('image generation models', () => {
       dataUrl: `data:image/webp;base64,${PNG_BASE64}`,
       costUsd: 0.035,
     })
-    expect(db.prepare('SELECT model, estimated_cost FROM token_usage').get()).toEqual({ model: 'recraft/recraft-v4.1', estimated_cost: 0.035 })
+    expect(db.prepare('SELECT model, estimated_cost, kind FROM token_usage').get()).toEqual({ model: 'recraft/recraft-v4.1', estimated_cost: 0.035, kind: 'image' })
     db.close()
   })
 

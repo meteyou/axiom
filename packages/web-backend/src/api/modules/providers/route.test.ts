@@ -460,7 +460,7 @@ describe('providers route module', () => {
     const provider = addProvider({ name: 'OpenRouter Images', providerType: 'openrouter', apiKey: 'sk-or', enabledModels: [] })
     updateProvider(provider.id, { enabledImageModels: ['recraft/recraft-v4.1'] })
     const book = (estimatedCost: number) => logTokenUsage(db, {
-      provider: 'openrouter', model: 'recraft/recraft-v4.1', promptTokens: 0, completionTokens: 4000, cacheRead: 0, cacheWrite: 0, estimatedCost,
+      provider: 'openrouter', model: 'recraft/recraft-v4.1', promptTokens: 0, completionTokens: 4000, cacheRead: 0, cacheWrite: 0, estimatedCost, kind: 'image',
     })
     const imageSpec = async () => {
       const body = await (await fetch(`${baseUrl}/api/providers`, { headers: authHeaders(adminToken) })).json() as {
