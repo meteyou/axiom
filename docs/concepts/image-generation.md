@@ -11,31 +11,51 @@ Today **OpenRouter** is the only image backend. The implementation is keyed on p
 | Stored in `providers.json` as | `enabledModels` | `enabledImageModels` |
 | Catalog | pi-ai text catalog (or the live `/models` list) | pi-ai **image** catalog |
 | Used by | chat, tasks, cronjobs, consolidation, fact extraction, … | `generate_image` only |
-| Shown in model pickers (Settings, `/model`, task restart, cronjobs) | yes | **no** — only in *Settings → Tasks → Default image model* |
+| Shown in model pickers (Settings, `/model`, task restart, cronjobs) | yes | **no** — only in *Settings → Image Generation → Default image model* |
 | Listed in the system prompt | `<available_providers>` text list (description-gated) | separate *Image generation models* block (always all) |
 | Thinking levels, context window, token costs | yes | no — billed per image |
 
 Image models are added under [Providers → Image models](../web-ui/providers#image-models). The same model id may in principle exist in both lists (some OpenRouter models can chat *and* draw), but each list is managed separately.
 
-## Default image model
+## Settings → Image Generation
 
-[Settings → Tasks → Default image model](../settings/tasks#default-image-model) is the single place that decides which model `generate_image` uses when the agent does not pick one. It is stored as `imageGeneration.defaultModel` (`providerId:modelId`) in `settings.json`. When it is empty or points at a model that is no longer enabled, the first enabled image model is used. Disabling the provider resets the setting.
+The [Image Generation settings tab](../settings/image-generation) controls how the agent may use the image models:
+
+| Setting | Key in `settings.json` | Default |
+|---|---|---|
+| Enabled | `imageGeneration.enabled` | `true` |
+| Default image model | `imageGeneration.defaultModel` | `""` (first enabled image model) |
+| Max variants per call | `imageGeneration.maxVariants` | `4` (range 1–10) |
+| Cost limit per call | `imageGeneration.maxCostPerCallUsd` | `null` (off) |
+| Output folder | `imageGeneration.outputDir` | `images` |
+
+The tab also shows a read-only list of all enabled image models with their descriptions, each linking to its provider. Models themselves (key, availability check, credit balance) stay owned by the provider under [Providers → Image models](../web-ui/providers#image-models).
+
+### Default image model
+
+The [default image model](../settings/image-generation#default-image-model) is the single place that decides which model `generate_image` uses when the agent does not pick one. It is stored as `imageGeneration.defaultModel` (`providerId:modelId`) in `settings.json`. When it is empty or points at a model that is no longer enabled, the first enabled image model is used. Disabling the provider resets the setting.
 
 ## The `generate_image` tool
 
-The tool is registered only while at least one image model is usable (enabled, on an enabled provider). The interactive agent re-checks this before every turn, background agents whenever image models change — no restart needed.
+The tool is registered only while image generation is **switched on** (`imageGeneration.enabled`, default on) **and** at least one image model is usable (enabled, on an enabled provider). The interactive agent re-checks both before every turn, background agents whenever the setting or the image models change — no restart needed. While switched off, the tool, the *Image generation models* prompt block, the `generate_image` line in `<available_tools>` and the `image-generation` skill listing are all absent; a background task that still holds the tool gets a clear "switched off" error instead of a generation.
 
 | Parameter | Required | Notes |
 |---|---|---|
 | `prompt` | yes | Detailed description of the image. |
 | `model` | no | `providerId:modelId`, `providerName:modelId` or a bare model id. Defaults to the default image model. |
 | `aspect_ratio` | no | e.g. `"1:1"`, `"16:9"`, `"9:16"`. Sent to OpenRouter as `image_config.aspect_ratio`; not every model honours it. |
-| `n` | no | Number of variants, `1`–`4`. Each variant is a separate request; they run in parallel and are billed separately. |
+| `n` | no | Number of variants, from `1` up to [Max variants per call](../settings/image-generation#max-variants-per-call) (default `4`). The limit is part of the parameter definition; a larger `n` is refused before anything is generated. Each variant is a separate request; they run in parallel and are billed separately. |
 | `input_images` | no | Workspace-relative (or absolute) paths of PNG/JPEG/WebP/GIF images to edit, combine or use as reference (max 8, 20 MB each). Only models that accept image input can use them. |
+
+### Cost limit per call
+
+With a [cost limit per call](../settings/image-generation#cost-limit-per-call) set, the tool estimates the cost before generating: `n` × the average billed cost per image of the last 5 generations with the same model (read from `token_usage`). If the estimate exceeds the limit, the tool refuses with a message that states the estimate and the limit — no request is sent and nothing is billed.
+
+pi-ai's image catalog carries no per-image prices (flat-priced models list zero, token-priced ones list text-token rates), so earlier billed costs are the only reliable basis. The limit is therefore **approximate**: flat-priced models such as Recraft are estimated closely, token-priced models (Gemini, GPT image) vary with the prompt and input images. A model's **first** generation cannot be checked; the tool then generates and says in its result that the limit was not checked. A paid test image under Providers seeds the estimate.
 
 ### Output files
 
-Every image is written to the workspace:
+Every image is written to the workspace, under the configured [output folder](../settings/image-generation#output-folder) (default `images`):
 
 ```text
 /workspace/images/YYYY-MM-DD/<slug>.<ext>          # single image
@@ -45,6 +65,7 @@ Every image is written to the workspace:
 
 - `<slug>` is derived from the first words of the prompt. Existing files are never overwritten — a numeric suffix is added instead.
 - The extension follows the returned MIME type: `png`, `jpg`, `webp`, `svg` (Recraft vector models), `gif`.
+- The output folder must stay inside the workspace; absolute paths and `..` escapes are rejected when the setting is saved.
 - The sidecar (`<file>.json`, e.g. `logo.svg.json`) records model, provider, prompt, parameters, duration, the billed cost and the provider's generation id.
 
 The tool result lists the relative paths, format, file size, the billed cost and the duration. It **never** contains image data, so a generation does not blow up the context window. To show an image to the user, the agent calls [`send_file_to_user`](./tools#user-delivery) with the path (web chat shows a preview, Telegram sends raster images as photos and SVG files as documents).
@@ -60,17 +81,18 @@ Each request times out after **180 s**.
 pi-ai's token-based estimate is far off for image models (zero for most of them), so Axiom reads the **billed amount** that OpenRouter reports in each response (`usage.cost`) and uses it for:
 
 - the tool result and the sidecar file,
-- the [Token Usage](../web-ui/token-usage) page — every generation is booked as a `token_usage` row for the image model (interactive chats on the current session, background tasks and the Providers test image without a session).
+- the [Token Usage](../web-ui/token-usage) page — every generated variant (one provider request) is booked as its own `token_usage` row for the image model (interactive chats on the current session, background tasks and the Providers test image without a session),
+- the estimate behind the [cost limit per call](#cost-limit-per-call).
 
 Typical prices seen in testing: Recraft V4.1 ≈ $0.035, GPT-5 Image Mini ≈ $0.04, Gemini 3.1 Flash Image ≈ $0.07, Recraft V4.1 Vector (SVG) ≈ $0.08 per image. Check [`provider_quota`](./tools#provider-quota) for the remaining OpenRouter credit.
 
 ## System prompt
 
-When at least one image model is usable, `<available_providers>` gains an *Image generation models* block that lists every usable image model with its provider, id, the description from the [image model edit dialog](../web-ui/providers#image-models) and a *default image model* label. It also states that these models are only for `generate_image`. `<available_tools>` gains a `generate_image` line. See [System Prompt](./system-prompt#_8-available-providers-configured-llm-providers).
+When image generation is switched on and at least one image model is usable, `<available_providers>` gains an *Image generation models* block that lists every usable image model with its provider, id, the description from the [image model edit dialog](../web-ui/providers#image-models) and a *default image model* label. It also states that these models are only for `generate_image`. `<available_tools>` gains a `generate_image` line. See [System Prompt](./system-prompt#_8-available-providers-configured-llm-providers).
 
 ## The `image-generation` skill
 
-The built-in [`image-generation` skill](./skills#currently-shipped) carries the workflow the tool description points to: when to generate, how to write a detailed prompt, generating 1–4 variants, optional self-checks, delivery via `send_file_to_user`, iterating with `input_images` instead of re-rolling, model choice (Recraft vector for logos and icons, GPT/Gemini for text in images and photorealism) and cost awareness (`provider_quota` before batch runs, no base64 in chat). It declares `requires_toolsets: [generate_image]`, so it only appears in `<available_skills>` while the tool is available.
+The built-in [`image-generation` skill](./skills#currently-shipped) carries the workflow the tool description points to: when to generate, how to write a detailed prompt, generating variants within the configured limit, respecting the cost limit, optional self-checks, delivery via `send_file_to_user`, iterating with `input_images` instead of re-rolling, model choice (Recraft vector for logos and icons, GPT/Gemini for text in images and photorealism) and cost awareness (`provider_quota` before batch runs, no base64 in chat). It declares `requires_toolsets: [generate_image]`, so it only appears in `<available_skills>` while the tool is available.
 
 ## Migration of existing configurations
 
@@ -89,6 +111,6 @@ Ids are left as text models when they are also chat models in pi-ai's text catal
 ## See also
 
 - [Providers → Image models](../web-ui/providers#image-models) — enabling models, availability check, paid test image.
-- [Settings → Tasks → Default image model](../settings/tasks#default-image-model)
+- [Settings → Image Generation](../settings/image-generation) — on/off switch, default image model, limits, output folder.
 - [Built-in Tools](./tools#generate-image) — the tool registry.
 - [`settings.json` → `imageGeneration`](../reference/settings#imagegeneration) and [`providers.json` → `enabledImageModels`](../reference/settings#providerconfig)

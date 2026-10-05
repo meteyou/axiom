@@ -51,7 +51,7 @@ The on-disk shape is a **superset** of [`SettingsContract`](https://github.com/)
 | `factExtraction`                   | object                                                            | see below      | nested                                  | Per-session fact extraction.                                                                                      |
 | `agentHeartbeat`                   | object                                                            | see below      | nested                                  | Background reflection loop.                                                                                       |
 | `tasks`                            | object                                                            | see below      | nested                                  | Task & cronjob defaults.                                                                                          |
-| `imageGeneration`                  | object                                                            | see below      | nested                                  | Default image model for `generate_image`.                                                                         |
+| `imageGeneration`                  | object                                                            | see below      | nested                                  | `generate_image` switch, default image model, limits, output folder.                                              |
 | `tts`                              | object                                                            | see below      | nested                                  | Voice output config.                                                                                              |
 | `stt`                              | object                                                            | see below      | nested                                  | Voice input config.                                                                                               |
 | `tokenPriceTable`                  | `Record<string, { input: number; output: number }>`               | seed prices    | not validated by API                    | Per-model USD/1M-token costs used by [Token Usage](../web-ui/token-usage). Merged on top of `DEFAULT_PRICE_TABLE`. |
@@ -221,11 +221,17 @@ A flat `tasks.statusUpdateIntervalMinutes` may exist on disk from older installs
 
 ### `imageGeneration`
 
-[Tasks UI → Default image model](../settings/tasks#default-image-model). See [Image Generation](../concepts/image-generation).
+[Image Generation UI](../settings/image-generation). See [Image Generation](../concepts/image-generation).
 
-| Key                            | Type                                  | Default | Range / enum |
-|--------------------------------|---------------------------------------|---------|--------------|
-| `imageGeneration.defaultModel` | `string` (`providerId:modelId`)       | `""`    | string; `""` = first enabled image model. Reset to `""` when its provider is disabled. |
+| Key                                 | Type                            | Default    | Range / enum |
+|-------------------------------------|---------------------------------|------------|--------------|
+| `imageGeneration.enabled`           | `boolean`                       | `true`     | boolean. `false` removes `generate_image`, the *Image generation models* prompt block and the `image-generation` skill listing. |
+| `imageGeneration.defaultModel`      | `string` (`providerId:modelId`) | `""`       | string; `""` = first enabled image model. Reset to `""` when its provider is disabled. |
+| `imageGeneration.maxVariants`       | `number`                        | `4`        | integer `1–10`. Upper limit of the tool's `n` parameter. |
+| `imageGeneration.maxCostPerCallUsd` | `number \| null`                | `null`     | `> 0` or `null` (off). Approximate: estimated from recent billed costs of the model, see [Cost limit per call](../settings/image-generation#cost-limit-per-call). |
+| `imageGeneration.outputDir`         | `string`                        | `"images"` | workspace-relative folder; absolute paths and paths escaping the workspace are rejected. Stored normalized (`./a//b/` → `a/b`). |
+
+Hand-edited invalid values are ignored at runtime and the default is used instead.
 
 ### `tts`
 
@@ -371,7 +377,13 @@ This is the literal file written by `ensureConfigTemplates()`:
     "statusUpdates": { "enabled": false, "intervalMinutes": 10 },
     "backgroundThinkingLevel": "off"
   },
-  "imageGeneration": { "defaultModel": "" }
+  "imageGeneration": {
+    "enabled": true,
+    "defaultModel": "",
+    "maxVariants": 4,
+    "maxCostPerCallUsd": null,
+    "outputDir": "images"
+  }
 }
 ```
 

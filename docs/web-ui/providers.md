@@ -403,7 +403,7 @@ The ⋮ menu of an image model row offers:
 | **Edit Model** | Display name and **description**. The description is shown to the agent in the *Image generation models* list of the system prompt and helps it choose a model (e.g. *"Logos and icons as SVG"*). |
 | **Remove Model** | Removes the model from `enabledImageModels`. |
 
-Which image model the agent uses by default is set in [Settings → Tasks → Default image model](../settings/tasks#default-image-model) — there is no default toggle on this page.
+Which image model the agent uses by default, and whether image generation is switched on at all, is set in [Settings → Image Generation](../settings/image-generation) — there is no default toggle on this page. That tab also lists all enabled image models, each linking back to its provider here.
 
 ### Migration of image models added as text models
 
