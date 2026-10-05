@@ -106,7 +106,7 @@ The tool result lists the relative paths, format, file size, the cost (or *"incl
 
 Provider errors (invalid key, insufficient credits, an exhausted ChatGPT usage limit, content policy, timeouts) are returned as a clear error message instead of failing the turn. A response without an image — for example a refusal — is reported as *"The model returned no image"*, together with any text the model sent. With `n > 1`, partial failures are listed next to the images that did succeed.
 
-Each request times out after **180 s**.
+Each request times out after **6 minutes**. Most models finish in 20–60 s, but GPT Image 2 at high quality regularly needs 2–5 minutes per image, and an abandoned request is still billed.
 
 ## Cost tracking
 
@@ -144,7 +144,7 @@ Ids are left as text models when they are also chat models in pi-ai's text catal
 - **OpenRouter, OpenAI and ChatGPT only.** Other providers show no *Add image model* action.
 - **ChatGPT subscription:** no choice of model, size or quality, and the endpoint is not a public API (see [above](#chatgpt-subscription)).
 - **OpenAI costs are estimates** based on list prices shipped with Axiom; check the OpenAI usage dashboard for the billed amount.
-- **Long generations in chat.** During a tool call the chat [provider-stall watchdog](../reference/settings#watchdog) keeps counting (default abort after 90 s). Variants run in parallel, so a single slow model rarely hits this, but very slow models may need a higher `watchdog.stallAbortMs`.
+- **Long generations in chat.** While `generate_image` runs, the chat [provider-stall watchdog](../reference/settings#watchdog) uses its own thresholds instead of `watchdog.*`: the stall warning appears after 5 minutes and the turn is aborted after 7 minutes, both multiplied by `n` because ChatGPT-subscription variants run one after another.
 - **Remote image URLs** are not supported; a model must return inline image data.
 - **No built-in vision self-check.** Axiom's file tools return text, so the agent cannot look at the generated pixels unless you give it a way to query a vision model.
 - **`aspect_ratio`** is forwarded to OpenRouter, but whether a given model honours it is up to the model.

@@ -590,6 +590,65 @@ describe('TurnRunner', () => {
       expect(persisted[0]!.content).toContain('Provider stopped responding')
     })
 
+    it('gives a running generate_image call its own, much longer thresholds', async () => {
+      vi.useFakeTimers()
+      const db = freshDb()
+      const { agent, push, finish } = controllableAgent()
+      const runner = startRunner(db, agent, {
+        stallWarnMs: 30_000,
+        stallAbortMs: 90_000,
+        watchdogIntervalMs: 1_000,
+        retryPolicy: { enabled: false },
+      })
+
+      const events: TurnEvent[] = []
+      runner.subscribe(USER_ID, collect(events))
+      runner.startTurn({ userId: USER_ID, sessionId: SESSION_ID, text: 'draw' })
+      await vi.advanceTimersByTimeAsync(0)
+
+      push({ type: 'tool_call_start', toolName: 'generate_image', toolCallId: 'img-1', toolArgs: { prompt: 'a fox', n: 2 } })
+      await vi.advanceTimersByTimeAsync(4 * 60_000)
+      expect(stallChunks(events)).toEqual([])
+      expect(agent.abort).not.toHaveBeenCalled()
+
+      push({ type: 'tool_call_end', toolName: 'generate_image', toolCallId: 'img-1', toolResult: {}, toolIsError: false })
+      await vi.advanceTimersByTimeAsync(31_000)
+      expect(stallChunks(events).map(c => c.type)).toEqual(['stall_warning'])
+
+      push({ type: 'done' })
+      finish()
+      await vi.advanceTimersByTimeAsync(1)
+    })
+
+    it('warns and aborts a generate_image call that outlasts its request timeouts', async () => {
+      vi.useFakeTimers()
+      const db = freshDb()
+      const { agent, push } = controllableAgent()
+      const runner = startRunner(db, agent, {
+        stallWarnMs: 30_000,
+        stallAbortMs: 90_000,
+        watchdogIntervalMs: 1_000,
+        retryPolicy: { enabled: false },
+      })
+
+      const events: TurnEvent[] = []
+      runner.subscribe(USER_ID, collect(events))
+      runner.startTurn({ userId: USER_ID, sessionId: SESSION_ID, text: 'draw' })
+      await vi.advanceTimersByTimeAsync(0)
+
+      push({ type: 'tool_call_start', toolName: 'generate_image', toolCallId: 'img-1', toolArgs: { prompt: 'a fox' } })
+      await vi.advanceTimersByTimeAsync(299_000)
+      expect(stallChunks(events)).toEqual([])
+
+      await vi.advanceTimersByTimeAsync(2_000)
+      expect(stallChunks(events).map(c => c.type)).toEqual(['stall_warning'])
+      expect(agent.abort).not.toHaveBeenCalled()
+
+      await vi.advanceTimersByTimeAsync(120_000)
+      expect(agent.abort).toHaveBeenCalled()
+      expect(stallRows(db)[0]!.metadata.outcome).toBe('aborted')
+    })
+
     it('takes warn/abort thresholds from the settings file when not overridden', async () => {
       useSettingsFile({ watchdog: { stallWarnMs: 5_000, stallAbortMs: 12_000 } })
       vi.useFakeTimers()

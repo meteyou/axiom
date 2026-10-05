@@ -91,6 +91,9 @@ restart.
 { "watchdog": { "stallWarnMs": 30000, "stallAbortMs": 90000 } }
 ```
 
+While a `generate_image` call runs, longer thresholds apply (warning after 5 min,
+abort after 7 min, per variant) — see [Image generation](../concepts/image-generation#limitations).
+
 Stalls are aggregated on the **Token Usage** page (admin only): count, average and
 longest silence, and the split between recovered and aborted turns for the
 selected date range. Only stalls recorded after this feature shipped are counted
