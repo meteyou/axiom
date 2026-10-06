@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildTurnRetryAction,
+  closeOpenStreams,
   stripFailedAttempt,
   stripTrailingTurn,
   turnErrorFromHistoryMetadata,
@@ -295,5 +296,21 @@ describe('upsertStallMessage', () => {
     expect(updated).toHaveLength(2)
     const twice = upsertStallMessage(updated, stall({ messageId: undefined }), 'stalled')
     expect(twice).toHaveLength(3)
+  })
+})
+
+describe('closeOpenStreams', () => {
+  it('clears the streaming flag on every message, not just the last one', () => {
+    const list: ChatMessage[] = [
+      { role: 'assistant', content: 'partial answer', streaming: true },
+      { role: 'tool', content: 'Tool: shell' },
+      { role: 'assistant', content: 'thinking', isThinking: true, streaming: true },
+    ]
+    expect(closeOpenStreams(list).map(m => m.streaming ?? false)).toEqual([false, false, false])
+  })
+
+  it('returns the same list when nothing is streaming', () => {
+    const list = [msg('user', 'hi'), msg('assistant', 'hello')]
+    expect(closeOpenStreams(list)).toBe(list)
   })
 })

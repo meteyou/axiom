@@ -303,19 +303,17 @@ function formatReminderContent(name?: string, message?: string): string {
 }
 
 /**
- * If the last message is a streaming thinking block, mark it as done.
- * Used when a non-thinking chunk (text / tool / done) arrives so the
- * thinking card stops showing the typing indicator.
+ * Mark every still-streaming message as done. Called whenever a new entry is
+ * appended: once something follows a bubble, that bubble can no longer
+ * receive chunks, so it must not keep showing the typing indicator.
  */
-function closeStreamingThinking(list: ChatMessage[]): ChatMessage[] {
-  if (list.length === 0) return list
-  const last = list[list.length - 1]!
-  if (last.role === 'assistant' && last.isThinking && last.streaming) {
-    const updated = [...list]
-    updated[updated.length - 1] = { ...last, streaming: false }
-    return updated
-  }
-  return list
+export function closeOpenStreams(list: ChatMessage[]): ChatMessage[] {
+  if (!list.some(m => m.streaming)) return list
+  return list.map(m => (m.streaming ? { ...m, streaming: false } : m))
+}
+
+function appendClosingStreams(list: ChatMessage[], message: ChatMessage): ChatMessage[] {
+  return [...closeOpenStreams(list), message]
 }
 
 /**
@@ -691,14 +689,14 @@ export function useChat() {
       case 'external_user_message':
         // A message from another channel (e.g. Telegram) for the same user
         if (msg.text) {
-          messages.value = [...messages.value, {
+          messages.value = appendClosingStreams(messages.value, {
             role: 'user',
             content: msg.text,
             timestamp: new Date().toISOString(),
             source: (msg.source as 'web' | 'telegram') ?? undefined,
             senderName: msg.senderName,
             replyContext: msg.replyContext,
-          }]
+          })
         }
         break
 
@@ -706,14 +704,14 @@ export function useChat() {
         const reminderContent = formatReminderContent(msg.reminderName, msg.reminderMessage)
 
         if (reminderContent) {
-          messages.value = [...messages.value, {
+          messages.value = appendClosingStreams(messages.value, {
             role: 'system',
             content: reminderContent,
             timestamp: new Date().toISOString(),
             isReminder: true,
             reminderName: msg.reminderName?.trim() || undefined,
             reminderMessage: msg.reminderMessage?.trim() || undefined,
-          }]
+          })
 
           if (
             typeof window !== 'undefined'
@@ -735,7 +733,7 @@ export function useChat() {
         const emoji = msg.type === 'task_completed' ? '✅' : msg.type === 'task_failed' ? '❌' : '❓'
         const statusLabel = msg.type.replace('task_', '')
         const content = `${emoji} Task ${statusLabel}: ${msg.taskName ?? 'Unknown'}\n\n${msg.taskSummary ?? msg.text ?? 'No summary available.'}`
-        messages.value = [...messages.value, {
+        messages.value = appendClosingStreams(messages.value, {
           role: 'system',
           content,
           timestamp: new Date().toISOString(),
@@ -743,7 +741,7 @@ export function useChat() {
           taskResultName: msg.taskName ?? 'Background Task',
           taskResultStatus: statusLabel,
           taskResultDuration: msg.taskDurationMinutes,
-        }]
+        })
         break
       }
 
@@ -780,14 +778,13 @@ export function useChat() {
             messages.value = updated
           } else {
             // Close any streaming thinking block and start new assistant message
-            const closed = closeStreamingThinking(messages.value)
-            messages.value = [...closed, {
+            messages.value = appendClosingStreams(messages.value, {
               role: 'assistant',
               content: msg.text,
               timestamp: new Date().toISOString(),
               streaming: true,
               isTaskInjection: msg.isTaskInjection,
-            }]
+            })
           }
           isStreaming.value = true
         }
@@ -805,28 +802,24 @@ export function useChat() {
             }
             messages.value = updated
           } else {
-            // Start a new streaming thinking block (close any open non-thinking stream)
-            messages.value = [...messages.value, {
+            messages.value = appendClosingStreams(messages.value, {
               role: 'assistant',
               content: msg.thinking,
               timestamp: new Date().toISOString(),
               streaming: true,
               isThinking: true,
-            }]
+            })
           }
           isStreaming.value = true
         }
         break
 
       case 'done':
-        // Mark all trailing streaming messages (text + thinking) as done.
-        // A turn can end with a thinking block still streaming if the model
-        // emitted thinking without follow-up text (rare but possible).
         if (messages.value.length > 0) {
           const updated = [...messages.value]
           for (let i = updated.length - 1; i >= 0; i--) {
             const m = updated[i]!
-            if (!m.streaming) break
+            if (!m.streaming) continue
             updated[i] = {
               ...m,
               streaming: false,
@@ -870,9 +863,7 @@ export function useChat() {
 
       case 'tool_call_start':
         if (msg.toolName) {
-          // A tool call also ends any in-flight thinking block.
-          const closed = closeStreamingThinking(messages.value)
-          messages.value = [...closed, {
+          messages.value = appendClosingStreams(messages.value, {
             role: 'tool',
             content: `Tool: ${msg.toolName}`,
             timestamp: new Date().toISOString(),
@@ -882,18 +873,18 @@ export function useChat() {
               toolArgs: msg.toolArgs,
               running: true,
             },
-          }]
+          })
         }
         break
 
       case 'chat_action':
         if (msg.chatAction) {
-          messages.value = [...messages.value, {
+          messages.value = appendClosingStreams(messages.value, {
             role: 'system',
             content: msg.chatAction.text,
             timestamp: new Date().toISOString(),
             chatAction: msg.chatAction,
-          }]
+          })
         }
         break
 
@@ -973,15 +964,13 @@ export function useChat() {
               messages.value = updated
             }
           } else {
-            // Close any open thinking block before inserting the new bubble.
-            const closed = closeStreamingThinking(messages.value)
-            messages.value = [...closed, {
+            messages.value = appendClosingStreams(messages.value, {
               role: 'assistant',
               content: '',
               timestamp: new Date().toISOString(),
               streaming: true,
               attachments: [attachment],
-            }]
+            })
           }
         }
         break
