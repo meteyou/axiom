@@ -1,8 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import fs from 'node:fs'
-import nodePath from 'node:path'
 import type { Agent as PiAgent } from '@earendil-works/pi-agent-core'
-import type { Api, ImageContent, Model } from '@earendil-works/pi-ai'
+import type { Api, Model } from '@earendil-works/pi-ai'
 import { completeSimple, releaseProviderSession } from './pi-models.js'
 import type { Database } from './database.js'
 import { getApiKeyForProvider, buildModel } from './provider-config.js'
@@ -10,7 +8,7 @@ import { assertLlmResponseOk } from './llm-response.js'
 import type { ProviderConfig } from './provider-config.js'
 import type { ProviderManager } from './provider-manager.js'
 import { loadConfig } from './config.js'
-import { getUploadsDir } from './uploads.js'
+import { buildUploadPromptContext } from './uploads.js'
 import type { UploadDescriptor } from './uploads.js'
 import { SessionManager } from './session-manager.js'
 import type { SessionInfo } from './session-manager.js'
@@ -276,26 +274,9 @@ export class AgentCore {
     this.refreshSystemPrompt(channel, currentUser)
     this.sessionManager.recordMessage(userId)
 
-    // Build image content and file context from attachments
-    const images: ImageContent[] = []
-    const fileHints: string[] = []
-    if (attachments?.length) {
-      for (const att of attachments) {
-        if (att.kind === 'image') {
-          try {
-            const absPath = nodePath.resolve(getUploadsDir(), att.relativePath)
-            const buf = fs.readFileSync(absPath)
-            images.push({ type: 'image', data: buf.toString('base64'), mimeType: att.mimeType })
-          } catch (err) {
-            console.error(`[agent] Failed to read uploaded image ${att.originalName} from ${nodePath.resolve(getUploadsDir(), att.relativePath)}:`, err)
-            fileHints.push(`[Image upload failed to read: ${att.originalName}]`)
-          }
-        } else {
-          const absPath = nodePath.resolve(getUploadsDir(), att.relativePath)
-          fileHints.push(`[Uploaded file: ${att.originalName} (${att.mimeType}, ${att.size} bytes) at ${absPath}]`)
-        }
-      }
-    }
+    const { images, hints: fileHints } = attachments?.length
+      ? await buildUploadPromptContext(attachments, this.runtime.getCurrentModel().inputLimits?.images?.resize)
+      : { images: [], hints: [] }
 
     const timeContext = this.runtime.getCurrentTimeContext()
     const baseText = fileHints.length > 0 ? `${text}\n\n${fileHints.join('\n')}` : text

@@ -1,8 +1,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
+import type { ImageContent, ModelImageResizeOptions } from '@earendil-works/pi-ai'
 import type { Database } from './database.js'
 import { loadConfig } from './config.js'
+import { prepareImageForLlm } from './llm-image.js'
 
 export interface UploadSettings {
   uploads?: { retentionDays?: number }
@@ -181,6 +183,51 @@ export function saveUpload(input: SaveUploadInput): UploadDescriptor {
   }
 
   return result
+}
+
+export interface UploadPromptContext {
+  images: ImageContent[]
+  hints: string[]
+}
+
+/**
+ * Turn a message's uploads into what the LLM receives: provider-safe image
+ * blocks plus one text hint per upload with its on-disk path, so the agent can
+ * pass the file on to other tools. Images that cannot be made provider-safe
+ * are only referenced by path.
+ */
+export async function buildUploadPromptContext(
+  attachments: UploadDescriptor[],
+  resize?: ModelImageResizeOptions,
+): Promise<UploadPromptContext> {
+  const images: ImageContent[] = []
+  const hints: string[] = []
+  for (const att of attachments) {
+    const absPath = path.resolve(getUploadsDir(), att.relativePath)
+    if (att.kind !== 'image') {
+      hints.push(`[Uploaded file: ${att.originalName} (${att.mimeType}, ${att.size} bytes) at ${absPath}]`)
+      continue
+    }
+
+    let buffer: Buffer
+    try {
+      buffer = await fs.promises.readFile(absPath)
+    } catch (err) {
+      console.error(`[uploads] Failed to read uploaded image ${att.originalName} from ${absPath}:`, err)
+      hints.push(`[Image upload failed to read: ${att.originalName}]`)
+      continue
+    }
+
+    const prepared = await prepareImageForLlm(buffer, resize)
+    if (!prepared.ok) {
+      hints.push(`[Uploaded image: ${att.originalName} (${att.mimeType}, ${att.size} bytes) at ${absPath}. Not attached for viewing: ${prepared.reason}.]`)
+      continue
+    }
+    images.push(prepared.image)
+    hints.push(`[Uploaded image: ${att.originalName} (${att.mimeType}) at ${absPath}]`)
+    if (prepared.note) hints.push(prepared.note)
+  }
+  return { images, hints }
 }
 
 export function serializeUploadsMetadata(files: UploadDescriptor[]): string {
