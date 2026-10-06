@@ -21,9 +21,13 @@ vi.mock('@earendil-works/pi-agent-core', () => {
   class MockAgent {
     public state: { model: unknown; tools: AgentTool[]; messages: unknown[] }
     public sessionId: string | undefined
+    public afterToolCall: unknown
+    public transformContext: unknown
     private listeners = new Set<(event: unknown) => void>()
 
-    constructor(options: { initialState: { systemPrompt: string; model: unknown; tools: AgentTool[] } }) {
+    constructor(options: { initialState: { systemPrompt: string; model: unknown; tools: AgentTool[] }; afterToolCall?: unknown; transformContext?: unknown }) {
+      this.afterToolCall = options.afterToolCall
+      this.transformContext = options.transformContext
       const { systemPrompt, ...rest } = options.initialState
       this.state = {
         ...rest,
@@ -278,6 +282,65 @@ describe('AgentRuntime boundary', () => {
 
     expect(chunks.map(c => c.type)).toEqual(['text', 'tool_call_start', 'tool_call_end', 'done'])
     expect(logToolCall).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps image payloads out of streamed and logged tool results', async () => {
+    const db = initDatabase(':memory:')
+    const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db, tools: [] })
+    const data = Buffer.alloc(3 * 1024).toString('base64')
+
+    runtimeHarness.promptBehaviors.push(async (agent) => {
+      agent.emit({ type: 'tool_execution_start', toolName: 'read_file', toolCallId: 'tool-img', args: { path: 'a.png' } })
+      agent.emit({
+        type: 'tool_execution_end',
+        toolName: 'read_file',
+        toolCallId: 'tool-img',
+        isError: false,
+        result: { content: [{ type: 'text', text: 'Read image file [image/png]' }, { type: 'image', mimeType: 'image/png', data }], details: {} },
+      })
+      agent.emit({ type: 'agent_end', messages: [] })
+    })
+
+    const results: unknown[] = []
+    for await (const chunk of runtime.streamPrompt('show me', 'session-1')) {
+      if (chunk.type === 'tool_call_end') results.push(chunk.toolResult)
+    }
+
+    const redacted = { type: 'image', mimeType: 'image/png', data: '[3 KB image data omitted]' }
+    expect(results).toEqual([{ content: [{ type: 'text', text: 'Read image file [image/png]' }, redacted], details: {} }])
+    const logged = vi.mocked(logToolCall).mock.calls.at(-1)![1]
+    expect(logged.output).not.toContain(data)
+    expect(JSON.parse(logged.output).content[1]).toEqual(redacted)
+  })
+
+  it('normalizes tool result images before they enter the transcript', async () => {
+    const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db: initDatabase(':memory:'), tools: [] })
+    const piAgent = (runtime as unknown as AgentRuntimePiAgentAccess).getAgent() as unknown as {
+      afterToolCall: (context: { result: { content: unknown[] } }) => Promise<{ content?: unknown[] } | undefined>
+    }
+
+    const override = await piAgent.afterToolCall({
+      result: { content: [{ type: 'image', mimeType: 'image/png', data: Buffer.from('not an image').toString('base64') }] },
+    })
+
+    expect(override?.content).toEqual([{ type: 'text', text: expect.stringContaining('[Image omitted:') }])
+  })
+
+  it('trims older transcript images to the active model request budget', async () => {
+    const model = { ...makeModel(), inputLimits: { images: { maxPerRequest: 1 } } }
+    const runtime = createAgentRuntime({ model, apiKey: 'sk-primary', db: initDatabase(':memory:'), tools: [] })
+    const piAgent = (runtime as unknown as AgentRuntimePiAgentAccess).getAgent() as unknown as {
+      transformContext: (messages: unknown[]) => Promise<Array<{ content: unknown[] }>>
+    }
+    const image = { type: 'image', mimeType: 'image/png', data: 'AAAA' }
+
+    const trimmed = await piAgent.transformContext([
+      { role: 'user', content: [image], timestamp: 1 },
+      { role: 'user', content: [image], timestamp: 2 },
+    ])
+
+    expect(trimmed[0].content).toEqual([{ type: 'text', text: expect.stringContaining('Older image omitted') }])
+    expect(trimmed[1].content).toEqual([image])
   })
 
   it('forwards thinking_delta events as thinking response chunks', async () => {

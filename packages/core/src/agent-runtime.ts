@@ -21,6 +21,7 @@ import { loadSkills } from './skill-config.js'
 import { createBuiltinWebTools } from './web-tools.js'
 import type { BuiltinToolsConfig, BuiltinToolsConfigSource } from './web-tools.js'
 import { createReadFileTool } from './read-file-tool.js'
+import { createToolResultImageHook, createTranscriptImageBudget, redactToolResultImages } from './llm-image.js'
 import { createTranscribeAudioTool } from './stt-tool.js'
 import { loadSttSettings } from './stt.js'
 import { createAgentSkillTools, getAgentSkillsForPrompt, getAgentSkillsCount, getAgentSkillsDir, currentPlatform } from './agent-skills.js'
@@ -501,6 +502,8 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
       }),
       ...(this.providerConfig?.transport && this.providerConfig.transport !== 'sse'
         && { transport: this.providerConfig.transport }),
+      afterToolCall: createToolResultImageHook(() => this.agent.state.model),
+      transformContext: createTranscriptImageBudget(() => this.agent.state.model),
       getApiKey: this.providerConfig?.authMethod === 'oauth'
         ? async () => {
             try {
@@ -976,13 +979,14 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
         const args = this.toolCallArgs.get(event.toolCallId) ?? {}
         this.toolCallTimers.delete(event.toolCallId)
         this.toolCallArgs.delete(event.toolCallId)
+        const toolResult = redactToolResultImages(event.result)
 
         // Log tool call
         logToolCall(this.db, {
           sessionId,
           toolName: event.toolName,
           input: JSON.stringify(args),
-          output: JSON.stringify(event.result ?? {}),
+          output: JSON.stringify(toolResult ?? {}),
           durationMs,
         })
 
@@ -990,7 +994,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
           type: 'tool_call_end',
           toolName: event.toolName,
           toolCallId: event.toolCallId,
-          toolResult: event.result,
+          toolResult,
           toolIsError: event.isError,
         })
         break

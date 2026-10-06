@@ -19,6 +19,7 @@ import { estimateCost, parseProviderModelId, buildStreamFn, getProviderDefaultMo
 import type { ProviderConfig } from './provider-config.js'
 import { releaseProviderSession } from './pi-models.js'
 import { assertLlmResponseOk } from './llm-response.js'
+import { createToolResultImageHook, createTranscriptImageBudget, redactToolResultImages } from './llm-image.js'
 import {
   ToolCallTracker,
   buildSmartDetectionPrompt,
@@ -447,6 +448,8 @@ export class TaskRunner {
         sessionId,
         ...(provider.transport && provider.transport !== 'sse'
           && { transport: provider.transport }),
+        afterToolCall: createToolResultImageHook(() => model),
+        transformContext: createTranscriptImageBudget(() => model),
         getApiKey: resolveApiKey,
       })
 
@@ -793,13 +796,14 @@ export class TaskRunner {
 
         this.persistLiveMetrics(runningTask)
 
-        const outputStr = JSON.stringify(event.result ?? {})
-        const isError = event.isError === true || (typeof event.result === 'string' && event.result.startsWith('Error'))
+        const toolResult = redactToolResultImages(event.result)
+        const outputStr = JSON.stringify(toolResult ?? {})
+        const isError = event.isError === true || (typeof toolResult === 'string' && toolResult.startsWith('Error'))
         this.writeToolJournal(runningTask.taskId, journal => journal.recordEnded({
           taskId: runningTask.taskId,
           toolCallId: event.toolCallId,
           isError,
-          result: event.result,
+          result: toolResult,
         }))
 
         // Track for loop detection
@@ -815,7 +819,7 @@ export class TaskRunner {
           timestamp: new Date().toISOString(),
           toolName: event.toolName,
           toolCallId: event.toolCallId,
-          toolResult: event.result,
+          toolResult,
           toolIsError: isError,
           durationMs,
         })
