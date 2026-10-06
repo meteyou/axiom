@@ -903,7 +903,7 @@ ${dailyContext}
   {
     const toolLines: string[] = [
       '- **shell**: Execute shell commands and return stdout/stderr. Use sudo for privileged operations.',
-      '- **read_file**: Read the contents of a file at a given path.',
+      '- **read_file**: Read a text file (paged via offset/limit) or view an image file.',
       '- **write_file**: Write content to a file. Creates parent directories if needed.',
       '- **edit_file**: Edit a file using exact oldText→newText replacements. Prefer this over write_file for partial changes — it saves tokens and reduces errors.',
       '- **list_files**: List files and directories at a given path.',

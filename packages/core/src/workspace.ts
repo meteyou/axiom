@@ -14,3 +14,9 @@ export function getWorkspaceDir(): string {
   }
   return '/workspace'
 }
+
+/** Resolve a tool path relative to the workspace directory. */
+export function resolveWorkspacePath(filePath: string): string {
+  if (path.isAbsolute(filePath)) return filePath
+  return path.resolve(getWorkspaceDir(), filePath)
+}

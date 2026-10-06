@@ -15,14 +15,15 @@ import { normalizeThinkingLevel, readBackgroundThinkingLevelFromConfig } from '.
 import { getSupportedThinkingLevels } from './contracts/providers.js'
 import { assembleSystemPrompt, ensureMemoryStructure, ensureConfigStructure, formatCurrentTimeContext } from './memory.js'
 import type { SkillPromptEntry, AvailableProviderModelPromptEntry, AvailableImageModelPromptEntry } from './memory.js'
-import { getWorkspaceDir } from './workspace.js'
+import { getWorkspaceDir, resolveWorkspacePath } from './workspace.js'
 import { loadConfig, ensureConfigTemplates } from './config.js'
-import { loadSkills, getSkillDecrypted } from './skill-config.js'
+import { loadSkills } from './skill-config.js'
 import { createBuiltinWebTools } from './web-tools.js'
 import type { BuiltinToolsConfig, BuiltinToolsConfigSource } from './web-tools.js'
+import { createReadFileTool } from './read-file-tool.js'
 import { createTranscribeAudioTool } from './stt-tool.js'
 import { loadSttSettings } from './stt.js'
-import { createAgentSkillTools, getAgentSkillsForPrompt, getAgentSkillsCount, getAgentSkillsDir, trackAgentSkillUsage, currentPlatform } from './agent-skills.js'
+import { createAgentSkillTools, getAgentSkillsForPrompt, getAgentSkillsCount, getAgentSkillsDir, currentPlatform } from './agent-skills.js'
 import { createSearchMemoriesTool } from './memories-tool.js'
 import { createReadChatHistoryTool } from './chat-history-tools.js'
 import { createEmailTools } from './email-tools.js'
@@ -137,14 +138,6 @@ export interface AgentRuntimePiAgentAccess {
   getAgent(): PiAgent
 }
 
-/**
- * Resolve a path relative to WORKSPACE_DIR (consistent across all tools)
- */
-function resolveWorkspacePath(filePath: string): string {
-  if (nodePath.isAbsolute(filePath)) return filePath
-  return nodePath.resolve(getWorkspaceDir(), filePath)
-}
-
 type ShellResult = AgentToolResult<{ exitCode: number }>
 
 const SHELL_MAX_OUTPUT_BYTES = 10 * 1024 * 1024
@@ -246,94 +239,6 @@ export function createYoloTools(): AgentTool[] {
     execute: async (_toolCallId, params, signal) => {
       const { command, timeout = 60000 } = params as { command: string; timeout?: number }
       return runShellCommand(command, timeout, signal)
-    },
-  }
-
-  const readFileTool: AgentTool = {
-    name: 'read_file',
-    label: 'Read File',
-    description: 'Read the contents of a file at the given path.',
-    parameters: Type.Object({
-      path: Type.String({ description: 'Path to the file to read' }),
-    }),
-    execute: async (_toolCallId, params) => {
-      const { path: filePath } = params as { path: string }
-      try {
-        const resolved = resolveWorkspacePath(filePath)
-        let content = fs.readFileSync(resolved, 'utf-8')
-
-        // Detect SKILL.md loads under /data/skills_agent/<name>/
-        const agentSkillMdMatch = resolved.match(/\/data\/skills_agent\/([^/]+)\/SKILL\.md$/)
-        if (agentSkillMdMatch) {
-          const skillDir = nodePath.dirname(resolved)
-          content = content.replaceAll('{baseDir}', skillDir)
-          const skillName = agentSkillMdMatch[1]
-          trackAgentSkillUsage(skillName)
-          const header = `Skill directory: ${skillDir}\n\n`
-          return {
-            content: [{ type: 'text' as const, text: header + content }],
-            details: {
-              path: resolved,
-              size: content.length,
-              skillLoad: true,
-              skillName,
-              agentSkill: true,
-            },
-          }
-        }
-
-        // Detect SKILL.md loads under /data/skills/
-        const skillMdMatch = resolved.match(/\/data\/skills\/(.+)\/SKILL\.md$/)
-        if (skillMdMatch) {
-          const skillDir = nodePath.dirname(resolved)
-
-          // Replace {baseDir} with actual skill directory
-          content = content.replaceAll('{baseDir}', skillDir)
-
-          // Look up skill in skills.json and inject env vars
-          const injectedVars: string[] = []
-          try {
-            const skillsFile = loadSkills()
-            const matchedSkill = skillsFile.skills.find(s => resolved.startsWith(s.path))
-            if (matchedSkill) {
-              const decrypted = getSkillDecrypted(matchedSkill.id)
-              if (decrypted?.envValues) {
-                for (const [key, value] of Object.entries(decrypted.envValues)) {
-                  if (value) {
-                    process.env[key] = value
-                    injectedVars.push(key)
-                  }
-                }
-              }
-            }
-          } catch {
-            // Skills config not available, continue without env injection
-          }
-
-          const skillName = skillMdMatch[1] // e.g. "zats/perplexity"
-          const header = `Skill directory: ${skillDir}\n\n`
-          return {
-            content: [{ type: 'text' as const, text: header + content }],
-            details: {
-              path: resolved,
-              size: content.length,
-              skillLoad: true,
-              skillName,
-              envVarsInjected: injectedVars,
-            },
-          }
-        }
-
-        return {
-          content: [{ type: 'text' as const, text: content }],
-          details: { path: resolved, size: content.length },
-        }
-      } catch (err: unknown) {
-        return {
-          content: [{ type: 'text' as const, text: `Error reading file: ${(err as Error).message}` }],
-          details: { error: true },
-        }
-      }
     },
   }
 
@@ -482,7 +387,7 @@ export function createYoloTools(): AgentTool[] {
     },
   }
 
-  return [shellTool, readFileTool, writeFileTool, editFileTool, listFilesTool]
+  return [shellTool, createReadFileTool(), writeFileTool, editFileTool, listFilesTool]
 }
 
 /**
