@@ -218,7 +218,7 @@ This approach needs no code, follows the same file conventions as the rest of th
 
 #### Keeping the brain file bounded
 
-A state file that a cronjob writes to on every run grows unnoticed, and that growth has a sharp failure mode. A single `read_file` on an oversized file can silently exhaust the run's token budget and terminate it. In one real incident a hub page grew to 756 KB and killed the run on a low token budget at high cost. Three habits keep this safe:
+A state file that a cronjob writes to on every run grows unnoticed, and that growth has a sharp failure mode. Loading an oversized file can silently exhaust the run's token budget and terminate it. In one real incident a hub page grew to 756 KB and killed the run on a low token budget at high cost. `read_file` now returns at most 2000 lines or 50 KB per call, but an agent that pages through the whole file with `offset` still pays for every chunk. Three habits keep this safe:
 
 1. **Set a size budget** for the file, on the order of 60 KB. When it outgrows the budget, move raw material into monthly archives or sub-pages and keep only a compact summary or the current state in the main file.
 2. **Do not blindly load a large state file.** Instead of `read_file` on the whole file, `grep` for the specific marker you need and append new entries with a shell redirect (`>>`).

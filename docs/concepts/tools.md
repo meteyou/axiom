@@ -11,7 +11,7 @@ These are the agent's hands. They run inside the workspace dir (`/workspace` in 
 | Tool | Notes |
 |---|---|
 | `shell` | Execute a shell command and return stdout/stderr. Honors `cwd = /workspace` and a 60s default timeout. Use `sudo` for privileged ops (`apt-get install`, `systemctl`, …). |
-| `read_file` | Read a file by path. Has special handling for `SKILL.md` files under `/data/skills/` and `/data/skills_agent/` — auto-injects `{baseDir}` and tracks usage. |
+| `read_file` | Read a file by path. Text output is capped at 2000 lines or 50 KB per call; `offset` / `limit` page through longer files. Images (PNG, JPEG, GIF, WebP, TIFF, AVIF; not HEIC) are attached so a vision-capable model can see them, rotated and downscaled the same way as [chat uploads](../web-ui/chat#attachments). Other binary files are not dumped as text. Has special handling for `SKILL.md` files under `/data/skills/` and `/data/skills_agent/` — auto-injects `{baseDir}` and tracks usage. |
 | `write_file` | Overwrite or create a file (creates parent dirs). Prefer `edit_file` for surgical changes — it diffs cleanly in the UI and is harder to misuse. |
 | `edit_file` | Exact-text replacement: `{oldText, newText}` pairs. `oldText` must be unique and present in the file. Preferred over `write_file` for surgical changes. |
 | `list_files` | List a directory's entries with a `[dir]` / `[file]` prefix. |

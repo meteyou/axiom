@@ -148,7 +148,7 @@ Ids are left as text models when they also answer with text (e.g. `google/gemini
 - **OpenAI costs are estimates** based on list prices shipped with Axiom; check the OpenAI usage dashboard for the billed amount.
 - **Long generations in chat.** While `generate_image` runs, the chat [provider-stall watchdog](../reference/settings#watchdog) uses its own thresholds instead of `watchdog.*`: the stall warning appears after 5 minutes and the turn is aborted after 7 minutes, both multiplied by `n` because ChatGPT-subscription variants run one after another.
 - **Remote image URLs** are not supported; a model must return inline image data.
-- **No built-in vision self-check.** Axiom's file tools return text, so the agent cannot look at the generated pixels unless you give it a way to query a vision model.
+- **Vision self-check needs a vision chat model.** The agent can open a generated image with `read_file` and look at it, but only when the active chat model accepts image input. With a text-only model the image is replaced by an "image omitted" placeholder.
 - **`aspect_ratio`** is forwarded to OpenRouter, but whether a given model honours it is up to the model.
 - **Variants on a ChatGPT subscription** run one after another, so `n: 4` takes about four times as long as one image.
 

@@ -99,6 +99,15 @@ On mobile the mic and send buttons swap based on whether you've typed anything: 
 
 Pending files appear as chips above the composer. Click `×` on a chip to remove it before sending. Once sent, attachments render below the message body — images inline, other files as download chips.
 
+What the agent receives:
+
+- **Images** (PNG, JPEG, GIF, WebP, TIFF, AVIF) are attached so a vision-capable model can see them. Before sending, Axiom applies the EXIF rotation, scales the image down to at most 2000×2000 px and keeps it under about 4.5 MB. When the image is resized, the agent gets a note with the original dimensions. The file on disk is not changed.
+- **HEIC photos** (iPhone default) cannot be decoded by the bundled image library. They are referenced by path only; convert them to JPEG first if the agent should see them.
+- **Older images** are dropped from a request once the conversation's images exceed about 16 MB or 50 images in total. The agent gets a note instead and can re-open the file with `read_file`.
+- **Every upload** comes with its path under `/data/uploads/`, so the agent can pass it to other tools (for example `generate_image` for edits, or `send_file_to_user`).
+- **Images the model cannot accept** (SVG, corrupt files, formats the server cannot decode) are not attached; the agent only gets the path. This keeps one bad upload from breaking the rest of the conversation.
+- With a text-only model, attached images are replaced by a short "image omitted" placeholder.
+
 Where attachments end up on the backend, how long they're kept, and the upload limit live in [Settings → Agent → Upload retention](../settings/agent#upload-retention).
 
 ## Slash commands
