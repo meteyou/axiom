@@ -70,7 +70,9 @@ After a compaction there should be headroom: system prompt + summary + kept mess
 
 - On the [Providers page](../web-ui/providers#model-sub-row-columns) the model gets a **Window too small** badge, with the affected agent kind (main chat, background tasks) in its tooltip. The main chat's system prompt is much larger (~35k tokens) than a task's (~4k), so a model can be fine for tasks but too small for the main chat.
 - Saving the compaction settings returns the list of affected models, shown above the settings.
-- At runtime a warning is logged once. If a compaction cannot bring the context below the trigger (for example a single huge tool result in the kept messages), automatic compaction pauses for that conversation instead of compacting on every turn.
+- At runtime the first compaction that hits the problem shows it as a warning under its divider (and in its Telegram status line).
+
+If a compaction cannot bring the context below the trigger (for example a single huge tool result in the kept messages, or a system prompt that nearly fills the window), automatic compaction pauses instead of compacting on every turn, and the divider says so. It resumes on its own as soon as a compaction could get below the trigger again: once newer messages let the cut move past a huge message, or after a switch to a model with a larger window or a settings change. `/compact` always runs, and a provider overflow still triggers its one compact-and-retry.
 
 At most one compaction runs per model response.
 
@@ -82,13 +84,13 @@ At most one compaction runs per model response.
 
 ## Costs and records
 
-The summary is one extra LLM call with the current model. It is logged to token usage with the session id of the chat or task, so it shows up on the [Token Usage](../web-ui/token-usage) page like any other call. Every compaction is also stored in the `context_compactions` table (tokens before/after, summary, model, cost).
+The summary is one extra LLM call with the current model. It is logged to token usage with the session id of the chat or task, so it shows up on the [Token Usage](../web-ui/token-usage) page like any other call, and it counts towards a task's token and cost totals. Every compaction is also stored in the `context_compactions` table (tokens before/after, summary, model, cost).
 
 A compaction invalidates the provider's prompt cache once. That is why the trigger should not be set too low and `keepRecentTokens` not too small.
 
 ## Limits
 
 - **Summaries lose detail.** Exact identifiers are asked for explicitly, and external actions are carried over deterministically, but nuances of older messages can get lost.
-- **If the summary call fails**, nothing is compacted and the run continues with the full context. Only on a real overflow does this end the turn with an error.
+- **If the summary call fails**, nothing is compacted and the run continues with the full context. Only on a real overflow does this end the turn with an error. A summary call that gets no response from the provider for 5 minutes is aborted and counts as failed.
 - **One shared main conversation.** The main agent has one runtime for all channels, so a compaction (automatic or `/compact`) affects web chat and Telegram alike.
 - **Not restored after a restart.** After a server restart the in-memory conversation starts fresh as before; the stored summaries are not used to rebuild it yet.
