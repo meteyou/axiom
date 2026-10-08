@@ -26,7 +26,7 @@ import { DEFAULT_COMPACTION_SETTINGS } from './contracts/settings.js'
 import type { CompactionSettingsContract } from './contracts/settings.js'
 import { COMPACTION_SCOPES } from './contracts/providers.js'
 import type { CompactionScopeContract, ModelCompactionOverrideContract } from './contracts/providers.js'
-import type { ContextCompactionReason } from './agent-runtime-types.js'
+import type { ContextCompactionReason } from './contracts/compaction.js'
 import { getToolReplayPolicy } from './tool-replay.js'
 
 export type CompactionScope = CompactionScopeContract
@@ -224,10 +224,16 @@ function usageContextTokens(usage: Usage): number {
   return usage.totalTokens || usage.input + usage.output + usage.cacheRead + usage.cacheWrite
 }
 
-function trustedUsage(message: AgentMessage, notBefore: number): Usage | undefined {
-  if (message.role !== 'assistant') return undefined
+/**
+ * Assistant messages kept verbatim by a compaction. Their usage describes the
+ * transcript before it was shortened. Tracked by identity: the first answer
+ * after a compaction can share the summary's millisecond timestamp.
+ */
+const staleUsage = new WeakSet<AgentMessage>()
+
+function trustedUsage(message: AgentMessage): Usage | undefined {
+  if (message.role !== 'assistant' || staleUsage.has(message)) return undefined
   if (message.stopReason === 'aborted' || message.stopReason === 'error') return undefined
-  if (message.timestamp <= notBefore) return undefined
   if (!message.usage || usageContextTokens(message.usage) <= 0) return undefined
   return message.usage
 }
@@ -241,15 +247,12 @@ export interface ContextTokenEstimate {
 
 /**
  * Context size = the provider-reported usage of the last assistant message
- * plus a heuristic for everything after it. Usage reported before the latest
- * compaction describes the old transcript and is ignored.
+ * plus a heuristic for everything after it. Usage of messages a compaction
+ * kept describes the old transcript and is ignored.
  */
 export function estimateContextTokens(messages: readonly AgentMessage[]): ContextTokenEstimate {
-  const summary = findSummaryMessage(messages)
-  const notBefore = summary ? summary.message.timestamp : Number.NEGATIVE_INFINITY
-
   for (let i = messages.length - 1; i >= 0; i--) {
-    const usage = trustedUsage(messages[i], notBefore)
+    const usage = trustedUsage(messages[i])
     if (!usage) continue
     const trailingTokens = estimateMessagesTokens(messages.slice(i + 1))
     const usageTokens = usageContextTokens(usage)
@@ -272,7 +275,7 @@ function messageText(message: AgentMessage): string {
   return content.filter((block): block is TextContent => block.type === 'text').map(block => block.text).join('')
 }
 
-export function buildSummaryMessage(summary: string, timestamp: number): AgentMessage {
+function buildSummaryMessage(summary: string, timestamp: number): AgentMessage {
   return {
     role: 'user',
     content: [{ type: 'text', text: `${SUMMARY_OPEN_TAG}\n${SUMMARY_PREAMBLE}\n\n${summary}\n${SUMMARY_CLOSE_TAG}` }],
@@ -579,6 +582,8 @@ export interface GenerateSummaryOptions {
   signal?: AbortSignal
   sessionId?: string
   retryPolicy?: RetryPolicy
+  /** Called whenever the summary call shows signs of life (request start, streamed events). */
+  onProgress?: () => void
 }
 
 export class CompactionAbortedError extends Error {
@@ -617,8 +622,12 @@ async function generateSummary(options: GenerateSummaryOptions): Promise<Summary
     // One-off prompt: writing it to the prompt cache would only cost money.
     cacheRetention: 'none' as const,
   }
-  const produce = async (): Promise<AssistantMessage> =>
-    (await options.streamFn(options.model, context, requestOptions)).result()
+  const produce = async (): Promise<AssistantMessage> => {
+    options.onProgress?.()
+    const stream = await options.streamFn(options.model, context, requestOptions)
+    for await (const _event of stream) options.onProgress?.()
+    return stream.result()
+  }
   const response = options.retryPolicy
     ? await retryAssistantCall(produce, options.retryPolicy, options.signal)
     : await produce()
@@ -694,6 +703,20 @@ function planCompaction(messages: readonly AgentMessage[], keepRecentTokens: num
   }
 }
 
+/**
+ * Heuristic size of the transcript if it were compacted now with a summary of
+ * `summaryTokens`; null when nothing is old enough to summarize.
+ */
+export function projectCompactedTokens(
+  messages: readonly AgentMessage[],
+  keepRecentTokens: number,
+  summaryTokens: number,
+): number | null {
+  const plan = planCompaction(messages, keepRecentTokens)
+  if (!plan) return null
+  return estimateMessagesTokens(plan.head) + summaryTokens + estimateMessagesTokens(plan.kept)
+}
+
 async function summarizePlan(plan: CompactionPlan, options: CompactMessagesOptions): Promise<SummaryResult> {
   const base = {
     ...options,
@@ -741,6 +764,9 @@ export async function compactMessages(
   const summary = insertExternalActions(result.text, externalActions)
   const now = options.now ?? Date.now
   const compacted = [...plan.head, buildSummaryMessage(summary, now()), ...plan.kept]
+  for (const message of plan.kept) {
+    if (message.role === 'assistant') staleUsage.add(message)
+  }
 
   return {
     messages: compacted,

@@ -6,7 +6,6 @@ import {
   EXTERNAL_ACTIONS_HEADING,
   IMAGE_TOKEN_ESTIMATE,
   SUMMARIZATION_SYSTEM_PROMPT,
-  buildSummaryMessage,
   checkCompactionInvariant,
   collectExternalActions,
   compactMessages,
@@ -100,8 +99,13 @@ function fakeStreamFn(reply: (prompt: string, call: number) => string, calls: Re
       ...assistant(text, { usage: { input: 1000, output: 200, totalTokens: 1200 } }),
       stopReason: options?.signal?.aborted ? 'aborted' : 'stop',
     }
-    return { result: async () => message } as unknown as ReturnType<StreamFn>
+    return streamOf(message)
   }) as StreamFn
+}
+
+/** A finished event stream: iterates nothing, resolves `message`. */
+function streamOf(message: AssistantMessage): ReturnType<StreamFn> {
+  return { async *[Symbol.asyncIterator]() {}, result: async () => message } as unknown as ReturnType<StreamFn>
 }
 
 const SUMMARY = `## Goal
@@ -212,11 +216,21 @@ describe('estimateContextTokens', () => {
     expect(estimateContextTokens(messages).tokens).toBe(IMAGE_TOKEN_ESTIMATE)
   })
 
-  it('ignores usage reported before the latest compaction', () => {
-    const stale = assistant('old', { usage: { input: 90_000, totalTokens: 90_000 } })
-    const messages = [system(), buildSummaryMessage('summary', stale.timestamp + 1), stale]
-    expect(estimateContextTokens(messages).lastUsageIndex).toBeNull()
-    expect(estimateContextTokens(messages).tokens).toBeLessThan(1_000)
+  it('ignores the usage of messages a compaction kept, but trusts answers after it', async () => {
+    const budget = resolveEffectiveCompactionBudget(resolveCompactionSettings('interactive', { keepRecentTokens: 100 }), 100_000)
+    const stale = assistant('old answer', { usage: { input: 90_000, totalTokens: 90_000 } })
+    const outcome = await compactMessages(
+      [system(), user(filler(2_000)), assistant(filler(2_000)), user(filler(200)), stale],
+      { budget, model, streamFn: fakeStreamFn(() => SUMMARY), now: () => clock },
+    )
+    expect(outcome!.messages.at(-1)).toBe(stale)
+    expect(estimateContextTokens(outcome!.messages).lastUsageIndex).toBeNull()
+    expect(estimateContextTokens(outcome!.messages).tokens).toBeLessThan(1_000)
+
+    // Same millisecond as the summary: identity, not the timestamp, decides.
+    const fresh = { ...assistant('new answer', { usage: { input: 5_000, totalTokens: 5_000 } }), timestamp: clock }
+    const next = [...outcome!.messages, user('more'), fresh]
+    expect(estimateContextTokens(next)).toMatchObject({ usageTokens: 5_000, lastUsageIndex: next.length - 1 })
   })
 })
 
@@ -391,9 +405,7 @@ describe('compactMessages', () => {
   })
 
   it('refuses a truncated summary', async () => {
-    const streamFn: StreamFn = (async () => ({
-      result: async () => ({ ...assistant('## Goal\npartial'), stopReason: 'length' }),
-    })) as unknown as StreamFn
+    const streamFn: StreamFn = (async () => streamOf({ ...assistant('## Goal\npartial'), stopReason: 'length' })) as StreamFn
     await expect(compactMessages(conversation(), { budget, model, streamFn })).rejects.toThrow(/token limit/)
   })
 })
