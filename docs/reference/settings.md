@@ -92,8 +92,11 @@ restart.
 { "watchdog": { "stallWarnMs": 30000, "stallAbortMs": 90000 } }
 ```
 
-While a `generate_image` call runs, longer thresholds apply (warning after 5 min,
-abort after 7 min, per variant) — see [Image generation](../concepts/image-generation#limitations).
+Time spent executing tool calls (shell commands, `generate_image`, …) is not
+silence: the clock is paused while any tool runs and restarts when the last one
+returns. Tools are bounded by their own timeouts instead (e.g. the `shell`
+`timeout` argument); a running tool shows a spinner and its elapsed time in the
+chat.
 
 Stalls are aggregated on the **Token Usage** page (admin only): count, average and
 longest silence, and the split between recovered and aborted turns for the

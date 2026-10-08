@@ -59,7 +59,10 @@ route -> controller -> service -> schema/mapper
   `stall_resolved` chunks and persists a single `provider_stall` chat row
   (`core/src/provider-stall.ts`) that is updated in place on resolution. Channels
   render that row, they do not invent their own stall messaging. Thresholds come
-  from `settings.json → watchdog` and are read at turn start.
+  from `settings.json → watchdog` and are read at turn start. The watchdog is
+  paused while any tool call executes (between `tool_call_start` and
+  `tool_call_end`): tools are bounded by their own timeouts, and a hard abort
+  mid-tool would auto-retry the turn and re-run side effects.
 - Terminal turn failures are persisted the same way: the runner writes a
   `turn_error` chat row (`core/src/turn-error.ts`) carrying the full provider
   error text plus `cause` / `retryable` / `attempts`, and emits the matching

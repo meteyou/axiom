@@ -590,7 +590,10 @@ describe('TurnRunner', () => {
       expect(persisted[0]!.content).toContain('Provider stopped responding')
     })
 
-    it('gives a running generate_image call its own, much longer thresholds', async () => {
+    it.each([
+      ['shell', { command: 'sleep 600' }],
+      ['generate_image', { prompt: 'a fox', n: 2 }],
+    ])('does not count a running %s call as provider silence', async (toolName, toolArgs) => {
       vi.useFakeTimers()
       const db = freshDb()
       const { agent, push, finish } = controllableAgent()
@@ -603,27 +606,33 @@ describe('TurnRunner', () => {
 
       const events: TurnEvent[] = []
       runner.subscribe(USER_ID, collect(events))
-      runner.startTurn({ userId: USER_ID, sessionId: SESSION_ID, text: 'draw' })
+      runner.startTurn({ userId: USER_ID, sessionId: SESSION_ID, text: 'go' })
       await vi.advanceTimersByTimeAsync(0)
 
-      push({ type: 'tool_call_start', toolName: 'generate_image', toolCallId: 'img-1', toolArgs: { prompt: 'a fox', n: 2 } })
-      await vi.advanceTimersByTimeAsync(4 * 60_000)
+      push({ type: 'tool_call_start', toolName, toolCallId: 'call-1', toolArgs })
+      await vi.advanceTimersByTimeAsync(10 * 60_000)
       expect(stallChunks(events)).toEqual([])
+      expect(stallRows(db)).toEqual([])
       expect(agent.abort).not.toHaveBeenCalled()
 
-      push({ type: 'tool_call_end', toolName: 'generate_image', toolCallId: 'img-1', toolResult: {}, toolIsError: false })
-      await vi.advanceTimersByTimeAsync(31_000)
+      // The provider clock restarts once the tool returns.
+      push({ type: 'tool_call_end', toolName, toolCallId: 'call-1', toolResult: {}, toolIsError: false })
+      await vi.advanceTimersByTimeAsync(29_000)
+      expect(stallChunks(events)).toEqual([])
+
+      await vi.advanceTimersByTimeAsync(2_000)
       expect(stallChunks(events).map(c => c.type)).toEqual(['stall_warning'])
 
       push({ type: 'done' })
       finish()
       await vi.advanceTimersByTimeAsync(1)
+      expect(runner.hasActiveTurn(USER_ID)).toBe(false)
     })
 
-    it('warns and aborts a generate_image call that outlasts its request timeouts', async () => {
+    it('keeps the provider clock paused until the last of several parallel tool calls returns', async () => {
       vi.useFakeTimers()
       const db = freshDb()
-      const { agent, push } = controllableAgent()
+      const { agent, push, finish } = controllableAgent()
       const runner = startRunner(db, agent, {
         stallWarnMs: 30_000,
         stallAbortMs: 90_000,
@@ -633,20 +642,25 @@ describe('TurnRunner', () => {
 
       const events: TurnEvent[] = []
       runner.subscribe(USER_ID, collect(events))
-      runner.startTurn({ userId: USER_ID, sessionId: SESSION_ID, text: 'draw' })
+      runner.startTurn({ userId: USER_ID, sessionId: SESSION_ID, text: 'go' })
       await vi.advanceTimersByTimeAsync(0)
 
-      push({ type: 'tool_call_start', toolName: 'generate_image', toolCallId: 'img-1', toolArgs: { prompt: 'a fox' } })
-      await vi.advanceTimersByTimeAsync(299_000)
-      expect(stallChunks(events)).toEqual([])
+      push({ type: 'tool_call_start', toolName: 'shell', toolCallId: 'fast', toolArgs: { command: 'true' } })
+      push({ type: 'tool_call_start', toolName: 'shell', toolCallId: 'slow', toolArgs: { command: 'sleep 300' } })
+      await vi.advanceTimersByTimeAsync(5_000)
+      push({ type: 'tool_call_end', toolName: 'shell', toolCallId: 'fast', toolResult: {}, toolIsError: false })
 
-      await vi.advanceTimersByTimeAsync(2_000)
-      expect(stallChunks(events).map(c => c.type)).toEqual(['stall_warning'])
+      await vi.advanceTimersByTimeAsync(5 * 60_000)
+      expect(stallChunks(events)).toEqual([])
       expect(agent.abort).not.toHaveBeenCalled()
 
-      await vi.advanceTimersByTimeAsync(120_000)
-      expect(agent.abort).toHaveBeenCalled()
-      expect(stallRows(db)[0]!.metadata.outcome).toBe('aborted')
+      push({ type: 'tool_call_end', toolName: 'shell', toolCallId: 'slow', toolResult: {}, toolIsError: false })
+      await vi.advanceTimersByTimeAsync(31_000)
+      expect(stallChunks(events).map(c => c.type)).toEqual(['stall_warning'])
+
+      push({ type: 'done' })
+      finish()
+      await vi.advanceTimersByTimeAsync(1)
     })
 
     it('takes warn/abort thresholds from the settings file when not overridden', async () => {

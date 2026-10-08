@@ -17,7 +17,6 @@ import {
   buildProviderStallMetadata,
   formatProviderStallContent,
   loadStallThresholds,
-  toolStallThresholds,
 } from './provider-stall.js'
 import type { StallThresholds } from './provider-stall.js'
 import {
@@ -787,6 +786,11 @@ export class TurnRunner {
    * consumers stay stuck on "streaming" without ever receiving a `done`.
    * Transport-agnostic: it sits one layer above SSE/WS so it covers both.
    *
+   * The clock is paused while tool calls execute: tools run locally between
+   * provider requests and are bounded by their own timeouts. Counting them
+   * would report long shell commands as provider stalls and the hard abort
+   * would kill them and auto-retry the turn, re-running side effects.
+   *
    * Stalls surface as `stall_warning` / `stall_resolved` chunks (channel
    * agnostic) and as a single `provider_stall` chat row that is updated in
    * place on resolution — never deleted — so history keeps an honest record.
@@ -803,16 +807,7 @@ export class TurnRunner {
   ) {
     let lastActivityAt = Date.now()
     let active: { startedAt: number; messageId: number | null } | null = null
-    const runningToolThresholds = new Map<string, StallThresholds>()
-
-    const currentThresholds = (): StallThresholds => {
-      let { warnMs, abortMs } = thresholds
-      for (const tool of runningToolThresholds.values()) {
-        warnMs = Math.max(warnMs, tool.warnMs)
-        abortMs = Math.max(abortMs, tool.abortMs)
-      }
-      return { warnMs, abortMs }
-    }
+    const runningToolCalls = new Set<string>()
 
     const db = this.db
 
@@ -888,10 +883,10 @@ export class TurnRunner {
     }
 
     const timer = setInterval(() => {
-      if (this.isAttemptAborted(turn)) return
+      if (this.isAttemptAborted(turn) || runningToolCalls.size > 0) return
       const now = Date.now()
       const idleMs = now - lastActivityAt
-      const { warnMs, abortMs } = currentThresholds()
+      const { warnMs, abortMs } = thresholds
 
       if (idleMs >= abortMs) {
         console.error(
@@ -924,12 +919,8 @@ export class TurnRunner {
         closeStall(now, 'recovered')
         lastActivityAt = now
         if (!chunk.toolCallId) return
-        if (chunk.type === 'tool_call_start') {
-          const toolThresholds = toolStallThresholds(chunk.toolName, chunk.toolArgs)
-          if (toolThresholds) runningToolThresholds.set(chunk.toolCallId, toolThresholds)
-        } else if (chunk.type === 'tool_call_end') {
-          runningToolThresholds.delete(chunk.toolCallId)
-        }
+        if (chunk.type === 'tool_call_start') runningToolCalls.add(chunk.toolCallId)
+        else if (chunk.type === 'tool_call_end') runningToolCalls.delete(chunk.toolCallId)
       },
       /**
        * Called once the stream is over. A stall still open at that point never

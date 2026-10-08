@@ -114,7 +114,7 @@ While a retry is pending the chat shows a `Retrying (n/max)…` status. Once the
 
 ### Stall thresholds
 
-The watchdog measures how long a turn goes without a single chunk from the provider. At the warn threshold a `provider_stall` message is written to the chat (it survives a reload and is updated in place when the provider recovers); at the abort threshold the stream is hard-aborted, which counts as a retryable error.
+The watchdog measures how long a turn goes without a single chunk from the provider. At the warn threshold a `provider_stall` message is written to the chat (it survives a reload and is updated in place when the provider recovers); at the abort threshold the stream is hard-aborted, which counts as a retryable error. Time spent executing tool calls (shell commands, image generation, …) does not count — the clock only runs while Axiom is waiting for the provider.
 
 | Field                       | Default   | Range                                        |
 |-----------------------------|-----------|-----------------------------------------------|
