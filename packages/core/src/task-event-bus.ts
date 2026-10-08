@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events'
-import type { ContextCompactionInfo } from './agent-runtime-types.js'
+import type { ContextCompactionInfo } from './contracts/compaction.js'
 
 /**
  * Event types emitted during task execution

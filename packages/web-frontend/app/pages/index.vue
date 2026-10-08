@@ -676,7 +676,7 @@
 <script setup lang="ts">
 import type { ChatMessage, ToolCallData } from '~/composables/useChat'
 import type { LoadableSkill } from '~/composables/useSkillAutocomplete'
-import { SETTINGS_THINKING_LEVELS, type SettingsThinkingLevel } from '@axiom/core/contracts'
+import { SETTINGS_THINKING_LEVELS, parseContextCompactionInfo, type SettingsThinkingLevel } from '@axiom/core/contracts'
 import { findModelSpec, getThinkingLevelChoices } from '~/utils/thinkingLevels'
 import { formatDurationSeconds } from '~/utils/datetime'
 import { useSettingsApi } from '~/api/settings'
@@ -1009,7 +1009,7 @@ async function loadHistory() {
           } as ChatMessage
         }
 
-        const compaction = m.role === 'system' ? compactionFromHistoryMetadata(meta, m.id) : null
+        const compaction = m.role === 'system' ? parseContextCompactionInfo(meta, m.id) : null
         if (compaction) {
           return {
             id: m.id, role: 'system' as const, content: m.content, timestamp: m.timestamp, source,

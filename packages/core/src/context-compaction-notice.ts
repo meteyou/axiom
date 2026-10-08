@@ -1,30 +1,15 @@
-import { CONTEXT_COMPACTION_REASONS, CONTEXT_COMPACTION_STATUSES } from './agent-runtime-types.js'
-import type { ContextCompactionInfo, ContextCompactionReason, ContextCompactionStatus } from './agent-runtime-types.js'
+import { CONTEXT_COMPACTION_KIND, formatTokenCount } from './contracts/compaction.js'
+import type { ContextCompactionInfo, ContextCompactionWarning } from './contracts/compaction.js'
+import type { Database } from './database.js'
 
-/** `chat_messages.metadata.kind` marking a persisted compaction notice. */
-export const CONTEXT_COMPACTION_KIND = 'context_compaction'
-
-export interface ContextCompactionMetadata {
-  kind: typeof CONTEXT_COMPACTION_KIND
-  compactionId: string
-  status: ContextCompactionStatus
-  reason: ContextCompactionReason
-  tokensBefore: number
-  tokensAfter?: number
-  summary?: string
-  error?: string
-  occurredAt: string
+const WARNING_TEXT: Record<ContextCompactionWarning, string> = {
+  window_too_small: 'The model\'s context window is too small for the system prompt, summary and kept messages, '
+    + 'so compaction will run often. Use a model with a larger window or lower "Keep recent tokens" in the compaction settings.',
+  auto_paused: 'The context is still above the compaction threshold. Automatic compaction is paused until more '
+    + 'messages are added; /new starts a fresh conversation.',
 }
 
-/** `368000` → `368k`, `1250000` → `1.3M`. */
-export function formatTokenCount(tokens: number): string {
-  if (tokens >= 1_000_000) return `${Math.round(tokens / 100_000) / 10}M`
-  if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}k`
-  return String(Math.max(0, Math.round(tokens)))
-}
-
-/** Single-line text for plain-text channels (Telegram) and history fallbacks. */
-export function formatContextCompactionContent(info: ContextCompactionInfo): string {
+function statusLine(info: ContextCompactionInfo): string {
   switch (info.status) {
     case 'running':
       return `\u{1F5DC}\uFE0F Compacting context (${formatTokenCount(info.tokensBefore)} tokens)\u2026`
@@ -37,49 +22,37 @@ export function formatContextCompactionContent(info: ContextCompactionInfo): str
   }
 }
 
-/** Only finished compactions are worth keeping in the chat history. */
-export function isPersistableCompaction(info: ContextCompactionInfo): boolean {
-  return info.status !== 'running'
+/** Plain text for Telegram and history fallbacks. */
+export function formatContextCompactionContent(info: ContextCompactionInfo): string {
+  const warnings = (info.warnings ?? []).map(warning => `\u26A0\uFE0F ${WARNING_TEXT[warning]}`)
+  return [statusLine(info), ...warnings].join('\n')
 }
 
-export function buildContextCompactionMetadata(info: ContextCompactionInfo): ContextCompactionMetadata {
-  return {
-    kind: CONTEXT_COMPACTION_KIND,
-    compactionId: info.compactionId,
-    status: info.status,
-    reason: info.reason,
-    tokensBefore: info.tokensBefore,
-    ...(info.tokensAfter !== undefined ? { tokensAfter: info.tokensAfter } : {}),
-    ...(info.summary ? { summary: info.summary } : {}),
-    ...(info.error ? { error: info.error } : {}),
-    occurredAt: info.occurredAt,
-  }
-}
-
-function oneOf<T extends string>(values: readonly T[], value: unknown, fallback: T): T {
-  return typeof value === 'string' && (values as readonly string[]).includes(value) ? value as T : fallback
-}
-
-export function parseContextCompactionMetadata(raw: string | null | undefined): ContextCompactionMetadata | null {
-  if (!raw) return null
-  let parsed: unknown
+/**
+ * Persist a finished compaction as a `context_compaction` chat row so its
+ * divider survives a reload. Returns the info with the row id; `running`
+ * keepalives are live-only and returned unchanged.
+ */
+export function saveContextCompactionNotice(
+  db: Database,
+  notice: { sessionId: string; userId: number | null; info: ContextCompactionInfo },
+): ContextCompactionInfo {
+  const { info } = notice
+  if (info.status === 'running') return info
+  const { messageId: _messageId, ...persisted } = info
   try {
-    parsed = JSON.parse(raw)
-  } catch {
-    return null
-  }
-  if (!parsed || typeof parsed !== 'object') return null
-  const value = parsed as Record<string, unknown>
-  if (value.kind !== CONTEXT_COMPACTION_KIND || typeof value.compactionId !== 'string') return null
-  return {
-    kind: CONTEXT_COMPACTION_KIND,
-    compactionId: value.compactionId,
-    status: oneOf(CONTEXT_COMPACTION_STATUSES, value.status, 'completed'),
-    reason: oneOf(CONTEXT_COMPACTION_REASONS, value.reason, 'threshold'),
-    tokensBefore: typeof value.tokensBefore === 'number' ? value.tokensBefore : 0,
-    ...(typeof value.tokensAfter === 'number' ? { tokensAfter: value.tokensAfter } : {}),
-    ...(typeof value.summary === 'string' ? { summary: value.summary } : {}),
-    ...(typeof value.error === 'string' ? { error: value.error } : {}),
-    occurredAt: typeof value.occurredAt === 'string' ? value.occurredAt : '',
+    const result = db.prepare(
+      'INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)',
+    ).run(
+      notice.sessionId,
+      notice.userId,
+      'system',
+      formatContextCompactionContent(info),
+      JSON.stringify({ kind: CONTEXT_COMPACTION_KIND, ...persisted }),
+    )
+    return { ...info, messageId: Number(result.lastInsertRowid) }
+  } catch (err) {
+    console.error('[compaction] Failed to persist compaction notice:', err)
+    return info
   }
 }

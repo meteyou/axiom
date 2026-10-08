@@ -8,7 +8,7 @@ import type {
   TurnErrorInfo,
 } from './agent-runtime-types.js'
 import { buildTurnErrorMetadata, formatTurnErrorContent } from './turn-error.js'
-import { buildContextCompactionMetadata, isPersistableCompaction } from './context-compaction-notice.js'
+import { saveContextCompactionNotice } from './context-compaction-notice.js'
 import { newTurnRetryActionId } from './turn-retry-action.js'
 import type { UploadDescriptor } from './uploads.js'
 import { serializeUploadsMetadata } from './uploads.js'
@@ -676,21 +676,8 @@ export class TurnRunner {
    */
   private persistCompaction(turn: TurnState, chunk: ResponseChunk): ResponseChunk {
     const info = chunk.compaction
-    if (!info || !isPersistableCompaction(info)) return chunk
-    try {
-      const messageId = saveChatMessage(
-        this.db,
-        turn.sessionId,
-        turn.userId,
-        'system',
-        chunk.text ?? '',
-        JSON.stringify(buildContextCompactionMetadata(info)),
-      )
-      return messageId === null ? chunk : { ...chunk, compaction: { ...info, messageId } }
-    } catch (err) {
-      console.error('[turn-runner] Failed to persist compaction notice:', err)
-      return chunk
-    }
+    if (!info || !this.db || turn.userId === null) return chunk
+    return { ...chunk, compaction: saveContextCompactionNotice(this.db, { sessionId: turn.sessionId, userId: turn.userId, info }) }
   }
 
   /**

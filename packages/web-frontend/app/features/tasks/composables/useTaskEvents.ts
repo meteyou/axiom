@@ -1,6 +1,6 @@
 import type { TaskEventItem, TaskInfo } from '~/api/tasks'
 import { useTasksApi } from '~/api/tasks'
-import { compactionFromHistoryMetadata } from '~/composables/useChat'
+import { parseContextCompactionInfo } from '@axiom/core/contracts'
 
 /**
  * Composable for viewing task events — live via WebSocket or historical via REST API.
@@ -198,7 +198,7 @@ export function useTaskEvents() {
       }
 
       const compaction = event.type === 'message' && event.role === 'system'
-        ? compactionFromHistoryMetadata(event.metadata)
+        ? parseContextCompactionInfo(event.metadata)
         : null
       if (compaction) {
         return { type: 'compaction', timestamp: event.timestamp, statusMessage: event.content, compaction }

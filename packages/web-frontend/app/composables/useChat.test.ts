@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import type { ContextCompactionInfo } from '@axiom/core/contracts'
 import {
   buildTurnRetryAction,
   closeOpenStreams,
-  compactionFromHistoryMetadata,
   stripFailedAttempt,
   stripTrailingTurn,
   turnErrorFromHistoryMetadata,
@@ -10,7 +10,7 @@ import {
   upsertErrorMessage,
   upsertStallMessage,
 } from './useChat'
-import type { ChatCompactionInfo, ChatMessage, ChatStallInfo, ChatTurnErrorInfo } from './useChat'
+import type { ChatMessage, ChatStallInfo, ChatTurnErrorInfo } from './useChat'
 
 function msg(role: ChatMessage['role'], content: string): ChatMessage {
   return { role, content }
@@ -317,7 +317,7 @@ describe('closeOpenStreams', () => {
   })
 })
 
-function compaction(overrides: Partial<ChatCompactionInfo> = {}): ChatCompactionInfo {
+function compaction(overrides: Partial<ContextCompactionInfo> = {}): ContextCompactionInfo {
   return {
     compactionId: 'c-1',
     status: 'running',
@@ -349,36 +349,5 @@ describe('upsertCompactionMessage', () => {
     ]
     expect(stripFailedAttempt(list)).toHaveLength(2)
     expect(stripTrailingTurn(list)).toHaveLength(1)
-  })
-})
-
-describe('compactionFromHistoryMetadata', () => {
-  it('rebuilds a persisted compaction row', () => {
-    const info = compactionFromHistoryMetadata({
-      kind: 'context_compaction',
-      compactionId: 'c-9',
-      status: 'completed',
-      reason: 'manual',
-      tokensBefore: 120_000,
-      tokensAfter: 30_000,
-      summary: '## Goal',
-      occurredAt: '2026-01-01T00:00:00.000Z',
-    }, 5)
-    expect(info).toEqual({
-      compactionId: 'c-9',
-      messageId: 5,
-      status: 'completed',
-      reason: 'manual',
-      tokensBefore: 120_000,
-      tokensAfter: 30_000,
-      summary: '## Goal',
-      error: undefined,
-      occurredAt: '2026-01-01T00:00:00.000Z',
-    })
-  })
-
-  it('ignores other system rows', () => {
-    expect(compactionFromHistoryMetadata({ kind: 'turn_error', error: 'x' }, 1)).toBeNull()
-    expect(compactionFromHistoryMetadata(null, 1)).toBeNull()
   })
 })

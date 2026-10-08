@@ -299,25 +299,9 @@ export type {
   StallOutcome,
   TurnErrorCause,
   TurnErrorInfo,
-  ContextCompactionInfo,
-  ContextCompactionReason,
-  ContextCompactionStatus,
 } from './agent-runtime-types.js'
-export {
-  STALL_OUTCOMES,
-  TURN_ERROR_CAUSES,
-  CONTEXT_COMPACTION_REASONS,
-  CONTEXT_COMPACTION_STATUSES,
-} from './agent-runtime-types.js'
-export {
-  CONTEXT_COMPACTION_KIND,
-  buildContextCompactionMetadata,
-  parseContextCompactionMetadata,
-  formatContextCompactionContent,
-  formatTokenCount,
-  isPersistableCompaction,
-} from './context-compaction-notice.js'
-export type { ContextCompactionMetadata } from './context-compaction-notice.js'
+export { STALL_OUTCOMES, TURN_ERROR_CAUSES } from './agent-runtime-types.js'
+export { saveContextCompactionNotice } from './context-compaction-notice.js'
 export { listCompactionWarnings, loadCompactionSettings } from './compaction-diagnostics.js'
 export {
   TYPICAL_SYSTEM_PROMPT_TOKENS,

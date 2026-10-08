@@ -69,6 +69,22 @@ export {
   COMPACTION_SCOPES,
 } from './providers.js'
 
+export {
+  CONTEXT_COMPACTION_KIND,
+  CONTEXT_COMPACTION_REASONS,
+  CONTEXT_COMPACTION_STATUSES,
+  CONTEXT_COMPACTION_WARNINGS,
+  formatTokenCount,
+  parseContextCompactionInfo,
+} from './compaction.js'
+
+export type {
+  ContextCompactionInfo,
+  ContextCompactionReason,
+  ContextCompactionStatus,
+  ContextCompactionWarning,
+} from './compaction.js'
+
 export type {
   DeepgramModelContract,
   DeepgramModelsListContract,

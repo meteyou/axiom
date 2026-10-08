@@ -1,3 +1,4 @@
+import type { ContextCompactionInfo } from '@axiom/core/contracts'
 import { ApiError } from './useApi'
 
 export interface ToolCallData {
@@ -99,25 +100,6 @@ export interface ChatTurnErrorInfo {
   occurredAt: string
 }
 
-export type ChatCompactionStatus = 'running' | 'completed' | 'skipped' | 'failed'
-
-/**
- * Context-compaction progress. Mirrors the backend `ContextCompactionInfo`;
- * finished compactions are persisted rows, so `compactionId` matches the live
- * notice with the one rebuilt from history after a reload.
- */
-export interface ChatCompactionInfo {
-  compactionId: string
-  messageId?: number
-  status: ChatCompactionStatus
-  reason: string
-  tokensBefore: number
-  tokensAfter?: number
-  summary?: string
-  error?: string
-  occurredAt: string
-}
-
 export interface ChatAttachment {
   kind: 'image' | 'file'
   originalName: string
@@ -194,7 +176,7 @@ export interface ChatMessage {
    */
   errorInfo?: ChatTurnErrorInfo
   /** Context-compaction notice for a `role: 'system'` row (live and from history). */
-  compactionInfo?: ChatCompactionInfo
+  compactionInfo?: ContextCompactionInfo
   /**
    * Excerpt of the message the user replied to (e.g. Telegram reply-to), truncated to 500 chars.
    * When present, the UI renders a WhatsApp/Telegram-style quote bubble above the
@@ -229,7 +211,7 @@ interface WsMessage {
   type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'session_summary' | 'reminder' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'pong' | 'attachment' | 'chat_action' | 'chat_action_resolved' | 'turn_replay_start' | 'turn_replay_end' | 'stall_warning' | 'stall_resolved' | 'retry_scheduled' | 'compaction'
   text?: string
   /** Context-compaction progress (for type='compaction') */
-  compaction?: ChatCompactionInfo
+  compaction?: ContextCompactionInfo
   /** Provider-stall details (for stall_warning / stall_resolved) */
   stall?: ChatStallInfo
   /** Auto-retry details (for retry_scheduled) */
@@ -413,7 +395,7 @@ export function upsertStallMessage(list: ChatMessage[], stall: ChatStallInfo, co
  */
 export function upsertCompactionMessage(
   list: ChatMessage[],
-  info: ChatCompactionInfo,
+  info: ContextCompactionInfo,
   content: string,
 ): ChatMessage[] {
   const index = list.findIndex(m => m.compactionInfo?.compactionId === info.compactionId)
@@ -431,27 +413,6 @@ export function upsertCompactionMessage(
     timestamp: info.occurredAt || new Date().toISOString(),
     compactionInfo: info,
   })
-}
-
-const COMPACTION_STATUSES: readonly ChatCompactionStatus[] = ['running', 'completed', 'skipped', 'failed']
-
-/** Rebuild a persisted `context_compaction` row on a history load. */
-export function compactionFromHistoryMetadata(metadata: unknown, messageId?: number): ChatCompactionInfo | null {
-  if (!metadata || typeof metadata !== 'object') return null
-  const meta = metadata as Record<string, unknown>
-  if (meta.kind !== 'context_compaction' || typeof meta.compactionId !== 'string') return null
-  const status = COMPACTION_STATUSES.find(candidate => candidate === meta.status) ?? 'completed'
-  return {
-    compactionId: meta.compactionId,
-    messageId,
-    status,
-    reason: typeof meta.reason === 'string' ? meta.reason : 'threshold',
-    tokensBefore: typeof meta.tokensBefore === 'number' ? meta.tokensBefore : 0,
-    tokensAfter: typeof meta.tokensAfter === 'number' ? meta.tokensAfter : undefined,
-    summary: typeof meta.summary === 'string' ? meta.summary : undefined,
-    error: typeof meta.error === 'string' ? meta.error : undefined,
-    occurredAt: typeof meta.occurredAt === 'string' ? meta.occurredAt : '',
-  }
 }
 
 /**

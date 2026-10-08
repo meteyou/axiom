@@ -1,3 +1,5 @@
+import type { ContextCompactionInfo } from './contracts/compaction.js'
+
 export const STALL_OUTCOMES = ['recovered', 'aborted'] as const
 
 /** How a provider stall ended: the stream came back, or the turn was killed. */
@@ -35,32 +37,6 @@ export interface RetryInfo {
   delayMs: number
   /** Provider error that triggered the retry. */
   error: string
-}
-
-export const CONTEXT_COMPACTION_STATUSES = ['running', 'completed', 'skipped', 'failed'] as const
-export type ContextCompactionStatus = (typeof CONTEXT_COMPACTION_STATUSES)[number]
-
-export const CONTEXT_COMPACTION_REASONS = ['threshold', 'overflow', 'manual'] as const
-export type ContextCompactionReason = (typeof CONTEXT_COMPACTION_REASONS)[number]
-
-/**
- * Machine-readable payload of a `compaction` chunk and of the
- * `context_compaction` chat row a finished compaction persists. `running` is
- * live-only and repeats while the summary call is in flight, which also keeps
- * the stall watchdog from mistaking a long summary for a dead provider.
- */
-export interface ContextCompactionInfo {
-  compactionId: string
-  status: ContextCompactionStatus
-  reason: ContextCompactionReason
-  tokensBefore: number
-  tokensAfter?: number
-  summary?: string
-  /** Why the compaction was skipped or failed. */
-  error?: string
-  /** `chat_messages` row id of the persisted notice, when persisted. */
-  messageId?: number
-  occurredAt: string
 }
 
 export const TURN_ERROR_CAUSES = ['non_retryable', 'retry_exhausted', 'agent_unavailable', 'context_overflow'] as const
