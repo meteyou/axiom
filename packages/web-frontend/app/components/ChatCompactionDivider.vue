@@ -24,6 +24,13 @@
       </button>
       <div class="grow border-t border-border" />
     </div>
+    <p
+      v-for="warning in info.warnings ?? []"
+      :key="warning"
+      class="mx-auto mb-2 max-w-lg text-center text-xs text-warning"
+    >
+      {{ $t(`chat.compaction.warnings.${warning}`) }}
+    </p>
     <div
       v-if="canExpand && expanded"
       class="mx-auto mb-2 max-w-lg rounded-lg border border-border/60 bg-muted/10 px-4 py-3"
@@ -34,10 +41,10 @@
 </template>
 
 <script setup lang="ts">
-import type { ChatCompactionInfo } from '~/composables/useChat'
+import { formatTokenCount, type ContextCompactionInfo } from '@axiom/core/contracts'
 
 const props = defineProps<{
-  info: ChatCompactionInfo
+  info: ContextCompactionInfo
 }>()
 
 const { t } = useI18n()
@@ -46,19 +53,13 @@ const expanded = ref(false)
 
 const canExpand = computed(() => props.info.status === 'completed' && Boolean(props.info.summary))
 
-function formatTokens(tokens: number): string {
-  if (tokens >= 1_000_000) return `${Math.round(tokens / 100_000) / 10}M`
-  if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}k`
-  return String(Math.max(0, Math.round(tokens)))
-}
-
 const label = computed(() => {
-  const before = formatTokens(props.info.tokensBefore)
+  const before = formatTokenCount(props.info.tokensBefore)
   switch (props.info.status) {
     case 'running':
       return t('chat.compaction.running', { before })
     case 'completed':
-      return t('chat.compaction.completed', { before, after: formatTokens(props.info.tokensAfter ?? 0) })
+      return t('chat.compaction.completed', { before, after: formatTokenCount(props.info.tokensAfter ?? 0) })
     case 'skipped':
       return t('chat.compaction.skipped')
     case 'failed':

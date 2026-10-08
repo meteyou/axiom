@@ -13,7 +13,7 @@ import { SessionManager } from './session-manager.js'
 import type { ProviderConfig } from './provider-config.js'
 import { EXTERNAL_ACTIONS_HEADING, SUMMARIZATION_SYSTEM_PROMPT } from './compaction.js'
 import { listContextCompactions } from './compaction-store.js'
-import { CONTEXT_COMPACTION_KIND } from './context-compaction-notice.js'
+import { CONTEXT_COMPACTION_KIND } from './contracts/compaction.js'
 
 const faux = vi.hoisted(() => ({
   core: null as ReturnType<typeof createFauxCore> | null,
@@ -160,6 +160,11 @@ describe('TaskRunner context compaction', () => {
 
     const usageRows = db.prepare('SELECT COUNT(*) AS count FROM token_usage WHERE session_id = ?').get(finished.sessionId) as { count: number }
     expect(usageRows.count).toBeGreaterThan(agentCalls)
+    // The task's own totals include the summary calls, matching token_usage.
+    const totals = db.prepare('SELECT SUM(prompt_tokens) AS prompt, SUM(completion_tokens) AS completion FROM token_usage WHERE session_id = ?')
+      .get(finished.sessionId) as { prompt: number; completion: number }
+    expect(finished.promptTokens).toBe(totals.prompt)
+    expect(finished.completionTokens).toBe(totals.completion)
 
     const notices = (db.prepare('SELECT metadata FROM chat_messages WHERE session_id = ? AND role = ?').all(finished.sessionId, 'system') as { metadata: string }[])
       .map(row => JSON.parse(row.metadata) as { kind?: string; status?: string })

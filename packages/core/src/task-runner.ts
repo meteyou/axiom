@@ -31,13 +31,10 @@ import type { TaskEventBus } from './task-event-bus.js'
 import { getWorkspaceDir } from './agent.js'
 import { createAxiomAgent } from './agent-factory.js'
 import { ContextCompactor, describeContextOverflow } from './context-compactor.js'
+import type { CompactionUsage } from './context-compactor.js'
 import { estimateMessageTokens } from './compaction.js'
-import type { ContextCompactionInfo } from './agent-runtime-types.js'
-import {
-  buildContextCompactionMetadata,
-  formatContextCompactionContent,
-  isPersistableCompaction,
-} from './context-compaction-notice.js'
+import type { ContextCompactionInfo } from './contracts/compaction.js'
+import { formatContextCompactionContent, saveContextCompactionNotice } from './context-compaction-notice.js'
 import { loadRetryPolicy } from './turn-retry.js'
 
 const MAX_STATUS_UPDATE_INTERVAL_MINUTES = 120
@@ -472,6 +469,7 @@ export class TaskRunner {
         resolveApiKey,
         getModelOverride: compactedModel => loadModelCompactionOverride(provider.id, compactedModel.id),
         onEvent: info => this.handleCompactionEvent(taskId, sessionId, info),
+        onUsage: usage => this.addCompactionUsage(taskId, usage),
         retryPolicy: () => loadRetryPolicy(),
       })
 
@@ -906,23 +904,26 @@ export class TaskRunner {
     this.announcedCompactions.add(info.compactionId)
     if (info.status !== 'running') this.announcedCompactions.delete(info.compactionId)
 
-    const content = formatContextCompactionContent(info)
+    const persisted = saveContextCompactionNotice(this.db, { sessionId, userId: null, info })
     this.options.taskEventBus?.emitTaskEvent({
       type: 'compaction',
       taskId,
       timestamp: info.occurredAt,
-      compaction: info,
-      statusMessage: content,
+      compaction: persisted,
+      statusMessage: formatContextCompactionContent(info),
     })
+  }
 
-    if (!isPersistableCompaction(info)) return
-    try {
-      this.db.prepare(
-        'INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)'
-      ).run(sessionId, null, 'system', content, JSON.stringify(buildContextCompactionMetadata(info)))
-    } catch (err) {
-      console.warn(`[task-runner] Failed to persist compaction notice for ${taskId}:`, err)
-    }
+  /** The summary call is part of the task's cost, like any other LLM call it makes. */
+  private addCompactionUsage(taskId: string, usage: CompactionUsage): void {
+    const runningTask = this.runningTasks.get(taskId)
+    if (!runningTask) return
+    runningTask.promptTokens += usage.promptTokens
+    runningTask.completionTokens += usage.completionTokens
+    runningTask.cacheRead += usage.cacheRead
+    runningTask.cacheWrite += usage.cacheWrite
+    runningTask.estimatedCost += usage.estimatedCost
+    this.persistLiveMetrics(runningTask)
   }
 
   /**

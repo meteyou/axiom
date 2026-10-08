@@ -3,7 +3,7 @@ import type { Agent as PiAgent, AgentLoopTurnUpdate, AgentMessage, PrepareNextTu
 import { isContextOverflow } from '@earendil-works/pi-ai'
 import type { Api, AssistantMessage, Model, RetryPolicy } from '@earendil-works/pi-ai'
 import type { Database } from './database.js'
-import type { ContextCompactionInfo } from './agent-runtime-types.js'
+import type { ContextCompactionInfo, ContextCompactionWarning } from './contracts/compaction.js'
 import type { ModelCompactionOverrideContract } from './contracts/providers.js'
 import {
   CompactionAbortedError,
@@ -11,6 +11,8 @@ import {
   compactMessages,
   estimateContextTokens,
   estimateMessageTokens,
+  findSummaryMessage,
+  projectCompactedTokens,
   resolveCompactionSettings,
   resolveEffectiveCompactionBudget,
   shouldCompact,
@@ -27,9 +29,18 @@ import { saveContextCompaction } from './compaction-store.js'
 import { loadCompactionSettings } from './compaction-diagnostics.js'
 import { estimateCost } from './provider-config.js'
 import { logTokenUsage } from './token-logger.js'
+import type { TokenUsageRecord } from './token-logger.js'
 import { CONTEXT_OVERFLOW_ERROR_PREFIX } from './turn-retry.js'
 
 const DEFAULT_KEEPALIVE_MS = 10_000
+/**
+ * The `running` keepalives hold off the turn's stall watchdog, so a hung
+ * summary call needs its own limit. Generous because the summary prompt is
+ * never prefix-cached and slow local models need a long prefill.
+ */
+const DEFAULT_IDLE_TIMEOUT_MS = 5 * 60_000
+
+export type CompactionUsage = Pick<TokenUsageRecord, 'promptTokens' | 'completionTokens' | 'cacheRead' | 'cacheWrite' | 'estimatedCost'>
 
 export interface ContextCompactorOptions {
   scope: CompactionScope
@@ -41,10 +52,12 @@ export interface ContextCompactorOptions {
   loadSettings?: () => CompactionSettingsSource | undefined
   /** Lifecycle of every compaction: `running` (repeated as keepalive), then one terminal status. */
   onEvent?: (info: ContextCompactionInfo) => void
-  /** One-off warnings, e.g. a window too small for system prompt + summary + kept tail. */
-  onWarning?: (message: string) => void
+  /** Token usage of every successful compaction, e.g. for per-task cost totals. */
+  onUsage?: (usage: CompactionUsage) => void
   retryPolicy?: () => RetryPolicy | undefined
   keepaliveMs?: number
+  /** Abort the summary call when the provider shows no sign of life for this long. */
+  idleTimeoutMs?: number
   now?: () => number
 }
 
@@ -106,9 +119,12 @@ export class ContextCompactor {
    * compaction needs a newer one, i.e. at most one compaction per turn.
    */
   private lastCompactionAnchor: AssistantMessage | null | undefined = undefined
-  /** Set when a compaction could not get the context below the trigger; stops auto-compaction from looping. */
-  private exhausted = false
-  private warned = new Set<string>()
+  /**
+   * Summary size of the last compaction that could not get the context below
+   * the trigger, while automatic compaction is paused because of it.
+   */
+  private pausedSummaryTokens: number | null = null
+  private warned = new Set<ContextCompactionWarning>()
 
   constructor(private readonly options: ContextCompactorOptions) {}
 
@@ -122,7 +138,8 @@ export class ContextCompactor {
   /** Forget per-conversation state (new session, cleared transcript). */
   reset(): void {
     this.lastCompactionAnchor = undefined
-    this.exhausted = false
+    this.pausedSummaryTokens = null
+    this.warned.clear()
   }
 
   abort(): void {
@@ -197,11 +214,28 @@ export class ContextCompactor {
     // Without a known window there is no threshold to compare against.
     if (!model || !(model.contextWindow > 0)) return null
     const { settings, budget } = this.resolveBudget(model)
-    if (!settings.enabled || this.exhausted) return null
+    if (!settings.enabled) return null
     if (this.lastCompactionAnchor !== undefined && this.lastCompactionAnchor === lastAssistant(messages)) return null
     const tokens = estimateContextTokens(messages).tokens + pendingTokens
-    if (!shouldCompact(tokens, budget)) return null
+    if (!shouldCompact(tokens, budget) || !this.isWorthCompacting(messages, pendingTokens, budget)) return null
     return this.run(messages, { reason: 'threshold', signal })
+  }
+
+  /**
+   * Skips summary calls that cannot help: nothing old enough to summarize, or,
+   * after an attempt that stayed above the trigger, a projection with that
+   * attempt's summary size still above it. A window too small for system
+   * prompt + summary then costs no call per turn, while a huge kept message
+   * stops blocking as soon as newer messages let the cut move past it.
+   */
+  private isWorthCompacting(
+    messages: readonly AgentMessage[],
+    pendingTokens: number,
+    budget: EffectiveCompactionBudget,
+  ): boolean {
+    const projected = projectCompactedTokens(messages, budget.keepRecentTokens, this.pausedSummaryTokens ?? 0)
+    if (projected === null) return false
+    return this.pausedSummaryTokens === null || projected + pendingTokens <= budget.triggerTokens
   }
 
   private async run(messages: AgentMessage[], options: CompactNowOptions): Promise<CompactionOutcome | null> {
@@ -217,8 +251,18 @@ export class ContextCompactor {
 
     const controller = linkSignals([options.signal])
     this.activeAbort = controller
+    const idleTimeoutMs = this.options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS
+    let lastProgressAt = Date.now()
+    let timedOut = false
     emit({ status: 'running' })
-    const keepalive = setInterval(() => emit({ status: 'running' }), this.options.keepaliveMs ?? DEFAULT_KEEPALIVE_MS)
+    const keepalive = setInterval(() => {
+      if (Date.now() - lastProgressAt < idleTimeoutMs) {
+        emit({ status: 'running' })
+        return
+      }
+      timedOut = true
+      controller.abort()
+    }, Math.min(this.options.keepaliveMs ?? DEFAULT_KEEPALIVE_MS, idleTimeoutMs))
     keepalive.unref?.()
 
     try {
@@ -231,6 +275,7 @@ export class ContextCompactor {
         sessionId: this.options.getSessionId(),
         customInstructions: options.instructions,
         retryPolicy: this.options.retryPolicy?.(),
+        onProgress: () => { lastProgressAt = Date.now() },
         now,
       })
       if (!outcome) {
@@ -240,14 +285,21 @@ export class ContextCompactor {
 
       agent.state.messages = outcome.messages
       this.lastCompactionAnchor = lastAssistant(outcome.messages)
-      this.persist(outcome, options.reason, model)
-      this.checkHeadroom(outcome, budget, messages)
-      emit({ status: 'completed', tokensAfter: outcome.tokensAfter, summary: outcome.summary })
+      this.recordUsage(outcome, options.reason, model)
+      const warnings = this.checkHeadroom(outcome, budget, messages)
+      emit({
+        status: 'completed',
+        tokensAfter: outcome.tokensAfter,
+        summary: outcome.summary,
+        ...(warnings.length > 0 ? { warnings } : {}),
+      })
       return outcome
     } catch (err) {
       const aborted = err instanceof CompactionAbortedError || controller.signal.aborted
-      const message = aborted ? 'Compaction aborted' : (err instanceof Error ? err.message : String(err))
-      if (!aborted) console.warn(`[compaction] ${this.options.scope} compaction failed:`, message)
+      const message = timedOut
+        ? `Compaction timed out: no response from the provider for ${Math.round(idleTimeoutMs / 1000)}s`
+        : aborted ? 'Compaction aborted' : (err instanceof Error ? err.message : String(err))
+      if (timedOut || !aborted) console.warn(`[compaction] ${this.options.scope} compaction failed:`, message)
       emit({ status: 'failed', error: message })
       return null
     } finally {
@@ -256,36 +308,58 @@ export class ContextCompactor {
     }
   }
 
-  private checkHeadroom(outcome: CompactionOutcome, budget: EffectiveCompactionBudget, before: AgentMessage[]): void {
+  /** Warnings worth showing with this compaction; each is reported once per conversation. */
+  private checkHeadroom(
+    outcome: CompactionOutcome,
+    budget: EffectiveCompactionBudget,
+    before: AgentMessage[],
+  ): ContextCompactionWarning[] {
+    const warnings: ContextCompactionWarning[] = []
     const systemPromptTokens = before[0]?.role === 'system' ? estimateMessageTokens(before[0]) : 0
     const invariant = checkCompactionInvariant(budget, systemPromptTokens)
-    if (!invariant.ok) {
-      this.warnOnce('invariant', `Context window of ${budget.contextWindow} tokens is too small for the system prompt `
-        + `plus compaction summary and kept tail (${invariant.requiredTokens} > ${invariant.budgetTokens} tokens). `
-        + 'Compaction will keep re-triggering; use a model with a larger window or lower keepRecentTokens.')
+    if (!invariant.ok && this.warnOnce('window_too_small', `Context window of ${budget.contextWindow} tokens is too small `
+      + `for the system prompt plus compaction summary and kept tail (${invariant.requiredTokens} > `
+      + `${invariant.budgetTokens} tokens). Compaction will keep re-triggering.`)) {
+      warnings.push('window_too_small')
     }
     if (outcome.tokensAfter > budget.triggerTokens) {
-      this.exhausted = true
-      this.warnOnce('exhausted', `Compaction could not bring the context below ${budget.triggerTokens} tokens `
-        + `(${outcome.tokensAfter} after compaction); automatic compaction is paused for this conversation.`)
+      const summary = findSummaryMessage(outcome.messages)
+      this.pausedSummaryTokens = summary ? estimateMessageTokens(summary.message) : 0
+      if (this.warnOnce('auto_paused', `Compaction could not bring the context below ${budget.triggerTokens} tokens `
+        + `(${outcome.tokensAfter} after compaction); automatic compaction is paused until it can.`)) {
+        warnings.push('auto_paused')
+      }
+    } else {
+      this.pausedSummaryTokens = null
+      this.warned.delete('auto_paused')
     }
+    return warnings
   }
 
-  private warnOnce(key: string, message: string): void {
-    if (this.warned.has(key)) return
+  /** Logs the warning and returns true the first time `key` is raised. */
+  private warnOnce(key: ContextCompactionWarning, message: string): boolean {
+    if (this.warned.has(key)) return false
     this.warned.add(key)
     console.warn(`[compaction] ${message}`)
-    this.options.onWarning?.(message)
+    return true
   }
 
-  private persist(outcome: CompactionOutcome, reason: CompactionReason, model: Model<Api>): void {
+  private recordUsage(outcome: CompactionOutcome, reason: CompactionReason, model: Model<Api>): void {
+    const usage = outcome.usage
+    const tokens: CompactionUsage = {
+      promptTokens: usage.input,
+      completionTokens: usage.output,
+      cacheRead: usage.cacheRead,
+      cacheWrite: usage.cacheWrite,
+      estimatedCost: usage.cost.total > 0
+        ? usage.cost.total
+        : estimateCost(model, usage.input, usage.output, usage.cacheRead, usage.cacheWrite),
+    }
+    this.options.onUsage?.(tokens)
+
     const db = this.options.db
     if (!db) return
     const sessionId = this.options.getSessionId() ?? null
-    const usage = outcome.usage
-    const estimatedCost = usage.cost.total > 0
-      ? usage.cost.total
-      : estimateCost(model, usage.input, usage.output, usage.cacheRead, usage.cacheWrite)
     try {
       saveContextCompaction(db, {
         sessionId,
@@ -297,22 +371,9 @@ export class ContextCompactor {
         tokensAfter: outcome.tokensAfter,
         summary: outcome.summary,
         firstKeptTimestamp: outcome.firstKeptTimestamp,
-        promptTokens: usage.input,
-        completionTokens: usage.output,
-        cacheRead: usage.cacheRead,
-        cacheWrite: usage.cacheWrite,
-        estimatedCost,
+        ...tokens,
       })
-      logTokenUsage(db, {
-        provider: model.provider,
-        model: model.id,
-        promptTokens: usage.input,
-        completionTokens: usage.output,
-        cacheRead: usage.cacheRead,
-        cacheWrite: usage.cacheWrite,
-        estimatedCost,
-        sessionId: sessionId ?? undefined,
-      })
+      logTokenUsage(db, { provider: model.provider, model: model.id, ...tokens, sessionId: sessionId ?? undefined })
     } catch (err) {
       console.error('[compaction] Failed to persist compaction record:', err)
     }

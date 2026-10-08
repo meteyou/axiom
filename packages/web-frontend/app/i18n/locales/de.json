@@ -71,7 +71,11 @@
       "running": "Kontext wird komprimiert ({before} Tokens)",
       "completed": "Kontext komprimiert ({before} → {after} Tokens)",
       "skipped": "Noch nichts zu komprimieren",
-      "failed": "Kontext-Komprimierung fehlgeschlagen: {error}"
+      "failed": "Kontext-Komprimierung fehlgeschlagen: {error}",
+      "warnings": {
+        "window_too_small": "Das Kontextfenster dieses Modells ist zu klein für System-Prompt, Zusammenfassung und behaltene Nachrichten, daher wird oft komprimiert. Nutze ein Modell mit größerem Fenster oder verringere \"Behaltene aktuelle Tokens\".",
+        "auto_paused": "Der Kontext liegt weiterhin über der Komprimierungsschwelle. Die automatische Komprimierung pausiert, bis weitere Nachrichten hinzukommen; /new startet eine neue Unterhaltung."
+      }
     },
     "statusConnected": "Chat verbunden",
     "statusConnecting": "Verbinde",

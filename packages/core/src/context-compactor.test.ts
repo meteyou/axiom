@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { AgentMessage, PrepareNextTurnContext } from '@earendil-works/pi-agent-core'
-import { createFauxCore, fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai'
+import type { AgentMessage, PrepareNextTurnContext, StreamFn } from '@earendil-works/pi-agent-core'
+import { createAssistantMessageEventStream, createFauxCore, fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai'
 import type { TranscriptContext } from '@earendil-works/pi-ai'
+import type { ContextCompactionInfo } from './contracts/compaction.js'
 import { createAxiomAgent } from './agent-factory.js'
 import { ContextCompactor } from './context-compactor.js'
 import type { ContextCompactorOptions } from './context-compactor.js'
@@ -40,7 +41,7 @@ function toolTurn(id: string, resultTokens: number): AgentMessage[] {
 /**
  * 40k window, no soft budget: reserve 10k → trigger 30k, keep 1.5k.
  */
-function setup(options: Partial<ContextCompactorOptions> & { settings?: CompactionSettingsSource } = {}) {
+function setup(options: Partial<ContextCompactorOptions> & { settings?: CompactionSettingsSource; streamFn?: StreamFn } = {}) {
   const core = createFauxCore({ models: [{ id: 'small-model', contextWindow: 40_000, maxTokens: 4_000 }] })
   let summaryCalls = 0
   const summarize = (context: TranscriptContext) => {
@@ -50,24 +51,31 @@ function setup(options: Partial<ContextCompactorOptions> & { settings?: Compacti
   }
   core.setResponses(Array.from({ length: 8 }, () => summarize))
 
-  const onWarning = vi.fn()
-  let completed = 0
+  const events: ContextCompactionInfo[] = []
+  const settings = { current: options.settings ?? { maxContextTokens: null, keepRecentTokens: 1_500, tasks: { maxContextTokens: null } } }
   const compactor = new ContextCompactor({
     scope: 'task',
     getSessionId: () => 'session-1',
     resolveApiKey: () => 'test-key',
-    loadSettings: () => options.settings ?? { maxContextTokens: null, keepRecentTokens: 1_500, tasks: { maxContextTokens: null } },
-    onWarning,
-    onEvent: info => { if (info.status === 'completed') completed++ },
+    loadSettings: () => settings.current,
+    onEvent: info => { events.push(info) },
     ...options,
   })
   const agent = createAxiomAgent({
     initialState: { systemPrompt: 'You are a test agent.', model: core.getModel(), tools: [] },
     getApiKey: () => 'test-key',
     compactor,
-    streamFn: (...args) => core.streamSimple(...args),
+    streamFn: options.streamFn ?? ((...args) => core.streamSimple(...args)),
   })
-  return { agent, compactor, onWarning, summaryCalls: () => summaryCalls, compactions: () => completed }
+  const finished = () => events.filter(info => info.status !== 'running')
+  return {
+    agent,
+    compactor,
+    settings,
+    finished,
+    summaryCalls: () => summaryCalls,
+    compactions: () => finished().filter(info => info.status === 'completed').length,
+  }
 }
 
 function turnContext(messages: AgentMessage[]): PrepareNextTurnContext {
@@ -81,7 +89,8 @@ describe('ContextCompactor', () => {
   })
 
   it('compacts at most once per turn', async () => {
-    const { agent, compactor, compactions } = setup()
+    const onUsage = vi.fn()
+    const { agent, compactor, compactions } = setup({ onUsage })
     const system = agent.state.messages[0]
     const messages = [system, user(4_000), assistant(4_000), user(4_000), assistant(4_000), user(4_000), assistant(4_000), ...toolTurn('t1', 8_000)]
     agent.state.messages = messages
@@ -90,6 +99,8 @@ describe('ContextCompactor', () => {
     expect(first?.context?.messages).toBeDefined()
     expect(findSummaryMessage(first!.context!.messages)).not.toBeNull()
     expect(compactions()).toBe(1)
+    expect(onUsage).toHaveBeenCalledTimes(1)
+    expect(onUsage.mock.calls[0]![0].promptTokens).toBeGreaterThan(0)
 
     // Still the same turn: even a large pending prompt does not trigger a second compaction.
     expect(await compactor.compactBeforePrompt(25_000)).toBeNull()
@@ -102,26 +113,66 @@ describe('ContextCompactor', () => {
     expect(compactions()).toBe(2)
   })
 
-  it('pauses automatic compaction with one warning when the kept tail alone exceeds the trigger', async () => {
-    const { agent, compactor, onWarning, summaryCalls } = setup()
-    const system = agent.state.messages[0]
-    const messages = [system, user(4_000), assistant(4_000), ...toolTurn('big', 31_000)]
-    agent.state.messages = messages
+  it('resumes once newer messages let the cut move past a huge kept message', async () => {
+    const { agent, compactor, finished, summaryCalls } = setup()
+    agent.state.messages = [agent.state.messages[0], user(4_000), assistant(4_000)]
+    const append = (...messages: AgentMessage[]) => {
+      agent.state.messages = [...agent.state.messages, ...messages]
+      return compactor.prepareNextTurn(turnContext(agent.state.messages))
+    }
 
-    expect(await compactor.prepareNextTurn(turnContext(messages))).toBeDefined()
-    expect(summaryCalls()).toBe(1)
-    expect(onWarning).toHaveBeenCalledTimes(1)
-    expect(onWarning.mock.calls[0]![0]).toContain('could not bring the context below 30000 tokens')
+    expect(await append(...toolTurn('big', 31_000))).toBeDefined()
+    expect(finished().at(-1)).toMatchObject({ status: 'completed', warnings: ['auto_paused'] })
 
-    const nextTurn = [...agent.state.messages, ...toolTurn('t2', 2_000)]
-    agent.state.messages = nextTurn
-    expect(await compactor.prepareNextTurn(turnContext(nextTurn))).toBeUndefined()
-    expect(summaryCalls()).toBe(1)
-    expect(onWarning).toHaveBeenCalledTimes(1)
-
-    compactor.reset()
-    expect(await compactor.prepareNextTurn(turnContext(agent.state.messages))).toBeDefined()
+    expect(await append(...toolTurn('t2', 500))).toBeDefined()
     expect(summaryCalls()).toBe(2)
+    expect(finished().at(-1)!.warnings).toBeUndefined()
+    expect(finished().at(-1)!.tokensAfter).toBeLessThan(30_000)
+  })
+
+  it('stays paused while system prompt + summary + kept tail cannot fit, until the budget changes', async () => {
+    const { agent, compactor, settings, finished, summaryCalls } = setup()
+    const bigSystem = { role: 'system', content: text(29_000, 'system'), timestamp: 0 } as AgentMessage
+    agent.state.messages = [bigSystem, user(4_000), assistant(4_000)]
+    const append = (...messages: AgentMessage[]) => {
+      agent.state.messages = [...agent.state.messages, ...messages]
+      return compactor.prepareNextTurn(turnContext(agent.state.messages))
+    }
+
+    expect(await append(...toolTurn('t1', 2_000))).toBeDefined()
+    expect(finished().at(-1)).toMatchObject({ status: 'completed', warnings: ['window_too_small', 'auto_paused'] })
+
+    expect(await append(...toolTurn('t2', 2_000))).toBeUndefined()
+    expect(summaryCalls()).toBe(1)
+
+    // Less reserve → trigger 36k: compaction can fit again and resumes without repeating the warnings.
+    settings.current = { ...settings.current, reserveTokens: 4_000 }
+    expect(await append(...toolTurn('t3', 4_000))).toBeDefined()
+    expect(summaryCalls()).toBe(2)
+    expect(finished().at(-1)).toMatchObject({ status: 'completed' })
+    expect(finished().at(-1)!.warnings).toBeUndefined()
+  })
+
+  it('does not announce skipped compactions it was not asked for', async () => {
+    const { agent, compactor, finished } = setup()
+    agent.state.messages = [agent.state.messages[0], user(31_000)]
+    expect(await compactor.compactBeforePrompt()).toBeNull()
+    expect(finished()).toEqual([])
+  })
+
+  it('gives up on a summary call that never answers', async () => {
+    const hanging: StreamFn = (_model, _context, options) => {
+      const stream = createAssistantMessageEventStream()
+      options?.signal?.addEventListener('abort', () => {
+        stream.push({ type: 'error', reason: 'aborted', error: { ...fauxAssistantMessage(''), stopReason: 'aborted' } })
+      })
+      return stream
+    }
+    const { agent, compactor, finished } = setup({ streamFn: hanging, keepaliveMs: 5, idleTimeoutMs: 30 })
+    agent.state.messages = [agent.state.messages[0], user(4_000), assistant(4_000), user(4_000), assistant(500)]
+
+    expect(await compactor.compactNow({ reason: 'manual' })).toBeNull()
+    expect(finished()).toEqual([expect.objectContaining({ status: 'failed', error: expect.stringMatching(/timed out/) })])
   })
 
   it('stays out of the way below the trigger and when tasks have compaction disabled', async () => {

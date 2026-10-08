@@ -71,7 +71,11 @@
       "running": "Compacting context ({before} tokens)",
       "completed": "Context compacted ({before} → {after} tokens)",
       "skipped": "Nothing to compact yet",
-      "failed": "Context compaction failed: {error}"
+      "failed": "Context compaction failed: {error}",
+      "warnings": {
+        "window_too_small": "This model's context window is too small for the system prompt, summary and kept messages, so compaction will run often. Use a model with a larger window or lower \"Keep recent tokens\".",
+        "auto_paused": "The context is still above the compaction threshold. Automatic compaction is paused until more messages are added; /new starts a fresh conversation."
+      }
     },
     "statusConnected": "Chat connected",
     "statusConnecting": "Connecting",
