@@ -67,7 +67,7 @@ Master toggle. Default: `true`. Leave it on unless you're debugging an agent tha
 
 | Value | How it works |
 |---|---|
-| `systematic` | Pure rule-based. Counts consecutive failing tool calls against `maxConsecutiveFailures`. Fast, zero extra tokens. |
+| `systematic` | Pure rule-based. Fires when the same tool is called with the same arguments and returns the same error `maxConsecutiveFailures` times in a row. A call counts as failed when the tool reports an error, for example `edit_file` not finding the text it should replace. Fast, zero extra tokens. |
 | `smart` | Periodically asks a small LLM "is this agent making progress?". Slower, costs tokens, catches subtle loops. |
 | `auto` | Start with `systematic`; escalate to `smart` if the rule-based signal is ambiguous. A good all-round choice, though the built-in default is `systematic`. |
 
@@ -77,7 +77,7 @@ Master toggle. Default: `true`. Leave it on unless you're debugging an agent tha
 
 ### Max consecutive failures
 
-How many back-to-back failing tool calls count as a loop. Default: `3`. Range: 1 – 20.
+How many identical failing tool calls in a row count as a loop. Default: `3`. Range: 1 – 20.
 
 ```json
 { "tasks": { "loopDetection": { "maxConsecutiveFailures": 5 } } }
