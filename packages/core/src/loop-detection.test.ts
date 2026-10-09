@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   ToolCallTracker,
+  isFailedToolResult,
   buildSmartDetectionPrompt,
   parseSmartDetectionResponse,
   resolveDetectionMethod,
@@ -140,6 +141,27 @@ describe('ToolCallTracker', () => {
       expect(tracker.getHistory()).toHaveLength(5)
       expect(tracker.getCount()).toBe(5)
     })
+  })
+})
+
+describe('isFailedToolResult', () => {
+  it('treats the pi-agent-core isError flag as a failure', () => {
+    expect(isFailedToolResult(true, { content: [], details: {} })).toBe(true)
+  })
+
+  it('treats a result with details.error as a failure even when isError is false', () => {
+    expect(isFailedToolResult(false, { content: [{ type: 'text', text: 'Could not find edits[0].oldText' }], details: { error: true } })).toBe(true)
+  })
+
+  it('treats a string result starting with Error as a failure', () => {
+    expect(isFailedToolResult(undefined, 'Error: boom')).toBe(true)
+  })
+
+  it('does not treat regular results as failures', () => {
+    expect(isFailedToolResult(false, { content: [{ type: 'text', text: 'ok' }], details: { exitCode: 0 } })).toBe(false)
+    expect(isFailedToolResult(false, { content: [], details: { error: 'not a boolean flag' } })).toBe(false)
+    expect(isFailedToolResult(false, 'ok')).toBe(false)
+    expect(isFailedToolResult(false, null)).toBe(false)
   })
 })
 
