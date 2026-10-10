@@ -548,6 +548,10 @@ export function initDatabase(dbPath?: string): Database {
     db.exec('ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0')
   }
 
+  if (!userCols.find(c => c.name === 'heartbeat_enabled')) {
+    db.exec('ALTER TABLE users ADD COLUMN heartbeat_enabled INTEGER')
+  }
+
   if (!userCols.find(c => c.name === 'deleted_at')) {
     db.exec('ALTER TABLE users ADD COLUMN deleted_at TEXT')
   }
