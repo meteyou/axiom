@@ -2,7 +2,7 @@
 
 The Users page is where you add, remove, and manage local accounts for the Axiom web UI. Each row is one entry in the local `users` table — username, role, optional Telegram link, and timestamps. The actual linking of Telegram identities to accounts happens elsewhere (see [Telegram linking](#telegram-linking) below).
 
-> **Admin only.** Regular users don't see this page.
+> **Admins manage all accounts.** Regular users see the page too, but only their own row, where they can change their own password (see [Your own account](#your-own-account)).
 
 > **Multi-tenancy reminder.** Axiom is a single-tenant agent — adding a user *does not* spin up a separate agent. Every account talks to the same agent, sees the same memory, and shares the same Settings. Roles control *administrative access to the UI*, not data isolation. The only thing that's actually scoped to the user is their [User Profile in Memory](./memory#user-profile).
 
@@ -50,7 +50,7 @@ Two roles, hard-coded:
 | Role        | What they can access                                                                                              |
 |-------------|-------------------------------------------------------------------------------------------------------------------|
 | **`admin`** | Everything — every sidebar entry, every Settings panel, all of Users. The first admin is bootstrapped via environment variables on the very first run; see [Configuration](../guide/configuration). |
-| **`user`**  | Only the [Chat](./chat) page. Every other sidebar entry shows a locked screen explaining the page is admin-only. |
+| **`user`**  | The [Chat](./chat) page and their own account on this page. Every other sidebar entry shows a locked screen explaining the page is admin-only. |
 
 There is no per-feature permission system. *Admin* means "operator of this Axiom deployment"; *user* means "someone who's allowed to talk to the agent through this web UI". For finer-grained control, run a separate Axiom instance per audience.
 
@@ -73,7 +73,18 @@ Opened by clicking a row or selecting *Edit* from the row menu. Same dialog as A
 - **Username is hidden.** Once an account is created, you can't rename it — username doubles as a memory-file identifier and a session foreign key, so changing it would orphan history. To "rename" a user, create a new account and delete the old one.
 - **Password becomes optional**, relabeled **Reset password**. Leave blank to keep the current password unchanged; type a new value to replace it.
 
-Resetting a password does not log the affected user out of any active sessions automatically. To force-logout, you can additionally restart the backend, but the standard expectation is that the user simply uses the new password on their next login.
+Resetting a password or changing a role **signs the user out everywhere immediately**: every issued access and refresh token is rejected (HTTP and WebSocket) and the user's open chat/task/log sockets are closed. A role change therefore takes effect right away — the user logs in again and gets the new role. Roles are always read from the database, never trusted from the token.
+
+The bootstrap admin (the first account) cannot be demoted or deleted.
+
+## Your own account
+
+Regular users see only their own row. Click it (or **Change password**) to open the password dialog:
+
+- **Current password** is required and must be correct.
+- **New password** must be at least 4 characters.
+
+On success all your *other* logins (other browsers, devices) are signed out; the current session stays signed in. Regular users cannot change their role or username, and cannot see or manage other accounts.
 
 ## Delete
 
