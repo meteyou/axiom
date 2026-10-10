@@ -5,7 +5,7 @@ import { TaskScheduler } from './task-scheduler.js'
 import type { TaskSchedulerOptions } from './task-scheduler.js'
 import type { ProviderConfig } from './provider-config.js'
 import type { Task, CreateTaskInput, UpdateTaskInput, TaskListFilters } from './task-store.js'
-import type { ScheduledTask, CreateScheduledTaskInput, UpdateScheduledTaskInput } from './scheduled-task-store.js'
+import type { ScheduledTask, CreateScheduledTaskInput, UpdateScheduledTaskInput, ScheduledTaskListFilters } from './scheduled-task-store.js'
 
 export interface TaskRuntimeTaskBoundary {
   create(input: CreateTaskInput): Task
@@ -29,8 +29,8 @@ export interface TaskRuntimeTaskBoundary {
 export interface TaskRuntimeScheduleBoundary {
   create(input: CreateScheduledTaskInput): ScheduledTask
   getById(id: string): ScheduledTask | null
-  list(): ScheduledTask[]
-  listEnabled(): ScheduledTask[]
+  list(filters?: ScheduledTaskListFilters): ScheduledTask[]
+  listEnabled(filters?: ScheduledTaskListFilters): ScheduledTask[]
   update(id: string, updates: UpdateScheduledTaskInput): ScheduledTask | null
   delete(id: string): boolean
   register(scheduledTask: ScheduledTask): void
@@ -96,8 +96,8 @@ class PiTaskRuntime implements TaskRuntimeBoundary {
     this.schedules = {
       create: (input) => scheduledTaskStore.create(input),
       getById: (id) => scheduledTaskStore.getById(id),
-      list: () => scheduledTaskStore.list(),
-      listEnabled: () => scheduledTaskStore.listEnabled(),
+      list: (filters) => scheduledTaskStore.list(filters),
+      listEnabled: (filters) => scheduledTaskStore.listEnabled(filters),
       update: (id, updates) => scheduledTaskStore.update(id, updates),
       delete: (id) => scheduledTaskStore.delete(id),
       register: (scheduledTask) => this.scheduler.registerSchedule(scheduledTask),

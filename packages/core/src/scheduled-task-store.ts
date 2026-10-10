@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { Database } from './database.js'
 import type { SettingsThinkingLevel } from './contracts/settings.js'
 import { normalizeThinkingLevel } from './thinking-level.js'
+import { getBootstrapAdminId } from './user-scope.js'
 
 export type ScheduledTaskActionType = 'task' | 'injection'
 
@@ -30,6 +31,7 @@ export interface ScheduledTask {
   /** Thinking level for the spawned task; `null` = the background default at run time. */
   thinkingLevel: SettingsThinkingLevel | null
   codemode: ScheduledTaskCodemode | null
+  ownerUserId: number | null
   lastRunAt: string | null
   lastRunTaskId: string | null
   lastRunStatus: string | null
@@ -47,6 +49,12 @@ export interface CreateScheduledTaskInput {
   attachedSkills?: string[] | null
   thinkingLevel?: SettingsThinkingLevel | null
   codemode?: ScheduledTaskCodemode | null
+  /** Defaults to the bootstrap admin. */
+  ownerUserId?: number
+}
+
+export interface ScheduledTaskListFilters {
+  ownerUserId?: number
 }
 
 export interface UpdateScheduledTaskInput {
@@ -83,6 +91,7 @@ interface ScheduledTaskRow {
   attached_skills: string | null
   thinking_level: string | null
   codemode: string | null
+  owner_user_id: number | null
   last_run_at: string | null
   last_run_task_id: string | null
   last_run_status: string | null
@@ -124,12 +133,29 @@ function rowToScheduledTask(row: ScheduledTaskRow): ScheduledTask {
     attachedSkills: parseAttachedSkills(row.attached_skills),
     thinkingLevel: normalizeThinkingLevel(row.thinking_level) ?? null,
     codemode: row.codemode === 'on' || row.codemode === 'off' ? row.codemode : null,
+    ownerUserId: row.owner_user_id ?? null,
     lastRunAt: row.last_run_at,
     lastRunTaskId: row.last_run_task_id,
     lastRunStatus: row.last_run_status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
+}
+
+/**
+ * Adds `scheduled_tasks.owner_user_id` and attributes cronjobs and reminders
+ * without an owner to the bootstrap admin. Idempotent.
+ */
+export function migrateScheduledTaskOwners(db: Database): void {
+  const columns = db.prepare('PRAGMA table_info(scheduled_tasks)').all() as { name: string }[]
+  if (!columns.some(column => column.name === 'owner_user_id')) {
+    db.exec('ALTER TABLE scheduled_tasks ADD COLUMN owner_user_id INTEGER')
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_owner ON scheduled_tasks(owner_user_id)')
+
+  const bootstrapAdminId = getBootstrapAdminId(db)
+  if (bootstrapAdminId === null) return
+  db.prepare('UPDATE scheduled_tasks SET owner_user_id = ? WHERE owner_user_id IS NULL').run(bootstrapAdminId)
 }
 
 /**
@@ -150,6 +176,7 @@ export function initScheduledTasksTable(db: Database): void {
       attached_skills TEXT,
       thinking_level TEXT,
       codemode TEXT,
+      owner_user_id INTEGER,
       last_run_at TEXT,
       last_run_task_id TEXT,
       last_run_status TEXT,
@@ -173,8 +200,8 @@ export class ScheduledTaskStore {
     const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
 
     this.db.prepare(`
-      INSERT INTO scheduled_tasks (id, name, prompt, schedule, action_type, provider, enabled, attached_skills, thinking_level, codemode, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO scheduled_tasks (id, name, prompt, schedule, action_type, provider, enabled, attached_skills, thinking_level, codemode, owner_user_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       input.name,
@@ -186,6 +213,7 @@ export class ScheduledTaskStore {
       serializeAttachedSkills(input.attachedSkills ?? null),
       input.thinkingLevel ?? null,
       input.codemode ?? null,
+      input.ownerUserId ?? getBootstrapAdminId(this.db),
       now,
       now,
     )
@@ -204,16 +232,20 @@ export class ScheduledTaskStore {
   /**
    * List all scheduled tasks
    */
-  list(): ScheduledTask[] {
-    const rows = this.db.prepare('SELECT * FROM scheduled_tasks ORDER BY created_at DESC').all() as ScheduledTaskRow[]
+  list(filters: ScheduledTaskListFilters = {}): ScheduledTask[] {
+    const rows = (filters.ownerUserId !== undefined
+      ? this.db.prepare('SELECT * FROM scheduled_tasks WHERE owner_user_id = ? ORDER BY created_at DESC').all(filters.ownerUserId)
+      : this.db.prepare('SELECT * FROM scheduled_tasks ORDER BY created_at DESC').all()) as ScheduledTaskRow[]
     return rows.map(rowToScheduledTask)
   }
 
   /**
    * List only enabled scheduled tasks
    */
-  listEnabled(): ScheduledTask[] {
-    const rows = this.db.prepare('SELECT * FROM scheduled_tasks WHERE enabled = 1 ORDER BY created_at DESC').all() as ScheduledTaskRow[]
+  listEnabled(filters: ScheduledTaskListFilters = {}): ScheduledTask[] {
+    const rows = (filters.ownerUserId !== undefined
+      ? this.db.prepare('SELECT * FROM scheduled_tasks WHERE enabled = 1 AND owner_user_id = ? ORDER BY created_at DESC').all(filters.ownerUserId)
+      : this.db.prepare('SELECT * FROM scheduled_tasks WHERE enabled = 1 ORDER BY created_at DESC').all()) as ScheduledTaskRow[]
     return rows.map(rowToScheduledTask)
   }
 

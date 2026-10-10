@@ -387,6 +387,7 @@ export class TaskScheduler {
       model: getProviderDefaultModel(provider),
       isDefaultModel: !scheduledTask.provider,
       thinkingLevel: scheduledTask.thinkingLevel,
+      ownerUserId: scheduledTask.ownerUserId ?? undefined,
     })
 
     // Update last_run_at on the scheduled task

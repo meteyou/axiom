@@ -6,6 +6,7 @@ import { initEmailSendLogTable, migrateEmailSendLogOwners } from './email-send-l
 import { initTaskToolJournalTable } from './task-tool-journal.js'
 import { migrateEmailAccountOwners } from './email-account-store.js'
 import { migrateTaskOwners } from './task-store.js'
+import { migrateScheduledTaskOwners } from './scheduled-task-store.js'
 import { migrateSessionOwners } from './session-owners.js'
 
 export type Database = BetterSqlite3.Database
@@ -672,6 +673,7 @@ export function initDatabase(dbPath?: string): Database {
   // in UUID form. Wrapped in a single transaction for atomicity.
   migrateLegacySessionIds(db)
   migrateTaskOwners(db)
+  migrateScheduledTaskOwners(db)
   migrateSessionOwners(db)
   migrateEmailSendLogOwners(db)
   migrateEmailAccountOwners(db)
