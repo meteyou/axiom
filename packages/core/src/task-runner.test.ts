@@ -1572,6 +1572,84 @@ describe('TaskRunner', () => {
     })
   })
 
+  describe('codemode effective setting', () => {
+    type Captured = { initialState: { tools: Array<{ name: string }>; systemPrompt: string } }
+
+    async function startAndCapture(
+      triggerType: 'user' | 'agent' | 'cronjob' | 'heartbeat' | 'consolidation',
+      codemodeTasksEnabled: boolean | undefined,
+    ): Promise<Captured> {
+      const { Agent } = await import('@earendil-works/pi-agent-core')
+      const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
+      const captured: { value: Captured | null } = { value: null }
+      const messages: unknown[] = []
+      MockAgent.mockImplementationOnce((options: unknown) => {
+        captured.value = options as Captured
+        return {
+          subscribe: vi.fn(() => () => {}),
+          prompt: vi.fn(async () => {
+            messages.push({
+              role: 'assistant',
+              content: [{ type: 'text', text: 'STATUS: completed\nSUMMARY: ok' }],
+            })
+          }),
+          abort: vi.fn(),
+          state: { get messages() { return messages } },
+        }
+      })
+
+      const runner = new TaskRunner({
+        db,
+        buildModel: () => ({} as ReturnType<TaskRunnerOptions['buildModel']>),
+        getApiKey: async () => 'test-key',
+        tools: [] as unknown as TaskRunnerOptions['tools'],
+        onTaskComplete: () => {},
+        sessionManager,
+        ...(codemodeTasksEnabled !== undefined ? { codemodeTasksEnabled } : {}),
+      })
+
+      const task = store.create({ name: 'Codemode Task', prompt: 'Do work', triggerType })
+      await runner.startTask(task, mockProvider)
+      await new Promise(resolve => setTimeout(resolve, 100))
+      runner.dispose()
+      if (!captured.value) throw new Error('Agent options not captured')
+      return captured.value
+    }
+
+    const toolNames = (captured: Captured) => captured.initialState.tools.map(t => t.name)
+
+    it('gives a codemode tool to a task when the global switch is on', async () => {
+      const captured = await startAndCapture('user', true)
+      expect(toolNames(captured)).toContain('codemode')
+    })
+
+    it('applies codemode to every non-consolidation trigger when the switch is on', async () => {
+      for (const triggerType of ['user', 'agent', 'cronjob', 'heartbeat'] as const) {
+        const captured = await startAndCapture(triggerType, true)
+        expect(toolNames(captured), triggerType).toContain('codemode')
+      }
+    })
+
+    it('omits the codemode tool when the global switch is off', async () => {
+      const captured = await startAndCapture('user', false)
+      expect(toolNames(captured)).not.toContain('codemode')
+    })
+
+    it('never gives codemode to memory consolidation, even when the switch is on', async () => {
+      const captured = await startAndCapture('consolidation', true)
+      expect(toolNames(captured)).not.toContain('codemode')
+    })
+
+    it('adds the codemode guideline to the system prompt only when enabled', async () => {
+      const on = await startAndCapture('user', true)
+      expect(on.initialState.systemPrompt).toContain('<codemode>')
+      expect(on.initialState.systemPrompt).toContain('Promise.allSettled')
+
+      const off = await startAndCapture('user', false)
+      expect(off.initialState.systemPrompt).not.toContain('<codemode>')
+    })
+  })
+
   describe('attached skills injection', () => {
     let skillsTmpDir: string
     let originalDataDir: string | undefined

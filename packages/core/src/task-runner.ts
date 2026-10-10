@@ -20,6 +20,12 @@ import type { ProviderConfig } from './provider-config.js'
 import { releaseProviderSession } from './pi-models.js'
 import { assertLlmResponseOk } from './llm-response.js'
 import { createToolResultImageHook, createTranscriptImageBudget, redactToolResultImages } from './llm-image.js'
+import { loadConfig } from './config.js'
+import {
+  createCodemodeTool,
+  buildCodemodePromptGuideline,
+  pruneCodemodeSpillFolder,
+} from './codemode-tool.js'
 import {
   ToolCallTracker,
   isFailedToolResult,
@@ -114,6 +120,13 @@ export interface TaskRunnerOptions {
    */
   backgroundThinkingLevel?: SettingsThinkingLevel
   /**
+   * Whether background task agents get the `codemode` tool. Defaults to the
+   * `codemode.tasks` entry in `settings.json` (off). Memory consolidation tasks
+   * never get it regardless of this value. Read once per task at start, so a
+   * live change does not disturb already-running tasks.
+   */
+  codemodeTasksEnabled?: boolean
+  /**
    * SessionManager used to register every background session in the
    * `sessions` table with the correct `type` and `parent_session_id`.
    */
@@ -144,6 +157,21 @@ function triggerTypeToSessionType(triggerType: TaskTriggerType): SessionType {
   if (triggerType === 'heartbeat') return 'heartbeat'
   if (triggerType === 'consolidation') return 'consolidation'
   return 'task'
+}
+
+/**
+ * Read the global `codemode.tasks` switch from settings.json. Re-read on every
+ * task start so a live settings change takes effect for the next task without a
+ * restart. Defaults to `false` when settings are unavailable or the value is not
+ * a boolean.
+ */
+function readCodemodeTasksEnabledFromConfig(): boolean {
+  try {
+    const settings = loadConfig<{ codemode?: { tasks?: unknown } }>('settings.json')
+    return settings.codemode?.tasks === true
+  } catch {
+    return false
+  }
 }
 
 interface RunningTask {
@@ -330,6 +358,7 @@ export class TaskRunner {
     this.cleanupTimer = setInterval(() => {
       this.cleanupStalePausedTasks()
       this.pruneToolJournal()
+      pruneCodemodeSpillFolder()
     }, CLEANUP_INTERVAL_MS)
   }
 
@@ -342,6 +371,18 @@ export class TaskRunner {
     return this.options.backgroundThinkingLevel
       ?? readBackgroundThinkingLevelFromConfig()
       ?? 'off'
+  }
+
+  /**
+   * Whether a newly started task gets the `codemode` tool. Memory consolidation
+   * is a fixed internal job and never gets it; everything else (user, agent,
+   * cronjob, heartbeat) follows the global `codemode.tasks` switch. The per-
+   * cronjob override is layered on top in a later change.
+   */
+  resolveCodemodeEnabledForTask(task: Pick<Task, 'triggerType'>): boolean {
+    if (task.triggerType === 'consolidation') return false
+    return this.options.codemodeTasksEnabled
+      ?? readCodemodeTasksEnabledFromConfig()
   }
 
   /**
@@ -407,12 +448,20 @@ export class TaskRunner {
         ? overrides.systemPromptOverride
         : buildTaskSystemPrompt(task.prompt, this.options.memoryDir)
 
+      // Codemode eligibility is decided once at start: memory consolidation never
+      // gets it, everything else follows the global switch. Resolved before the
+      // prompt/tools so the guideline and the tool stay in sync.
+      const codemodeEnabled = this.resolveCodemodeEnabledForTask(task)
+
       // Inject attached-skills block (before the base prompt) so skill rules are
       // anchored at the top and apply regardless of the rest of the prompt.
       const attachedSkillsBlock = renderAttachedSkillsBlock(overrides?.attachedSkills ?? null)
-      const systemPrompt = attachedSkillsBlock
+      const withAttached = attachedSkillsBlock
         ? `${attachedSkillsBlock}\n\n${baseSystemPrompt}`
         : baseSystemPrompt
+      const systemPrompt = codemodeEnabled
+        ? `${withAttached}\n\n${buildCodemodePromptGuideline()}`
+        : withAttached
 
       // Determine effective tools (filter out disabled tools)
       let effectiveTools = this.options.tools
@@ -426,6 +475,28 @@ export class TaskRunner {
           // Invalid JSON — use all tools
         }
       }
+
+      // The codemode tool is bound to the task agent it is created for (it needs
+      // that agent's live tools, transcript and after-tool hook), so it is built
+      // here rather than added to the shared background tool array. The owner
+      // closures read the agent through a holder that is filled right after the
+      // agent is constructed.
+      const imageHook = createToolResultImageHook(() => model)
+      const agentRef: { current: PiAgent } = { current: null as unknown as PiAgent }
+      const agentTools = codemodeEnabled
+        ? [
+            ...effectiveTools,
+            createCodemodeTool({
+              owner: {
+                getTools: () => agentRef.current.state.tools,
+                getMessages: () => agentRef.current.state.messages,
+                getModel: () => agentRef.current.state.model as Model<Api>,
+                afterToolCall: imageHook,
+              },
+              advertisedTools: effectiveTools,
+            }),
+          ]
+        : effectiveTools
 
       // Create isolated PiAgent
       const resolveApiKey = async (): Promise<string> => {
@@ -442,17 +513,18 @@ export class TaskRunner {
         initialState: {
           systemPrompt,
           model,
-          tools: effectiveTools,
+          tools: agentTools,
           thinkingLevel,
         },
         streamFn: buildStreamFn(provider),
         sessionId,
         ...(provider.transport && provider.transport !== 'sse'
           && { transport: provider.transport }),
-        afterToolCall: createToolResultImageHook(() => model),
+        afterToolCall: imageHook,
         transformContext: createTranscriptImageBudget(() => model),
         getApiKey: resolveApiKey,
       })
+      agentRef.current = agent
 
       const abortController = new AbortController()
 
