@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import type { NextFunction, Response } from 'express'
 import { jwtMiddleware } from '../../../auth.js'
 import type { AuthenticatedRequest } from '../../../auth.js'
 import { createMemoryController } from './controller.js'
@@ -11,14 +12,33 @@ export function createMemoryRouter(options: MemoryRouterOptions): Router {
   const controller = createMemoryController(options)
 
   router.use(jwtMiddleware)
-  router.use((req: AuthenticatedRequest, res, next) => {
+  const requireAdmin = (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     if (req.user?.role !== 'admin') {
       res.status(403).json({ error: 'Admin access required' })
       return
     }
 
     next()
-  })
+  }
+
+  // Available to every authenticated user (own profile, daily notes and facts; shared wiki)
+  router.get('/daily', controller.listDailyFiles)
+  router.get('/daily/:date', controller.getDailyFile)
+  router.put('/daily/:date', controller.putDailyFile)
+
+  router.get('/wiki', controller.listWikiPages)
+  router.get('/wiki/:filename', controller.getWikiPage)
+  router.put('/wiki/:filename', controller.putWikiPage)
+  router.delete('/wiki/:filename', controller.deleteWikiPage)
+
+  router.get('/profile', controller.getProfile)
+  router.put('/profile', controller.putProfile)
+
+  router.get('/facts', controller.listFacts)
+  router.put('/facts/:id', controller.putFact)
+  router.delete('/facts/:id', controller.deleteFact)
+
+  router.use(requireAdmin)
 
   // Generic memory file tree (whole /data/memory folder); file path passed via ?path=
   router.get('/files', controller.getFileTree)
@@ -39,17 +59,6 @@ export function createMemoryRouter(options: MemoryRouterOptions): Router {
   router.put('/agents', controller.putAgentRules)
   router.get('/agents/default', controller.getDefaultAgentRules)
 
-  router.get('/daily', controller.listDailyFiles)
-  router.get('/daily/:date', controller.getDailyFile)
-  router.put('/daily/:date', controller.putDailyFile)
-
-  // Wiki page endpoints (/data/memory/wiki/*.md)
-  // Also keep /projects/* as legacy aliases for backward compatibility
-  router.get('/wiki', controller.listWikiPages)
-  router.get('/wiki/:filename', controller.getWikiPage)
-  router.put('/wiki/:filename', controller.putWikiPage)
-  router.delete('/wiki/:filename', controller.deleteWikiPage)
-
   // Legacy /projects/* aliases for backward compatibility
   router.get('/projects', controller.listProjects)
   router.get('/projects/:name', controller.getProject)
@@ -60,14 +69,7 @@ export function createMemoryRouter(options: MemoryRouterOptions): Router {
   router.put('/heartbeat', controller.putHeartbeat)
   router.get('/heartbeat/default', controller.getDefaultHeartbeat)
 
-  // User profile endpoints
-  router.get('/profile', controller.getProfile)
-  router.put('/profile', controller.putProfile)
-
-  router.get('/facts', controller.listFacts)
   router.get('/usage-stats', controller.getUsageStats)
-  router.put('/facts/:id', controller.putFact)
-  router.delete('/facts/:id', controller.deleteFact)
 
   // Consolidation rules endpoints (CONSOLIDATION.md)
   router.get('/consolidation-rules', controller.getConsolidationRules)

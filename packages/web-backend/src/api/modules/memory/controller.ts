@@ -1,4 +1,6 @@
 import type { Response } from 'express'
+import { resolveUserScope } from '@axiom/core'
+import type { UserScope } from '@axiom/core'
 import type { AuthenticatedRequest } from '../../../auth.js'
 import {
   createMemoryService,
@@ -61,6 +63,17 @@ export interface MemoryController {
 
 export function createMemoryController(options: MemoryModuleOptions): MemoryController {
   const service = createMemoryService(options)
+
+  function scopeOf(req: AuthenticatedRequest, res: Response): UserScope | null {
+    const scope = req.user ? resolveUserScope(options.db, req.user.userId) : null
+    if (!scope) {
+      res.status(401).json({ error: 'User not found' })
+      return null
+    }
+    return scope
+  }
+
+  const isAdmin = (req: AuthenticatedRequest) => req.user?.role === 'admin'
 
   return {
     getFileTree(_req, res) {
@@ -212,15 +225,19 @@ export function createMemoryController(options: MemoryModuleOptions): MemoryCont
       }
     },
 
-    listDailyFiles(_req, res) {
+    listDailyFiles(req, res) {
+      const scope = scopeOf(req, res)
+      if (!scope) return
       try {
-        res.json({ files: service.listDailyFiles() })
+        res.json({ files: service.listDailyFiles(scope.paths.dailyDir) })
       } catch (err) {
         res.status(500).json({ error: `Failed to list daily files: ${(err as Error).message}` })
       }
     },
 
     getDailyFile(req, res) {
+      const scope = scopeOf(req, res)
+      if (!scope) return
       const parsedDate = parseDateParam(req.params.date)
       if (!parsedDate.ok) {
         res.status(400).json({ error: parsedDate.error })
@@ -228,7 +245,7 @@ export function createMemoryController(options: MemoryModuleOptions): MemoryCont
       }
 
       try {
-        const content = service.readDailyFile(parsedDate.value)
+        const content = service.readDailyFile(scope.paths.dailyDir, parsedDate.value)
         res.json({ date: parsedDate.value, content })
       } catch (err) {
         if (err instanceof MemoryFileNotFoundError) {
@@ -241,6 +258,8 @@ export function createMemoryController(options: MemoryModuleOptions): MemoryCont
     },
 
     putDailyFile(req, res) {
+      const scope = scopeOf(req, res)
+      if (!scope) return
       const parsedDate = parseDateParam(req.params.date)
       if (!parsedDate.ok) {
         res.status(400).json({ error: parsedDate.error })
@@ -254,7 +273,7 @@ export function createMemoryController(options: MemoryModuleOptions): MemoryCont
       }
 
       try {
-        service.writeDailyFile(parsedDate.value, parsedContent.value)
+        service.writeDailyFile(scope.paths.dailyDir, parsedDate.value, parsedContent.value)
         res.json({
           message: `Daily file for ${parsedDate.value} updated`,
           date: parsedDate.value,
@@ -424,26 +443,21 @@ export function createMemoryController(options: MemoryModuleOptions): MemoryCont
     },
 
     getProfile(req, res) {
-      const username = req.user?.username
-      if (!username) {
-        res.status(400).json({ error: 'Username not available from auth' })
-        return
-      }
+      const scope = scopeOf(req, res)
+      if (!scope) return
 
       try {
-        const content = service.readProfile(username)
-        res.json({ username, content })
+        const content = service.readProfile(scope)
+        res.json({ username: scope.username, content })
       } catch (err) {
         res.status(500).json({ error: `Failed to read user profile: ${(err as Error).message}` })
       }
     },
 
     putProfile(req, res) {
-      const username = req.user?.username
-      if (!username) {
-        res.status(400).json({ error: 'Username not available from auth' })
-        return
-      }
+      const scope = scopeOf(req, res)
+      if (!scope) return
+      const username = scope.username
 
       const parsedContent = parseContentBody(req.body)
       if (!parsedContent.ok) {
@@ -452,7 +466,7 @@ export function createMemoryController(options: MemoryModuleOptions): MemoryCont
       }
 
       try {
-        service.writeProfile(username, parsedContent.value)
+        service.writeProfile(scope, parsedContent.value)
         res.json({ message: `Profile for ${username} updated`, username, content: parsedContent.value })
       } catch (err) {
         res.status(500).json({ error: `Failed to write user profile: ${(err as Error).message}` })
@@ -467,7 +481,8 @@ export function createMemoryController(options: MemoryModuleOptions): MemoryCont
       }
 
       try {
-        const result = service.listFacts(parsedQuery.value)
+        const query = isAdmin(req) ? parsedQuery.value : { ...parsedQuery.value, userId: req.user!.userId }
+        const result = service.listFacts(query)
         res.json(result)
       } catch (err) {
         if (err instanceof InvalidInputError) {
@@ -504,6 +519,7 @@ export function createMemoryController(options: MemoryModuleOptions): MemoryCont
       }
 
       try {
+        if (!isAdmin(req)) service.assertFactOwner(parsedId.value, req.user!.userId)
         service.updateFact(parsedId.value, parsedContent.value.trim())
         res.json({ message: 'Fact updated' })
       } catch (err) {
@@ -524,6 +540,7 @@ export function createMemoryController(options: MemoryModuleOptions): MemoryCont
       }
 
       try {
+        if (!isAdmin(req)) service.assertFactOwner(parsedId.value, req.user!.userId)
         service.deleteFact(parsedId.value)
         res.json({ message: 'Fact deleted' })
       } catch (err) {

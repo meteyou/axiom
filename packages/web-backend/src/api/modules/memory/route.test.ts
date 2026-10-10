@@ -202,4 +202,71 @@ describe('memory route module', () => {
     })
     expect(nonAdminRes.status).toBe(403)
   })
+
+  describe('regular users', () => {
+    const json = (token: string) => ({ ...authHeaders(token), 'Content-Type': 'application/json' })
+
+    it('reads and writes only their own profile and daily notes', async () => {
+      const put = await fetch(`${baseUrl}/api/memory/profile`, {
+        method: 'PUT', headers: json(userToken), body: JSON.stringify({ content: 'user profile' }),
+      })
+      expect(put.status).toBe(200)
+      expect(fs.readFileSync(path.join(tempDataDir, 'users', 'user', 'PROFILE.md'), 'utf-8')).toBe('user profile')
+
+      const adminProfile = await (await fetch(`${baseUrl}/api/memory/profile`, { headers: authHeaders(adminToken) })).json() as { content: string }
+      expect(adminProfile.content).not.toContain('user profile')
+
+      await fetch(`${baseUrl}/api/memory/daily/2026-04-01`, {
+        method: 'PUT', headers: json(userToken), body: JSON.stringify({ content: 'private note' }),
+      })
+      const userList = await (await fetch(`${baseUrl}/api/memory/daily`, { headers: authHeaders(userToken) })).json() as { files: Array<{ date: string }> }
+      expect(userList.files.map(f => f.date)).toEqual(['2026-04-01'])
+      const adminGet = await fetch(`${baseUrl}/api/memory/daily/2026-04-01`, { headers: authHeaders(adminToken) })
+      expect(adminGet.status).toBe(404)
+    })
+
+    it('lists, updates and deletes only their own facts', async () => {
+      const adminFact = createMemory(db, 1, 's1', 'admin fact', 'session')
+      const ownFact = createMemory(db, 2, 's2', 'own fact', 'session')
+
+      const list = await (await fetch(`${baseUrl}/api/memory/facts?userId=1`, { headers: authHeaders(userToken) })).json() as { facts: Array<{ id: number }> }
+      expect(list.facts.map(f => f.id)).toEqual([ownFact])
+
+      const foreignPut = await fetch(`${baseUrl}/api/memory/facts/${adminFact}`, {
+        method: 'PUT', headers: json(userToken), body: JSON.stringify({ content: 'hacked' }),
+      })
+      expect(foreignPut.status).toBe(404)
+      const foreignDelete = await fetch(`${baseUrl}/api/memory/facts/${adminFact}`, { method: 'DELETE', headers: authHeaders(userToken) })
+      expect(foreignDelete.status).toBe(404)
+
+      const ownPut = await fetch(`${baseUrl}/api/memory/facts/${ownFact}`, {
+        method: 'PUT', headers: json(userToken), body: JSON.stringify({ content: 'edited' }),
+      })
+      expect(ownPut.status).toBe(200)
+      const ownDelete = await fetch(`${baseUrl}/api/memory/facts/${ownFact}`, { method: 'DELETE', headers: authHeaders(userToken) })
+      expect(ownDelete.status).toBe(200)
+    })
+
+    it('reads and writes wiki pages', async () => {
+      const put = await fetch(`${baseUrl}/api/memory/wiki/shared-page`, {
+        method: 'PUT', headers: json(userToken), body: JSON.stringify({ content: '# Shared' }),
+      })
+      expect(put.status).toBe(200)
+      const get = await fetch(`${baseUrl}/api/memory/wiki/shared-page`, { headers: authHeaders(userToken) })
+      expect(get.status).toBe(200)
+      const list = await fetch(`${baseUrl}/api/memory/wiki`, { headers: authHeaders(userToken) })
+      expect(list.status).toBe(200)
+      const del = await fetch(`${baseUrl}/api/memory/wiki/shared-page`, { method: 'DELETE', headers: authHeaders(userToken) })
+      expect(del.status).toBe(200)
+    })
+
+    it('rejects admin-only endpoints with 403', async () => {
+      for (const p of ['soul', 'core', 'agents', 'files', 'file?path=SOUL.md', 'consolidation-rules', 'tasks-guidelines', 'consolidation/status', 'usage-stats', 'heartbeat', 'projects']) {
+        const res = await fetch(`${baseUrl}/api/memory/${p}`, { headers: authHeaders(userToken) })
+        expect(res.status, p).toBe(403)
+      }
+      const run = await fetch(`${baseUrl}/api/memory/consolidation/run`, { method: 'POST', headers: authHeaders(userToken) })
+      expect(run.status).toBe(403)
+    })
+  })
 })
