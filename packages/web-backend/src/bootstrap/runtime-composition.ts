@@ -7,29 +7,24 @@ import {
   getBootstrapAdminId,
   resolveUserPaths,
   resolveUserScope,
-  createCronjobTool,
-  createReminderTool,
   createSendFileTool,
   createTaskRuntime,
   loadSttSettings,
   deliverTaskNotification,
   deliverTaskStatusUpdate,
   resolveTaskNotificationSessionId,
-  editCronjobTool,
   ensureConfigStructure,
   ensureConfigTemplates,
   ensureMemoryStructure,
   getActiveModelId,
   getActiveProvider,
   getApiKeyForProvider,
-  getCronjobTool,
   getFallbackModelId,
   getFallbackProvider,
   initDatabase,
   injectSecretsIntoEnv,
   isRadiusCatalogStale,
   isRadiusProviderType,
-  listCronjobsTool,
   loadConfig,
   loadProvidersDecrypted,
   logToolCall,
@@ -41,7 +36,6 @@ import {
   SessionManager,
   createEmailApprovalService,
   registerEmailApprovalNotifier,
-  removeCronjobTool,
   TaskEventBus,
   TurnRunner,
 } from '@axiom/core'
@@ -570,22 +564,6 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
     return null
   }
 
-  /**
-   * Fallback user when a task has no interactive lineage (cronjob,
-   * heartbeat). Uses the lowest-id user in the `users` table. Throws if
-   * the query fails or no user exists — an empty users table means the
-   * system is misconfigured (admin is provisioned by `ensureAdminUser`
-   * during bootstrap), and a DB error must not be silently hidden by
-   * returning a hardcoded id that may not exist.
-   */
-  function getFallbackUserId(): number {
-    const row = db.prepare('SELECT id FROM users ORDER BY id ASC LIMIT 1').get() as { id: number } | undefined
-    if (!row || !Number.isSafeInteger(row.id)) {
-      throw new Error('getFallbackUserId: no users in database (admin not provisioned?)')
-    }
-    return row.id
-  }
-
   function handleTaskNotification(taskId: string, injection: string, taskRuntime: TaskRuntimeTaskBoundary): void {
     const task = taskRuntime.getById(taskId)
     if (!task) return
@@ -594,20 +572,19 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
     const endMs = task.completedAt ? new Date(task.completedAt.replace(' ', 'T') + 'Z').getTime() : Date.now()
     const durationMinutes = Math.round((endMs - startMs) / 60000)
 
-    // Resolve target user from the task's session lineage; fall back to
-    // the default user when the task has no interactive parent (e.g.
-    // cronjob/heartbeat triggered). A non-null task.sessionId with an
-    // unresolvable lineage (deleted parent row, chain > depth cap, or
-    // malformed linkage) is not an intended fallback — log it so the
-    // mis-routed delivery is diagnosable instead of silently reaching the
-    // fallback user.
+    // Tasks are delivered to their owner. Legacy rows without one fall back to
+    // the session lineage; an unresolvable lineage is logged, never rerouted.
     const resolvedUserId = task.ownerUserId ?? resolveTargetUserIdForTask(task.sessionId)
     if (resolvedUserId == null && task.sessionId) {
       logger.warn(
-        `[axiom] Task ${task.id}: could not resolve target user from session lineage (sessionId=${task.sessionId}); falling back to default user`,
+        `[axiom] Task ${task.id}: could not resolve target user from session lineage (sessionId=${task.sessionId}); dropping notification`,
       )
     }
-    const userId = resolvedUserId ?? getFallbackUserId()
+    if (resolvedUserId == null) {
+      logger.error(`[axiom] Task ${task.id} has no resolvable owner; notification dropped`)
+      return
+    }
+    const userId = resolvedUserId
 
     // Lineage session (parent interactive, or the task's own session as a
     // last resort). May be null for legacy tasks without sessionId — the
@@ -700,7 +677,11 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
     if (!task) return
 
     const resolvedUserId = task.ownerUserId ?? resolveTargetUserIdForTask(task.sessionId)
-    const userId = resolvedUserId ?? getFallbackUserId()
+    if (resolvedUserId == null) {
+      logger.error(`[axiom] Task ${task.id} has no resolvable owner; status update dropped`)
+      return
+    }
+    const userId = resolvedUserId
 
     const lineageSessionId = resolveTaskNotificationSessionId(db, task)
     // Prefer the user's currently-cached interactive session (via
@@ -790,7 +771,11 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
       getDefaultProvider: getTaskDefaultProvider,
       resolveProvider,
       onInjection: (scheduledTask) => {
-        const userId = 1
+        const userId = scheduledTask.ownerUserId
+        if (userId === null) {
+          logger.error(`[axiom] Reminder "${scheduledTask.name}" has no owner; not delivered`)
+          return
+        }
         const deliveryResults: string[] = []
 
         // Reuse one `sessions` row per scheduled reminder (keyed by cronjob
@@ -1006,14 +991,8 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
       })
     }
     // Identities without a user row (e.g. unlinked Telegram accounts) get no
-    // task tools: they cannot own tasks and must not reach other users' tasks.
+    // task or cronjob tools: they cannot own tasks and must not reach other users' tasks.
     return [
-      createCronjobTool(cronjobToolsOptions),
-      editCronjobTool(cronjobToolsOptions),
-      removeCronjobTool(cronjobToolsOptions),
-      listCronjobsTool(cronjobToolsOptions),
-      getCronjobTool(cronjobToolsOptions),
-      createReminderTool(cronjobToolsOptions),
       createSendFileTool({
         getCurrentToolUserId: () => undefined,
         getCurrentInteractiveSessionId: getInteractiveSessionId,

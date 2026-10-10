@@ -1,6 +1,7 @@
 import { Router } from 'express'
-import type { Database, TaskRuntimeScheduleBoundary } from '@axiom/core'
-import { ScheduledTaskStore, validateCronExpression, cronToHumanReadable, loadSkills, listAgentSkills, normalizeThinkingLevel, SETTINGS_THINKING_LEVELS } from '@axiom/core'
+import type { Response } from 'express'
+import type { AccessAction, AccessActor, Database, ScheduledTask, TaskRuntimeScheduleBoundary } from '@axiom/core'
+import { ScheduledTaskStore, canAccess, validateCronExpression, cronToHumanReadable, loadSkills, listAgentSkills, normalizeThinkingLevel, SETTINGS_THINKING_LEVELS } from '@axiom/core'
 import type { SettingsThinkingLevel } from '@axiom/core'
 import { jwtMiddleware } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
@@ -39,6 +40,38 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
   const store = new ScheduledTaskStore(options.db)
 
   const getTaskRuntime = (): TaskRuntimeScheduleBoundary | null => options.getTaskRuntime?.() ?? null
+
+  const actorOf = (req: AuthenticatedRequest): AccessActor => ({ id: req.user!.userId, role: req.user!.role })
+  const usernameStmt = options.db.prepare('SELECT username FROM users WHERE id = ?')
+
+  const serialize = (cronjob: ScheduledTask) => {
+    const owner = cronjob.ownerUserId === null
+      ? undefined
+      : usernameStmt.get(cronjob.ownerUserId) as { username: string } | undefined
+    return {
+      ...cronjob,
+      ownerUsername: owner?.username ?? null,
+      scheduleHuman: cronToHumanReadable(cronjob.schedule),
+    }
+  }
+
+  /** Responds 404 for cronjobs the actor may not view and 403 for views without the action. */
+  const loadForAction = (req: AuthenticatedRequest, res: Response, action: AccessAction): ScheduledTask | null => {
+    const id = String(req.params.id)
+    const taskRuntime = getTaskRuntime()
+    const existing = taskRuntime ? taskRuntime.getById(id) : store.getById(id)
+    const actor = actorOf(req)
+    const resource = { kind: 'cronjob' as const, ownerId: existing?.ownerUserId ?? null }
+    if (!existing || !canAccess(actor, resource, 'view', 'ui')) {
+      res.status(404).json({ error: 'Cronjob not found' })
+      return null
+    }
+    if (!canAccess(actor, resource, action, 'ui')) {
+      res.status(403).json({ error: 'You are not allowed to do this to a cronjob of another user.' })
+      return null
+    }
+    return existing
+  }
 
   router.use(jwtMiddleware)
 
@@ -88,20 +121,19 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
 
   /**
    * GET /api/cronjobs
-   * Returns all scheduled tasks
+   * Returns the actor's scheduled tasks; admins get all, optionally filtered by `ownerUserId`
    */
-  router.get('/', (_req: AuthenticatedRequest, res) => {
+  router.get('/', (req: AuthenticatedRequest, res) => {
     try {
+      const actor = actorOf(req)
+      const requestedOwner = Number(req.query.ownerUserId)
+      const filters = actor.role !== 'admin'
+        ? { ownerUserId: actor.id }
+        : Number.isSafeInteger(requestedOwner) ? { ownerUserId: requestedOwner } : undefined
       const taskRuntime = getTaskRuntime()
-      const cronjobs = taskRuntime ? taskRuntime.list() : store.list()
+      const cronjobs = taskRuntime ? taskRuntime.list(filters) : store.list(filters)
 
-      // Enrich with human-readable schedule
-      const enriched = cronjobs.map(cj => ({
-        ...cj,
-        scheduleHuman: cronToHumanReadable(cj.schedule),
-      }))
-
-      res.json({ cronjobs: enriched })
+      res.json({ cronjobs: cronjobs.map(serialize) })
     } catch (err) {
       res.status(500).json({ error: `Failed to list cronjobs: ${(err as Error).message}` })
     }
@@ -177,6 +209,7 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
             attachedSkills: normalizedAttachedSkills,
             thinkingLevel: thinking.value ?? null,
             codemode: codemodeParsed.value ?? null,
+            ownerUserId: req.user!.userId,
           })
         : store.create({
             name,
@@ -188,6 +221,7 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
             attachedSkills: normalizedAttachedSkills,
             thinkingLevel: thinking.value ?? null,
             codemode: codemodeParsed.value ?? null,
+            ownerUserId: req.user!.userId,
           })
 
       // Register with scheduler boundary when available
@@ -195,12 +229,7 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
         taskRuntime.register(cronjob)
       }
 
-      res.status(201).json({
-        cronjob: {
-          ...cronjob,
-          scheduleHuman: cronToHumanReadable(cronjob.schedule),
-        },
-      })
+      res.status(201).json({ cronjob: serialize(cronjob) })
     } catch (err) {
       res.status(500).json({ error: `Failed to create cronjob: ${(err as Error).message}` })
     }
@@ -214,11 +243,10 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
     try {
       const id = String(req.params.id)
       const taskRuntime = getTaskRuntime()
-      const existing = taskRuntime ? taskRuntime.getById(id) : store.getById(id)
-      if (!existing) {
-        res.status(404).json({ error: 'Cronjob not found' })
-        return
-      }
+      const body = req.body as Record<string, unknown>
+      const onlyToggle = body.enabled !== undefined
+        && Object.keys(body).every(key => key === 'enabled' || body[key] === undefined)
+      if (!loadForAction(req, res, onlyToggle ? 'toggle' : 'edit')) return
 
       const { name, prompt, schedule, actionType, provider, enabled, toolsOverride, skillsOverride, systemPromptOverride, attachedSkills, thinkingLevel, codemode } = req.body as {
         name?: string
@@ -344,12 +372,7 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
         taskRuntime.register(updated)
       }
 
-      res.json({
-        cronjob: {
-          ...updated,
-          scheduleHuman: cronToHumanReadable(updated.schedule),
-        },
-      })
+      res.json({ cronjob: serialize(updated) })
     } catch (err) {
       res.status(500).json({ error: `Failed to update cronjob: ${(err as Error).message}` })
     }
@@ -363,11 +386,7 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
     try {
       const id = String(req.params.id)
       const taskRuntime = getTaskRuntime()
-      const existing = taskRuntime ? taskRuntime.getById(id) : store.getById(id)
-      if (!existing) {
-        res.status(404).json({ error: 'Cronjob not found' })
-        return
-      }
+      if (!loadForAction(req, res, 'delete')) return
 
       // Unregister from scheduler boundary when available
       if (taskRuntime) {
@@ -394,11 +413,8 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
     try {
       const id = String(req.params.id)
       const taskRuntime = getTaskRuntime()
-      const existing = taskRuntime ? taskRuntime.getById(id) : store.getById(id)
-      if (!existing) {
-        res.status(404).json({ error: 'Cronjob not found' })
-        return
-      }
+      const existing = loadForAction(req, res, 'trigger')
+      if (!existing) return
 
       if (!taskRuntime) {
         res.status(503).json({ error: 'Task scheduler not available' })
