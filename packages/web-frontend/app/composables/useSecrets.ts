@@ -4,10 +4,14 @@ export interface SecretEntry {
   maskedValue: string
 }
 
+export type SecretsScope = 'global' | 'personal'
+
 export function useSecrets() {
   const { apiFetch } = useApi()
 
   const secrets = ref<SecretEntry[]>([])
+  const globalSecrets = ref<SecretEntry[]>([])
+  const scope = ref<SecretsScope | null>(null)
   const loading = ref(false)
   const saving = ref(false)
   const error = ref<string | null>(null)
@@ -17,8 +21,10 @@ export function useSecrets() {
     loading.value = true
     error.value = null
     try {
-      const result = await apiFetch<{ secrets: SecretEntry[] }>('/api/secrets')
+      const result = await apiFetch<{ scope: SecretsScope; secrets: SecretEntry[]; globalSecrets?: SecretEntry[] }>('/api/secrets')
+      scope.value = result.scope
       secrets.value = result.secrets
+      globalSecrets.value = result.globalSecrets ?? []
     } catch (err) {
       error.value = (err as Error).message
     } finally {
@@ -72,6 +78,8 @@ export function useSecrets() {
 
   return {
     secrets,
+    globalSecrets,
+    scope,
     loading,
     saving,
     error,
