@@ -1068,6 +1068,13 @@
       "share": "{percent}% der Aussetzer",
       "avgShort": "ø {duration}"
     },
+    "perUser": {
+      "title": "Nutzung pro Benutzer",
+      "description": "Anfragen, Tokens und geschätzte Kosten pro Benutzer für die aktuellen Filter.",
+      "user": "Benutzer",
+      "deleted": "gelöscht",
+      "unknown": "Unbekannt"
+    },
     "table": {
       "title": "Anbieter- & Modell-Aufschlüsselung",
       "description": "Detaillierte Aufschlüsselung von Nutzung und geschätzten Kosten pro Anbieter/Modell.",

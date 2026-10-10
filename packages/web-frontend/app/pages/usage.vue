@@ -364,6 +364,44 @@
               </CardContent>
             </Card>
 
+            <!-- ─── Per-user breakdown ─── -->
+            <Card class="mb-4">
+              <CardContent class="p-5">
+                <div class="mb-4">
+                  <h2 class="text-base font-semibold text-foreground">{{ $t('usage.perUser.title') }}</h2>
+                  <p class="mt-1 text-sm text-muted-foreground">{{ $t('usage.perUser.description') }}</p>
+                </div>
+
+                <div class="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>{{ $t('usage.perUser.user') }}</TableHead>
+                        <TableHead class="text-right">{{ $t('usage.table.columns.requests') }}</TableHead>
+                        <TableHead class="text-right">{{ $t('usage.table.columns.promptTokens') }}</TableHead>
+                        <TableHead class="text-right">{{ $t('usage.table.columns.completionTokens') }}</TableHead>
+                        <TableHead class="text-right">{{ $t('usage.table.columns.cost') }}</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      <TableRow v-for="row in perUser" :key="row.userId ?? 'unknown'">
+                        <TableCell class="font-medium">
+                          <template v-if="row.username">{{ row.username }}</template>
+                          <template v-else-if="row.deleted">{{ $t('usage.perUser.deleted') }}</template>
+                          <template v-else>{{ $t('usage.perUser.unknown') }}</template>
+                          <span v-if="row.deleted && row.username" class="ml-1 text-xs text-muted-foreground">({{ $t('usage.perUser.deleted') }})</span>
+                        </TableCell>
+                        <TableCell class="text-right tabular-nums">{{ formatNumber(row.requests) }}</TableCell>
+                        <TableCell class="text-right tabular-nums">{{ formatNumber(row.promptTokens) }}</TableCell>
+                        <TableCell class="text-right tabular-nums">{{ formatNumber(row.completionTokens) }}</TableCell>
+                        <TableCell class="text-right tabular-nums">{{ formatCurrency(row.estimatedCost) }}</TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+
             <!-- ─── Provider / model breakdown table ─── -->
             <Card class="mb-4">
               <CardContent class="p-5">
@@ -475,6 +513,7 @@ const {
   hasAnyUsage,
   hasFilteredResults,
   totals,
+  perUser,
   loadStats,
 } = useUsageStats()
 

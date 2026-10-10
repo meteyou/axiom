@@ -1068,6 +1068,13 @@
       "share": "{percent}% of stalls",
       "avgShort": "ø {duration}"
     },
+    "perUser": {
+      "title": "Usage per user",
+      "description": "Requests, tokens and estimated cost per user for the current filters.",
+      "user": "User",
+      "deleted": "deleted",
+      "unknown": "Unknown"
+    },
     "table": {
       "title": "Provider & model breakdown",
       "description": "Detailed breakdown of usage and estimated cost per provider/model pair.",
