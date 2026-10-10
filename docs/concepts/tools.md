@@ -34,7 +34,8 @@ The agent can spawn its own background workers and schedule recurring or one-sho
 |---|---|
 | `create_task` | Spawn a background agent with a self-contained prompt. Optional `provider` / `model` to pin a specific runtime, optional `thinking_level` for the reasoning effort, optional `attached_skills` to bake skill rules into the task prompt. See [Tasks & Cronjobs](./tasks-and-cronjobs). |
 | `resume_task` | Send a follow-up answer back to a paused task (one that asked a question). |
-| `list_tasks` | List background tasks with status filters. |
+| `list_tasks` | List your background tasks with status filters. Admins also see other users' tasks, but only title, owner and status. |
+| `stop_task` | Stop a running background task. Regular users can stop their own tasks; admins can stop any task. |
 | `create_cronjob` | Create a recurring scheduled task. Standard 5-field cron expression, evaluated in the configured `timezone`. Two `action_type`s: `task` (full agent run) or `injection` (deliver a static message verbatim). Optional `thinking_level` and `attached_skills`. |
 | `edit_cronjob` | Update a cronjob's prompt, name, schedule, action_type, provider, thinking level, or enabled flag. |
 | `remove_cronjob` | Permanently delete a cronjob. |
