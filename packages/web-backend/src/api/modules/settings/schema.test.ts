@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   mergeAgentHeartbeat,
   mergeConsolidation,
+  mergeCodemode,
   mergeFactExtraction,
   mergeHealthMonitor,
   mergeImageGeneration,
@@ -197,6 +198,21 @@ describe('settings schema', () => {
       error: null,
     })
     expect((settingsRaw.tasks as Record<string, unknown>).backgroundThinkingLevel).toBe('medium')
+  })
+
+  it('merges the codemode toggles as booleans', () => {
+    const settingsRaw: Record<string, unknown> = {}
+
+    // Omitted group leaves settings untouched.
+    expect(mergeCodemode({}, settingsRaw)).toEqual({ error: null, changed: false })
+    expect(settingsRaw).toEqual({})
+
+    expect(mergeCodemode({ codemode: { tasks: true } }, settingsRaw)).toEqual({ error: null, changed: true })
+    expect(settingsRaw.codemode).toEqual({ tasks: true })
+
+    // Coerces to booleans and preserves the other key.
+    expect(mergeCodemode({ codemode: { mainAgent: 'yes', tasks: false } }, settingsRaw)).toEqual({ error: null, changed: true })
+    expect(settingsRaw.codemode).toEqual({ tasks: false, mainAgent: true })
   })
 
   it('validates and merges image generation settings', () => {
