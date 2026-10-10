@@ -21,6 +21,7 @@ const guideSidebar: DefaultTheme.SidebarItem[] = [
       { text: 'Codemode', link: '/concepts/codemode' },
       { text: 'Image Generation', link: '/concepts/image-generation' },
       { text: 'Memory System', link: '/concepts/memory' },
+      { text: 'Multi-User', link: '/concepts/multi-user' },
       { text: 'Skills', link: '/concepts/skills' },
       { text: 'System Prompt', link: '/concepts/system-prompt' },
       { text: 'Tasks & Cronjobs', link: '/concepts/tasks-and-cronjobs' },
