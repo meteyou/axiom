@@ -158,6 +158,23 @@ describe('TaskScheduler', () => {
       expect(updated.lastRunStatus).toBe('running')
     })
 
+    it.each(['on', 'off', null] as const)('passes the codemode override %s to the task runner', async (codemode) => {
+      const scheduledTask = scheduledTaskStore.create({
+        name: 'Codemode Job',
+        prompt: 'Do something',
+        schedule: '0 9 * * *',
+        codemode,
+      })
+
+      await scheduler.triggerNow(scheduledTask.id)
+
+      expect(mockTaskRunner.startTask).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'Codemode Job' }),
+        expect.anything(),
+        expect.objectContaining({ codemode }),
+      )
+    })
+
     it('returns null for non-existent schedule', async () => {
       scheduler.start()
       const result = await scheduler.triggerNow('non-existent')
