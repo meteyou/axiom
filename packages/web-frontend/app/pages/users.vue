@@ -1,15 +1,8 @@
 <template>
-  <!-- Admin gate -->
-  <div v-if="!isAdmin" class="flex h-full flex-col items-center justify-center gap-3 p-10 text-center text-muted-foreground">
-    <AppIcon name="lock" size="xl" class="h-10 w-10" />
-    <h1 class="text-xl font-semibold text-foreground">{{ $t('admin.title') }}</h1>
-    <p class="text-sm">{{ $t('admin.description') }}</p>
-  </div>
-
   <!-- Page body -->
-  <div v-else class="flex h-full flex-col overflow-hidden">
-    <PageHeader :title="$t('users.title')" :subtitle="$t('users.subtitle')">
-      <template #actions>
+  <div class="flex h-full flex-col overflow-hidden">
+    <PageHeader :title="$t('users.title')" :subtitle="isAdmin ? $t('users.subtitle') : $t('users.ownSubtitle')">
+      <template v-if="isAdmin" #actions>
         <Button class="h-8 px-3 text-xs md:h-10 md:px-4 md:py-2 md:text-sm" @click="openCreate">
           <AppIcon name="add" class="mr-1 h-4 w-4" />
           {{ $t('users.addUser') }}
@@ -66,7 +59,7 @@
                 v-for="entry in users"
                 :key="entry.id"
                 class="cursor-pointer"
-                @click="openEdit(entry)"
+                @click="isAdmin ? openEdit(entry) : openPassword()"
               >
                 <!-- Username + avatar -->
                 <TableCell>
@@ -119,7 +112,12 @@
                 </TableCell>
 
                 <!-- Row actions (dropdown) -->
-                <TableCell class="text-right" @click.stop>
+                <TableCell v-if="!isAdmin" class="text-right" @click.stop>
+                  <Button variant="outline" size="sm" @click="openPassword">
+                    {{ $t('users.changePassword') }}
+                  </Button>
+                </TableCell>
+                <TableCell v-else class="text-right" @click.stop>
                   <DropdownMenu>
                     <DropdownMenuTrigger as-child>
                       <Button variant="ghost" size="icon-sm" :aria-label="$t('aria.userMenu')">
@@ -161,6 +159,13 @@
     @submit="handleSubmit"
   />
 
+  <UserPasswordDialog
+    :open="showPasswordDialog"
+    :loading="actionPending"
+    @close="showPasswordDialog = false"
+    @submit="handlePasswordChange"
+  />
+
   <!-- Delete confirmation dialog -->
   <ConfirmDialog
     :open="!!deleteTarget"
@@ -183,13 +188,14 @@ const { user } = useAuth()
 const isAdmin = computed(() => user.value?.role === 'admin')
 const currentUserId = computed(() => user.value?.id ?? -1)
 
-const { users, loading, error, fetchUsers, createUser, updateUser, deleteUser } = useUsers()
+const { users, loading, error, fetchUsers, createUser, updateUser, deleteUser, changeOwnPassword } = useUsers()
 
 /* ── Modal state ── */
 const showModal = ref(false)
 const formMode = ref<'create' | 'edit'>('create')
 const editingUser = ref<User | null>(null)
 const deleteTarget = ref<User | null>(null)
+const showPasswordDialog = ref(false)
 const actionPending = ref(false)
 const successMessage = ref<string | null>(null)
 const localError = ref<string | null>(null)
@@ -197,7 +203,6 @@ const localError = ref<string | null>(null)
 const errorMessage = computed(() => localError.value || error.value)
 
 onMounted(async () => {
-  if (!isAdmin.value) return
   await fetchUsers()
 })
 
@@ -262,6 +267,26 @@ async function handleSubmit(payload: { username: string; password: string; role:
     autoHideSuccess()
   }
 
+  actionPending.value = false
+}
+
+/* ── Own password ── */
+function openPassword() {
+  clearMessages()
+  showPasswordDialog.value = true
+}
+
+async function handlePasswordChange(payload: { currentPassword: string; newPassword: string }) {
+  clearMessages()
+  actionPending.value = true
+  const success = await changeOwnPassword(payload.currentPassword, payload.newPassword)
+  if (success) {
+    successMessage.value = t('users.passwordChanged')
+    showPasswordDialog.value = false
+    autoHideSuccess()
+  } else {
+    localError.value = error.value || t('common.saveFailed')
+  }
   actionPending.value = false
 }
 

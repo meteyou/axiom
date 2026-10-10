@@ -17,7 +17,8 @@
     "instructions": "Anweisungen",
     "tasks": "Aufgaben",
     "cronjobs": "Cronjobs",
-    "email": "E-Mail"
+    "email": "E-Mail",
+    "account": "Konto"
   },
   "roles": {
     "admin": "Admin",
@@ -865,7 +866,13 @@
       "telegram": "Telegram-ID",
       "createdAt": "Erstellt",
       "actions": "Aktionen"
-    }
+    },
+    "changePassword": "Passwort ändern",
+    "changePasswordDescription": "Gib dein aktuelles Passwort ein und wähle ein neues. Deine anderen Anmeldungen werden abgemeldet.",
+    "currentPassword": "Aktuelles Passwort",
+    "newPassword": "Neues Passwort",
+    "passwordChanged": "Passwort geändert. Andere Anmeldungen wurden abgemeldet.",
+    "ownSubtitle": "Dein Konto."
   },
   "dashboard": {
     "kicker": "Betriebsübersicht",

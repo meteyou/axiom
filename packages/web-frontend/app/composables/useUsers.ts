@@ -9,6 +9,7 @@ export interface User {
 
 export function useUsers() {
   const { apiFetch } = useApi()
+  const { setAuth } = useAuth()
 
   const users = ref<User[]>([])
   const loading = ref(false)
@@ -71,6 +72,21 @@ export function useUsers() {
     }
   }
 
+  async function changeOwnPassword(currentPassword: string, newPassword: string): Promise<boolean> {
+    error.value = null
+    try {
+      const data = await apiFetch<Parameters<typeof setAuth>[0]>('/api/users/me/password', {
+        method: 'PUT',
+        body: JSON.stringify({ currentPassword, newPassword }),
+      })
+      setAuth(data)
+      return true
+    } catch (err) {
+      error.value = (err as Error).message
+      return false
+    }
+  }
+
   return {
     users,
     loading,
@@ -79,5 +95,6 @@ export function useUsers() {
     createUser,
     updateUser,
     deleteUser,
+    changeOwnPassword,
   }
 }
