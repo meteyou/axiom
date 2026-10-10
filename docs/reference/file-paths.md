@@ -27,6 +27,7 @@ The two environment variables `DATA_DIR` and `WORKSPACE_DIR` are the only knobs.
 ├── skills/          ← user-installed skills
 ├── skills_agent/    ← built-in + agent-created skills
 ├── uploads/         ← user-uploaded files
+├── users/           ← personal folders of every user except the first admin
 └── npm-global/      ← npm global prefix (survives container upgrades)
 ```
 
@@ -87,6 +88,18 @@ Resolved by `getMemoryDir()` in `packages/core/src/memory.ts`. Structure created
 | `users/<username>.md` | `ensureUserProfile()` / `readUserProfile()` in `memory.ts`, template `USER_PROFILE_TEMPLATE` | Agent updates per user. Do **not** duplicate language/timezone here — those live in `settings.json`. |
 | `wiki/*.md` | `ensureWikiDir()` in `memory.ts`; managed by the `wiki` skill | Agent edits freely; cite source files in a `## Sources` / `## Quellen` section. |
 | `sources/**/*.md` | `ensureSourcesDir()` in `memory.ts`; conventions in `SOURCES_README_TEMPLATE` | **Immutable.** Add new files only — never rewrite. Filename: `<yyyy-mm-dd>-<slug>.md`. |
+
+The first account (bootstrap admin) keeps all locations above. Every other user gets a personal folder and workspace, resolved by `resolveUserScope()` in `packages/core/src/user-scope.ts`:
+
+```text
+/data/users/<username>/
+├── PROFILE.md       ← the user's profile
+├── HEARTBEAT.md     ← the user's heartbeat tasks
+└── daily/           ← the user's session summaries
+/workspace/<username>/   ← the user's workspace (default cwd for shell and file tools)
+```
+
+Usernames are alphanumeric. Creating a user fails when `/workspace/<username>` or `/data/users/<username>` already exists, so a user never takes over an existing repo or folder. `SOUL.md`, `MEMORY.md`, `wiki/` and `sources/` stay shared.
 
 The SQLite `memories` table (atomic facts the agent searches on demand) is **not** in this directory — it lives in `/data/db/axiom.db`.
 

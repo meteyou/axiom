@@ -84,6 +84,15 @@ The agent doesn't see this table in its prompt. Instead, it queries it on demand
 
 Facts are written automatically by the [session-end fact-extraction job](#session-end). They're per-user and timestamped, so the agent can answer "what did we decide about X?" even months later.
 
+## Multiple users
+
+When several people share one instance, memory is split by privacy:
+
+- **Private per user:** profile, daily notes (session summaries), facts, chat history and workspace. The first account keeps the paths above; every other user gets `/data/users/<username>/` (`PROFILE.md`, `HEARTBEAT.md`, `daily/`) and `/workspace/<username>/`.
+- **Shared:** `MEMORY.md`, the wiki, sources and skills. They hold general knowledge only. The agent keeps personal information out of them and writes it to the user's profile.
+
+A session summary always lands in the daily folder of the session's owner and never appears in another user's prompt. `read_chat_history` and `search_memories` only return the caller's own conversations and facts.
+
 ## Session end
 
 A session is a continuous chunk of conversation. It ends when either `sessionTimeoutMinutes` of inactivity passes (default 30) or the user runs the `/new` command in the chat. On session end Axiom runs two background jobs in parallel: one writes a summary into the daily note, the other extracts atomic facts. Both have their own provider knob and tuning under [Settings → Memory](./../settings/memory).
