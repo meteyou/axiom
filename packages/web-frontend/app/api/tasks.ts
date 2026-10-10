@@ -87,6 +87,7 @@ export interface TaskEventItem {
     id: string
     name: string
     status: 'running' | 'ok' | 'error' | 'cancelled'
+    args?: unknown
     durationMs?: number
     errorPreview?: string
   }>

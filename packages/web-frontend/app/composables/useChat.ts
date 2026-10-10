@@ -8,6 +8,8 @@ export interface ToolCallData {
   toolIsError?: boolean
   /** Set from `tool_call_start` until `tool_call_end`; history rows never carry it. */
   running?: boolean
+  /** Live nested-call snapshot of a running codemode script (from `tool_call_update`). */
+  nestedCalls?: CodemodeNestedCall[]
 }
 
 /**
@@ -204,10 +206,11 @@ export interface ChatMessage {
   endedSessionId?: string
 }
 
-interface CodemodeNestedCall {
+export interface CodemodeNestedCall {
   id: string
   name: string
   status: 'running' | 'ok' | 'error' | 'cancelled'
+  args?: unknown
   durationMs?: number
   errorPreview?: string
 }
@@ -986,9 +989,23 @@ export function useChat() {
         break
 
       case 'tool_call_update':
-        // Live progress of a running codemode script; the dedicated codemode
-        // card renders it (added in a later task). Ignored until then so the
-        // new chunk type never breaks rendering.
+        // Live progress of a running codemode script: the full nested-call
+        // snapshot replaces the previous one on the codemode card. Replayed
+        // after a mid-turn reconnect, so the card catches up on replay.
+        if (msg.toolCallId && Array.isArray(msg.nestedCalls)) {
+          const updated = [...messages.value]
+          const toolMsgIdx = updated.findLastIndex(
+            m => m.role === 'tool' && m.toolData?.toolCallId === msg.toolCallId
+          )
+          if (toolMsgIdx !== -1 && updated[toolMsgIdx]?.toolData) {
+            const existing = updated[toolMsgIdx]!
+            updated[toolMsgIdx] = {
+              ...existing,
+              toolData: { ...existing.toolData!, nestedCalls: msg.nestedCalls },
+            }
+            messages.value = updated
+          }
+        }
         break
 
       case 'tool_call_end':

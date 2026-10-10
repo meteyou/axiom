@@ -176,7 +176,18 @@
 
           <!-- Tool call card (clickable/expandable) -->
           <template v-else-if="msg.role === 'tool' && msg.toolData">
+            <CodemodeToolCard
+              v-if="isCodemodeTool(msg.toolData!)"
+              :code="codemodeCode(msg.toolData!)"
+              :nested-calls="codemodeNestedCalls(msg.toolData!)"
+              :output="codemodeOutput(msg.toolData!)"
+              :is-error="msg.toolData!.toolIsError === true"
+              :running="isToolRunning(msg)"
+              :expanded="expandedTools.has(msg.toolData!.toolCallId)"
+              @toggle="toggleTool(msg.toolData!.toolCallId)"
+            />
             <ChatCollapsibleCard
+              v-else
               :icon="isToolRunning(msg) ? 'loader' : toolIconName(msg.toolData!)"
               :icon-class="isToolRunning(msg) ? 'animate-spin opacity-80' : undefined"
               :expanded="expandedTools.has(msg.toolData!.toolCallId)"
@@ -670,7 +681,12 @@
 </template>
 
 <script setup lang="ts">
-import type { ChatMessage, ToolCallData } from '~/composables/useChat'
+import type { ChatMessage, CodemodeNestedCall, ToolCallData } from '~/composables/useChat'
+import {
+  codemodeCallsToDisplay,
+  codemodeOutputText,
+  codemodeScriptCode,
+} from '~/utils/codemodeDisplay'
 import type { LoadableSkill } from '~/composables/useSkillAutocomplete'
 import { SETTINGS_THINKING_LEVELS, type SettingsThinkingLevel } from '@axiom/core/contracts'
 import { findModelSpec, getThinkingLevelChoices } from '~/utils/thinkingLevels'
@@ -785,6 +801,12 @@ function toolIconName(toolData: ToolCallData): string {
   if (memInfo.isMemoryFile) return memInfo.icon
   return 'settings'
 }
+function isCodemodeTool(toolData: ToolCallData): boolean { return toolData.toolName === 'codemode' }
+function codemodeCode(toolData: ToolCallData): string { return codemodeScriptCode(toolData.toolArgs) }
+function codemodeNestedCalls(toolData: ToolCallData): CodemodeNestedCall[] {
+  return codemodeCallsToDisplay(toolData.nestedCalls, toolData.toolResult)
+}
+function codemodeOutput(toolData: ToolCallData): string | null { return codemodeOutputText(toolData.toolResult) }
 const filterOpen = ref(false)
 const FILTER_STORAGE_KEY = 'axiom-chat-filters'
 

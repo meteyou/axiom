@@ -1368,5 +1368,16 @@
     "fieldMaxDuration": "Max. Laufzeit (Minuten)",
     "fieldThinkingLevel": "Thinking-Stufe",
     "fieldThinkingLevelDefault": "Standard (Hintergrund-Thinking-Stufe)"
+  },
+  "codemode": {
+    "title": "Codemode",
+    "script": "Skript",
+    "toolCalls": "Tool-Aufrufe",
+    "noToolCalls": "Keine Tool-Aufrufe",
+    "output": "Ausgabe",
+    "error": "Fehler",
+    "cancelled": "Abgebrochen",
+    "running": "Läuft",
+    "callsSummary": "1 Aufruf · {names} | {count} Aufrufe · {names}"
   }
 }
