@@ -3,7 +3,7 @@ import path from 'node:path'
 import { Router } from 'express'
 import type { Database } from '@axiom/core'
 import type { TelegramBot } from '@axiom/telegram'
-import { jwtMiddleware, verifyToken } from '../auth.js'
+import { jwtMiddleware, authenticateToken } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
 
 interface TelegramUserRow {
@@ -66,7 +66,7 @@ export function createTelegramUsersRouter(options: TelegramUsersRouterOptions): 
     const headerToken = req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.slice(7) : null
     const queryToken = typeof req.query.token === 'string' ? req.query.token : null
     const token = headerToken ?? queryToken
-    const payload = token ? verifyToken(token) : null
+    const payload = token ? authenticateToken(db, token) : null
     if (!payload || payload.role !== 'admin') {
       res.status(401).json({ error: 'Unauthorized' })
       return false
@@ -93,7 +93,7 @@ export function createTelegramUsersRouter(options: TelegramUsersRouterOptions): 
     const headerToken = req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.slice(7) : null
     const queryToken = typeof req.query.token === 'string' ? req.query.token : null
     const token = headerToken ?? queryToken
-    const payload = token ? verifyToken(token) : null
+    const payload = token ? authenticateToken(db, token) : null
     if (!payload) {
       res.status(401).json({ error: 'Unauthorized' })
       return

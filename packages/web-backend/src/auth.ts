@@ -1,5 +1,6 @@
 import bcrypt from 'bcrypt'
 import jwt from 'jsonwebtoken'
+import { EventEmitter } from 'node:events'
 import type { Request, Response, NextFunction } from 'express'
 import type { Database } from '@axiom/core'
 
@@ -11,10 +12,46 @@ export interface JwtPayload {
   userId: number
   username: string
   role: string
+  tokenVersion?: number
 }
 
 export interface AuthenticatedRequest extends Request {
   user?: JwtPayload
+}
+
+const sessionEvents = new EventEmitter()
+sessionEvents.setMaxListeners(0)
+
+/** Subscribe to "all logins of this user were revoked"; sockets use it to close themselves. */
+export function onUserSessionsRevoked(listener: (userId: number) => void): () => void {
+  sessionEvents.on('revoked', listener)
+  return () => sessionEvents.off('revoked', listener)
+}
+
+/** Bumps the user's token version, invalidating every issued token, and closes their sockets. */
+export function revokeUserSessions(db: Database, userId: number): number {
+  db.prepare('UPDATE users SET token_version = token_version + 1 WHERE id = ?').run(userId)
+  const row = db.prepare('SELECT token_version FROM users WHERE id = ?').get(userId) as { token_version: number } | undefined
+  sessionEvents.emit('revoked', userId)
+  return row?.token_version ?? 0
+}
+
+/** Issues a fresh access/refresh pair for the user's current role and token version. */
+export function issueTokens(db: Database, userId: number): {
+  accessToken: string
+  refreshToken: string
+  user: { id: number; username: string; role: string }
+} | null {
+  const row = db.prepare('SELECT id, username, role, token_version FROM users WHERE id = ?').get(userId) as
+    | { id: number; username: string; role: string; token_version: number }
+    | undefined
+  if (!row) return null
+  const payload = { userId: row.id, username: row.username, role: row.role, tokenVersion: row.token_version }
+  return {
+    accessToken: generateAccessToken(payload),
+    refreshToken: generateRefreshToken(payload),
+    user: { id: row.id, username: row.username, role: row.role },
+  }
 }
 
 function getJwtSecret(): string {
@@ -77,10 +114,29 @@ export function generateRefreshToken(payload: JwtPayload): string {
 export function verifyToken(token: string): JwtPayload | null {
   try {
     const decoded = jwt.verify(token, getJwtSecret()) as JwtPayload
-    return { userId: decoded.userId, username: decoded.username, role: decoded.role }
+    return {
+      userId: decoded.userId,
+      username: decoded.username,
+      role: decoded.role,
+      tokenVersion: decoded.tokenVersion ?? 0,
+    }
   } catch {
     return null
   }
+}
+
+/**
+ * Verify a token and check it against the database: the user must exist and
+ * the token version must match. The role is always the database's, never the token's.
+ */
+export function authenticateToken(db: Database, token: string): JwtPayload | null {
+  const payload = verifyToken(token)
+  if (!payload) return null
+  const row = db.prepare('SELECT id, username, role, token_version FROM users WHERE id = ?').get(payload.userId) as
+    | { id: number; username: string; role: string; token_version: number }
+    | undefined
+  if (!row || row.token_version !== (payload.tokenVersion ?? 0)) return null
+  return { userId: row.id, username: row.username, role: row.role, tokenVersion: row.token_version }
 }
 
 /**
@@ -94,7 +150,8 @@ export function jwtMiddleware(req: AuthenticatedRequest, res: Response, next: Ne
   }
 
   const token = authHeader.slice(7)
-  const payload = verifyToken(token)
+  const db = req.app?.locals?.db as Database | undefined
+  const payload = db ? authenticateToken(db, token) : null
   if (!payload) {
     res.status(401).json({ error: 'Invalid or expired token' })
     return

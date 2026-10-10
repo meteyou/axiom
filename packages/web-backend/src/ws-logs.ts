@@ -1,15 +1,15 @@
 import { WebSocketServer, WebSocket } from 'ws'
 import type { Server } from 'node:http'
-import { verifyToken } from './auth.js'
+import { authenticateToken, onUserSessionsRevoked } from './auth.js'
 import type { JwtPayload } from './auth.js'
 import { URL } from 'node:url'
-import type { ToolCallRecord } from '@axiom/core'
+import type { Database, ToolCallRecord } from '@axiom/core'
 
 /**
  * Set up WebSocket server for real-time log streaming at /ws/logs
  * Uses noServer mode to avoid conflicting with other WebSocket servers.
  */
-export function setupWebSocketLogs(server: Server): {
+export function setupWebSocketLogs(server: Server, db: Database): {
   wss: WebSocketServer
   broadcast: (record: ToolCallRecord) => void
 } {
@@ -28,7 +28,7 @@ export function setupWebSocketLogs(server: Server): {
       const url = new URL(request.url ?? '', 'http://localhost')
       const token = url.searchParams.get('token')
       if (token) {
-        user = verifyToken(token)
+        user = authenticateToken(db, token)
       }
     } catch {
       // ignore
@@ -42,6 +42,10 @@ export function setupWebSocketLogs(server: Server): {
 
     wss.handleUpgrade(request, socket, head, (ws) => {
       authenticatedClients.set(ws, user!)
+      const stopWatching = onUserSessionsRevoked((userId) => {
+        if (userId === user!.userId) ws.close(4401, 'Session revoked')
+      })
+      ws.on('close', stopWatching)
       ws.send(JSON.stringify({ type: 'connected' }))
 
       ws.on('close', () => {

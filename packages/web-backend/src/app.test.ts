@@ -83,7 +83,7 @@ beforeAll(async () => {
   const app = createApp({ db, getAgentCore: () => mockAgentCore, healthMonitorService: mockHealthMonitorService, runtimeMetrics })
   server = http.createServer(app)
   wss = setupWebSocketChat(server, db, null, runtimeMetrics)
-  const logsSetup = setupWebSocketLogs(server)
+  const logsSetup = setupWebSocketLogs(server, db)
   logsWss = logsSetup.wss
   broadcastLog = logsSetup.broadcast
   await new Promise<void>((resolve) => server.listen(0, resolve))

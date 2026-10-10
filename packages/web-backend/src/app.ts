@@ -118,6 +118,7 @@ export function createApp(options?: AppOptions): express.Express {
   const getAgentCore = options?.getAgentCore ?? (() => options?.agentCore ?? null)
 
   if (options?.db) {
+    app.locals.db = options.db
     ensureAdminUser(options.db)
     app.use('/api/uploads', createUploadsRouter())
     app.use('/api/auth', createAuthRouter(options.db))

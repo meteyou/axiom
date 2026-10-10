@@ -65,7 +65,7 @@ export async function startHttpBoundary(
     taskEventBus: runtimeComposition.taskEventBus,
   })
 
-  const { wss: _logsWss, broadcast: broadcastLog } = setupWebSocketLogs(server)
+  const { wss: _logsWss, broadcast: broadcastLog } = setupWebSocketLogs(server, runtimeComposition.db)
   void broadcastLog
 
   await new Promise<void>((resolve, reject) => {
