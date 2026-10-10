@@ -6,6 +6,8 @@
         <DialogDescription v-if="description">{{ description }}</DialogDescription>
       </DialogHeader>
 
+      <slot />
+
       <DialogFooter>
         <Button variant="outline" :disabled="loading" @click="emit('cancel')">
           {{ resolvedCancelLabel }}
