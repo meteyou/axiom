@@ -6,6 +6,7 @@ import type { AgentRuntimePiAgentAccess } from './agent-runtime.js'
 import { initDatabase } from './database.js'
 import type { AgentTool } from '@earendil-works/pi-agent-core'
 import { assembleSystemPrompt } from './memory.js'
+import { buildCodemodePromptGuideline } from './codemode-tool.js'
 import { logToolCall } from './token-logger.js'
 import { loadConfig } from './config.js'
 import { getAgentSkillsForPrompt } from './agent-skills.js'
@@ -15,6 +16,7 @@ const runtimeHarness = vi.hoisted(() => ({
   promptCalls: [] as string[],
   promptSessionIds: [] as Array<string | undefined>,
   continueCalls: 0,
+  runToolCallCalls: [] as Array<{ toolCall: unknown; options: unknown }>,
 }))
 
 vi.mock('@earendil-works/pi-agent-core', () => {
@@ -67,7 +69,19 @@ vi.mock('@earendil-works/pi-agent-core', () => {
     abort(): void {}
   }
 
-  return { Agent: MockAgent }
+  return {
+    Agent: MockAgent,
+    // The codemode tool dispatches nested calls through runToolCall; the mock
+    // records the dispatch and answers with a text result so runtime tests
+    // can verify the binding without a real provider.
+    runToolCall: vi.fn(async (toolCall: unknown, options: unknown) => {
+      runtimeHarness.runToolCallCalls.push({ toolCall, options })
+      return {
+        toolCall,
+        result: { content: [{ type: 'text', text: 'nested-tool-ok' }], details: {} },
+      }
+    }),
+  }
 })
 
 vi.mock('./memory.js', () => ({
@@ -158,6 +172,7 @@ describe('AgentRuntime boundary', () => {
     runtimeHarness.promptCalls = []
     runtimeHarness.promptSessionIds = []
     runtimeHarness.continueCalls = 0
+    runtimeHarness.runToolCallCalls = []
     vi.mocked(assembleSystemPrompt).mockClear()
     vi.mocked(logToolCall).mockClear()
   })
@@ -345,6 +360,37 @@ describe('AgentRuntime boundary', () => {
     const logged = vi.mocked(logToolCall).mock.calls.at(-1)![1]
     expect(logged.output).not.toContain(data)
     expect(JSON.parse(logged.output).content[1]).toEqual(redacted)
+  })
+
+  it('keeps structured content out of streamed and logged tool results', async () => {
+    const db = initDatabase(':memory:')
+    const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db, tools: [] })
+
+    runtimeHarness.promptBehaviors.push(async (agent) => {
+      agent.emit({ type: 'tool_execution_start', toolName: 'shell', toolCallId: 'tool-shell', args: { command: 'echo hi' } })
+      agent.emit({
+        type: 'tool_execution_end',
+        toolName: 'shell',
+        toolCallId: 'tool-shell',
+        isError: false,
+        result: {
+          content: [{ type: 'text', text: 'hi\n' }],
+          details: { exitCode: 0 },
+          structuredContent: { output: 'hi\n', exit_code: 0 },
+        },
+      })
+      agent.emit({ type: 'agent_end', messages: [] })
+    })
+
+    const results: Array<Record<string, unknown>> = []
+    for await (const chunk of runtime.streamPrompt('run', 'session-1')) {
+      if (chunk.type === 'tool_call_end') results.push(chunk.toolResult as Record<string, unknown>)
+    }
+
+    expect(results).toEqual([{ content: [{ type: 'text', text: 'hi\n' }], details: { exitCode: 0 } }])
+    const logged = vi.mocked(logToolCall).mock.calls.at(-1)![1]
+    expect(logged.output).not.toContain('structuredContent')
+    expect(JSON.parse(logged.output)).not.toHaveProperty('structuredContent')
   })
 
   it('normalizes tool result images before they enter the transcript', async () => {
@@ -717,6 +763,155 @@ describe('AgentRuntime boundary', () => {
       } finally {
         fs.rmSync(configDir, { recursive: true, force: true })
       }
+    })
+  })
+
+  describe('codemode main agent', () => {
+    const defaultLoadConfig = vi.mocked(loadConfig).getMockImplementation()!
+    const codemode = { mainAgent: false }
+
+    beforeEach(() => {
+      // Installed per test: earlier describes restore the default loadConfig
+      // mock in their afterEach, which would otherwise drop the codemode key.
+      codemode.mainAgent = false
+      vi.mocked(loadConfig).mockImplementation(((filename: string) => ({
+        ...(defaultLoadConfig(filename) as object),
+        codemode: { ...codemode },
+      })) as typeof loadConfig)
+    })
+
+    afterEach(() => {
+      codemode.mainAgent = false
+      vi.mocked(loadConfig).mockImplementation(defaultLoadConfig)
+    })
+
+    function codemodeToolOf(runtime: ReturnType<typeof createAgentRuntime>): AgentTool | undefined {
+      return (runtime as unknown as AgentRuntimePiAgentAccess).getAgent().state.tools.find(tool => tool.name === 'codemode')
+    }
+
+    function leadingSystemMessage(runtime: ReturnType<typeof createAgentRuntime>): string {
+      const message = (runtime as unknown as AgentRuntimePiAgentAccess).getAgent().state.messages[0] as { content?: string } | undefined
+      return message?.content ?? ''
+    }
+
+    it('adds the codemode tool and the prompt guideline when the setting turns on', () => {
+      const db = initDatabase(':memory:')
+      const interactiveTool = { name: 'interactive_only_tool', description: 'Only usable in chat.', execute: vi.fn() } as unknown as AgentTool
+      const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db, tools: [interactiveTool] })
+
+      runtime.refreshSystemPrompt()
+      expect(codemodeToolOf(runtime)).toBeUndefined()
+      expect(leadingSystemMessage(runtime)).toBe('runtime system prompt')
+
+      codemode.mainAgent = true
+      runtime.refreshSystemPrompt()
+      const codemodeTool = codemodeToolOf(runtime)
+      expect(codemodeTool).toBeDefined()
+      expect(runtime.getStateSnapshot().toolNames).toContain('codemode')
+      // The tool description is rendered from the main agent's own tools.
+      expect(codemodeTool!.description).toContain('interactive_only_tool')
+      expect(leadingSystemMessage(runtime)).toContain('<codemode>')
+    })
+
+    it('keeps an unchanged declaration stable across re-syncs and drops it when the setting turns off', () => {
+      const db = initDatabase(':memory:')
+      const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db, tools: [] })
+
+      codemode.mainAgent = true
+      runtime.refreshSystemPrompt()
+      const first = codemodeToolOf(runtime)
+      expect(first).toBeDefined()
+      expect(leadingSystemMessage(runtime)).toBe(`runtime system prompt\n\n${buildCodemodePromptGuideline()}`)
+
+      // Unchanged state: the same tool instance and prompt survive a re-sync.
+      runtime.refreshSystemPrompt()
+      expect(codemodeToolOf(runtime)).toBe(first)
+
+      codemode.mainAgent = false
+      runtime.refreshSystemPrompt()
+      expect(codemodeToolOf(runtime)).toBeUndefined()
+      expect(leadingSystemMessage(runtime)).toBe('runtime system prompt')
+    })
+
+    it('rebuilds the declaration when the main agent tool set changes', () => {
+      const db = initDatabase(':memory:')
+      const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db, tools: [] })
+
+      codemode.mainAgent = true
+      runtime.refreshSystemPrompt()
+      const first = codemodeToolOf(runtime)
+      expect(first).toBeDefined()
+
+      const piAgent = (runtime as unknown as AgentRuntimePiAgentAccess).getAgent()
+      piAgent.state.tools = [
+        ...piAgent.state.tools,
+        { name: 'extra_tool', description: 'An extra tool.', execute: vi.fn() } as unknown as AgentTool,
+      ]
+      runtime.refreshSystemPrompt()
+      expect(codemodeToolOf(runtime)).not.toBe(first)
+      expect(codemodeToolOf(runtime)!.description).toContain('extra_tool')
+    })
+
+    it('runs nested calls through the main agent\'s tools, including interactive-only ones', async () => {
+      const db = initDatabase(':memory:')
+      const interactiveTool = { name: 'interactive_only_tool', description: 'Only usable in chat.', execute: vi.fn() } as unknown as AgentTool
+      const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db, tools: [interactiveTool] })
+
+      codemode.mainAgent = true
+      runtime.refreshSystemPrompt()
+      const codemodeTool = codemodeToolOf(runtime)!
+      const piAgent = (runtime as unknown as AgentRuntimePiAgentAccess).getAgent()
+      piAgent.sessionId = 'session-1'
+
+      const result = await (codemodeTool as { execute: (id: string, params: { code: string }, signal?: AbortSignal) => Promise<{ content: { type: string; text: string }[] }> }).execute(
+        'code-1',
+        { code: 'return await tools.interactive_only_tool({ x: 1 })' },
+        new AbortController().signal,
+      )
+
+      expect(runtimeHarness.runToolCallCalls).toHaveLength(1)
+      const { toolCall, options } = runtimeHarness.runToolCallCalls[0]!
+      expect((toolCall as { name: string }).name).toBe('interactive_only_tool')
+      expect((toolCall as { arguments: { x: number } }).arguments).toEqual({ x: 1 })
+      // The dispatch sees the main agent\'s live tool set (minus codemode).
+      const dispatchedTools = (options as { tools: { name: string }[] }).tools.map(t => t.name)
+      expect(dispatchedTools).toContain('interactive_only_tool')
+      expect(dispatchedTools).not.toContain('codemode')
+      expect(result.content.map(block => block.text).join('')).toContain('nested-tool-ok')
+    })
+
+    it('maps codemode partial updates to tool_call_update chunks with the parent id and snapshot', async () => {
+      const db = initDatabase(':memory:')
+      const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db, tools: [] })
+      const piAgent = (runtime as unknown as AgentRuntimePiAgentAccess).getAgent() as unknown as { emit: (event: unknown) => void }
+
+      runtimeHarness.promptBehaviors.push(async () => {
+        piAgent.emit({ type: 'tool_execution_start', toolName: 'codemode', toolCallId: 'code-1', args: { code: 'x' } })
+        piAgent.emit({
+          type: 'tool_execution_update',
+          toolName: 'codemode',
+          toolCallId: 'code-1',
+          args: { code: 'x' },
+          partialResult: { content: [], details: { calls: [{ id: 'code-1/read_file/1', name: 'read_file', status: 'running' }] } },
+        })
+        // Updates of other tools never produce a chat chunk.
+        piAgent.emit({ type: 'tool_execution_update', toolName: 'shell', toolCallId: 'sh-1', args: {}, partialResult: { content: [] } })
+        piAgent.emit({ type: 'agent_end', messages: [] })
+      })
+
+      const chunks = [] as Array<{ type: string; toolCallId?: string; nestedCalls?: unknown[] }>
+      for await (const chunk of runtime.streamPrompt('run it', 'session-1')) {
+        chunks.push(chunk)
+      }
+
+      const updates = chunks.filter(c => c.type === 'tool_call_update')
+      expect(updates).toHaveLength(1)
+      expect(updates[0]).toMatchObject({
+        toolName: 'codemode',
+        toolCallId: 'code-1',
+        nestedCalls: [{ id: 'code-1/read_file/1', name: 'read_file', status: 'running' }],
+      })
+      expect(chunks.map(c => c.type)).toEqual(['tool_call_start', 'tool_call_update', 'done'])
     })
   })
 })

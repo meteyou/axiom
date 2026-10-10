@@ -1,6 +1,6 @@
 # Agent
 
-Language preferences, active provider + model, reasoning level, and the user-editable rules the agent follows on every turn.
+Language preferences, active provider + model, reasoning level, the experimental codemode switch, and the user-editable rules the agent follows on every turn.
 
 **URL:** `/settings?tab=agent`
 
@@ -74,6 +74,16 @@ This only applies to the **interactive chat agent**. Background jobs (tasks, hea
 
 ```json
 { "thinkingLevel": "minimal" }
+```
+
+## Codemode (experimental)
+
+Adds the [codemode](../concepts/codemode) tool to the interactive chat agent on every channel (web UI and Telegram) — a JavaScript script that batches, chains and filters tool calls, so only the script's output reaches the model. **Off by default**, and the section is marked *Experimental* in the UI: the feature may change between releases, and script quality depends on the model. Applies from the next turn — no restart needed.
+
+Background task agents have their own switch in [Tasks → Codemode](./tasks#codemode-experimental).
+
+```json
+{ "codemode": { "mainAgent": true } }
 ```
 
 ## Upload retention

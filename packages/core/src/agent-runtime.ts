@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import nodePath from 'node:path'
-import type { Agent as PiAgent, AgentEvent, AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core'
+import type { Agent as PiAgent, AgentEvent, AgentOptions, AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core'
 import type { Api, AssistantMessage, Message, ImageContent, Model } from '@earendil-works/pi-ai'
 import { Type, getCurrentSystemMessage } from '@earendil-works/pi-ai'
 import type { Database } from './database.js'
@@ -21,7 +21,7 @@ import { loadSkills } from './skill-config.js'
 import { createBuiltinWebTools } from './web-tools.js'
 import type { BuiltinToolsConfig, BuiltinToolsConfigSource } from './web-tools.js'
 import { createReadFileTool } from './read-file-tool.js'
-import { redactToolResultImages } from './llm-image.js'
+import { createToolResultImageHook, omitToolResultStructuredContent, redactToolResultImages } from './llm-image.js'
 import { createTranscribeAudioTool } from './stt-tool.js'
 import { loadSttSettings } from './stt.js'
 import { createAgentSkillTools, getAgentSkillsForPrompt, getAgentSkillsCount, getAgentSkillsDir, currentPlatform } from './agent-skills.js'
@@ -31,6 +31,14 @@ import { createEmailTools } from './email-tools.js'
 import { createProviderQuotaTool } from './quota-tool.js'
 import { createImageGenerationTools, GENERATE_IMAGE_TOOL_NAME } from './image-tool.js'
 import { loadActiveImageGeneration, resolveDefaultImageModel } from './image-generation.js'
+import {
+  CODEMODE_TOOL_NAME,
+  buildCodemodePromptGuideline,
+  createCodemodeTool,
+  createNestedCallLogObserver,
+  readCodemodeMainAgentEnabled,
+} from './codemode-tool.js'
+import type { CodemodeNestedCallSnapshot } from './codemode-tool.js'
 import type { QuotaServiceLike } from './quota-tool.js'
 import type { AgentRuntimeStateSnapshot, ResponseChunk } from './agent-runtime-types.js'
 import type { ContextCompactionInfo } from './contracts/compaction.js'
@@ -214,14 +222,17 @@ function runShellCommand(command: string, timeout: number, signal?: AbortSignal)
       finish({
         content: [{ type: 'text', text: err.message }],
         details: { exitCode: 1 },
+        structuredContent: { output: err.message, exit_code: 1 },
       })
     })
 
     child.on('close', (code) => {
       if (code === 0 && killReason === null) {
+        const text = stdout || '(no output)'
         finish({
-          content: [{ type: 'text', text: stdout || '(no output)' }],
+          content: [{ type: 'text', text }],
           details: { exitCode: 0 },
+          structuredContent: { output: text, exit_code: 0 },
         })
         return
       }
@@ -229,9 +240,12 @@ function runShellCommand(command: string, timeout: number, signal?: AbortSignal)
       if (killReason === 'abort') parts.push('Command aborted')
       else if (killReason === 'timeout') parts.push(`Command timed out after ${timeout}ms`)
       else if (killReason === 'maxBuffer') parts.push(`Command output exceeded ${SHELL_MAX_OUTPUT_BYTES} bytes`)
+      const text = parts.join('\n') || 'Command failed'
+      const exitCode = typeof code === 'number' ? code : 1
       finish({
-        content: [{ type: 'text', text: parts.join('\n') || 'Command failed' }],
-        details: { exitCode: typeof code === 'number' ? code : 1 },
+        content: [{ type: 'text', text }],
+        details: { exitCode },
+        structuredContent: { output: text, exit_code: exitCode },
       })
     })
   })
@@ -248,6 +262,10 @@ export function createYoloTools(): AgentTool[] {
     parameters: Type.Object({
       command: Type.String({ description: 'The shell command to execute' }),
       timeout: Type.Optional(Type.Number({ description: 'Timeout in milliseconds (default: 60000)' })),
+    }),
+    outputSchema: Type.Object({
+      output: Type.String({ description: 'The model-facing output: stdout, plus stderr and a status note on failure' }),
+      exit_code: Type.Number({ description: 'Process exit code; 0 on success, non-zero on failure (kill-by-timeout/abort reports 1)' }),
     }),
     execute: async (_toolCallId, params, signal) => {
       const { command, timeout = 60000 } = params as { command: string; timeout?: number }
@@ -466,6 +484,8 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
   private toolCallArgs: Map<string, unknown> = new Map() // toolCallId -> args
   private memoryDir?: string
   private baseInstructions?: string
+  /** After-tool image normalization hook, shared with the codemode tool's nested calls. */
+  private imageHook: NonNullable<AgentOptions['afterToolCall']>
   private providerConfig?: ProviderConfig
   private providerManager?: ProviderManager
   private getCurrentToolUserId: () => number | undefined
@@ -493,6 +513,10 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
     const effectiveThinkingLevel = normalizeThinkingLevel(options.thinkingLevel) ?? storedThinkingLevel ?? 'off'
 
     const systemPrompt = options.systemPrompt ?? this.buildSystemPrompt()
+
+    // Shared by direct tool calls and the codemode tool's nested calls so both
+    // normalize images the same way.
+    this.imageHook = createToolResultImageHook(() => this.agent.state.model)
 
     const tools: AgentTool[] = [
       ...(options.tools ?? []),
@@ -526,6 +550,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
       provider: this.providerConfig,
       getApiKey: () => this.resolveApiKey(),
       compactor: this.compactor,
+      afterToolCall: this.imageHook,
     })
   }
 
@@ -609,7 +634,11 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
 
   refreshSystemPrompt(channel?: string, currentUser?: { username: string }): void {
     this.syncImageGenerationTool()
-    const systemPrompt = this.buildSystemPrompt(channel, currentUser)
+    const codemodeEnabled = this.syncCodemodeTool()
+    let systemPrompt = this.buildSystemPrompt(channel, currentUser)
+    if (codemodeEnabled) {
+      systemPrompt = `${systemPrompt}\n\n${buildCodemodePromptGuideline()}`
+    }
     const messages = this.agent.state.messages
     const leading = messages[0]
     if (leading?.role === 'system') {
@@ -633,6 +662,43 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
     if (!registered && !current) return
     if (registered && current && hasSameDeclaration(registered, current)) return
     this.agent.state.tools = [...tools.filter(tool => tool.name !== GENERATE_IMAGE_TOOL_NAME), ...(current ? [current] : [])]
+  }
+
+  /**
+   * Codemode can be switched for the main agent while a chat runtime lives, so
+   * `codemode` is added or dropped before each turn; pi-agent-core declares
+   * the change to the model. An unchanged declaration is kept so the tool
+   * list stays stable. Returns whether codemode is active for the prompt.
+   */
+  private syncCodemodeTool(): boolean {
+    const enabled = readCodemodeMainAgentEnabled()
+    const tools = this.agent.state.tools
+    const registered = tools.find(tool => tool.name === CODEMODE_TOOL_NAME)
+    if (!registered && !enabled) return false
+    if (registered && enabled && hasSameDeclaration(registered, this.buildCodemodeTool())) return true
+    this.agent.state.tools = [
+      ...tools.filter(tool => tool.name !== CODEMODE_TOOL_NAME),
+      ...(enabled ? [this.buildCodemodeTool()] : []),
+    ]
+    return enabled
+  }
+
+  /**
+   * The codemode tool is bound to the main agent it is declared for: it reads
+   * the agent's live tools, transcript, model and after-tool hook through
+   * closures, so nested calls reach every main-agent tool (including the
+   * interactive-only ones) and are logged like direct calls.
+   */
+  private buildCodemodeTool(): AgentTool {
+    return createCodemodeTool({
+      owner: {
+        getTools: () => this.agent.state.tools,
+        getMessages: () => this.agent.state.messages,
+        getModel: () => this.agent.state.model,
+        afterToolCall: this.imageHook,
+      },
+      observer: createNestedCallLogObserver(this.db, () => this.agent.sessionId),
+    })
   }
 
   getCurrentTimeContext(): string {
@@ -1091,13 +1157,31 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
         break
       }
 
+      case 'tool_execution_update': {
+        // The codemode tool streams a snapshot of all nested calls after every
+        // nested start/end; forward it so the chat can show live progress and
+        // the stall watchdog counts it as activity while a script runs.
+        if (event.toolName === CODEMODE_TOOL_NAME) {
+          const calls = (event.partialResult?.details as { calls?: unknown } | undefined)?.calls
+          if (Array.isArray(calls)) {
+            chunks.push({
+              type: 'tool_call_update',
+              toolName: event.toolName,
+              toolCallId: event.toolCallId,
+              nestedCalls: calls as CodemodeNestedCallSnapshot[],
+            })
+          }
+        }
+        break
+      }
+
       case 'tool_execution_end': {
         const startTime = this.toolCallTimers.get(event.toolCallId) ?? Date.now()
         const durationMs = Date.now() - startTime
         const args = this.toolCallArgs.get(event.toolCallId) ?? {}
         this.toolCallTimers.delete(event.toolCallId)
         this.toolCallArgs.delete(event.toolCallId)
-        const toolResult = redactToolResultImages(event.result)
+        const toolResult = omitToolResultStructuredContent(redactToolResultImages(event.result))
         const isError = isFailedToolResult(event.isError, toolResult)
 
         logToolCall(this.db, {
@@ -1107,6 +1191,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
           output: JSON.stringify(toolResult ?? {}),
           durationMs,
           status: isError ? 'error' : 'success',
+          toolCallId: event.toolCallId,
         })
 
         chunks.push({

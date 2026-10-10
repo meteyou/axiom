@@ -2,6 +2,9 @@ import type { SettingsThinkingLevel } from '@axiom/core/contracts'
 
 export type CronjobActionType = 'task' | 'injection'
 
+/** `null` = inherit the global background-task codemode setting. */
+export type CronjobCodemode = 'on' | 'off'
+
 export interface Cronjob {
   id: string
   name: string
@@ -17,6 +20,7 @@ export interface Cronjob {
   attachedSkills: string[] | null
   /** `null` = background default at run time. */
   thinkingLevel: SettingsThinkingLevel | null
+  codemode: CronjobCodemode | null
   lastRunAt: string | null
   lastRunTaskId: string | null
   lastRunStatus: string | null
@@ -64,6 +68,7 @@ export interface CronjobFormData {
   systemPromptOverride?: string | null
   attachedSkills?: string[] | null
   thinkingLevel?: SettingsThinkingLevel | null
+  codemode?: CronjobCodemode | null
 }
 
 export function useCronjobs() {

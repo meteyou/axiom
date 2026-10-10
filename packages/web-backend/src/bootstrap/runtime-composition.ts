@@ -1252,6 +1252,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
             toolArgs: chunk.toolArgs,
             toolResult: chunk.toolResult,
             toolIsError: chunk.toolIsError,
+            nestedCalls: chunk.nestedCalls,
             error: chunk.error,
             telegramDelivered: chunk.type === 'done' ? streamState.telegramDelivered : undefined,
             isTaskInjection: true,

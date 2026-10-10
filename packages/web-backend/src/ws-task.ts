@@ -119,8 +119,10 @@ export function setupWebSocketTask(options: WebSocketTaskOptions): WebSocketServ
 
   function sendHistoricalEvents(ws: WebSocket, taskId: string, sessionId: string): void {
     try {
-      // Get tool calls
+      // Get tool calls (nested codemode calls are excluded — they are part of
+      // their parent codemode call's result details, shown by its card)
       const toolCalls = getToolCalls(db, { sessionId })
+        .filter(tc => tc.parentToolCallId == null)
         .reverse()
         .map(tc => ({
           type: 'tool_call_end' as const,
@@ -190,6 +192,7 @@ function taskEventToWsMessage(event: TaskEvent): TaskWsMessage {
     toolResult: event.toolResult,
     toolIsError: event.toolIsError,
     durationMs: event.durationMs,
+    nestedCalls: event.nestedCalls,
     text: event.text,
     status: event.status,
     statusMessage: event.statusMessage,

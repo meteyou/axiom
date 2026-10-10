@@ -12,8 +12,8 @@
     "typecheck": "nuxt typecheck"
   },
   "dependencies": {
-    "@nuxtjs/i18n": "^10.2.4",
     "@axiom/core": "*",
+    "@nuxtjs/i18n": "^10.2.4",
     "@tailwindcss/vite": "^4.2.2",
     "@vueuse/core": "^14.2.1",
     "class-variance-authority": "^0.7.1",
@@ -22,6 +22,7 @@
     "marked": "^17.0.5",
     "nuxt": "^4.4.2",
     "reka-ui": "^2.9.3",
+    "shiki": "^2.5.0",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.2.2",
     "turndown": "^7.2.2",

@@ -331,6 +331,21 @@ export function mergeTasks(
   return { error: null }
 }
 
+export function mergeCodemode(
+  body: Record<string, unknown>,
+  settingsRaw: Record<string, unknown>,
+): MergeGroupResult {
+  const codemode = body.codemode as Record<string, unknown> | undefined
+  if (!codemode) return { error: null, changed: false }
+
+  const existing = (settingsRaw.codemode ?? {}) as Record<string, unknown>
+  if (codemode.mainAgent !== undefined) existing.mainAgent = !!codemode.mainAgent
+  if (codemode.tasks !== undefined) existing.tasks = !!codemode.tasks
+
+  settingsRaw.codemode = existing
+  return { error: null, changed: true }
+}
+
 export function mergeImageGeneration(
   body: Record<string, unknown>,
   settingsRaw: Record<string, unknown>,

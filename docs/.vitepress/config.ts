@@ -18,6 +18,7 @@ const guideSidebar: DefaultTheme.SidebarItem[] = [
       { text: 'Overview', link: '/concepts/' },
       { text: 'Agent Instructions', link: '/concepts/instructions' },
       { text: 'Built-in Tools', link: '/concepts/tools' },
+      { text: 'Codemode', link: '/concepts/codemode' },
       { text: 'Image Generation', link: '/concepts/image-generation' },
       { text: 'Context Compaction', link: '/concepts/compaction' },
       { text: 'Memory System', link: '/concepts/memory' },

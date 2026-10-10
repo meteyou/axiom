@@ -187,6 +187,19 @@ export interface TasksSettingsContract {
   backgroundThinkingLevel: SettingsThinkingLevel
 }
 
+/**
+ * Experimental `codemode` switches. Both default `false` so existing
+ * installations keep their current behavior after an update. Enabling one
+ * adds the `codemode` tool to the respective agent so it can batch, chain and
+ * filter tool calls in a single sandboxed script.
+ */
+export interface CodemodeSettingsContract {
+  /** Add `codemode` to the interactive chat agent (applies from the next turn). */
+  mainAgent: boolean
+  /** Add `codemode` to background task agents (applies to tasks started after the change). */
+  tasks: boolean
+}
+
 export const IMAGE_GENERATION_MAX_VARIANTS_BOUNDS = { min: 1, max: 10 } as const
 
 export interface ImageGenerationSettingsContract {
@@ -292,6 +305,7 @@ export interface SettingsContract {
   factExtraction: FactExtractionSettingsContract
   agentHeartbeat: AgentHeartbeatSettingsContract
   tasks: TasksSettingsContract
+  codemode: CodemodeSettingsContract
   imageGeneration: ImageGenerationSettingsContract
   tts: TtsSettingsContract
   stt: SttSettingsContract
@@ -315,6 +329,7 @@ export interface SettingsStorageContract {
   factExtraction?: Partial<FactExtractionSettingsContract>
   agentHeartbeat?: Partial<AgentHeartbeatSettingsContract>
   tasks?: Partial<TasksSettingsContract>
+  codemode?: Partial<CodemodeSettingsContract>
   imageGeneration?: Partial<ImageGenerationSettingsContract>
   tts?: Partial<TtsSettingsContract>
   stt?: Partial<SttSettingsContract>
@@ -412,6 +427,10 @@ export const DEFAULT_SETTINGS_CONTRACT: SettingsContract = {
       intervalMinutes: 10,
     },
     backgroundThinkingLevel: 'off',
+  },
+  codemode: {
+    mainAgent: false,
+    tasks: false,
   },
   imageGeneration: {
     enabled: true,
@@ -632,6 +651,10 @@ export function normalizeSettingsContract(input: DeepPartial<SettingsContract> |
         source.tasks?.backgroundThinkingLevel,
         DEFAULT_SETTINGS_CONTRACT.tasks.backgroundThinkingLevel,
       ),
+    },
+    codemode: {
+      mainAgent: source.codemode?.mainAgent === true,
+      tasks: source.codemode?.tasks === true,
     },
     imageGeneration: normalizeImageGenerationSettings(source.imageGeneration),
     tts: {

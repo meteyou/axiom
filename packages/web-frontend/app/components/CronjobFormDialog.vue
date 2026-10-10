@@ -102,6 +102,22 @@
             <p class="text-xs text-muted-foreground">{{ $t('cronjobs.form.thinkingLevelHelp') }}</p>
           </div>
 
+          <!-- Codemode (only for task type) -->
+          <div v-if="form.actionType !== 'injection'" class="space-y-2">
+            <Label for="cronjob-codemode">{{ $t('cronjobs.form.codemode') }}</Label>
+            <Select v-model="form.codemode">
+              <SelectTrigger id="cronjob-codemode">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="inherit">{{ $t('cronjobs.form.codemodeInherit') }}</SelectItem>
+                <SelectItem value="on">{{ $t('cronjobs.form.codemodeOn') }}</SelectItem>
+                <SelectItem value="off">{{ $t('cronjobs.form.codemodeOff') }}</SelectItem>
+              </SelectContent>
+            </Select>
+            <p class="text-xs text-muted-foreground">{{ $t('cronjobs.form.codemodeHelp') }}</p>
+          </div>
+
           <!-- Advanced Section (Collapsible) — only for task type -->
           <div v-if="form.actionType !== 'injection'" class="border border-border rounded-md">
             <button
@@ -318,6 +334,7 @@ const emit = defineEmits<{
     systemPromptOverride?: string | null
     attachedSkills?: string[] | null
     thinkingLevel?: SettingsThinkingLevel | null
+    codemode?: 'on' | 'off' | null
   }]
 }>()
 
@@ -378,6 +395,7 @@ const form = reactive({
   actionType: 'task' as 'task' | 'injection',
   provider: '',
   thinkingLevel: '' as SettingsThinkingLevel | '',
+  codemode: 'inherit' as 'inherit' | 'on' | 'off',
   systemPromptOverride: '',
 })
 
@@ -445,6 +463,7 @@ function applyCronjob(cronjob: Cronjob) {
   form.actionType = cronjob.actionType ?? 'task'
   form.provider = normalizeCronjobProviderValue(cronjob.provider, providers.value)
   form.thinkingLevel = cronjob.thinkingLevel ?? ''
+  form.codemode = cronjob.codemode ?? 'inherit'
   form.systemPromptOverride = cronjob.systemPromptOverride ?? ''
   disabledTools.value = parseStringArray(cronjob.toolsOverride)
   disabledSkills.value = parseStringArray(cronjob.skillsOverride)
@@ -459,6 +478,7 @@ function resetForm() {
   form.actionType = 'task'
   form.provider = ''
   form.thinkingLevel = ''
+  form.codemode = 'inherit'
   form.systemPromptOverride = ''
   disabledTools.value = []
   disabledSkills.value = []
@@ -519,6 +539,7 @@ function taskOverrides() {
   return {
     provider: form.provider || undefined,
     thinkingLevel: form.thinkingLevel || null,
+    codemode: form.codemode === 'inherit' ? null : form.codemode,
     toolsOverride: nonEmptyJson(disabledTools.value),
     skillsOverride: nonEmptyJson(disabledSkills.value),
     systemPromptOverride: form.systemPromptOverride.trim() || null,
@@ -529,6 +550,7 @@ function taskOverrides() {
 const INJECTION_OVERRIDES = {
   provider: undefined,
   thinkingLevel: null,
+  codemode: null,
   toolsOverride: null,
   skillsOverride: null,
   systemPromptOverride: null,

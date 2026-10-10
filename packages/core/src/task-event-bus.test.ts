@@ -63,6 +63,83 @@ describe('TaskEventBus', () => {
     expect(backlog[1].type).toBe('tool_call_end')
   })
 
+  it('keeps only the latest codemode_progress snapshot per toolCallId in the backlog', () => {
+    const bus = new TaskEventBus()
+
+    bus.emitTaskEvent({
+      type: 'codemode_progress',
+      taskId: 'task-1',
+      timestamp: '2024-01-01T00:00:00Z',
+      toolCallId: 'parent-1',
+      nestedCalls: [{ id: 'parent-1/read_file/1', name: 'read_file', status: 'running' }],
+    })
+    bus.emitTaskEvent({
+      type: 'tool_call_start',
+      taskId: 'task-1',
+      timestamp: '2024-01-01T00:00:01Z',
+      toolName: 'bash',
+    })
+    bus.emitTaskEvent({
+      type: 'codemode_progress',
+      taskId: 'task-1',
+      timestamp: '2024-01-01T00:00:02Z',
+      toolCallId: 'parent-1',
+      nestedCalls: [
+        { id: 'parent-1/read_file/1', name: 'read_file', status: 'ok', durationMs: 12 },
+        { id: 'parent-1/read_file/2', name: 'read_file', status: 'running' },
+      ],
+    })
+    bus.emitTaskEvent({
+      type: 'codemode_progress',
+      taskId: 'task-1',
+      timestamp: '2024-01-01T00:00:03Z',
+      toolCallId: 'parent-2',
+      nestedCalls: [{ id: 'parent-2/bash/1', name: 'bash', status: 'running' }],
+    })
+
+    const backlog = bus.getBacklog('task-1')
+    // One latest snapshot per toolCallId, in original position, plus the
+    // regular event — not one entry per emitted snapshot.
+    expect(backlog).toHaveLength(3)
+    expect(backlog[0]).toMatchObject({
+      type: 'codemode_progress',
+      toolCallId: 'parent-1',
+      nestedCalls: [
+        { id: 'parent-1/read_file/1', name: 'read_file', status: 'ok', durationMs: 12 },
+        { id: 'parent-1/read_file/2', name: 'read_file', status: 'running' },
+      ],
+    })
+    expect(backlog[1]).toMatchObject({ type: 'tool_call_start', toolName: 'bash' })
+    expect(backlog[2]).toMatchObject({
+      type: 'codemode_progress',
+      toolCallId: 'parent-2',
+      nestedCalls: [{ id: 'parent-2/bash/1', name: 'bash', status: 'running' }],
+    })
+  })
+
+  it('delivers every codemode_progress event to live subscribers', () => {
+    const bus = new TaskEventBus()
+    const handler = vi.fn()
+    bus.subscribeToTask('task-1', handler)
+
+    bus.emitTaskEvent({
+      type: 'codemode_progress',
+      taskId: 'task-1',
+      timestamp: '2024-01-01T00:00:00Z',
+      toolCallId: 'parent-1',
+      nestedCalls: [{ id: 'parent-1/read_file/1', name: 'read_file', status: 'running' }],
+    })
+    bus.emitTaskEvent({
+      type: 'codemode_progress',
+      taskId: 'task-1',
+      timestamp: '2024-01-01T00:00:01Z',
+      toolCallId: 'parent-1',
+      nestedCalls: [{ id: 'parent-1/read_file/1', name: 'read_file', status: 'ok', durationMs: 12 }],
+    })
+
+    expect(handler).toHaveBeenCalledTimes(2)
+  })
+
   it('returns empty backlog for unknown task', () => {
     const bus = new TaskEventBus()
     expect(bus.getBacklog('nonexistent')).toEqual([])

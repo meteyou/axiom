@@ -433,6 +433,8 @@
     "sessionId": "Session",
     "duration": "Duration",
     "status": "Status",
+    "toolCallId": "Call ID",
+    "parentToolCallId": "Parent call ID",
     "prev": "Previous",
     "next": "Next",
     "pageInfo": "Page {page} of {total}",
@@ -444,7 +446,9 @@
     "preset_yesterday": "Yesterday",
     "preset_last7": "Last 7 days",
     "preset_last30": "Last 30 days",
-    "unchangedLines": "{count} unchanged lines"
+    "unchangedLines": "{count} unchanged lines",
+    "viaCodemode": "via codemode",
+    "viaCodemodeTitle": "Nested call of the codemode call {id}"
   },
   "memory": {
     "kicker": "Persistent context",
@@ -537,6 +541,13 @@
     "thinkingLevelHint": "How much the chat agent should reason before responding. Higher levels are slower and more expensive. Ignored by models that don't support reasoning.",
     "backgroundThinkingLevel": "Background thinking level",
     "backgroundThinkingLevelHint": "Reasoning level for background task agents, loop detection, fact extraction, memory consolidation, and session summaries.",
+    "experimental": "Experimental",
+    "codemodeSection": "Codemode",
+    "codemodeSectionHint": "Let the agent run a JavaScript script that calls several of its tools at once, so only the script's output reaches the model.",
+    "codemodeTasksEnabled": "Codemode for background tasks",
+    "codemodeMainAgentEnabled": "Codemode for the main agent",
+    "codemodeMainAgentEnabledHint": "The chat agent gets a codemode tool for batching, chaining and filtering tool calls. Applies from the next turn, on every channel; no restart needed.",
+    "codemodeTasksEnabledHint": "Task agents (user, agent-created, cronjob, heartbeat) get a codemode tool for batching, chaining and filtering tool calls. Applies to tasks started after the change; memory consolidation never uses it.",
     "thinkingLevelOptions": {
       "off": "Off (fastest, cheapest)",
       "minimal": "Minimal",
@@ -1358,7 +1369,12 @@
       "systemPromptPlaceholder": "You are a background task agent. Your task: ...\n\nLeave empty to use the default system prompt.",
       "thinkingLevel": "Thinking level",
       "thinkingLevelDefault": "Default (background thinking level)",
-      "thinkingLevelHelp": "Reasoning effort of the task agent on each run. Only levels the selected model supports are offered."
+      "thinkingLevelHelp": "Reasoning effort of the task agent on each run. Only levels the selected model supports are offered.",
+      "codemode": "Scripted tool calls (codemode)",
+      "codemodeInherit": "Inherit (global task setting)",
+      "codemodeOn": "On",
+      "codemodeOff": "Off",
+      "codemodeHelp": "Whether the task agent can batch and chain tool calls in a JavaScript script. Inherit follows the global background-task codemode setting. Tool overrides still apply inside scripts."
     },
     "badges": {
       "customTools": "custom tools",
@@ -1397,5 +1413,16 @@
     "fieldMaxDuration": "Max duration (minutes)",
     "fieldThinkingLevel": "Thinking level",
     "fieldThinkingLevelDefault": "Default (background thinking level)"
+  },
+  "codemode": {
+    "title": "Codemode",
+    "script": "Script",
+    "toolCalls": "Tool calls",
+    "noToolCalls": "No tool calls",
+    "output": "Output",
+    "error": "Error",
+    "cancelled": "Cancelled",
+    "running": "Running",
+    "callsSummary": "1 call · {names} | {count} calls · {names}"
   }
 }

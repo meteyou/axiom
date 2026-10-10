@@ -321,6 +321,28 @@ export type {
 export { listContextCompactions } from './compaction-store.js'
 export type { ContextCompactionRecord } from './compaction-store.js'
 export {
+  CODEMODE_TOOL_NAME,
+  CODEMODE_MEMORY_LIMIT_BYTES,
+  CODEMODE_DEFAULT_MAX_OUTPUT_TOKENS,
+  CODEMODE_DEFAULT_TIMEOUT_MS,
+  CODEMODE_MAX_TIMEOUT_MS,
+  CODEMODE_SPILL_DIR,
+  createCodemodeTool,
+  createNestedCallLogObserver,
+  buildCodemodeDescription,
+  buildCodemodePromptGuideline,
+  pruneCodemodeSpillFolder,
+} from './codemode-tool.js'
+export type {
+  CodemodeToolOptions,
+  CodemodeToolOwner,
+  CodemodeNestedCall,
+  CodemodeNestedCallStart,
+  CodemodeNestedCallEnd,
+  CodemodeNestedCallObserver,
+  CodemodeNestedCallSnapshot,
+} from './codemode-tool.js'
+export {
   TURN_ERROR_KIND,
   buildTurnErrorMetadata,
   parseTurnErrorMetadata,
@@ -565,7 +587,7 @@ export type {
 } from './email-approval.js'
 export type { EmailApprovalNotifier } from './email-approval-notifier.js'
 export { ScheduledTaskStore, initScheduledTasksTable } from './scheduled-task-store.js'
-export type { ScheduledTask, ScheduledTaskActionType, CreateScheduledTaskInput, UpdateScheduledTaskInput } from './scheduled-task-store.js'
+export type { ScheduledTask, ScheduledTaskActionType, ScheduledTaskCodemode, CreateScheduledTaskInput, UpdateScheduledTaskInput } from './scheduled-task-store.js'
 export { TaskScheduler } from './task-scheduler.js'
 export type { TaskSchedulerOptions } from './task-scheduler.js'
 export { createCronjobTool, editCronjobTool, removeCronjobTool, listCronjobsTool, getCronjobTool, createReminderTool } from './cronjob-tools.js'

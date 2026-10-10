@@ -1,3 +1,4 @@
+import type { CodemodeNestedCallSnapshot } from './codemode-tool.js'
 import type { ContextCompactionInfo } from './contracts/compaction.js'
 
 export const STALL_OUTCOMES = ['recovered', 'aborted'] as const
@@ -78,7 +79,7 @@ export interface TurnErrorInfo {
 }
 
 export interface ResponseChunk {
-  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'stall_warning' | 'stall_resolved' | 'retry_scheduled' | 'compaction'
+  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_update' | 'tool_call_end' | 'error' | 'done' | 'stall_warning' | 'stall_resolved' | 'retry_scheduled' | 'compaction'
   text?: string
   /** Streamed thinking/reasoning delta (for `type: 'thinking'`) */
   thinking?: string
@@ -87,6 +88,8 @@ export interface ResponseChunk {
   toolArgs?: unknown
   toolResult?: unknown
   toolIsError?: boolean
+  /** Nested-call snapshot streamed while a codemode script runs (for `type: 'tool_call_update'`). */
+  nestedCalls?: CodemodeNestedCallSnapshot[]
   error?: string
   /** Session ID associated with this chunk (used by task-injection streaming). */
   sessionId?: string

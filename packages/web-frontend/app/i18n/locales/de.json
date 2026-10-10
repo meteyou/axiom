@@ -433,6 +433,8 @@
     "sessionId": "Sitzung",
     "duration": "Dauer",
     "status": "Status",
+    "toolCallId": "Aufruf-ID",
+    "parentToolCallId": "ID des übergeordneten Aufrufs",
     "prev": "Zurück",
     "next": "Weiter",
     "pageInfo": "Seite {page} von {total}",
@@ -444,7 +446,9 @@
     "preset_yesterday": "Gestern",
     "preset_last7": "Letzte 7 Tage",
     "preset_last30": "Letzte 30 Tage",
-    "unchangedLines": "{count} unveränderte Zeilen"
+    "unchangedLines": "{count} unveränderte Zeilen",
+    "viaCodemode": "via Codemode",
+    "viaCodemodeTitle": "Verschachtelter Aufruf des Codemode-Aufrufs {id}"
   },
   "memory": {
     "kicker": "Persistenter Kontext",
@@ -537,6 +541,13 @@
     "thinkingLevelHint": "Wie stark der Chat-Agent nachdenken soll, bevor er antwortet. Höhere Stufen sind langsamer und teurer. Modelle ohne Reasoning-Support ignorieren die Einstellung.",
     "backgroundThinkingLevel": "Denk-Level (Hintergrund)",
     "backgroundThinkingLevelHint": "Denk-Level für Hintergrund-Aufgaben, Loop-Detection, Faktextraktion, Gedächtnis-Konsolidierung und Session-Zusammenfassungen.",
+    "experimental": "Experimentell",
+    "codemodeSection": "Codemode",
+    "codemodeSectionHint": "Erlaubt dem Agenten, ein JavaScript-Skript auszuführen, das mehrere seiner Tools auf einmal aufruft – so erreicht nur die Ausgabe des Skripts das Modell.",
+    "codemodeTasksEnabled": "Codemode für Hintergrund-Aufgaben",
+    "codemodeMainAgentEnabled": "Codemode für den Haupt-Agenten",
+    "codemodeMainAgentEnabledHint": "Der Chat-Agent erhält ein Codemode-Tool zum Bündeln, Verketten und Filtern von Tool-Aufrufen. Gilt ab dem nächsten Gesprächsturn auf allen Kanälen; kein Neustart nötig.",
+    "codemodeTasksEnabledHint": "Aufgaben-Agenten (benutzer-, agenten-, cronjob- und heartbeat-gestartet) erhalten ein Codemode-Tool zum Bündeln, Verketten und Filtern von Tool-Aufrufen. Gilt für Aufgaben, die nach der Änderung gestartet werden; die Gedächtnis-Konsolidierung nutzt es nie.",
     "thinkingLevelOptions": {
       "off": "Aus (am schnellsten, am günstigsten)",
       "minimal": "Minimal",
@@ -1358,7 +1369,12 @@
       "systemPromptPlaceholder": "Du bist ein Hintergrund-Task-Agent. Deine Aufgabe: ...\n\nLeer lassen, um den Standard-System-Prompt zu verwenden.",
       "thinkingLevel": "Thinking-Stufe",
       "thinkingLevelDefault": "Standard (Hintergrund-Thinking-Stufe)",
-      "thinkingLevelHelp": "Denkaufwand des Task-Agenten bei jedem Lauf. Angeboten werden nur Stufen, die das gewählte Modell unterstützt."
+      "thinkingLevelHelp": "Denkaufwand des Task-Agenten bei jedem Lauf. Angeboten werden nur Stufen, die das gewählte Modell unterstützt.",
+      "codemode": "Skriptierte Tool-Aufrufe (Codemode)",
+      "codemodeInherit": "Übernehmen (globale Task-Einstellung)",
+      "codemodeOn": "An",
+      "codemodeOff": "Aus",
+      "codemodeHelp": "Bestimmt, ob der Task-Agent Tool-Aufrufe in einem JavaScript-Skript bündeln und verketten darf. Inherit folgt der globalen Codemode-Einstellung für Hintergrund-Tasks. Tool-Überschreibungen gelten auch innerhalb von Skripten."
     },
     "badges": {
       "customTools": "eigene Tools",
@@ -1397,5 +1413,16 @@
     "fieldMaxDuration": "Max. Laufzeit (Minuten)",
     "fieldThinkingLevel": "Thinking-Stufe",
     "fieldThinkingLevelDefault": "Standard (Hintergrund-Thinking-Stufe)"
+  },
+  "codemode": {
+    "title": "Codemode",
+    "script": "Skript",
+    "toolCalls": "Tool-Aufrufe",
+    "noToolCalls": "Keine Tool-Aufrufe",
+    "output": "Ausgabe",
+    "error": "Fehler",
+    "cancelled": "Abgebrochen",
+    "running": "Läuft",
+    "callsSummary": "1 Aufruf · {names} | {count} Aufrufe · {names}"
   }
 }

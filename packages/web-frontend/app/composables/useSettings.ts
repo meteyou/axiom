@@ -8,6 +8,7 @@ import {
   type HealthMonitorSettingsContract,
   type AgentHeartbeatSettingsContract,
   type TasksSettingsContract,
+  type CodemodeSettingsContract,
   type ImageGenerationSettingsContract,
   type TtsSettingsContract,
   type SttSettingsContract,
@@ -25,6 +26,7 @@ export type FactExtractionSettings = FactExtractionSettingsContract
 export type HealthMonitorNotificationToggles = HealthMonitorNotificationTogglesContract
 export type HealthMonitorSettings = HealthMonitorSettingsContract
 export type TasksSettings = TasksSettingsContract
+export type CodemodeSettings = CodemodeSettingsContract
 export type ImageGenerationSettings = ImageGenerationSettingsContract
 export type AgentHeartbeatNightMode = AgentHeartbeatNightModeContract
 export type AgentHeartbeatSettings = AgentHeartbeatSettingsContract

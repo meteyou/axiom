@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events'
-import type { ContextCompactionInfo, RetryInfo, StallInfo, TurnErrorInfo, UploadDescriptor } from '@axiom/core'
+import type { CodemodeNestedCallSnapshot, ContextCompactionInfo, RetryInfo, StallInfo, TurnErrorInfo, UploadDescriptor } from '@axiom/core'
 import type { ChatActionMessage } from './chat-actions.js'
 
 /**
@@ -8,7 +8,7 @@ import type { ChatActionMessage } from './chat-actions.js'
  */
 export interface ChatEvent {
   /** The kind of event being broadcast */
-  type: 'user_message' | 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'done' | 'error' | 'system' | 'session_end' | 'session_summary' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'reminder' | 'attachment' | 'chat_action' | 'chat_action_resolved' | 'stall_warning' | 'stall_resolved' | 'retry_scheduled' | 'compaction'
+  type: 'user_message' | 'text' | 'thinking' | 'tool_call_start' | 'tool_call_update' | 'tool_call_end' | 'done' | 'error' | 'system' | 'session_end' | 'session_summary' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'reminder' | 'attachment' | 'chat_action' | 'chat_action_resolved' | 'stall_warning' | 'stall_resolved' | 'retry_scheduled' | 'compaction'
   /** The Axiom user ID (integer) this event belongs to */
   userId: number
   /** Where the event originated */
@@ -31,6 +31,8 @@ export interface ChatEvent {
   toolResult?: unknown
   /** Whether the tool call errored */
   toolIsError?: boolean
+  /** Nested-call snapshot while a codemode script runs (for tool_call_update) */
+  nestedCalls?: CodemodeNestedCallSnapshot[]
   /** Error description */
   error?: string
   /** Terminal-error details of a persisted error row (for `error`) */

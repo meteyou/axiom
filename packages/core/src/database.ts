@@ -33,7 +33,9 @@ CREATE TABLE IF NOT EXISTS tool_calls (
   input TEXT,
   output TEXT,
   duration_ms INTEGER,
-  status TEXT NOT NULL DEFAULT 'success' CHECK(status IN ('success', 'error'))
+  status TEXT NOT NULL DEFAULT 'success' CHECK(status IN ('success', 'error')),
+  tool_call_id TEXT,
+  parent_tool_call_id TEXT
 );
 
 CREATE TABLE IF NOT EXISTS users (
@@ -177,6 +179,15 @@ export function initDatabase(dbPath?: string): Database {
   const cols = db.prepare("PRAGMA table_info(tool_calls)").all() as { name: string }[]
   if (!cols.find(c => c.name === 'status')) {
     db.exec("ALTER TABLE tool_calls ADD COLUMN status TEXT NOT NULL DEFAULT 'success' CHECK(status IN ('success', 'error'))")
+  }
+  // Migration: link codemode nested calls to their parent call. The tool-call
+  // id of direct calls and the parent codemode call id of nested calls are
+  // both nullable; existing rows stay null.
+  if (!cols.find(c => c.name === 'tool_call_id')) {
+    db.exec('ALTER TABLE tool_calls ADD COLUMN tool_call_id TEXT')
+  }
+  if (!cols.find(c => c.name === 'parent_tool_call_id')) {
+    db.exec('ALTER TABLE tool_calls ADD COLUMN parent_tool_call_id TEXT')
   }
 
   // Migration: add cache token columns to token_usage if missing
@@ -355,6 +366,10 @@ export function initDatabase(dbPath?: string): Database {
 
   if (!scheduledCols.find(c => c.name === 'thinking_level')) {
     db.exec("ALTER TABLE scheduled_tasks ADD COLUMN thinking_level TEXT")
+  }
+
+  if (!scheduledCols.find(c => c.name === 'codemode')) {
+    db.exec("ALTER TABLE scheduled_tasks ADD COLUMN codemode TEXT")
   }
 
   // Migration: add 'paused' to tasks status CHECK constraint

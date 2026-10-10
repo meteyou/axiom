@@ -7,6 +7,10 @@ export interface LogEntry {
   output: string
   durationMs: number
   status: 'success' | 'error'
+  /** Provider tool-call id of a direct call. */
+  toolCallId?: string | null
+  /** Set on calls made inside a codemode script — the parent codemode tool-call id. */
+  parentToolCallId?: string | null
   /** Joined from `sessions.type` — drives source badge rendering. */
   sessionType?: string | null
   /** Joined from `sessions.source`. */

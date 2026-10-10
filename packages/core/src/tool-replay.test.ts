@@ -101,9 +101,10 @@ describe('tool replay policy', () => {
   })
 
   it('treats file, shell and outbound tools as unsafe', () => {
-    for (const name of ['shell', 'write_file', 'edit_file', 'email_send', 'create_task', 'send_file_to_user', 'generate_image']) {
+    for (const name of ['shell', 'write_file', 'edit_file', 'email_send', 'create_task', 'send_file_to_user', 'generate_image', 'codemode']) {
       expect(getToolReplayPolicy(name)).toBe('unsafe')
     }
+    expect(hasExplicitToolReplayPolicy('codemode')).toBe(true)
   })
 
   it('treats read-only tools as safe', () => {

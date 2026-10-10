@@ -39,6 +39,7 @@ export type {
   AgentHeartbeatSettingsContract,
   TasksLoopDetectionSettingsContract,
   TasksSettingsContract,
+  CodemodeSettingsContract,
   ImageGenerationSettingsContract,
   TtsSettingsContract,
   UploadsSettingsContract,

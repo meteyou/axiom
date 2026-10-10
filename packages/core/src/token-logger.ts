@@ -22,6 +22,10 @@ export interface ToolCallRecord {
   output: string
   durationMs: number
   status?: 'success' | 'error'
+  /** The LLM/provider tool-call id of this call (direct calls only). */
+  toolCallId?: string | null
+  /** For calls made inside a codemode script: the parent codemode tool-call id. */
+  parentToolCallId?: string | null
   /** Joined from `sessions.type` (populated by queries that JOIN sessions) */
   sessionType?: string | null
   /** Joined from `sessions.source` (populated by queries that JOIN sessions) */
@@ -89,8 +93,8 @@ export function getAverageImageCost(
  */
 export function logToolCall(db: Database, record: ToolCallRecord): number {
   const result = db.prepare(
-    `INSERT INTO tool_calls (session_id, tool_name, input, output, duration_ms, status)
-     VALUES (?, ?, ?, ?, ?, ?)`
+    `INSERT INTO tool_calls (session_id, tool_name, input, output, duration_ms, status, tool_call_id, parent_tool_call_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     record.sessionId,
     record.toolName,
@@ -98,6 +102,8 @@ export function logToolCall(db: Database, record: ToolCallRecord): number {
     record.output,
     record.durationMs,
     record.status ?? 'success',
+    record.toolCallId ?? null,
+    record.parentToolCallId ?? null,
   )
   return Number(result.lastInsertRowid)
 }
@@ -167,7 +173,7 @@ export function getToolCalls(db: Database, options?: {
   toolName?: string
   limit?: number
 }): ToolCallRecord[] {
-  let sql = 'SELECT id, timestamp, session_id as sessionId, tool_name as toolName, input, output, duration_ms as durationMs, status FROM tool_calls WHERE 1=1'
+  let sql = 'SELECT id, timestamp, session_id as sessionId, tool_name as toolName, input, output, duration_ms as durationMs, status, tool_call_id as toolCallId, parent_tool_call_id as parentToolCallId FROM tool_calls WHERE 1=1'
   const params: unknown[] = []
 
   if (options?.sessionId) {
@@ -243,6 +249,8 @@ export function queryToolCalls(db: Database, options: ToolCallQueryOptions = {})
        tool_calls.output,
        tool_calls.duration_ms as durationMs,
        tool_calls.status,
+       tool_calls.tool_call_id as toolCallId,
+       tool_calls.parent_tool_call_id as parentToolCallId,
        s.type as sessionType,
        s.source as sessionSource
      FROM tool_calls
@@ -342,7 +350,7 @@ export function getMemoryUsageStats(db: Database, options: { memoryDir: string; 
  */
 export function getToolCallById(db: Database, id: number): ToolCallRecord | null {
   const row = db.prepare(
-    'SELECT id, timestamp, session_id as sessionId, tool_name as toolName, input, output, duration_ms as durationMs, status FROM tool_calls WHERE id = ?'
+    'SELECT id, timestamp, session_id as sessionId, tool_name as toolName, input, output, duration_ms as durationMs, status, tool_call_id as toolCallId, parent_tool_call_id as parentToolCallId FROM tool_calls WHERE id = ?'
   ).get(id) as ToolCallRecord | undefined
   return row ?? null
 }

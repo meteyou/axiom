@@ -9,6 +9,8 @@ export interface ToolCallData {
   toolIsError?: boolean
   /** Set from `tool_call_start` until `tool_call_end`; history rows never carry it. */
   running?: boolean
+  /** Live nested-call snapshot of a running codemode script (from `tool_call_update`). */
+  nestedCalls?: CodemodeNestedCall[]
 }
 
 /**
@@ -207,8 +209,17 @@ export interface ChatMessage {
   endedSessionId?: string
 }
 
+export interface CodemodeNestedCall {
+  id: string
+  name: string
+  status: 'running' | 'ok' | 'error' | 'cancelled'
+  args?: unknown
+  durationMs?: number
+  errorPreview?: string
+}
+
 interface WsMessage {
-  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'session_summary' | 'reminder' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'pong' | 'attachment' | 'chat_action' | 'chat_action_resolved' | 'turn_replay_start' | 'turn_replay_end' | 'stall_warning' | 'stall_resolved' | 'retry_scheduled' | 'compaction'
+  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_update' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'session_summary' | 'reminder' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'pong' | 'attachment' | 'chat_action' | 'chat_action_resolved' | 'turn_replay_start' | 'turn_replay_end' | 'stall_warning' | 'stall_resolved' | 'retry_scheduled' | 'compaction'
   text?: string
   /** Context-compaction progress (for type='compaction') */
   compaction?: ContextCompactionInfo
@@ -231,6 +242,8 @@ interface WsMessage {
   toolArgs?: unknown
   toolResult?: unknown
   toolIsError?: boolean
+  /** Nested-call snapshot while a codemode script runs (for type='tool_call_update') */
+  nestedCalls?: CodemodeNestedCall[]
   error?: string
   sessionId?: string
   /**
@@ -1007,6 +1020,26 @@ export function useChat() {
               streaming: true,
               attachments: [attachment],
             })
+          }
+        }
+        break
+
+      case 'tool_call_update':
+        // Live progress of a running codemode script: the full nested-call
+        // snapshot replaces the previous one on the codemode card. Replayed
+        // after a mid-turn reconnect, so the card catches up on replay.
+        if (msg.toolCallId && Array.isArray(msg.nestedCalls)) {
+          const updated = [...messages.value]
+          const toolMsgIdx = updated.findLastIndex(
+            m => m.role === 'tool' && m.toolData?.toolCallId === msg.toolCallId
+          )
+          if (toolMsgIdx !== -1 && updated[toolMsgIdx]?.toolData) {
+            const existing = updated[toolMsgIdx]!
+            updated[toolMsgIdx] = {
+              ...existing,
+              toolData: { ...existing.toolData!, nestedCalls: msg.nestedCalls },
+            }
+            messages.value = updated
           }
         }
         break

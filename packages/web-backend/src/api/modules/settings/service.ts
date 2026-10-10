@@ -5,6 +5,7 @@ import type { SettingsData, SettingsRouterOptions, TelegramData } from './types.
 import {
   mergeAgentHeartbeat,
   mergeConsolidation,
+  mergeCodemode,
   mergeFactExtraction,
   mergeHealthMonitor,
   mergeImageGeneration,
@@ -124,6 +125,9 @@ export function createSettingsService(options: SettingsRouterOptions = {}): Sett
 
     const tasksMerge = mergeTasks(body, settingsRaw)
     if (tasksMerge.error) throw new SettingsValidationError(tasksMerge.error)
+
+    const codemodeMerge = mergeCodemode(body, settingsRaw)
+    if (codemodeMerge.error) throw new SettingsValidationError(codemodeMerge.error)
 
     const imageGenerationMerge = mergeImageGeneration(body, settingsRaw)
     if (imageGenerationMerge.error) throw new SettingsValidationError(imageGenerationMerge.error)

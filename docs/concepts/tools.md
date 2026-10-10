@@ -123,6 +123,12 @@ Switching the provider takes effect on the next prompt — no restart needed.
 
 Only the keys relevant to the chosen `provider` are read — the others are ignored but kept around so you can switch back without re-entering them. `braveSearchApiKey` and `tavilyApiKey` are stored encrypted at rest.
 
+### `codemode`
+
+Experimental, **off by default**. A script tool: the agent writes a JavaScript script that calls its own tools — in parallel, chained, filtered — and only the script's output reaches the model. It is registered separately for the interactive agent and for background task agents, and each cronjob can override the task-side switch (inherit / on / off). When active, the agent's system prompt gets a short guideline telling it when a script pays off (batching, chaining, filtering) and when a single call should go direct.
+
+**Where to configure:** [Settings → Agent → Codemode](../settings/agent#codemode-experimental) (interactive agent), [Settings → Tasks → Codemode](../settings/tasks#codemode-experimental) (background tasks) and the [per-cronjob three-way control](../web-ui/cronjobs#codemode). Full details — use cases, limits, the spill folder: [Codemode](./codemode).
+
 ## See also
 
 - [System Prompt → Available Tools](./system-prompt#_7-available-tools-built-in-tool-registry) — how the active tool list is rendered into the prompt every turn.
@@ -131,3 +137,4 @@ Only the keys relevant to the chosen `provider` are read — the others are igno
 - [Provider Management → Subscriber usage quota](../web-ui/providers#subscriber-usage-quota) — how the quota monitor polls providers behind the scenes.
 - [Skills](./skills) — how to extend the agent beyond the built-in tool list.
 - [Image Generation](./image-generation) — image models, the `generate_image` tool and its output files.
+- [Codemode](./codemode) — the experimental script tool that batches, chains and filters tool calls.

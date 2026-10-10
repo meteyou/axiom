@@ -52,6 +52,7 @@ The on-disk shape is a **superset** of [`SettingsContract`](https://github.com/)
 | `factExtraction`                   | object                                                            | see below      | nested                                  | Per-session fact extraction.                                                                                      |
 | `agentHeartbeat`                   | object                                                            | see below      | nested                                  | Background reflection loop.                                                                                       |
 | `tasks`                            | object                                                            | see below      | nested                                  | Task & cronjob defaults.                                                                                          |
+| `codemode`                         | object                                                            | see below      | nested                                  | Experimental codemode switches for the main agent and background tasks.                                           |
 | `imageGeneration`                  | object                                                            | see below      | nested                                  | `generate_image` switch, default image model, limits, output folder.                                              |
 | `tts`                              | object                                                            | see below      | nested                                  | Voice output config.                                                                                              |
 | `stt`                              | object                                                            | see below      | nested                                  | Voice input config.                                                                                               |
@@ -273,6 +274,19 @@ Companion file: `/data/config/HEARTBEAT.md` — the prompt the agent receives ev
 A flat `tasks.statusUpdateIntervalMinutes` may exist on disk from older installs. PUT still accepts it (validated as integer `1–120`) and writes it through to `tasks.statusUpdates.intervalMinutes` without flipping `enabled` to `true` — opting in is explicit. After the next save, the flat key is no longer needed.
 :::
 
+### `codemode`
+
+[Codemode concept](../concepts/codemode). Switches for the experimental `codemode` tool — a JavaScript script that batches, chains and filters tool calls. Both default `false`.
+
+| Key                       | Type      | Default   | Notes                                                                                                                                       |
+|---------------------------|-----------|-----------|---------------------------------------------------------------------------------------------------------------------------------------------|
+| `codemode.mainAgent`      | `boolean` | `false`   | Adds the `codemode` tool to the interactive chat agent. Read before each turn — a change applies from the next turn, no restart needed.   |
+| `codemode.tasks`          | `boolean` | `false`   | Adds the `codemode` tool to background task agents. Read when a task starts — applies to tasks started after the change. Overridable per cronjob (`on` / `off` / inherit); memory consolidation never uses it. |
+
+```json
+{ "codemode": { "mainAgent": false, "tasks": false } }
+```
+
 ### `imageGeneration`
 
 [Image Generation UI](../settings/image-generation). See [Image Generation](../concepts/image-generation).
@@ -448,7 +462,7 @@ This is the literal file written by `ensureConfigTemplates()`:
 }
 ```
 
-Note: `tts`, `stt`, `healthMonitor`, and `healthMonitorIntervalMinutes` are **not** in the template — they are added the first time the user saves the relevant Settings panel. Until then, the runtime falls back to the defaults documented above (and surfaced by `mapSettingsResponse`).
+Note: `tts`, `stt`, `healthMonitor`, `healthMonitorIntervalMinutes`, and `codemode` are **not** in the template — they are added the first time the user saves the relevant Settings panel. Until then, the runtime falls back to the defaults documented above (and surfaced by `mapSettingsResponse`).
 
 ---
 
@@ -707,7 +721,7 @@ After a successful write, the service fires whichever of these hooks the changed
 | `agentHeartbeat.*` changed               | `onAgentHeartbeatSettingsChanged()`                                         |
 | `telegram.enabled` or `telegram.botToken` changed | `onTelegramSettingsChanged()` — restart bot                        |
 
-No container restart is needed for any of the above. Changes to fields outside this list (e.g. `tasks.*`, `tts.*`, `stt.*`, `factExtraction.*`) are read on next use rather than via a hook.
+No container restart is needed for any of the above. Changes to fields outside this list (e.g. `tasks.*`, `tts.*`, `stt.*`, `factExtraction.*`, `codemode.*`) are read on next use rather than via a hook.
 
 ---
 

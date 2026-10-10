@@ -43,6 +43,16 @@ const skillLoad = computed(() => isEntrySkillLoad(props.entry))
       {{ displayName }}
     </Badge>
 
+    <!-- Nested call badge: this call was made from inside a codemode script -->
+    <Badge
+      v-if="entry.parentToolCallId"
+      class="h-[22px] shrink-0 gap-1 border-transparent bg-sky-500/15 px-2 py-0 font-mono text-[11px] leading-none text-sky-600 dark:text-sky-400"
+      :title="$t('logs.viaCodemodeTitle', { id: entry.parentToolCallId })"
+    >
+      {{ $t('logs.viaCodemode') }}
+      <span class="max-w-[120px] truncate opacity-80">{{ entry.parentToolCallId }}</span>
+    </Badge>
+
     <!-- Source badge (only for task sessions) -->
     <Badge
       v-if="isTaskSession(entry)"

@@ -66,6 +66,7 @@ Two special cases get richer rendering:
 
 - **Memory edits** — when the agent edits `SOUL.md`, `MEMORY.md`, `AGENTS.md`, a daily file, or a wiki page, the card renders an inline diff instead of raw input/output.
 - **Skill loads** — when the agent loads a skill (e.g. `tasks-and-cronjobs`), the card title shows `Load Skill: <name>` with a puzzle icon.
+- **Codemode** — when the experimental [codemode](../concepts/codemode) tool is on, a codemode call renders as a card with the script, the nested tool calls (live-updated while the script runs) and the output; collapsed, it shows the nested-call count and tool names.
 
 ### Background task cards
 

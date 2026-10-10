@@ -18,7 +18,16 @@ import { estimateCost, parseProviderModelId, getProviderDefaultModel, isProvider
 import type { ProviderConfig } from './provider-config.js'
 import { releaseProviderSession } from './pi-models.js'
 import { assertLlmResponseOk } from './llm-response.js'
-import { redactToolResultImages } from './llm-image.js'
+import { createToolResultImageHook, omitToolResultStructuredContent, redactToolResultImages } from './llm-image.js'
+import { loadConfig } from './config.js'
+import {
+  CODEMODE_TOOL_NAME,
+  createCodemodeTool,
+  createNestedCallLogObserver,
+  buildCodemodePromptGuideline,
+  pruneCodemodeSpillFolder,
+} from './codemode-tool.js'
+import type { CodemodeNestedCallEnd, CodemodeNestedCallSnapshot } from './codemode-tool.js'
 import {
   ToolCallTracker,
   isFailedToolResult,
@@ -64,6 +73,11 @@ export interface TaskOverrides {
    * with a warning so the task still runs.
    */
   attachedSkills?: string[] | null
+  /**
+   * Per-cronjob codemode override: `'on'` forces the codemode tool, `'off'`
+   * forces it off, `null`/unset inherits the global `codemode.tasks` setting.
+   */
+  codemode?: 'on' | 'off' | null
 }
 
 export interface TaskRunnerOptions {
@@ -120,6 +134,13 @@ export interface TaskRunnerOptions {
    */
   backgroundThinkingLevel?: SettingsThinkingLevel
   /**
+   * Whether background task agents get the `codemode` tool. Defaults to the
+   * `codemode.tasks` entry in `settings.json` (off). Memory consolidation tasks
+   * never get it regardless of this value. Read once per task at start, so a
+   * live change does not disturb already-running tasks.
+   */
+  codemodeTasksEnabled?: boolean
+  /**
    * SessionManager used to register every background session in the
    * `sessions` table with the correct `type` and `parent_session_id`.
    */
@@ -152,6 +173,21 @@ function triggerTypeToSessionType(triggerType: TaskTriggerType): SessionType {
   return 'task'
 }
 
+/**
+ * Read the global `codemode.tasks` switch from settings.json. Re-read on every
+ * task start so a live settings change takes effect for the next task without a
+ * restart. Defaults to `false` when settings are unavailable or the value is not
+ * a boolean.
+ */
+function readCodemodeTasksEnabledFromConfig(): boolean {
+  try {
+    const settings = loadConfig<{ codemode?: { tasks?: unknown } }>('settings.json')
+    return settings.codemode?.tasks === true
+  } catch {
+    return false
+  }
+}
+
 interface RunningTask {
   taskId: string
   sessionId: string
@@ -169,6 +205,8 @@ interface RunningTask {
   toolCallArgs: Map<string, unknown>
   /** Tracker for loop detection */
   toolCallTracker: ToolCallTracker
+  /** Codemode parents whose nested calls are recorded in the tracker; the parent call itself is then skipped so it cannot break the systematic detection window */
+  codemodeParentsWithNestedCalls: Set<string>
   /** Timer for periodic status updates */
   statusUpdateTimer: ReturnType<typeof setInterval> | null
   /** When the task started running (for status update runtime calc) */
@@ -355,6 +393,7 @@ export class TaskRunner {
     this.cleanupTimer = setInterval(() => {
       this.cleanupStalePausedTasks()
       this.pruneToolJournal()
+      pruneCodemodeSpillFolder()
     }, CLEANUP_INTERVAL_MS)
   }
 
@@ -367,6 +406,24 @@ export class TaskRunner {
     return this.options.backgroundThinkingLevel
       ?? readBackgroundThinkingLevelFromConfig()
       ?? 'off'
+  }
+
+  /**
+   * Whether a newly started task gets the `codemode` tool. Memory consolidation
+   * is a fixed internal job and never gets it. A per-cronjob override (from
+   * `overrides.codemode`) wins when set; otherwise the global `codemode.tasks`
+   * switch applies.
+   */
+  resolveCodemodeEnabledForTask(
+    task: Pick<Task, 'triggerType'>,
+    overrides?: Pick<TaskOverrides, 'codemode'>,
+  ): boolean {
+    if (task.triggerType === 'consolidation') return false
+    if (overrides?.codemode !== undefined && overrides.codemode !== null) {
+      return overrides.codemode === 'on'
+    }
+    return this.options.codemodeTasksEnabled
+      ?? readCodemodeTasksEnabledFromConfig()
   }
 
   /**
@@ -432,12 +489,21 @@ export class TaskRunner {
         ? overrides.systemPromptOverride
         : buildTaskSystemPrompt(task.prompt, this.options.memoryDir)
 
+      // Codemode eligibility is decided once at start: memory consolidation never
+      // gets it, a per-cronjob override wins when set, otherwise the global
+      // switch. Resolved before the prompt/tools so the guideline and the tool
+      // stay in sync.
+      const codemodeEnabled = this.resolveCodemodeEnabledForTask(task, overrides)
+
       // Inject attached-skills block (before the base prompt) so skill rules are
       // anchored at the top and apply regardless of the rest of the prompt.
       const attachedSkillsBlock = renderAttachedSkillsBlock(overrides?.attachedSkills ?? null)
-      const systemPrompt = attachedSkillsBlock
+      const withAttached = attachedSkillsBlock
         ? `${attachedSkillsBlock}\n\n${baseSystemPrompt}`
         : baseSystemPrompt
+      const systemPrompt = codemodeEnabled
+        ? `${withAttached}\n\n${buildCodemodePromptGuideline()}`
+        : withAttached
 
       // Determine effective tools (filter out disabled tools)
       let effectiveTools = this.options.tools
@@ -451,6 +517,57 @@ export class TaskRunner {
           // Invalid JSON — use all tools
         }
       }
+
+      // The codemode tool is bound to the task agent it is created for (it needs
+      // that agent's live tools, transcript and after-tool hook), so it is built
+      // here rather than added to the shared background tool array. The owner
+      // closures read the agent through a holder that is filled right after the
+      // agent is constructed.
+      const imageHook = createToolResultImageHook(() => model)
+      const agentRef: { current: PiAgent } = { current: null as unknown as PiAgent }
+      // Writes nested calls to the tool-call log, linked to their codemode call.
+      const nestedCallLog = createNestedCallLogObserver(this.db, () => sessionId)
+
+      const agentTools = codemodeEnabled
+        ? [
+            ...effectiveTools,
+            createCodemodeTool({
+              owner: {
+                getTools: () => agentRef.current.state.tools,
+                getMessages: () => agentRef.current.state.messages,
+                getModel: () => agentRef.current.state.model as Model<Api>,
+                afterToolCall: imageHook,
+              },
+              advertisedTools: effectiveTools,
+              observer: {
+                onCallStart: info => {
+                  // Nested calls get the same treatment as direct calls: the
+                  // activity log (with parent link) and the crash-recovery
+                  // journal, the latter with the nested tool's own replay policy.
+                  nestedCallLog.onCallStart?.(info)
+                  this.writeToolJournal(taskId, journal => journal.recordStarted({
+                    taskId,
+                    sessionId,
+                    toolCallId: info.toolCallId,
+                    toolName: info.toolName,
+                    args: info.args,
+                    replay: getToolReplayPolicy(info.toolName),
+                  }))
+                },
+                onCallEnd: info => {
+                  nestedCallLog.onCallEnd?.(info)
+                  this.writeToolJournal(taskId, journal => journal.recordEnded({
+                    taskId,
+                    toolCallId: info.toolCallId,
+                    isError: info.isError,
+                    result: info.result,
+                  }))
+                  this.recordNestedCallInMetricsAndLoops(taskId, info)
+                },
+              },
+            }),
+          ]
+        : effectiveTools
 
       // Create isolated PiAgent
       const resolveApiKey = async (): Promise<string> => {
@@ -478,14 +595,16 @@ export class TaskRunner {
         initialState: {
           systemPrompt,
           model,
-          tools: effectiveTools,
+          tools: agentTools,
           thinkingLevel,
         },
         provider,
         sessionId,
+        afterToolCall: imageHook,
         getApiKey: resolveApiKey,
         compactor,
       })
+      agentRef.current = agent
 
       const abortController = new AbortController()
 
@@ -505,6 +624,7 @@ export class TaskRunner {
         toolCallTimers: new Map(),
         toolCallArgs: new Map(),
         toolCallTracker: new ToolCallTracker(),
+        codemodeParentsWithNestedCalls: new Set(),
         statusUpdateTimer: null,
         startedAtMs: Date.now(),
       }
@@ -797,6 +917,25 @@ export class TaskRunner {
         break
       }
 
+      case 'tool_execution_update': {
+        // The codemode tool streams a snapshot of all nested calls after every
+        // nested start/end; forward it so the task event viewer can show
+        // live progress while the script runs.
+        if (event.toolName === CODEMODE_TOOL_NAME) {
+          const calls = (event.partialResult?.details as { calls?: unknown } | undefined)?.calls
+          if (Array.isArray(calls)) {
+            this.options.taskEventBus?.emitTaskEvent({
+              type: 'codemode_progress',
+              taskId: runningTask.taskId,
+              timestamp: new Date().toISOString(),
+              toolCallId: event.toolCallId,
+              nestedCalls: calls as CodemodeNestedCallSnapshot[],
+            })
+          }
+        }
+        break
+      }
+
       case 'tool_execution_start': {
         runningTask.toolCallTimers.set(event.toolCallId, Date.now())
         runningTask.toolCallArgs.set(event.toolCallId, event.args)
@@ -832,7 +971,7 @@ export class TaskRunner {
 
         this.persistLiveMetrics(runningTask)
 
-        const toolResult = redactToolResultImages(event.result)
+        const toolResult = omitToolResultStructuredContent(redactToolResultImages(event.result))
         const outputStr = JSON.stringify(toolResult ?? {})
         const isError = isFailedToolResult(event.isError, toolResult)
         this.writeToolJournal(runningTask.taskId, journal => journal.recordEnded({
@@ -842,8 +981,14 @@ export class TaskRunner {
           result: toolResult,
         }))
 
-        // Track for loop detection
-        runningTask.toolCallTracker.record(event.toolName, args, outputStr, isError)
+        // Track for loop detection. A codemode parent is skipped when its nested
+        // calls are already recorded: its output embeds wall time and per-call
+        // durations, so it can never match a repeat, and it would only break the
+        // consecutive-failure window systematic detection checks.
+        if (event.toolName !== CODEMODE_TOOL_NAME
+          || !runningTask.codemodeParentsWithNestedCalls.delete(event.toolCallId)) {
+          runningTask.toolCallTracker.record(event.toolName, args, outputStr, isError)
+        }
 
         // Check for loops
         this.checkForLoops(runningTask)
@@ -868,6 +1013,7 @@ export class TaskRunner {
           output: outputStr,
           durationMs,
           status: isError ? 'error' : 'success',
+          toolCallId: event.toolCallId,
         })
         break
       }
@@ -934,6 +1080,10 @@ export class TaskRunner {
   private checkForLoops(runningTask: RunningTask): void {
     const config = this.options.loopDetection
     if (!config?.enabled) return
+    // A task finalized mid-script (loop detected on a nested codemode call) still
+    // receives the aborted parent's tool_execution_end; re-checking its unchanged
+    // history would fail and notify the task a second time.
+    if (this.runningTasks.get(runningTask.taskId) !== runningTask) return
 
     const method = resolveDetectionMethod(config, runningTask.toolCallCount)
     if (method === 'none') return
@@ -1300,6 +1450,24 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
     }, remaining)
   }
 
+  /**
+   * Nested calls made inside a codemode script count towards the task's live
+   * tool-call metrics and the loop-detection history, exactly like direct
+   * calls, so a script that keeps failing the same tool is detected.
+   */
+  private recordNestedCallInMetricsAndLoops(taskId: string, info: CodemodeNestedCallEnd): void {
+    const runningTask = this.runningTasks.get(taskId)
+    if (!runningTask) return
+
+    runningTask.toolCallCount++
+    this.persistLiveMetrics(runningTask)
+
+    runningTask.codemodeParentsWithNestedCalls.add(info.parentToolCallId)
+    const toolResult = omitToolResultStructuredContent(redactToolResultImages(info.result))
+    runningTask.toolCallTracker.record(info.toolName, info.args, JSON.stringify(toolResult ?? {}), info.isError)
+    this.checkForLoops(runningTask)
+  }
+
   private writeToolJournal(taskId: string, write: (journal: TaskToolJournal) => void): void {
     try {
       write(this.journal)
@@ -1414,6 +1582,7 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
       toolCallTimers: new Map(),
       toolCallArgs: new Map(),
       toolCallTracker: new ToolCallTracker(),
+      codemodeParentsWithNestedCalls: new Set(),
       statusUpdateTimer: null,
       startedAtMs: taskStartedAtMs(task.startedAt),
     }

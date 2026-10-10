@@ -11,6 +11,11 @@ export interface AxiomAgentOptions {
   getApiKey: NonNullable<AgentOptions['getApiKey']>
   sessionId?: string
   compactor?: ContextCompactor
+  /**
+   * Overrides the default image-normalization hook; pass the same hook the
+   * codemode tool gets so nested calls normalize images like direct calls.
+   */
+  afterToolCall?: NonNullable<AgentOptions['afterToolCall']>
   /** Replaces the provider-derived stream function (tests). */
   streamFn?: StreamFn
 }
@@ -30,7 +35,7 @@ export function createAxiomAgent(options: AxiomAgentOptions): PiAgent {
     }),
     ...(options.sessionId ? { sessionId: options.sessionId } : {}),
     ...(transport && transport !== 'sse' && { transport }),
-    afterToolCall: createToolResultImageHook(() => agent.state.model),
+    afterToolCall: options.afterToolCall ?? createToolResultImageHook(() => agent.state.model),
     transformContext: createTranscriptImageBudget(() => agent.state.model),
     getApiKey: options.getApiKey,
   })

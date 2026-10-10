@@ -318,6 +318,28 @@ describe('TurnRunner', () => {
     expect(persisted[2]!.metadata).toBeNull()
   })
 
+  it('persists the codemode tool row with its final nested-call details and ignores progress updates', async () => {
+    const db = freshDb()
+    const nestedCalls = [{ id: 'code-1/read_file/1', name: 'read_file', status: 'ok', durationMs: 12 }]
+    const runner = startRunner(db, scriptedAgent([
+      { type: 'tool_call_start', toolName: 'codemode', toolCallId: 'code-1', toolArgs: { code: 'return 1' } },
+      { type: 'tool_call_update', toolName: 'codemode', toolCallId: 'code-1', nestedCalls: [{ id: 'code-1/read_file/1', name: 'read_file', status: 'running' }] },
+      { type: 'tool_call_end', toolName: 'codemode', toolCallId: 'code-1', toolResult: { content: [], details: { calls: nestedCalls } }, toolIsError: false },
+      { type: 'text', text: 'Done.' },
+      { type: 'done' },
+    ]))
+
+    runner.startTurn({ userId: USER_ID, sessionId: SESSION_ID, text: 'hi' })
+    await waitFor(() => !runner.hasActiveTurn(USER_ID))
+
+    const persisted = rows(db)
+    expect(persisted.map(r => r.role)).toEqual(['tool', 'assistant'])
+    expect(persisted[0]!.content).toBe('Tool: codemode')
+    const metadata = JSON.parse(persisted[0]!.metadata!)
+    expect(metadata.toolName).toBe('codemode')
+    expect(metadata.toolResult.details.calls).toEqual(nestedCalls)
+  })
+
   it('emits and persists preamble tool calls ahead of the agent stream', async () => {
     const db = freshDb()
     const runner = startRunner(db, scriptedAgent([{ type: 'text', text: 'Answer.' }, { type: 'done' }]))
@@ -369,6 +391,58 @@ describe('TurnRunner', () => {
     const assistantRow = rows(db).find(r => r.role === 'assistant')!
     const meta = JSON.parse(assistantRow.metadata!) as { files: Array<{ relativePath: string }> }
     expect(meta.files[0]!.relativePath).toBe(upload.relativePath)
+  })
+
+  it('emits attachment events and merges uploads from a codemode result into the assistant row', async () => {
+    const db = freshDb()
+    const uploadA = {
+      kind: 'file' as const,
+      originalName: 'a.txt',
+      storedName: 'aa-a.txt',
+      relativePath: '2026/05/01/aa-a.txt',
+      urlPath: '/api/uploads/2026/05/01/aa-a.txt',
+      mimeType: 'text/plain',
+      size: 1,
+    }
+    const uploadB = {
+      kind: 'image' as const,
+      originalName: 'b.png',
+      storedName: 'bb-b.png',
+      relativePath: '2026/05/01/bb-b.png',
+      urlPath: '/api/uploads/2026/05/01/bb-b.png',
+      mimeType: 'image/png',
+      size: 2,
+    }
+    const runner = startRunner(db, scriptedAgent([
+      { type: 'tool_call_start', toolName: 'codemode', toolCallId: 'code-1', toolArgs: { code: 'await tools.send_file_to_user({})' } },
+      { type: 'tool_call_update', toolName: 'codemode', toolCallId: 'code-1', nestedCalls: [{ id: 'code-1/send_file_to_user/1', name: 'send_file_to_user', status: 'running' }] },
+      { type: 'tool_call_end', toolName: 'codemode', toolCallId: 'code-1', toolResult: { content: [], details: { calls: [{ id: 'code-1/send_file_to_user/1', name: 'send_file_to_user', status: 'ok', durationMs: 5 }], uploadedFiles: [uploadA, uploadB] } }, toolIsError: false },
+      { type: 'text', text: 'Here they are.' },
+      { type: 'done' },
+    ]))
+
+    const events: TurnEvent[] = []
+    runner.subscribe(USER_ID, collect(events))
+    runner.startTurn({ userId: USER_ID, sessionId: SESSION_ID, text: 'send me the files' })
+    await waitFor(() => !runner.hasActiveTurn(USER_ID))
+
+    const attachments = events.filter(e => e.type === 'attachment')
+    expect(attachments.map(e => (e as { attachment: { relativePath: string } }).attachment.relativePath)).toEqual([
+      '2026/05/01/aa-a.txt',
+      '2026/05/01/bb-b.png',
+    ])
+
+    const assistantRow = rows(db).find(r => r.role === 'assistant')!
+    const meta = JSON.parse(assistantRow.metadata!) as { files: Array<{ relativePath: string }> }
+    expect(meta.files.map(f => f.relativePath)).toEqual([
+      '2026/05/01/aa-a.txt',
+      '2026/05/01/bb-b.png',
+    ])
+
+    // The persisted codemode tool row carries the uploads too, so reload keeps them.
+    const toolRow = rows(db).find(r => r.role === 'tool')!
+    const toolMeta = JSON.parse(toolRow.metadata!)
+    expect(toolMeta.toolResult.details.uploadedFiles).toHaveLength(2)
   })
 
   it('aborts the running turn, propagates the abort to the agent and still emits done', async () => {
@@ -627,6 +701,68 @@ describe('TurnRunner', () => {
       finish()
       await vi.advanceTimersByTimeAsync(1)
       expect(runner.hasActiveTurn(USER_ID)).toBe(false)
+    })
+
+    it('keeps the watchdog quiet while codemode progress updates arrive, including a long nested image generation', async () => {
+      vi.useFakeTimers()
+      const db = freshDb()
+      const { agent, push, finish } = controllableAgent()
+      const runner = startRunner(db, agent, {
+        stallWarnMs: 30_000,
+        stallAbortMs: 90_000,
+        watchdogIntervalMs: 1_000,
+        retryPolicy: { enabled: false },
+      })
+
+      const events: TurnEvent[] = []
+      runner.subscribe(USER_ID, collect(events))
+      runner.startTurn({ userId: USER_ID, sessionId: SESSION_ID, text: 'go' })
+      await vi.advanceTimersByTimeAsync(0)
+
+      // A codemode script starts and streams a nested image generation that
+      // runs for far longer than the abort threshold.
+      push({ type: 'tool_call_start', toolName: 'codemode', toolCallId: 'code-1', toolArgs: { code: 'await tools.generate_image({ prompt: "a fox" })' } })
+      for (let i = 0; i < 12; i++) {
+        await vi.advanceTimersByTimeAsync(5 * 60_000)
+        push({
+          type: 'tool_call_update',
+          toolName: 'codemode',
+          toolCallId: 'code-1',
+          // A growing full snapshot, like a batched script: each one supersedes the last.
+          nestedCalls: Array.from({ length: i + 1 }, (_, j) => ({
+            id: `code-1/generate_image/${j + 1}`,
+            name: 'generate_image',
+            status: 'running' as const,
+          })),
+        })
+      }
+      expect(stallChunks(events)).toEqual([])
+      expect(stallRows(db)).toEqual([])
+      expect(agent.abort).not.toHaveBeenCalled()
+
+      // Let the last update chunk flow through the agent's stream.
+      await vi.advanceTimersByTimeAsync(1)
+      // Every snapshot still reaches live consumers; only the replay buffer deduplicates.
+      expect(events.filter(e => e.type === 'chunk' && e.chunk.type === 'tool_call_update')).toHaveLength(12)
+
+      // Only the latest progress snapshot per tool call is buffered and
+      // replayed to a consumer that attaches mid-turn.
+      const late: TurnEvent[] = []
+      runner.subscribe(USER_ID, collect(late))
+      expect(chunkTypes(late).filter(t => t === 'tool_call_update')).toHaveLength(1)
+      const replayedUpdate = late.find(e => e.type === 'chunk' && e.chunk.type === 'tool_call_update') as { chunk: ResponseChunk; replay?: boolean }
+      expect(replayedUpdate.replay).toBe(true)
+      expect(replayedUpdate.chunk.nestedCalls).toEqual(
+        Array.from({ length: 12 }, (_, j) => ({ id: `code-1/generate_image/${j + 1}`, name: 'generate_image', status: 'running' })),
+      )
+
+      push({ type: 'tool_call_end', toolName: 'codemode', toolCallId: 'code-1', toolResult: {}, toolIsError: false })
+      push({ type: 'text', text: 'done with the image' })
+      push({ type: 'done' })
+      finish()
+      await vi.advanceTimersByTimeAsync(1)
+      expect(runner.hasActiveTurn(USER_ID)).toBe(false)
+      expect(stallChunks(events)).toEqual([])
     })
 
     it('keeps the provider clock paused until the last of several parallel tool calls returns', async () => {
