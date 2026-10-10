@@ -154,6 +154,10 @@ export function createApp(options?: AppOptions): express.Express {
         options.healthMonitorService?.restart({ resetState: true })
         options.onActiveProviderChanged?.()
       },
+      onTimezoneChanged: (userId) => {
+        getAgentCore()?.refreshSystemPrompt()
+        options.getTaskRuntime?.()?.schedules.rescheduleOwner(userId ?? undefined)
+      },
       onHealthMonitorSettingsChanged: () => {
         options.healthMonitorService?.restart()
       },

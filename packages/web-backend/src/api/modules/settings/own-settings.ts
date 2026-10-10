@@ -2,6 +2,7 @@ import {
   SETTINGS_THINKING_LEVELS,
   getGlobalChatDefaults,
   getUserSettingsOverrides,
+  isValidTimezone,
   isSelectableChatModel,
   listSelectableChatModels,
   resolveUserScope,
@@ -24,6 +25,7 @@ export interface OwnSettingsDefaults {
   chatModel: (ChatModelRef & { providerName: string | null }) | null
   thinkingLevel: SettingsThinkingLevel
   language: string
+  timezone: string
 }
 
 export interface OwnSettingsResponse {
@@ -32,12 +34,14 @@ export interface OwnSettingsResponse {
     chatModel: ChatModelRef | null
     thinkingLevel: SettingsThinkingLevel | null
     language: string | null
+    timezone: string | null
   }
   defaults: OwnSettingsDefaults
   effective: {
     chatModel: ChatModelRef | null
     thinkingLevel: SettingsThinkingLevel
     language: string
+    timezone: string
   }
 }
 
@@ -80,7 +84,13 @@ function parsePatch(body: Record<string, unknown>, global: boolean): UserSetting
     }
     patch.language = body.language as string | null
   }
-  if (global && (patch.chatModel === null || patch.thinkingLevel === null || patch.language === null)) {
+  if (body.timezone !== undefined) {
+    if (body.timezone !== null && (typeof body.timezone !== 'string' || !isValidTimezone(body.timezone.trim()))) {
+      throw new SettingsValidationError('timezone must be a valid IANA timezone (e.g. Europe/Berlin) or null')
+    }
+    patch.timezone = body.timezone === null ? null : (body.timezone as string).trim()
+  }
+  if (global && (patch.chatModel === null || patch.thinkingLevel === null || patch.language === null || patch.timezone === null)) {
     throw new SettingsValidationError('Admins change the global settings and cannot reset them to the default')
   }
   return patch
@@ -90,6 +100,7 @@ export function createOwnSettingsService(
   db: Database,
   globalSettings: SettingsService,
   onActiveProviderChanged?: () => void,
+  onTimezoneChanged?: (userId: number | null) => void,
 ): OwnSettingsService {
   function read(userId: number): OwnSettingsResponse {
     const scope = resolveUserScope(db, userId)
@@ -97,7 +108,7 @@ export function createOwnSettingsService(
     const defaults = getGlobalChatDefaults()
     const global = scope.role === 'admin' || scope.isBootstrapAdmin
     const overrides = global
-      ? { chatModel: null, thinkingLevel: null, language: null }
+      ? { chatModel: null, thinkingLevel: null, language: null, timezone: null }
       : getUserSettingsOverrides(db, userId)
     return {
       scope: global ? 'global' : 'personal',
@@ -106,11 +117,13 @@ export function createOwnSettingsService(
         chatModel: defaults.chatModel ? { ...defaults.chatModel, providerName: defaults.providerName } : null,
         thinkingLevel: defaults.thinkingLevel,
         language: defaults.language,
+        timezone: defaults.timezone,
       },
       effective: {
         chatModel: scope.settings.chatModel ?? defaults.chatModel,
         thinkingLevel: scope.settings.thinkingLevel,
         language: scope.settings.language,
+        timezone: scope.settings.timezone,
       },
     }
   }
@@ -123,6 +136,7 @@ export function createOwnSettingsService(
 
     if (!global) {
       updateUserSettings(db, userId, patch)
+      if (patch.timezone !== undefined) onTimezoneChanged?.(userId)
       return read(userId)
     }
 
@@ -137,6 +151,7 @@ export function createOwnSettingsService(
     const settingsUpdate: Record<string, unknown> = {}
     if (patch.thinkingLevel) settingsUpdate.thinkingLevel = patch.thinkingLevel
     if (patch.language) settingsUpdate.language = patch.language.trim()
+    if (patch.timezone) settingsUpdate.timezone = patch.timezone
     if (Object.keys(settingsUpdate).length > 0) globalSettings.updateSettings(settingsUpdate)
     return read(userId)
   }

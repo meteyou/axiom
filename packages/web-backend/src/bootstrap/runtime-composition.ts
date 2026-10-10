@@ -951,7 +951,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
       role: 'admin',
       isBootstrapAdmin: true,
       paths: resolveUserPaths('admin', true),
-      settings: { chatModel: null, thinkingLevel: 'off', language: 'en' },
+      settings: { chatModel: null, thinkingLevel: 'off', language: 'en', timezone: 'UTC' },
     }
     return createScopedTools(scope ?? fallbackScope, taskScopedToolsDeps).map(tool => tool.name)
   }

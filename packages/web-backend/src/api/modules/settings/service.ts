@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { ensureConfigTemplates, getConfigDir, loadConfig, SETTINGS_THINKING_LEVELS } from '@axiom/core'
+import { ensureConfigTemplates, getConfigDir, isValidTimezone, loadConfig, SETTINGS_THINKING_LEVELS } from '@axiom/core'
 import type { SettingsData, SettingsRouterOptions, TelegramData } from './types.js'
 import {
   mergeAgentHeartbeat,
@@ -91,6 +91,7 @@ export function createSettingsService(options: SettingsRouterOptions = {}): Sett
     if (body.timezone !== undefined) {
       const err = validateNonEmptyString(body.timezone, 'timezone')
       if (err) throw new SettingsValidationError(err)
+      if (!isValidTimezone((body.timezone as string).trim())) throw new SettingsValidationError('timezone must be a valid IANA timezone')
       settings.timezone = (body.timezone as string).trim()
     }
 
@@ -192,6 +193,10 @@ export function createSettingsService(options: SettingsRouterOptions = {}): Sett
       } catch (err) {
         console.error('[axiom] Failed to apply live settings update:', err)
       }
+    }
+
+    if (body.timezone !== undefined) {
+      options.onTimezoneChanged?.(null)
     }
 
     if ((settings.healthMonitorIntervalMinutes ?? 5) !== previousHealthMonitorInterval || healthMonitorMerge.changed) {
