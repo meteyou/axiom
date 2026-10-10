@@ -11,8 +11,11 @@ import {
   readAgentsRulesFile,
   writeAgentsRulesFile,
   getDefaultAgentsRulesContent,
-  readHeartbeatFile,
-  writeHeartbeatFile,
+  readUserHeartbeat,
+  writeUserHeartbeat,
+  isUserHeartbeatEnabled,
+  setUserHeartbeatEnabled,
+  loadAgentHeartbeatSettings,
   getDefaultHeartbeatContent,
   readConsolidationFile,
   writeConsolidationFile,
@@ -298,13 +301,29 @@ class MemoryService {
     this.refreshAgentPrompt()
   }
 
-  readHeartbeat(): string {
-    return readHeartbeatFile()
+  readHeartbeat(scope: UserScope): string {
+    return readUserHeartbeat(scope, getDefaultHeartbeatContent())
   }
 
-  writeHeartbeat(content: string): void {
-    writeHeartbeatFile(content)
+  writeHeartbeat(scope: UserScope, content: string): void {
+    writeUserHeartbeat(scope, content)
     this.refreshAgentPrompt()
+  }
+
+  readHeartbeatSettings(scope: UserScope) {
+    const global = loadAgentHeartbeatSettings()
+    return {
+      enabled: isUserHeartbeatEnabled(this.options.db, scope.id, global.enabled),
+      masterEnabled: global.enabled,
+      intervalMinutes: global.intervalMinutes,
+      nightMode: global.nightMode,
+      timezone: scope.settings.timezone,
+    }
+  }
+
+  setHeartbeatEnabled(scope: UserScope, enabled: boolean) {
+    setUserHeartbeatEnabled(this.options.db, scope.id, enabled)
+    return this.readHeartbeatSettings(scope)
   }
 
   readDefaultHeartbeat(): string {

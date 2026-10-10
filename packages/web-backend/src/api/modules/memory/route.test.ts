@@ -260,8 +260,27 @@ describe('memory route module', () => {
       expect(del.status).toBe(200)
     })
 
+    it('gives users their own heartbeat file and switch', async () => {
+      const put = await fetch(`${baseUrl}/api/memory/heartbeat`, {
+        method: 'PUT', headers: json(userToken), body: JSON.stringify({ content: '- [ ] check mail' }),
+      })
+      expect(put.status).toBe(200)
+      const get = await (await fetch(`${baseUrl}/api/memory/heartbeat`, { headers: authHeaders(userToken) })).json() as { content: string }
+      expect(get.content).toBe('- [ ] check mail')
+      const adminGet = await (await fetch(`${baseUrl}/api/memory/heartbeat`, { headers: authHeaders(adminToken) })).json() as { content: string }
+      expect(adminGet.content).not.toBe('- [ ] check mail')
+
+      const before = await (await fetch(`${baseUrl}/api/memory/heartbeat/settings`, { headers: authHeaders(userToken) })).json() as { enabled: boolean; intervalMinutes: number }
+      expect(before.enabled).toBe(false)
+      expect(typeof before.intervalMinutes).toBe('number')
+      const after = await (await fetch(`${baseUrl}/api/memory/heartbeat/settings`, {
+        method: 'PUT', headers: json(userToken), body: JSON.stringify({ enabled: true }),
+      })).json() as { enabled: boolean }
+      expect(after.enabled).toBe(true)
+    })
+
     it('rejects admin-only endpoints with 403', async () => {
-      for (const p of ['soul', 'core', 'agents', 'files', 'file?path=SOUL.md', 'consolidation-rules', 'tasks-guidelines', 'consolidation/status', 'usage-stats', 'heartbeat', 'projects']) {
+      for (const p of ['soul', 'core', 'agents', 'files', 'file?path=SOUL.md', 'consolidation-rules', 'tasks-guidelines', 'consolidation/status', 'usage-stats', 'projects']) {
         const res = await fetch(`${baseUrl}/api/memory/${p}`, { headers: authHeaders(userToken) })
         expect(res.status, p).toBe(403)
       }

@@ -38,6 +38,12 @@ export function createMemoryRouter(options: MemoryRouterOptions): Router {
   router.put('/facts/:id', controller.putFact)
   router.delete('/facts/:id', controller.deleteFact)
 
+  router.get('/heartbeat', controller.getHeartbeat)
+  router.put('/heartbeat', controller.putHeartbeat)
+  router.get('/heartbeat/default', controller.getDefaultHeartbeat)
+  router.get('/heartbeat/settings', controller.getHeartbeatSettings)
+  router.put('/heartbeat/settings', controller.putHeartbeatSettings)
+
   router.use(requireAdmin)
 
   // Generic memory file tree (whole /data/memory folder); file path passed via ?path=
@@ -64,10 +70,6 @@ export function createMemoryRouter(options: MemoryRouterOptions): Router {
   router.get('/projects/:name', controller.getProject)
   router.put('/projects/:name', controller.putProject)
 
-  // Heartbeat endpoints (HEARTBEAT.md — agent heartbeat task list)
-  router.get('/heartbeat', controller.getHeartbeat)
-  router.put('/heartbeat', controller.putHeartbeat)
-  router.get('/heartbeat/default', controller.getDefaultHeartbeat)
 
   router.get('/usage-stats', controller.getUsageStats)
 
