@@ -117,6 +117,8 @@ The nightly **memory consolidation** job condenses the last few days of `daily/<
 
 How aggressively it promotes vs. drops is governed by `/data/config/CONSOLIDATION.md` — the prompt the consolidator uses to judge each candidate entry. See [Agent Instructions → CONSOLIDATION.md](./instructions#consolidation-md) for the template and tuning tips.
 
+On instances with several users, consolidation runs **once per user**, sequentially, with the bootstrap admin (the first account) last. A user's run reads only that user's daily notes and chat history and may update their own profile, the shared `MEMORY.md` (general lessons only, no personal data) and the wiki. Users with no daily notes in the lookback window are skipped. The global steps — wiki lint, source coverage and `MEMORY.md` compaction — run only in the admin run. A manual run (admin only) executes the whole sequence, and the consolidation status reflects the combined result. Single-user instances behave as before.
+
 Schedule, lookback window, and provider are configured under [Settings → Memory](./../settings/memory#memory-consolidation). You can also trigger a consolidation run manually from the Memory page in the web UI.
 
 ## See also

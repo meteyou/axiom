@@ -66,6 +66,8 @@ The shipped template maps out the **memory architecture** and gives explicit rul
 - **Ignore** — ephemeral one-shot commands, temporary paths, noise.
 - **Size budgets**: `MEMORY.md` ≤ ~80 lines / ~6 KB, each user profile ≤ ~60 lines / ~5 KB. Both line count and byte size are checked, since long bullets hide in line counts. Over-budget files are compacted before anything new is added.
 
+Sections wrapped in `<admin_only>…</admin_only>` (wiki lint, source coverage, `MEMORY.md` compaction) are removed from the file before it is handed to a regular user's consolidation run; the admin run receives the full file. The template also states that `MEMORY.md` is shared by all users and that personal content must be moved into the affected user's profile. Existing files are not modified on update — use the reset to get the new template.
+
 Customize it to match your taxonomy. For example, if you don't use the `wiki/` layer at all, remove that section so the consolidator stops trying.
 
 ### Tuning tips
