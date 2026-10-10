@@ -40,6 +40,15 @@ Click the 🗑 icon. A confirmation dialog shows the key name; confirming remove
 
 Also readable from `$SECRET_NAME`-style environment variables at container start — see [Environment Variables](../reference/env-vars) for the precedence rules between env vars and `secrets.json`.
 
+## Personal secrets (multi-user)
+
+On an instance with several accounts, the **bootstrap admin** (the first account) manages the global secrets described above. Every other user — regular users and additional admins — sees a Secrets tab with their **own** secrets:
+
+- Stored encrypted in `/data/users/<username>/secrets.json` (mode `0600`); values are never returned by the API.
+- Merged over the global secrets **only into the environment of that user's shell commands** (chat and background tasks). A personal secret overrides a global one with the same name, for that user only.
+- Never added to the Axiom process environment, so other users' commands never see them.
+- Nobody — including the admin — can see another user's secrets. Non-bootstrap admins additionally see the global secrets (masked, read-only).
+
 ## Backup & rotation
 
 `/data/config/secrets.json` is part of the normal `/data` volume. Back up the volume and you have your secrets. Rotate a key by saving the new value in the UI; the change takes effect immediately on the next request that uses it.
