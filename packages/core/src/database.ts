@@ -366,6 +366,10 @@ export function initDatabase(dbPath?: string): Database {
     db.exec("ALTER TABLE scheduled_tasks ADD COLUMN thinking_level TEXT")
   }
 
+  if (!scheduledCols.find(c => c.name === 'codemode')) {
+    db.exec("ALTER TABLE scheduled_tasks ADD COLUMN codemode TEXT")
+  }
+
   // Migration: add 'paused' to tasks status CHECK constraint
   // Test by inserting a paused row — if CHECK fails, recreate the table
   try {

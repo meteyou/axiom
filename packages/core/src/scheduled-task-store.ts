@@ -5,6 +5,9 @@ import { normalizeThinkingLevel } from './thinking-level.js'
 
 export type ScheduledTaskActionType = 'task' | 'injection'
 
+/** Per-cronjob codemode override. `null` = inherit the global `codemode.tasks` setting. */
+export type ScheduledTaskCodemode = 'on' | 'off'
+
 export interface ScheduledTask {
   id: string
   name: string
@@ -26,6 +29,7 @@ export interface ScheduledTask {
   attachedSkills: string[] | null
   /** Thinking level for the spawned task; `null` = the background default at run time. */
   thinkingLevel: SettingsThinkingLevel | null
+  codemode: ScheduledTaskCodemode | null
   lastRunAt: string | null
   lastRunTaskId: string | null
   lastRunStatus: string | null
@@ -42,6 +46,7 @@ export interface CreateScheduledTaskInput {
   enabled?: boolean
   attachedSkills?: string[] | null
   thinkingLevel?: SettingsThinkingLevel | null
+  codemode?: ScheduledTaskCodemode | null
 }
 
 export interface UpdateScheduledTaskInput {
@@ -57,6 +62,8 @@ export interface UpdateScheduledTaskInput {
   attachedSkills?: string[] | null
   /** `null` resets to the background default. */
   thinkingLevel?: SettingsThinkingLevel | null
+  /** `null` resets to inherit (global task setting). */
+  codemode?: ScheduledTaskCodemode | null
   lastRunAt?: string
   lastRunTaskId?: string
   lastRunStatus?: string
@@ -75,6 +82,7 @@ interface ScheduledTaskRow {
   system_prompt_override: string | null
   attached_skills: string | null
   thinking_level: string | null
+  codemode: string | null
   last_run_at: string | null
   last_run_task_id: string | null
   last_run_status: string | null
@@ -115,6 +123,7 @@ function rowToScheduledTask(row: ScheduledTaskRow): ScheduledTask {
     systemPromptOverride: row.system_prompt_override,
     attachedSkills: parseAttachedSkills(row.attached_skills),
     thinkingLevel: normalizeThinkingLevel(row.thinking_level) ?? null,
+    codemode: row.codemode === 'on' || row.codemode === 'off' ? row.codemode : null,
     lastRunAt: row.last_run_at,
     lastRunTaskId: row.last_run_task_id,
     lastRunStatus: row.last_run_status,
@@ -140,6 +149,7 @@ export function initScheduledTasksTable(db: Database): void {
       system_prompt_override TEXT,
       attached_skills TEXT,
       thinking_level TEXT,
+      codemode TEXT,
       last_run_at TEXT,
       last_run_task_id TEXT,
       last_run_status TEXT,
@@ -163,8 +173,8 @@ export class ScheduledTaskStore {
     const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
 
     this.db.prepare(`
-      INSERT INTO scheduled_tasks (id, name, prompt, schedule, action_type, provider, enabled, attached_skills, thinking_level, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO scheduled_tasks (id, name, prompt, schedule, action_type, provider, enabled, attached_skills, thinking_level, codemode, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       input.name,
@@ -175,6 +185,7 @@ export class ScheduledTaskStore {
       input.enabled !== undefined ? (input.enabled ? 1 : 0) : 1,
       serializeAttachedSkills(input.attachedSkills ?? null),
       input.thinkingLevel ?? null,
+      input.codemode ?? null,
       now,
       now,
     )
@@ -256,6 +267,10 @@ export class ScheduledTaskStore {
     if (input.thinkingLevel !== undefined) {
       setClauses.push('thinking_level = ?')
       params.push(input.thinkingLevel)
+    }
+    if (input.codemode !== undefined) {
+      setClauses.push('codemode = ?')
+      params.push(input.codemode)
     }
     if (input.lastRunAt !== undefined) {
       setClauses.push('last_run_at = ?')
