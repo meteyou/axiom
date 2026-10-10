@@ -1447,18 +1447,18 @@ export class TelegramBot {
     }
   }
 
-  private approvedTelegramChatIds(): string[] {
-    if (!this.db) return []
+  private approvedTelegramChatIds(ownerUserId: number | null): string[] {
+    if (!this.db || ownerUserId === null) return []
     const rows = this.db.prepare(
-      'SELECT telegram_id FROM telegram_users WHERE status = ?',
-    ).all('approved') as { telegram_id: string }[]
+      'SELECT telegram_id FROM telegram_users WHERE status = ? AND user_id = ?',
+    ).all('approved', ownerUserId) as { telegram_id: string }[]
     return rows.map(row => row.telegram_id)
   }
 
   private async sendEmailApprovalPrompt(entry: EmailSendLogEntry): Promise<void> {
     if (entry.status !== 'pending') return
 
-    const chatIds = this.approvedTelegramChatIds()
+    const chatIds = this.approvedTelegramChatIds(entry.ownerUserId)
     if (chatIds.length === 0) return
 
     const text = formatEmailApprovalRequest(entry)
@@ -1571,12 +1571,18 @@ export class TelegramBot {
       return
     }
 
+    const actorUserId = this.resolveNumericUserId(ctx)
+    if (actorUserId === null) {
+      await ctx.answerCallbackQuery({ text: 'Not authorized.', show_alert: true })
+      return
+    }
+
     // The turn streams into this chat through the runner subscription opened
     // below; the retry service only decides whether it may start at all.
     const chatId = ctx.chat?.id ?? ctx.callbackQuery?.message?.chat.id
     const pending = chatId !== undefined ? this.subscribeToRetriedTurn(chatId, parsed.errorMessageId) : null
 
-    const outcome = this.turnRetry.retry(parsed.errorMessageId)
+    const outcome = this.turnRetry.retry(parsed.errorMessageId, actorUserId)
     if (!outcome.ok) pending?.cancel()
 
     // Deliberately not awaiting the retried turn: grammY processes updates
@@ -1675,7 +1681,13 @@ export class TelegramBot {
     // map entry while `approve()` is still running.
     const prompts = this.emailApprovalPrompts.get(parsed.entryId)
 
-    const decider = { name: this.deciderName(ctx) }
+    const deciderUserId = this.resolveNumericUserId(ctx)
+    if (deciderUserId === null) {
+      await ctx.answerCallbackQuery({ text: 'Not authorized.', show_alert: true })
+      return
+    }
+
+    const decider = { name: this.deciderName(ctx), userId: deciderUserId }
     const result = parsed.action === 'approve'
       ? await this.emailApproval.approve(parsed.entryId, decider)
       : await this.emailApproval.reject(parsed.entryId, decider)
