@@ -25,9 +25,21 @@ If your task starts with "every morning at 7…" or "on Mondays…", it's a **cr
 | Duration limit | Short, every line runs every tick | Up to `tasks.maxDurationMinutes` |
 | Idempotent? | **Required** — runs constantly | Not required |
 
+## Heartbeat per user
+
+On an instance with several users, every user has their own heartbeat:
+
+- **Own switch.** Each user turns their heartbeat on or off in their own **Heartbeat** tab. New users start with it off. The bootstrap admin's switch starts with the value of the global *Enabled* toggle, so a single-user instance behaves exactly as before.
+- **Own file.** A user's heartbeat reads their own `HEARTBEAT.md` — `/data/users/<username>/HEARTBEAT.md`. The bootstrap admin keeps `/data/config/HEARTBEAT.md`.
+- **One task per tick.** On every tick the agent starts one heartbeat task for each user whose switch is on, whose file has actionable content and who is not in night mode. The task belongs to that user, runs with their data and reports only to them.
+- **Night mode follows the user's timezone.** The night-mode *hours* are global; they are applied in each user's [timezone](./agent#timezone).
+- **Global control stays with the admin.** The master switch, the interval and the night-mode hours are admin settings. Regular users see interval and night mode read-only in their Heartbeat tab. If the master switch is off, no heartbeat runs for anyone.
+
+The admin's own switch sits at the top of the configuration section below once the master switch is on.
+
 ## Enabled
 
-Master toggle. When off, no heartbeat ever fires — all settings below are inert.
+Master toggle. When off, no heartbeat ever fires for any user — all settings below are inert.
 
 ```json
 { "agentHeartbeat": { "enabled": false } }
@@ -35,7 +47,7 @@ Master toggle. When off, no heartbeat ever fires — all settings below are iner
 
 ## Heartbeat tasks
 
-A card linking to `/data/config/HEARTBEAT.md` — the prompt the agent receives on every heartbeat tick.
+A card linking to `/data/config/HEARTBEAT.md` (regular users: their own file, see above) — the prompt the agent receives on every heartbeat tick.
 
 Click **Open editor** to jump to the [Agent Instructions](../concepts/instructions#heartbeat-md) page. Keep it tight: this text runs every `intervalMinutes`, so every line is a recurring cost.
 
