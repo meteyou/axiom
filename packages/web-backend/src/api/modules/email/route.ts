@@ -1,8 +1,6 @@
 import { Router } from 'express'
-import type { NextFunction, Response } from 'express'
 import type { Database } from '@axiom/core'
 import { jwtMiddleware } from '../../../auth.js'
-import type { AuthenticatedRequest } from '../../../auth.js'
 import { createEmailController } from './controller.js'
 
 export interface EmailRouterOptions {
@@ -18,23 +16,14 @@ export function createEmailRouter(options: EmailRouterOptions): Router {
 
   router.get('/configured', controller.isConfigured)
 
-  // Read-only audit view — every authenticated user may inspect what the agent sent.
+  // Audit view — regular users see their own entries, the admin sees all.
   router.get('/sent-log', controller.listSendLog)
   router.get('/sent-log/:id', controller.getSendLogEntry)
 
-  // Approval decisions are open to every authenticated user, not just admins.
+  // Approval decisions are limited to the owner of the entry, enforced in the service.
   router.post('/sent-log/:id/approve', controller.approveSendLogEntry)
   router.post('/sent-log/:id/reject', controller.rejectSendLogEntry)
   router.post('/sent-log/:id/retry', controller.retrySendLogEntry)
-
-  router.use('/accounts', (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-    if (req.user?.role !== 'admin') {
-      res.status(403).json({ error: 'Admin access required' })
-      return
-    }
-
-    next()
-  })
 
   router.get('/accounts', controller.listAccounts)
   router.post('/accounts', controller.createAccount)

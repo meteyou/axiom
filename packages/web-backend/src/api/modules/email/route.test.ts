@@ -55,6 +55,7 @@ function seedLogEntry(overrides: Partial<CreateEmailSendLogInput> = {}): EmailSe
   return createEmailSendLogEntry(db, {
     accountId: 'acc-1',
     accountName: 'Work',
+    ownerUserId: 2,
     status: 'sent',
     to: ['boss@example.com'],
     subject: 'Status report',
@@ -295,41 +296,105 @@ describe('email route module', () => {
     expect(res.status).toBe(409)
   })
 
-  it('denies non-admin users on every account endpoint', async () => {
-    const created = await createAccount()
-
-    const requests = [
-      fetch(`${baseUrl}/api/email/accounts`, { headers: authHeaders(userToken) }),
-      fetch(`${baseUrl}/api/email/accounts/${created.id}`, { headers: authHeaders(userToken) }),
-      fetch(`${baseUrl}/api/email/accounts`, {
+  describe('ownership', () => {
+    async function createAs(token: string, overrides: Record<string, unknown> = {}) {
+      const res = await fetch(`${baseUrl}/api/email/accounts`, {
         method: 'POST',
-        headers: authHeaders(userToken),
-        body: JSON.stringify(accountPayload({ name: 'Other' })),
-      }),
-      fetch(`${baseUrl}/api/email/accounts/${created.id}`, {
+        headers: authHeaders(token),
+        body: JSON.stringify(accountPayload(overrides)),
+      })
+      return { res, account: (await res.json() as { account: SafeEmailAccount & { ownerUserId: number } }).account }
+    }
+
+    it('lets regular users manage their own accounts', async () => {
+      const { res, account } = await createAs(userToken)
+      expect(res.status).toBe(201)
+      expect(account.ownerUserId).toBe(2)
+
+      const update = await fetch(`${baseUrl}/api/email/accounts/${account.id}`, {
         method: 'PUT',
         headers: authHeaders(userToken),
         body: JSON.stringify({ canSend: true }),
-      }),
-      fetch(`${baseUrl}/api/email/accounts/${created.id}`, {
-        method: 'DELETE',
-        headers: authHeaders(userToken),
-      }),
-      fetch(`${baseUrl}/api/email/accounts/test-connection`, {
-        method: 'POST',
-        headers: authHeaders(userToken),
-        body: JSON.stringify({ accountId: created.id }),
-      }),
-      fetch(`${baseUrl}/api/email/accounts/folders`, {
-        method: 'POST',
-        headers: authHeaders(userToken),
-        body: JSON.stringify({ accountId: created.id }),
-      }),
-    ]
+      })
+      expect(update.status).toBe(200)
 
-    for (const res of await Promise.all(requests)) {
-      expect(res.status).toBe(403)
-    }
+      const configured = await fetch(`${baseUrl}/api/email/configured`, { headers: authHeaders(userToken) })
+      expect(await configured.json()).toEqual({ configured: true })
+
+      const del = await fetch(`${baseUrl}/api/email/accounts/${account.id}`, { method: 'DELETE', headers: authHeaders(userToken) })
+      expect(del.status).toBe(200)
+    })
+
+    it('hides foreign accounts from regular users', async () => {
+      const adminAccount = await createAccount()
+
+      const list = await fetch(`${baseUrl}/api/email/accounts`, { headers: authHeaders(userToken) })
+      expect((await list.json() as { accounts: unknown[] }).accounts).toEqual([])
+
+      const configured = await fetch(`${baseUrl}/api/email/configured`, { headers: authHeaders(userToken) })
+      expect(await configured.json()).toEqual({ configured: false })
+
+      const requests = [
+        fetch(`${baseUrl}/api/email/accounts/${adminAccount.id}`, { headers: authHeaders(userToken) }),
+        fetch(`${baseUrl}/api/email/accounts/${adminAccount.id}`, {
+          method: 'PUT',
+          headers: authHeaders(userToken),
+          body: JSON.stringify({ canSend: true }),
+        }),
+        fetch(`${baseUrl}/api/email/accounts/${adminAccount.id}`, { method: 'DELETE', headers: authHeaders(userToken) }),
+        fetch(`${baseUrl}/api/email/accounts/test-connection`, {
+          method: 'POST',
+          headers: authHeaders(userToken),
+          body: JSON.stringify({ accountId: adminAccount.id }),
+        }),
+        fetch(`${baseUrl}/api/email/accounts/folders`, {
+          method: 'POST',
+          headers: authHeaders(userToken),
+          body: JSON.stringify({ accountId: adminAccount.id }),
+        }),
+      ]
+      for (const res of await Promise.all(requests)) {
+        expect(res.status).toBe(404)
+      }
+      expect(fs.existsSync(accountsFile())).toBe(true)
+    })
+
+    it('lets the admin list all accounts without secrets and delete foreign ones', async () => {
+      const { account } = await createAs(userToken, { name: 'Private' })
+      await createAccount({ name: 'Admin' })
+
+      const list = await fetch(`${baseUrl}/api/email/accounts`, { headers: authHeaders() })
+      const body = await list.json() as { accounts: (SafeEmailAccount & { ownerUserId: number; ownerUsername: string })[] }
+      expect(body.accounts).toHaveLength(2)
+      expect(JSON.stringify(body)).not.toContain('imap-secret')
+      expect(body.accounts.find(a => a.name === 'Private')?.ownerUsername).toBe('user')
+
+      const del = await fetch(`${baseUrl}/api/email/accounts/${account.id}`, { method: 'DELETE', headers: authHeaders() })
+      expect(del.status).toBe(200)
+    })
+
+    it('does not let the admin edit or use credentials of foreign accounts', async () => {
+      const { account } = await createAs(userToken, { name: 'Private' })
+
+      const update = await fetch(`${baseUrl}/api/email/accounts/${account.id}`, {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify({ canSend: true }),
+      })
+      expect(update.status).toBe(403)
+
+      const test = await fetch(`${baseUrl}/api/email/accounts/test-connection`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ accountId: account.id }),
+      })
+      expect(test.status).toBe(403)
+    })
+
+    it('allows the same account name for different users', async () => {
+      expect((await createAs(userToken, { name: 'Same' })).res.status).toBe(201)
+      expect((await createAs(adminToken, { name: 'Same' })).res.status).toBe(201)
+    })
   })
 
   it('requires authentication', async () => {
@@ -465,15 +530,24 @@ describe('email send log endpoints', () => {
     expect(res.status).toBe(404)
   })
 
-  it('allows non-admin users to read the send log', async () => {
-    const created = seedLogEntry()
+  it('shows regular users only their own send log entries and the admin all of them', async () => {
+    const own = seedLogEntry()
+    const foreign = seedLogEntry({ ownerUserId: 1 })
 
     const list = await fetchSendLog('', userToken)
     expect(list.res.status).toBe(200)
+    expect(list.body.entries.map(entry => entry.id)).toEqual([own.id])
     expect(list.body.total).toBe(1)
 
-    const detail = await fetch(`${baseUrl}/api/email/sent-log/${created.id}`, { headers: authHeaders(userToken) })
+    const detail = await fetch(`${baseUrl}/api/email/sent-log/${own.id}`, { headers: authHeaders(userToken) })
     expect(detail.status).toBe(200)
+    const hidden = await fetch(`${baseUrl}/api/email/sent-log/${foreign.id}`, { headers: authHeaders(userToken) })
+    expect(hidden.status).toBe(404)
+
+    const all = await fetchSendLog('', adminToken)
+    expect(all.body.total).toBe(2)
+    const adminDetail = await fetch(`${baseUrl}/api/email/sent-log/${own.id}`, { headers: authHeaders(adminToken) })
+    expect(adminDetail.status).toBe(200)
   })
 
   it('requires authentication for the send log', async () => {
@@ -503,12 +577,22 @@ describe('email approval endpoints', () => {
     expect(body.entry!.decidedAt).toBeTruthy()
   })
 
+  it('rejects decisions from anyone but the owner, including the admin', async () => {
+    const entry = seedLogEntry({ status: 'pending' })
+
+    for (const action of ['approve', 'reject', 'retry'] as const) {
+      const { res } = await decide(entry.id, action, adminToken)
+      expect(res.status).toBe(403)
+    }
+    expect(db.prepare('SELECT status FROM email_send_log WHERE id = ?').get(entry.id)).toEqual({ status: 'pending' })
+  })
+
   it('lets only the first decision win', async () => {
     const entry = seedLogEntry({ status: 'pending' })
 
     expect((await decide(entry.id, 'reject')).res.status).toBe(200)
 
-    const second = await decide(entry.id, 'approve', adminToken)
+    const second = await decide(entry.id, 'approve')
     expect(second.res.status).toBe(409)
     expect(second.body.code).toBe('already_decided')
     expect(second.body.error).toContain('user')
@@ -526,10 +610,10 @@ describe('email approval endpoints', () => {
     expect(approved.body.entry!.errorMessage).toBeTruthy()
     expect(approved.body.entry!.decidedBy).toBe('user')
 
-    const retried = await decide(entry.id, 'retry', adminToken)
+    const retried = await decide(entry.id, 'retry')
     expect(retried.res.status).toBe(502)
     expect(retried.body.entry!.status).toBe('failed')
-    expect(retried.body.entry!.decidedBy).toBe('admin')
+    expect(retried.body.entry!.decidedBy).toBe('user')
   })
 
   it('refuses to retry an entry that did not fail', async () => {
