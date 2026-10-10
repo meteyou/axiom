@@ -122,6 +122,23 @@ describe('settings contracts', () => {
     })
   })
 
+  it('defaults codemode switches to off and keeps explicit overrides', () => {
+    const defaults = normalizeSettingsContract({})
+    expect(defaults.codemode).toEqual({ mainAgent: false, tasks: false })
+    expect(DEFAULT_SETTINGS_CONTRACT.codemode).toEqual({ mainAgent: false, tasks: false })
+
+    const overridden = normalizeSettingsContract({
+      codemode: { mainAgent: true, tasks: true },
+    })
+    expect(overridden.codemode).toEqual({ mainAgent: true, tasks: true })
+
+    // Non-boolean values fall back to off so a hand-edited file cannot enable it.
+    const invalid = normalizeSettingsContract({
+      codemode: { mainAgent: 'yes', tasks: 1 },
+    } as unknown as Parameters<typeof normalizeSettingsContract>[0])
+    expect(invalid.codemode).toEqual({ mainAgent: false, tasks: false })
+  })
+
   it('defaults image generation to on with 4 variants and the images folder', () => {
     expect(normalizeSettingsContract({}).imageGeneration).toEqual({
       enabled: true,
