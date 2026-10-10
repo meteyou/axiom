@@ -301,6 +301,26 @@ export type {
 } from './agent-runtime-types.js'
 export { STALL_OUTCOMES, TURN_ERROR_CAUSES } from './agent-runtime-types.js'
 export {
+  CODEMODE_TOOL_NAME,
+  CODEMODE_MEMORY_LIMIT_BYTES,
+  CODEMODE_DEFAULT_MAX_OUTPUT_TOKENS,
+  CODEMODE_DEFAULT_TIMEOUT_MS,
+  CODEMODE_MAX_TIMEOUT_MS,
+  CODEMODE_SPILL_DIR,
+  createCodemodeTool,
+  buildCodemodeDescription,
+  buildCodemodePromptGuideline,
+  pruneCodemodeSpillFolder,
+} from './codemode-tool.js'
+export type {
+  CodemodeToolOptions,
+  CodemodeToolOwner,
+  CodemodeNestedCall,
+  CodemodeNestedCallStart,
+  CodemodeNestedCallEnd,
+  CodemodeNestedCallObserver,
+} from './codemode-tool.js'
+export {
   TURN_ERROR_KIND,
   buildTurnErrorMetadata,
   parseTurnErrorMetadata,
