@@ -1,4 +1,4 @@
-export { AgentHeartbeatService, DEFAULT_AGENT_HEARTBEAT_SETTINGS } from './agent-heartbeat.js'
+export { AgentHeartbeatService, DEFAULT_AGENT_HEARTBEAT_SETTINGS, isUserHeartbeatEnabled, setUserHeartbeatEnabled, loadAgentHeartbeatSettings, readUserHeartbeat, writeUserHeartbeat } from './agent-heartbeat.js'
 export type { AgentHeartbeatSettings, AgentHeartbeatNightMode, AgentHeartbeatServiceOptions } from './agent-heartbeat.js'
 export { initDatabase, getDatabase, isValidUsername, validateUsername } from './database.js'
 export { getOAuthAuth, oauthLogin } from './pi-oauth.js'

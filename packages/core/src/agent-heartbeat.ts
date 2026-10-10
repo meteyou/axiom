@@ -1,6 +1,9 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { ensureConfigTemplates, getDefaultTimezone, loadConfig } from './config.js'
+import type { Database } from './database.js'
+import { getBootstrapAdminId, resolveUserScope } from './user-scope.js'
+import type { UserScope } from './user-scope.js'
 import type { Task } from './task-store.js'
 import type { ProviderConfig } from './provider-config.js'
 import { getProviderDefaultModel } from './provider-config.js'
@@ -28,14 +31,46 @@ export const DEFAULT_AGENT_HEARTBEAT_SETTINGS: AgentHeartbeatSettings = {
   },
 }
 
-const HEARTBEAT_PROMPT = `Read /data/config/HEARTBEAT.md. Execute the tasks defined there.
+function buildHeartbeatPrompt(heartbeatFile: string): string {
+  return `Read ${heartbeatFile}. Execute the tasks defined there.
 If you have something important to report to the user, use task injection.
 If nothing needs attention, complete silently.`
+}
+
+/**
+ * A user's own switch. Unset means: the bootstrap admin follows the legacy
+ * global `enabled` flag, everyone else is off.
+ */
+export function isUserHeartbeatEnabled(db: Database, userId: number, globalEnabled: boolean): boolean {
+  const row = db.prepare('SELECT heartbeat_enabled FROM users WHERE id = ?').get(userId) as { heartbeat_enabled: number | null } | undefined
+  if (!row) return false
+  if (row.heartbeat_enabled !== null && row.heartbeat_enabled !== undefined) return row.heartbeat_enabled === 1
+  return userId === getBootstrapAdminId(db) && globalEnabled
+}
+
+export function setUserHeartbeatEnabled(db: Database, userId: number, enabled: boolean): void {
+  db.prepare("UPDATE users SET heartbeat_enabled = ?, updated_at = datetime('now') WHERE id = ?").run(enabled ? 1 : 0, userId)
+}
+
+export function readUserHeartbeat(scope: UserScope, fallback: string): string {
+  try {
+    return fs.readFileSync(scope.paths.heartbeatFile, 'utf-8')
+  } catch {
+    return fallback
+  }
+}
+
+export function writeUserHeartbeat(scope: UserScope, content: string): void {
+  fs.mkdirSync(path.dirname(scope.paths.heartbeatFile), { recursive: true })
+  fs.writeFileSync(scope.paths.heartbeatFile, content, 'utf-8')
+}
 
 type HeartbeatTaskRuntime = Pick<TaskRuntimeTaskBoundary, 'create' | 'start'>
 
 export interface AgentHeartbeatServiceOptions {
   taskRuntime: HeartbeatTaskRuntime
+  /** Enables per-user heartbeats; without it a single legacy heartbeat runs. */
+  db?: Database
   getDefaultProvider: () => ProviderConfig | null
   /** Override for testing — returns the current time */
   now?: () => Date
@@ -61,8 +96,41 @@ export function isHeartbeatContentEffectivelyEmpty(content: string): boolean {
   return true
 }
 
+export function loadAgentHeartbeatSettings(): AgentHeartbeatSettings {
+  try {
+    ensureConfigTemplates()
+    const config = loadConfig<{ agentHeartbeat?: Partial<AgentHeartbeatSettings & { nightMode?: Partial<AgentHeartbeatNightMode> }> }>('settings.json')
+    const raw = config.agentHeartbeat
+
+    if (!raw) return { ...DEFAULT_AGENT_HEARTBEAT_SETTINGS }
+
+    return {
+      enabled: typeof raw.enabled === 'boolean' ? raw.enabled : DEFAULT_AGENT_HEARTBEAT_SETTINGS.enabled,
+      intervalMinutes: safePositiveInt(raw.intervalMinutes, DEFAULT_AGENT_HEARTBEAT_SETTINGS.intervalMinutes),
+      nightMode: {
+        enabled: typeof raw.nightMode?.enabled === 'boolean' ? raw.nightMode.enabled : DEFAULT_AGENT_HEARTBEAT_SETTINGS.nightMode.enabled,
+        startHour: safeHour(raw.nightMode?.startHour, DEFAULT_AGENT_HEARTBEAT_SETTINGS.nightMode.startHour),
+        endHour: safeHour(raw.nightMode?.endHour, DEFAULT_AGENT_HEARTBEAT_SETTINGS.nightMode.endHour),
+      },
+    }
+  } catch {
+    return { ...DEFAULT_AGENT_HEARTBEAT_SETTINGS }
+  }
+}
+
+function safePositiveInt(value: number | undefined, defaultValue: number): number {
+  if (value === undefined) return defaultValue
+  return Number.isFinite(value) && Number.isInteger(value) && value >= 1 ? value : defaultValue
+}
+
+function safeHour(value: number | undefined, defaultValue: number): number {
+  if (value === undefined) return defaultValue
+  return Number.isFinite(value) && Number.isInteger(value) && value >= 0 && value <= 23 ? value : defaultValue
+}
+
 export class AgentHeartbeatService {
   private taskRuntime: HeartbeatTaskRuntime
+  private db: Database | null
   private getDefaultProvider: () => ProviderConfig | null
   private nowFn: () => Date
   private getTimezoneFn: () => string
@@ -76,6 +144,7 @@ export class AgentHeartbeatService {
     }
 
     this.taskRuntime = options.taskRuntime
+    this.db = options.db ?? null
     this.getDefaultProvider = options.getDefaultProvider
     this.nowFn = options.now ?? (() => new Date())
     this.getTimezoneFn = options.getTimezone ?? (() => this.loadTimezone())
@@ -153,27 +222,50 @@ export class AgentHeartbeatService {
     }
   }
 
-  /**
-   * Execute the heartbeat: create a background task that reads HEARTBEAT.md
-   */
+  /** Runs one tick and returns the id of the first task it started, or null. */
   async executeHeartbeat(): Promise<string | null> {
-    // Check night mode
-    if (this.isNightMode()) {
-      console.log('[axiom] Agent heartbeat skipped: night mode active')
+    return (await this.executeHeartbeatTick())[0] ?? null
+  }
+
+  /**
+   * One tick: a heartbeat task per eligible user (switch on, actionable
+   * file, outside the user's night mode). Without a database, the single
+   * legacy heartbeat runs.
+   */
+  async executeHeartbeatTick(): Promise<string[]> {
+    if (!this.db) {
+      const legacyFile = path.join(process.env.DATA_DIR ?? '/data', 'config', 'HEARTBEAT.md')
+      const id = await this.runHeartbeat(null, legacyFile, this.getTimezoneFn())
+      return id ? [id] : []
+    }
+
+    const rows = this.db.prepare('SELECT id FROM users WHERE deleted_at IS NULL ORDER BY id').all() as Array<{ id: number }>
+    const taskIds: string[] = []
+    for (const row of rows) {
+      if (!isUserHeartbeatEnabled(this.db, row.id, this.settings.enabled)) continue
+      const scope = resolveUserScope(this.db, row.id)
+      if (!scope) continue
+      const id = await this.runHeartbeat(scope.id, scope.paths.heartbeatFile, scope.settings.timezone)
+      if (id) taskIds.push(id)
+    }
+    return taskIds
+  }
+
+  private async runHeartbeat(ownerUserId: number | null, heartbeatFile: string, timezone: string): Promise<string | null> {
+    const label = ownerUserId === null ? '' : ` (user ${ownerUserId})`
+    if (this.isNightMode(undefined, timezone)) {
+      console.log(`[axiom] Agent heartbeat skipped${label}: night mode active`)
       return null
     }
 
-    // Pre-flight: read HEARTBEAT.md and skip if no actionable content
-    const heartbeatPath = path.join(process.env.DATA_DIR ?? '/data', 'config', 'HEARTBEAT.md')
     try {
-      const content = fs.readFileSync(heartbeatPath, 'utf-8')
+      const content = fs.readFileSync(heartbeatFile, 'utf-8')
       if (isHeartbeatContentEffectivelyEmpty(content)) {
-        console.log('[axiom] Agent heartbeat skipped: HEARTBEAT.md has no actionable content')
+        console.log(`[axiom] Agent heartbeat skipped${label}: HEARTBEAT.md has no actionable content`)
         return null
       }
     } catch {
-      // File doesn't exist or can't be read — skip heartbeat
-      console.log('[axiom] Agent heartbeat skipped: HEARTBEAT.md not found or unreadable')
+      console.log(`[axiom] Agent heartbeat skipped${label}: HEARTBEAT.md not found or unreadable`)
       return null
     }
 
@@ -183,26 +275,24 @@ export class AgentHeartbeatService {
       return null
     }
 
-    // Create a task — sessionId is created by the TaskRunner via
-    // SessionManager (with type='heartbeat') when the task starts.
-    // Heartbeat runs never accept an explicit model override, so they always
-    // use the configured task default.
+    // The TaskRunner creates the session (type='heartbeat') when the task starts.
     const task: Task = this.taskRuntime.create({
       name: 'Agent Heartbeat',
-      prompt: HEARTBEAT_PROMPT,
+      prompt: buildHeartbeatPrompt(heartbeatFile),
       triggerType: 'heartbeat',
       triggerSourceId: 'agent-heartbeat',
       provider: provider.name,
       model: getProviderDefaultModel(provider),
       isDefaultModel: true,
+      ...(ownerUserId !== null ? { ownerUserId } : {}),
     })
 
     try {
       await this.taskRuntime.start(task, provider)
-      console.log(`[axiom] Agent heartbeat task started: ${task.id}`)
+      console.log(`[axiom] Agent heartbeat task started${label}: ${task.id}`)
       return task.id
     } catch (err) {
-      console.error('[axiom] Agent heartbeat task failed to start:', err)
+      console.error(`[axiom] Agent heartbeat task failed to start${label}:`, err)
       return null
     }
   }
@@ -217,7 +307,7 @@ export class AgentHeartbeatService {
     const intervalMs = this.settings.intervalMinutes * 60 * 1000
 
     this.timer = setTimeout(() => {
-      void this.executeHeartbeat().finally(() => {
+      void this.executeHeartbeatTick().finally(() => {
         if (this.running && this.settings.enabled) {
           this.scheduleNext()
         }
@@ -230,25 +320,7 @@ export class AgentHeartbeatService {
   }
 
   private loadSettings(): AgentHeartbeatSettings {
-    try {
-      ensureConfigTemplates()
-      const config = loadConfig<{ agentHeartbeat?: Partial<AgentHeartbeatSettings & { nightMode?: Partial<AgentHeartbeatNightMode> }> }>('settings.json')
-      const raw = config.agentHeartbeat
-
-      if (!raw) return { ...DEFAULT_AGENT_HEARTBEAT_SETTINGS }
-
-      return {
-        enabled: typeof raw.enabled === 'boolean' ? raw.enabled : DEFAULT_AGENT_HEARTBEAT_SETTINGS.enabled,
-        intervalMinutes: this.safePositiveInt(raw.intervalMinutes, DEFAULT_AGENT_HEARTBEAT_SETTINGS.intervalMinutes),
-        nightMode: {
-          enabled: typeof raw.nightMode?.enabled === 'boolean' ? raw.nightMode.enabled : DEFAULT_AGENT_HEARTBEAT_SETTINGS.nightMode.enabled,
-          startHour: this.safeHour(raw.nightMode?.startHour, DEFAULT_AGENT_HEARTBEAT_SETTINGS.nightMode.startHour),
-          endHour: this.safeHour(raw.nightMode?.endHour, DEFAULT_AGENT_HEARTBEAT_SETTINGS.nightMode.endHour),
-        },
-      }
-    } catch {
-      return { ...DEFAULT_AGENT_HEARTBEAT_SETTINGS }
-    }
+    return loadAgentHeartbeatSettings()
   }
 
   private loadTimezone(): string {
@@ -259,15 +331,5 @@ export class AgentHeartbeatService {
     } catch {
       return getDefaultTimezone()
     }
-  }
-
-  private safePositiveInt(value: number | undefined, defaultValue: number): number {
-    if (value === undefined) return defaultValue
-    return Number.isFinite(value) && Number.isInteger(value) && value >= 1 ? value : defaultValue
-  }
-
-  private safeHour(value: number | undefined, defaultValue: number): number {
-    if (value === undefined) return defaultValue
-    return Number.isFinite(value) && Number.isInteger(value) && value >= 0 && value <= 23 ? value : defaultValue
   }
 }
