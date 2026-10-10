@@ -204,8 +204,16 @@ export interface ChatMessage {
   endedSessionId?: string
 }
 
+interface CodemodeNestedCall {
+  id: string
+  name: string
+  status: 'running' | 'ok' | 'error' | 'cancelled'
+  durationMs?: number
+  errorPreview?: string
+}
+
 interface WsMessage {
-  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'session_summary' | 'reminder' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'pong' | 'attachment' | 'chat_action' | 'chat_action_resolved' | 'turn_replay_start' | 'turn_replay_end' | 'stall_warning' | 'stall_resolved' | 'retry_scheduled'
+  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_update' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'session_summary' | 'reminder' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'pong' | 'attachment' | 'chat_action' | 'chat_action_resolved' | 'turn_replay_start' | 'turn_replay_end' | 'stall_warning' | 'stall_resolved' | 'retry_scheduled'
   text?: string
   /** Provider-stall details (for stall_warning / stall_resolved) */
   stall?: ChatStallInfo
@@ -226,6 +234,8 @@ interface WsMessage {
   toolArgs?: unknown
   toolResult?: unknown
   toolIsError?: boolean
+  /** Nested-call snapshot while a codemode script runs (for type='tool_call_update') */
+  nestedCalls?: CodemodeNestedCall[]
   error?: string
   sessionId?: string
   /**
@@ -973,6 +983,12 @@ export function useChat() {
             })
           }
         }
+        break
+
+      case 'tool_call_update':
+        // Live progress of a running codemode script; the dedicated codemode
+        // card renders it (added in a later task). Ignored until then so the
+        // new chunk type never breaks rendering.
         break
 
       case 'tool_call_end':

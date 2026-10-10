@@ -8,7 +8,7 @@ import type {
 } from '@axiom/core'
 import { isSlashCommandPicker, isSlashCommandAgentTurn } from '@axiom/core'
 import type { TurnPreambleToolCall } from '@axiom/core'
-import type { AgentCore, ResponseChunk, RetryInfo, StallInfo, TurnErrorInfo, TurnEvent } from '@axiom/core'
+import type { AgentCore, ResponseChunk, RetryInfo, StallInfo, TurnErrorInfo, TurnEvent, CodemodeNestedCallSnapshot } from '@axiom/core'
 import {
   TaskStore,
   ScheduledTaskStore,
@@ -35,7 +35,7 @@ interface ChatMessage {
 }
 
 interface ChatResponse {
-  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'session_summary' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'reminder' | 'pong' | 'attachment' | 'chat_action' | 'chat_action_resolved' | 'turn_replay_start' | 'turn_replay_end' | 'stall_warning' | 'stall_resolved' | 'retry_scheduled'
+  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_update' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'session_summary' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'reminder' | 'pong' | 'attachment' | 'chat_action' | 'chat_action_resolved' | 'turn_replay_start' | 'turn_replay_end' | 'stall_warning' | 'stall_resolved' | 'retry_scheduled'
   text?: string
   /**
    * Auto-retry details (for `retry_scheduled`). Live-only status: the failed
@@ -78,6 +78,8 @@ interface ChatResponse {
   toolArgs?: unknown
   toolResult?: unknown
   toolIsError?: boolean
+  /** Nested-call snapshot while a codemode script runs (for tool_call_update) */
+  nestedCalls?: CodemodeNestedCallSnapshot[]
   error?: string
   sessionId?: string
   /**
@@ -556,6 +558,7 @@ export function setupWebSocketChat(
             toolArgs: event.toolArgs,
             toolResult: event.toolResult,
             toolIsError: event.toolIsError,
+            nestedCalls: event.nestedCalls,
             error: event.error,
             errorInfo: event.errorInfo,
             stall: event.stall,
@@ -631,6 +634,7 @@ function chunkToResponse(chunk: ResponseChunk): ChatResponse {
     toolArgs: chunk.toolArgs,
     toolResult: chunk.toolResult,
     toolIsError: chunk.toolIsError,
+    nestedCalls: chunk.nestedCalls,
     error: chunk.error,
     errorInfo: chunk.errorInfo,
     stall: chunk.stall,

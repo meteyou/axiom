@@ -167,6 +167,8 @@ interface TurnState {
   sessionId: string
   startedAt: number
   buffer: TurnEvent[]
+  /** Buffer index of the latest `tool_call_update` chunk per `toolCallId` (see {@link bufferEvent}). */
+  latestCallUpdate: Map<string, number>
   /** Turn-level abort: user initiated, never retried. */
   abortController: AbortController
   /** Per-attempt abort (watchdog stall): kills one attempt, not the turn. */
@@ -343,6 +345,7 @@ export class TurnRunner {
       sessionId: input.sessionId,
       startedAt: Date.now(),
       buffer: [],
+      latestCallUpdate: new Map(),
       abortController: new AbortController(),
       attemptController: new AbortController(),
       ended: false,
@@ -427,7 +430,7 @@ export class TurnRunner {
   }
 
   private emit(turn: TurnState, event: TurnEvent): void {
-    turn.buffer.push(event)
+    this.bufferEvent(turn, event)
     const set = this.subscribers.get(turn.key)
     if (!set) return
     for (const subscriber of [...set]) {
@@ -437,6 +440,29 @@ export class TurnRunner {
         console.error('[turn-runner] subscriber failed:', err)
       }
     }
+  }
+
+  /**
+   * Buffer an event for mid-turn replay. A `tool_call_update` chunk carries a
+   * full snapshot of a tool call's nested calls, so it supersedes the previous
+   * snapshot of the same `toolCallId`: only the latest is kept, otherwise a
+   * batched codemode script (2N snapshots of up to N entries) would hold
+   * quadratic memory and be replayed in full to every reconnecting client.
+   */
+  private bufferEvent(turn: TurnState, event: TurnEvent): void {
+    if (event.type === 'chunk' && event.chunk.type === 'tool_call_update' && event.chunk.toolCallId) {
+      const previous = turn.latestCallUpdate.get(event.chunk.toolCallId)
+      if (previous !== undefined) {
+        const existing = turn.buffer[previous]
+        if (existing?.type === 'chunk' && existing.chunk.type === 'tool_call_update') {
+          turn.buffer[previous] = event
+          return
+        }
+        turn.latestCallUpdate.delete(event.chunk.toolCallId)
+      }
+      turn.latestCallUpdate.set(event.chunk.toolCallId, turn.buffer.length)
+    }
+    turn.buffer.push(event)
   }
 
   private finishTurn(turn: TurnState): void {
@@ -530,6 +556,7 @@ export class TurnRunner {
       // buffer too: a consumer attaching during the backoff must not rebuild
       // the partial answer that no longer exists in the transcript.
       turn.buffer = turn.buffer.filter(event => event.type === 'turn_start')
+      turn.latestCallUpdate.clear()
       this.emitChunk(turn, {
         type: 'retry_scheduled',
         text: formatRetryScheduledContent(retry),
