@@ -774,7 +774,9 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
     }
 
     if (this.user) {
-      language = resolveUserScope(this.db, this.user.id)?.settings.language ?? language
+      const personal = resolveUserScope(this.db, this.user.id)?.settings
+      language = personal?.language ?? language
+      timezone = personal?.timezone ?? timezone
     }
 
     return { language, timezone, builtinToolsConfig, sttEnabled, thinkingLevel }

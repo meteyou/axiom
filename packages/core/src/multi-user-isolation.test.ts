@@ -229,7 +229,7 @@ describe('multi-user isolation', () => {
   it('builds provider_quota per runtime user role', async () => {
     const quotaService = { getSnapshot: () => ({}), refreshProvider: vi.fn() }
     const run = async (userId: number) => {
-      const scope = { id: userId, username: 'x', role: userId === alice ? 'admin' as const : 'user' as const, isBootstrapAdmin: false, paths: resolveUserPaths('x', false), settings: { chatModel: null, thinkingLevel: 'off' as const, language: 'match' } }
+      const scope = { id: userId, username: 'x', role: userId === alice ? 'admin' as const : 'user' as const, isBootstrapAdmin: false, paths: resolveUserPaths('x', false), settings: { chatModel: null, thinkingLevel: 'off' as const, language: 'match', timezone: 'UTC' } }
       const tool = createBaseAgentTools({ db, quotaService: quotaService as never, user: scope })
         .find((t: AgentTool) => t.name === 'provider_quota')!
       const result = await tool.execute('call', {})
@@ -242,7 +242,7 @@ describe('multi-user isolation', () => {
 
   it('re-checks the provider_quota role on every call', async () => {
     const quotaService = { getSnapshot: () => ({}), refreshProvider: vi.fn() }
-    const scope = { id: alice, username: 'alice', role: 'admin' as const, isBootstrapAdmin: true, paths: resolveUserPaths('alice', true), settings: { chatModel: null, thinkingLevel: 'off' as const, language: 'match' } }
+    const scope = { id: alice, username: 'alice', role: 'admin' as const, isBootstrapAdmin: true, paths: resolveUserPaths('alice', true), settings: { chatModel: null, thinkingLevel: 'off' as const, language: 'match', timezone: 'UTC' } }
     const tool = createBaseAgentTools({ db, quotaService: quotaService as never, user: scope })
       .find((t: AgentTool) => t.name === 'provider_quota')!
 
