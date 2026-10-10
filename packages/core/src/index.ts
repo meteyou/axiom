@@ -43,6 +43,7 @@ export {
   readConsolidationFile,
   writeConsolidationFile,
   getDefaultConsolidationContent,
+  stripAdminOnlyBlocks,
   readTasksGuidelinesFile,
   writeTasksGuidelinesFile,
   getDefaultTasksGuidelinesContent,
