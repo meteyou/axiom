@@ -53,6 +53,8 @@ export interface GenerateImageToolOptions {
   db?: Database
   /** Session the generation cost is booked on in `token_usage`; background tools have none. */
   getSessionId?: () => string | null | undefined
+  /** Directory relative input paths and saved images resolve against; defaults to the global workspace. */
+  getWorkspaceDir?: () => string
   /** Test seams. */
   readSettings?: () => ImageGenerationSettingsContract
   generate?: (request: ImageGenerationRequest) => Promise<ImageGenerationResult>
@@ -126,8 +128,8 @@ function formatLocalDate(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 }
 
-function resolveWorkspacePath(filePath: string): string {
-  return path.isAbsolute(filePath) ? filePath : path.resolve(getWorkspaceDir(), filePath)
+function resolveWorkspacePath(filePath: string, workspaceDir: string): string {
+  return path.isAbsolute(filePath) ? filePath : path.resolve(workspaceDir, filePath)
 }
 
 function errorResult(message: string, extra: Partial<GenerateImageToolDetails> = {}): GenerateImageToolResult {
@@ -137,12 +139,12 @@ function errorResult(message: string, extra: Partial<GenerateImageToolDetails> =
   }
 }
 
-function loadInputImages(paths: string[]): ImageContent[] {
+function loadInputImages(paths: string[], workspaceDir: string): ImageContent[] {
   if (paths.length > MAX_INPUT_IMAGES) {
     throw new Error(`At most ${MAX_INPUT_IMAGES} input images are supported per call.`)
   }
   return paths.map((inputPath) => {
-    const absolutePath = resolveWorkspacePath(inputPath)
+    const absolutePath = resolveWorkspacePath(inputPath, workspaceDir)
     const extension = path.extname(absolutePath).toLowerCase()
     if (extension === '.svg') {
       throw new Error(`Input image "${inputPath}" is an SVG; image models only accept raster input. Generate again with a refined prompt or edit the SVG markup directly.`)
@@ -240,6 +242,7 @@ function bookImageUsage(db: Database, result: ImageGenerationResult, sessionId: 
 }
 
 interface SaveContext {
+  workspaceDir: string
   /** Normalized to stay inside the workspace (normalizeImageOutputDir). */
   outputDir: string
   createdAt: Date
@@ -250,7 +253,7 @@ interface SaveContext {
 }
 
 function saveGeneratedImages(result: ImageGenerationResult, context: SaveContext): SavedImageFile[] {
-  const directory = path.join(getWorkspaceDir(), context.outputDir, formatLocalDate(context.createdAt))
+  const directory = path.join(context.workspaceDir, context.outputDir, formatLocalDate(context.createdAt))
   fs.mkdirSync(directory, { recursive: true })
   const fileNames = planFileNames(directory, slugifyPrompt(context.prompt), result.images)
 
@@ -274,7 +277,7 @@ function saveGeneratedImages(result: ImageGenerationResult, context: SaveContext
       createdAt: context.createdAt.toISOString(),
     }, null, 2)}\n`, 'utf-8')
     return {
-      path: path.relative(getWorkspaceDir(), absolutePath),
+      path: path.relative(context.workspaceDir, absolutePath),
       absolutePath,
       sidecarPath,
       mimeType: image.mimeType,
@@ -288,6 +291,7 @@ export function createGenerateImageTool(options: GenerateImageToolOptions = {}):
   const resolveModel = options.resolveModel ?? ((requested: string | undefined) => resolveImageModel(requested))
   const now = options.now ?? (() => new Date())
   const readSettings = options.readSettings ?? readImageGenerationSettings
+  const resolveWorkspaceDir = options.getWorkspaceDir ?? getWorkspaceDir
   const declared = readSettings()
 
   return {
@@ -327,6 +331,7 @@ export function createGenerateImageTool(options: GenerateImageToolOptions = {}):
       if (!settings.enabled) return errorResult('Image generation is switched off under Settings → Image generation.')
 
       const params = rawParams as GenerateImageParams
+      const workspaceDir = resolveWorkspaceDir()
       const prompt = params.prompt?.trim()
       if (!prompt) return errorResult('prompt must not be empty.')
 
@@ -344,7 +349,7 @@ export function createGenerateImageTool(options: GenerateImageToolOptions = {}):
 
       let inputImages: ImageContent[] = []
       try {
-        inputImages = loadInputImages(params.input_images ?? [])
+        inputImages = loadInputImages(params.input_images ?? [], workspaceDir)
         const plan = planImageGeneration(provider, modelId, parameters, inputImages.length)
         if (!plan.ok) return errorResult(plan.error)
       } catch (err) {
@@ -392,6 +397,7 @@ export function createGenerateImageTool(options: GenerateImageToolOptions = {}):
       }
 
       const files = saveGeneratedImages(result, {
+        workspaceDir,
         outputDir: settings.outputDir,
         createdAt: now(),
         provider,
@@ -414,7 +420,7 @@ export function createGenerateImageTool(options: GenerateImageToolOptions = {}):
         lines.push(`${result.errors.length} of ${count} requests failed: ${result.errors.join(' | ')}`)
       }
       lines.push(...trailer)
-      lines.push(`Paths are relative to ${getWorkspaceDir()}. Deliver them with send_file_to_user; never paste image data into the chat.`)
+      lines.push(`Paths are relative to ${workspaceDir}. Deliver them with send_file_to_user; never paste image data into the chat.`)
 
       return {
         content: [{ type: 'text', text: lines.join('\n') }],

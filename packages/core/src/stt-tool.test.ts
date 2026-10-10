@@ -106,6 +106,29 @@ describe('transcribe_audio execute', () => {
     expect(mockTranscribeAudio).toHaveBeenCalledWith(Buffer.from('fake-audio'), { language: undefined, filename: 'recording.mp3' })
   })
 
+  it('resolves relative paths against the given user workspace', async () => {
+    mockLoadSttSettings.mockReturnValue({
+      enabled: true,
+      provider: 'whisper-url',
+      whisperUrl: 'http://localhost:8000/v1/audio/transcriptions',
+      providerId: '',
+      openaiModel: 'whisper-1',
+      ollamaModel: '',
+      deepgramModel: 'nova-3',
+      deepgramLanguage: '',
+      rewrite: { enabled: false, providerId: '' },
+    })
+    mockExistsSync.mockReturnValue(true)
+    mockAccessSync.mockReturnValue(undefined)
+    mockReadFileSync.mockReturnValue(Buffer.from('fake-audio'))
+    mockTranscribeAudio.mockResolvedValue({ transcript: 'Hi' })
+
+    const tool = createTranscribeAudioTool(() => '/workspace/bob')
+    const result = await tool.execute('test-id', { path: 'audio/recording.mp3' })
+
+    expect(result.details.path).toBe(nodePath.resolve('/workspace/bob', 'audio/recording.mp3'))
+  })
+
   it('transcribes a wav file with language parameter', async () => {
     mockLoadSttSettings.mockReturnValue({
       enabled: true,
