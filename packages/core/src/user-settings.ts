@@ -1,6 +1,7 @@
 import type { Database } from './database.js'
 import type { SettingsThinkingLevel } from './contracts/settings.js'
-import { loadConfig, warnConfigReadFailed } from './config.js'
+import { getDefaultTimezone, loadConfig, warnConfigReadFailed } from './config.js'
+import { isValidTimezone } from './cron-parser.js'
 import { getProviderDefaultModel, getUsableModels, loadProviders } from './provider-config.js'
 import { normalizeThinkingLevel } from './thinking-level.js'
 
@@ -14,6 +15,7 @@ export interface UserSettingsOverrides {
   chatModel: ChatModelRef | null
   thinkingLevel: SettingsThinkingLevel | null
   language: string | null
+  timezone: string | null
 }
 
 export interface GlobalChatDefaults {
@@ -21,6 +23,7 @@ export interface GlobalChatDefaults {
   providerName: string | null
   thinkingLevel: SettingsThinkingLevel
   language: string
+  timezone: string
 }
 
 export interface EffectiveUserSettings {
@@ -28,6 +31,7 @@ export interface EffectiveUserSettings {
   chatModel: ChatModelRef | null
   thinkingLevel: SettingsThinkingLevel
   language: string
+  timezone: string
 }
 
 export interface SelectableChatProvider {
@@ -46,12 +50,13 @@ interface UserSettingsRow {
   chat_model: string | null
   thinking_level: string | null
   language: string | null
+  timezone: string | null
 }
 
 export function getGlobalChatDefaults(): GlobalChatDefaults {
-  let settings: { thinkingLevel?: string; language?: string } = {}
+  let settings: { thinkingLevel?: string; language?: string; timezone?: string } = {}
   try {
-    settings = loadConfig<{ thinkingLevel?: string; language?: string }>('settings.json')
+    settings = loadConfig<{ thinkingLevel?: string; language?: string; timezone?: string }>('settings.json')
   } catch (err) {
     warnConfigReadFailed('settings.json', err)
   }
@@ -75,12 +80,18 @@ export function getGlobalChatDefaults(): GlobalChatDefaults {
     providerName,
     thinkingLevel: normalizeThinkingLevel(settings.thinkingLevel) ?? 'off',
     language: settings.language?.trim() || DEFAULT_LANGUAGE,
+    timezone: validTimezoneOrNull(settings.timezone) ?? getDefaultTimezone(),
   }
+}
+
+function validTimezoneOrNull(value: string | null | undefined): string | null {
+  const trimmed = value?.trim()
+  return trimmed && isValidTimezone(trimmed) ? trimmed : null
 }
 
 export function getUserSettingsOverrides(db: Database, userId: number): UserSettingsOverrides {
   const row = db.prepare(
-    'SELECT chat_provider_id, chat_model, thinking_level, language FROM users WHERE id = ?',
+    'SELECT chat_provider_id, chat_model, thinking_level, language, timezone FROM users WHERE id = ?',
   ).get(userId) as UserSettingsRow | undefined
   return {
     chatModel: row?.chat_provider_id && row.chat_model
@@ -88,6 +99,7 @@ export function getUserSettingsOverrides(db: Database, userId: number): UserSett
       : null,
     thinkingLevel: normalizeThinkingLevel(row?.thinking_level) ?? null,
     language: row?.language?.trim() || null,
+    timezone: validTimezoneOrNull(row?.timezone),
   }
 }
 
@@ -107,6 +119,10 @@ export function updateUserSettings(db: Database, userId: number, patch: UserSett
     sets.push('language = ?')
     values.push(patch.language?.trim() || null)
   }
+  if (patch.timezone !== undefined) {
+    sets.push('timezone = ?')
+    values.push(patch.timezone?.trim() || null)
+  }
   if (sets.length === 0) return
   db.prepare(`UPDATE users SET ${sets.join(', ')}, updated_at = datetime('now') WHERE id = ?`).run(...values, userId)
 }
@@ -121,7 +137,7 @@ export function resolveEffectiveSettings(
 ): EffectiveUserSettings {
   const defaults = getGlobalChatDefaults()
   if (user.role === 'admin' || user.isBootstrapAdmin) {
-    return { chatModel: null, thinkingLevel: defaults.thinkingLevel, language: defaults.language }
+    return { chatModel: null, thinkingLevel: defaults.thinkingLevel, language: defaults.language, timezone: defaults.timezone }
   }
   const overrides = getUserSettingsOverrides(db, user.id)
   return {
@@ -129,7 +145,22 @@ export function resolveEffectiveSettings(
     chatModel: overrides.chatModel && isOverrideSelectable(overrides.chatModel) ? overrides.chatModel : null,
     thinkingLevel: overrides.thinkingLevel ?? defaults.thinkingLevel,
     language: overrides.language ?? defaults.language,
+    timezone: overrides.timezone ?? defaults.timezone,
   }
+}
+
+/**
+ * Timezone a cronjob or reminder is evaluated in: its owner's effective timezone.
+ * Without an owner (legacy rows) the bootstrap admin, i.e. the global timezone, applies.
+ */
+export function resolveOwnerTimezone(db: Database, ownerUserId: number | null | undefined): string {
+  const globalTimezone = getGlobalChatDefaults().timezone
+  if (ownerUserId == null) return globalTimezone
+  const row = db.prepare('SELECT id, role FROM users WHERE id = ? AND deleted_at IS NULL').get(ownerUserId) as { id: number; role: string } | undefined
+  if (!row || row.role === 'admin') return globalTimezone
+  const bootstrap = db.prepare('SELECT MIN(id) AS id FROM users').get() as { id: number | null }
+  if (row.id === bootstrap.id) return globalTimezone
+  return getUserSettingsOverrides(db, ownerUserId).timezone ?? globalTimezone
 }
 
 /** Enabled chat models of all usable providers; never exposes credentials. */

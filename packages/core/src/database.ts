@@ -538,7 +538,7 @@ export function initDatabase(dbPath?: string): Database {
   }
 
   const userCols = db.prepare("PRAGMA table_info(users)").all() as { name: string }[]
-  for (const col of ['chat_provider_id', 'chat_model', 'thinking_level', 'language']) {
+  for (const col of ['chat_provider_id', 'chat_model', 'thinking_level', 'language', 'timezone']) {
     if (!userCols.find(c => c.name === col)) {
       db.exec(`ALTER TABLE users ADD COLUMN ${col} TEXT`)
     }

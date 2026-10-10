@@ -34,7 +34,7 @@ describe('user-settings', () => {
     previousDataDir = process.env.DATA_DIR
     dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'axiom-user-settings-'))
     process.env.DATA_DIR = dataDir
-    writeConfig('settings.json', { thinkingLevel: 'low', language: 'German' })
+    writeConfig('settings.json', { thinkingLevel: 'low', language: 'German', timezone: 'UTC' })
     writeConfig('providers.json', {
       activeProvider: 'p1',
       activeModel: 'm1',
@@ -57,9 +57,9 @@ describe('user-settings', () => {
   })
 
   it('resolves defaults for users without overrides and follows later global changes', () => {
-    expect(resolveUserScope(db, bob)?.settings).toEqual({ chatModel: null, thinkingLevel: 'low', language: 'German' })
-    writeConfig('settings.json', { thinkingLevel: 'high', language: 'French' })
-    expect(resolveUserScope(db, bob)?.settings).toEqual({ chatModel: null, thinkingLevel: 'high', language: 'French' })
+    expect(resolveUserScope(db, bob)?.settings).toEqual({ chatModel: null, thinkingLevel: 'low', language: 'German', timezone: 'UTC' })
+    writeConfig('settings.json', { thinkingLevel: 'high', language: 'French', timezone: 'UTC' })
+    expect(resolveUserScope(db, bob)?.settings).toEqual({ chatModel: null, thinkingLevel: 'high', language: 'French', timezone: 'UTC' })
   })
 
   it('applies an override only to its user', () => {
@@ -68,6 +68,7 @@ describe('user-settings', () => {
       chatModel: { providerId: 'p2', modelId: 'm3' },
       thinkingLevel: 'high',
       language: 'Spanish',
+      timezone: 'UTC',
     })
     expect(resolveUserScope(db, carol)?.settings.thinkingLevel).toBe('low')
 
