@@ -2,9 +2,8 @@ import { Router } from 'express'
 import type { Database } from '@axiom/core'
 import {
   validateCredentials,
-  generateAccessToken,
-  generateRefreshToken,
   verifyToken,
+  issueTokens,
   jwtMiddleware,
 } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
@@ -31,15 +30,7 @@ export function createAuthRouter(db: Database): Router {
       return
     }
 
-    const payload = { userId: user.id, username: user.username, role: user.role }
-    const accessToken = generateAccessToken(payload)
-    const refreshToken = generateRefreshToken(payload)
-
-    res.json({
-      accessToken,
-      refreshToken,
-      user: { id: user.id, username: user.username, role: user.role },
-    })
+    res.json(issueTokens(db, user.id))
   })
 
   /**
@@ -61,25 +52,20 @@ export function createAuthRouter(db: Database): Router {
       return
     }
 
-    // Verify user still exists
-    const user = db.prepare('SELECT id, username, role FROM users WHERE id = ?').get(payload.userId) as
-      | { id: number; username: string; role: string }
+    const row = db.prepare('SELECT token_version FROM users WHERE id = ?').get(payload.userId) as
+      | { token_version: number }
       | undefined
 
-    if (!user) {
+    if (!row) {
       res.status(401).json({ error: 'User no longer exists' })
       return
     }
+    if (row.token_version !== (payload.tokenVersion ?? 0)) {
+      res.status(401).json({ error: 'Invalid or expired refresh token' })
+      return
+    }
 
-    const newPayload = { userId: user.id, username: user.username, role: user.role }
-    const newAccessToken = generateAccessToken(newPayload)
-    const newRefreshToken = generateRefreshToken(newPayload)
-
-    res.json({
-      accessToken: newAccessToken,
-      refreshToken: newRefreshToken,
-      user: { id: user.id, username: user.username, role: user.role },
-    })
+    res.json(issueTokens(db, payload.userId))
   })
 
   /**

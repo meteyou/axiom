@@ -4,7 +4,7 @@ import type { Database } from '@axiom/core'
 import type { TaskEventBus, TaskEvent } from '@axiom/core'
 import { TaskStore } from '@axiom/core'
 import { getToolCalls } from '@axiom/core'
-import { verifyToken } from './auth.js'
+import { authenticateToken, onUserSessionsRevoked } from './auth.js'
 import { URL } from 'node:url'
 
 export interface WebSocketTaskOptions {
@@ -47,7 +47,7 @@ export function setupWebSocketTask(options: WebSocketTaskOptions): WebSocketServ
       return
     }
 
-    const user = verifyToken(token)
+    const user = authenticateToken(db, token)
     if (!user) {
       socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n')
       socket.destroy()
@@ -55,6 +55,10 @@ export function setupWebSocketTask(options: WebSocketTaskOptions): WebSocketServ
     }
 
     wss.handleUpgrade(request, socket, head, (ws) => {
+      const stopWatching = onUserSessionsRevoked((userId) => {
+        if (userId === user.userId) ws.close(4401, 'Session revoked')
+      })
+      ws.on('close', stopWatching)
       handleTaskConnection(ws, taskId)
     })
   })

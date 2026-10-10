@@ -15,7 +15,7 @@ import {
   TurnRunner,
 } from '@axiom/core'
 import { buildWebChatSlashCommandRegistry } from './slash-commands.js'
-import { verifyToken } from './auth.js'
+import { authenticateToken, onUserSessionsRevoked } from './auth.js'
 import type { JwtPayload } from './auth.js'
 import { URL } from 'node:url'
 import crypto from 'node:crypto'
@@ -213,6 +213,13 @@ export function setupWebSocketChat(
    * active turn's buffer first (flagged `replay`), which is what makes a page
    * reload mid-turn look seamless.
    */
+  const stopWatchingRevocations = onUserSessionsRevoked((userId) => {
+    for (const client of [...(userClients.get(userId) ?? [])]) {
+      client.close(4401, 'Session revoked')
+    }
+  })
+  wss.on('close', stopWatchingRevocations)
+
   function attachToTurns(ws: WebSocket, userId: number): void {
     turnSubscriptions.get(ws)?.()
     const detach = turnRunner.subscribe(userId, (event) => forwardTurnEvent(ws, event))
@@ -228,7 +235,7 @@ export function setupWebSocketChat(
         const url = new URL(req.url, 'http://localhost')
         const token = url.searchParams.get('token')
         if (token) {
-          user = verifyToken(token)
+          user = authenticateToken(db, token)
         }
       } catch {
         // ignore URL parse errors
@@ -267,7 +274,7 @@ export function setupWebSocketChat(
       if (!authenticatedClients.has(ws)) {
         if (parsed.type === 'message' && parsed.content) {
           // Try to use content as JWT token
-          const tokenUser = verifyToken(parsed.content)
+          const tokenUser = authenticateToken(db, parsed.content)
           if (tokenUser) {
             authenticatedClients.set(ws, tokenUser)
             const connId = crypto.randomBytes(8).toString('hex')
