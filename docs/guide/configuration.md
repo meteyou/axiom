@@ -27,6 +27,8 @@ JWT_SECRET=...            # signs session tokens
 ENCRYPTION_KEY=...        # encrypts secrets.json at rest
 ```
 
+`ADMIN_PASSWORD` creates the **bootstrap admin** on first start. Further accounts are added in the web UI; see [Multi-User](../concepts/multi-user).
+
 Optional ones (`HOST_PORT`, `TZ`, `WORKSPACE_DIR`, `DATA_DIR`, `FRONTEND_DIR`, `GITHUB_TOKEN`, …) are documented in [Environment Variables](../reference/env-vars).
 
 ### Why `ENCRYPTION_KEY` matters

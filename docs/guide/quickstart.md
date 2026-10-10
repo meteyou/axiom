@@ -57,6 +57,10 @@ Visit [http://localhost:3000](http://localhost:3000) and log in with:
 - **Username:** `admin`
 - **Password:** the value of `ADMIN_PASSWORD` you set above
 
+::: tip Sharing the instance?
+This account is the bootstrap admin. If more people will use Axiom, create a regular account for yourself under **Users** and keep the admin for operating the instance — see [Multi-User](/concepts/multi-user).
+:::
+
 ## 5. Add an LLM provider
 
 In the web UI, go to **Providers** and add at least one provider. The minimum you need:

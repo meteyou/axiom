@@ -6,7 +6,7 @@ Language preferences, active provider + model, reasoning level, the experimental
 
 ## Personal agent settings (regular users)
 
-Regular users open **Settings** and see only the **Agent** tab, with their own:
+Regular users open **Settings** and see the personal **Agent**, **Heartbeat**, **Email** and **Secrets** tabs. The **Agent** tab holds their own:
 
 - **Chat model** — any enabled model of any provider.
 - **Thinking level** — `off` to `max`.
