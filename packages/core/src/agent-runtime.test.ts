@@ -284,6 +284,40 @@ describe('AgentRuntime boundary', () => {
     expect(logToolCall).toHaveBeenCalledTimes(1)
   })
 
+  it('classifies tool results with details.error as failures in chunks and tool_calls log', async () => {
+    const db = initDatabase(':memory:')
+    const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db, tools: [] })
+
+    runtimeHarness.promptBehaviors.push(async (agent) => {
+      agent.emit({ type: 'tool_execution_start', toolName: 'read_file', toolCallId: 'tool-err', args: { path: 'missing.txt' } })
+      agent.emit({
+        type: 'tool_execution_end',
+        toolName: 'read_file',
+        toolCallId: 'tool-err',
+        isError: false,
+        result: { content: [{ type: 'text', text: 'File not found' }], details: { error: true } },
+      })
+      agent.emit({ type: 'tool_execution_start', toolName: 'read_file', toolCallId: 'tool-ok', args: { path: 'a.txt' } })
+      agent.emit({
+        type: 'tool_execution_end',
+        toolName: 'read_file',
+        toolCallId: 'tool-ok',
+        isError: false,
+        result: { content: [{ type: 'text', text: 'hello' }], details: {} },
+      })
+      agent.emit({ type: 'agent_end', messages: [] })
+    })
+
+    const errorFlags: Array<boolean | undefined> = []
+    for await (const chunk of runtime.streamPrompt('read', 'session-1')) {
+      if (chunk.type === 'tool_call_end') errorFlags.push(chunk.toolIsError)
+    }
+
+    expect(errorFlags).toEqual([true, false])
+    const statuses = vi.mocked(logToolCall).mock.calls.slice(-2).map(call => call[1].status)
+    expect(statuses).toEqual(['error', 'success'])
+  })
+
   it('keeps image payloads out of streamed and logged tool results', async () => {
     const db = initDatabase(':memory:')
     const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db, tools: [] })
