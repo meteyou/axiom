@@ -412,6 +412,8 @@
     "sessionId": "Session",
     "duration": "Duration",
     "status": "Status",
+    "toolCallId": "Call ID",
+    "parentToolCallId": "Parent call ID",
     "prev": "Previous",
     "next": "Next",
     "pageInfo": "Page {page} of {total}",
@@ -423,7 +425,9 @@
     "preset_yesterday": "Yesterday",
     "preset_last7": "Last 7 days",
     "preset_last30": "Last 30 days",
-    "unchangedLines": "{count} unchanged lines"
+    "unchangedLines": "{count} unchanged lines",
+    "viaCodemode": "via codemode",
+    "viaCodemodeTitle": "Nested call of the codemode call {id}"
   },
   "memory": {
     "kicker": "Persistent context",

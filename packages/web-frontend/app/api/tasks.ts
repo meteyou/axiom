@@ -82,6 +82,14 @@ export interface TaskEventItem {
   toolResult?: unknown
   toolIsError?: boolean
   durationMs?: number
+  /** Live nested-call snapshot (for `codemode_progress` events). */
+  nestedCalls?: Array<{
+    id: string
+    name: string
+    status: 'running' | 'ok' | 'error' | 'cancelled'
+    durationMs?: number
+    errorPreview?: string
+  }>
   text?: string
   status?: string
   statusMessage?: string
