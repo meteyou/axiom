@@ -81,6 +81,8 @@
 
           <UserAgentSettingsTab v-if="!isAdmin && activeTab === 'agent'" />
 
+          <UserHeartbeatSettingsTab v-else-if="!isAdmin && activeTab === 'agentHeartbeat'" />
+
           <div v-else-if="!isAdmin && activeTab === 'email'">
             <div class="mb-8">
               <h2 class="text-lg font-semibold tracking-tight text-foreground">
@@ -874,6 +876,8 @@
 
                 <!-- Configuration — progressive disclosure -->
                 <template v-if="form.agentHeartbeat.enabled">
+                  <UserHeartbeatSettingsTab switch-only />
+
                   <!-- Heartbeat tasks -->
                   <div class="rounded-xl border border-border bg-card px-4 py-4">
                     <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -2118,6 +2122,7 @@ import { TIMEZONE_OPTIONS } from '~/utils/settingsOptions'
 import EmailAccountsWorkspace from '~/features/email/components/EmailAccountsWorkspace.vue'
 import ImageGenerationSettingsTab from './ImageGenerationSettingsTab.vue'
 import UserAgentSettingsTab from './UserAgentSettingsTab.vue'
+import UserHeartbeatSettingsTab from './UserHeartbeatSettingsTab.vue'
 import { filterSettingsTabsByRole, resolveSettingsTab, type SettingsTabId } from '~/utils/settingsTabs'
 import type { MemoryConsolidationSettings, FactExtractionSettings, HealthMonitorNotificationToggles, HealthMonitorSettings, AgentHeartbeatSettings, TasksSettings, CodemodeSettings, ImageGenerationSettings, TtsSettings, SttSettings, UploadsSettings, TelegramSettings, WatchdogSettings, RetrySettings } from '~/composables/useSettings'
 import type { TelegramUser } from '~/composables/useTelegramUsers'

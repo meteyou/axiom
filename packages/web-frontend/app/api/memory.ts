@@ -59,6 +59,14 @@ export interface MemorySearchStat {
   facts: { content: string; timestamp: string; source: string }[]
 }
 
+export interface MemoryHeartbeatSettings {
+  enabled: boolean
+  masterEnabled: boolean
+  intervalMinutes: number
+  nightMode: { enabled: boolean; startHour: number; endHour: number }
+  timezone: string
+}
+
 export interface MemoryUsageStats {
   fileReads: MemoryFileReadStat[]
   searches: MemorySearchStat[]
@@ -88,6 +96,11 @@ export function useMemoryApi() {
   const updateHeartbeat = (content: string) => apiFetch('/api/memory/heartbeat', {
     method: 'PUT',
     body: JSON.stringify({ content }),
+  })
+  const getHeartbeatSettings = () => apiFetch<MemoryHeartbeatSettings>('/api/memory/heartbeat/settings')
+  const updateHeartbeatSettings = (enabled: boolean) => apiFetch<MemoryHeartbeatSettings>('/api/memory/heartbeat/settings', {
+    method: 'PUT',
+    body: JSON.stringify({ enabled }),
   })
   const getDefaultHeartbeat = () => apiFetch<{ content: string }>('/api/memory/heartbeat/default')
 
@@ -163,6 +176,8 @@ export function useMemoryApi() {
     getDefaultAgentRules,
     getHeartbeat,
     updateHeartbeat,
+    getHeartbeatSettings,
+    updateHeartbeatSettings,
     getDefaultHeartbeat,
     getConsolidationRules,
     updateConsolidationRules,
