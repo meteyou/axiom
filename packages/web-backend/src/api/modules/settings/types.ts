@@ -1,5 +1,6 @@
 import type {
   AgentCore,
+  Database,
   HealthMonitorNotificationTogglesContract,
   SettingsStorageContract,
   TelegramSettingsStorageContract,
@@ -25,6 +26,8 @@ export type TelegramData = TelegramSettingsStorageContract & {
 }
 
 export interface SettingsRouterOptions {
+  db?: Database
+  onActiveProviderChanged?: () => void
   getAgentCore?: () => AgentCore | null
   onHealthMonitorSettingsChanged?: () => void
   onConsolidationSettingsChanged?: () => void

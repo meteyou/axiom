@@ -11,6 +11,11 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
   const controller = createSettingsController(options)
 
   router.use(jwtMiddleware)
+
+  router.get('/me', controller.getOwnSettings)
+  router.put('/me', controller.putOwnSettings)
+  router.get('/chat-models', controller.getChatModels)
+
   router.use((req: AuthenticatedRequest, res, next) => {
     if (req.user?.role !== 'admin') {
       res.status(403).json({ error: 'Admin access required' })
