@@ -1030,6 +1030,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
       createReminderTool(cronjobToolsOptions),
       createSendFileTool({
         getCurrentToolUserId: () => scope?.id,
+        getWorkspaceDir: scope ? () => scope.paths.workspace : undefined,
         getCurrentInteractiveSessionId: getInteractiveSessionId,
       }),
     ]

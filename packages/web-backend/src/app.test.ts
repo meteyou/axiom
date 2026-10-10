@@ -1362,6 +1362,44 @@ describe('users API', () => {
     expect(deleteRes.status).toBe(200)
   })
 
+  it('rolls back the user row when personal folder creation fails', async () => {
+    const usersDir = path.join(tempDataDir, 'users')
+    const backupDir = `${usersDir}.bak`
+    const hadUsersDir = fs.existsSync(usersDir)
+    if (hadUsersDir) fs.renameSync(usersDir, backupDir)
+    fs.writeFileSync(usersDir, 'not a directory')
+
+    const create = () =>
+      fetch(`${baseUrl}/api/users`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${adminToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ username: 'carol', password: 'pass1234', role: 'user' }),
+      })
+
+    try {
+      const failedRes = await create()
+      expect(failedRes.status).toBe(500)
+      expect(db.prepare('SELECT id FROM users WHERE username = ?').get('carol')).toBeUndefined()
+      expect(fs.existsSync(path.join(tempDataDir, 'workspace', 'carol'))).toBe(false)
+    } finally {
+      fs.rmSync(usersDir, { force: true })
+      if (hadUsersDir) fs.renameSync(backupDir, usersDir)
+    }
+
+    const retryRes = await create()
+    const retryBody = (await retryRes.json()) as { user: { id: number } }
+    expect(retryRes.status).toBe(201)
+    expect(fs.existsSync(path.join(tempDataDir, 'users', 'carol', 'PROFILE.md'))).toBe(true)
+
+    await fetch(`${baseUrl}/api/users/${retryBody.user.id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${adminToken}` },
+    })
+  })
+
   it('does not allow deleting yourself', async () => {
     const res = await fetch(`${baseUrl}/api/users/1`, {
       method: 'DELETE',
