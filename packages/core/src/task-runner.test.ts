@@ -1586,6 +1586,7 @@ describe('TaskRunner', () => {
     async function startAndCapture(
       triggerType: 'user' | 'agent' | 'cronjob' | 'heartbeat' | 'consolidation',
       codemodeTasksEnabled: boolean | undefined,
+      overrides?: TaskOverrides,
     ): Promise<Captured> {
       const { Agent } = await import('@earendil-works/pi-agent-core')
       const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
@@ -1617,7 +1618,7 @@ describe('TaskRunner', () => {
       })
 
       const task = store.create({ name: 'Codemode Task', prompt: 'Do work', triggerType })
-      await runner.startTask(task, mockProvider)
+      await runner.startTask(task, mockProvider, overrides)
       await new Promise(resolve => setTimeout(resolve, 100))
       runner.dispose()
       if (!captured.value) throw new Error('Agent options not captured')
@@ -1655,6 +1656,26 @@ describe('TaskRunner', () => {
 
       const off = await startAndCapture('user', false)
       expect(off.initialState.systemPrompt).not.toContain('<codemode>')
+    })
+
+    it('enables codemode via a cronjob override "on" even when the global switch is off', async () => {
+      const captured = await startAndCapture('cronjob', false, { codemode: 'on' })
+      expect(toolNames(captured)).toContain('codemode')
+    })
+
+    it('disables codemode via a cronjob override "off" even when the global switch is on', async () => {
+      const captured = await startAndCapture('cronjob', true, { codemode: 'off' })
+      expect(toolNames(captured)).not.toContain('codemode')
+    })
+
+    it('falls back to the global switch for a cronjob override of null (inherit)', async () => {
+      expect(toolNames(await startAndCapture('cronjob', true, { codemode: null }))).toContain('codemode')
+      expect(toolNames(await startAndCapture('cronjob', false, { codemode: null }))).not.toContain('codemode')
+    })
+
+    it('never gives codemode to memory consolidation, even with an override "on"', async () => {
+      const captured = await startAndCapture('consolidation', true, { codemode: 'on' })
+      expect(toolNames(captured)).not.toContain('codemode')
     })
   })
 
@@ -1698,6 +1719,7 @@ describe('TaskRunner', () => {
         loopDetection?: LoopDetectionConfig
         taskEventBus?: TaskEventBus
         sessionId?: string
+        overrides?: TaskOverrides
       },
     ): Promise<{ taskId: string, session: string, codemode: AgentTool, emit: (event: unknown) => void, runner: TaskRunner }> {
       const runner = new TaskRunner({
@@ -1718,7 +1740,7 @@ describe('TaskRunner', () => {
         triggerType: 'agent',
         sessionId: extra?.sessionId ?? `nested-session-${Math.random().toString(36).slice(2)}`,
       })
-      await runner.startTask(task, mockProvider)
+      await runner.startTask(task, mockProvider, extra?.overrides)
       const codemode = agentTools().find(tool => tool.name === 'codemode')
       if (!codemode) throw new Error('codemode tool missing from agent')
       return { taskId: task.id, session: task.sessionId!, codemode, emit, runner }
@@ -1790,6 +1812,36 @@ return r + s;`,
 
         // Live metrics count nested calls too.
         expect(store.getById(taskId)!.toolCallCount).toBe(2)
+      } finally {
+        runner.dispose()
+      }
+    })
+
+    it('does not allow a script to call a tool disabled via the cronjob tool override', async () => {
+      const secretCalls: unknown[] = []
+      const secretTool: AgentTool = {
+        name: 'secret_tool',
+        label: 'secret_tool',
+        description: 'A tool disabled for this cronjob.',
+        parameters: Type.Object({}),
+        execute: async (_id, args) => {
+          secretCalls.push(args)
+          return { content: [{ type: 'text' as const, text: 'should not run' }], details: {} }
+        },
+      }
+      const { codemode, runner } = await startCodemodeTask([readFileTool, secretTool], {
+        overrides: { codemode: 'on', toolsOverride: JSON.stringify(['secret_tool']) },
+      })
+      try {
+        const result = await codemode.execute('parent-1', {
+          code: `try { await tools.secret_tool({}) } catch (e) { return 'blocked' }
+return 'ran';`,
+        }) as { isError?: boolean; content: Array<{ type: string; text: string }> }
+        // The nested call rejects inside the script and the real tool never runs.
+        expect(secretCalls).toHaveLength(0)
+        expect(result.isError).toBeFalsy()
+        const text = result.content.map(b => ('text' in b ? b.text : '')).join('\n')
+        expect(text).toContain('blocked')
       } finally {
         runner.dispose()
       }

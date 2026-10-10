@@ -67,6 +67,11 @@ export interface TaskOverrides {
    * with a warning so the task still runs.
    */
   attachedSkills?: string[] | null
+  /**
+   * Per-cronjob codemode override: `'on'` forces the codemode tool, `'off'`
+   * forces it off, `null`/unset inherits the global `codemode.tasks` setting.
+   */
+  codemode?: 'on' | 'off' | null
 }
 
 export interface TaskRunnerOptions {
@@ -380,12 +385,18 @@ export class TaskRunner {
 
   /**
    * Whether a newly started task gets the `codemode` tool. Memory consolidation
-   * is a fixed internal job and never gets it; everything else (user, agent,
-   * cronjob, heartbeat) follows the global `codemode.tasks` switch. The per-
-   * cronjob override is layered on top in a later change.
+   * is a fixed internal job and never gets it. A per-cronjob override (from
+   * `overrides.codemode`) wins when set; otherwise the global `codemode.tasks`
+   * switch applies.
    */
-  resolveCodemodeEnabledForTask(task: Pick<Task, 'triggerType'>): boolean {
+  resolveCodemodeEnabledForTask(
+    task: Pick<Task, 'triggerType'>,
+    overrides?: Pick<TaskOverrides, 'codemode'>,
+  ): boolean {
     if (task.triggerType === 'consolidation') return false
+    if (overrides?.codemode !== undefined && overrides.codemode !== null) {
+      return overrides.codemode === 'on'
+    }
     return this.options.codemodeTasksEnabled
       ?? readCodemodeTasksEnabledFromConfig()
   }
@@ -454,9 +465,10 @@ export class TaskRunner {
         : buildTaskSystemPrompt(task.prompt, this.options.memoryDir)
 
       // Codemode eligibility is decided once at start: memory consolidation never
-      // gets it, everything else follows the global switch. Resolved before the
-      // prompt/tools so the guideline and the tool stay in sync.
-      const codemodeEnabled = this.resolveCodemodeEnabledForTask(task)
+      // gets it, a per-cronjob override wins when set, otherwise the global
+      // switch. Resolved before the prompt/tools so the guideline and the tool
+      // stay in sync.
+      const codemodeEnabled = this.resolveCodemodeEnabledForTask(task, overrides)
 
       // Inject attached-skills block (before the base prompt) so skill rules are
       // anchored at the top and apply regardless of the rest of the prompt.
