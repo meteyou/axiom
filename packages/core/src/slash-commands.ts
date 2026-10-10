@@ -15,6 +15,9 @@ import type { ProviderConfig } from './provider-config.js'
 import { getConfigDir, loadConfig } from './config.js'
 import { SETTINGS_THINKING_LEVELS, type SettingsThinkingLevel } from './contracts/settings.js'
 import { normalizeThinkingLevel } from './thinking-level.js'
+import { resolveUserScope } from './user-scope.js'
+import type { UserScope } from './user-scope.js'
+import { getUserSettingsOverrides, updateUserSettings, getGlobalChatDefaults } from './user-settings.js'
 import { getAgentSkillsDir, listAgentSkills, trackAgentSkillUsage } from './agent-skills.js'
 import { getSkill, loadSkills } from './skill-config.js'
 import { renderSkillBlock, wrapAttachedSkills } from './attached-skills.js'
@@ -266,9 +269,9 @@ export function registerBuiltInSlashCommands(registry: SlashCommandRegistry): vo
     name: 'model',
     aliases: ['provider'],
     description: 'Show or switch the active provider and model.',
-    usage: '/model [<provider> [<model>]]',
+    usage: '/model [<provider> [<model>]|default]',
     surfaces: ['web', 'telegram'],
-    handler: (ctx) => handleModelCommand(ctx.args),
+    handler: (ctx) => handleModelCommand(ctx.args, settingsTarget(ctx)),
   })
 
   registry.register({
@@ -423,21 +426,58 @@ function buildSkillPicker(skills: LoadableSkill[]): SlashCommandPicker {
   }
 }
 
+type SettingsTarget =
+  | { kind: 'global' }
+  | { kind: 'personal'; scope: UserScope; db: Database }
+  | { kind: 'read_only' }
+
+const UNLINKED_SETTINGS_REPLY = 'Link this account to an Axiom user to change chat settings.'
+
+/**
+ * Admins change the global settings, regular users their own. Identities
+ * without a user row (e.g. approved but unlinked Telegram users) must not
+ * change the global settings, so they are read-only.
+ */
+function settingsTarget(ctx: SlashCommandContext): SettingsTarget {
+  if (!ctx.db) return { kind: 'global' }
+  const scope = ctx.userId === null ? null : resolveUserScope(ctx.db, ctx.userId)
+  if (!scope) return { kind: 'read_only' }
+  if (scope.role === 'admin' || scope.isBootstrapAdmin) return { kind: 'global' }
+  return { kind: 'personal', scope, db: ctx.db }
+}
+
 function handleThinkingCommand(ctx: SlashCommandContext): string {
   const args = ctx.args.trim().toLowerCase()
+  const target = settingsTarget(ctx)
+  const personal = target.kind === 'personal' ? target : null
+  const usage = `Usage: /thinking ${SETTINGS_THINKING_LEVELS.join('|')}${personal ? '|default' : ''}`
   if (!args) {
-    const current = readConfiguredThinkingLevel() ?? 'off'
-    return `Current thinking level: ${current}\nUsage: /thinking ${SETTINGS_THINKING_LEVELS.join('|')}`
+    const current = personal
+      ? personal.scope.settings.thinkingLevel
+      : readConfiguredThinkingLevel() ?? 'off'
+    return `Current thinking level: ${current}\n${usage}`
+  }
+
+  if (target.kind === 'read_only') return UNLINKED_SETTINGS_REPLY
+
+  if (personal && args === 'default') {
+    updateUserSettings(personal.db, personal.scope.id, { thinkingLevel: null })
+    return `Thinking level reset to the default: ${getGlobalChatDefaults().thinkingLevel}`
   }
 
   const [level, ...rest] = args.split(/\s+/)
   if (rest.length > 0 || !level) {
-    return `Usage: /thinking ${SETTINGS_THINKING_LEVELS.join('|')}`
+    return usage
   }
 
   const normalized = normalizeThinkingLevel(level)
   if (!normalized) {
     return `Unknown thinking level: ${level}\nValid levels: ${SETTINGS_THINKING_LEVELS.join(', ')}`
+  }
+
+  if (personal) {
+    updateUserSettings(personal.db, personal.scope.id, { thinkingLevel: normalized })
+    return `Thinking level set to: ${normalized}`
   }
 
   writeConfiguredThinkingLevel(normalized)
@@ -525,7 +565,7 @@ export function formatCronjobsReply(jobs: CronjobLike[]): string {
  * `id` and `name`, so picker callbacks can use ids while users typing the
  * command directly can use names.
  */
-function handleModelCommand(rawArgs: string): SlashCommandReply {
+function handleModelCommand(rawArgs: string, target: SettingsTarget): SlashCommandReply {
   const args = rawArgs.trim()
   let file
   try {
@@ -540,9 +580,28 @@ function handleModelCommand(rawArgs: string): SlashCommandReply {
 
   const tokens = args.length === 0 ? [] : args.split(/\s+/)
 
+  if (target.kind === 'read_only') {
+    const active = providers.find((p) => p.id === file.activeProvider)
+    return `Current model: ${active?.name ?? 'none'} / ${file.activeModel ?? 'none'}\n${UNLINKED_SETTINGS_REPLY}`
+  }
+
+  let activeProviderId = file.activeProvider
+  let activeModelId = file.activeModel
+  if (target.kind === 'personal') {
+    if (tokens.length === 1 && tokens[0]!.toLowerCase() === 'default') {
+      updateUserSettings(target.db, target.scope.id, { chatModel: null })
+      return '\u2705 Chat model reset to the default.'
+    }
+    const own = getUserSettingsOverrides(target.db, target.scope.id).chatModel
+    if (own) {
+      activeProviderId = own.providerId
+      activeModelId = own.modelId
+    }
+  }
+
   // No args → provider picker
   if (tokens.length === 0) {
-    return buildProviderPicker(providers, file.activeProvider, file.activeModel)
+    return buildProviderPicker(providers, activeProviderId, activeModelId)
   }
 
   const providerKey = tokens[0]!
@@ -553,7 +612,7 @@ function handleModelCommand(rawArgs: string): SlashCommandReply {
 
   // 1 arg → model picker for the chosen provider
   if (tokens.length === 1) {
-    return buildModelPicker(provider, file.activeProvider, file.activeModel)
+    return buildModelPicker(provider, activeProviderId, activeModelId)
   }
 
   // 2 args → switch active provider + model (terminal step)
@@ -563,6 +622,10 @@ function handleModelCommand(rawArgs: string): SlashCommandReply {
     const modelId = enabled.find((m) => m.toLowerCase() === modelKey.toLowerCase())
     if (!modelId) {
       return `Model "${modelKey}" is not enabled for provider "${provider.name}".`
+    }
+    if (target.kind === 'personal') {
+      updateUserSettings(target.db, target.scope.id, { chatModel: { providerId: provider.id, modelId } })
+      return `\u2705 Your chat model: ${provider.name} (${provider.providerType})\nModel: ${modelId}`
     }
     try {
       setActiveProvider(provider.id, modelId)
