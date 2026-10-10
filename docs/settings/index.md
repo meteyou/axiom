@@ -19,7 +19,7 @@ The Settings page has one sidebar entry per concern. Each gets its own docs page
 | [Memory](./memory)                   | Session timeout, memory consolidation, fact extraction.                                 |
 | [Secrets](./secrets)                 | API keys and other sensitive values stored in `/data/config/secrets.json`.              |
 | [Speech-to-Text](./speech-to-text)   | Transcription provider (OpenAI, Whisper URL, Ollama) and optional LLM rewrite.          |
-| [Tasks](./tasks)                     | Default task provider, max duration, loop detection, status updates, Telegram delivery. |
+| [Tasks](./tasks)                     | Default task provider, max duration, loop detection, status updates, Telegram delivery, codemode (experimental). |
 | [Telegram](./telegram)               | Bot token, message batching, user approval + assignment.                                |
 | [Text-to-Speech](./text-to-speech)   | Voice output provider (OpenAI, Mistral/Voxtral), voice, audio format.                   |
 
