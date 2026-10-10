@@ -5,6 +5,7 @@ import type { Task } from '@axiom/core'
 import type { TaskRuntimeTaskBoundary } from '@axiom/core'
 import type { ProviderConfig } from '@axiom/core'
 import type { SessionManager } from '@axiom/core'
+import type { UserScope } from '@axiom/core'
 import { generateSessionId } from '@axiom/core'
 import {
   getActiveProvider,
@@ -16,6 +17,10 @@ import {
   loadConfig,
   logToolCall,
   readConsolidationFile,
+  stripAdminOnlyBlocks,
+  readRecentDailyFiles,
+  resolveUserScope,
+  getBootstrapAdminId,
   getMemoryDir,
   getAgentSkillsDir,
 } from '@axiom/core'
@@ -41,9 +46,21 @@ export const DEFAULT_CONSOLIDATION_SETTINGS: ConsolidationSettings = {
  * Build the consolidation prompt that instructs the task agent what to do.
  * Embeds the user-defined consolidation rules from CONSOLIDATION.md directly.
  */
-function buildConsolidationTaskPrompt(lookbackDays: number, consolidationRules: string, compactionRun: boolean): string {
+export function buildConsolidationTaskPrompt(
+  lookbackDays: number,
+  consolidationRules: string,
+  compactionRun: boolean,
+  scope: UserScope | null = null,
+  userRun = false,
+  otherUserProfiles: string[] = [],
+): string {
   const memoryDir = getMemoryDir()
+  const dailyDir = scope?.paths.dailyDir ?? `${memoryDir}/daily`
+  const userDir = userRun ? scope?.paths.userDir ?? null : null
+  compactionRun = compactionRun && !userRun
   const wikiSkillPath = `${getAgentSkillsDir()}/wiki/SKILL.md`
+  const extraProfiles = userRun ? [] : otherUserProfiles
+  const extraProfileList = extraProfiles.map(p => `\`${p}\``).join(', ')
   const compactionSection = compactionRun
     ? `
 
@@ -78,36 +95,40 @@ All file paths below are ABSOLUTE paths. You MUST use the full absolute paths wh
 
 ## What you may write to
 
-- \`${memoryDir}/MEMORY.md\` — long-term learned facts, lessons, patterns
-- \`${memoryDir}/users/*.md\` — user-specific information (preferences, context, personal details)
-- \`${memoryDir}/wiki/*.md\` — wiki pages: project notes, concepts, architecture, references
+- \`${memoryDir}/MEMORY.md\` — long-term learned facts, lessons, patterns${userRun ? ' (shared by ALL users: general lessons only, never personal information)' : ''}
+- ${userRun && scope ? `\`${scope.paths.profile}\` — the profile of the user "${scope.username}" (preferences, context, personal details). This is the ONLY profile you may write` : `\`${memoryDir}/users/*.md\` — user-specific information (preferences, context, personal details)`}
+${extraProfiles.length > 0 ? `- Profiles of the other users: ${extraProfileList} — move personal content found in the shared MEMORY.md into the affected user's profile\n` : ''}- \`${memoryDir}/wiki/*.md\` — wiki pages: project notes, concepts, architecture, references (shared by all users: no personal information)
 
 \`${memoryDir}/sources/**/*.md\` is the immutable raw-material layer. Consolidation READS from it when auditing the wiki but NEVER writes, edits, or deletes source files.
 
-You must NOT write to any other file. No config files, no code files, no files outside the memory directory.
+${userRun && scope ? `\nThis run belongs to the user "${scope.username}". You only see and consolidate this user's daily notes and chat history. Never write other users' data or personal information into shared files.\n` : ''}
+You must NOT write to any other file. No config files, no code files, no files outside the memory directory${userDir ? ` except the profile listed above (your daily notes in \`${dailyDir}\` are read-only)` : ''}${extraProfiles.length > 0 ? ' except the other users\' profiles listed above' : ''}.
 
 ## Steps
 
-1. **Read recent daily files**: Use \`list_files\` on \`${memoryDir}/daily\`, then \`read_file\` to read the last ${lookbackDays} days of daily files (files named YYYY-MM-DD.md, sorted by date). Skip files that only contain a header and no content.
+1. **Read recent daily files**: Use \`list_files\` on \`${dailyDir}\`, then \`read_file\` to read the last ${lookbackDays} days of daily files (files named YYYY-MM-DD.md, sorted by date). Skip files that only contain a header and no content.
 
 2. **Read MEMORY.md**: Use \`read_file\` to read \`${memoryDir}/MEMORY.md\`. This is the long-term memory file.
 
 3. **Read wiki pages**: Use \`list_files\` on \`${memoryDir}/wiki\`, then \`read_file\` to read each wiki page. These contain project notes, concepts, and knowledge base entries.
 
-4. **Read user profiles**: Use \`list_files\` on \`${memoryDir}/users\`, then \`read_file\` to read each user profile.
+4. ${userRun && scope ? `**Read the user profile**: Use \`read_file\` to read \`${scope.paths.profile}\`.` : `**Read user profiles**: Use \`list_files\` on \`${memoryDir}/users\`, then \`read_file\` to read each user profile.${extraProfiles.length > 0 ? ` Also \`read_file\` the other users' profiles: ${extraProfileList}.` : ''}`}
 
 5. **Optionally read chat history**: If daily files reference conversations that need more detail, use \`read_chat_history\` to get the full context.
 
 6. **Decide what to promote/update** (guided by the consolidation rules above):
    - If you find recurring patterns, learned lessons, or important facts in daily files, add them to \`${memoryDir}/MEMORY.md\` using \`edit_file\` or \`write_file\`.
    - If you find project-specific information or concepts worth preserving, update the relevant wiki page in \`${memoryDir}/wiki/\` or create a new one if a new project or concept is detected.
-   - If you find user-specific information (preferences, context), update the relevant user profile in \`${memoryDir}/users/\`.
-   - Remove outdated or superseded information from MEMORY.md.
+   - If you find user-specific information (preferences, context), update ${userRun && scope ? `the profile \`${scope.paths.profile}\`` : `the relevant user profile in \`${memoryDir}/users/\``}.
+${userRun ? `   - Only ADD general lessons to MEMORY.md. Do NOT remove, rewrite, merge, or compact existing MEMORY.md entries — pruning and compacting the shared MEMORY.md is done by the admin run.
+   - Prune the profile while you promote: merge near-duplicate entries, collapse resolved threads to their end state.
+   - Respect the size budgets from the consolidation rules (the profile is injected into every system prompt). If the profile is over budget, compact it in this run: move episodic detail to the wiki (no personal information) or delete it.
+` : `   - Remove outdated or superseded information from MEMORY.md.
    - Prune while you promote: merge near-duplicate entries, collapse resolved threads to their end state, and delete lessons already covered by AGENTS.md or a wiki page.
    - Respect the size budgets from the consolidation rules (MEMORY.md and user profiles are injected into every system prompt). If a file is over budget, compact it in this run: move episodic detail to the wiki or delete it.
-   - Do NOT duplicate information across files — each fact should live in exactly one place.
+`}   - Do NOT duplicate information across files — each fact should live in exactly one place.
 
-7. **Wiki Health Check (Lint)**:
+${userRun ? '' : `7. **Wiki Health Check (Lint)**:
    - Search for contradictions between wiki pages (facts stated differently in different pages)
    - Identify orphaned pages (no inbound links from other wiki pages)
    - Suggest missing cross-links (concepts mentioned in pages but without their own page)
@@ -118,7 +139,7 @@ You must NOT write to any other file. No config files, no code files, no files o
    - If any issues are found, append a brief Lint Report section to \`${memoryDir}/wiki/log.md\` — never to daily files, they are read-only source material. Keep only the ~10 most recent lint reports in log.md; delete older ones when appending.
    - Keep the lint report concise — a bullet list of findings is sufficient
 
-8. **Always complete with STATUS: silent.** Memory consolidation is a background maintenance task. The user does not need to be notified about it.
+`}${userRun ? '7' : '8'}. **Always complete with STATUS: silent.** Memory consolidation is a background maintenance task. The user does not need to be notified about it.
 
 ## Additional input: Extracted Facts
 
@@ -135,7 +156,7 @@ This is optional: if no relevant facts are found, continue with the daily files 
 
 ## Important Rules
 
-- Always use ABSOLUTE paths starting with \`${memoryDir}/\` — never use relative paths.
+- Always use ABSOLUTE paths starting with \`${memoryDir}/\`${userDir ? ` or \`${userDir}/\`` : ''}${extraProfiles.length > 0 ? ' (or the other users\' profile paths listed above)' : ''} — never use relative paths.
 - Be conservative — only promote information that is clearly important or recurring.
 - Do not remove information from daily files — they are append-only logs.
 - If nothing needs updating, complete silently with no changes.
@@ -143,7 +164,7 @@ This is optional: if no relevant facts are found, continue with the daily files 
 - You are a knowledge extractor. You store facts. You do NOT execute tasks, fix problems, apply changes, or modify configuration discussed in conversations.${compactionSection}`
 }
 
-type ConsolidationTaskRuntime = Pick<TaskRuntimeTaskBoundary, 'create' | 'getById' | 'start'>
+type ConsolidationTaskRuntime = Pick<TaskRuntimeTaskBoundary, 'create' | 'getById' | 'start' | 'abort'>
 
 export interface ConsolidationSchedulerOptions {
   db: Database
@@ -302,8 +323,8 @@ export class MemoryConsolidationScheduler {
   private async executeConsolidation(scheduled: boolean): Promise<ConsolidationResult> {
     console.log('[axiom] Starting memory consolidation...')
     const startTime = Date.now()
-    // Create the consolidation session up-front so both the task and the
-    // scheduler's tool-call logging share the same session ID (registered
+    // Create the consolidation session up-front so both the admin/ownerless
+    // task and the scheduler's tool-call logging share the same session ID (registered
     // in the `sessions` table with type='consolidation'). The session row
     // is always written, even in the test-mode fallback path, so child
     // rows (tool_calls, token_usage) never dangle with an orphan FK.
@@ -371,35 +392,62 @@ export class MemoryConsolidationScheduler {
         return result
       }
 
-      // Read user-defined consolidation rules
-      const consolidationRules = readConsolidationFile()
-
-      // Create a task via task runtime boundary
+      const fullRules = readConsolidationFile()
       // ponytail: weekly compaction pinned to Sunday; make it configurable if that ever matters
       const compactionRun = !scheduled || new Date().getDay() === 0
-      const prompt = buildConsolidationTaskPrompt(this.settings.lookbackDays, consolidationRules, compactionRun)
-      const task: Task = taskRuntime.create({
-        name: compactionRun ? 'Nightly Memory Consolidation + Compaction' : 'Nightly Memory Consolidation',
-        prompt,
-        triggerType: 'consolidation',
-        triggerSourceId: 'memory-consolidation',
-        provider: provider.name,
-        model: getProviderDefaultModel(provider),
-        // Consolidation never accepts an explicit provider/model override
-        // from the user or agent — it always uses the configured default.
-        isDefaultModel: true,
-        // Pre-allocated session ID so the TaskRunner re-uses this session
-        // (it only creates a new session when sessionId is null).
-        sessionId,
-      })
+      const { runs, otherUserProfiles } = this.planRuns()
+      const results: Array<{ label: string | null; result: ConsolidationResult }> = []
+      const taskIds: string[] = []
+      const failedRuns: string[] = []
 
-      // Start the task via task runtime boundary
-      await taskRuntime.start(task, provider)
+      for (const scope of runs) {
+        const userRun = scope != null && !scope.isBootstrapAdmin
+        const runStart = Date.now()
+        try {
+          const prompt = buildConsolidationTaskPrompt(
+            this.settings.lookbackDays,
+            userRun ? stripAdminOnlyBlocks(fullRules) : fullRules,
+            compactionRun,
+            scope,
+            userRun,
+            otherUserProfiles,
+          )
+          const runSessionId = userRun ? this.createRunSession(scope) : sessionId
+          const baseName = compactionRun && !userRun ? 'Nightly Memory Consolidation + Compaction' : 'Nightly Memory Consolidation'
+          const task: Task = taskRuntime.create({
+            name: userRun && scope ? `${baseName} (${scope.username})` : baseName,
+            prompt,
+            triggerType: 'consolidation',
+            triggerSourceId: 'memory-consolidation',
+            provider: provider.name,
+            model: getProviderDefaultModel(provider),
+            // Consolidation never accepts an explicit provider/model override
+            // from the user or agent — it always uses the configured default.
+            isDefaultModel: true,
+            // Pre-allocated session ID so the TaskRunner re-uses this session
+            // (it only creates a new session when sessionId is null).
+            sessionId: runSessionId,
+            ...(scope ? { ownerUserId: scope.id } : {}),
+          })
+          taskIds.push(task.id)
 
-      console.log(`[axiom] Memory consolidation task started: ${task.id}`)
+          await taskRuntime.start(task, provider)
+          console.log(`[axiom] Memory consolidation task started: ${task.id}${scope ? ` (user ${scope.username})` : ''}`)
+          const { result: runResult, failed } = await this.waitForTaskCompletion(task.id, runStart, taskRuntime)
+          if (failed) failedRuns.push(scope?.username ?? 'system')
+          results.push({ label: scope?.username ?? null, result: runResult })
+        } catch (err) {
+          console.error(`[axiom] Memory consolidation run failed${scope ? ` for ${scope.username}` : ''}:`, err)
+          failedRuns.push(scope?.username ?? 'system')
+          results.push({
+            label: scope?.username ?? null,
+            result: { updated: false, dailyFilesReviewed: 0, reason: `Error: ${(err as Error).message}` },
+          })
+        }
+      }
 
-      // Wait for the task to complete by polling
-      const result = await this.waitForTaskCompletion(task.id, startTime, taskRuntime)
+      const result = this.combineResults(results)
+      const task = { id: taskIds.join(',') }
 
       this.lastRun = new Date().toISOString()
       this.lastResult = result
@@ -427,9 +475,10 @@ export class MemoryConsolidationScheduler {
           updated: result.updated,
           dailyFilesReviewed: result.dailyFilesReviewed,
           reason: result.reason ?? null,
+          ...(failedRuns.length > 0 ? { failedRuns } : {}),
         }),
         durationMs: Date.now() - startTime,
-        status: 'success',
+        status: failedRuns.length > 0 ? 'error' : 'success',
       })
 
       console.log(
@@ -468,6 +517,67 @@ export class MemoryConsolidationScheduler {
     }
   }
 
+  private createRunSession(scope: UserScope | null): string {
+    if (this.sessionManager) {
+      return this.sessionManager.createSession({
+        type: 'consolidation',
+        source: 'system',
+        ...(scope ? { userId: String(scope.id) } : {}),
+      }).id
+    }
+    const id = generateSessionId()
+    this.db.prepare(
+      `INSERT INTO sessions (id, user_id, source, type, started_at, last_activity, message_count, summary_written)
+       VALUES (?, ?, 'system', 'consolidation', datetime('now'), datetime('now'), 0, 0)`,
+    ).run(id, scope ? String(scope.id) : null)
+    return id
+  }
+
+  /**
+   * Sequence of runs: every non-deleted user with daily entries in the lookback
+   * window, bootstrap admin last. The bootstrap admin always runs because it
+   * owns the global steps. Without any user rows a single ownerless run keeps
+   * the legacy behaviour.
+   */
+  private planRuns(): { runs: Array<UserScope | null>; otherUserProfiles: string[] } {
+    const hasDeletedAt = (this.db.prepare('PRAGMA table_info(users)').all() as Array<{ name: string }>)
+      .some(col => col.name === 'deleted_at')
+    const rows = this.db
+      .prepare(`SELECT id FROM users ${hasDeletedAt ? 'WHERE deleted_at IS NULL' : ''} ORDER BY id`)
+      .all() as Array<{ id: number }>
+    const bootstrapAdminId = getBootstrapAdminId(this.db)
+    if (rows.length === 0 || bootstrapAdminId == null) return { runs: [null], otherUserProfiles: [] }
+
+    const scopes = rows
+      .map(row => resolveUserScope(this.db, row.id))
+      .filter((scope): scope is UserScope => scope != null)
+    const nonAdmin = scopes.filter(scope => !scope.isBootstrapAdmin)
+    const others = nonAdmin.filter(scope =>
+      readRecentDailyFiles(this.settings.lookbackDays, undefined, scope.paths.dailyDir).trim() !== '')
+    const admin = scopes.find(scope => scope.isBootstrapAdmin)
+    return {
+      runs: admin ? [...others, admin] : others,
+      otherUserProfiles: nonAdmin.map(scope => scope.paths.profile),
+    }
+  }
+
+  private combineResults(
+    results: Array<{ label: string | null; result: ConsolidationResult }>,
+  ): ConsolidationResult {
+    if (results.length === 1) return results[0].result
+    const input = results.reduce((sum, r) => sum + (r.result.usage?.input ?? 0), 0)
+    const output = results.reduce((sum, r) => sum + (r.result.usage?.output ?? 0), 0)
+    const reasons = results
+      .filter(r => r.result.reason)
+      .map(r => (r.label ? `${r.label}: ${r.result.reason}` : r.result.reason))
+    return {
+      updated: results.some(r => r.result.updated),
+      dailyFilesReviewed: results.reduce((sum, r) => sum + r.result.dailyFilesReviewed, 0),
+      reason: reasons.length > 0 ? reasons.join('\n') : undefined,
+      usage: input + output > 0 ? { input, output } : undefined,
+    }
+  }
+
   /**
    * Poll for task completion and build a ConsolidationResult from the finished task.
    */
@@ -475,18 +585,17 @@ export class MemoryConsolidationScheduler {
     taskId: string,
     startTime: number,
     taskRuntime: ConsolidationTaskRuntime,
-  ): Promise<ConsolidationResult> {
+  ): Promise<{ result: ConsolidationResult; failed: boolean }> {
     const POLL_INTERVAL_MS = 2000
     const MAX_WAIT_MS = 30 * 60 * 1000 // 30 minutes max
 
-    return new Promise<ConsolidationResult>((resolve) => {
+    return new Promise<{ result: ConsolidationResult; failed: boolean }>((resolve) => {
       const checkTask = () => {
         const task = taskRuntime.getById(taskId)
         if (!task) {
           resolve({
-            updated: false,
-            dailyFilesReviewed: 0,
-            reason: 'Task not found',
+            result: { updated: false, dailyFilesReviewed: 0, reason: 'Task not found' },
+            failed: true,
           })
           return
         }
@@ -496,23 +605,31 @@ export class MemoryConsolidationScheduler {
           const updated = task.status === 'completed' && task.resultStatus !== 'silent'
 
           resolve({
-            updated,
-            dailyFilesReviewed: 0, // The task agent handles this internally
-            reason: task.resultSummary ?? task.errorMessage ?? undefined,
-            usage: totalTokens > 0 ? {
-              input: task.promptTokens,
-              output: task.completionTokens,
-            } : undefined,
+            result: {
+              updated,
+              dailyFilesReviewed: 0, // The task agent handles this internally
+              reason: task.resultSummary ?? task.errorMessage ?? undefined,
+              usage: totalTokens > 0 ? {
+                input: task.promptTokens,
+                output: task.completionTokens,
+              } : undefined,
+            },
+            failed: task.status === 'failed',
           })
           return
         }
 
-        // Check if we've exceeded max wait time
         if (Date.now() - startTime > MAX_WAIT_MS) {
+          const reason = 'Consolidation task timed out waiting for completion'
+          // Abort before resolving so the next run never edits shared memory files concurrently.
+          try {
+            taskRuntime.abort(taskId, reason)
+          } catch (err) {
+            console.error(`[axiom] Failed to abort timed-out consolidation task ${taskId}:`, err)
+          }
           resolve({
-            updated: false,
-            dailyFilesReviewed: 0,
-            reason: 'Consolidation task timed out waiting for completion',
+            result: { updated: false, dailyFilesReviewed: 0, reason },
+            failed: true,
           })
           return
         }

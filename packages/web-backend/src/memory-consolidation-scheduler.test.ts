@@ -48,6 +48,7 @@ function createMockTaskRuntime(taskStore: TaskStore) {
       }
       return task.id
     }),
+    abort: vi.fn(),
   }
 }
 
@@ -342,4 +343,134 @@ describe('MemoryConsolidationScheduler', () => {
       scheduler.setTaskRuntime(taskRuntime)
     })
   })
+})
+
+describe('MemoryConsolidationScheduler multi-user', () => {
+  function addUser(username: string, role = 'user'): number {
+    return Number(db.prepare('INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)').run(username, 'h', role).lastInsertRowid)
+  }
+
+  function writeDaily(dir: string, content: string): void {
+    fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(path.join(dir, `${new Date().toISOString().split('T')[0]}.md`), content, 'utf-8')
+  }
+
+  it('runs users sequentially with the bootstrap admin last and skips users without entries', async () => {
+    addUser('admin', 'admin')
+    const bobId = addUser('bob')
+    addUser('carol')
+    writeDaily(path.join(tempDataDir, 'users', 'bob', 'daily'), 'Bob likes tea')
+
+    const taskStore = new TaskStore(db)
+    const taskRuntime = createMockTaskRuntime(taskStore)
+    taskRuntime.setTaskCompletionCallback((taskId: string) => {
+      taskStore.update(taskId, { status: 'completed', resultStatus: 'silent', completedAt: new Date().toISOString().replace('T', ' ').slice(0, 19) })
+    })
+    const scheduler = new MemoryConsolidationScheduler({ db, taskRuntime, getDefaultProvider: () => makeProvider() })
+
+    await scheduler.runNow()
+
+    expect(taskRuntime.startedTasks).toHaveLength(2)
+    const [userRun, adminRun] = taskRuntime.startedTasks.map(s => s.task)
+    expect(userRun.ownerUserId).toBe(bobId)
+    expect(adminRun.ownerUserId).toBe(1)
+
+    expect(userRun.prompt).toContain(path.join(tempDataDir, 'users', 'bob', 'PROFILE.md'))
+    expect(userRun.prompt).not.toContain('Wiki Health Check')
+    expect(userRun.prompt).not.toContain('Global steps')
+    expect(userRun.prompt).not.toContain('Weekly compaction run')
+    expect(userRun.prompt).not.toContain('Remove outdated or superseded information from MEMORY.md')
+    expect(userRun.prompt).toContain('Only ADD general lessons to MEMORY.md')
+    expect(userRun.prompt).toContain(path.join(tempDataDir, 'users', 'bob') + '/')
+    expect(adminRun.prompt).toContain('Remove outdated or superseded information from MEMORY.md')
+    expect(adminRun.prompt).toContain(path.join(tempDataDir, 'users', 'bob', 'PROFILE.md'))
+    expect(adminRun.prompt).toContain(path.join(tempDataDir, 'users', 'carol', 'PROFILE.md'))
+    expect(userRun.prompt).not.toContain(path.join(tempDataDir, 'users', 'carol', 'PROFILE.md'))
+    const sessionCount = (db.prepare("SELECT COUNT(*) AS n FROM sessions WHERE type = 'consolidation'").get() as { n: number }).n
+    expect(sessionCount).toBe(2)
+    const logRow = db.prepare("SELECT session_id, status FROM tool_calls WHERE tool_name = 'memory_consolidation'").get() as { session_id: string; status: string }
+    expect(logRow.session_id).toBe(adminRun.sessionId)
+    expect(logRow.status).toBe('success')
+    expect(adminRun.prompt).toContain('Wiki Health Check')
+    expect(adminRun.prompt).toContain('Global steps')
+    expect(scheduler.getSnapshot().lastResult).not.toBeNull()
+  }, 30000)
+
+  it('logs status error when a run fails but continues the sequence', async () => {
+    addUser('admin', 'admin')
+    addUser('bob')
+    writeDaily(path.join(tempDataDir, 'users', 'bob', 'daily'), 'Bob likes tea')
+
+    const taskStore = new TaskStore(db)
+    const taskRuntime = createMockTaskRuntime(taskStore)
+    taskRuntime.setTaskCompletionCallback((taskId: string) => {
+      taskStore.update(taskId, { status: 'completed', resultStatus: 'silent', completedAt: new Date().toISOString().replace('T', ' ').slice(0, 19) })
+    })
+    taskRuntime.start.mockImplementationOnce(async () => { throw new Error('boom') })
+    const scheduler = new MemoryConsolidationScheduler({ db, taskRuntime, getDefaultProvider: () => makeProvider() })
+
+    await scheduler.runNow()
+
+    expect(taskRuntime.startedTasks).toHaveLength(1)
+    const logRow = db.prepare("SELECT status FROM tool_calls WHERE tool_name = 'memory_consolidation'").get() as { status: string }
+    expect(logRow.status).toBe('error')
+  }, 30000)
+
+  it('counts a run that ends in failed status as failed', async () => {
+    addUser('admin', 'admin')
+    addUser('bob')
+    writeDaily(path.join(tempDataDir, 'users', 'bob', 'daily'), 'Bob likes tea')
+
+    const taskStore = new TaskStore(db)
+    const taskRuntime = createMockTaskRuntime(taskStore)
+    let first = true
+    taskRuntime.setTaskCompletionCallback((taskId: string) => {
+      const status = first ? 'failed' : 'completed'
+      first = false
+      taskStore.update(taskId, { status, resultStatus: status === 'failed' ? 'failed' : 'silent', errorMessage: status === 'failed' ? 'provider error' : undefined })
+    })
+    const scheduler = new MemoryConsolidationScheduler({ db, taskRuntime, getDefaultProvider: () => makeProvider() })
+
+    await scheduler.runNow()
+
+    expect(taskRuntime.startedTasks).toHaveLength(2)
+    const logRow = db.prepare("SELECT status, output FROM tool_calls WHERE tool_name = 'memory_consolidation'").get() as { status: string; output: string }
+    expect(logRow.status).toBe('error')
+    expect(JSON.parse(logRow.output).failedRuns).toEqual(['bob'])
+  }, 30000)
+
+  it('aborts a timed-out run before starting the next one', async () => {
+    addUser('admin', 'admin')
+    addUser('bob')
+    writeDaily(path.join(tempDataDir, 'users', 'bob', 'daily'), 'Bob likes tea')
+
+    const taskStore = new TaskStore(db)
+    const taskRuntime = createMockTaskRuntime(taskStore)
+    const realNow = Date.now.bind(Date)
+    let offset = 0
+    const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => realNow() + offset)
+    let startCount = 0
+    taskRuntime.setTaskCompletionCallback((taskId: string) => {
+      startCount++
+      if (startCount === 1) {
+        offset = 31 * 60 * 1000
+        return
+      }
+      taskStore.update(taskId, { status: 'completed', resultStatus: 'silent' })
+    })
+    const scheduler = new MemoryConsolidationScheduler({ db, taskRuntime, getDefaultProvider: () => makeProvider() })
+
+    try {
+      await scheduler.runNow()
+    } finally {
+      nowSpy.mockRestore()
+    }
+
+    const [userRun] = taskRuntime.startedTasks.map(s => s.task)
+    expect(taskRuntime.abort).toHaveBeenCalledWith(userRun.id, expect.stringContaining('timed out'))
+    expect(taskRuntime.abort.mock.invocationCallOrder[0]).toBeLessThan(taskRuntime.start.mock.invocationCallOrder[1])
+    const logRow = db.prepare("SELECT status, output FROM tool_calls WHERE tool_name = 'memory_consolidation'").get() as { status: string; output: string }
+    expect(logRow.status).toBe('error')
+    expect(JSON.parse(logRow.output).failedRuns).toEqual(['bob'])
+  }, 30000)
 })
