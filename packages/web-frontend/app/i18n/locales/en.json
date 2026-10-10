@@ -548,6 +548,21 @@
       "xhigh": "Extra high",
       "max": "Max"
     },
+    "userHeartbeat": {
+      "title": "Your heartbeat",
+      "description": "Your personal switch and HEARTBEAT.md. The schedule is set by the admin.",
+      "enabled": "Run my heartbeat",
+      "enabledHint": "The agent works through your HEARTBEAT.md on every heartbeat cycle.",
+      "masterOff": "The admin has turned the heartbeat off for the whole instance.",
+      "interval": "Interval",
+      "intervalValue": "Every {minutes} minutes",
+      "nightMode": "Night mode",
+      "nightModeOff": "Off",
+      "nightModeValue": "{start}:00 to {end}:00 in your timezone ({timezone})",
+      "editor": "Heartbeat tasks",
+      "save": "Save",
+      "saved": "Saved"
+    },
     "userAgent": {
       "description": "Your personal chat model, thinking level, language and timezone. Choose \"Use default\" to follow the admin's settings.",
       "model": "Chat model",

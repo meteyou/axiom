@@ -548,6 +548,21 @@
       "xhigh": "Sehr hoch",
       "max": "Maximum"
     },
+    "userHeartbeat": {
+      "title": "Dein Heartbeat",
+      "description": "Dein persönlicher Schalter und deine HEARTBEAT.md. Den Zeitplan legt der Admin fest.",
+      "enabled": "Meinen Heartbeat ausführen",
+      "enabledHint": "Der Agent arbeitet bei jedem Heartbeat-Zyklus deine HEARTBEAT.md ab.",
+      "masterOff": "Der Admin hat den Heartbeat für die ganze Instanz ausgeschaltet.",
+      "interval": "Intervall",
+      "intervalValue": "Alle {minutes} Minuten",
+      "nightMode": "Nachtmodus",
+      "nightModeOff": "Aus",
+      "nightModeValue": "{start}:00 bis {end}:00 in deiner Zeitzone ({timezone})",
+      "editor": "Heartbeat-Aufgaben",
+      "save": "Speichern",
+      "saved": "Gespeichert"
+    },
     "userAgent": {
       "description": "Dein persönliches Chat-Modell, Denk-Level, deine Sprache und Zeitzone. Mit „Standard verwenden“ folgst du den Einstellungen des Admins.",
       "model": "Chat-Modell",
