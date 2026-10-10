@@ -1,5 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest'
+import BetterSqlite3 from 'better-sqlite3'
 import fs from 'node:fs'
+import type { Database } from './database.js'
 import os from 'node:os'
 import path from 'node:path'
 import {
@@ -9,6 +11,8 @@ import {
   getEmailAccountDecrypted,
   listEmailAccounts,
   loadEmailAccounts,
+  migrateEmailAccountOwners,
+  saveEmailAccounts,
   updateEmailAccount,
   DEFAULT_ATTACHMENT_DOWNLOAD_PATH,
 } from './email-account-store.js'
@@ -45,6 +49,24 @@ describe('email-account-store', () => {
     }
   }
 
+  it('scopes listing by owner and backfills legacy accounts to the bootstrap admin', () => {
+    setupTmpConfig()
+    createEmailAccount(baseInput({ name: 'A' }), 2)
+    createEmailAccount(baseInput({ name: 'A' }), 3)
+    expect(listEmailAccounts({ ownerUserId: 3 })).toHaveLength(1)
+
+    const file = loadEmailAccounts()
+    delete (file.accounts[0] as Partial<typeof file.accounts[0]>).ownerUserId
+    saveEmailAccounts(file)
+
+    const db = new BetterSqlite3(':memory:') as unknown as Database
+    db.exec('CREATE TABLE users (id INTEGER PRIMARY KEY)')
+    db.exec('INSERT INTO users (id) VALUES (1)')
+    migrateEmailAccountOwners(db)
+
+    expect(loadEmailAccounts().accounts.map(a => a.ownerUserId)).toEqual([1, 3])
+  })
+
   it('returns an empty list when no config file exists', () => {
     setupTmpConfig()
     expect(listEmailAccounts()).toEqual([])
@@ -52,7 +74,7 @@ describe('email-account-store', () => {
 
   it('creates an account with safe defaults', () => {
     setupTmpConfig()
-    const account = createEmailAccount(baseInput())
+    const account = createEmailAccount(baseInput(), 1)
 
     expect(account.canDelete).toBe(false)
     expect(account.allowSelfSignedCert).toBe(false)
@@ -68,7 +90,7 @@ describe('email-account-store', () => {
 
   it('persists accounts across loads', () => {
     setupTmpConfig()
-    const created = createEmailAccount(baseInput({ displayName: 'Agent', signature: '-- AI' }))
+    const created = createEmailAccount(baseInput({ displayName: 'Agent', signature: '-- AI' }), 1)
 
     const listed = listEmailAccounts()
     expect(listed).toHaveLength(1)
@@ -79,7 +101,7 @@ describe('email-account-store', () => {
 
   it('stores passwords encrypted at rest and never exposes them in safe accounts', () => {
     setupTmpConfig()
-    const created = createEmailAccount(baseInput())
+    const created = createEmailAccount(baseInput(), 1)
 
     const raw = loadEmailAccounts().accounts[0]!
     expect(raw.imapPassword).not.toBe('imap-secret')
@@ -109,7 +131,7 @@ describe('email-account-store', () => {
         addresses: [' Boss@Example.com ', 'boss@example.com', ''],
         domains: ['@Example.COM', 'example.com'],
       },
-    }))
+    }), 1)
 
     expect(account.allowlist).toEqual({
       addresses: ['boss@example.com'],
@@ -119,13 +141,13 @@ describe('email-account-store', () => {
 
   it('rejects duplicate account names', () => {
     setupTmpConfig()
-    createEmailAccount(baseInput())
-    expect(() => createEmailAccount(baseInput())).toThrow(/already exists/)
+    createEmailAccount(baseInput(), 1)
+    expect(() => createEmailAccount(baseInput(), 1)).toThrow(/already exists/)
   })
 
   it('updates fields and keeps the stored password when none is provided', () => {
     setupTmpConfig()
-    const created = createEmailAccount(baseInput())
+    const created = createEmailAccount(baseInput(), 1)
     const before = loadEmailAccounts().accounts[0]!.imapPassword
 
     const updated = updateEmailAccount(created.id, {
@@ -147,7 +169,7 @@ describe('email-account-store', () => {
 
   it('re-encrypts a replaced password', () => {
     setupTmpConfig()
-    const created = createEmailAccount(baseInput())
+    const created = createEmailAccount(baseInput(), 1)
     updateEmailAccount(created.id, { smtpPassword: 'new-secret' })
 
     const raw = loadEmailAccounts().accounts[0]!
@@ -162,7 +184,7 @@ describe('email-account-store', () => {
 
   it('deletes accounts', () => {
     setupTmpConfig()
-    const created = createEmailAccount(baseInput())
+    const created = createEmailAccount(baseInput(), 1)
 
     expect(deleteEmailAccount(created.id)).toBe(true)
     expect(listEmailAccounts()).toEqual([])

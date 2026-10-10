@@ -27,6 +27,8 @@ export const MAX_EMAIL_BULK_UIDS = 200
  * without an IMAP server and without touching the accounts file.
  */
 export interface EmailToolsDeps {
+  /** User the tools act for; only this user's accounts are visible and send-log entries are attributed to them. */
+  ownerUserId?: number
   client?: EmailClient
   listAccounts?: () => { id: string; name: string }[]
   getAccount?: (id: string) => EmailAccount | null
@@ -43,12 +45,19 @@ interface ResolvedDeps {
 }
 
 function resolveDeps(deps: EmailToolsDeps = {}): ResolvedDeps {
+  const { ownerUserId } = deps
+  const getStoredAccount = deps.getAccount ?? getEmailAccountDecrypted
   return {
     client: deps.client ?? createEmailClient(),
-    listAccounts: deps.listAccounts ?? (() => listEmailAccounts().map(a => ({ id: a.id, name: a.name }))),
-    getAccount: deps.getAccount ?? getEmailAccountDecrypted,
+    listAccounts: deps.listAccounts ?? (() => listEmailAccounts({ ownerUserId }).map(a => ({ id: a.id, name: a.name }))),
+    getAccount: ownerUserId === undefined
+      ? getStoredAccount
+      : (id) => {
+          const account = getStoredAccount(id)
+          return account && account.ownerUserId === ownerUserId ? account : null
+        },
     workspaceDir: deps.workspaceDir ?? getWorkspaceDir,
-    logSend: deps.logSend ?? (input => createEmailSendLogEntry(getDatabase(), input)),
+    logSend: deps.logSend ?? (input => createEmailSendLogEntry(getDatabase(), { ownerUserId, ...input })),
   }
 }
 

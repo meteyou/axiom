@@ -4,6 +4,8 @@ import crypto from 'node:crypto'
 import { getConfigDir } from './config.js'
 import { encrypt, decrypt, isEncrypted } from './encryption.js'
 import type { EmailSecurity } from './email-client.js'
+import type { Database } from './database.js'
+import { getBootstrapAdminId } from './user-scope.js'
 
 export const DEFAULT_ATTACHMENT_DOWNLOAD_PATH = 'email-attachments'
 
@@ -21,6 +23,7 @@ export type EmailFolderMode = 'all' | 'selected'
 export interface EmailAccount {
   id: string
   name: string
+  ownerUserId: number
 
   imapHost: string
   imapPort: number
@@ -183,8 +186,27 @@ export function toSafeEmailAccount(account: EmailAccount): SafeEmailAccount {
   }
 }
 
-export function listEmailAccounts(): SafeEmailAccount[] {
-  return loadEmailAccounts().accounts.map(toSafeEmailAccount)
+export function listEmailAccounts(filter: { ownerUserId?: number } = {}): SafeEmailAccount[] {
+  return loadEmailAccounts().accounts
+    .filter(account => filter.ownerUserId === undefined || account.ownerUserId === filter.ownerUserId)
+    .map(toSafeEmailAccount)
+}
+
+/** Attributes accounts stored before ownership existed to the bootstrap admin. Idempotent. */
+export function migrateEmailAccountOwners(db: Database): void {
+  if (!fs.existsSync(accountsFilePath())) return
+  const bootstrapAdminId = getBootstrapAdminId(db)
+  if (bootstrapAdminId === null) return
+
+  const file = loadEmailAccounts()
+  let changed = false
+  for (const account of file.accounts) {
+    if (typeof account.ownerUserId !== 'number') {
+      account.ownerUserId = bootstrapAdminId
+      changed = true
+    }
+  }
+  if (changed) saveEmailAccounts(file)
 }
 
 export function getEmailAccount(id: string): SafeEmailAccount | null {
@@ -204,12 +226,12 @@ export function getEmailAccountDecrypted(id: string): EmailAccount | null {
   }
 }
 
-export function createEmailAccount(input: CreateEmailAccountInput): SafeEmailAccount {
+export function createEmailAccount(input: CreateEmailAccountInput, ownerUserId: number): SafeEmailAccount {
   const file = loadEmailAccounts()
 
   const name = input.name.trim()
   if (!name) throw new Error('Account name is required')
-  if (file.accounts.some(entry => entry.name === name)) {
+  if (file.accounts.some(entry => entry.ownerUserId === ownerUserId && entry.name === name)) {
     throw new Error(`Email account with name "${name}" already exists`)
   }
 
@@ -217,6 +239,7 @@ export function createEmailAccount(input: CreateEmailAccountInput): SafeEmailAcc
   const account: EmailAccount = {
     id: crypto.randomUUID(),
     name,
+    ownerUserId,
     imapHost: input.imapHost.trim(),
     imapPort: input.imapPort,
     imapUser: input.imapUser.trim(),
@@ -260,7 +283,7 @@ export function updateEmailAccount(id: string, input: UpdateEmailAccountInput): 
   if (input.name !== undefined) {
     const name = input.name.trim()
     if (!name) throw new Error('Account name is required')
-    if (file.accounts.some(entry => entry.id !== id && entry.name === name)) {
+    if (file.accounts.some(entry => entry.id !== id && entry.ownerUserId === account.ownerUserId && entry.name === name)) {
       throw new Error(`Email account with name "${name}" already exists`)
     }
     account.name = name

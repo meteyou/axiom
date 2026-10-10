@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { Database } from './database.js'
+import { getBootstrapAdminId } from './user-scope.js'
 
 /**
  * Audit trail of every send attempt the agent makes — including allowlist hits.
@@ -29,6 +30,7 @@ export interface EmailSendLogEntry {
   id: string
   accountId: string
   accountName: string
+  ownerUserId: number | null
   status: EmailSendLogStatus
   to: string[]
   cc: string[]
@@ -53,6 +55,7 @@ export interface EmailSendLogEntry {
 export interface CreateEmailSendLogInput {
   accountId: string
   accountName: string
+  ownerUserId?: number | null
   status: EmailSendLogStatus
   to: string[]
   cc?: string[]
@@ -81,6 +84,7 @@ export interface UpdateEmailSendLogInput {
 }
 
 export interface ListEmailSendLogOptions {
+  ownerUserId?: number
   accountId?: string
   status?: EmailSendLogStatus | EmailSendLogStatus[]
   recipient?: string
@@ -95,6 +99,7 @@ interface EmailSendLogRow {
   id: string
   account_id: string
   account_name: string
+  owner_user_id: number | null
   status: string
   recipients_to: string
   recipients_cc: string
@@ -122,6 +127,7 @@ export function initEmailSendLogTable(db: Database): void {
       id TEXT PRIMARY KEY,
       account_id TEXT NOT NULL,
       account_name TEXT NOT NULL,
+      owner_user_id INTEGER,
       status TEXT NOT NULL CHECK(status IN ('sent', 'pending', 'approved', 'rejected', 'blocked', 'failed')),
       recipients_to TEXT NOT NULL DEFAULT '[]',
       recipients_cc TEXT NOT NULL DEFAULT '[]',
@@ -149,6 +155,19 @@ export function initEmailSendLogTable(db: Database): void {
   `)
 }
 
+/** Adds `email_send_log.owner_user_id` and attributes existing entries to the bootstrap admin. Idempotent. */
+export function migrateEmailSendLogOwners(db: Database): void {
+  const columns = db.prepare('PRAGMA table_info(email_send_log)').all() as { name: string }[]
+  if (!columns.some(column => column.name === 'owner_user_id')) {
+    db.exec('ALTER TABLE email_send_log ADD COLUMN owner_user_id INTEGER')
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS idx_email_send_log_owner ON email_send_log(owner_user_id)')
+
+  const bootstrapAdminId = getBootstrapAdminId(db)
+  if (bootstrapAdminId === null) return
+  db.prepare('UPDATE email_send_log SET owner_user_id = ? WHERE owner_user_id IS NULL').run(bootstrapAdminId)
+}
+
 function parseJsonArray<T>(raw: string | null): T[] {
   if (!raw) return []
   try {
@@ -164,6 +183,7 @@ function rowToEntry(row: EmailSendLogRow): EmailSendLogEntry {
     id: row.id,
     accountId: row.account_id,
     accountName: row.account_name,
+    ownerUserId: row.owner_user_id,
     status: row.status as EmailSendLogStatus,
     to: parseJsonArray<string>(row.recipients_to),
     cc: parseJsonArray<string>(row.recipients_cc),
@@ -192,16 +212,17 @@ export function createEmailSendLogEntry(db: Database, input: CreateEmailSendLogI
 
   db.prepare(
     `INSERT INTO email_send_log (
-      id, account_id, account_name, status,
+      id, account_id, account_name, owner_user_id, status,
       recipients_to, recipients_cc, recipients_bcc,
       subject, body_text, body_html, attachments,
       in_reply_to, references_header, reason, error_message,
       message_id, session_id, sent_at, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     id,
     input.accountId,
     input.accountName,
+    input.ownerUserId ?? null,
     input.status,
     JSON.stringify(input.to ?? []),
     JSON.stringify(input.cc ?? []),
@@ -265,6 +286,11 @@ export function updateEmailSendLogEntry(
 function buildFilters(options: ListEmailSendLogOptions): { where: string; params: unknown[] } {
   const conditions: string[] = []
   const params: unknown[] = []
+
+  if (options.ownerUserId !== undefined) {
+    conditions.push('owner_user_id = ?')
+    params.push(options.ownerUserId)
+  }
 
   if (options.accountId) {
     conditions.push('account_id = ?')

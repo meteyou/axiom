@@ -25,6 +25,7 @@ function makeAccount(overrides: Partial<EmailAccount> = {}): EmailAccount {
   return {
     id: 'acc-1',
     name: 'Work',
+    ownerUserId: 1,
     imapHost: 'imap.example.com',
     imapPort: 993,
     imapUser: 'agent@example.com',
@@ -130,6 +131,22 @@ describe('isFolderAllowed', () => {
 })
 
 describe('createEmailTools', () => {
+  it('only exposes the accounts of the owner and registers nothing when they have none', () => {
+    const accounts = [makeAccount({ id: 'a', name: 'Mine', ownerUserId: 1 })]
+    const deps = { ...makeDeps(accounts, mockClient()), ownerUserId: 2 }
+    expect(createEmailTools(deps)).toEqual([])
+
+    const own = { ...makeDeps(accounts, mockClient()), ownerUserId: 1 }
+    expect(createEmailTools(own).length).toBeGreaterThan(0)
+  })
+
+  it('refuses to load a foreign account even by id', async () => {
+    const accounts = [makeAccount({ id: 'a', name: 'Mine', ownerUserId: 1 })]
+    const deps = { ...makeDeps(accounts, mockClient()), ownerUserId: 2, listAccounts: () => [{ id: 'a', name: 'Mine' }] }
+    const result = await createEmailListTool(deps).execute('t', { account: 'a' } as never)
+    expect(details(result).error).toBe(true)
+  })
+
   it('registers no tools when no account exists', () => {
     expect(createEmailTools(makeDeps([], mockClient()))).toEqual([])
   })
