@@ -9,6 +9,7 @@ import {
   createTranscriptImageBudget,
   detectImageMimeType,
   normalizeToolResultImages,
+  omitToolResultStructuredContent,
   prepareImageForLlm,
   redactToolResultImages,
 } from './llm-image.js'
@@ -235,5 +236,23 @@ describe('redactToolResultImages', () => {
     const result = { content: [{ type: 'text', text: 'hi' }] }
     expect(redactToolResultImages(result)).toBe(result)
     expect(redactToolResultImages(undefined)).toBeUndefined()
+  })
+})
+
+describe('omitToolResultStructuredContent', () => {
+  it('drops structuredContent on a copy without touching the original result', () => {
+    const result = { content: [{ type: 'text', text: 'hi\n' }], details: { exitCode: 0 }, structuredContent: { output: 'hi\n', exit_code: 0 } }
+    const omitted = omitToolResultStructuredContent(result)
+    expect(omitted).toEqual({ content: [{ type: 'text', text: 'hi\n' }], details: { exitCode: 0 } })
+    expect(omitted).not.toBe(result)
+    expect(omitted.content).toBe(result.content)
+    expect(result).toHaveProperty('structuredContent')
+  })
+
+  it('returns results without structured content unchanged', () => {
+    const result = { content: [{ type: 'text', text: 'hi' }] }
+    expect(omitToolResultStructuredContent(result)).toBe(result)
+    expect(omitToolResultStructuredContent(undefined)).toBeUndefined()
+    expect(omitToolResultStructuredContent('plain')).toBe('plain')
   })
 })

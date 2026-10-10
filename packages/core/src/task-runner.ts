@@ -19,7 +19,7 @@ import { estimateCost, parseProviderModelId, buildStreamFn, getProviderDefaultMo
 import type { ProviderConfig } from './provider-config.js'
 import { releaseProviderSession } from './pi-models.js'
 import { assertLlmResponseOk } from './llm-response.js'
-import { createToolResultImageHook, createTranscriptImageBudget, redactToolResultImages } from './llm-image.js'
+import { createToolResultImageHook, createTranscriptImageBudget, omitToolResultStructuredContent, redactToolResultImages } from './llm-image.js'
 import { loadConfig } from './config.js'
 import {
   createCodemodeTool,
@@ -869,7 +869,7 @@ export class TaskRunner {
 
         this.persistLiveMetrics(runningTask)
 
-        const toolResult = redactToolResultImages(event.result)
+        const toolResult = omitToolResultStructuredContent(redactToolResultImages(event.result))
         const outputStr = JSON.stringify(toolResult ?? {})
         const isError = isFailedToolResult(event.isError, toolResult)
         this.writeToolJournal(runningTask.taskId, journal => journal.recordEnded({

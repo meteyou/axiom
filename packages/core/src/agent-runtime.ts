@@ -22,7 +22,7 @@ import { loadSkills } from './skill-config.js'
 import { createBuiltinWebTools } from './web-tools.js'
 import type { BuiltinToolsConfig, BuiltinToolsConfigSource } from './web-tools.js'
 import { createReadFileTool } from './read-file-tool.js'
-import { createToolResultImageHook, createTranscriptImageBudget, redactToolResultImages } from './llm-image.js'
+import { createToolResultImageHook, createTranscriptImageBudget, omitToolResultStructuredContent, redactToolResultImages } from './llm-image.js'
 import { createTranscribeAudioTool } from './stt-tool.js'
 import { loadSttSettings } from './stt.js'
 import { createAgentSkillTools, getAgentSkillsForPrompt, getAgentSkillsCount, getAgentSkillsDir, currentPlatform } from './agent-skills.js'
@@ -203,14 +203,17 @@ function runShellCommand(command: string, timeout: number, signal?: AbortSignal)
       finish({
         content: [{ type: 'text', text: err.message }],
         details: { exitCode: 1 },
+        structuredContent: { output: err.message, exit_code: 1 },
       })
     })
 
     child.on('close', (code) => {
       if (code === 0 && killReason === null) {
+        const text = stdout || '(no output)'
         finish({
-          content: [{ type: 'text', text: stdout || '(no output)' }],
+          content: [{ type: 'text', text }],
           details: { exitCode: 0 },
+          structuredContent: { output: text, exit_code: 0 },
         })
         return
       }
@@ -218,9 +221,12 @@ function runShellCommand(command: string, timeout: number, signal?: AbortSignal)
       if (killReason === 'abort') parts.push('Command aborted')
       else if (killReason === 'timeout') parts.push(`Command timed out after ${timeout}ms`)
       else if (killReason === 'maxBuffer') parts.push(`Command output exceeded ${SHELL_MAX_OUTPUT_BYTES} bytes`)
+      const text = parts.join('\n') || 'Command failed'
+      const exitCode = typeof code === 'number' ? code : 1
       finish({
-        content: [{ type: 'text', text: parts.join('\n') || 'Command failed' }],
-        details: { exitCode: typeof code === 'number' ? code : 1 },
+        content: [{ type: 'text', text }],
+        details: { exitCode },
+        structuredContent: { output: text, exit_code: exitCode },
       })
     })
   })
@@ -237,6 +243,10 @@ export function createYoloTools(): AgentTool[] {
     parameters: Type.Object({
       command: Type.String({ description: 'The shell command to execute' }),
       timeout: Type.Optional(Type.Number({ description: 'Timeout in milliseconds (default: 60000)' })),
+    }),
+    outputSchema: Type.Object({
+      output: Type.String({ description: 'The model-facing output: stdout, plus stderr and a status note on failure' }),
+      exit_code: Type.Number({ description: 'Process exit code; 0 on success, non-zero on failure (kill-by-timeout/abort reports 1)' }),
     }),
     execute: async (_toolCallId, params, signal) => {
       const { command, timeout = 60000 } = params as { command: string; timeout?: number }
@@ -980,7 +990,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
         const args = this.toolCallArgs.get(event.toolCallId) ?? {}
         this.toolCallTimers.delete(event.toolCallId)
         this.toolCallArgs.delete(event.toolCallId)
-        const toolResult = redactToolResultImages(event.result)
+        const toolResult = omitToolResultStructuredContent(redactToolResultImages(event.result))
         const isError = isFailedToolResult(event.isError, toolResult)
 
         logToolCall(this.db, {

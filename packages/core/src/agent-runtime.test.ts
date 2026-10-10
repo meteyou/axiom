@@ -347,6 +347,37 @@ describe('AgentRuntime boundary', () => {
     expect(JSON.parse(logged.output).content[1]).toEqual(redacted)
   })
 
+  it('keeps structured content out of streamed and logged tool results', async () => {
+    const db = initDatabase(':memory:')
+    const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db, tools: [] })
+
+    runtimeHarness.promptBehaviors.push(async (agent) => {
+      agent.emit({ type: 'tool_execution_start', toolName: 'shell', toolCallId: 'tool-shell', args: { command: 'echo hi' } })
+      agent.emit({
+        type: 'tool_execution_end',
+        toolName: 'shell',
+        toolCallId: 'tool-shell',
+        isError: false,
+        result: {
+          content: [{ type: 'text', text: 'hi\n' }],
+          details: { exitCode: 0 },
+          structuredContent: { output: 'hi\n', exit_code: 0 },
+        },
+      })
+      agent.emit({ type: 'agent_end', messages: [] })
+    })
+
+    const results: Array<Record<string, unknown>> = []
+    for await (const chunk of runtime.streamPrompt('run', 'session-1')) {
+      if (chunk.type === 'tool_call_end') results.push(chunk.toolResult as Record<string, unknown>)
+    }
+
+    expect(results).toEqual([{ content: [{ type: 'text', text: 'hi\n' }], details: { exitCode: 0 } }])
+    const logged = vi.mocked(logToolCall).mock.calls.at(-1)![1]
+    expect(logged.output).not.toContain('structuredContent')
+    expect(JSON.parse(logged.output)).not.toHaveProperty('structuredContent')
+  })
+
   it('normalizes tool result images before they enter the transcript', async () => {
     const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db: initDatabase(':memory:'), tools: [] })
     const piAgent = (runtime as unknown as AgentRuntimePiAgentAccess).getAgent() as unknown as {
