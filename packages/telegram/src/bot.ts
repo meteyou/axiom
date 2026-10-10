@@ -28,6 +28,9 @@ import {
   serializeUploadsMetadata,
   parseUploadsMetadata,
   loadSttSettings,
+  resolveUserScope,
+  toSttLanguage,
+  getGlobalChatDefaults,
   transcribeAudio,
   synthesizeTts,
   SlashCommandRegistry as SlashCommandRegistryCtor,
@@ -914,13 +917,8 @@ export class TelegramBot {
       // Download OGG audio from Telegram
       const { buffer } = await this.downloadTelegramFile(voice.file_id)
 
-      // Resolve language from settings: if "match", "auto", or empty, omit language param
-      const settings = loadConfig<Record<string, unknown>>('settings.json')
-      const settingsLanguage = (settings.language as string) ?? ''
-      const autoLanguages = ['match', 'auto', '']
-      const language = autoLanguages.includes(settingsLanguage.toLowerCase())
-        ? undefined
-        : settingsLanguage
+      const scope = this.db ? resolveUserScope(this.db, this.resolveUserId(ctx)) : null
+      const language = toSttLanguage(scope?.settings.language ?? getGlobalChatDefaults().language)
 
       // Transcribe via core STT module
       const result = await transcribeAudio(buffer, { language, filename: 'audio.ogg' })
