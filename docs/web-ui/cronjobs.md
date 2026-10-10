@@ -2,7 +2,22 @@
 
 The Cronjobs page is where you manage everything that runs on a schedule — daily summaries, weekly digests, periodic checks, one-shot reminders. Each row is one entry in the `scheduled_tasks` table; firing a cronjob either spawns a full task agent or injects a static message into the chat, depending on its action type.
 
-> **Admin only.** Regular users don't see this page.
+> **Per-user page.** Every user sees and manages their own cronjobs and reminders; nobody else's. The admin sees all of them, with an owner column and owner filter, but only toggles or deletes other users' cronjobs.
+
+### Ownership and permissions
+
+Each cronjob and reminder belongs to the user who created it (existing ones belong to the first admin account). Cronjob tasks run as their owner — with the owner's workspace, facts and email accounts — and results and reminders are delivered only to the owner (web and the owner's linked Telegram account).
+
+| Action | Owner | Admin on a foreign cronjob | Other users |
+|--------|-------|----------------------------|-------------|
+| See in the UI / API / `/cronjobs` | yes | UI and API: yes. Agent: name, owner and status only | no |
+| Create | yes (for themselves) | not for others | — |
+| Edit | yes | no | no |
+| Enable / disable | yes | yes | no |
+| Delete | yes | yes | no |
+| Run now | yes | no | no |
+
+For foreign cronjobs the admin's row shows the owner and offers only the enabled toggle and **Delete**. The same rules apply to the cronjob tools of the agent (`create_cronjob`, `edit_cronjob`, `remove_cronjob`, `list_cronjobs`, `get_cronjob`, `create_reminder`): a regular user's agent only ever sees their own cronjobs, and the admin's agent sees only name, owner and status of other users' cronjobs and may disable or delete them. The `/cronjobs` slash command lists only your own cronjobs.
 
 > **What is a cronjob?** This page is about *operating* cronjobs. For the architecture — how the scheduler works, the 5-field cron grammar, auto-disable for one-shot patterns, the 55-second deduplication cooldown, the 5-second past-due grace, and why reminders are a separate tool — see [Tasks & Cronjobs concept](../concepts/tasks-and-cronjobs).
 
@@ -22,7 +37,7 @@ The **Refresh** button sits at the right end of the [filter toolbar](#filter-too
 
 ### Filter toolbar
 
-Six filters sit at the top, plus a Refresh button. They combine with AND semantics: pick an action type *and* a provider *and* a last-run status to narrow down. Filtering happens client-side on the already-loaded list, so it is instant.
+Six filters sit at the top (seven for admins, who also get an **Owner** filter), plus a Refresh button. They combine with AND semantics: pick an action type *and* a provider *and* a last-run status to narrow down. Filtering happens client-side on the already-loaded list, so it is instant.
 
 | Filter              | Options                                                                                          |
 |---------------------|--------------------------------------------------------------------------------------------------|
@@ -46,6 +61,7 @@ A few details worth knowing:
 | Column        | Notes                                                                                              |
 |---------------|----------------------------------------------------------------------------------------------------|
 | **Name**      | The cronjob name, plus badges for any customizations (see [Name badges](#name-badges)).           |
+| **Owner**     | Admin only. The user the cronjob belongs to.                                                       |
 | **Schedule**  | Top line: human-readable (e.g. *"At 09:00 on Sat"*). Bottom line: the raw 5-field cron expression. |
 | **Action**    | `Task` (green) or `Injection` (amber). See [Action types](#action-types).                          |
 | **Provider**  | `Default` (uses [Settings → Tasks](../settings/tasks)), a specific `Provider (model)`, or `—` for injections (no agent runs). A pinned thinking level is appended (e.g. *· Thinking: High*). |
