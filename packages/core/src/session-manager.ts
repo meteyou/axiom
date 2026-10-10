@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Database } from './database.js'
 import { appendToDailyFile } from './memory.js'
-import { resolveUserScope } from './user-scope.js'
+import { getBootstrapAdminId, resolveUserScope } from './user-scope.js'
 import { logToolCall } from './token-logger.js'
 
 /**
@@ -454,8 +454,8 @@ export class SessionManager {
       // docstring for rationale).
       this.db.prepare(
         `INSERT INTO sessions (id, user_id, source, type, parent_session_id, started_at, last_activity, session_user, message_count, summary_written)
-         VALUES (?, (SELECT id FROM users WHERE id = ?), ?, 'interactive', NULL, datetime(? / 1000, 'unixepoch'), datetime(? / 1000, 'unixepoch'), ?, 0, 0)`
-      ).run(session.id, userId, source, session.startedAt, session.lastActivity, userId)
+         VALUES (?, ?, ?, 'interactive', NULL, datetime(? / 1000, 'unixepoch'), datetime(? / 1000, 'unixepoch'), ?, 0, 0)`
+      ).run(session.id, this.resolveSessionOwnerId(userId), source, session.startedAt, session.lastActivity, userId)
 
       // Log session start to tool_calls for activity log visibility
       logToolCall(this.db, {
@@ -471,6 +471,14 @@ export class SessionManager {
     return session
   }
 
+  private resolveSessionOwnerId(userId: string | undefined): number | null {
+    if (userId !== undefined && /^\d+$/.test(userId)) {
+      const exists = this.db.prepare('SELECT 1 FROM users WHERE id = ?').get(Number(userId))
+      if (exists) return Number(userId)
+    }
+    return getBootstrapAdminId(this.db)
+  }
+
   /**
    * Create a non-interactive session (task, heartbeat, consolidation,
    * loop_detection). Unlike `getOrCreateSession`, this does NOT cache the
@@ -480,6 +488,7 @@ export class SessionManager {
   createSession(options: CreateSessionOptions): SessionInfo {
     const id = generateSessionId()
     const now = Date.now()
+    const ownerId = this.resolveSessionOwnerId(options.userId)
     const session: SessionInfo = {
       id,
       userId: options.userId ?? 'system',
@@ -496,7 +505,7 @@ export class SessionManager {
        VALUES (?, (SELECT id FROM users WHERE id = ?), ?, ?, ?, datetime(? / 1000, 'unixepoch'), datetime(? / 1000, 'unixepoch'), ?, 0, 0)`
     ).run(
       id,
-      options.userId ?? null,
+      ownerId,
       options.source,
       options.type,
       options.parentSessionId ?? null,

@@ -338,8 +338,8 @@ export class MemoryConsolidationScheduler {
       sessionId = generateSessionId()
       this.db.prepare(
         `INSERT INTO sessions (id, user_id, source, type, started_at, last_activity, message_count, summary_written)
-         VALUES (?, NULL, 'system', 'consolidation', datetime('now'), datetime('now'), 0, 0)`,
-      ).run(sessionId)
+         VALUES (?, ?, 'system', 'consolidation', datetime('now'), datetime('now'), 0, 0)`,
+      ).run(sessionId, getBootstrapAdminId(this.db))
     }
 
     const taskRuntime = this.resolveTaskRuntime()
@@ -529,7 +529,7 @@ export class MemoryConsolidationScheduler {
     this.db.prepare(
       `INSERT INTO sessions (id, user_id, source, type, started_at, last_activity, message_count, summary_written)
        VALUES (?, ?, 'system', 'consolidation', datetime('now'), datetime('now'), 0, 0)`,
-    ).run(id, scope ? String(scope.id) : null)
+    ).run(id, scope ? scope.id : getBootstrapAdminId(this.db))
     return id
   }
 
