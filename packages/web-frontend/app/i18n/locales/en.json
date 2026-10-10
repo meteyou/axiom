@@ -524,6 +524,8 @@
     "codemodeSection": "Codemode",
     "codemodeSectionHint": "Let agents run a JavaScript script that calls several of their tools at once, so only the script's output reaches the model.",
     "codemodeTasksEnabled": "Codemode for background tasks",
+    "codemodeMainAgentEnabled": "Codemode for the main agent",
+    "codemodeMainAgentEnabledHint": "The chat agent gets a codemode tool for batching, chaining and filtering tool calls. Applies from the next turn, on every channel; no restart needed.",
     "codemodeTasksEnabledHint": "Task agents (user, agent-created, cronjob, heartbeat) get a codemode tool for batching, chaining and filtering tool calls. Applies to tasks started after the change; memory consolidation never uses it.",
     "thinkingLevelOptions": {
       "off": "Off (fastest, cheapest)",

@@ -1243,6 +1243,21 @@
 
                 <div class="flex items-center justify-between rounded-lg border border-border px-4 py-3">
                   <div class="flex flex-col gap-0.5 pr-4">
+                    <Label for="codemode-main-agent-enabled" class="cursor-pointer">
+                      {{ $t('settings.codemodeMainAgentEnabled') }}
+                    </Label>
+                    <p class="text-xs text-muted-foreground">
+                      {{ $t('settings.codemodeMainAgentEnabledHint') }}
+                    </p>
+                  </div>
+                  <Switch
+                    id="codemode-main-agent-enabled"
+                    v-model:checked="form.codemode.mainAgent"
+                  />
+                </div>
+
+                <div class="flex items-center justify-between rounded-lg border border-border px-4 py-3">
+                  <div class="flex flex-col gap-0.5 pr-4">
                     <Label for="codemode-tasks-enabled" class="cursor-pointer">
                       {{ $t('settings.codemodeTasksEnabled') }}
                     </Label>
