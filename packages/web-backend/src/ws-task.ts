@@ -184,6 +184,7 @@ function taskEventToWsMessage(event: TaskEvent): TaskWsMessage {
     toolResult: event.toolResult,
     toolIsError: event.toolIsError,
     durationMs: event.durationMs,
+    nestedCalls: event.nestedCalls,
     text: event.text,
     status: event.status,
     statusMessage: event.statusMessage,

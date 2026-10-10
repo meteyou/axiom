@@ -6,6 +6,12 @@ import { TaskRunner, formatTaskInjection, parseTaskTimestampMs } from './task-ru
 import type { TaskRunnerOptions, TaskOverrides } from './task-runner.js'
 import type { Database } from './database.js'
 import type { ProviderConfig } from './provider-config.js'
+import { Agent as MockedAgent } from '@earendil-works/pi-agent-core'
+import type { AgentTool } from '@earendil-works/pi-agent-core'
+import { Type } from '@earendil-works/pi-ai'
+import { TaskEventBus } from './task-event-bus.js'
+import type { TaskEvent } from './task-event-bus.js'
+import type { LoopDetectionConfig } from './loop-detection.js'
 import { SessionManager } from './session-manager.js'
 import { releaseProviderSession } from './pi-models.js'
 import fs from 'node:fs'
@@ -49,9 +55,12 @@ function getCapturedAgentOptions(): CapturedAgentOptions {
   return v
 }
 
-// Mock the PiAgent to avoid actual LLM calls
-vi.mock('@earendil-works/pi-agent-core', () => {
+// Mock the PiAgent to avoid actual LLM calls. Everything else in the module
+// (e.g. runToolCall, which the codemode tool uses for nested calls) stays real.
+vi.mock('@earendil-works/pi-agent-core', async (importOriginal) => {
+  const original = await importOriginal() as Record<string, unknown>
   return {
+    ...original,
     Agent: vi.fn().mockImplementation((options: CapturedAgentOptions) => {
       recordAgentOptions(options)
       let subscribeFn: ((event: unknown) => void) | null = null
@@ -100,7 +109,6 @@ vi.mock('@earendil-works/pi-agent-core', () => {
     }),
   }
 })
-
 const mockProvider: ProviderConfig = {
   id: 'test-provider-id',
   name: 'test-provider',
@@ -1647,6 +1655,287 @@ describe('TaskRunner', () => {
 
       const off = await startAndCapture('user', false)
       expect(off.initialState.systemPrompt).not.toContain('<codemode>')
+    })
+  })
+
+  describe('codemode nested calls', () => {
+    type NestedAgentOptions = {
+      initialState: { tools: AgentTool[]; model: unknown }
+    }
+
+    /**
+     * Mock an agent whose prompt() hangs (the task stays running) and whose
+     * state exposes the tools the runner attached, so a captured codemode
+     * tool can really execute nested calls against them.
+     */
+    function mockHangingCodemodeAgent(): { emit: (event: unknown) => void, tools: () => AgentTool[] } {
+      let subscribeFn: ((event: unknown) => void) | null = null
+      let resolvePrompt: (() => void) | null = null
+      let agentTools: AgentTool[] = []
+      vi.mocked(MockedAgent as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce((options: unknown) => {
+        const captured = options as NestedAgentOptions
+        agentTools = captured.initialState.tools
+        return {
+          subscribe: vi.fn((fn: (event: unknown) => void) => {
+            subscribeFn = fn
+            return () => { subscribeFn = null }
+          }),
+          prompt: vi.fn(() => new Promise<void>(resolve => { resolvePrompt = resolve })),
+          abort: vi.fn(() => { resolvePrompt?.() }),
+          state: {
+            messages: [] as unknown[],
+            tools: captured.initialState.tools,
+            model: captured.initialState.model,
+          },
+        }
+      })
+      return { emit: event => subscribeFn?.(event), tools: () => agentTools }
+    }
+
+    async function startCodemodeTask(
+      tools: AgentTool[],
+      extra?: {
+        loopDetection?: LoopDetectionConfig
+        taskEventBus?: TaskEventBus
+        sessionId?: string
+      },
+    ): Promise<{ taskId: string, session: string, codemode: AgentTool, emit: (event: unknown) => void, runner: TaskRunner }> {
+      const runner = new TaskRunner({
+        db,
+        buildModel: () => ({} as ReturnType<TaskRunnerOptions['buildModel']>),
+        getApiKey: async () => 'test-key',
+        tools,
+        onTaskComplete: () => {},
+        sessionManager,
+        codemodeTasksEnabled: true,
+        taskEventBus: extra?.taskEventBus,
+        ...(extra?.loopDetection ? { loopDetection: extra.loopDetection } : {}),
+      })
+      const { emit, tools: agentTools } = mockHangingCodemodeAgent()
+      const task = store.create({
+        name: 'Nested Task',
+        prompt: 'Do work',
+        triggerType: 'agent',
+        sessionId: extra?.sessionId ?? `nested-session-${Math.random().toString(36).slice(2)}`,
+      })
+      await runner.startTask(task, mockProvider)
+      const codemode = agentTools().find(tool => tool.name === 'codemode')
+      if (!codemode) throw new Error('codemode tool missing from agent')
+      return { taskId: task.id, session: task.sessionId!, codemode, emit, runner }
+    }
+
+    const readFileTool: AgentTool = {
+      name: 'read_file',
+      label: 'read_file',
+      description: 'Read a file from the workspace.',
+      parameters: Type.Object({ path: Type.String() }),
+      execute: async () => ({ content: [{ type: 'text' as const, text: 'file contents' }], details: {} }),
+    }
+
+    const shellTool: AgentTool = {
+      name: 'shell',
+      label: 'shell',
+      description: 'Execute a shell command.',
+      parameters: Type.Object({ command: Type.String() }),
+      execute: async () => ({ content: [{ type: 'text' as const, text: 'shell out' }], details: {} }),
+    }
+
+    const failingEmailTool: AgentTool = {
+      name: 'email_send',
+      label: 'email_send',
+      description: 'Send an email.',
+      parameters: Type.Object({ to: Type.String() }),
+      execute: async () => ({ content: [{ type: 'text' as const, text: 'no smtp' }], details: { error: true } }),
+    }
+
+    function nestedLogRows(sessionId: string): Array<Record<string, unknown>> {
+      return db.prepare(
+        'SELECT tool_name, tool_call_id, parent_tool_call_id, status, duration_ms FROM tool_calls WHERE session_id = ? ORDER BY id',
+      ).all(sessionId) as Array<Record<string, unknown>>
+    }
+
+    it('writes nested calls to the tool-call log with the parent link, to the journal, and to live metrics', async () => {
+      const { taskId, session, codemode, runner } = await startCodemodeTask([readFileTool, shellTool])
+      try {
+        const result = await codemode.execute('parent-1', {
+          code: `const r = await tools.read_file({ path: 'a.md' });
+const s = await tools.shell({ command: 'ls' });
+return r + s;`,
+        }) as { isError?: boolean }
+        expect(result.isError).toBeFalsy()
+
+        // Tool-call log: one row per nested call, each linked to the codemode call.
+        const rows = nestedLogRows(session)
+        expect(rows).toHaveLength(2)
+        expect(rows[0]).toMatchObject({ tool_name: 'read_file', parent_tool_call_id: 'parent-1', status: 'success' })
+        expect(rows[1]).toMatchObject({ tool_name: 'shell', parent_tool_call_id: 'parent-1', status: 'success' })
+        expect(rows[0].tool_call_id).toBe('parent-1/read_file/1')
+        expect(rows[1].tool_call_id).toBe('parent-1/shell/1')
+
+        // Journal: each nested call with its own tool's replay policy.
+        const journal = new TaskToolJournal(db).listForTask(taskId)
+        expect(journal).toHaveLength(2)
+        expect(journal[0]).toMatchObject({
+          toolCallId: 'parent-1/read_file/1',
+          toolName: 'read_file',
+          replay: 'safe',
+          status: 'completed',
+        })
+        expect(journal[1]).toMatchObject({
+          toolCallId: 'parent-1/shell/1',
+          toolName: 'shell',
+          replay: 'unsafe',
+          status: 'completed',
+        })
+
+        // Live metrics count nested calls too.
+        expect(store.getById(taskId)!.toolCallCount).toBe(2)
+      } finally {
+        runner.dispose()
+      }
+    })
+
+    it('records failed nested calls as errors in log, journal and metrics', async () => {
+      const { taskId, session, codemode, runner } = await startCodemodeTask([failingEmailTool])
+      try {
+        const result = await codemode.execute('parent-1', {
+          code: `try { await tools.email_send({ to: 'x' }) } catch (e) {}
+return 'done';`,
+        }) as { isError?: boolean }
+        expect(result.isError).toBeFalsy()
+
+        const rows = nestedLogRows(session)
+        expect(rows).toHaveLength(1)
+        expect(rows[0]).toMatchObject({ tool_name: 'email_send', status: 'error', parent_tool_call_id: 'parent-1' })
+
+        const journal = new TaskToolJournal(db).listForTask(taskId)
+        expect(journal[0]).toMatchObject({ toolName: 'email_send', replay: 'unsafe', status: 'error' })
+
+        expect(store.getById(taskId)!.toolCallCount).toBe(1)
+      } finally {
+        runner.dispose()
+      }
+    })
+
+    it('triggers systematic loop detection on repeated identical nested failures', async () => {
+      const { taskId, codemode, runner } = await startCodemodeTask([failingEmailTool], {
+        loopDetection: { enabled: true, method: 'systematic', maxConsecutiveFailures: 2 },
+      })
+      try {
+        const result = await codemode.execute('parent-1', {
+          code: `try { await tools.email_send({ to: 'x' }) } catch (e) {}
+try { await tools.email_send({ to: 'x' }) } catch (e) {}
+return 'done';`,
+        }) as { isError?: boolean }
+        expect(result.isError).toBeFalsy()
+
+        const updated = store.getById(taskId)!
+        expect(updated.status).toBe('failed')
+        expect(updated.resultSummary).toContain('Loop detected (systematic)')
+      } finally {
+        runner.dispose()
+      }
+    })
+
+    it('triggers systematic loop detection when the same nested failure is retried in separate codemode scripts', async () => {
+      const { taskId, codemode, emit, runner } = await startCodemodeTask([failingEmailTool], {
+        loopDetection: { enabled: true, method: 'systematic', maxConsecutiveFailures: 2 },
+      })
+      try {
+        for (let i = 1; i <= 2; i++) {
+          const parent = `parent-${i}`
+          // Same event shape the agent emits: the codemode parent wraps the
+          // nested call in its own start/end pair.
+          emit({ type: 'tool_execution_start', toolCallId: parent, toolName: 'codemode', args: {} })
+          const result = await codemode.execute(parent, {
+            code: `try { await tools.email_send({ to: 'x' }) } catch (e) {}
+return 'done';`,
+          })
+          emit({ type: 'tool_execution_end', toolCallId: parent, toolName: 'codemode', args: {}, result, isError: false })
+        }
+
+        const updated = store.getById(taskId)!
+        expect(updated.status).toBe('failed')
+        expect(updated.resultSummary).toContain('Loop detected (systematic)')
+      } finally {
+        runner.dispose()
+      }
+    })
+
+    it('forwards codemode progress snapshots to the task event bus', async () => {
+      const taskEventBus = new TaskEventBus()
+      const { taskId, codemode, emit, runner } = await startCodemodeTask([readFileTool], { taskEventBus })
+      try {
+        const events: TaskEvent[] = []
+        const unsubscribe = taskEventBus.subscribeToTask(taskId, event => events.push(event))
+
+        // The agent loop emits tool_execution_update for the codemode tool's
+        // partial results; the runner forwards them as codemode_progress.
+        emit({
+          type: 'tool_execution_update',
+          toolCallId: 'parent-1',
+          toolName: 'codemode',
+          args: {},
+          partialResult: {
+            content: [],
+            details: { calls: [{ id: 'parent-1/read_file/1', name: 'read_file', status: 'running' }] },
+          },
+        })
+
+        await codemode.execute('parent-1', { code: `await tools.read_file({ path: 'a.md' });` })
+        unsubscribe()
+
+        const progress = events.filter(event => event.type === 'codemode_progress')
+        expect(progress).toHaveLength(1)
+        expect(progress[0]).toMatchObject({ taskId, toolCallId: 'parent-1' })
+        expect(progress[0]!.nestedCalls).toEqual([{ id: 'parent-1/read_file/1', name: 'read_file', status: 'running' }])
+      } finally {
+        runner.dispose()
+      }
+    })
+
+    it('lists nested calls from the journal in the crash-recovery prompt', async () => {
+      const hangingTool: AgentTool = {
+        name: 'read_file',
+        label: 'read_file',
+        description: 'Read a file from the workspace.',
+        parameters: Type.Object({ path: Type.String() }),
+        execute: () => new Promise(() => {}), // never resolves — in flight when the "crash" happens
+      }
+      const { taskId, codemode, runner } = await startCodemodeTask([hangingTool])
+      const scriptAbort = new AbortController()
+      const pending = codemode.execute('parent-1', { code: `await tools.read_file({ path: 'a.md' });` }, scriptAbort.signal)
+
+      // Wait until the journal row for the nested call exists (status 'started').
+      const journal = new TaskToolJournal(db)
+      for (let i = 0; i < 200 && journal.listForTask(taskId).length === 0; i++) {
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+      expect(journal.listForTask(taskId)[0]).toMatchObject({ toolName: 'read_file', status: 'started' })
+
+      // A new runner picks up the still-running task and builds the recovery
+      // prompt from the journal — the nested call must be listed there.
+      const newRunner = new TaskRunner({
+        db,
+        buildModel: () => ({} as ReturnType<TaskRunnerOptions['buildModel']>),
+        getApiKey: async () => 'test-key',
+        tools: [],
+        onTaskComplete: () => {},
+        sessionManager,
+      })
+      await newRunner.recoverTasks(() => mockProvider, mockProvider)
+
+      const resumed = store.list().find(task => task.name === 'Nested Task (resumed)')
+      expect(resumed).toBeDefined()
+      expect(resumed!.prompt).toContain('<recovery_context>')
+      expect(resumed!.prompt).toContain('read_file')
+      expect(resumed!.prompt).toContain('safe to re-run')
+
+      runner.dispose()
+      newRunner.dispose()
+      // Let the abandoned script settle so the sandbox worker can exit.
+      scriptAbort.abort()
+      await pending.catch(() => {})
     })
   })
 
