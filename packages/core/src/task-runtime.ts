@@ -35,6 +35,7 @@ export interface TaskRuntimeScheduleBoundary {
   delete(id: string): boolean
   register(scheduledTask: ScheduledTask): void
   unregister(id: string): void
+  rescheduleOwner(ownerUserId?: number): void
   triggerNow(scheduledTaskId: string): Promise<string | null>
   getActiveSchedules(): Array<{ id: string; nextRunTime: Date }>
   start(): void
@@ -102,6 +103,7 @@ class PiTaskRuntime implements TaskRuntimeBoundary {
       delete: (id) => scheduledTaskStore.delete(id),
       register: (scheduledTask) => this.scheduler.registerSchedule(scheduledTask),
       unregister: (id) => this.scheduler.unregisterSchedule(id),
+      rescheduleOwner: (ownerUserId) => this.scheduler.rescheduleOwner(ownerUserId),
       triggerNow: (scheduledTaskId) => this.scheduler.triggerNow(scheduledTaskId),
       getActiveSchedules: () => this.scheduler.getActiveSchedules(),
       start: () => this.scheduler.start(),

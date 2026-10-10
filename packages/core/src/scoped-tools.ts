@@ -15,6 +15,7 @@ import { createSendFileTool } from './send-file-tool.js'
 import { createResumeTaskTool, createStopTaskTool, createTaskTool, listTasksTool } from './task-tools.js'
 import type { TaskToolsOptions } from './task-tools.js'
 import type { UserScope } from './user-scope.js'
+import { resolveOwnerTimezone } from './user-settings.js'
 
 export interface ScopedToolsDeps {
   db: Database
@@ -25,7 +26,7 @@ export interface ScopedToolsDeps {
   /** Shared task tool settings; the scope supplies owner and actor. */
   taskTools: Omit<TaskToolsOptions, 'actor' | 'getUsername' | 'getParentSessionId'>
   /** Cronjob and reminder tools; only the interactive chat gets them. */
-  cronjobTools?: Omit<CronjobToolsOptions, 'actor' | 'getUsername'>
+  cronjobTools?: Omit<CronjobToolsOptions, 'actor' | 'getUsername' | 'getTimezone'>
   /** Interactive session of the calling turn; omitted for background task agents. */
   getInteractiveSessionId?: () => string | null
   /** Set when the caller adds the base tool set itself (the chat runtime does). */
@@ -52,7 +53,7 @@ export function createScopedTools(scope: UserScope, deps: ScopedToolsDeps): Agen
   }
 
   const cronjobOptions: CronjobToolsOptions | null = deps.cronjobTools
-    ? { ...deps.cronjobTools, actor, getUsername: taskOptions.getUsername }
+    ? { ...deps.cronjobTools, actor, getUsername: taskOptions.getUsername, getTimezone: (ownerUserId) => resolveOwnerTimezone(deps.db, ownerUserId) }
     : null
 
   return [
