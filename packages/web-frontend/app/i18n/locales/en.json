@@ -92,7 +92,7 @@
     "ttsErrorDismiss": "Dismiss",
     "ttsLoading": "Generating speech...",
     "micTooltip": "Hold to record",
-    "thinkingLevelTooltip": "Thinking level for the next turn (applies to the main agent globally)",
+    "thinkingLevelTooltip": "Thinking level for your next turns",
     "thinkingLevelSaved": "Thinking level updated",
     "thinkingLevelSaveFailed": "Failed to update thinking level",
     "thinkingLevelMenu": {
@@ -535,6 +535,13 @@
       "high": "High",
       "xhigh": "Extra high",
       "max": "Max"
+    },
+    "userAgent": {
+      "description": "Your personal chat model, thinking level and language. Choose \"Use default\" to follow the admin's settings.",
+      "model": "Chat model",
+      "modelHint": "Applies from your next message. Only enabled models are listed.",
+      "languageHint": "Language the agent answers in and speech-to-text listens for.",
+      "useDefault": "Use default (admin: {value})"
     },
     "thinkingLevelUnsupported": "{level} (not supported, runs as {effective})",
     "languageMatch": "Match user's language",

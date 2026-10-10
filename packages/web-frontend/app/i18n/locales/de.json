@@ -92,7 +92,7 @@
     "ttsErrorTitle": "Vorlesen fehlgeschlagen",
     "ttsErrorDismiss": "Schließen",
     "micTooltip": "Gedrückt halten zum Aufnehmen",
-    "thinkingLevelTooltip": "Denk-Level für den nächsten Zug (gilt global für den Haupt-Agent)",
+    "thinkingLevelTooltip": "Denk-Level für deine nächsten Züge",
     "thinkingLevelSaved": "Denk-Level aktualisiert",
     "thinkingLevelSaveFailed": "Denk-Level konnte nicht geändert werden",
     "thinkingLevelMenu": {
@@ -535,6 +535,13 @@
       "high": "Hoch",
       "xhigh": "Sehr hoch",
       "max": "Maximum"
+    },
+    "userAgent": {
+      "description": "Dein persönliches Chat-Modell, Denk-Level und deine Sprache. Mit „Standard verwenden“ folgst du den Einstellungen des Admins.",
+      "model": "Chat-Modell",
+      "modelHint": "Gilt ab deiner nächsten Nachricht. Es werden nur aktivierte Modelle angezeigt.",
+      "languageHint": "Sprache, in der der Agent antwortet und auf die die Spracherkennung hört.",
+      "useDefault": "Standard verwenden (Admin: {value})"
     },
     "thinkingLevelUnsupported": "{level} (nicht unterstützt, läuft als {effective})",
     "languageMatch": "Sprache des Nutzers übernehmen",

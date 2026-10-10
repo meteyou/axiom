@@ -171,6 +171,19 @@
               <span>{{ $t('nav.settings') }}</span>
             </NuxtLink>
           </template>
+
+          <template v-else>
+            <div class="my-2 border-t border-sidebar-border/60" />
+
+            <NuxtLink
+              to="/settings"
+              :class="navItemClass('/settings')"
+              @click="closeSidebarOnMobile"
+            >
+              <AppIcon name="settings" class="shrink-0" />
+              <span>{{ $t('nav.settings') }}</span>
+            </NuxtLink>
+          </template>
         </nav>
 
         <!-- Sidebar footer — user menu -->
