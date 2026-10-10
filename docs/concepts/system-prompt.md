@@ -57,6 +57,10 @@ Concatenated content of the **last 3 days** of daily session notes (defaults to 
 
 The profile of the *currently authenticated* user — name, location, communication preferences, work context, interests. Loaded only when a user is identified, so the agent never mixes up users on a multi-user setup. If no user is identified, a `<user_profiles_path>` block appears instead, pointing the agent at the directory so it can read profiles on demand. See [Memory System → User profiles](./memory#user-profiles-users-username-md).
 
+::: tip Multiple users
+For every user except the first account, layers 4 to 6 and 10 are built from that user's scope: `<recent_memory>` and `<user_profile>` come from `/data/users/<username>/`, `<core_memory>` is labelled as shared, and `<memory_paths>` lists the user's personal files, the shared files and the workspace. Regular users get no global config paths; admins do. A `<shared_data_rules>` block tells the agent to keep personal data out of the wiki, `MEMORY.md` and skills, and (for regular users) to refuse changes to admin-managed global configuration. The first account's prompt is unchanged.
+:::
+
 ### 7. `<available_tools>`: built-in tool registry
 
 *Always present.*
@@ -122,7 +126,7 @@ See [Tasks & Cronjobs](./tasks-and-cronjobs).
 
 *Always present.*
 
-A one-liner declaring `/workspace` as the working directory for shell commands and relative paths. Anchors all file operations so they don't accidentally land in `/data` or the OS root. See [Container file paths → `/workspace`](./../reference/file-paths).
+A one-liner declaring the user's workspace (`/workspace`, or `/workspace/<username>` for every user except the first account) as the working directory for shell commands and relative paths. Anchors all file operations so they don't accidentally land in `/data` or the OS root. See [Container file paths → `/workspace`](./../reference/file-paths).
 
 ### 16. `<current_date>`: current date
 
