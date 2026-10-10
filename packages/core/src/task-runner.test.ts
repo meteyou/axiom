@@ -1689,7 +1689,9 @@ describe('TaskRunner', () => {
      * state exposes the tools the runner attached, so a captured codemode
      * tool can really execute nested calls against them.
      */
-    function mockHangingCodemodeAgent(): { emit: (event: unknown) => void, tools: () => AgentTool[] } {
+    function mockHangingCodemodeAgent(
+      { settlePromptOnAbort = true }: { settlePromptOnAbort?: boolean } = {},
+    ): { emit: (event: unknown) => void, tools: () => AgentTool[] } {
       let subscribeFn: ((event: unknown) => void) | null = null
       let resolvePrompt: (() => void) | null = null
       let agentTools: AgentTool[] = []
@@ -1702,7 +1704,7 @@ describe('TaskRunner', () => {
             return () => { subscribeFn = null }
           }),
           prompt: vi.fn(() => new Promise<void>(resolve => { resolvePrompt = resolve })),
-          abort: vi.fn(() => { resolvePrompt?.() }),
+          abort: vi.fn(() => { if (settlePromptOnAbort) resolvePrompt?.() }),
           state: {
             messages: [] as unknown[],
             tools: captured.initialState.tools,
@@ -1720,6 +1722,8 @@ describe('TaskRunner', () => {
         taskEventBus?: TaskEventBus
         sessionId?: string
         overrides?: TaskOverrides
+        onTaskComplete?: TaskRunnerOptions['onTaskComplete']
+        settlePromptOnAbort?: boolean
       },
     ): Promise<{ taskId: string, session: string, codemode: AgentTool, emit: (event: unknown) => void, runner: TaskRunner }> {
       const runner = new TaskRunner({
@@ -1727,13 +1731,13 @@ describe('TaskRunner', () => {
         buildModel: () => ({} as ReturnType<TaskRunnerOptions['buildModel']>),
         getApiKey: async () => 'test-key',
         tools,
-        onTaskComplete: () => {},
+        onTaskComplete: extra?.onTaskComplete ?? (() => {}),
         sessionManager,
         codemodeTasksEnabled: true,
         taskEventBus: extra?.taskEventBus,
         ...(extra?.loopDetection ? { loopDetection: extra.loopDetection } : {}),
       })
-      const { emit, tools: agentTools } = mockHangingCodemodeAgent()
+      const { emit, tools: agentTools } = mockHangingCodemodeAgent({ settlePromptOnAbort: extra?.settlePromptOnAbort })
       const task = store.create({
         name: 'Nested Task',
         prompt: 'Do work',
@@ -1909,6 +1913,32 @@ return 'done';`,
         const updated = store.getById(taskId)!
         expect(updated.status).toBe('failed')
         expect(updated.resultSummary).toContain('Loop detected (systematic)')
+      } finally {
+        runner.dispose()
+      }
+    })
+
+    it('fails and notifies the task only once when loop detection fires inside a script', async () => {
+      const injections: string[] = []
+      const { taskId, codemode, emit, runner } = await startCodemodeTask([failingEmailTool], {
+        loopDetection: { enabled: true, method: 'systematic', maxConsecutiveFailures: 2 },
+        onTaskComplete: (_taskId, injection) => { injections.push(injection) },
+        // Like pi-agent-core: abort() does not settle prompt() before the loop has
+        // emitted the aborted codemode parent's tool_execution_end.
+        settlePromptOnAbort: false,
+      })
+      try {
+        emit({ type: 'tool_execution_start', toolCallId: 'parent-1', toolName: 'codemode', args: {} })
+        const result = await codemode.execute('parent-1', {
+          code: `try { await tools.email_send({ to: 'x' }) } catch (e) {}
+try { await tools.email_send({ to: 'x' }) } catch (e) {}
+return 'done';`,
+        })
+        emit({ type: 'tool_execution_end', toolCallId: 'parent-1', toolName: 'codemode', args: {}, result, isError: false })
+
+        expect(store.getById(taskId)!.status).toBe('failed')
+        expect(injections).toHaveLength(1)
+        expect(injections[0]).toContain('Loop detected (systematic)')
       } finally {
         runner.dispose()
       }

@@ -990,6 +990,10 @@ export class TaskRunner {
   private checkForLoops(runningTask: RunningTask): void {
     const config = this.options.loopDetection
     if (!config?.enabled) return
+    // A task finalized mid-script (loop detected on a nested codemode call) still
+    // receives the aborted parent's tool_execution_end; re-checking its unchanged
+    // history would fail and notify the task a second time.
+    if (this.runningTasks.get(runningTask.taskId) !== runningTask) return
 
     const method = resolveDetectionMethod(config, runningTask.toolCallCount)
     if (method === 'none') return
