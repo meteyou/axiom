@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Database } from './database.js'
 import { appendToDailyFile } from './memory.js'
+import { resolveUserScope } from './user-scope.js'
 import { logToolCall } from './token-logger.js'
 
 /**
@@ -228,7 +229,7 @@ export class SessionManager {
         if (history) {
           summary = await this.onSummarize(row.id, userId, history)
           if (summary) {
-            this.writeSummaryToDailyFile(summary, lastActivity)
+            this.writeSummaryToDailyFile(summary, lastActivity, userId)
             summaryWritten = true
             console.log(`[session] Summary written for orphaned session ${row.id} (at ${new Date(lastActivity).toISOString()})`)
           }
@@ -333,12 +334,14 @@ export class SessionManager {
   /**
    * Write a summary to the daily memory file at the given timestamp.
    */
-  private writeSummaryToDailyFile(summary: string, timestamp: number): void {
+  private writeSummaryToDailyFile(summary: string, timestamp: number, userId: string): void {
     const activityDate = new Date(timestamp)
     const hh = String(activityDate.getHours()).padStart(2, '0')
     const mm = String(activityDate.getMinutes()).padStart(2, '0')
     const formattedSummary = `\n## ${hh}:${mm}\n\n${summary}\n`
-    appendToDailyFile(formattedSummary, activityDate, this.memoryDir)
+    const scope = resolveUserScope(this.db, userId)
+    const dailyDir = scope && !scope.isBootstrapAdmin ? scope.paths.dailyDir : undefined
+    appendToDailyFile(formattedSummary, activityDate, this.memoryDir, dailyDir)
   }
 
   /**
@@ -666,7 +669,7 @@ export class SessionManager {
         const history = this.buildConversationHistory(oldSessionId) ?? undefined
         summary = await this.onSummarize(oldSessionId, userId, history)
         if (summary) {
-          this.writeSummaryToDailyFile(summary, session.lastActivity)
+          this.writeSummaryToDailyFile(summary, session.lastActivity, userId)
           session.summaryWritten = true
           console.log(
             `[session] Background summary written to daily log for session ${oldSessionId}`,
@@ -759,7 +762,7 @@ export class SessionManager {
 
         summary = await this.onSummarize(session.id, userId, history)
         if (summary) {
-          this.writeSummaryToDailyFile(summary, session.lastActivity)
+          this.writeSummaryToDailyFile(summary, session.lastActivity, userId)
           session.summaryWritten = true
           console.log(`[session] Summary written to daily log for session ${session.id}`)
         }

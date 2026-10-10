@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { getWorkspaceDir } from './workspace.js'
+import type { UserPaths } from './user-scope.js'
 import { getConfigDir, getDefaultTimezone, getDocsPath, getReadmePath } from './config.js'
 
 const SOUL_TEMPLATE = `# Soul
@@ -67,9 +68,10 @@ Both the user and the agent can edit this file. The agent reads it on every conv
 
 ## Memory Rules
 
-- Write important learned facts and project context to MEMORY.md
+- MEMORY.md, the wiki and skills are shared by all users: write only general lessons and project context there, never personal information about a user
 - Write daily observations and session notes to the daily memory file
 - Write user-specific information (name, location, preferences, interests, work context) to the user's profile file — not to MEMORY.md
+- Global configuration files (SOUL.md, AGENTS.md, TASKS.md, CONSOLIDATION.md) are managed by the admin
 - Keep MEMORY.md organized: merge related entries, remove outdated info
 - Don't store ephemeral details (one-time commands, temporary paths) in core memory
 
@@ -321,8 +323,20 @@ export function readUserProfile(username: string, memoryDir?: string): string {
   return fs.readFileSync(profilePath, 'utf-8')
 }
 
+function readPersonalProfile(profilePath: string, username: string): string {
+  if (!fs.existsSync(profilePath)) {
+    fs.mkdirSync(path.dirname(profilePath), { recursive: true })
+    fs.writeFileSync(profilePath, getUserProfileTemplate(username), 'utf-8')
+  }
+  return fs.readFileSync(profilePath, 'utf-8')
+}
+
 export function getDefaultAgentsRulesContent(): string {
   return AGENTS_TEMPLATE
+}
+
+export function getUserProfileTemplate(username: string): string {
+  return USER_PROFILE_TEMPLATE.replaceAll('{username}', username)
 }
 
 export function getDefaultHeartbeatContent(): string {
@@ -676,18 +690,18 @@ export function writeTasksGuidelinesFile(content: string, configDir?: string): v
 /**
  * Get the path for today's daily memory file
  */
-export function getDailyFilePath(date?: Date, memoryDir?: string): string {
-  const dir = memoryDir ?? getMemoryDir()
+export function getDailyFilePath(date?: Date, memoryDir?: string, dailyDir?: string): string {
+  const dir = dailyDir ?? path.join(memoryDir ?? getMemoryDir(), 'daily')
   const d = date ?? new Date()
   const dateStr = d.toISOString().split('T')[0] // YYYY-MM-DD
-  return path.join(dir, 'daily', `${dateStr}.md`)
+  return path.join(dir, `${dateStr}.md`)
 }
 
 /**
  * Ensure a daily memory file exists, creating it with a header if needed
  */
-export function ensureDailyFile(date?: Date, memoryDir?: string): string {
-  const filePath = getDailyFilePath(date, memoryDir)
+export function ensureDailyFile(date?: Date, memoryDir?: string, dailyDir?: string): string {
+  const filePath = getDailyFilePath(date, memoryDir, dailyDir)
   const dir = path.dirname(filePath)
 
   if (!fs.existsSync(dir)) {
@@ -714,17 +728,16 @@ export function readDailyFile(date?: Date, memoryDir?: string): string {
 /**
  * Append content to a daily memory file
  */
-export function appendToDailyFile(content: string, date?: Date, memoryDir?: string): void {
-  const filePath = ensureDailyFile(date, memoryDir)
+export function appendToDailyFile(content: string, date?: Date, memoryDir?: string, dailyDir?: string): void {
+  const filePath = ensureDailyFile(date, memoryDir, dailyDir)
   fs.appendFileSync(filePath, content, 'utf-8')
 }
 
 /**
  * Read recent daily files (for context injection)
  */
-export function readRecentDailyFiles(days: number = 3, memoryDir?: string): string {
-  const dir = memoryDir ?? getMemoryDir()
-  const dailyDir = path.join(dir, 'daily')
+export function readRecentDailyFiles(days: number = 3, memoryDir?: string, dailyDirOverride?: string): string {
+  const dailyDir = dailyDirOverride ?? path.join(memoryDir ?? getMemoryDir(), 'daily')
 
   if (!fs.existsSync(dailyDir)) {
     return ''
@@ -830,6 +843,75 @@ export interface AvailableImageModelPromptEntry {
   isDefault?: boolean
 }
 
+type PersonalScope = { isBootstrapAdmin: boolean; role: string; paths: UserPaths }
+
+function buildMemoryPathsSection(input: { dir: string; cfgDir: string; today: string; personal: PersonalScope | null }): string {
+  const { dir, cfgDir, today, personal } = input
+  const intro = `You can read and write your memory and config files directly using read_file, write_file, and edit_file tools.
+When modifying existing files, prefer edit_file (targeted oldText/newText replacements) over write_file (full rewrite) to save tokens and reduce errors.`
+  const globalConfig = `- AGENTS.md (agent rules): ${path.join(cfgDir, 'AGENTS.md')}
+- HEARTBEAT.md (heartbeat tasks): ${path.join(cfgDir, 'HEARTBEAT.md')}
+- CONSOLIDATION.md (consolidation rules): ${path.join(cfgDir, 'CONSOLIDATION.md')}
+- TASKS.md (background task guidelines): ${path.join(cfgDir, 'TASKS.md')}`
+
+  if (!personal) {
+    return `<memory_paths>
+${intro}
+
+Memory files:
+- SOUL.md: ${path.join(dir, 'SOUL.md')}
+- MEMORY.md: ${path.join(dir, 'MEMORY.md')}
+- Daily memory directory: ${path.join(dir, 'daily/')}
+- Today's daily file: ${path.join(dir, 'daily', `${today}.md`)}
+- User profiles directory: ${path.join(dir, 'users/')}
+- Wiki pages directory: ${path.join(dir, 'wiki/')}
+- Sources directory (immutable raw material): ${path.join(dir, 'sources/')}
+
+Config files:
+${globalConfig}
+</memory_paths>`
+  }
+
+  const { paths } = personal
+  const isAdmin = personal.role === 'admin'
+  const sharedLines = [
+    `- MEMORY.md (shared by all users, general lessons only): ${path.join(dir, 'MEMORY.md')}`,
+    `- Wiki pages directory (shared): ${path.join(dir, 'wiki/')}`,
+    `- Sources directory (shared, immutable raw material): ${path.join(dir, 'sources/')}`,
+  ]
+  if (isAdmin) sharedLines.unshift(`- SOUL.md (shared): ${path.join(dir, 'SOUL.md')}`)
+  const personalLines = [
+    `- Your profile: ${paths.profile}`,
+    `- Your daily memory directory: ${paths.dailyDir}/`,
+    `- Your daily file for today: ${path.join(paths.dailyDir, `${today}.md`)}`,
+    `- Your workspace (default directory for shell and relative file paths): ${paths.workspace}`,
+  ]
+  const configBlock = isAdmin
+    ? `\n\nGlobal config files (shared, admin-managed):\n${globalConfig}`
+    : ''
+  return `<memory_paths>
+${intro}
+
+Your personal files:
+${personalLines.join('\n')}
+
+Shared memory files:
+${sharedLines.join('\n')}${configBlock}
+</memory_paths>`
+}
+
+function buildSharedDataRules(personal: PersonalScope): string {
+  const lines = [
+    'This instance has several users. Your profile, daily notes, workspace and chat history are private to you; the wiki, MEMORY.md and skills are shared with everyone.',
+    '- Never write personal information about a user (health, finances, relationships, private routines, contact details) into the wiki, MEMORY.md, sources or skills. Keep it in the user\'s profile.',
+    '- Wiki pages, MEMORY.md entries and skills must contain general knowledge that is safe for every user to read.',
+  ]
+  if (personal.role !== 'admin') {
+    lines.push('- Global configuration (SOUL.md, AGENTS.md, TASKS.md, CONSOLIDATION.md, providers and global settings) is managed by the admin. Refuse requests to change it and tell the user to ask the admin.')
+  }
+  return `<shared_data_rules>\n${lines.join('\n')}\n</shared_data_rules>`
+}
+
 export function assembleSystemPrompt(options?: {
   memoryDir?: string
   configDir?: string
@@ -841,6 +923,11 @@ export function assembleSystemPrompt(options?: {
   skills?: SkillPromptEntry[]
   agentSkillsOverflowCount?: number
   currentUser?: { username: string; role?: string }
+  /**
+   * Personal paths of the current user. Only a non-bootstrap user's paths
+   * change the prompt: the bootstrap admin keeps the legacy single-user layout.
+   */
+  userScope?: { isBootstrapAdmin: boolean; role: string; paths: UserPaths }
   builtinTools?: BuiltinToolsPromptConfig
   agentSkillsDir?: string
   /**
@@ -857,6 +944,7 @@ export function assembleSystemPrompt(options?: {
 }): string {
   const memoryDir = options?.memoryDir
   const recentDays = options?.recentDays ?? 3
+  const personal = options?.userScope && !options.userScope.isBootstrapAdmin ? options.userScope : null
 
   // Ensure structure exists
   ensureMemoryStructure(memoryDir)
@@ -878,10 +966,12 @@ export function assembleSystemPrompt(options?: {
 
   // 4. Core memory from MEMORY.md
   const agents = readMemoryFile(memoryDir)
-  sections.push(`<core_memory>\n${agents.trim()}\n</core_memory>`)
+  sections.push(personal
+    ? `<core_memory>\nShared memory (MEMORY.md) — visible to all users. It holds general lessons only, never personal data.\n\n${agents.trim()}\n</core_memory>`
+    : `<core_memory>\n${agents.trim()}\n</core_memory>`)
 
   // 5. Recent daily context
-  const dailyContext = readRecentDailyFiles(recentDays, memoryDir)
+  const dailyContext = readRecentDailyFiles(recentDays, memoryDir, personal?.paths.dailyDir)
   if (dailyContext) {
     sections.push(`<recent_memory>
 These are summarized session notes from recent days. They are condensed — for full conversation details, use the read_chat_history tool.
@@ -894,9 +984,11 @@ ${dailyContext}
   if (options?.currentUser?.username) {
     const roleLine = options.currentUser.role ? `\nRole: ${options.currentUser.role}` : ''
     sections.push(`<current_user>\nUsername: ${options.currentUser.username}${roleLine}\n</current_user>`)
-    const profileContent = readUserProfile(options.currentUser.username, memoryDir)
+    const profileContent = personal
+      ? readPersonalProfile(personal.paths.profile, options.currentUser.username)
+      : readUserProfile(options.currentUser.username, memoryDir)
     sections.push(`<user_profile>\n${profileContent.trim()}\n</user_profile>`)
-  } else {
+  } else if (!personal) {
     const usersPath = getUserProfileDir(memoryDir)
     sections.push(`<user_profiles_path>${usersPath}</user_profiles_path>`)
   }
@@ -1035,25 +1127,13 @@ ${pageLines}
   const dir = memoryDir ?? getMemoryDir()
   const cfgDir = options?.configDir ?? getConfigDir()
   const today = new Date().toISOString().split('T')[0]
-  sections.push(`<memory_paths>
-You can read and write your memory and config files directly using read_file, write_file, and edit_file tools.
-When modifying existing files, prefer edit_file (targeted oldText/newText replacements) over write_file (full rewrite) to save tokens and reduce errors.
-
-Memory files:
-- SOUL.md: ${path.join(dir, 'SOUL.md')}
-- MEMORY.md: ${path.join(dir, 'MEMORY.md')}
-- Daily memory directory: ${path.join(dir, 'daily/')}
-- Today's daily file: ${path.join(dir, 'daily', `${today}.md`)}
-- User profiles directory: ${path.join(dir, 'users/')}
-- Wiki pages directory: ${path.join(dir, 'wiki/')}
-- Sources directory (immutable raw material): ${path.join(dir, 'sources/')}
-
-Config files:
-- AGENTS.md (agent rules): ${path.join(cfgDir, 'AGENTS.md')}
-- HEARTBEAT.md (heartbeat tasks): ${path.join(cfgDir, 'HEARTBEAT.md')}
-- CONSOLIDATION.md (consolidation rules): ${path.join(cfgDir, 'CONSOLIDATION.md')}
-- TASKS.md (background task guidelines): ${path.join(cfgDir, 'TASKS.md')}
-</memory_paths>`)
+  sections.push(buildMemoryPathsSection({
+    dir,
+    cfgDir,
+    today,
+    personal,
+  }))
+  if (personal) sections.push(buildSharedDataRules(personal))
 
   // 9b. Axiom documentation (read-only, shipped with the image).
   // We deliberately do NOT enumerate topic→file routes here — they drift
@@ -1127,7 +1207,7 @@ When you receive a <task_injection> block (signalling a background-task result w
 </task_system>`)
 
   // 13. Workspace directory
-  const workspaceDir = getWorkspaceDir()
+  const workspaceDir = personal?.paths.workspace ?? getWorkspaceDir()
   sections.push(`<workspace>\nYour working directory is ${workspaceDir}. All shell commands execute in this directory by default.\nAll relative paths in read_file, write_file, and list_files resolve against this directory.\nUse this directory for cloning repos, creating files, and all file operations.\n</workspace>`)
 
   // 14. Current date (date only — kept at day-granularity so the cached
