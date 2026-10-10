@@ -553,7 +553,7 @@
                single-line textarea height of 42px: (42-28)/2 = 7px -->
           <div class="flex flex-1 items-end rounded-xl border border-input bg-background px-1 transition-colors focus-within:border-ring focus-within:ring-1 focus-within:ring-ring">
             <!-- Thinking-level / Brain button (left inside box, admin-only) -->
-            <Popover v-if="isAdmin" v-model:open="thinkingLevelPickerOpen">
+            <Popover v-model:open="thinkingLevelPickerOpen">
               <PopoverTrigger as-child>
                 <button
                   type="button"
@@ -616,8 +616,7 @@
             <textarea
               ref="inputRef"
               v-model="inputText"
-              class="min-h-[42px] max-h-[150px] flex-1 resize-none bg-transparent py-2.5 pr-1 text-sm outline-none placeholder:text-muted-foreground"
-              :class="isAdmin ? 'pl-2' : 'pl-3'"
+              class="min-h-[42px] max-h-[150px] flex-1 resize-none bg-transparent py-2.5 pl-2 pr-1 text-sm outline-none placeholder:text-muted-foreground"
               :placeholder="$t('chat.placeholder')"
               rows="1"
               @keydown="handleComposerKeydown"
@@ -701,9 +700,8 @@ const settingsApi = useSettingsApi()
 
 /* ── Thinking level quick-switch in the composer ──
    Backed by the same `thinkingLevel` setting as the Settings page; changes are
-   live-applied to the agent (see `AgentCore.setThinkingLevel`). Admin-only
-   because the main agent is single-tenant — flipping this affects everyone's
-   next turn. */
+   Admins change the global level; regular users change their own. Applies
+   from the next turn. */
 const currentThinkingLevel = ref<SettingsThinkingLevel>('off')
 const thinkingLevelPickerOpen = ref(false)
 const thinkingLevelSaving = ref(false)
@@ -718,7 +716,7 @@ const thinkingChoices = computed(() => getThinkingLevelChoices(
 ))
 
 watch(thinkingLevelPickerOpen, (isOpen) => {
-  if (isOpen) void fetchProviders()
+  if (isOpen && isAdmin.value) void fetchProviders()
 })
 
 // Brain button color encodes thinking intensity (no text label needed):
@@ -737,12 +735,11 @@ const thinkingBrainColorClass = computed(() => {
 })
 
 async function loadThinkingLevel() {
-  if (!isAdmin.value) return
-  void fetchProviders()
+  if (isAdmin.value) void fetchProviders()
   try {
-    const settings = await settingsApi.getSettings()
-    if (settings.thinkingLevel && (SETTINGS_THINKING_LEVELS as readonly string[]).includes(settings.thinkingLevel)) {
-      currentThinkingLevel.value = settings.thinkingLevel as SettingsThinkingLevel
+    const own = await settingsApi.getOwnSettings()
+    if ((SETTINGS_THINKING_LEVELS as readonly string[]).includes(own.effective.thinkingLevel)) {
+      currentThinkingLevel.value = own.effective.thinkingLevel
     }
   } catch {
     // keep default 'off' if we can't reach the endpoint
@@ -759,7 +756,7 @@ async function handleThinkingLevelChange(level: SettingsThinkingLevel) {
   thinkingLevelPickerOpen.value = false
   thinkingLevelSaving.value = true
   try {
-    await settingsApi.updateSettings({ thinkingLevel: level })
+    await settingsApi.updateOwnSettings({ thinkingLevel: level })
   } catch {
     // rollback on failure
     currentThinkingLevel.value = previous
