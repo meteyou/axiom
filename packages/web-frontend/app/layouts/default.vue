@@ -85,15 +85,6 @@
             </NuxtLink>
 
             <NuxtLink
-              to="/memory"
-              :class="navItemClass('/memory')"
-              @click="closeSidebarOnMobile"
-            >
-              <AppIcon name="brain" class="shrink-0" />
-              <span>{{ $t('nav.memory') }}</span>
-            </NuxtLink>
-
-            <NuxtLink
               to="/logs"
               :class="navItemClass('/logs')"
               @click="closeSidebarOnMobile"
@@ -111,6 +102,15 @@
               <span>{{ $t('nav.usage') }}</span>
             </NuxtLink>
           </template>
+
+          <NuxtLink
+            to="/memory"
+            :class="navItemClass('/memory')"
+            @click="closeSidebarOnMobile"
+          >
+            <AppIcon name="brain" class="shrink-0" />
+            <span>{{ $t('nav.memory') }}</span>
+          </NuxtLink>
 
           <NuxtLink
             v-if="emailConfigured"
