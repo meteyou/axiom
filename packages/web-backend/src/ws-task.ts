@@ -2,7 +2,7 @@ import { WebSocketServer, WebSocket } from 'ws'
 import type { Server } from 'node:http'
 import type { Database } from '@axiom/core'
 import type { TaskEventBus, TaskEvent } from '@axiom/core'
-import { TaskStore } from '@axiom/core'
+import { TaskStore, canAccess } from '@axiom/core'
 import { getToolCalls } from '@axiom/core'
 import { authenticateToken, onUserSessionsRevoked } from './auth.js'
 import { URL } from 'node:url'
@@ -59,13 +59,14 @@ export function setupWebSocketTask(options: WebSocketTaskOptions): WebSocketServ
         if (userId === user.userId) ws.close(4401, 'Session revoked')
       })
       ws.on('close', stopWatching)
-      handleTaskConnection(ws, taskId)
+      handleTaskConnection(ws, taskId, { id: user.userId, role: user.role })
     })
   })
 
-  function handleTaskConnection(ws: WebSocket, taskId: string): void {
-    // Verify task exists
-    const task = store.getById(taskId)
+  function handleTaskConnection(ws: WebSocket, taskId: string, actor: { id: number; role: string }): void {
+    // A task the user may not view looks the same as a missing one.
+    const found = store.getById(taskId)
+    const task = found && canAccess(actor, { kind: 'task', ownerId: found.ownerUserId }, 'view', 'ui') ? found : null
     if (!task) {
       sendMessage(ws, { type: 'error', error: 'Task not found' })
       ws.close()
@@ -78,6 +79,7 @@ export function setupWebSocketTask(options: WebSocketTaskOptions): WebSocketServ
       taskId: task.id,
       name: task.name,
       status: task.status,
+      ownerUserId: task.ownerUserId,
       prompt: task.prompt,
       resultSummary: task.resultSummary,
       errorMessage: task.errorMessage,

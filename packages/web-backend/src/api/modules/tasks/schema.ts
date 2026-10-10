@@ -15,6 +15,8 @@ export interface ListTasksQuery {
   isDefaultModel?: boolean
   createdFrom?: string
   createdTo?: string
+  /** Owner filter; only honored for admins. */
+  ownerUserId?: number
 }
 
 interface ParseSuccess<T> {
@@ -83,6 +85,13 @@ export function parseListTasksQuery(query: Record<string, unknown>): ParseResult
   const isDefaultModelParam = toOptionalString(query.is_default_model)
   const createdFromParam = toOptionalString(query.created_from)
   const createdToParam = toOptionalString(query.created_to)
+  const ownerParam = toOptionalString(query.owner_user_id)?.trim()
+
+  let ownerUserId: number | undefined
+  if (ownerParam) {
+    if (!/^\d+$/.test(ownerParam)) return { ok: false, error: 'Invalid owner_user_id filter. Must be a user id.' }
+    ownerUserId = Number(ownerParam)
+  }
 
   if (statusParam && !VALID_STATUSES.includes(statusParam as TaskStatus)) {
     return {
@@ -133,6 +142,7 @@ export function parseListTasksQuery(query: Record<string, unknown>): ParseResult
       isDefaultModel,
       createdFrom,
       createdTo,
+      ownerUserId,
     },
   }
 }

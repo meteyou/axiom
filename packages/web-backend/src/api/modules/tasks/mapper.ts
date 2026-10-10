@@ -2,7 +2,14 @@ import type { Task } from '@axiom/core'
 import type { TaskProviderFilterOption } from './service.js'
 import type { TaskTimelineEvent } from './types.js'
 
+export type OwnerNames = ReadonlyMap<number, string>
+
+function withOwner(task: Task, owners: OwnerNames) {
+  return { ...task, ownerUsername: task.ownerUserId != null ? owners.get(task.ownerUserId) ?? null : null }
+}
+
 export function mapTasksListResponse(input: {
+  owners: OwnerNames
   tasks: Task[]
   page: number
   limit: number
@@ -10,7 +17,7 @@ export function mapTasksListResponse(input: {
   providerOptions?: TaskProviderFilterOption[]
 }) {
   return {
-    tasks: input.tasks,
+    tasks: input.tasks.map(task => withOwner(task, input.owners)),
     pagination: {
       page: input.page,
       limit: input.limit,
@@ -21,15 +28,17 @@ export function mapTasksListResponse(input: {
   }
 }
 
-export function mapTaskResponse(task: Task) {
-  return { task }
+export function mapTaskResponse(task: Task, owners: OwnerNames) {
+  return { task: withOwner(task, owners) }
 }
 
-export function mapTaskEventsResponse(input: { task: Task; events: TaskTimelineEvent[] }) {
+export function mapTaskEventsResponse(input: { task: Task; events: TaskTimelineEvent[]; owners: OwnerNames }) {
   return {
     events: input.events,
     task: {
       id: input.task.id,
+      ownerUserId: input.task.ownerUserId,
+      ownerUsername: withOwner(input.task, input.owners).ownerUsername,
       name: input.task.name,
       status: input.task.status,
       triggerType: input.task.triggerType,

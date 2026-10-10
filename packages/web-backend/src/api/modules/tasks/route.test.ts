@@ -438,4 +438,97 @@ describe('tasks route module', () => {
       expect(body.error).toContain('runtime is not available')
     })
   })
+
+  describe('task ownership', () => {
+    let aliceToken: string
+
+    beforeEach(() => {
+      db.prepare("INSERT OR IGNORE INTO users (id, username, password_hash, role) VALUES (2, 'alice', 'x', 'user'), (3, 'bob', 'x', 'user')").run()
+      aliceToken = generateAccessToken({ userId: 2, username: 'alice', role: 'user' })
+    })
+
+    function createOwned(ownerUserId: number, name: string) {
+      return new TaskStore(db).create({ name, prompt: `prompt of ${name}`, triggerType: 'user', ownerUserId })
+    }
+
+    function as(tokenValue: string) {
+      return { Authorization: `Bearer ${tokenValue}`, 'Content-Type': 'application/json' }
+    }
+
+    it('lists only own tasks for a regular user', async () => {
+      createOwned(2, 'alice task')
+      createOwned(3, 'bob task')
+
+      const res = await fetch(`${baseUrl}/api/tasks`, { headers: as(aliceToken) })
+      const body = await res.json() as { tasks: Task[]; pagination: { total: number } }
+
+      expect(body.tasks.map(t => t.name)).toEqual(['alice task'])
+      expect(body.pagination.total).toBe(1)
+    })
+
+    it('ignores the owner filter for regular users', async () => {
+      createOwned(3, 'bob task')
+      const res = await fetch(`${baseUrl}/api/tasks?owner_user_id=3`, { headers: as(aliceToken) })
+      const body = await res.json() as { tasks: Task[] }
+      expect(body.tasks).toEqual([])
+    })
+
+    it('lists all tasks with owner names for an admin and filters by owner', async () => {
+      createOwned(2, 'alice task')
+      createOwned(3, 'bob task')
+
+      const all = await (await fetch(`${baseUrl}/api/tasks`, { headers: authHeaders() })).json() as {
+        tasks: Array<Task & { ownerUsername: string | null }>
+      }
+      expect(all.tasks.map(t => [t.name, t.ownerUsername]).sort()).toEqual([['alice task', 'alice'], ['bob task', 'bob']])
+
+      const filtered = await (await fetch(`${baseUrl}/api/tasks?owner_user_id=3`, { headers: authHeaders() })).json() as { tasks: Task[] }
+      expect(filtered.tasks.map(t => t.name)).toEqual(['bob task'])
+    })
+
+    it('hides foreign tasks from regular users on get, events, kill and restart', async () => {
+      const bobs = createOwned(3, 'bob task')
+
+      for (const [method, suffix] of [['GET', ''], ['GET', '/events'], ['POST', '/kill'], ['POST', '/restart']] as const) {
+        const res = await fetch(`${baseUrl}/api/tasks/${bobs.id}${suffix}`, {
+          method,
+          headers: as(aliceToken),
+          body: method === 'POST' ? '{}' : undefined,
+        })
+        expect(res.status, `${method} ${suffix}`).toBe(404)
+      }
+      expect(new TaskStore(db).getById(bobs.id)?.status).toBe('running')
+    })
+
+    it('lets an admin view and kill a foreign task', async () => {
+      const bobs = createOwned(3, 'bob task')
+
+      const view = await fetch(`${baseUrl}/api/tasks/${bobs.id}`, { headers: authHeaders() })
+      expect(view.status).toBe(200)
+      const events = await fetch(`${baseUrl}/api/tasks/${bobs.id}/events`, { headers: authHeaders() })
+      expect(events.status).toBe(200)
+
+      const kill = await fetch(`${baseUrl}/api/tasks/${bobs.id}/kill`, { method: 'POST', headers: authHeaders() })
+      expect(kill.status).toBe(200)
+      expect(new TaskStore(db).getById(bobs.id)?.status).toBe('failed')
+    })
+
+    it('does not let an admin restart a foreign task', async () => {
+      const bobs = createOwned(3, 'bob task')
+      new TaskStore(db).update(bobs.id, { status: 'completed', resultStatus: 'completed' })
+
+      const res = await fetch(`${baseUrl}/api/tasks/${bobs.id}/restart`, {
+        method: 'POST',
+        headers: as(token),
+        body: '{}',
+      })
+      expect(res.status).toBe(403)
+    })
+
+    it('lets the owner kill their own task', async () => {
+      const alices = createOwned(2, 'alice task')
+      const res = await fetch(`${baseUrl}/api/tasks/${alices.id}/kill`, { method: 'POST', headers: as(aliceToken) })
+      expect(res.status).toBe(200)
+    })
+  })
 })

@@ -1,5 +1,6 @@
-import { TaskStore, buildTaskFilterClause, getToolCalls, resolveProviderModelInput, getProviderDefaultModel, isDisabledProviderReference, loadProvidersDecrypted } from '@axiom/core'
+import { TaskStore, buildTaskFilterClause, canAccess, getToolCalls, resolveProviderModelInput, getProviderDefaultModel, isDisabledProviderReference, loadProvidersDecrypted } from '@axiom/core'
 import type {
+  AccessActor,
   Database,
   ProviderConfig,
   Task,
@@ -28,6 +29,7 @@ export interface TasksServiceOptions {
 }
 
 export interface ListTasksInput {
+  ownerUserId?: number
   status?: TaskStatus
   triggerType?: TaskTriggerType
   provider?: string
@@ -48,6 +50,13 @@ export interface TaskProviderFilterOption {
 export class TaskNotFoundError extends Error {
   constructor() {
     super('Task not found')
+  }
+}
+
+/** The task exists but the actor may not do this to it; only raised for actors who may see the task. */
+export class TaskForbiddenError extends Error {
+  constructor(message: string) {
+    super(message)
   }
 }
 
@@ -93,8 +102,29 @@ export class TasksService {
     return this.options.getTaskRuntime?.() ?? null
   }
 
-  listTasks(input: ListTasksInput): { tasks: Task[]; total: number; providerOptions: TaskProviderFilterOption[] } {
+  /** Owner display names for the admin view; keyed by user id. */
+  getOwnerNames(tasks: Task[]): Map<number, string> {
+    const names = new Map<number, string>()
+    const select = this.options.db.prepare('SELECT username FROM users WHERE id = ?')
+    for (const task of tasks) {
+      if (task.ownerUserId == null || names.has(task.ownerUserId)) continue
+      const row = select.get(task.ownerUserId) as { username: string } | undefined
+      if (row) names.set(task.ownerUserId, row.username)
+    }
+    return names
+  }
+
+  /** The task, or null when it does not exist or the actor may not view it (indistinguishable on purpose). */
+  private getVisibleTask(actor: AccessActor, taskId: string): Task | null {
+    const task = this.getTaskById(taskId)
+    if (!task) return null
+    return canAccess(actor, { kind: 'task', ownerId: task.ownerUserId }, 'view', 'ui') ? task : null
+  }
+
+  listTasks(actor: AccessActor, input: ListTasksInput): { tasks: Task[]; total: number; providerOptions: TaskProviderFilterOption[] } {
+    input = { ...input, ownerUserId: actor.role === 'admin' ? input.ownerUserId : actor.id }
     const listFilters = {
+      ownerUserId: input.ownerUserId,
       status: input.status,
       triggerType: input.triggerType,
       provider: input.provider,
@@ -158,8 +188,12 @@ export class TasksService {
     return runtime ? runtime.getById(id) : this.store.getById(id)
   }
 
-  getTaskEvents(taskId: string): { task: Task; events: TaskTimelineEvent[] } {
-    const task = this.getTaskById(taskId)
+  getTaskForActor(actor: AccessActor, taskId: string): Task | null {
+    return this.getVisibleTask(actor, taskId)
+  }
+
+  getTaskEvents(actor: AccessActor, taskId: string): { task: Task; events: TaskTimelineEvent[] } {
+    const task = this.getVisibleTask(actor, taskId)
     if (!task) {
       throw new TaskNotFoundError()
     }
@@ -207,10 +241,13 @@ export class TasksService {
     return { task, events }
   }
 
-  killTask(taskId: string): Task {
-    const task = this.getTaskById(taskId)
+  killTask(actor: AccessActor, taskId: string): Task {
+    const task = this.getVisibleTask(actor, taskId)
     if (!task) {
       throw new TaskNotFoundError()
+    }
+    if (!canAccess(actor, { kind: 'task', ownerId: task.ownerUserId }, 'stop', 'ui')) {
+      throw new TaskForbiddenError('You are not allowed to stop this task.')
     }
 
     if (task.status !== 'running') {
@@ -253,10 +290,13 @@ export class TasksService {
    *   - Any field the client omits inherits from the original.
    *   - The new task gets a fresh session id (handled by the task runner).
    */
-  async restartTask(taskId: string, overrides: RestartTaskInput): Promise<Task> {
-    const original = this.getTaskById(taskId)
+  async restartTask(actor: AccessActor, taskId: string, overrides: RestartTaskInput): Promise<Task> {
+    const original = this.getVisibleTask(actor, taskId)
     if (!original) {
       throw new TaskNotFoundError()
+    }
+    if (!canAccess(actor, { kind: 'task', ownerId: original.ownerUserId }, 'restart', 'ui')) {
+      throw new TaskForbiddenError('Only the owner of a task can restart it.')
     }
 
     if (original.status === 'running' || original.status === 'paused') {
@@ -316,6 +356,7 @@ export class TasksService {
       name: overrides.name ?? original.name,
       prompt: overrides.prompt ?? original.prompt,
       triggerType: 'user',
+      ownerUserId: actor.id,
       provider: provider.name,
       model: getProviderDefaultModel(provider),
       isDefaultModel,

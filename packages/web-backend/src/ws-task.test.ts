@@ -405,3 +405,32 @@ describe('WebSocket /ws/task/:id', () => {
     }
   })
 })
+
+describe('WebSocket /ws/task/:id ownership', () => {
+  function connect(taskId: string, token: string): Promise<Record<string, unknown>> {
+    return new Promise((resolve, reject) => {
+      const ws = new WebSocket(`${wsBaseUrl}/ws/task/${taskId}?token=${token}`)
+      const timeout = setTimeout(() => { ws.close(); reject(new Error('timeout')) }, 3000)
+      ws.once('message', (data: Buffer) => {
+        clearTimeout(timeout)
+        ws.close()
+        resolve(JSON.parse(data.toString()) as Record<string, unknown>)
+      })
+      ws.on('error', (err: Error) => { clearTimeout(timeout); reject(err) })
+    })
+  }
+
+  it('hides a foreign task from a regular user but shows it to an admin', async () => {
+    db.prepare("INSERT OR IGNORE INTO users (id, username, password_hash, role) VALUES (2, 'alice', 'x', 'user'), (3, 'bob', 'x', 'user')").run()
+    const task = new TaskStore(db).create({ name: 'Bob task', prompt: 'secret', triggerType: 'user', ownerUserId: 3 })
+
+    const aliceFirst = await connect(task.id, generateAccessToken({ userId: 2, username: 'alice', role: 'user' }))
+    expect(aliceFirst).toEqual({ type: 'error', error: 'Task not found' })
+
+    const adminFirst = await connect(task.id, getToken())
+    expect(adminFirst.type).toBe('task_info')
+
+    const bobFirst = await connect(task.id, generateAccessToken({ userId: 3, username: 'bob', role: 'user' }))
+    expect(bobFirst.type).toBe('task_info')
+  })
+})
