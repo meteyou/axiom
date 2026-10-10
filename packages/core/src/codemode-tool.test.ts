@@ -16,6 +16,7 @@ import type {
   CodemodeNestedCallStart,
   CodemodeNestedCallEnd,
 } from './codemode-tool.js'
+import { extractUploadsFromToolResult } from './send-file-tool.js'
 import { initDatabase } from './database.js'
 
 function makeModel(): Model<Api> {
@@ -338,6 +339,86 @@ await tools.hang({});`)
     expect(text).toContain('boom')
     expect(text).toContain('ok (ok)')
     expect(text).toContain('fail (error)')
+  })
+
+  it('collects uploads from nested results into details.uploadedFiles, de-duplicated', async () => {
+    const uploadA = {
+      kind: 'file' as const,
+      originalName: 'a.txt',
+      storedName: 'a-a.txt',
+      relativePath: '2026/05/01/a-a.txt',
+      urlPath: '/api/uploads/2026/05/01/a-a.txt',
+      mimeType: 'text/plain',
+      size: 1,
+    }
+    const uploadB = {
+      kind: 'file' as const,
+      originalName: 'b.png',
+      storedName: 'b-b.png',
+      relativePath: '2026/05/01/b-b.png',
+      urlPath: '/api/uploads/2026/05/01/b-b.png',
+      mimeType: 'image/png',
+      size: 2,
+    }
+    const send = makeTool({
+      name: 'send_file_to_user',
+      execute: async (_id, params) => {
+        const p = (params as { file: string }).file
+        return { content: [{ type: 'text' as const, text: 'sent' }], details: { uploadedFile: p === 'a' ? uploadA : uploadB } }
+      },
+    })
+    const batch = makeTool({
+      name: 'export',
+      execute: async () => ({ content: [{ type: 'text' as const, text: 'exported' }], details: { uploadedFiles: [uploadB, uploadA] } }),
+    })
+    const codemode = createCodemodeTool({ owner: makeOwner([send, batch]) })
+    const result = await run(codemode, `
+      await tools.send_file_to_user({ file: 'a' });
+      await tools.send_file_to_user({ file: 'b' });
+      await tools.export({});
+      return 'done';
+    `)
+    expect(result.isError).toBeFalsy()
+
+    const collected = result.details.uploadedFiles as Array<{ relativePath: string }>
+    expect(collected.map(u => u.relativePath)).toEqual(['2026/05/01/a-a.txt', '2026/05/01/b-b.png'])
+    // The existing channel-layer extraction picks the uploads off the codemode result.
+    expect(extractUploadsFromToolResult(result).map(u => u.relativePath)).toEqual([
+      '2026/05/01/a-a.txt',
+      '2026/05/01/b-b.png',
+    ])
+  })
+
+  it('delivers uploads from nested calls that ran before a script failure', async () => {
+    const upload = {
+      kind: 'file' as const,
+      originalName: 'c.txt',
+      storedName: 'c-c.txt',
+      relativePath: '2026/05/01/c-c.txt',
+      urlPath: '/api/uploads/2026/05/01/c-c.txt',
+      mimeType: 'text/plain',
+      size: 3,
+    }
+    const send = makeTool({
+      name: 'send_file_to_user',
+      execute: async () => ({ content: [{ type: 'text' as const, text: 'sent' }], details: { uploadedFile: upload } }),
+    })
+    const boom = makeTool({ name: 'boom', execute: async () => { throw new Error('exploded') } })
+    const codemode = createCodemodeTool({ owner: makeOwner([send, boom]) })
+    const result = await run(codemode, `
+      await tools.send_file_to_user({});
+      await tools.boom({});
+    `)
+    expect(result.isError).toBe(true)
+    const collected = result.details.uploadedFiles as Array<{ relativePath: string }>
+    expect(collected.map(u => u.relativePath)).toEqual(['2026/05/01/c-c.txt'])
+    expect(extractUploadsFromToolResult(result)).toHaveLength(1)
+  })
+
+  it('omits uploadedFiles when no nested call produced an upload', async () => {
+    const codemode = createCodemodeTool({ owner: makeOwner([makeTool({ name: 'plain' })]) })
+    const result = await run(codemode, `const r = await tools.plain({}); return r;`)
+    expect(result.details.uploadedFiles).toBeUndefined()
   })
 
   it('reports invalid source as an error result', async () => {
