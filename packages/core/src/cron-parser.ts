@@ -113,45 +113,89 @@ export function validateCronExpression(expression: string): string | null {
   }
 }
 
+const formatterCache = new Map<string, Intl.DateTimeFormat>()
+
+function getFormatter(timezone: string): Intl.DateTimeFormat {
+  let formatter = formatterCache.get(timezone)
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      hourCycle: 'h23',
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: 'numeric',
+      second: 'numeric',
+    })
+    formatterCache.set(timezone, formatter)
+  }
+  return formatter
+}
+
+/** Wall-clock time of an instant in `timezone`, encoded as a UTC timestamp. */
+function toWallMs(instantMs: number, timezone: string): number {
+  const parts: Record<string, number> = {}
+  for (const part of getFormatter(timezone).formatToParts(new Date(instantMs))) {
+    if (part.type !== 'literal') parts[part.type] = Number(part.value)
+  }
+  return Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second)
+}
+
+function offsetAt(instantMs: number, timezone: string): number {
+  return toWallMs(instantMs, timezone) - Math.floor(instantMs / 1000) * 1000
+}
+
 /**
- * Calculate the next run time after `after` for the given cron fields.
- * Iterates forward minute-by-minute from `after` for up to 2 years.
- *
- * @param fields Parsed cron fields
- * @param after Date to search from (exclusive)
- * @returns Next matching Date, or null if none found within 2 years
+ * Instants at which the wall clock of `timezone` shows `wallMs`, ascending.
+ * Empty inside a spring-forward gap, two entries inside a fall-back overlap.
  */
-export function getNextRunTime(fields: CronFields, after: Date = new Date()): Date | null {
-  // Start from the next minute
-  const next = new Date(after)
-  next.setSeconds(0, 0)
-  next.setMinutes(next.getMinutes() + 1)
+function wallToInstants(wallMs: number, timezone: string): number[] {
+  const DAY = 86_400_000
+  const offsets = new Set([offsetAt(wallMs - DAY, timezone), offsetAt(wallMs + DAY, timezone)])
+  const instants: number[] = []
+  for (const offset of offsets) {
+    const instant = wallMs - offset
+    if (offsetAt(instant, timezone) === offset) instants.push(instant)
+  }
+  return instants.sort((a, b) => a - b)
+}
 
-  // Cap at 2 years of searching
-  const maxDate = new Date(after)
-  maxDate.setFullYear(maxDate.getFullYear() + 2)
+function getSystemTimezone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone
+}
 
-  while (next <= maxDate) {
-    const month = next.getMonth() + 1 // 1-12
-    const dayOfMonth = next.getDate()
-    const dayOfWeek = next.getDay() // 0 = Sunday
-    const hour = next.getHours()
-    const minute = next.getMinutes()
+/** @returns true when `timezone` is a valid IANA timezone identifier */
+export function isValidTimezone(timezone: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: timezone })
+    return true
+  } catch {
+    return false
+  }
+}
 
-    // Check month
+/** Earliest wall-clock minute at or after `startWallMs` (UTC-encoded) matching the fields. */
+function findNextMatchingWall(fields: CronFields, startWallMs: number, maxWallMs: number): number | null {
+  const next = new Date(startWallMs)
+
+  while (next.getTime() <= maxWallMs) {
+    const month = next.getUTCMonth() + 1
+    const dayOfMonth = next.getUTCDate()
+    const dayOfWeek = next.getUTCDay()
+    const hour = next.getUTCHours()
+    const minute = next.getUTCMinutes()
+
     if (!fields.months.includes(month)) {
-      // Jump to next month
-      next.setMonth(next.getMonth() + 1, 1)
-      next.setHours(0, 0, 0, 0)
+      next.setUTCMonth(next.getUTCMonth() + 1, 1)
+      next.setUTCHours(0, 0, 0, 0)
       continue
     }
 
-    // Check day-of-month and day-of-week
     const domMatch = fields.daysOfMonth.includes(dayOfMonth)
     const dowMatch = fields.daysOfWeek.includes(dayOfWeek)
 
     // Standard cron: if both dom and dow are restricted (not *), match either.
-    // If only one is restricted, match that one only.
     const domIsWild = fields.daysOfMonth.length === 31
     const dowIsWild = fields.daysOfWeek.length === 7
 
@@ -163,47 +207,68 @@ export function getNextRunTime(fields: CronFields, after: Date = new Date()): Da
     } else if (dowIsWild) {
       dayMatch = domMatch
     } else {
-      // Both restricted: match either (standard cron behavior)
       dayMatch = domMatch || dowMatch
     }
 
     if (!dayMatch) {
-      next.setDate(next.getDate() + 1)
-      next.setHours(0, 0, 0, 0)
+      next.setUTCDate(next.getUTCDate() + 1)
+      next.setUTCHours(0, 0, 0, 0)
       continue
     }
 
-    // Check hour
     if (!fields.hours.includes(hour)) {
-      // Jump to next matching hour
       const nextHour = fields.hours.find(h => h > hour)
       if (nextHour !== undefined) {
-        next.setHours(nextHour, fields.minutes[0], 0, 0)
+        next.setUTCHours(nextHour, fields.minutes[0], 0, 0)
       } else {
-        // No more hours today, go to next day
-        next.setDate(next.getDate() + 1)
-        next.setHours(0, 0, 0, 0)
+        next.setUTCDate(next.getUTCDate() + 1)
+        next.setUTCHours(0, 0, 0, 0)
       }
       continue
     }
 
-    // Check minute
     if (!fields.minutes.includes(minute)) {
       const nextMinute = fields.minutes.find(m => m > minute)
       if (nextMinute !== undefined) {
-        next.setMinutes(nextMinute, 0, 0)
+        next.setUTCMinutes(nextMinute, 0, 0)
       } else {
-        // No more minutes this hour, go to next hour
-        next.setHours(next.getHours() + 1, 0, 0, 0)
+        next.setUTCHours(next.getUTCHours() + 1, 0, 0, 0)
       }
       continue
     }
 
-    // All fields match
-    return new Date(next)
+    return next.getTime()
   }
 
   return null
+}
+
+/**
+ * Calculate the next run time after `after` for the given cron fields,
+ * evaluated on the wall clock of an IANA timezone (default: the system timezone).
+ *
+ * Wall-clock times skipped by a spring-forward gap do not run that day; times
+ * repeated by a fall-back overlap run once, at their first occurrence.
+ *
+ * @param fields Parsed cron fields
+ * @param after Date to search from (exclusive)
+ * @param timezone IANA timezone, e.g. "Europe/Berlin"
+ * @returns Next matching Date, or null if none found within 2 years
+ */
+export function getNextRunTime(fields: CronFields, after: Date = new Date(), timezone?: string): Date | null {
+  const tz = timezone && isValidTimezone(timezone) ? timezone : getSystemTimezone()
+  const afterMs = after.getTime()
+  const MINUTE = 60_000
+  const maxWallMs = toWallMs(afterMs, tz) + 2 * 366 * 86_400_000
+
+  let wallCursor = Math.floor(toWallMs(afterMs, tz) / MINUTE) * MINUTE + MINUTE
+  while (true) {
+    const wall = findNextMatchingWall(fields, wallCursor, maxWallMs)
+    if (wall === null) return null
+    const instant = wallToInstants(wall, tz).find(i => i > afterMs)
+    if (instant !== undefined) return new Date(instant)
+    wallCursor = wall + MINUTE
+  }
 }
 
 /**
