@@ -33,7 +33,7 @@ export function registerTurnRetryChatChannel(deps: TurnRetryChatChannelDeps): Tu
 
   const unregisterHandler = deps.chatActions.registerHandler(
     TURN_RETRY_ACTION_KIND,
-    ({ refId }) => service.retry(Number(refId)),
+    ({ refId, user }) => service.retry(Number(refId), user.userId),
   )
 
   // A retry answered elsewhere (Telegram) must disable the web bubble's
@@ -45,12 +45,13 @@ export function registerTurnRetryChatChannel(deps: TurnRetryChatChannelDeps): Tu
   })
 
   return {
-    attachRetryAction: ({ error }) => {
-      if (!error.retryActionId || error.messageId === undefined) return
+    attachRetryAction: ({ turn, error }) => {
+      if (!error.retryActionId || error.messageId === undefined || turn.userId === null) return
       deps.chatActions.attach({
         messageId: error.retryActionId,
         kind: TURN_RETRY_ACTION_KIND,
         refId: String(error.messageId),
+        ownerUserId: turn.userId,
         // The error bubble is the persisted row itself; channels render their
         // own (localized) label, this text is only the fallback.
         text: error.error,

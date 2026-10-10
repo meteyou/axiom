@@ -435,14 +435,9 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
   const chatEventBus = new ChatEventBus()
   const taskEventBus = new TaskEventBus()
 
-  // Interactive chat messages are broadcast to every user, because approvals
-  // (the current consumer) may be answered by any authenticated user.
   const chatActions = new ChatActionRegistry({
     publishToClients: ({ type, message }) => {
-      const rows = db.prepare('SELECT id FROM users').all() as { id: number }[]
-      for (const row of rows) {
-        chatEventBus.broadcast({ type, userId: row.id, source: 'web', chatAction: message })
-      }
+      chatEventBus.broadcast({ type, userId: message.ownerUserId, source: 'web', chatAction: message })
     },
   })
 

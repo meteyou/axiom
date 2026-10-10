@@ -23,6 +23,8 @@ export interface ChatActionMessage {
   kind: string
   /** Id of the domain object the buttons act on. */
   refId: string
+  /** Only this user receives the message and may invoke its actions. */
+  ownerUserId: number
   text: string
   actions: ChatActionButton[]
   /** Set once decided — the frontend replaces the buttons with this text. */
@@ -49,10 +51,11 @@ export type ChatActionHandler = (input: {
 export type ChatActionInvocation =
   | { status: 'ok'; resolution: string }
   | { status: 'rejected'; resolution: string }
+  | { status: 'forbidden' }
   | { status: 'not_found' }
 
 export interface ChatActionRegistryDeps {
-  /** Fan the message out to every connected web client. */
+  /** Deliver the message to the connected web clients of its owner. */
   publishToClients: (event: {
     type: 'chat_action' | 'chat_action_resolved'
     message: ChatActionMessage
@@ -124,6 +127,8 @@ export class ChatActionRegistry {
     if (!handler) return { status: 'not_found' }
 
     if (!message.actions.some(action => action.actionId === actionId)) return { status: 'not_found' }
+
+    if (message.ownerUserId !== user.userId) return { status: 'forbidden' }
 
     // The handler owns first-action-wins; a stale click simply loses there.
     const outcome = await handler({ refId: message.refId, actionId, user })
