@@ -44,6 +44,15 @@ export class EmailAccountNotFoundError extends Error {
 
 export class EmailAccountConflictError extends Error {}
 
+export class EmailForbiddenError extends Error {}
+
+export interface EmailActor {
+  userId: number
+  role: string
+}
+
+export type EmailAccountView = SafeEmailAccount & { ownerUsername: string | null }
+
 export class EmailConnectionInputError extends Error {}
 
 export class EmailSendLogNotFoundError extends Error {
@@ -55,7 +64,7 @@ export class EmailSendLogNotFoundError extends Error {
 /** Carries the log entry so the UI can show the state that actually won. */
 export class EmailApprovalError extends Error {
   constructor(
-    readonly code: Exclude<EmailApprovalErrorCode, 'not_found'>,
+    readonly code: Exclude<EmailApprovalErrorCode, 'not_found' | 'forbidden'>,
     message: string,
     readonly entry: EmailSendLogEntry | null,
   ) {
@@ -75,27 +84,36 @@ export interface EmailServiceOptions {
 }
 
 export interface EmailService {
-  listAccounts: () => SafeEmailAccount[]
-  getAccount: (id: string) => SafeEmailAccount
-  createAccount: (input: CreateEmailAccountInput) => SafeEmailAccount
-  updateAccount: (id: string, input: UpdateEmailAccountInput) => SafeEmailAccount
-  deleteAccount: (id: string) => void
-  testConnection: (input: EmailConnectionInput) => Promise<EmailConnectionTestResult>
-  listFolders: (input: EmailConnectionInput) => Promise<EmailFolder[]>
-  listSendLog: (options: ListEmailSendLogOptions) => EmailSendLogPage
-  getSendLogEntry: (id: string) => EmailSendLogEntry
+  listAccounts: (actor: EmailActor) => EmailAccountView[]
+  getAccount: (actor: EmailActor, id: string) => EmailAccountView
+  createAccount: (actor: EmailActor, input: CreateEmailAccountInput) => EmailAccountView
+  updateAccount: (actor: EmailActor, id: string, input: UpdateEmailAccountInput) => EmailAccountView
+  deleteAccount: (actor: EmailActor, id: string) => void
+  testConnection: (actor: EmailActor, input: EmailConnectionInput) => Promise<EmailConnectionTestResult>
+  listFolders: (actor: EmailActor, input: EmailConnectionInput) => Promise<EmailFolder[]>
+  listSendLog: (actor: EmailActor, options: ListEmailSendLogOptions) => EmailSendLogPage
+  getSendLogEntry: (actor: EmailActor, id: string) => EmailSendLogEntry
   approveSendLogEntry: (id: string, decider: EmailApprovalDecider) => Promise<EmailSendLogEntry>
   rejectSendLogEntry: (id: string, decider: EmailApprovalDecider) => Promise<EmailSendLogEntry>
   retrySendLogEntry: (id: string, decider: EmailApprovalDecider) => Promise<EmailSendLogEntry>
 }
 
+const isAdmin = (actor: EmailActor) => actor.role === 'admin'
+
 /**
  * Merges submitted form values over the stored account so an unchanged password
  * field does not have to be re-entered just to test the connection.
  */
-function resolveConnection(input: EmailConnectionInput): EmailClientAccount {
+function resolveConnection(actor: EmailActor, input: EmailConnectionInput): EmailClientAccount {
   const stored = input.accountId ? getEmailAccountDecrypted(input.accountId) : null
-  if (input.accountId && !stored) throw new EmailAccountNotFoundError(input.accountId)
+  if (input.accountId && (!stored || (stored.ownerUserId !== actor.userId && !isAdmin(actor)))) {
+    throw new EmailAccountNotFoundError(input.accountId)
+  }
+  // The stored passwords are merged in server-side, so even the admin may not
+  // probe another user's mailbox with them.
+  if (stored && stored.ownerUserId !== actor.userId) {
+    throw new EmailForbiddenError('Only the owner can use the stored credentials of this account')
+  }
 
   const account: EmailClientAccount = {
     imapHost: input.imapHost ?? stored?.imapHost ?? '',
@@ -128,23 +146,46 @@ export function createEmailService(options: EmailServiceOptions): EmailService {
   function unwrap(id: string, result: EmailApprovalResult): EmailSendLogEntry {
     if (result.ok) return result.entry
     if (result.code === 'not_found') throw new EmailSendLogNotFoundError(id)
+    if (result.code === 'forbidden') throw new EmailForbiddenError(result.message)
     throw new EmailApprovalError(result.code, result.message, result.entry)
   }
 
+  function withOwner(account: SafeEmailAccount): EmailAccountView {
+    const row = db.prepare('SELECT username FROM users WHERE id = ?').get(account.ownerUserId) as
+      | { username: string }
+      | undefined
+    return { ...account, ownerUsername: row?.username ?? null }
+  }
+
+  /** Foreign accounts do not exist for regular users; the admin sees them but must not edit. */
+  function visibleAccount(actor: EmailActor, id: string): SafeEmailAccount {
+    const account = getEmailAccount(id)
+    if (!account || (account.ownerUserId !== actor.userId && !isAdmin(actor))) {
+      throw new EmailAccountNotFoundError(id)
+    }
+    return account
+  }
+
+  function visibleEntry(actor: EmailActor, id: string): EmailSendLogEntry {
+    const entry = getEmailSendLogEntry(db, id)
+    if (!entry || (entry.ownerUserId !== actor.userId && !isAdmin(actor))) {
+      throw new EmailSendLogNotFoundError(id)
+    }
+    return entry
+  }
+
   return {
-    listAccounts() {
-      return listEmailAccounts()
+    listAccounts(actor) {
+      return listEmailAccounts(isAdmin(actor) ? {} : { ownerUserId: actor.userId }).map(withOwner)
     },
 
-    getAccount(id) {
-      const account = getEmailAccount(id)
-      if (!account) throw new EmailAccountNotFoundError(id)
-      return account
+    getAccount(actor, id) {
+      return withOwner(visibleAccount(actor, id))
     },
 
-    createAccount(input) {
+    createAccount(actor, input) {
       try {
-        return createEmailAccount(input)
+        return withOwner(createEmailAccount(input, actor.userId))
       } catch (err) {
         const message = (err as Error).message
         if (message.includes('already exists')) throw new EmailAccountConflictError(message)
@@ -152,10 +193,13 @@ export function createEmailService(options: EmailServiceOptions): EmailService {
       }
     },
 
-    updateAccount(id, input) {
-      if (!getEmailAccount(id)) throw new EmailAccountNotFoundError(id)
+    updateAccount(actor, id, input) {
+      const account = visibleAccount(actor, id)
+      if (account.ownerUserId !== actor.userId) {
+        throw new EmailForbiddenError('Only the owner can edit this email account')
+      }
       try {
-        return updateEmailAccount(id, input)
+        return withOwner(updateEmailAccount(id, input))
       } catch (err) {
         const message = (err as Error).message
         if (message.includes('already exists')) throw new EmailAccountConflictError(message)
@@ -163,33 +207,33 @@ export function createEmailService(options: EmailServiceOptions): EmailService {
       }
     },
 
-    deleteAccount(id) {
+    deleteAccount(actor, id) {
+      visibleAccount(actor, id)
       if (!deleteEmailAccount(id)) throw new EmailAccountNotFoundError(id)
     },
 
-    testConnection(input) {
-      return client.testConnection(resolveConnection(input), input.protocol)
+    testConnection(actor, input) {
+      return client.testConnection(resolveConnection(actor, input), input.protocol)
     },
 
-    listFolders(input) {
-      return client.listFolders(resolveConnection(input))
+    listFolders(actor, input) {
+      return client.listFolders(resolveConnection(actor, input))
     },
 
-    listSendLog(query) {
+    listSendLog(actor, query) {
       const limit = Math.max(1, Math.min(query.limit ?? 50, 500))
       const offset = Math.max(0, query.offset ?? 0)
+      const scoped = isAdmin(actor) ? query : { ...query, ownerUserId: actor.userId }
       return {
-        entries: listEmailSendLog(db, { ...query, limit, offset }),
-        total: countEmailSendLog(db, query),
+        entries: listEmailSendLog(db, { ...scoped, limit, offset }),
+        total: countEmailSendLog(db, scoped),
         limit,
         offset,
       }
     },
 
-    getSendLogEntry(id) {
-      const entry = getEmailSendLogEntry(db, id)
-      if (!entry) throw new EmailSendLogNotFoundError(id)
-      return entry
+    getSendLogEntry(actor, id) {
+      return visibleEntry(actor, id)
     },
 
     async approveSendLogEntry(id, decider) {

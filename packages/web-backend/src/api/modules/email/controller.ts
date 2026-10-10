@@ -12,9 +12,10 @@ import {
   EmailApprovalError,
   EmailAccountNotFoundError,
   EmailConnectionInputError,
+  EmailForbiddenError,
   EmailSendLogNotFoundError,
 } from './service.js'
-import type { EmailServiceOptions } from './service.js'
+import type { EmailActor, EmailServiceOptions } from './service.js'
 
 export interface EmailControllerOptions extends EmailServiceOptions {
   onAccountsChanged?: () => void
@@ -43,9 +44,17 @@ const APPROVAL_ERROR_STATUS: Record<EmailApprovalError['code'], number> = {
   send_failed: 502,
 }
 
+function actorOf(req: AuthenticatedRequest): EmailActor {
+  return { userId: req.user!.userId, role: req.user!.role }
+}
+
 function handleError(res: Response, err: unknown, fallback: string): void {
   if (err instanceof EmailApprovalError) {
     res.status(APPROVAL_ERROR_STATUS[err.code]).json({ error: err.message, code: err.code, entry: err.entry })
+    return
+  }
+  if (err instanceof EmailForbiddenError) {
+    res.status(403).json({ error: err.message })
     return
   }
   if (err instanceof EmailAccountNotFoundError || err instanceof EmailSendLogNotFoundError) {
@@ -68,17 +77,17 @@ export function createEmailController(options: EmailControllerOptions): EmailCon
   const accountsChanged = options.onAccountsChanged ?? (() => {})
 
   return {
-    isConfigured(_req, res) {
+    isConfigured(req, res) {
       try {
-        res.json({ configured: service.listAccounts().length > 0 })
+        res.json({ configured: service.listAccounts({ ...actorOf(req), role: 'user' }).length > 0 })
       } catch (err) {
         handleError(res, err, 'Failed to check email configuration')
       }
     },
 
-    listAccounts(_req, res) {
+    listAccounts(req, res) {
       try {
-        res.json({ accounts: service.listAccounts() })
+        res.json({ accounts: service.listAccounts(actorOf(req)) })
       } catch (err) {
         handleError(res, err, 'Failed to list email accounts')
       }
@@ -86,7 +95,7 @@ export function createEmailController(options: EmailControllerOptions): EmailCon
 
     getAccount(req, res) {
       try {
-        res.json({ account: service.getAccount(String(req.params.id)) })
+        res.json({ account: service.getAccount(actorOf(req), String(req.params.id)) })
       } catch (err) {
         handleError(res, err, 'Failed to get email account')
       }
@@ -100,7 +109,7 @@ export function createEmailController(options: EmailControllerOptions): EmailCon
       }
 
       try {
-        const account = service.createAccount(parsed.value)
+        const account = service.createAccount(actorOf(req), parsed.value)
         accountsChanged()
         res.status(201).json({ account })
       } catch (err) {
@@ -116,7 +125,7 @@ export function createEmailController(options: EmailControllerOptions): EmailCon
       }
 
       try {
-        const account = service.updateAccount(String(req.params.id), parsed.value)
+        const account = service.updateAccount(actorOf(req), String(req.params.id), parsed.value)
         accountsChanged()
         res.json({ account })
       } catch (err) {
@@ -126,7 +135,7 @@ export function createEmailController(options: EmailControllerOptions): EmailCon
 
     deleteAccount(req, res) {
       try {
-        service.deleteAccount(String(req.params.id))
+        service.deleteAccount(actorOf(req), String(req.params.id))
         accountsChanged()
         res.json({ success: true })
       } catch (err) {
@@ -142,7 +151,7 @@ export function createEmailController(options: EmailControllerOptions): EmailCon
       }
 
       try {
-        const result = await service.testConnection(parsed.value)
+        const result = await service.testConnection(actorOf(req), parsed.value)
         res.json({ ...result, ok: (result.imap?.ok ?? true) && (result.smtp?.ok ?? true) })
       } catch (err) {
         handleError(res, err, 'Failed to test email connection')
@@ -157,7 +166,7 @@ export function createEmailController(options: EmailControllerOptions): EmailCon
       }
 
       try {
-        res.json({ folders: await service.listFolders(parsed.value) })
+        res.json({ folders: await service.listFolders(actorOf(req), parsed.value) })
       } catch (err) {
         handleError(res, err, 'Failed to list email folders')
       }
@@ -171,7 +180,7 @@ export function createEmailController(options: EmailControllerOptions): EmailCon
       }
 
       try {
-        res.json(service.listSendLog(parsed.value))
+        res.json(service.listSendLog(actorOf(req), parsed.value))
       } catch (err) {
         handleError(res, err, 'Failed to list email send log')
       }
@@ -179,7 +188,7 @@ export function createEmailController(options: EmailControllerOptions): EmailCon
 
     getSendLogEntry(req, res) {
       try {
-        res.json({ entry: service.getSendLogEntry(String(req.params.id)) })
+        res.json({ entry: service.getSendLogEntry(actorOf(req), String(req.params.id)) })
       } catch (err) {
         handleError(res, err, 'Failed to get email send log entry')
       }
@@ -195,14 +204,14 @@ export function createEmailController(options: EmailControllerOptions): EmailCon
     fallback: string,
   ) {
     return async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-      const decider = req.user?.username
-      if (!decider) {
+      const user = req.user
+      if (!user) {
         res.status(401).json({ error: 'Authentication required' })
         return
       }
 
       try {
-        res.json({ entry: await service[action](String(req.params.id), { name: decider }) })
+        res.json({ entry: await service[action](String(req.params.id), { name: user.username, userId: user.userId }) })
       } catch (err) {
         handleError(res, err, fallback)
       }
