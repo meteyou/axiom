@@ -164,9 +164,18 @@ export class AgentCore {
     }
   }
 
+  private isDeletedUser(userId: string): boolean {
+    if (!/^\d+$/.test(userId)) return false
+    const row = this.db.prepare('SELECT deleted_at FROM users WHERE id = ?').get(Number(userId)) as
+      | { deleted_at: string | null }
+      | undefined
+    return !!row?.deleted_at
+  }
+
   private getOrCreateRuntime(userId: string): UserRuntime {
     const existing = this.runtimes.get(userId)
     if (existing) return existing
+    if (this.isDeletedUser(userId)) throw new Error(`User ${userId} has been deleted`)
 
     const scope = resolveUserScope(this.db, userId)
     const entry = { userId, queue: new MessageQueue(), interactiveSessionId: null, activeTurns: 0, hasModelOverride: false } as unknown as UserRuntime
@@ -328,6 +337,7 @@ export class AgentCore {
     forcedSessionId?: string,
     injectionId?: string,
   ): Promise<void> {
+    if (this.isDeletedUser(targetUserId)) return
     const resolvedInjectionId = injectionId ?? randomUUID()
     const iterable = await this.getOrCreateRuntime(targetUserId).queue.enqueue<ResponseChunk>(
       'task_injection',
@@ -747,6 +757,21 @@ Do NOT add this section if everything discussed was resolved or if there is noth
       this.refreshRuntimePrompt(entry)
     }
     return this.sessionManager.handleNewCommandAsync(userId, source)
+  }
+
+  /**
+   * Aborts and drops a user's runtime and ends their session without summary or fact extraction.
+   */
+  discardUser(userId: string): void {
+    const entry = this.runtimes.get(userId)
+    const sessionId = this.sessionManager.getSession(userId)?.id
+    if (entry) {
+      entry.runtime.abort()
+      entry.runtime.clearMessages()
+      this.runtimes.delete(userId)
+    }
+    this.sessionManager.discardSession(userId)
+    if (sessionId) releaseProviderSession(sessionId)
   }
 
   /**

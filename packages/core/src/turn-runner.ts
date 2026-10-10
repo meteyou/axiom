@@ -214,10 +214,12 @@ function saveChatMessage(
   metadata?: string,
 ): number | null {
   if (!db || userId === null) return null
+  // An aborted turn still commits after its user was deleted; rows written then would survive the purge.
   const result = db.prepare(
-    'INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)'
-  ).run(sessionId, userId, role, content, metadata ?? null)
-  return Number(result.lastInsertRowid)
+    `INSERT INTO chat_messages (session_id, user_id, role, content, metadata)
+     SELECT ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM users WHERE id = ? AND deleted_at IS NOT NULL)`
+  ).run(sessionId, userId, role, content, metadata ?? null, userId)
+  return result.changes > 0 ? Number(result.lastInsertRowid) : null
 }
 
 function updateChatMessage(db: Database, id: number, content: string, metadata: string): void {

@@ -1056,7 +1056,7 @@ export class TelegramBot {
     const row = this.db.prepare(
       `SELECT u.username FROM users u
        JOIN telegram_users tu ON tu.user_id = u.id
-       WHERE tu.telegram_id = ? AND tu.status = 'approved'`
+       WHERE tu.telegram_id = ? AND tu.status = 'approved' AND u.deleted_at IS NULL`
     ).get(telegramId) as { username: string } | undefined
 
     return row?.username ?? null
