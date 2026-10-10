@@ -74,8 +74,8 @@ to the input field) is populated automatically on bot startup via
 | `/stop`     | Abort the current agent turn and clear queued messages. (alias `/kill`)     |
 | `/tasks`    | Show running and recent background tasks (read-only).                       |
 | `/cronjobs` | Show configured cronjobs and their next run time. (alias `/cron`)           |
-| `/model`    | Show or switch the active provider and model. (alias `/provider`)           |
-| `/thinking` | Show or set the global main-agent thinking level.                           |
+| `/model`    | Show or switch the provider and model — yours for regular users, the global one for admins. (alias `/provider`) |
+| `/thinking` | Show or set the thinking level — yours for regular users, the global one for admins. |
 | `/tts`      | Toggle automatic Telegram voice replies. (alias `/voice`)                   |
 | `/skill`    | Load a skill into the current conversation. (`/skill:<name> [prompt]`)      |
 
@@ -85,6 +85,10 @@ edited in place between steps. Selecting a model writes `providers.json` and
 switches the active model for the next turn. The picker auto-expires after
 10 minutes if untouched, so scrolling back to an old picker and tapping a
 button will return an "expired" notice instead of switching models.
+
+Telegram accounts that are approved but not linked to an Axiom user can only
+view the current model and thinking level; `/model` and `/thinking` cannot
+change them until the account is linked.
 
 `/skill` works in two ways. A bare `/skill` opens an inline keyboard listing
 every loadable skill (self-created agent skills and enabled installed

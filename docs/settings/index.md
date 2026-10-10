@@ -4,7 +4,7 @@ Tune how the agent behaves, how long sessions live, which provider answers, and 
 
 All settings described in this section live in the web UI under **Settings**, and are persisted to `/data/config/settings.json`. You can edit either — the UI is the supported path, the file is documented for power users and for the agent itself to reason about.
 
-> **Admin only.** Only users with role `admin` can open the Settings page. Regular users see a locked screen.
+> **Admin only, except personal agent settings.** Only users with role `admin` can see and change the settings described in this section. Regular users get only the **Agent** tab, where they set their own chat model, thinking level and language — see [Agent → Personal agent settings](./agent#personal-agent-settings-regular-users).
 
 ## The Settings Subpages
 
