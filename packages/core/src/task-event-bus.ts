@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events'
+import type { CodemodeNestedCallSnapshot } from './codemode-tool.js'
 
 /**
  * Event types emitted during task execution
@@ -6,6 +7,7 @@ import { EventEmitter } from 'node:events'
 export type TaskEventType =
   | 'tool_call_start'
   | 'tool_call_end'
+  | 'codemode_progress'
   | 'text_delta'
   | 'status_change'
 
@@ -28,6 +30,8 @@ export interface TaskEvent {
   toolIsError?: boolean
   /** Duration in ms (for tool_call_end) */
   durationMs?: number
+  /** Live snapshot of all nested calls (for codemode_progress) */
+  nestedCalls?: CodemodeNestedCallSnapshot[]
   /** Text content (for text_delta) */
   text?: string
   /** New task status (for status_change) */
@@ -56,7 +60,18 @@ export class TaskEventBus extends EventEmitter {
       backlog = []
       this.taskBacklogs.set(event.taskId, backlog)
     }
-    backlog.push(event)
+    if (event.type === 'codemode_progress') {
+      // Snapshots are cumulative, so only the latest one per codemode call is
+      // useful to late joiners — storing every one would grow the backlog
+      // quadratically for long-running scripts.
+      const index = backlog.findIndex(
+        e => e.type === 'codemode_progress' && e.toolCallId === event.toolCallId,
+      )
+      if (index !== -1) backlog[index] = event
+      else backlog.push(event)
+    } else {
+      backlog.push(event)
+    }
 
     // Trim backlog if too large
     if (backlog.length > this.maxBacklogSize) {

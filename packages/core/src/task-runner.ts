@@ -22,10 +22,13 @@ import { assertLlmResponseOk } from './llm-response.js'
 import { createToolResultImageHook, createTranscriptImageBudget, omitToolResultStructuredContent, redactToolResultImages } from './llm-image.js'
 import { loadConfig } from './config.js'
 import {
+  CODEMODE_TOOL_NAME,
   createCodemodeTool,
+  createNestedCallLogObserver,
   buildCodemodePromptGuideline,
   pruneCodemodeSpillFolder,
 } from './codemode-tool.js'
+import type { CodemodeNestedCallEnd, CodemodeNestedCallSnapshot } from './codemode-tool.js'
 import {
   ToolCallTracker,
   isFailedToolResult,
@@ -190,6 +193,8 @@ interface RunningTask {
   toolCallArgs: Map<string, unknown>
   /** Tracker for loop detection */
   toolCallTracker: ToolCallTracker
+  /** Codemode parents whose nested calls are recorded in the tracker; the parent call itself is then skipped so it cannot break the systematic detection window */
+  codemodeParentsWithNestedCalls: Set<string>
   /** Timer for periodic status updates */
   statusUpdateTimer: ReturnType<typeof setInterval> | null
   /** When the task started running (for status update runtime calc) */
@@ -483,6 +488,9 @@ export class TaskRunner {
       // agent is constructed.
       const imageHook = createToolResultImageHook(() => model)
       const agentRef: { current: PiAgent } = { current: null as unknown as PiAgent }
+      // Writes nested calls to the tool-call log, linked to their codemode call.
+      const nestedCallLog = createNestedCallLogObserver(this.db, () => sessionId)
+
       const agentTools = codemodeEnabled
         ? [
             ...effectiveTools,
@@ -494,6 +502,32 @@ export class TaskRunner {
                 afterToolCall: imageHook,
               },
               advertisedTools: effectiveTools,
+              observer: {
+                onCallStart: info => {
+                  // Nested calls get the same treatment as direct calls: the
+                  // activity log (with parent link) and the crash-recovery
+                  // journal, the latter with the nested tool's own replay policy.
+                  nestedCallLog.onCallStart?.(info)
+                  this.writeToolJournal(taskId, journal => journal.recordStarted({
+                    taskId,
+                    sessionId,
+                    toolCallId: info.toolCallId,
+                    toolName: info.toolName,
+                    args: info.args,
+                    replay: getToolReplayPolicy(info.toolName),
+                  }))
+                },
+                onCallEnd: info => {
+                  nestedCallLog.onCallEnd?.(info)
+                  this.writeToolJournal(taskId, journal => journal.recordEnded({
+                    taskId,
+                    toolCallId: info.toolCallId,
+                    isError: info.isError,
+                    result: info.result,
+                  }))
+                  this.recordNestedCallInMetricsAndLoops(taskId, info)
+                },
+              },
             }),
           ]
         : effectiveTools
@@ -543,6 +577,7 @@ export class TaskRunner {
         toolCallTimers: new Map(),
         toolCallArgs: new Map(),
         toolCallTracker: new ToolCallTracker(),
+        codemodeParentsWithNestedCalls: new Set(),
         statusUpdateTimer: null,
         startedAtMs: Date.now(),
       }
@@ -834,6 +869,25 @@ export class TaskRunner {
         break
       }
 
+      case 'tool_execution_update': {
+        // The codemode tool streams a snapshot of all nested calls after every
+        // nested start/end; forward it so the task event viewer can show
+        // live progress while the script runs.
+        if (event.toolName === CODEMODE_TOOL_NAME) {
+          const calls = (event.partialResult?.details as { calls?: unknown } | undefined)?.calls
+          if (Array.isArray(calls)) {
+            this.options.taskEventBus?.emitTaskEvent({
+              type: 'codemode_progress',
+              taskId: runningTask.taskId,
+              timestamp: new Date().toISOString(),
+              toolCallId: event.toolCallId,
+              nestedCalls: calls as CodemodeNestedCallSnapshot[],
+            })
+          }
+        }
+        break
+      }
+
       case 'tool_execution_start': {
         runningTask.toolCallTimers.set(event.toolCallId, Date.now())
         runningTask.toolCallArgs.set(event.toolCallId, event.args)
@@ -879,8 +933,14 @@ export class TaskRunner {
           result: toolResult,
         }))
 
-        // Track for loop detection
-        runningTask.toolCallTracker.record(event.toolName, args, outputStr, isError)
+        // Track for loop detection. A codemode parent is skipped when its nested
+        // calls are already recorded: its output embeds wall time and per-call
+        // durations, so it can never match a repeat, and it would only break the
+        // consecutive-failure window systematic detection checks.
+        if (event.toolName !== CODEMODE_TOOL_NAME
+          || !runningTask.codemodeParentsWithNestedCalls.delete(event.toolCallId)) {
+          runningTask.toolCallTracker.record(event.toolName, args, outputStr, isError)
+        }
 
         // Check for loops
         this.checkForLoops(runningTask)
@@ -905,6 +965,7 @@ export class TaskRunner {
           output: outputStr,
           durationMs,
           status: isError ? 'error' : 'success',
+          toolCallId: event.toolCallId,
         })
         break
       }
@@ -1285,6 +1346,24 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
     }, remaining)
   }
 
+  /**
+   * Nested calls made inside a codemode script count towards the task's live
+   * tool-call metrics and the loop-detection history, exactly like direct
+   * calls, so a script that keeps failing the same tool is detected.
+   */
+  private recordNestedCallInMetricsAndLoops(taskId: string, info: CodemodeNestedCallEnd): void {
+    const runningTask = this.runningTasks.get(taskId)
+    if (!runningTask) return
+
+    runningTask.toolCallCount++
+    this.persistLiveMetrics(runningTask)
+
+    runningTask.codemodeParentsWithNestedCalls.add(info.parentToolCallId)
+    const toolResult = omitToolResultStructuredContent(redactToolResultImages(info.result))
+    runningTask.toolCallTracker.record(info.toolName, info.args, JSON.stringify(toolResult ?? {}), info.isError)
+    this.checkForLoops(runningTask)
+  }
+
   private writeToolJournal(taskId: string, write: (journal: TaskToolJournal) => void): void {
     try {
       write(this.journal)
@@ -1398,6 +1477,7 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
       toolCallTimers: new Map(),
       toolCallArgs: new Map(),
       toolCallTracker: new ToolCallTracker(),
+      codemodeParentsWithNestedCalls: new Set(),
       statusUpdateTimer: null,
       startedAtMs: taskStartedAtMs(task.startedAt),
     }
