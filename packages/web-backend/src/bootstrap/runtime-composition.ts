@@ -3,13 +3,14 @@ import {
   type UserToolsContext,
   AgentHeartbeatService,
   buildModel,
-  createBaseAgentTools,
+  createScopedTools,
+  getBootstrapAdminId,
+  resolveUserPaths,
+  resolveUserScope,
   createCronjobTool,
   createReminderTool,
   createSendFileTool,
-  createResumeTaskTool,
   createTaskRuntime,
-  createTaskTool,
   loadSttSettings,
   deliverTaskNotification,
   deliverTaskStatusUpdate,
@@ -29,7 +30,6 @@ import {
   isRadiusCatalogStale,
   isRadiusProviderType,
   listCronjobsTool,
-  listTasksTool,
   loadConfig,
   loadProvidersDecrypted,
   logToolCall,
@@ -51,7 +51,9 @@ import type {
   LoopDetectionConfig,
   ProviderConfig,
   TaskRuntimeBoundary,
+  ScopedToolsDeps,
   TaskRuntimeTaskBoundary,
+  UserScope,
 } from '@axiom/core'
 import type { AgentTool } from '@earendil-works/pi-agent-core'
 import { randomUUID } from 'node:crypto'
@@ -604,7 +606,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
     // malformed linkage) is not an intended fallback — log it so the
     // mis-routed delivery is diagnosable instead of silently reaching the
     // fallback user.
-    const resolvedUserId = resolveTargetUserIdForTask(task.sessionId)
+    const resolvedUserId = task.ownerUserId ?? resolveTargetUserIdForTask(task.sessionId)
     if (resolvedUserId == null && task.sessionId) {
       logger.warn(
         `[axiom] Task ${task.id}: could not resolve target user from session lineage (sessionId=${task.sessionId}); falling back to default user`,
@@ -702,7 +704,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
     const task = taskRuntime.getById(taskId)
     if (!task) return
 
-    const resolvedUserId = resolveTargetUserIdForTask(task.sessionId)
+    const resolvedUserId = task.ownerUserId ?? resolveTargetUserIdForTask(task.sessionId)
     const userId = resolvedUserId ?? getFallbackUserId()
 
     const lineageSessionId = resolveTaskNotificationSessionId(db, task)
@@ -751,23 +753,9 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
     })
   }
 
-  // Background task tools live in a mutable array that is repopulated in place
-  // by rebuildBackgroundTaskTools (see there).
   const quotaMonitorService = new QuotaMonitorService()
 
   const backgroundSttEnabled = (() => { try { return loadSttSettings().enabled } catch { return false } })()
-  // createBaseAgentTools builds the shared tool set (yolo, web, chat-history,
-  // search-memories, agent-skills, transcribe-audio). Both the interactive
-  // AgentCore (via agent-runtime.ts) and background tasks use the same factory,
-  // so adding a new base tool in one place automatically covers both paths.
-  const backgroundTaskTools: AgentTool[] = createBaseAgentTools({
-    db,
-    builtinToolsConfig: () => loadRuntimeSettings().builtinToolsConfig,
-    sttEnabled: backgroundSttEnabled,
-    quotaService: quotaMonitorService,
-    // Background tasks have no interactive session; search_memories will fall
-    // back to the lowest-id user when getCurrentUserId is undefined.
-  })
 
   const taskRuntime = createTaskRuntime({
     db,
@@ -775,7 +763,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
       buildModel,
       getApiKey: getApiKeyForProvider,
       sessionManager: backgroundSessions,
-      tools: backgroundTaskTools,
+      createTools: ({ scope }) => createScopedTools(scope, taskScopedToolsDeps),
       onTaskComplete: (taskId: string, injection: string) => {
         handleTaskNotification(taskId, injection, taskRuntime.tasks)
       },
@@ -966,30 +954,27 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
     maxDurationMinutesCap: taskSettings.maxDurationMinutes * 2,
   }
 
-  // Background tasks never have an active interactive session.
-  const backgroundTaskToolsOptions = {
-    ...taskToolsOptions,
-    getParentSessionId: () => null as string | null,
+  const taskScopedToolsDeps: ScopedToolsDeps = {
+    db,
+    builtinToolsConfig: () => loadRuntimeSettings().builtinToolsConfig,
+    sttEnabled: backgroundSttEnabled,
+    quotaService: quotaMonitorService,
+    taskTools: taskToolsOptions,
   }
 
-  // Task runner, heartbeat and cronjob paths capture the `backgroundTaskTools`
-  // array reference once, so this MUST mutate that array in place — reassigning
-  // it would leave every background path on the stale tool set.
-  function rebuildBackgroundTaskTools(): void {
-    backgroundTaskTools.length = 0
-    backgroundTaskTools.push(
-      ...createBaseAgentTools({
-        db,
-        builtinToolsConfig: () => loadRuntimeSettings().builtinToolsConfig,
-        sttEnabled: backgroundSttEnabled,
-        quotaService: quotaMonitorService,
-      }),
-      createTaskTool(backgroundTaskToolsOptions),
-      createResumeTaskTool(backgroundTaskToolsOptions),
-      listTasksTool({ taskRuntime: taskRuntime.tasks }),
-    )
+  function getBackgroundTaskToolNames(): string[] {
+    const bootstrapAdminId = getBootstrapAdminId(db)
+    const scope = bootstrapAdminId !== null ? resolveUserScope(db, bootstrapAdminId) : null
+    const fallbackScope: UserScope = {
+      id: 0,
+      username: 'admin',
+      role: 'admin',
+      isBootstrapAdmin: true,
+      paths: resolveUserPaths('admin', true),
+      settings: { chatModel: null, thinkingLevel: 'off', language: 'en' },
+    }
+    return createScopedTools(scope ?? fallbackScope, taskScopedToolsDeps).map(tool => tool.name)
   }
-  rebuildBackgroundTaskTools()
 
   // Wrap the schedule boundary so deleting a cronjob also evicts its
   // cached reminder session id. Without this, a cronjob deleted mid-
@@ -1017,11 +1002,17 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
   // every tool is bound to the runtime's own user and interactive session.
   // The base tool set is assembled inside agent-runtime.ts via createBaseAgentTools().
   const createUserTools = ({ scope, getInteractiveSessionId }: UserToolsContext): AgentTool[] => {
-    const userTaskToolsOptions = { ...taskToolsOptions, getParentSessionId: getInteractiveSessionId }
+    if (scope) {
+      return createScopedTools(scope, {
+        ...taskScopedToolsDeps,
+        cronjobTools: cronjobToolsOptions,
+        getInteractiveSessionId,
+        excludeBaseTools: true,
+      })
+    }
+    // Identities without a user row (e.g. unlinked Telegram accounts) get no
+    // task tools: they cannot own tasks and must not reach other users' tasks.
     return [
-      createTaskTool(userTaskToolsOptions),
-      createResumeTaskTool(userTaskToolsOptions),
-      listTasksTool({ taskRuntime: taskRuntime.tasks }),
       createCronjobTool(cronjobToolsOptions),
       editCronjobTool(cronjobToolsOptions),
       removeCronjobTool(cronjobToolsOptions),
@@ -1029,8 +1020,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
       getCronjobTool(cronjobToolsOptions),
       createReminderTool(cronjobToolsOptions),
       createSendFileTool({
-        getCurrentToolUserId: () => scope?.id,
-        getWorkspaceDir: scope ? () => scope.paths.workspace : undefined,
+        getCurrentToolUserId: () => undefined,
         getCurrentInteractiveSessionId: getInteractiveSessionId,
       }),
     ]
@@ -1410,7 +1400,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
     getTaskRuntime: () => taskRuntime,
     resolveProvider,
     getTaskDefaultProvider,
-    getBackgroundTaskToolNames: () => backgroundTaskTools.map(t => t.name),
+    getBackgroundTaskToolNames,
     getTelegramBot: () => telegramBot,
     onTelegramSettingsChanged: () => {
       restartTelegramBot().catch((err) => {
@@ -1418,13 +1408,11 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
       })
     },
     onActiveProviderChanged: () => {
-      // initOrUpdateAgentCore only rebuilds the interactive core.
-      rebuildBackgroundTaskTools()
       initOrUpdateAgentCore().catch((err) => {
         logger.error('[axiom] Error initializing agent core after provider change:', err)
       })
     },
-    onImageModelsChanged: rebuildBackgroundTaskTools,
+    onImageModelsChanged: () => {},
     setWebSocketChatPresenceChecker: (checker) => {
       wsChatPresenceChecker = checker ? checker.hasActiveWebSocket : null
     },
