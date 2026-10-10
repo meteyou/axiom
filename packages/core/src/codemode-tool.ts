@@ -29,6 +29,7 @@ import { logToolCall } from './token-logger.js'
 import { omitToolResultStructuredContent, redactToolResultImages } from './llm-image.js'
 import type { Database } from './database.js'
 import { getWorkspaceDir } from './workspace.js'
+import { loadConfig, warnConfigReadFailed } from './config.js'
 
 export const CODEMODE_TOOL_NAME = 'codemode'
 
@@ -476,6 +477,20 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
+/**
+ * Read the `codemode.mainAgent` switch from settings.json. Re-read on every
+ * turn so the toggle applies from the next turn without a restart.
+ */
+export function readCodemodeMainAgentEnabled(): boolean {
+  try {
+    const settings = loadConfig<{ codemode?: { mainAgent?: unknown } }>('settings.json')
+    return settings.codemode?.mainAgent === true
+  } catch (err) {
+    warnConfigReadFailed('settings.json', err, 'codemode disabled')
+    return false
+  }
+}
+
 /* ── Spill folder ─────────────────────────────────────────────────────────── */
 
 function getSpillDir(): string {
@@ -555,8 +570,9 @@ function objectPropertyNames(schema: unknown): string[] {
   return props && typeof props === 'object' ? Object.keys(props) : []
 }
 
-function firstSentence(text: string): string {
-  const trimmed = text.trim()
+function firstSentence(text: string | undefined): string {
+  const trimmed = (text ?? '').trim()
+  if (trimmed === '') return ''
   const match = trimmed.match(/^[^.!?]+[.!?]?\s*/)
   return (match ? match[0].trim() : trimmed).replace(/\s+/g, ' ')
 }

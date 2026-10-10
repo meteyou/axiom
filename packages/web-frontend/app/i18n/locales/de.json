@@ -524,6 +524,8 @@
     "codemodeSection": "Codemode",
     "codemodeSectionHint": "Erlaubt Agenten, ein JavaScript-Skript auszuführen, das mehrere ihrer Tools auf einmal aufruft – so erreicht nur die Ausgabe des Skripts das Modell.",
     "codemodeTasksEnabled": "Codemode für Hintergrund-Aufgaben",
+    "codemodeMainAgentEnabled": "Codemode für den Haupt-Agenten",
+    "codemodeMainAgentEnabledHint": "Der Chat-Agent erhält ein Codemode-Tool zum Bündeln, Verketten und Filtern von Tool-Aufrufen. Gilt ab dem nächsten Gesprächsturn auf allen Kanälen; kein Neustart nötig.",
     "codemodeTasksEnabledHint": "Aufgaben-Agenten (benutzer-, agenten-, cronjob- und heartbeat-gestartet) erhalten ein Codemode-Tool zum Batchesen, Ketten und Filtern von Tool-Aufrufen. Gilt für Aufgaben, die nach der Änderung gestartet werden; die Gedächtnis-Konsolidierung nutzt es nie.",
     "thinkingLevelOptions": {
       "off": "Aus (am schnellsten, am günstigsten)",

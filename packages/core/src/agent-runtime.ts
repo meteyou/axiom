@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import nodePath from 'node:path'
 import { Agent as PiAgent } from '@earendil-works/pi-agent-core'
-import type { AgentEvent, AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core'
+import type { AgentEvent, AgentOptions, AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core'
 import type { Api, AssistantMessage, Message, ImageContent, Model } from '@earendil-works/pi-ai'
 import { Type, getCurrentSystemMessage } from '@earendil-works/pi-ai'
 import type { Database } from './database.js'
@@ -32,6 +32,14 @@ import { createEmailTools } from './email-tools.js'
 import { createProviderQuotaTool } from './quota-tool.js'
 import { createImageGenerationTools, GENERATE_IMAGE_TOOL_NAME } from './image-tool.js'
 import { loadActiveImageGeneration, resolveDefaultImageModel } from './image-generation.js'
+import {
+  CODEMODE_TOOL_NAME,
+  buildCodemodePromptGuideline,
+  createCodemodeTool,
+  createNestedCallLogObserver,
+  readCodemodeMainAgentEnabled,
+} from './codemode-tool.js'
+import type { CodemodeNestedCallSnapshot } from './codemode-tool.js'
 import type { QuotaServiceLike } from './quota-tool.js'
 import type { AgentRuntimeStateSnapshot, ResponseChunk } from './agent-runtime-types.js'
 
@@ -465,6 +473,8 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
   private toolCallArgs: Map<string, unknown> = new Map() // toolCallId -> args
   private memoryDir?: string
   private baseInstructions?: string
+  /** After-tool image normalization hook, shared with the codemode tool's nested calls. */
+  private imageHook: NonNullable<AgentOptions['afterToolCall']>
   private providerConfig?: ProviderConfig
   private providerManager?: ProviderManager
   private getCurrentToolUserId: () => number | undefined
@@ -487,6 +497,10 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
     const effectiveThinkingLevel = normalizeThinkingLevel(options.thinkingLevel) ?? storedThinkingLevel ?? 'off'
 
     const systemPrompt = options.systemPrompt ?? this.buildSystemPrompt()
+
+    // Shared by direct tool calls and the codemode tool's nested calls so both
+    // normalize images the same way.
+    this.imageHook = createToolResultImageHook(() => this.agent.state.model)
 
     const tools: AgentTool[] = [
       ...(options.tools ?? []),
@@ -513,7 +527,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
       }),
       ...(this.providerConfig?.transport && this.providerConfig.transport !== 'sse'
         && { transport: this.providerConfig.transport }),
-      afterToolCall: createToolResultImageHook(() => this.agent.state.model),
+      afterToolCall: this.imageHook,
       transformContext: createTranscriptImageBudget(() => this.agent.state.model),
       getApiKey: this.providerConfig?.authMethod === 'oauth'
         ? async () => {
@@ -564,7 +578,11 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
 
   refreshSystemPrompt(channel?: string, currentUser?: { username: string }): void {
     this.syncImageGenerationTool()
-    const systemPrompt = this.buildSystemPrompt(channel, currentUser)
+    const codemodeEnabled = this.syncCodemodeTool()
+    let systemPrompt = this.buildSystemPrompt(channel, currentUser)
+    if (codemodeEnabled) {
+      systemPrompt = `${systemPrompt}\n\n${buildCodemodePromptGuideline()}`
+    }
     const messages = this.agent.state.messages
     const leading = messages[0]
     if (leading?.role === 'system') {
@@ -588,6 +606,43 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
     if (!registered && !current) return
     if (registered && current && hasSameDeclaration(registered, current)) return
     this.agent.state.tools = [...tools.filter(tool => tool.name !== GENERATE_IMAGE_TOOL_NAME), ...(current ? [current] : [])]
+  }
+
+  /**
+   * Codemode can be switched for the main agent while a chat runtime lives, so
+   * `codemode` is added or dropped before each turn; pi-agent-core declares
+   * the change to the model. An unchanged declaration is kept so the tool
+   * list stays stable. Returns whether codemode is active for the prompt.
+   */
+  private syncCodemodeTool(): boolean {
+    const enabled = readCodemodeMainAgentEnabled()
+    const tools = this.agent.state.tools
+    const registered = tools.find(tool => tool.name === CODEMODE_TOOL_NAME)
+    if (!registered && !enabled) return false
+    if (registered && enabled && hasSameDeclaration(registered, this.buildCodemodeTool())) return true
+    this.agent.state.tools = [
+      ...tools.filter(tool => tool.name !== CODEMODE_TOOL_NAME),
+      ...(enabled ? [this.buildCodemodeTool()] : []),
+    ]
+    return enabled
+  }
+
+  /**
+   * The codemode tool is bound to the main agent it is declared for: it reads
+   * the agent's live tools, transcript, model and after-tool hook through
+   * closures, so nested calls reach every main-agent tool (including the
+   * interactive-only ones) and are logged like direct calls.
+   */
+  private buildCodemodeTool(): AgentTool {
+    return createCodemodeTool({
+      owner: {
+        getTools: () => this.agent.state.tools,
+        getMessages: () => this.agent.state.messages,
+        getModel: () => this.agent.state.model,
+        afterToolCall: this.imageHook,
+      },
+      observer: createNestedCallLogObserver(this.db, () => this.agent.sessionId),
+    })
   }
 
   getCurrentTimeContext(): string {
@@ -981,6 +1036,24 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
           toolCallId: event.toolCallId,
           toolArgs: event.args,
         })
+        break
+      }
+
+      case 'tool_execution_update': {
+        // The codemode tool streams a snapshot of all nested calls after every
+        // nested start/end; forward it so the chat can show live progress and
+        // the stall watchdog counts it as activity while a script runs.
+        if (event.toolName === CODEMODE_TOOL_NAME) {
+          const calls = (event.partialResult?.details as { calls?: unknown } | undefined)?.calls
+          if (Array.isArray(calls)) {
+            chunks.push({
+              type: 'tool_call_update',
+              toolName: event.toolName,
+              toolCallId: event.toolCallId,
+              nestedCalls: calls as CodemodeNestedCallSnapshot[],
+            })
+          }
+        }
         break
       }
 
