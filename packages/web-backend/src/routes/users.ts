@@ -1,5 +1,13 @@
 import { Router } from 'express'
+import fs from 'node:fs'
 import bcrypt from 'bcrypt'
+import {
+  checkUsernameAvailable,
+  createUserFolders,
+  getDefaultHeartbeatContent,
+  getUserProfileTemplate,
+  resolveUserScope,
+} from '@axiom/core'
 import type { Database } from '@axiom/core'
 import { jwtMiddleware } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
@@ -81,11 +89,36 @@ export function createUsersRouter(db: Database): Router {
       return
     }
 
+    const name = username.trim()
+    const unavailable = checkUsernameAvailable(name)
+    if (unavailable) {
+      res.status(400).json({ error: unavailable })
+      return
+    }
+
     try {
       const hash = bcrypt.hashSync(password, SALT_ROUNDS)
       const result = db.prepare(
         'INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)'
-      ).run(username.trim(), hash, userRole)
+      ).run(name, hash, userRole)
+
+      const scope = resolveUserScope(db, Number(result.lastInsertRowid))
+      if (scope) {
+        try {
+          createUserFolders(scope.paths, {
+            profile: getUserProfileTemplate(scope.username),
+            heartbeat: getDefaultHeartbeatContent(),
+          })
+        } catch (err) {
+          // Roll back so a retry is not blocked by a half-created user (409 / folder-exists check).
+          db.prepare('DELETE FROM users WHERE id = ?').run(result.lastInsertRowid)
+          if (scope.paths.userDir) {
+            fs.rmSync(scope.paths.userDir, { recursive: true, force: true })
+            fs.rmSync(scope.paths.workspace, { recursive: true, force: true })
+          }
+          throw err
+        }
+      }
 
       const user = db.prepare(
         'SELECT id, username, role, telegram_id, created_at, updated_at FROM users WHERE id = ?'
