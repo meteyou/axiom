@@ -1228,6 +1228,34 @@
                   <p class="text-xs text-muted-foreground">{{ $t('settings.backgroundThinkingLevelHint') }}</p>
                 </div>
 
+                <!-- Codemode (experimental) -->
+                <div>
+                  <h3 class="text-base font-semibold tracking-tight text-foreground">
+                    {{ $t('settings.codemodeSection') }}
+                    <Badge variant="outline" class="ml-2 align-middle text-[10px] font-medium uppercase tracking-wide">
+                      {{ $t('settings.experimental') }}
+                    </Badge>
+                  </h3>
+                  <p class="mt-1 text-sm text-muted-foreground">
+                    {{ $t('settings.codemodeSectionHint') }}
+                  </p>
+                </div>
+
+                <div class="flex items-center justify-between rounded-lg border border-border px-4 py-3">
+                  <div class="flex flex-col gap-0.5 pr-4">
+                    <Label for="codemode-tasks-enabled" class="cursor-pointer">
+                      {{ $t('settings.codemodeTasksEnabled') }}
+                    </Label>
+                    <p class="text-xs text-muted-foreground">
+                      {{ $t('settings.codemodeTasksEnabledHint') }}
+                    </p>
+                  </div>
+                  <Switch
+                    id="codemode-tasks-enabled"
+                    v-model:checked="form.codemode.tasks"
+                  />
+                </div>
+
                 <Separator />
 
                 <!-- Loop Detection Section -->
@@ -2034,7 +2062,7 @@ import { buildProviderModelOptions } from '~/utils/providerModelOptions'
 import { useSettingsApi } from '~/api/settings'
 import EmailAccountsWorkspace from '~/features/email/components/EmailAccountsWorkspace.vue'
 import ImageGenerationSettingsTab from './ImageGenerationSettingsTab.vue'
-import type { MemoryConsolidationSettings, FactExtractionSettings, HealthMonitorNotificationToggles, HealthMonitorSettings, AgentHeartbeatSettings, TasksSettings, ImageGenerationSettings, TtsSettings, SttSettings, UploadsSettings, TelegramSettings, WatchdogSettings, RetrySettings } from '~/composables/useSettings'
+import type { MemoryConsolidationSettings, FactExtractionSettings, HealthMonitorNotificationToggles, HealthMonitorSettings, AgentHeartbeatSettings, TasksSettings, CodemodeSettings, ImageGenerationSettings, TtsSettings, SttSettings, UploadsSettings, TelegramSettings, WatchdogSettings, RetrySettings } from '~/composables/useSettings'
 import type { TelegramUser } from '~/composables/useTelegramUsers'
 
 /* ── Auth ── */
@@ -2355,6 +2383,7 @@ interface SettingsForm {
   factExtraction: FactExtractionSettings
   agentHeartbeat: AgentHeartbeatSettings
   tasks: TasksSettings
+  codemode: CodemodeSettings
   imageGeneration: ImageGenerationSettings
   tts: TtsSettings
   stt: SttSettings
@@ -2414,6 +2443,7 @@ function hydrateForm() {
       },
       statusUpdates: { ...s.tasks.statusUpdates },
     },
+    codemode: { ...s.codemode },
     imageGeneration: { ...s.imageGeneration },
     tts: { ...s.tts },
     stt: {

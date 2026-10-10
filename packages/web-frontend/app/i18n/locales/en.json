@@ -516,6 +516,11 @@
     "thinkingLevelHint": "How much the chat agent should reason before responding. Higher levels are slower and more expensive. Ignored by models that don't support reasoning.",
     "backgroundThinkingLevel": "Background thinking level",
     "backgroundThinkingLevelHint": "Reasoning level for background task agents, loop detection, fact extraction, memory consolidation, and session summaries.",
+    "experimental": "Experimental",
+    "codemodeSection": "Codemode",
+    "codemodeSectionHint": "Let agents run a JavaScript script that calls several of their tools at once, so only the script's output reaches the model.",
+    "codemodeTasksEnabled": "Codemode for background tasks",
+    "codemodeTasksEnabledHint": "Task agents (user, agent-created, cronjob, heartbeat) get a codemode tool for batching, chaining and filtering tool calls. Applies to tasks started after the change; memory consolidation never uses it.",
     "thinkingLevelOptions": {
       "off": "Off (fastest, cheapest)",
       "minimal": "Minimal",
