@@ -93,6 +93,10 @@ A bold row at the bottom with a double border on top sums every numeric column; 
 
 If a model isn't in the `tokenPriceTable`, its row shows real token counts but a `$0.00` cost — the totals row reflects that.
 
+## Usage per user
+
+Above the provider & model table, a second table shows one row per user for the current filters: requests, input tokens, output tokens and estimated cost. Every session — chat, task, heartbeat, consolidation and loop-detection — belongs to a user, and background sessions are attributed to the owner of the task. Sessions from before multi-user support are attributed to the first (bootstrap) admin account. Usage of users that no longer exist is kept and shown as *deleted*. The same data is returned as `perUser` by the admin usage API (`GET /api/stats/usage`) next to the totals.
+
 ## Empty states
 
 Three distinct messages, depending on what's missing:
