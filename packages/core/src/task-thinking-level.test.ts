@@ -211,6 +211,7 @@ describe('cronjob tools thinking level', () => {
       delete: id => store.delete(id),
       register: () => {},
       unregister: () => {},
+      rescheduleOwner: () => {},
       triggerNow: async () => null,
       getActiveSchedules: () => [],
       start: () => {},

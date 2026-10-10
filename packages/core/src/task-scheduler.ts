@@ -7,6 +7,7 @@ import type { TaskOverrides } from './task-runner.js'
 import type { ProviderConfig } from './provider-config.js'
 import { parseProviderModelId, getProviderDefaultModel, isProviderModelUsable } from './provider-config.js'
 import { parseCronExpression, getNextRunTime } from './cron-parser.js'
+import { resolveOwnerTimezone } from './user-settings.js'
 
 export interface TaskSchedulerOptions {
   db: Database
@@ -108,6 +109,16 @@ export class TaskScheduler {
   }
 
   /**
+   * Re-register the enabled schedules of one owner (or of everyone) so their
+   * next run is recomputed, e.g. after a timezone change.
+   */
+  rescheduleOwner(ownerUserId?: number): void {
+    if (!this.running) return
+    const tasks = this.scheduledTaskStore.listEnabled(ownerUserId !== undefined ? { ownerUserId } : {})
+    for (const task of tasks) this.registerSchedule(task)
+  }
+
+  /**
    * Unregister a schedule (after delete or disable)
    */
   unregisterSchedule(id: string): void {
@@ -154,6 +165,10 @@ export class TaskScheduler {
     console.log(`[axiom] Task scheduler loaded ${enabledTasks.length} enabled schedule(s)`)
   }
 
+  private timezoneOf(scheduledTask: ScheduledTask): string {
+    return resolveOwnerTimezone(this.options.db, scheduledTask.ownerUserId)
+  }
+
   /** Minimum cooldown between firings of the same cronjob (in ms) */
   private static readonly FIRE_COOLDOWN_MS = 55_000 // 55 seconds — prevents double-firing within the same cron minute
 
@@ -181,7 +196,7 @@ export class TaskScheduler {
   private setNextTimer(scheduledTask: ScheduledTask): void {
     try {
       const fields = parseCronExpression(scheduledTask.schedule)
-      const nextRun = getNextRunTime(fields)
+      const nextRun = getNextRunTime(fields, new Date(), this.timezoneOf(scheduledTask))
 
       if (!nextRun) {
         console.warn(`[axiom] Could not calculate next run time for schedule "${scheduledTask.name}" (${scheduledTask.schedule})`)
@@ -317,7 +332,7 @@ export class TaskScheduler {
   private autoDisableIfOneTime(scheduledTask: ScheduledTask): void {
     try {
       const fields = parseCronExpression(scheduledTask.schedule)
-      const nextRun = getNextRunTime(fields)
+      const nextRun = getNextRunTime(fields, new Date(), this.timezoneOf(scheduledTask))
       if (!nextRun) {
         // No next run at all — disable
         this.scheduledTaskStore.update(scheduledTask.id, { enabled: false })

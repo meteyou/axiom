@@ -25,6 +25,7 @@ function buildScheduleBoundary(db: Database): TaskRuntimeScheduleBoundary {
     delete: (id) => store.delete(id),
     register: () => {},
     unregister: () => {},
+    rescheduleOwner: () => {},
     triggerNow: async () => null,
     getActiveSchedules: () => [],
     start: () => {},
