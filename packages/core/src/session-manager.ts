@@ -493,9 +493,10 @@ export class SessionManager {
 
     this.db.prepare(
       `INSERT INTO sessions (id, user_id, source, type, parent_session_id, started_at, last_activity, session_user, message_count, summary_written)
-       VALUES (?, NULL, ?, ?, ?, datetime(? / 1000, 'unixepoch'), datetime(? / 1000, 'unixepoch'), ?, 0, 0)`
+       VALUES (?, (SELECT id FROM users WHERE id = ?), ?, ?, ?, datetime(? / 1000, 'unixepoch'), datetime(? / 1000, 'unixepoch'), ?, 0, 0)`
     ).run(
       id,
+      options.userId ?? null,
       options.source,
       options.type,
       options.parentSessionId ?? null,

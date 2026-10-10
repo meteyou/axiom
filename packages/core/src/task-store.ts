@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { Database } from './database.js'
 import type { SettingsThinkingLevel } from './contracts/settings.js'
 import { normalizeThinkingLevel } from './thinking-level.js'
+import { getBootstrapAdminId } from './user-scope.js'
 
 export type TaskStatus = 'running' | 'paused' | 'completed' | 'failed'
 export type TaskTriggerType = 'user' | 'agent' | 'cronjob' | 'heartbeat' | 'consolidation'
@@ -41,6 +42,8 @@ export interface Task {
   startedAt: string | null
   completedAt: string | null
   sessionId: string | null
+  /** User the task belongs to; `null` only on instances without any user. */
+  ownerUserId: number | null
 }
 
 export interface CreateTaskInput {
@@ -59,6 +62,8 @@ export interface CreateTaskInput {
   thinkingLevel?: SettingsThinkingLevel | null
   maxDurationMinutes?: number
   sessionId?: string
+  /** Defaults to the bootstrap admin (system jobs without a user). */
+  ownerUserId?: number
 }
 
 export interface UpdateTaskInput {
@@ -81,6 +86,7 @@ export interface UpdateTaskInput {
 }
 
 export interface TaskListFilters {
+  ownerUserId?: number
   status?: TaskStatus
   triggerType?: TaskTriggerType
   provider?: string
@@ -109,6 +115,10 @@ export function buildTaskFilterClause(
   let sql = ''
   const params: unknown[] = []
 
+  if (filters?.ownerUserId !== undefined) {
+    sql += ' AND owner_user_id = ?'
+    params.push(filters.ownerUserId)
+  }
   if (filters?.status) {
     sql += ' AND status = ?'
     params.push(filters.status)
@@ -168,6 +178,7 @@ interface TaskRow {
   started_at: string | null
   completed_at: string | null
   session_id: string | null
+  owner_user_id: number | null
 }
 
 function rowToTask(row: TaskRow): Task {
@@ -200,6 +211,7 @@ function rowToTask(row: TaskRow): Task {
     startedAt: row.started_at,
     completedAt: row.completed_at,
     sessionId: row.session_id,
+    ownerUserId: row.owner_user_id ?? null,
   }
 }
 
@@ -233,7 +245,8 @@ export function initTasksTable(db: Database): void {
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       started_at TEXT,
       completed_at TEXT,
-      session_id TEXT
+      session_id TEXT,
+      owner_user_id INTEGER
     );
 
     CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
@@ -244,6 +257,62 @@ export function initTasksTable(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_tasks_is_default_model_created_at ON tasks(is_default_model, created_at);
     CREATE INDEX IF NOT EXISTS idx_tasks_session_id ON tasks(session_id);
   `)
+  migrateTaskOwners(db)
+}
+
+function tableHasColumn(db: Database, table: string, column: string): boolean {
+  return (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some(c => c.name === column)
+}
+
+function parseUserId(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isSafeInteger(value) ? value : null
+  if (typeof value === 'string' && /^\d+$/.test(value.trim())) return Number(value.trim())
+  return null
+}
+
+/**
+ * Adds `tasks.owner_user_id` and attributes tasks without an owner to the user
+ * of their session lineage, falling back to the bootstrap admin. Idempotent.
+ */
+export function migrateTaskOwners(db: Database): void {
+  if (!tableHasColumn(db, 'tasks', 'owner_user_id')) {
+    db.exec('ALTER TABLE tasks ADD COLUMN owner_user_id INTEGER')
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS idx_tasks_owner ON tasks(owner_user_id)')
+
+  const bootstrapAdminId = getBootstrapAdminId(db)
+  if (bootstrapAdminId === null) return
+
+  const orphans = db.prepare('SELECT id, session_id FROM tasks WHERE owner_user_id IS NULL').all() as Array<{
+    id: string
+    session_id: string | null
+  }>
+  if (orphans.length === 0) return
+
+  const userExists = db.prepare('SELECT 1 FROM users WHERE id = ?')
+  const sessionRow = db.prepare('SELECT parent_session_id, user_id, session_user FROM sessions WHERE id = ?')
+  const setOwner = db.prepare('UPDATE tasks SET owner_user_id = ? WHERE id = ?')
+
+  const resolveLineageOwner = (sessionId: string | null): number | null => {
+    let currentId = sessionId
+    for (let depth = 0; currentId && depth < 10; depth++) {
+      const row = sessionRow.get(currentId) as
+        | { parent_session_id: string | null; user_id: number | null; session_user: string | null }
+        | undefined
+      if (!row) return null
+      for (const candidate of [parseUserId(row.session_user), parseUserId(row.user_id)]) {
+        if (candidate !== null && userExists.get(candidate)) return candidate
+      }
+      currentId = row.parent_session_id
+    }
+    return null
+  }
+
+  db.transaction(() => {
+    for (const orphan of orphans) {
+      setOwner.run(resolveLineageOwner(orphan.session_id) ?? bootstrapAdminId, orphan.id)
+    }
+  })()
 }
 
 /**
@@ -258,10 +327,11 @@ export class TaskStore {
   create(input: CreateTaskInput): Task {
     const id = randomUUID()
     const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
+    const ownerUserId = input.ownerUserId ?? getBootstrapAdminId(this.db)
 
     this.db.prepare(`
-      INSERT INTO tasks (id, name, prompt, status, trigger_type, trigger_source_id, provider, model, is_default_model, thinking_level, max_duration_minutes, session_id, created_at)
-      VALUES (?, ?, ?, 'running', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO tasks (id, name, prompt, status, trigger_type, trigger_source_id, provider, model, is_default_model, thinking_level, max_duration_minutes, session_id, created_at, owner_user_id)
+      VALUES (?, ?, ?, 'running', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       input.name,
@@ -275,6 +345,7 @@ export class TaskStore {
       input.maxDurationMinutes ?? null,
       input.sessionId ?? null,
       now,
+      ownerUserId,
     )
 
     return this.getById(id)!

@@ -4,6 +4,7 @@ import path from 'node:path'
 import fs from 'node:fs'
 import { initEmailSendLogTable } from './email-send-log.js'
 import { initTaskToolJournalTable } from './task-tool-journal.js'
+import { migrateTaskOwners } from './task-store.js'
 
 export type Database = BetterSqlite3.Database
 
@@ -668,6 +669,7 @@ export function initDatabase(dbPath?: string): Database {
   // + orphan recovery. Idempotent: only acts on rows whose session_id is not already
   // in UUID form. Wrapped in a single transaction for atomicity.
   migrateLegacySessionIds(db)
+  migrateTaskOwners(db)
 
   // Backfill token counts from token_usage only when the columns are first added
   if (needsTokenBackfill) {

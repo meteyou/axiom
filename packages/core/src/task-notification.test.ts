@@ -43,6 +43,7 @@ function makeTask(overrides: Partial<Task> = {}): Task {
     startedAt: '2026-03-29 10:00:01',
     completedAt: '2026-03-29 10:15:00',
     sessionId: 'task-task-123',
+    ownerUserId: 1,
     ...overrides,
   }
 }
