@@ -21,6 +21,8 @@ export interface Cronjob {
   /** `null` = background default at run time. */
   thinkingLevel: SettingsThinkingLevel | null
   codemode: CronjobCodemode | null
+  ownerUserId: number | null
+  ownerUsername: string | null
   lastRunAt: string | null
   lastRunTaskId: string | null
   lastRunStatus: string | null

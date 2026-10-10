@@ -1306,6 +1306,7 @@
     "noFilterMatchesTitle": "No cronjobs match the filters",
     "noFilterMatchesDescription": "Adjust or reset the filters to see more cronjobs.",
     "filters": {
+      "allOwners": "All owners",
       "button": "Filters",
       "reset": "Reset filters",
       "search": "Search cronjobs…",
@@ -1324,6 +1325,7 @@
     "actionTypeTask": "Task",
     "actionTypeInjection": "Injection",
     "columns": {
+      "owner": "Owner",
       "name": "Name",
       "schedule": "Schedule",
       "actionType": "Action",

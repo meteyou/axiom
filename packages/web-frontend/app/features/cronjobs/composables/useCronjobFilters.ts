@@ -11,6 +11,7 @@ export type CronjobEnabledFilter = '' | 'enabled' | 'disabled'
 
 const DEFAULT_FILTERS = {
   search: '',
+  ownerUserId: '',
   provider: '',
   actionType: '',
   enabled: 'enabled' as CronjobEnabledFilter,
@@ -38,6 +39,7 @@ function matchesProvider(cj: Cronjob, filter: string): boolean {
 }
 
 const PREDICATE_FACTORIES: Array<(filters: CronjobFilters) => CronjobPredicate | null> = [
+  ({ ownerUserId }) => ownerUserId ? cj => String(cj.ownerUserId) === ownerUserId : null,
   ({ enabled }) => enabled ? cj => cj.enabled === (enabled === 'enabled') : null,
   ({ actionType }) => actionType ? cj => cj.actionType === actionType : null,
   ({ provider }) => provider ? cj => matchesProvider(cj, provider) : null,

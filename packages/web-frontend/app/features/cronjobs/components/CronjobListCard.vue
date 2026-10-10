@@ -3,11 +3,14 @@
     role="button"
     tabindex="0"
     class="flex w-full cursor-pointer flex-col gap-2 rounded-lg border border-border bg-card px-4 py-3 text-left transition-colors hover:bg-muted/50"
-    @click="$emit('edit')"
-    @keydown.enter.self="$emit('edit')"
+    @click="canManage && $emit('edit')"
+    @keydown.enter.self="canManage && $emit('edit')"
   >
     <div class="flex items-start gap-2">
       <span class="min-w-0 flex-1 truncate text-sm font-medium">{{ cronjob.name }}</span>
+      <span v-if="showOwner && cronjob.ownerUsername" class="shrink-0 text-xs text-muted-foreground">
+        {{ cronjob.ownerUsername }}
+      </span>
       <Badge :variant="cronjob.actionType === 'injection' ? 'warning' : 'default'" class="shrink-0">
         {{ cronjob.actionType === 'injection' ? $t('cronjobs.actionTypeInjection') : $t('cronjobs.actionTypeTask') }}
       </Badge>
@@ -18,15 +21,17 @@
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" @click.stop>
-          <DropdownMenuItem @click="$emit('edit')">
-            <AppIcon name="edit" size="sm" class="mr-2" />
-            {{ $t('common.edit') }}
-          </DropdownMenuItem>
-          <DropdownMenuItem @click="$emit('trigger')">
-            <AppIcon name="send" size="sm" class="mr-2" />
-            {{ $t('cronjobs.runNow') }}
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
+          <template v-if="canManage">
+            <DropdownMenuItem @click="$emit('edit')">
+              <AppIcon name="edit" size="sm" class="mr-2" />
+              {{ $t('common.edit') }}
+            </DropdownMenuItem>
+            <DropdownMenuItem @click="$emit('trigger')">
+              <AppIcon name="send" size="sm" class="mr-2" />
+              {{ $t('cronjobs.runNow') }}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </template>
           <DropdownMenuItem destructive @click="$emit('delete')">
             <AppIcon name="trash" size="sm" class="mr-2" />
             {{ $t('common.delete') }}
@@ -100,6 +105,9 @@ import { cronjobLastRunVariant } from '~/features/cronjobs/utils/cronjobFormat'
 const props = defineProps<{
   cronjob: Cronjob
   providerLabel: string
+  showOwner?: boolean
+  /** Owners edit and run their cronjobs; an admin only toggles and deletes foreign ones. */
+  canManage: boolean
 }>()
 
 defineEmits<{
