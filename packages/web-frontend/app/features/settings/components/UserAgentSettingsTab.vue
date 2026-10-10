@@ -71,6 +71,20 @@
         </Select>
         <p class="text-xs text-muted-foreground">{{ $t('settings.userAgent.languageHint') }}</p>
       </div>
+
+      <div class="flex flex-col gap-2">
+        <Label for="user-timezone">{{ $t('settings.timezone') }}</Label>
+        <Select :model-value="settings.overrides.timezone ?? DEFAULT_VALUE" :disabled="saving" @update:model-value="(v) => handleTimezoneChange(v as string)">
+          <SelectTrigger id="user-timezone">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem :value="DEFAULT_VALUE">{{ defaultLabel(settings.defaults.timezone) }}</SelectItem>
+            <SelectItem v-for="tz in timezoneOptions" :key="tz" :value="tz">{{ tz }}</SelectItem>
+          </SelectContent>
+        </Select>
+        <p class="text-xs text-muted-foreground">{{ $t('settings.userAgent.timezoneHint') }}</p>
+      </div>
     </div>
   </div>
 </template>
@@ -78,24 +92,10 @@
 <script setup lang="ts">
 import { SETTINGS_THINKING_LEVELS, type SettingsThinkingLevel } from '@axiom/core/contracts'
 import { useSettingsApi } from '~/api/settings'
+import { LANGUAGE_OPTIONS, TIMEZONE_OPTIONS } from '~/utils/settingsOptions'
 import type { OwnSettings, OwnSettingsUpdate, SelectableChatProvider } from '~/api/settings'
 
 const DEFAULT_VALUE = '__default__'
-
-const LANGUAGE_OPTIONS = [
-  { value: 'match', key: 'languageMatch' },
-  { value: 'English', key: 'languages.english' },
-  { value: 'German', key: 'languages.german' },
-  { value: 'French', key: 'languages.french' },
-  { value: 'Spanish', key: 'languages.spanish' },
-  { value: 'Italian', key: 'languages.italian' },
-  { value: 'Portuguese', key: 'languages.portuguese' },
-  { value: 'Dutch', key: 'languages.dutch' },
-  { value: 'Russian', key: 'languages.russian' },
-  { value: 'Chinese', key: 'languages.chinese' },
-  { value: 'Japanese', key: 'languages.japanese' },
-  { value: 'Korean', key: 'languages.korean' },
-]
 
 const { t } = useI18n()
 const api = useSettingsApi()
@@ -106,6 +106,11 @@ const loading = ref(true)
 const saving = ref(false)
 const error = ref<string | null>(null)
 const saved = ref(false)
+
+const timezoneOptions = computed(() => {
+  const own = settings.value?.overrides.timezone
+  return own && !TIMEZONE_OPTIONS.includes(own) ? [own, ...TIMEZONE_OPTIONS] : TIMEZONE_OPTIONS
+})
 
 const modelOptions = computed(() => providers.value.flatMap(provider =>
   provider.models.map(model => ({
@@ -156,6 +161,10 @@ function handleModelChange(value: string) {
 
 function handleThinkingChange(value: string) {
   return save({ thinkingLevel: value === DEFAULT_VALUE ? null : value as SettingsThinkingLevel })
+}
+
+function handleTimezoneChange(value: string) {
+  return save({ timezone: value === DEFAULT_VALUE ? null : value })
 }
 
 function handleLanguageChange(value: string) {

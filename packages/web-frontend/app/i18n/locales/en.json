@@ -549,10 +549,11 @@
       "max": "Max"
     },
     "userAgent": {
-      "description": "Your personal chat model, thinking level and language. Choose \"Use default\" to follow the admin's settings.",
+      "description": "Your personal chat model, thinking level, language and timezone. Choose \"Use default\" to follow the admin's settings.",
       "model": "Chat model",
       "modelHint": "Applies from your next message. Only enabled models are listed.",
       "languageHint": "Language the agent answers in and speech-to-text listens for.",
+      "timezoneHint": "Timezone for reminders and cronjobs (\"every morning at 7\"), daily notes and the agent's current date and time.",
       "useDefault": "Use default (admin: {value})"
     },
     "thinkingLevelUnsupported": "{level} (not supported, runs as {effective})",
@@ -856,6 +857,7 @@
     "loading": "Loading users...",
     "empty": "No users found.",
     "addUser": "Add user",
+    "useDefault": "Use admin default",
     "addUserDescription": "Create a new account with a username, password, and role.",
     "editUser": "Edit user",
     "editUserDescription": "Update the role or reset the password for this account.",

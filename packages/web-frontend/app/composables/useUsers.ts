@@ -28,12 +28,12 @@ export function useUsers() {
     }
   }
 
-  async function createUser(username: string, password: string, role: string): Promise<boolean> {
+  async function createUser(username: string, password: string, role: string, language?: string, timezone?: string): Promise<boolean> {
     error.value = null
     try {
       await apiFetch('/api/users', {
         method: 'POST',
-        body: JSON.stringify({ username, password, role }),
+        body: JSON.stringify({ username, password, role, language, timezone }),
       })
       await fetchUsers()
       return true

@@ -2114,6 +2114,7 @@ import { canonicalizeProviderModelRef, type ProviderModelSpecContract, type Sett
 import { buildThinkingLevelSelectOptions, findModelSpec, findModelSpecByComposite } from '~/utils/thinkingLevels'
 import { buildProviderModelOptions } from '~/utils/providerModelOptions'
 import { useSettingsApi } from '~/api/settings'
+import { TIMEZONE_OPTIONS } from '~/utils/settingsOptions'
 import EmailAccountsWorkspace from '~/features/email/components/EmailAccountsWorkspace.vue'
 import ImageGenerationSettingsTab from './ImageGenerationSettingsTab.vue'
 import UserAgentSettingsTab from './UserAgentSettingsTab.vue'
@@ -2131,37 +2132,7 @@ const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
 
-const timezones = [
-  'UTC',
-  'Europe/London',
-  'Europe/Berlin',
-  'Europe/Paris',
-  'Europe/Madrid',
-  'Europe/Rome',
-  'Europe/Amsterdam',
-  'Europe/Zurich',
-  'Europe/Vienna',
-  'Europe/Warsaw',
-  'Europe/Moscow',
-  'Europe/Istanbul',
-  'Asia/Dubai',
-  'Asia/Kolkata',
-  'Asia/Bangkok',
-  'Asia/Singapore',
-  'Asia/Shanghai',
-  'Asia/Tokyo',
-  'Asia/Seoul',
-  'Australia/Sydney',
-  'Pacific/Auckland',
-  'America/New_York',
-  'America/Chicago',
-  'America/Denver',
-  'America/Los_Angeles',
-  'America/Anchorage',
-  'Pacific/Honolulu',
-  'America/Sao_Paulo',
-  'America/Argentina/Buenos_Aires',
-]
+const timezones = TIMEZONE_OPTIONS
 
 type TabId = SettingsTabId
 

@@ -251,13 +251,13 @@ function closeModal() {
   editingUser.value = null
 }
 
-async function handleSubmit(payload: { username: string; password: string; role: string }) {
+async function handleSubmit(payload: { username: string; password: string; role: string; language: string; timezone: string }) {
   clearMessages()
   actionPending.value = true
 
   let success = false
   if (formMode.value === 'create') {
-    success = await createUser(payload.username, payload.password, payload.role)
+    success = await createUser(payload.username, payload.password, payload.role, payload.language, payload.timezone)
     if (success) successMessage.value = t('users.createSuccess')
   } else if (editingUser.value) {
     const updates: { role?: string; password?: string } = { role: payload.role }
