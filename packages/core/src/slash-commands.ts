@@ -265,7 +265,9 @@ export function registerBuiltInSlashCommands(registry: SlashCommandRegistry): vo
     surfaces: ['web', 'telegram'],
     handler: (ctx) => {
       if (!ctx.scheduledTaskStore) return 'Cronjob store is not available on this surface.'
-      const jobs = ctx.scheduledTaskStore.list().map((j) => ({
+      const scope = ctx.db && ctx.userId !== null ? resolveUserScope(ctx.db, ctx.userId) : null
+      if (!scope) return formatCronjobsReply([])
+      const jobs = ctx.scheduledTaskStore.list({ ownerUserId: scope.id }).map((j) => ({
         id: j.id,
       name: j.name,
         cronExpression: j.schedule,
