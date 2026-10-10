@@ -67,7 +67,7 @@
       </div>
 
       <DialogFooter>
-        <template v-if="entry?.status === 'pending'">
+        <template v-if="isOwner && entry?.status === 'pending'">
           <Button variant="outline" :disabled="deciding" @click="emit('decide', 'reject')">
             {{ $t('email.sentLog.actions.reject') }}
           </Button>
@@ -76,7 +76,7 @@
           </Button>
         </template>
         <Button
-          v-else-if="entry?.status === 'failed'"
+          v-else-if="isOwner && entry?.status === 'failed'"
           variant="outline"
           :disabled="deciding"
           @click="emit('decide', 'retry')"
@@ -97,6 +97,8 @@ const props = defineProps<{ open: boolean; entry: EmailSendLogEntry | null; deci
 const emit = defineEmits<{ close: []; decide: [action: EmailSendLogDecision] }>()
 
 const { t } = useI18n()
+const { user } = useAuth()
+const isOwner = computed(() => props.entry?.ownerUserId === user.value?.id)
 
 const decisionKey = computed(() => decisionLabelKey(props.entry))
 

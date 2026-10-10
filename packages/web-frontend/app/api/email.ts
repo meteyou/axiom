@@ -42,6 +42,8 @@ export interface EmailConnectionTestResult {
 export interface EmailAccount {
   id: string
   name: string
+  ownerUserId: number
+  ownerUsername: string | null
   imapHost: string
   imapPort: number
   imapUser: string
@@ -120,6 +122,7 @@ export interface EmailSendLogEntry {
   id: string
   accountId: string
   accountName: string
+  ownerUserId: number | null
   status: EmailSendLogStatus
   to: string[]
   cc: string[]

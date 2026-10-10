@@ -118,7 +118,7 @@
                 <TableCell class="text-xs text-muted-foreground">{{ entry.accountName }}</TableCell>
                 <TableCell class="text-xs text-muted-foreground">{{ formatDateTime(entry.createdAt) }}</TableCell>
                 <TableCell @click.stop>
-                  <div v-if="entry.status === 'pending'" class="flex gap-1.5">
+                  <div v-if="isOwner(entry) && entry.status === 'pending'" class="flex gap-1.5">
                     <Button size="sm" :disabled="decidingId === entry.id" @click="decide(entry.id, 'approve')">
                       {{ $t('email.sentLog.actions.approve') }}
                     </Button>
@@ -132,7 +132,7 @@
                     </Button>
                   </div>
                   <Button
-                    v-else-if="entry.status === 'failed'"
+                    v-else-if="isOwner(entry) && entry.status === 'failed'"
                     size="sm"
                     variant="outline"
                     :disabled="decidingId === entry.id"
@@ -174,6 +174,9 @@ import { EMAIL_SEND_LOG_STATUSES } from '~/api/email'
 import { useEmailSendLog } from '../composables/useEmailSendLog'
 import { decisionLabelKey, formatDateTime, statusVariant } from '../sendLogFormat'
 import EmailSendLogDetailDialog from './EmailSendLogDetailDialog.vue'
+
+const { user } = useAuth()
+const isOwner = (entry: EmailSendLogEntry) => entry.ownerUserId === user.value?.id
 
 const {
   entries,

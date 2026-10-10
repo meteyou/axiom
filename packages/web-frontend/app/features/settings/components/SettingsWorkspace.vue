@@ -79,7 +79,20 @@
       <div class="flex-1 overflow-y-auto" role="tabpanel">
         <div :class="['mx-auto px-6 py-6 md:px-8 md:py-8', activeTab === 'email' ? 'max-w-5xl' : 'max-w-xl']">
 
-          <UserAgentSettingsTab v-if="!isAdmin" />
+          <UserAgentSettingsTab v-if="!isAdmin && activeTab === 'agent'" />
+
+          <div v-else-if="!isAdmin">
+            <div class="mb-8">
+              <h2 class="text-lg font-semibold tracking-tight text-foreground">
+                {{ $t('settings.tabs.email') }}
+              </h2>
+              <p class="mt-1 text-sm text-muted-foreground">
+                {{ $t('settings.tabs.emailDescription') }}
+              </p>
+            </div>
+
+            <EmailAccountsWorkspace />
+          </div>
 
           <!-- Loading skeletons -->
           <div v-else-if="loading" class="flex flex-col gap-6">

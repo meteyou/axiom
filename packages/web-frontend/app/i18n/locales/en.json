@@ -1168,6 +1168,7 @@
     "deleteConfirm": "This permanently removes the account \"{name}\" and its credentials.",
     "columns": {
       "name": "Name",
+      "owner": "Owner",
       "permissions": "Permissions",
       "server": "Server"
     },

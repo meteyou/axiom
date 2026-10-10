@@ -1168,6 +1168,7 @@
     "deleteConfirm": "Das Konto \"{name}\" und seine Zugangsdaten werden dauerhaft entfernt.",
     "columns": {
       "name": "Name",
+      "owner": "Besitzer",
       "permissions": "Berechtigungen",
       "server": "Server"
     },
