@@ -553,7 +553,7 @@ export class MemoryConsolidationScheduler {
       .filter((scope): scope is UserScope => scope != null)
     const nonAdmin = scopes.filter(scope => !scope.isBootstrapAdmin)
     const others = nonAdmin.filter(scope =>
-      readRecentDailyFiles(this.settings.lookbackDays, undefined, scope.paths.dailyDir).trim() !== '')
+      readRecentDailyFiles(this.settings.lookbackDays, undefined, scope.paths.dailyDir, scope.settings.timezone).trim() !== '')
     const admin = scopes.find(scope => scope.isBootstrapAdmin)
     return {
       runs: admin ? [...others, admin] : others,

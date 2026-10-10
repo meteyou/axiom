@@ -29,6 +29,8 @@ export interface SettingsRouterOptions {
   db?: Database
   onActiveProviderChanged?: () => void
   getAgentCore?: () => AgentCore | null
+  /** `null` means the global timezone changed; otherwise the timezone of that user. */
+  onTimezoneChanged?: (userId: number | null) => void
   onHealthMonitorSettingsChanged?: () => void
   onConsolidationSettingsChanged?: () => void
   onAgentHeartbeatSettingsChanged?: () => void

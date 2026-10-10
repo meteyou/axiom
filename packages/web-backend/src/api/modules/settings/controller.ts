@@ -15,7 +15,7 @@ export interface SettingsController {
 export function createSettingsController(options: SettingsRouterOptions = {}): SettingsController {
   const service = createSettingsService(options)
   const ownService = options.db
-    ? createOwnSettingsService(options.db, service, options.onActiveProviderChanged)
+    ? createOwnSettingsService(options.db, service, options.onActiveProviderChanged, options.onTimezoneChanged)
     : null
 
   return {

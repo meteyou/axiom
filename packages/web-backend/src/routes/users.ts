@@ -8,6 +8,7 @@ import {
   getDefaultHeartbeatContent,
   getBootstrapAdminId,
   getUserProfileTemplate,
+  isValidTimezone,
   listUserActiveTaskIds,
   listUserCronjobIds,
   purgeUserData,
@@ -123,10 +124,12 @@ export function createUsersRouter(options: UsersRouterOptions | Database): Route
    * POST /api/users — create user
    */
   router.post('/', (req: AuthenticatedRequest, res) => {
-    const { username, password, role } = req.body as {
+    const { username, password, role, language, timezone } = req.body as {
       username?: string
       password?: string
       role?: string
+      language?: string | null
+      timezone?: string | null
     }
 
     if (!username?.trim()) {
@@ -140,6 +143,17 @@ export function createUsersRouter(options: UsersRouterOptions | Database): Route
     }
 
     const userRole = role === 'admin' ? 'admin' : 'user'
+
+    const languageValue = typeof language === 'string' ? language.trim() : ''
+    if (languageValue.length > 64) {
+      res.status(400).json({ error: 'Language is too long' })
+      return
+    }
+    const timezoneValue = typeof timezone === 'string' ? timezone.trim() : ''
+    if (timezoneValue && !isValidTimezone(timezoneValue)) {
+      res.status(400).json({ error: `Invalid timezone: ${timezoneValue}` })
+      return
+    }
 
     // Check for duplicate username
     const existing = db.prepare('SELECT id, deleted_at FROM users WHERE username = ?').get(username.trim()) as
@@ -164,8 +178,14 @@ export function createUsersRouter(options: UsersRouterOptions | Database): Route
     try {
       const hash = bcrypt.hashSync(password, SALT_ROUNDS)
       const result = db.prepare(
-        'INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)'
-      ).run(name, hash, userRole)
+        'INSERT INTO users (username, password_hash, role, language, timezone) VALUES (?, ?, ?, ?, ?)'
+      ).run(
+        name,
+        hash,
+        userRole,
+        userRole === 'user' ? languageValue || null : null,
+        userRole === 'user' ? timezoneValue || null : null,
+      )
 
       const scope = resolveUserScope(db, Number(result.lastInsertRowid))
       if (scope) {
