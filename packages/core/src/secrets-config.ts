@@ -12,12 +12,16 @@ export interface SecretsFile {
 
 const SECRETS_FILENAME = 'secrets.json'
 
+/** Global secrets live in the config dir; a user's personal secrets in their personal folder. */
+function secretsFilePath(userDir?: string | null): string {
+  return path.join(userDir ?? getConfigDir(), SECRETS_FILENAME)
+}
+
 /**
- * Load secrets.json from config directory
+ * Load secrets.json from the config directory, or from a user's personal folder
  */
-export function loadSecrets(): SecretsFile {
-  const configDir = getConfigDir()
-  const filePath = path.join(configDir, SECRETS_FILENAME)
+export function loadSecrets(userDir?: string | null): SecretsFile {
+  const filePath = secretsFilePath(userDir)
 
   if (!fs.existsSync(filePath)) {
     return { env: {} }
@@ -30,20 +34,17 @@ export function loadSecrets(): SecretsFile {
 /**
  * Save secrets.json to config directory
  */
-export function saveSecrets(data: SecretsFile): void {
-  const configDir = getConfigDir()
-  if (!fs.existsSync(configDir)) {
-    fs.mkdirSync(configDir, { recursive: true })
-  }
-  const filePath = path.join(configDir, SECRETS_FILENAME)
-  fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n', 'utf-8')
+export function saveSecrets(data: SecretsFile, userDir?: string | null): void {
+  const filePath = secretsFilePath(userDir)
+  fs.mkdirSync(path.dirname(filePath), { recursive: true })
+  fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n', { encoding: 'utf-8', mode: 0o600 })
 }
 
 /**
  * Get all secrets with values decrypted (for runtime use)
  */
-export function loadSecretsDecrypted(): Record<string, string> {
-  const file = loadSecrets()
+export function loadSecretsDecrypted(userDir?: string | null): Record<string, string> {
+  const file = loadSecrets(userDir)
   const decrypted: Record<string, string> = {}
   for (const [key, value] of Object.entries(file.env)) {
     if (value && isEncrypted(value)) {
@@ -63,8 +64,8 @@ export function loadSecretsDecrypted(): Record<string, string> {
 /**
  * Get secrets in masked form for API responses (never return real values)
  */
-export function loadSecretsMasked(): Array<{ key: string; configured: boolean; maskedValue: string }> {
-  const file = loadSecrets()
+export function loadSecretsMasked(userDir?: string | null): Array<{ key: string; configured: boolean; maskedValue: string }> {
+  const file = loadSecrets(userDir)
   const result: Array<{ key: string; configured: boolean; maskedValue: string }> = []
   for (const [key, encryptedValue] of Object.entries(file.env)) {
     if (!encryptedValue) {
@@ -88,30 +89,30 @@ export function loadSecretsMasked(): Array<{ key: string; configured: boolean; m
 /**
  * Set a secret (encrypts and saves)
  */
-export function setSecret(key: string, value: string): void {
-  const file = loadSecrets()
+export function setSecret(key: string, value: string, userDir?: string | null): void {
+  const file = loadSecrets(userDir)
   file.env[key] = value ? encrypt(value) : ''
-  saveSecrets(file)
+  saveSecrets(file, userDir)
 }
 
 /**
  * Set multiple secrets at once (encrypts and saves)
  */
-export function setSecrets(secrets: Record<string, string>): void {
-  const file = loadSecrets()
+export function setSecrets(secrets: Record<string, string>, userDir?: string | null): void {
+  const file = loadSecrets(userDir)
   for (const [key, value] of Object.entries(secrets)) {
     file.env[key] = value ? encrypt(value) : ''
   }
-  saveSecrets(file)
+  saveSecrets(file, userDir)
 }
 
 /**
  * Delete a secret
  */
-export function deleteSecret(key: string): void {
-  const file = loadSecrets()
+export function deleteSecret(key: string, userDir?: string | null): void {
+  const file = loadSecrets(userDir)
   delete file.env[key]
-  saveSecrets(file)
+  saveSecrets(file, userDir)
 }
 
 /** Keys currently managed by injectSecretsIntoEnv — used to clean up removed secrets */
