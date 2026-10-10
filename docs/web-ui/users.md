@@ -4,7 +4,7 @@ The Users page is where you add, remove, and manage local accounts for the Axiom
 
 > **Admins manage all accounts.** Regular users see the page too, but only their own row, where they can change their own password (see [Your own account](#your-own-account)).
 
-> **Multi-tenancy reminder.** Axiom is a single-tenant agent — adding a user *does not* spin up a separate agent. Every account talks to the same agent, sees the same memory, and shares the same Settings. Roles control *administrative access to the UI*, not data isolation. The only thing that's actually scoped to the user is their [User Profile in Memory](./memory#user-profile).
+> **Multi-user.** Every account gets its own agent runtime, conversation, memory, tasks, cronjobs, email and settings. The wiki and global configuration are shared. Isolation is cooperative, not hard — see [Multi-User](../concepts/multi-user).
 
 ![Screenshot of the Users page](../assets/screenshot-users.png)
 
@@ -50,18 +50,19 @@ Two roles, hard-coded:
 | Role        | What they can access                                                                                              |
 |-------------|-------------------------------------------------------------------------------------------------------------------|
 | **`admin`** | Everything — every sidebar entry, every Settings panel, all of Users. The first admin is bootstrapped via environment variables on the very first run; see [Configuration](../guide/configuration). |
-| **`user`**  | The [Chat](./chat) page and their own account on this page. Every other sidebar entry shows a locked screen explaining the page is admin-only. |
+| **`user`**  | [Chat](./chat), own tasks and cronjobs, email, [Memory](./memory), the personal Settings tabs and their own account on this page. Admin-only pages show a locked screen. |
 
-There is no per-feature permission system. *Admin* means "operator of this Axiom deployment"; *user* means "someone who's allowed to talk to the agent through this web UI". For finer-grained control, run a separate Axiom instance per audience.
+There is no per-feature permission system. *Admin* means "operator of this Axiom deployment"; *user* means "someone with their own private agent context". See [Multi-User](../concepts/multi-user) for what is private and what is shared. For hard isolation, run a separate Axiom instance per audience.
 
 ## Add user dialog
 
-Opened by the **Add user** button. Three fields:
+Opened by the **Add user** button. Fields:
 
 | Field      | Notes                                                                                              |
 |------------|----------------------------------------------------------------------------------------------------|
-| **Username** | Required. Free text. Used for login and as the filename for the user's profile under [`/data/memory/users/<username>.md`](./memory#user-profile). Pick something filesystem-safe (lowercase letters, digits, hyphens). |
+| **Username** | Required. Letters and digits only. Used for login and for the personal folder `/data/users/<username>/` and workspace `/workspace/<username>/`, which are created automatically. Rejected if a matching folder already exists. |
 | **Role**     | `User` (default) or `Admin`. See [Roles](#roles).                                                |
+| **Language / Timezone** | Optional starting values for the user's personal settings. |
 | **Password** | Required, **minimum 4 characters**. Plaintext only at submission — stored hashed in the database. |
 
 Hit **Save** to create. On success the dialog closes, a green banner appears at the top of the page, and the new row is in the table.
@@ -117,5 +118,6 @@ A single Axiom user can only be linked to one Telegram identity at a time.
 
 - [Configuration](../guide/configuration) — how the first admin is bootstrapped via environment variables.
 - [Settings → Telegram](../settings/telegram) — the actual Telegram user-approval and assignment flow.
-- [Memory → User Profile](./memory#user-profile) — the per-user `users/<username>.md` file each account gets.
-- [Chat](./chat) — the only page non-admin users can access.
+- [Memory → User Profile](./memory#user-profile) — the private profile file each account gets (`/data/users/<username>/PROFILE.md`; the bootstrap admin keeps `/data/memory/users/<username>.md`).
+- [Multi-User](../concepts/multi-user) — isolation level, private vs. shared data, recommended setup.
+- [Chat](./chat) — the main page for every user.

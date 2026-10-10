@@ -1,6 +1,6 @@
 # Chat
 
-The Chat page is the main agent conversation view and the only sidebar entry every user can access. Everything else is admin-only; this is where regular users live.
+The Chat page is the main agent conversation view and where most users spend their time. Regular users also get their own Tasks, Cronjobs, Memory, Email, Account and personal Settings tabs; instance-wide pages are admin-only — see [Multi-User](../concepts/multi-user).
 
 It's a streaming, persistent conversation with the configured agent — messages flow over a WebSocket, attachments upload through a separate REST endpoint, and the page reconnects automatically if the socket drops.
 
@@ -85,9 +85,9 @@ When you start a new session — or the agent does, after a long inactivity gap 
 
 The composer at the bottom has, from left to right:
 
-- **Brain icon (admin-only)** — quick switch for the [thinking level](../settings/agent#thinking-level); it lists only the levels the active model supports. The icon color encodes the level the model actually runs with (gray → red → purple for `max`); if the stored level isn't supported, a note below the list shows which level is used instead. Changes apply immediately to the next turn.
+- **Brain icon** — quick switch for the [thinking level](../settings/agent#thinking-level); it lists only the levels the active model supports. The icon color encodes the level the model actually runs with (gray → red → purple for `max`); if the stored level isn't supported, a note below the list shows which level is used instead. Changes apply immediately to the next turn.
 
-  > This is a *global* setting — the main agent is single-tenant, so switching here affects every chat. For a per-task override, use [Cronjobs](./cronjobs) or `create_task` instead.
+  > For regular users this changes only *your* thinking level. For admins it changes the global default that every user without a personal override inherits. For a per-task override, use [Cronjobs](./cronjobs) or `create_task` instead.
 
 - **Text area** — multi-line input. `Enter` sends, `Shift+Enter` inserts a newline. The box auto-resizes up to ~150px and then scrolls.
 - **Paperclip** — opens a file picker. You can also drag and drop files onto the chat area; an overlay appears while dragging.

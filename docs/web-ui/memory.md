@@ -113,11 +113,11 @@ How facts get *into* the table (the extraction pipeline, when it runs, what trig
 
 ### User Profile
 
-A single-file editor for *your own* user profile — the file at `/data/memory/users/<your-username>.md`. The path bar reflects your username (e.g. `/data/memory/users/admin.md`).
+A single-file editor for *your own* user profile — the file at `/data/users/<your-username>/PROFILE.md`. The bootstrap admin keeps the legacy path `/data/memory/users/<username>.md` (e.g. `/data/memory/users/admin.md`). The path bar shows the file for your account.
 
 User profiles are loaded into the prompt only when *that* user is talking to the agent, so multi-user setups stay clean. Use this file for your name, location, work context, communication preferences — anything person-specific.
 
-> Each user only ever sees their own profile here. To edit another user's profile, the file has to be edited directly under `/data/memory/users/<username>.md`. (User management itself lives on the [Users](./users) page.)
+> Each user only ever sees their own profile here. To edit another user's profile, the file has to be edited directly under `/data/users/<username>/PROFILE.md` (or `/data/memory/users/<username>.md` for the bootstrap admin). (User management itself lives on the [Users](./users) page.)
 
 ### Soul
 

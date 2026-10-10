@@ -4,7 +4,7 @@ The Web Interface is the primary way to interact with Axiom: send messages, watc
 
 With the default Docker Compose setup, you open it at [http://localhost:3000](http://localhost:3000). If you changed `HOST_PORT` in your `.env`, use that port instead.
 
-> **Admin vs. user.** Most pages are admin-only — only users with role `admin` see them. Regular users land on **Chat** and stay there. The locked screen on every other page is intentional: an Axiom deployment is single-tenant by design, and configuration is the operator's job.
+> **Admin vs. user.** Regular users get Chat, their own Tasks and Cronjobs, Email, Memory and personal Settings tabs; instance-wide pages (Providers, Activity Logs, Skills, …) are admin-only and show a locked screen. See [Multi-User](../concepts/multi-user).
 
 ![Screenshot of the Axiom web interface](../assets/screenshot-chat.png)
 

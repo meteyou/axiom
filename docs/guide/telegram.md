@@ -48,7 +48,7 @@ The backend will start the bot in the background. Within a few seconds the bot i
 
 ### 3. Send `/start` and approve yourself
 
-Axiom's Telegram bot is **single-tenant by default**: it ignores everyone except the users you explicitly approve.
+Axiom's Telegram bot is **closed by default**: it ignores everyone except the users you explicitly approve.
 
 1. Open Telegram, search for your bot's username (the one ending in `bot`), and start a chat.
 2. Send `/start`. The bot replies with a welcome message and registers you in Axiom as a **`pending`** user.
