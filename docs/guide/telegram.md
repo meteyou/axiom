@@ -106,6 +106,14 @@ a minute — Telegram caches the command list per device. Failures during
 `setMyCommands` are non-fatal: typing a slash command still works, the menu
 just stays empty until the next successful start.
 
+## Multiple users
+
+When more than one Axiom user exists, Telegram follows these rules:
+
+- **Linked accounts** run as their Axiom user: own conversation, model, thinking level, language and timezone, and notifications go only to that user. `/model`, `/thinking`, `/tasks`, `/cronjobs`, `/stop` and `/new` affect only your own settings, tasks and session.
+- **Approved but unlinked accounts** are refused with a hint to ask the administrator to link the account (see [Settings → Telegram](../settings/telegram#telegram-users)). In an instance with a single user nothing changes.
+- **Group chats:** the bot only answers senders whose linked Axiom user has the admin role. Messages and commands from everyone else are ignored silently. Dedicated group modes are planned.
+
 ## Voice messages
 
 Axiom can transcribe incoming Telegram voice messages and optionally reply with synthesized speech. Configuration lives in two places:
