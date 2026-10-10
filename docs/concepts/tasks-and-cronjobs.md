@@ -203,7 +203,7 @@ Standard 5-field cron format: `minute hour day-of-month month day-of-week`. Day-
 | Twice a day (8 and 20) | `0 8,20 * * *` |
 | March 30 at 11:30 | `30 11 30 3 *` |
 
-Schedules are evaluated in the configured `timezone` (see `<current_datetime>` in the system prompt, set via Settings → Agent). If you change the timezone, all enabled cronjobs are reinterpreted on the next tick — there is no per-cronjob timezone override.
+Schedules are evaluated in the **owner's effective timezone**: the owner's own timezone from Settings → Agent, or the global (admin) timezone when they use the default. `0 7 * * *` therefore means 07:00 on the owner's wall clock, also across daylight-saving changes. Wall-clock times skipped by a spring-forward gap do not run that day; times repeated by a fall-back run once. When the owner (or, for the global default, the admin) changes the timezone, all affected enabled cronjobs and reminders are rescheduled immediately. There is no per-cronjob timezone override.
 
 ### Auto-disable for one-shot patterns
 

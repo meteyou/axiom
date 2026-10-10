@@ -11,6 +11,7 @@ Regular users open **Settings** and see only the **Agent** tab, with their own:
 - **Chat model** — any enabled model of any provider.
 - **Thinking level** — `off` to `max`.
 - **Language** — the agent's reply language and the language speech-to-text transcribes in.
+- **Timezone** — the timezone of the agent's "now", your daily notes and your cronjobs and reminders (see [Timezone](#timezone)).
 
 Each field offers **Use default (admin: …)**. On default, the user follows the admin's global settings below, including later changes by the admin. An override applies from that user's next message and affects nobody else.
 
@@ -46,6 +47,14 @@ Applies immediately on the next turn.
 The current date in this timezone is injected into the system prompt, and the minute-level time is appended to each user message, so the agent always knows "now" (the time is kept out of the system prompt to avoid invalidating provider prompt caches every minute — see [System Prompt → layer 16](../concepts/system-prompt#_16-current-date-current-date)). Also used for cron evaluation (Tasks & Heartbeat) and the naming of `memory/daily/<date>.md` files.
 
 Default: `UTC`. Mirrors the container's `TZ` env var if set.
+
+On a multi-user instance this is the global default (the admin's timezone). Every other user can pick their own timezone under **Settings → Agent** or keep **Use default (admin: …)**. A user's timezone drives:
+
+- the current date and time the agent sees in that user's chats,
+- the file date and `HH:MM` headings of that user's daily notes,
+- when that user's cronjobs and reminders fire.
+
+When a user changes their timezone, their enabled cronjobs and reminders are rescheduled immediately. Admins can set a user's language and timezone when creating the account on the Users page.
 
 ```json
 { "timezone": "Europe/Vienna" }
