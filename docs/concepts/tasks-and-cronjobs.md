@@ -148,7 +148,7 @@ Tasks have no user who could start a fresh session, so long tool loops are compa
 
 These are operational safeguards documented in detail under [Settings → Tasks](./../settings/tasks). Briefly:
 
-- **Loop detection** (`systematic` / `smart` / `auto`) terminates a task that's calling the same tool with the same args in circles, or repeatedly failing. On detection, the runner aborts the agent, marks the task `failed`, and emits a `<task_injection>` with a `Hint: Use /kill_task <id>` line.
+- **Loop detection** (`systematic` / `smart` / `auto`) terminates a task that keeps repeating the same failing tool call (`systematic`) or that an LLM judge considers stuck (`smart`). On detection, the runner aborts the agent, marks the task `failed`, and emits a `<task_injection>` with a `Hint: Use /kill_task <id>` line.
 - **Periodic status updates** are opt-in `<task_status type="periodic_update">` messages emitted every N minutes while a task runs. They're persisted as `system`-role rows with a `task_status_update` metadata tag so they don't count as conversational turns, and they're broadcast over WebSocket and (optionally) Telegram. They never invoke the LLM.
 - **Killing** a task — from the Tasks page, the API (`POST /api/tasks/:id/kill`), the chat (`/stop` / `/kill`), or the Telegram `/stop` / `/kill` commands — aborts the agent and marks the task `failed`.
 

@@ -21,6 +21,7 @@ import { assertLlmResponseOk } from './llm-response.js'
 import { redactToolResultImages } from './llm-image.js'
 import {
   ToolCallTracker,
+  isFailedToolResult,
   buildSmartDetectionPrompt,
   parseSmartDetectionResponse,
   resolveDetectionMethod,
@@ -833,7 +834,7 @@ export class TaskRunner {
 
         const toolResult = redactToolResultImages(event.result)
         const outputStr = JSON.stringify(toolResult ?? {})
-        const isError = event.isError === true || (typeof toolResult === 'string' && toolResult.startsWith('Error'))
+        const isError = isFailedToolResult(event.isError, toolResult)
         this.writeToolJournal(runningTask.taskId, journal => journal.recordEnded({
           taskId: runningTask.taskId,
           toolCallId: event.toolCallId,
@@ -866,6 +867,7 @@ export class TaskRunner {
           input: JSON.stringify(args),
           output: outputStr,
           durationMs,
+          status: isError ? 'error' : 'success',
         })
         break
       }

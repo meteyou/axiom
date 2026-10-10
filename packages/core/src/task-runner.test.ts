@@ -2179,6 +2179,95 @@ describe('TaskRunner', () => {
     })
   })
 
+  describe('systematic loop detection', () => {
+    const failingEditArgs = { path: 'script.py', edits: [{ oldText: 'missing', newText: 'replacement' }] }
+    const failingEditResult = {
+      content: [{ type: 'text', text: 'Could not find edits[0].oldText in script.py. The text must match exactly.' }],
+      details: { error: true },
+    }
+
+    async function startTaskWithLoopDetection(sessionId: string) {
+      runner.dispose()
+      runner = new TaskRunner({
+        db,
+        buildModel: () => ({} as ReturnType<TaskRunnerOptions['buildModel']>),
+        getApiKey: async () => 'test-key',
+        tools: [],
+        memoryDir: undefined,
+        onTaskComplete: (taskId: string, injection: string) => {
+          onTaskCompleteCalls.push({ taskId, injection })
+        },
+        sessionManager,
+        loopDetection: { enabled: true, method: 'systematic', maxConsecutiveFailures: 3 },
+      })
+
+      const { Agent } = await import('@earendil-works/pi-agent-core')
+      const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
+      let subscribeFn: ((event: unknown) => void) | null = null
+      const abort = vi.fn()
+      MockAgent.mockImplementationOnce(() => ({
+        subscribe: vi.fn((fn: (event: unknown) => void) => {
+          subscribeFn = fn
+          return () => { subscribeFn = null }
+        }),
+        prompt: vi.fn(() => new Promise<void>(() => {})),
+        abort,
+        state: { messages: [] },
+      }))
+
+      const task = store.create({ name: 'Looping Task', prompt: 'work', triggerType: 'agent', sessionId })
+      await runner.startTask(task, mockProvider)
+      expect(subscribeFn).not.toBeNull()
+
+      let callIndex = 0
+      const emitToolCall = (toolName: string, args: unknown, result: unknown, isError = false): void => {
+        const toolCallId = `call-${++callIndex}`
+        subscribeFn!({ type: 'tool_execution_start', toolCallId, toolName, args })
+        subscribeFn!({ type: 'tool_execution_end', toolCallId, toolName, result, isError })
+      }
+      return { task, abort, emitToolCall }
+    }
+
+    it('fails the task when a tool keeps returning the same error result without the isError flag', async () => {
+      const { task, abort, emitToolCall } = await startTaskWithLoopDetection('loop-details-error-session')
+
+      emitToolCall('edit_file', failingEditArgs, failingEditResult)
+      emitToolCall('edit_file', failingEditArgs, failingEditResult)
+      expect(store.getById(task.id)!.status).toBe('running')
+
+      emitToolCall('edit_file', failingEditArgs, failingEditResult)
+
+      const row = store.getById(task.id)!
+      expect(row.status).toBe('failed')
+      expect(row.errorMessage).toBe('Loop detected (systematic): Tool "edit_file" produced the same error 3 consecutive times')
+      expect(abort).toHaveBeenCalled()
+      expect(onTaskCompleteCalls.some(call => call.taskId === task.id && call.injection.includes('Loop detected'))).toBe(true)
+    })
+
+    it('keeps the task running when identical tool calls succeed', async () => {
+      const { task, abort, emitToolCall } = await startTaskWithLoopDetection('loop-success-session')
+      const okResult = { content: [{ type: 'text', text: 'ok' }], details: { exitCode: 0 } }
+
+      for (let i = 0; i < 5; i++) emitToolCall('shell', { command: 'ls' }, okResult)
+
+      expect(store.getById(task.id)!.status).toBe('running')
+      expect(abort).not.toHaveBeenCalled()
+    })
+
+    it('logs tool results that report details.error as errors in tool_calls', async () => {
+      const { emitToolCall } = await startTaskWithLoopDetection('loop-status-session')
+
+      emitToolCall('read_file', { path: 'a.txt' }, { content: [{ type: 'text', text: 'hello' }], details: {} })
+      emitToolCall('edit_file', failingEditArgs, failingEditResult)
+
+      const rows = db.prepare('SELECT tool_name, status FROM tool_calls WHERE session_id = ? ORDER BY id').all('loop-status-session')
+      expect(rows).toEqual([
+        { tool_name: 'read_file', status: 'success' },
+        { tool_name: 'edit_file', status: 'error' },
+      ])
+    })
+  })
+
   describe('TASKS.md background task guidelines injection', () => {
     let configTmpDir: string
     let originalDataDir: string | undefined
