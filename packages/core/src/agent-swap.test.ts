@@ -75,7 +75,7 @@ describe('AgentCore runtime boundary', () => {
       tools: [],
     })
 
-    const toolNames = agentCore.getRuntimeStateSnapshot().toolNames
+    const toolNames = agentCore.getRuntimeStateSnapshot('1').toolNames
     expect(toolNames).toContain('search_memories')
   })
 
@@ -92,7 +92,7 @@ describe('AgentCore runtime boundary', () => {
     const fallback = makeFallbackProvider()
     agentCore.swapProvider(fallback, 'sk-fallback')
 
-    expect(agentCore.getRuntimeStateSnapshot().modelId).toBe('claude-sonnet-4-20250514')
+    expect(agentCore.getRuntimeStateSnapshot('1').modelId).toBe('claude-sonnet-4-20250514')
   })
 
   it('conversation context remains intact across swapProvider calls', () => {
@@ -103,10 +103,10 @@ describe('AgentCore runtime boundary', () => {
       tools: [],
     })
 
-    const snapshotBefore = agentCore.getRuntimeStateSnapshot()
+    const snapshotBefore = agentCore.getRuntimeStateSnapshot('1')
     const fallback = makeFallbackProvider()
     agentCore.swapProvider(fallback, 'sk-fallback')
-    const snapshotAfter = agentCore.getRuntimeStateSnapshot()
+    const snapshotAfter = agentCore.getRuntimeStateSnapshot('1')
 
     expect(snapshotAfter.messageCount).toBe(snapshotBefore.messageCount)
   })
@@ -133,7 +133,7 @@ describe('AgentCore runtime boundary', () => {
     })
 
     expect(agentCore.getProviderManager()).toBeUndefined()
-    expect(agentCore.getRuntimeStateSnapshot().modelId).toBe('gpt-4o')
+    expect(agentCore.getRuntimeStateSnapshot('1').modelId).toBe('gpt-4o')
   })
 })
 

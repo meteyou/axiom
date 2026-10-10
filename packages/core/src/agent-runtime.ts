@@ -41,6 +41,8 @@ import {
 } from './codemode-tool.js'
 import type { CodemodeNestedCallSnapshot } from './codemode-tool.js'
 import type { QuotaServiceLike } from './quota-tool.js'
+import { resolveUserScope } from './user-scope.js'
+import type { UserScope } from './user-scope.js'
 import type { AgentRuntimeStateSnapshot, ResponseChunk } from './agent-runtime-types.js'
 
 /**
@@ -52,8 +54,8 @@ export interface BaseAgentToolsOptions {
   db: Database
   builtinToolsConfig?: BuiltinToolsConfigSource
   sttEnabled?: boolean
-  /** Called by search_memories to scope results to the current user. */
-  getCurrentUserId?: () => number | undefined
+  /** User the tools act for; scopes search_memories and gates provider_quota. Omitted for background agents. */
+  user?: UserScope | null
   quotaService?: QuotaServiceLike
   /** Session that `generate_image` books its cost on; omitted for background agents. */
   getSessionId?: () => string | null | undefined
@@ -72,14 +74,14 @@ export function createBaseAgentTools(options: BaseAgentToolsOptions): AgentTool[
     ...createYoloTools(),
     ...createBuiltinWebTools(options.builtinToolsConfig),
     createReadChatHistoryTool({ db: options.db }),
-    createSearchMemoriesTool({ db: options.db, getCurrentUserId: options.getCurrentUserId }),
+    createSearchMemoriesTool({ db: options.db, getCurrentUserId: () => options.user?.id }),
     ...createAgentSkillTools(),
     ...createEmailTools(),
     ...(options.sttEnabled ? [createTranscribeAudioTool()] : []),
     ...(options.quotaService
       ? [createProviderQuotaTool({
           quotaService: options.quotaService,
-          isAuthorized: () => isQuotaVisibleToUser(options.db, options.getCurrentUserId?.()),
+          isAuthorized: () => isQuotaVisibleToUser(options.db, options.user),
         })]
       : []),
     ...createImageGenerationTools({ db: options.db, getSessionId: options.getSessionId }),
@@ -91,10 +93,10 @@ export function createBaseAgentTools(options: BaseAgentToolsOptions): AgentTool[
  * boundary. Background agents (heartbeat, cronjobs, tasks) run without an
  * interactive user and stay allowed.
  */
-function isQuotaVisibleToUser(db: Database, userId: number | undefined): boolean {
-  if (userId === undefined) return true
-  const row = db.prepare('SELECT role FROM users WHERE id = ?').get(userId) as { role?: string } | undefined
-  return row?.role === 'admin'
+function isQuotaVisibleToUser(db: Database, user: UserScope | null | undefined): boolean {
+  if (!user) return true
+  // Re-read the role: the runtime (and its UserScope) outlives role changes.
+  return resolveUserScope(db, user.id)?.role === 'admin'
 }
 
 export interface AgentRuntimeOptions {
@@ -107,7 +109,8 @@ export interface AgentRuntimeOptions {
   baseInstructions?: string
   providerConfig?: ProviderConfig
   providerManager?: ProviderManager
-  getCurrentToolUserId?: () => number | undefined
+  /** User this runtime serves; null for identities without a user row (e.g. Telegram pseudo users). */
+  user?: UserScope | null
   quotaService?: QuotaServiceLike
   /**
    * Reasoning / thinking level applied to every LLM turn. Defaults to the value
@@ -125,7 +128,7 @@ export interface AgentRuntimeBoundary {
    * back to a normal prompt when the transcript has no continuable tail.
    */
   retryLastTurn(text: string, sessionId: string, images?: ImageContent[]): AsyncIterable<ResponseChunk>
-  refreshSystemPrompt(channel?: string, currentUser?: { username: string }): void
+  refreshSystemPrompt(channel?: string, currentUser?: { username: string; role?: string }): void
   getCurrentTimeContext(): string
   swapProvider(provider: ProviderConfig, apiKey: string, modelId?: string): void
   getProviderManager(): ProviderManager | undefined
@@ -477,7 +480,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
   private imageHook: NonNullable<AgentOptions['afterToolCall']>
   private providerConfig?: ProviderConfig
   private providerManager?: ProviderManager
-  private getCurrentToolUserId: () => number | undefined
+  private user: UserScope | null
 
   constructor(options: AgentRuntimeOptions) {
     this.model = options.model
@@ -487,7 +490,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
     this.baseInstructions = options.baseInstructions
     this.providerConfig = options.providerConfig
     this.providerManager = options.providerManager
-    this.getCurrentToolUserId = options.getCurrentToolUserId ?? (() => undefined)
+    this.user = options.user ?? null
 
     // Ensure memory/config structure exists before prompt assembly.
     ensureMemoryStructure(options.memoryDir)
@@ -508,7 +511,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
         db: this.db,
         builtinToolsConfig: () => this.readRuntimeSettings().builtinToolsConfig,
         sttEnabled,
-        getCurrentUserId: () => this.getCurrentToolUserId(),
+        user: this.user,
         quotaService: options.quotaService,
         getSessionId: () => this.agent.sessionId,
       }),
@@ -576,7 +579,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
     return true
   }
 
-  refreshSystemPrompt(channel?: string, currentUser?: { username: string }): void {
+  refreshSystemPrompt(channel?: string, currentUser?: { username: string; role?: string }): void {
     this.syncImageGenerationTool()
     const codemodeEnabled = this.syncCodemodeTool()
     let systemPrompt = this.buildSystemPrompt(channel, currentUser)
@@ -738,7 +741,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
     return { language, timezone, builtinToolsConfig, sttEnabled, thinkingLevel }
   }
 
-  private buildSystemPrompt(channel?: string, currentUser?: { username: string }): string {
+  private buildSystemPrompt(channel?: string, currentUser?: { username: string; role?: string }): string {
     const { language, timezone, builtinToolsConfig, sttEnabled } = this.readRuntimeSettings()
 
     const activeSkills = getActiveSkillEntries()
