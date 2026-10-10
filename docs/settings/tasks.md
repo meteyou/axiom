@@ -53,7 +53,7 @@ Values: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. Like the chat
 
 ## Loop detection
 
-Tasks can get stuck — calling the same tool with the same args in a loop, or looping over a tool that keeps failing. Loop detection catches this and terminates the task.
+Tasks can get stuck — repeating the same failing tool call over and over, or going in circles without making progress. Loop detection catches this and terminates the task. Which of the two it catches depends on the detection method below.
 
 ### Enable loop detection
 
