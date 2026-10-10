@@ -1,11 +1,13 @@
 import type { AgentTool } from '@earendil-works/pi-agent-core'
 import { Type } from '@earendil-works/pi-ai'
-import type { ScheduledTaskActionType } from './scheduled-task-store.js'
+import type { ScheduledTask, ScheduledTaskActionType } from './scheduled-task-store.js'
 import type { TaskRuntimeScheduleBoundary } from './task-runtime.js'
 import { validateCronExpression, cronToHumanReadable, parseCronExpression, getNextRunTime } from './cron-parser.js'
 import { resolveProviderModelInput } from './provider-config.js'
 import { normalizeAttachedSkills } from './attached-skills.js'
 import { parseThinkingLevelArg, THINKING_LEVEL_PARAM_DESCRIPTION } from './task-tools.js'
+import { can, canCreateFor, getViewLevel } from './access-policy.js'
+import type { AccessAction, AccessActor } from './access-policy.js'
 
 /**
  * Resolve the (provider, model) pair a user may pass to a cronjob tool into
@@ -32,6 +34,53 @@ function resolveCronjobProviderValue(provider?: string, model?: string):
 
 export interface CronjobToolsOptions {
   taskRuntime: TaskRuntimeScheduleBoundary
+  /** The user the tools act for; cronjobs are created for and limited to this user by the access policy. */
+  actor?: AccessActor
+  /** Username lookup for the owner shown in admin listings of foreign cronjobs. */
+  getUsername?: (userId: number) => string | null
+}
+
+type CronjobToolError = { content: { type: 'text'; text: string }[]; details: { error: true } }
+
+function cronjobResource(cronjob: { ownerUserId: number | null }) {
+  return { kind: 'cronjob' as const, ownerId: cronjob.ownerUserId }
+}
+
+function cronjobError(text: string): CronjobToolError {
+  return { content: [{ type: 'text' as const, text }], details: { error: true } }
+}
+
+/**
+ * Null when the actor may perform the action. A cronjob the actor may not see
+ * is reported as missing so its existence stays private; an admin gets an
+ * explicit reason for actions only the owner may do.
+ */
+function denyCronjobAction(
+  options: CronjobToolsOptions,
+  cronjob: { id: string; ownerUserId: number | null },
+  action: AccessAction,
+  verb: string,
+): CronjobToolError | null {
+  const { actor } = options
+  if (!actor || can(actor, cronjobResource(cronjob), action, 'agent')) return null
+  if (actor.role === 'admin') {
+    return cronjobError(`Error: Cronjob "${cronjob.id}" belongs to another user; you may only disable or delete it, not ${verb} it.`)
+  }
+  return cronjobError(`Error: Cronjob "${cronjob.id}" not found.`)
+}
+
+function ownerLabel(options: CronjobToolsOptions, ownerUserId: number | null): string {
+  if (ownerUserId === null) return 'unknown'
+  return options.getUsername?.(ownerUserId) ?? `user ${ownerUserId}`
+}
+
+function formatForeignCronjobSummary(options: CronjobToolsOptions, cj: ScheduledTask): string {
+  const status = cj.enabled ? 'ENABLED' : 'DISABLED'
+  return `\u2022 [${status}] ${cj.name}\n  ID: ${cj.id}\n  Owner: ${ownerLabel(options, cj.ownerUserId)} (details are private)`
+}
+
+function ownerFor(options: CronjobToolsOptions): number | undefined {
+  return options.actor && canCreateFor(options.actor, options.actor.id) ? options.actor.id : undefined
 }
 
 function looksLikeDynamicTaskRequest(name: string, message: string): boolean {
@@ -152,6 +201,7 @@ export function createCronjobTool(options: CronjobToolsOptions): AgentTool {
           actionType,
           provider: providerValue,
           enabled: true,
+          ownerUserId: ownerFor(options),
           attachedSkills: normalizedAttachedSkills ?? undefined,
           thinkingLevel: actionType === 'task' ? thinking.value ?? null : null,
         })
@@ -287,6 +337,11 @@ export function editCronjobTool(options: CronjobToolsOptions): AgentTool {
           }
         }
 
+        const onlyToggle = enabled !== undefined && [prompt, name, schedule, action_type, provider, model, attached_skills, thinking_level]
+          .every(value => value === undefined)
+        const denied = denyCronjobAction(options, existing, onlyToggle ? 'toggle' : 'edit', 'edit')
+        if (denied) return denied
+
         // Validate schedule if provided
         if (schedule) {
           const validationError = validateCronExpression(schedule)
@@ -347,6 +402,16 @@ export function editCronjobTool(options: CronjobToolsOptions): AgentTool {
 
         // Re-register with scheduler
         options.taskRuntime.register(updated)
+
+        if (options.actor && getViewLevel(options.actor, cronjobResource(updated), 'agent') === 'metadata') {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: `Cronjob updated successfully.\n\n${formatForeignCronjobSummary(options, updated).replace('\u2022 ', '')}`,
+            }],
+            details: { cronjobId: updated.id, name: updated.name, enabled: updated.enabled, ownerUserId: updated.ownerUserId },
+          }
+        }
 
         const humanSchedule = cronToHumanReadable(updated.schedule)
 
@@ -410,6 +475,9 @@ export function removeCronjobTool(options: CronjobToolsOptions): AgentTool {
           }
         }
 
+        const denied = denyCronjobAction(options, existing, 'delete', 'delete')
+        if (denied) return denied
+
         // Unregister from scheduler
         options.taskRuntime.unregister(id)
 
@@ -452,7 +520,7 @@ export function listCronjobsTool(options: CronjobToolsOptions): AgentTool {
     name: 'list_cronjobs',
     label: 'List Cronjobs',
     description:
-      'List all configured cronjobs with their schedules, status, and upcoming run times. ' +
+      'List your cronjobs with their schedules, status, and upcoming run times. ' +
       'Use this to answer questions like "which cronjobs are active?", "what runs tomorrow morning?", ' +
       'or "show me all scheduled tasks". Optionally compute the next N run times for each cronjob. ' +
       'To read the full prompt of a specific cronjob, use get_cronjob with its ID.',
@@ -475,9 +543,12 @@ export function listCronjobsTool(options: CronjobToolsOptions): AgentTool {
       }
 
       try {
-        const cronjobs = enabled_only
-          ? options.taskRuntime.listEnabled()
-          : options.taskRuntime.list()
+        const { actor } = options
+        const filters = actor && actor.role !== 'admin' ? { ownerUserId: actor.id } : undefined
+        const cronjobs = (enabled_only
+          ? options.taskRuntime.listEnabled(filters)
+          : options.taskRuntime.list(filters)
+        ).filter(cj => !actor || can(actor, cronjobResource(cj), 'view', 'agent'))
 
         if (cronjobs.length === 0) {
           return {
@@ -493,6 +564,9 @@ export function listCronjobsTool(options: CronjobToolsOptions): AgentTool {
         const now = new Date()
 
         const lines = cronjobs.map(cj => {
+          if (actor && getViewLevel(actor, cronjobResource(cj), 'agent') === 'metadata') {
+            return formatForeignCronjobSummary(options, cj)
+          }
           const humanSchedule = cronToHumanReadable(cj.schedule)
           const status = cj.enabled ? 'ENABLED' : 'DISABLED'
 
@@ -568,6 +642,17 @@ export function getCronjobTool(options: CronjobToolsOptions): AgentTool {
           return {
             content: [{ type: 'text' as const, text: `No cronjob found with ID: ${id}` }],
             details: { error: true },
+          }
+        }
+
+        const { actor } = options
+        if (actor && !can(actor, cronjobResource(cj), 'view', 'agent')) {
+          return cronjobError(`No cronjob found with ID: ${id}`)
+        }
+        if (actor && getViewLevel(actor, cronjobResource(cj), 'agent') === 'metadata') {
+          return {
+            content: [{ type: 'text' as const, text: formatForeignCronjobSummary(options, cj).replace('\u2022 ', '') }],
+            details: { cronjob: { id: cj.id, name: cj.name, enabled: cj.enabled, ownerUserId: cj.ownerUserId } },
           }
         }
 
@@ -667,6 +752,7 @@ export function createReminderTool(options: CronjobToolsOptions): AgentTool {
           schedule,
           actionType: 'injection',
           enabled: true,
+          ownerUserId: ownerFor(options),
         })
 
         // Register with scheduler

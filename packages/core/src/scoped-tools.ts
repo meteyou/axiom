@@ -25,7 +25,7 @@ export interface ScopedToolsDeps {
   /** Shared task tool settings; the scope supplies owner and actor. */
   taskTools: Omit<TaskToolsOptions, 'actor' | 'getUsername' | 'getParentSessionId'>
   /** Cronjob and reminder tools; only the interactive chat gets them. */
-  cronjobTools?: CronjobToolsOptions
+  cronjobTools?: Omit<CronjobToolsOptions, 'actor' | 'getUsername'>
   /** Interactive session of the calling turn; omitted for background task agents. */
   getInteractiveSessionId?: () => string | null
   /** Set when the caller adds the base tool set itself (the chat runtime does). */
@@ -51,6 +51,10 @@ export function createScopedTools(scope: UserScope, deps: ScopedToolsDeps): Agen
     getParentSessionId,
   }
 
+  const cronjobOptions: CronjobToolsOptions | null = deps.cronjobTools
+    ? { ...deps.cronjobTools, actor, getUsername: taskOptions.getUsername }
+    : null
+
   return [
     ...(deps.excludeBaseTools
       ? []
@@ -66,14 +70,14 @@ export function createScopedTools(scope: UserScope, deps: ScopedToolsDeps): Agen
     createResumeTaskTool(taskOptions),
     listTasksTool(taskOptions),
     createStopTaskTool(taskOptions),
-    ...(deps.cronjobTools
+    ...(cronjobOptions
       ? [
-          createCronjobTool(deps.cronjobTools),
-          editCronjobTool(deps.cronjobTools),
-          removeCronjobTool(deps.cronjobTools),
-          listCronjobsTool(deps.cronjobTools),
-          getCronjobTool(deps.cronjobTools),
-          createReminderTool(deps.cronjobTools),
+          createCronjobTool(cronjobOptions),
+          editCronjobTool(cronjobOptions),
+          removeCronjobTool(cronjobOptions),
+          listCronjobsTool(cronjobOptions),
+          getCronjobTool(cronjobOptions),
+          createReminderTool(cronjobOptions),
         ]
       : []),
     createSendFileTool({
