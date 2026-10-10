@@ -13,12 +13,12 @@ describe('filterSettingsTabsByRole', () => {
     expect(filterSettingsTabsByRole(tabs, 'admin')).toEqual(tabs)
   })
 
-  it('shows regular users only the Agent and Email tabs', () => {
-    expect(filterSettingsTabsByRole([...tabs, { id: 'email' as const }], 'user')).toEqual([{ id: 'agent' }, { id: 'email' }])
+  it('shows regular users only the Agent, Email and Secrets tabs', () => {
+    expect(filterSettingsTabsByRole([...tabs, { id: 'email' as const }], 'user')).toEqual([{ id: 'agent' }, { id: 'secrets' }, { id: 'email' }])
   })
 
   it('treats a missing role like a regular user', () => {
-    expect(filterSettingsTabsByRole(tabs, undefined)).toEqual([{ id: 'agent' }])
+    expect(filterSettingsTabsByRole(tabs, undefined)).toEqual([{ id: 'agent' }, { id: 'secrets' }])
   })
 })
 
@@ -27,6 +27,7 @@ describe('resolveSettingsTab', () => {
     expect(resolveSettingsTab('telegram', 'admin')).toBe('telegram')
     expect(resolveSettingsTab('agent', 'user')).toBe('agent')
     expect(resolveSettingsTab('email', 'user')).toBe('email')
+    expect(resolveSettingsTab('secrets', 'user')).toBe('secrets')
   })
 
   it('falls back to Agent for hidden or unknown tabs', () => {
