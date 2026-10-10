@@ -533,6 +533,13 @@ export function initDatabase(dbPath?: string): Database {
     db.exec("ALTER TABLE tasks ADD COLUMN is_default_model INTEGER")
   }
 
+  const userCols = db.prepare("PRAGMA table_info(users)").all() as { name: string }[]
+  for (const col of ['chat_provider_id', 'chat_model', 'thinking_level', 'language']) {
+    if (!userCols.find(c => c.name === col)) {
+      db.exec(`ALTER TABLE users ADD COLUMN ${col} TEXT`)
+    }
+  }
+
   // Migration: add cache token columns to tasks table
   const taskColsForCache = db.prepare("PRAGMA table_info(tasks)").all() as { name: string }[]
   if (!taskColsForCache.find(c => c.name === 'cache_read')) {

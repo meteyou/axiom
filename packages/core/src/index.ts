@@ -58,6 +58,22 @@ export type { SkillPromptEntry } from './memory.js'
 export type { ConsolidationResult } from './memory-consolidation.js'
 export { resolveUserScope, getBootstrapAdminId, isMultiUser } from './user-scope.js'
 export type { UserScope, UserRole } from './user-scope.js'
+export {
+  getGlobalChatDefaults,
+  getUserSettingsOverrides,
+  updateUserSettings,
+  listSelectableChatModels,
+  isSelectableChatModel,
+  toSttLanguage,
+} from './user-settings.js'
+export type {
+  ChatModelRef,
+  UserSettingsOverrides,
+  UserSettingsPatch,
+  GlobalChatDefaults,
+  EffectiveUserSettings,
+  SelectableChatProvider,
+} from './user-settings.js'
 export { SessionManager, generateSessionId } from './session-manager.js'
 export type { SessionInfo, SessionManagerOptions, SessionType, CreateSessionOptions } from './session-manager.js'
 export {

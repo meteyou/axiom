@@ -1,4 +1,5 @@
 import type { Database } from './database.js'
+import { resolveEffectiveSettings, type EffectiveUserSettings } from './user-settings.js'
 
 export type UserRole = 'admin' | 'user'
 
@@ -7,6 +8,7 @@ export interface UserScope {
   username: string
   role: UserRole
   isBootstrapAdmin: boolean
+  settings: EffectiveUserSettings
 }
 
 interface UserRow {
@@ -40,10 +42,11 @@ export function resolveUserScope(db: Database, userId: number | string): UserSco
   if (!Number.isSafeInteger(numericId)) return null
   const row = db.prepare('SELECT id, username, role FROM users WHERE id = ?').get(numericId) as UserRow | undefined
   if (!row) return null
-  return {
+  const identity = {
     id: row.id,
     username: row.username,
     role: toRole(row.role),
     isBootstrapAdmin: row.id === getBootstrapAdminId(db),
   }
+  return { ...identity, settings: resolveEffectiveSettings(db, identity) }
 }
