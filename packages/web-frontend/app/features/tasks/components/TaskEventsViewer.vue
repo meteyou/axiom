@@ -222,17 +222,42 @@
       <template v-for="(event, idx) in groupedEvents" :key="idx">
         <!-- Tool call event -->
         <template v-if="event.type === 'tool_call_end' || event.type === 'tool_call_start'">
-          <CodemodeToolCard
+          <TaskEventCard
             v-if="event.toolName === 'codemode'"
-            :code="codemodeCode(event)"
-            :nested-calls="codemodeNestedCalls(event)"
-            :output="codemodeOutput(event)"
-            :is-error="event.toolIsError === true"
-            :running="event.type === 'tool_call_start' && event.toolResult === undefined"
+            collapsible
+            :icon="isCodemodeRunning(event) ? 'loader' : 'terminal'"
+            :icon-class="isCodemodeRunning(event) ? 'animate-spin text-muted-foreground' : event.toolIsError ? 'text-destructive' : undefined"
+            :meta="event.durationMs != null ? formatDurationMs(event.durationMs) : undefined"
+            :timestamp="formatTime(event.timestamp)"
             :expanded="isExpanded(`tool-${idx}`)"
-            :meta="formatTime(event.timestamp)"
             @toggle="toggleExpanded(`tool-${idx}`)"
-          />
+          >
+            <template #header>
+              <span class="text-xs font-medium" :class="event.toolIsError ? 'text-destructive' : 'text-foreground'">
+                {{ $t('codemode.title') }}
+              </span>
+              <span
+                v-if="codemodeSummary(event)"
+                class="hidden min-w-0 truncate font-mono text-xs text-muted-foreground sm:inline"
+                :title="codemodeSummary(event)!"
+              >
+                {{ codemodeSummary(event) }}
+              </span>
+              <Badge v-if="event.toolIsError" variant="destructive" class="text-[10px] px-1.5 py-0">
+                {{ $t('taskViewer.error') }}
+              </Badge>
+              <Badge v-else-if="isCodemodeRunning(event)" variant="outline" class="text-[10px] px-1.5 py-0">
+                {{ $t('codemode.running') }}
+              </Badge>
+            </template>
+
+            <CodemodeToolBody
+              :code="codemodeCode(event)"
+              :nested-calls="codemodeNestedCalls(event)"
+              :output="codemodeOutput(event)"
+              :is-error="event.toolIsError === true"
+            />
+          </TaskEventCard>
           <TaskEventCard
             v-else
             collapsible
@@ -364,6 +389,7 @@ import { useTasksApi } from '~/api/tasks'
 import { formatToolName, getToolCallSummary } from '~/utils/toolNameFormat'
 import {
   codemodeCallsToDisplay,
+  codemodeCollapsedSummary,
   codemodeOutputText,
   codemodeScriptCode,
   type CodemodeNestedCall,
@@ -651,6 +677,13 @@ function codemodeNestedCalls(event: TaskEventItem): CodemodeNestedCall[] {
 }
 function codemodeOutput(event: TaskEventItem): string | null {
   return codemodeOutputText(event.toolResult)
+}
+function codemodeSummary(event: TaskEventItem): string | null {
+  const { count, toolNames } = codemodeCollapsedSummary(codemodeNestedCalls(event))
+  return count === 0 ? null : t('codemode.callsSummary', { count, names: toolNames.join(', ') })
+}
+function isCodemodeRunning(event: TaskEventItem): boolean {
+  return event.type === 'tool_call_start' && event.toolResult === undefined
 }
 
 function parseStructuredResponse(text: string): { status: string; statusLabel: string; summary: string } | null {
