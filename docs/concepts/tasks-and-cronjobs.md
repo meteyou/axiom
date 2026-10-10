@@ -43,6 +43,27 @@ Every task runs in its own agent instance with its own session ID — separate f
 - **The full toolset and skill index.** Same `<available_tools>` and `<available_skills>` as a chat agent. Both `create_task` and `create_cronjob` can additionally pin specific skills via [`attached_skills`](#attached-skills).
 - **A fresh provider/model session.** The task either uses the configured task default provider (Settings → Tasks) or whatever was explicitly pinned at creation time.
 
+### Ownership and privacy
+
+Every task belongs to one user. A task started in chat belongs to the user who chatted; tasks of cronjobs, heartbeat and consolidation belong to the bootstrap admin until those features get owners of their own. Existing tasks are attributed to the user of their originating chat session, or to the bootstrap admin when that cannot be determined.
+
+The task agent is built for its owner and runs with the owner's context only:
+
+- **Workspace.** Shell commands, `read_file`/`write_file` and generated images use the owner's workspace (`/workspace` for the bootstrap admin, `/workspace/<username>/` for everyone else). The task prompt points at it.
+- **Memory.** `search_memories` and `read_chat_history` return only the owner's facts and conversations. The prompt references the owner's profile and daily notes next to the shared `MEMORY.md` and wiki.
+- **Delivery.** Results, questions and periodic status updates go only to the owner, in the web chat and on the owner's linked Telegram account.
+
+Access follows one policy for the web UI, the agent tools and the slash commands:
+
+| | Owner | Another regular user | Admin on a foreign task |
+|---|---|---|---|
+| See in lists (`/tasks`, `list_tasks`, Tasks page) | yes | no | Tasks page: everything. Agent and `/tasks`: only title, owner and status — never prompt or result |
+| Open and stream details | yes | no | web UI only |
+| Stop / kill | yes | no | yes |
+| Restart, resume | yes | no | no |
+
+The agent has a `stop_task` tool for stopping a running task: regular users can stop their own tasks, an admin can stop any task. `resume_task` only works on your own tasks, for everyone. A task you may not see is reported as not found.
+
 ### Triggers
 
 The `tasks.trigger_type` column records *who created the task*. There are five trigger types:

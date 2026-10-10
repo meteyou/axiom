@@ -4,7 +4,7 @@ The Tasks page is your window into background work. Every task — whether start
  
 It has two views: a **list** of all tasks (default), and a **detail viewer** that opens when you click a row.
 
-> **Admin only.** Regular users don't see this page at all.
+> **Every account sees this page, scoped to its own tasks.** Regular users see only the tasks they own. Admins see the tasks of all users, with an **Owner** column and an **Owner** filter. On another user's task an admin can open the viewer and **kill** the task, but cannot **Edit & restart** it — only the owner can. Regular users cannot open, stream, kill or restart another user's task, not even by guessing its URL.
 
 > **What is a task?** This page is about *operating* tasks. For the architecture — what a task actually is, how it's isolated from chat, how `<task_injection>` blocks come back, and the difference between tasks, cronjobs, and reminders — see [Tasks & Cronjobs concept](../concepts/tasks-and-cronjobs).
 
@@ -16,10 +16,11 @@ The list view is everything you see until you click into a single task.
 
 ### Filter toolbar
 
-Six filters sit at the top. They combine with AND semantics — pick a status *and* a trigger *and* a date range to narrow down.
+Six filters sit at the top (seven for admins, who get an extra **Owner** filter). They combine with AND semantics — pick a status *and* a trigger *and* a date range to narrow down.
 
 | Filter       | Options                                                   |
 |--------------|-----------------------------------------------------------|
+| **Owner**    | Admins only. All, or one user.                            |
 | **Status**   | All, Running, Paused, Completed, Failed.                  |
 | **Trigger**  | All, User, Agent, Cronjob, Heartbeat, Consolidation.      |
 | **Provider** | All, *Default*, or a specific `provider (model)` pairing. |
@@ -36,6 +37,7 @@ See [Tasks & Cronjobs → Triggers](../concepts/tasks-and-cronjobs#triggers) for
 | Column        | Notes                                                                               |
 |---------------|-------------------------------------------------------------------------------------|
 | **Name**      | The task name, truncated. Click anywhere on the row to open the detail view.        |
+| **Owner**     | Admins only. The user the task belongs to.                                          |
 | **Status**    | Colored badge: gray (running), green (completed), red (failed), amber (paused).     |
 | **Trigger**   | Trigger badge plus the provider/model the task ran on and its thinking level (*"(default)"* when it came from the background thinking level, *"medium → high"* when the requested level was rounded to what the model supports). |
 | **Duration**  | Live for running tasks (counts up), final for completed ones, `—` if never started. |
