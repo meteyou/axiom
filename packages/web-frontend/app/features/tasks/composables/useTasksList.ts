@@ -34,6 +34,7 @@ export function useTasksList() {
 
   const defaultDateRange = createDefaultTaskDateRange()
   const filters = reactive({
+    ownerUserId: '' as string,
     status: '' as string,
     triggerType: '' as string,
     providerFilter: '' as string,
@@ -43,6 +44,7 @@ export function useTasksList() {
 
   const activeFilterCount = computed(() => {
     let count = 0
+    if (filters.ownerUserId) count++
     if (filters.status) count++
     if (filters.triggerType) count++
     if (filters.providerFilter) count++
@@ -93,6 +95,7 @@ export function useTasksList() {
       const data = await tasksApi.listTasks({
         page,
         limit: pagination.value.limit,
+        ownerUserId: filters.ownerUserId ? Number(filters.ownerUserId) : undefined,
         status: filters.status || undefined,
         triggerType: filters.triggerType || undefined,
         ...providerFilter,

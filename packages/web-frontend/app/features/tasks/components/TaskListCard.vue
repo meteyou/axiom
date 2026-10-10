@@ -22,6 +22,9 @@
     </div>
 
     <div class="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+      <span v-if="showOwner && task.ownerUsername" class="shrink-0 font-medium text-foreground">
+        {{ task.ownerUsername }}
+      </span>
       <Badge variant="outline" class="shrink-0">
         {{ $t(`tasks.trigger.${task.triggerType}`) }}
       </Badge>
@@ -56,6 +59,7 @@ import {
 
 const props = defineProps<{
   task: Task
+  showOwner?: boolean
 }>()
 
 defineEmits<{

@@ -97,6 +97,8 @@ export function useTaskEvents() {
           id: (data.taskId as string) ?? taskInfo.value?.id ?? '',
           name: (data.name as string) ?? taskInfo.value?.name ?? '',
           status: (data.status as string) ?? taskInfo.value?.status ?? '',
+          ownerUserId: (data.ownerUserId as number | null | undefined) ?? taskInfo.value?.ownerUserId ?? null,
+          ownerUsername: taskInfo.value?.ownerUsername ?? null,
           prompt: data.prompt as string | undefined,
           resultSummary: data.resultSummary as string | undefined,
           errorMessage: data.errorMessage as string | undefined,

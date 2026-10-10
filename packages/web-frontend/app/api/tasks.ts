@@ -34,6 +34,9 @@ export interface Task {
   startedAt: string | null
   completedAt: string | null
   sessionId: string | null
+  ownerUserId: number | null
+  /** Set by the list and detail endpoints; `null` when the owner no longer exists. */
+  ownerUsername?: string | null
 }
 
 export interface TaskProviderFilterOption {
@@ -62,6 +65,8 @@ export interface TaskInfo {
   name: string
   status: string
   triggerType?: 'user' | 'agent' | 'cronjob' | 'heartbeat' | 'consolidation'
+  ownerUserId?: number | null
+  ownerUsername?: string | null
   prompt?: string | null
   provider?: string | null
   model?: string | null
@@ -110,6 +115,7 @@ interface TaskEventsResponse {
 }
 
 interface ListTasksParams {
+  ownerUserId?: number
   page?: number
   limit?: number
   status?: string
@@ -129,6 +135,7 @@ export function useTasksApi() {
 
     if (params.page !== undefined) query.set('page', String(params.page))
     if (params.limit !== undefined) query.set('limit', String(params.limit))
+    if (params.ownerUserId !== undefined) query.set('owner_user_id', String(params.ownerUserId))
     if (params.status) query.set('status', params.status)
     if (params.triggerType) query.set('trigger_type', params.triggerType)
     if (params.provider) query.set('provider', params.provider)

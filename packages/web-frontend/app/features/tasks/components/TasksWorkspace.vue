@@ -18,6 +18,8 @@
           </PopoverTrigger>
           <PopoverContent align="start" class="flex w-[calc(100vw-1.5rem)] max-w-sm flex-col gap-2">
             <TaskFilterFields
+              v-model:owner-user-id="filters.ownerUserId"
+              :owner-options="ownerOptions"
               v-model:status="filters.status"
               v-model:trigger-type="filters.triggerType"
               v-model:provider-filter="filters.providerFilter"
@@ -44,6 +46,8 @@
       <div class="hidden flex-col gap-2 md:flex lg:flex-row lg:items-center">
         <div class="flex flex-1 flex-wrap items-center gap-2">
           <TaskFilterFields
+            v-model:owner-user-id="filters.ownerUserId"
+            :owner-options="ownerOptions"
             v-model:status="filters.status"
             v-model:trigger-type="filters.triggerType"
             v-model:provider-filter="filters.providerFilter"
@@ -101,6 +105,7 @@
             v-for="task in sortedTasks"
             :key="task.id"
             :task="task"
+            :show-owner="isAdmin"
             @open="openViewer(task.id)"
             @kill="confirmKill(task)"
           />
@@ -120,6 +125,7 @@
                     <SortIndicator :field="'name'" :sort-field="sortField" :sort-direction="sortDirection" />
                   </span>
                 </TableHead>
+                <TableHead v-if="isAdmin">{{ $t('tasks.columns.owner') }}</TableHead>
                 <TableHead>{{ $t('tasks.columns.status') }}</TableHead>
                 <TableHead>{{ $t('tasks.columns.trigger') }}</TableHead>
                 <TableHead
@@ -170,6 +176,9 @@
               >
                 <TableCell class="max-w-[240px] truncate font-medium">
                   {{ task.name }}
+                </TableCell>
+                <TableCell v-if="isAdmin" class="text-muted-foreground">
+                  {{ task.ownerUsername ?? '—' }}
                 </TableCell>
                 <TableCell>
                   <Badge :variant="taskStatusVariant(task.status)">
@@ -315,6 +324,13 @@ import {
 
 const { t } = useI18n()
 const { formatNumber, formatCurrency, formatTimestamp } = useFormat()
+const { user } = useAuth()
+const isAdmin = computed(() => user.value?.role === 'admin')
+const { users, fetchUsers } = useUsers()
+
+const ownerOptions = computed(() =>
+  isAdmin.value ? users.value.map(entry => ({ value: String(entry.id), label: entry.username })) : undefined,
+)
 
 function openViewer(taskId: string) {
   navigateTo(`/tasks/${taskId}`)
@@ -386,6 +402,7 @@ function onFilterChange() {
 }
 
 onMounted(async () => {
+  if (isAdmin.value) void fetchUsers()
   await loadTasks()
   startPolling(5000)
 })
