@@ -146,7 +146,12 @@ export function createApp(options?: AppOptions): express.Express {
       consolidationScheduler: options.consolidationScheduler ?? null,
     }))
     app.use('/api/settings', createSettingsRouter({
+      db: options.db,
       getAgentCore,
+      onActiveProviderChanged: () => {
+        options.healthMonitorService?.restart({ resetState: true })
+        options.onActiveProviderChanged?.()
+      },
       onHealthMonitorSettingsChanged: () => {
         options.healthMonitorService?.restart()
       },
@@ -190,7 +195,7 @@ export function createApp(options?: AppOptions): express.Express {
     }))
     app.use('/api/secrets', createSecretsRouter())
     app.use('/api/tts', createTtsRouter())
-    app.use('/api/stt', createSttRouter())
+    app.use('/api/stt', createSttRouter(options.db))
     app.use('/api/deepgram', createDeepgramRouter())
 
     if (options.healthMonitorService && options.runtimeMetrics) {

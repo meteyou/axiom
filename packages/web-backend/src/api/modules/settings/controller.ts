@@ -2,14 +2,21 @@ import type { Response } from 'express'
 import type { AuthenticatedRequest } from '../../../auth.js'
 import type { SettingsRouterOptions } from './types.js'
 import { createSettingsService, SettingsValidationError } from './service.js'
+import { createOwnSettingsService } from './own-settings.js'
 
 export interface SettingsController {
   getSettings: (req: AuthenticatedRequest, res: Response) => void
   putSettings: (req: AuthenticatedRequest, res: Response) => void
+  getOwnSettings: (req: AuthenticatedRequest, res: Response) => void
+  putOwnSettings: (req: AuthenticatedRequest, res: Response) => void
+  getChatModels: (req: AuthenticatedRequest, res: Response) => void
 }
 
 export function createSettingsController(options: SettingsRouterOptions = {}): SettingsController {
   const service = createSettingsService(options)
+  const ownService = options.db
+    ? createOwnSettingsService(options.db, service, options.onActiveProviderChanged)
+    : null
 
   return {
     getSettings(_req, res) {
@@ -32,6 +39,50 @@ export function createSettingsController(options: SettingsRouterOptions = {}): S
         }
 
         res.status(500).json({ error: `Failed to update settings: ${(err as Error).message}` })
+      }
+    },
+
+    getOwnSettings(req, res) {
+      if (!ownService || !req.user) {
+        res.status(503).json({ error: 'Own settings are not available' })
+        return
+      }
+      try {
+        res.json(ownService.read(req.user.userId))
+      } catch (err) {
+        if (err instanceof SettingsValidationError) {
+          res.status(404).json({ error: err.message })
+          return
+        }
+        res.status(500).json({ error: `Failed to read settings: ${(err as Error).message}` })
+      }
+    },
+
+    putOwnSettings(req, res) {
+      if (!ownService || !req.user) {
+        res.status(503).json({ error: 'Own settings are not available' })
+        return
+      }
+      try {
+        res.json(ownService.update(req.user.userId, (req.body ?? {}) as Record<string, unknown>))
+      } catch (err) {
+        if (err instanceof SettingsValidationError) {
+          res.status(400).json({ error: err.message })
+          return
+        }
+        res.status(500).json({ error: `Failed to update settings: ${(err as Error).message}` })
+      }
+    },
+
+    getChatModels(_req, res) {
+      if (!ownService) {
+        res.status(503).json({ error: 'Chat models are not available' })
+        return
+      }
+      try {
+        res.json({ providers: ownService.listChatModels() })
+      } catch (err) {
+        res.status(500).json({ error: `Failed to list chat models: ${(err as Error).message}` })
       }
     },
   }
