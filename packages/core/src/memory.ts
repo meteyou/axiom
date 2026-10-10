@@ -840,7 +840,7 @@ export function assembleSystemPrompt(options?: {
   channel?: string
   skills?: SkillPromptEntry[]
   agentSkillsOverflowCount?: number
-  currentUser?: { username: string }
+  currentUser?: { username: string; role?: string }
   builtinTools?: BuiltinToolsPromptConfig
   agentSkillsDir?: string
   /**
@@ -892,6 +892,8 @@ ${dailyContext}
 
   // 6. User profile injection
   if (options?.currentUser?.username) {
+    const roleLine = options.currentUser.role ? `\nRole: ${options.currentUser.role}` : ''
+    sections.push(`<current_user>\nUsername: ${options.currentUser.username}${roleLine}\n</current_user>`)
     const profileContent = readUserProfile(options.currentUser.username, memoryDir)
     sections.push(`<user_profile>\n${profileContent.trim()}\n</user_profile>`)
   } else {

@@ -56,6 +56,8 @@ export {
 export { getUserProfileDir, ensureUserProfile, readUserProfile, ensureWikiDir, ensureProjectsDir, parseProjectAliases, listWikiPages, listProjectNotes } from './memory.js'
 export type { SkillPromptEntry } from './memory.js'
 export type { ConsolidationResult } from './memory-consolidation.js'
+export { resolveUserScope, getBootstrapAdminId, isMultiUser } from './user-scope.js'
+export type { UserScope, UserRole } from './user-scope.js'
 export { SessionManager, generateSessionId } from './session-manager.js'
 export type { SessionInfo, SessionManagerOptions, SessionType, CreateSessionOptions } from './session-manager.js'
 export {
@@ -278,7 +280,7 @@ export {
 } from './agent-skills.js'
 export type { AgentSkillEntry, AgentSkillUsage, SkillPromptContext } from './agent-skills.js'
 export { AgentCore, createYoloTools, getWorkspaceDir, isRetryablePreStreamError } from './agent.js'
-export type { ResponseChunk, AgentCoreOptions } from './agent.js'
+export type { ResponseChunk, AgentCoreOptions, UserToolsContext } from './agent.js'
 export { TurnRunner } from './turn-runner.js'
 export type {
   TurnAgentLike,

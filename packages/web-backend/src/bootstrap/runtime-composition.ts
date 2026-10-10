@@ -1,5 +1,6 @@
 import {
   AgentCore,
+  type UserToolsContext,
   AgentHeartbeatService,
   buildModel,
   createBaseAgentTools,
@@ -963,14 +964,9 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
     resolveProvider,
     defaultMaxDurationMinutes: taskSettings.maxDurationMinutes,
     maxDurationMinutesCap: taskSettings.maxDurationMinutes * 2,
-    // Link new task sessions to the user's current interactive session via
-    // sessions.parent_session_id. Returns null when no interactive session
-    // is active (e.g. tool invoked from a background context).
-    getParentSessionId: () => agentCore?.getCurrentInteractiveSessionId() ?? null,
   }
 
-  // Background tasks never have an active interactive session, so
-  // getParentSessionId always returns null here.
+  // Background tasks never have an active interactive session.
   const backgroundTaskToolsOptions = {
     ...taskToolsOptions,
     getParentSessionId: () => null as string | null,
@@ -1017,31 +1013,27 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
     taskRuntime: cronjobSchedulesForTools,
   }
 
-  // Exclusive tools for the interactive agent only.
-  // The base tool set (shell, web, chat-history, memories, skills, stt) is
-  // assembled inside agent-runtime.ts via createBaseAgentTools() and does NOT
-  // need to be listed here — that keeps both paths in sync automatically.
-  const agentTools = [
-    createTaskTool(taskToolsOptions),
-    createResumeTaskTool(taskToolsOptions),
-    listTasksTool({ taskRuntime: taskRuntime.tasks }),
-    createCronjobTool(cronjobToolsOptions),
-    editCronjobTool(cronjobToolsOptions),
-    removeCronjobTool(cronjobToolsOptions),
-    listCronjobsTool(cronjobToolsOptions),
-    getCronjobTool(cronjobToolsOptions),
-    createReminderTool(cronjobToolsOptions),
-    // `send_file_to_user` needs late-bound access to the active turn's user
-    // id and interactive session id — both are set on `agentCore` at the
-    // start of every `processUserMessage`/`processTaskInjection` call.
-    // Agents built without a running AgentCore (e.g. background task
-    // runner) never invoke this tool because its `getCurrentToolUserId`
-    // returns `undefined` and the tool refuses to run.
-    createSendFileTool({
-      getCurrentToolUserId: () => agentCore?.getCurrentToolUserId(),
-      getCurrentInteractiveSessionId: () => agentCore?.getCurrentInteractiveSessionId() ?? null,
-    }),
-  ]
+  // Exclusive tools of the interactive agent, built once per user runtime so
+  // every tool is bound to the runtime's own user and interactive session.
+  // The base tool set is assembled inside agent-runtime.ts via createBaseAgentTools().
+  const createUserTools = ({ scope, getInteractiveSessionId }: UserToolsContext): AgentTool[] => {
+    const userTaskToolsOptions = { ...taskToolsOptions, getParentSessionId: getInteractiveSessionId }
+    return [
+      createTaskTool(userTaskToolsOptions),
+      createResumeTaskTool(userTaskToolsOptions),
+      listTasksTool({ taskRuntime: taskRuntime.tasks }),
+      createCronjobTool(cronjobToolsOptions),
+      editCronjobTool(cronjobToolsOptions),
+      removeCronjobTool(cronjobToolsOptions),
+      listCronjobsTool(cronjobToolsOptions),
+      getCronjobTool(cronjobToolsOptions),
+      createReminderTool(cronjobToolsOptions),
+      createSendFileTool({
+        getCurrentToolUserId: () => scope?.id,
+        getCurrentInteractiveSessionId: getInteractiveSessionId,
+      }),
+    ]
+  }
 
   taskRuntime.schedules.start()
 
@@ -1341,7 +1333,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
         model,
         apiKey,
         db,
-        tools: agentTools,
+        createUserTools,
         providerConfig: provider,
         providerManager,
         sessionTimeoutMinutes,

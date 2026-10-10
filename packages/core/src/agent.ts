@@ -16,17 +16,43 @@ import { MessageQueue } from './message-queue.js'
 import { createAgentRuntime } from './agent-runtime.js'
 import type { AgentRuntimeBoundary, AgentRuntimePiAgentAccess } from './agent-runtime.js'
 import type { AgentRuntimeStateSnapshot, ResponseChunk } from './agent-runtime-types.js'
-import { resolveBackgroundReasoning } from './thinking-level.js'
+import { normalizeThinkingLevel, resolveBackgroundReasoning } from './thinking-level.js'
+import { resolveUserScope } from './user-scope.js'
+import type { UserScope } from './user-scope.js'
+import type { AgentTool } from '@earendil-works/pi-agent-core'
 
 export type { ResponseChunk } from './agent-runtime-types.js'
 export { createYoloTools, isRetryablePreStreamError } from './agent-runtime.js'
+
+/**
+ * Context handed to `createUserTools` when a user's runtime is built, so the
+ * tools are bound to that user instead of reading global "current user" state.
+ */
+export interface UserToolsContext {
+  /** Identity string the runtime is keyed by (numeric id or a pseudo identity like `telegram-<id>`). */
+  userId: string
+  /** Null for identities without a user row. */
+  scope: UserScope | null
+  /** Interactive session of the turn this runtime is currently serving. */
+  getInteractiveSessionId: () => string | null
+}
+
+interface UserRuntime {
+  userId: string
+  runtime: AgentRuntimeBoundary
+  queue: MessageQueue
+  interactiveSessionId: string | null
+  activeTurns: number
+}
 
 export interface AgentCoreOptions {
   model: Model<Api>
   apiKey: string
   db: Database
   systemPrompt?: string
-  tools?: import('@earendil-works/pi-agent-core').AgentTool[]
+  tools?: AgentTool[]
+  /** Builds the tools that are bound to one user's runtime (task tools, send_file, ...). */
+  createUserTools?: (context: UserToolsContext) => AgentTool[]
   memoryDir?: string
   sessionTimeoutMinutes?: number
   baseInstructions?: string
@@ -57,10 +83,14 @@ export { getWorkspaceDir } from './workspace.js'
  * (tool wiring, prompt assembly, execution orchestration) to AgentRuntimeBoundary.
  */
 export class AgentCore {
+  private options: AgentCoreOptions
+  private model: Model<Api>
+  private apiKey: string
+  private providerConfig?: ProviderConfig
+  private thinkingLevel?: string
+  private runtimes = new Map<string, UserRuntime>()
   private db: Database
   private sessionManager: SessionManager
-  private memoryDir?: string
-  private baseInstructions?: string
   private onSessionEndCallback?: (
     userId: string,
     sessionId: string,
@@ -68,33 +98,14 @@ export class AgentCore {
     options?: { background?: boolean },
   ) => void
   private onTaskInjectionChunkCallback?: (chunk: ResponseChunk) => void
-  private messageQueue: MessageQueue
-  private currentToolUserId?: number
-  private currentInteractiveSessionId?: string
-  private runtime: AgentRuntimeBoundary
 
   constructor(options: AgentCoreOptions) {
+    this.options = options
+    this.model = options.model
+    this.apiKey = options.apiKey
+    this.providerConfig = options.providerConfig
     this.db = options.db
-    this.memoryDir = options.memoryDir
-    this.baseInstructions = options.baseInstructions
     this.onSessionEndCallback = options.onSessionEnd
-
-    this.runtime = createAgentRuntime({
-      model: options.model,
-      apiKey: options.apiKey,
-      db: options.db,
-      systemPrompt: options.systemPrompt,
-      tools: options.tools,
-      memoryDir: options.memoryDir,
-      baseInstructions: options.baseInstructions,
-      providerConfig: options.providerConfig,
-      providerManager: options.providerManager,
-      getCurrentToolUserId: () => this.currentToolUserId,
-      quotaService: options.quotaService,
-    })
-
-    // Initialize message queue for sequential processing
-    this.messageQueue = new MessageQueue()
 
     // Initialize session manager
     this.sessionManager = new SessionManager({
@@ -108,12 +119,10 @@ export class AgentCore {
         // For background ends (resetSessionAsync), runtime state was already
         // cleared synchronously when the new session was created — skip here
         // to avoid wiping the new session's accumulated messages.
-        if (!opts?.background) {
-          this.runtime.clearMessages()
-          this.refreshSystemPrompt()
-        }
+        const entry = this.runtimes.get(session.userId)
+        if (entry && !opts?.background) this.endRuntimeSession(entry)
         // A background end can fire while a turn still streams on this session; let pi-ai's idle timer reap it then.
-        if (this.currentInteractiveSessionId !== session.id) {
+        if (entry?.interactiveSessionId !== session.id) {
           releaseProviderSession(session.id)
         }
         if (this.onSessionEndCallback) {
@@ -144,14 +153,66 @@ export class AgentCore {
    * Hot-swap the provider at runtime while preserving conversation context.
    */
   swapProvider(provider: ProviderConfig, apiKey: string, modelId?: string): void {
-    this.runtime.swapProvider(provider, apiKey, modelId)
+    this.model = buildModel(provider, modelId)
+    this.apiKey = apiKey
+    this.providerConfig = provider
+    for (const entry of this.runtimes.values()) {
+      entry.runtime.swapProvider(provider, apiKey, modelId)
+    }
+  }
+
+  private getOrCreateRuntime(userId: string): UserRuntime {
+    const existing = this.runtimes.get(userId)
+    if (existing) return existing
+
+    const scope = resolveUserScope(this.db, userId)
+    const entry = { userId, queue: new MessageQueue(), interactiveSessionId: null, activeTurns: 0 } as unknown as UserRuntime
+    const userTools = this.options.createUserTools?.({
+      userId,
+      scope,
+      getInteractiveSessionId: () => entry.interactiveSessionId,
+    }) ?? []
+    entry.runtime = createAgentRuntime({
+      model: this.model,
+      apiKey: this.apiKey,
+      db: this.db,
+      systemPrompt: this.options.systemPrompt,
+      tools: [...(this.options.tools ?? []), ...userTools],
+      memoryDir: this.options.memoryDir,
+      baseInstructions: this.options.baseInstructions,
+      providerConfig: this.providerConfig,
+      providerManager: this.options.providerManager,
+      user: scope,
+      quotaService: this.options.quotaService,
+      thinkingLevel: normalizeThinkingLevel(this.thinkingLevel),
+    })
+    this.runtimes.set(userId, entry)
+    return entry
+  }
+
+  /**
+   * Clear a runtime whose session ended. An idle runtime is disposed; one that
+   * still serves a turn keeps running with a clean transcript.
+   */
+  private endRuntimeSession(entry: UserRuntime): void {
+    entry.runtime.clearMessages()
+    if (entry.activeTurns === 0 && entry.queue.length === 0) {
+      this.runtimes.delete(entry.userId)
+      return
+    }
+    this.refreshRuntimePrompt(entry)
+  }
+
+  private refreshRuntimePrompt(entry: UserRuntime, channel?: string): void {
+    const scope = resolveUserScope(this.db, entry.userId)
+    entry.runtime.refreshSystemPrompt(channel, scope ? { username: scope.username, role: scope.role } : undefined)
   }
 
   /**
    * Get the ProviderManager reference (if configured).
    */
   getProviderManager(): ProviderManager | undefined {
-    return this.runtime.getProviderManager()
+    return this.options.providerManager
   }
 
   /**
@@ -160,7 +221,7 @@ export class AgentCore {
    */
   async *sendMessage(userId: string, text: string, source: string = 'web', attachments?: UploadDescriptor[]): AsyncIterable<ResponseChunk> {
     const uploads = attachments
-    const iterable = await this.messageQueue.enqueue<ResponseChunk>(
+    const iterable = await this.getOrCreateRuntime(userId).queue.enqueue<ResponseChunk>(
       'user_message',
       userId,
       text,
@@ -188,7 +249,7 @@ export class AgentCore {
     attachments?: UploadDescriptor[],
   ): AsyncIterable<ResponseChunk> {
     const uploads = attachments
-    const iterable = await this.messageQueue.enqueue<ResponseChunk>(
+    const iterable = await this.getOrCreateRuntime(userId).queue.enqueue<ResponseChunk>(
       'user_message',
       userId,
       text,
@@ -228,7 +289,7 @@ export class AgentCore {
     injectionId?: string,
   ): Promise<void> {
     const resolvedInjectionId = injectionId ?? randomUUID()
-    const iterable = await this.messageQueue.enqueue<ResponseChunk>(
+    const iterable = await this.getOrCreateRuntime(targetUserId).queue.enqueue<ResponseChunk>(
       'task_injection',
       targetUserId,
       injection,
@@ -252,75 +313,41 @@ export class AgentCore {
    * Process a user message (called from the queue).
    */
   private async *processUserMessage(userId: string, text: string, source: string, attachments?: UploadDescriptor[], retry: boolean = false): AsyncIterable<ResponseChunk> {
+    const entry = this.getOrCreateRuntime(userId)
+    const { runtime } = entry
     const session = this.sessionManager.getOrCreateSession(userId, source)
     const sessionId = session.id
-    this.currentInteractiveSessionId = sessionId
-
-    // Resolve username for user profile injection (skip for group chats)
-    let currentUser: { username: string } | undefined
-    if (source !== 'telegram-group') {
-      try {
-        const row = this.db.prepare('SELECT username FROM users WHERE id = ?').get(userId) as { username: string } | undefined
-        if (row?.username) {
-          currentUser = { username: row.username }
-        }
-      } catch {
-        // userId might not be a numeric ID (e.g. telegram-12345), skip
-      }
-    }
-
-    // Pass channel as 'telegram' for both DM and group sources
-    const channel = source.startsWith('telegram') ? 'telegram' : source
-    this.refreshSystemPrompt(channel, currentUser)
-    this.sessionManager.recordMessage(userId)
-
-    const { images, hints: fileHints } = attachments?.length
-      ? await buildUploadPromptContext(attachments, this.runtime.getCurrentModel().inputLimits?.images?.resize)
-      : { images: [], hints: [] }
-
-    const timeContext = this.runtime.getCurrentTimeContext()
-    const baseText = fileHints.length > 0 ? `${text}\n\n${fileHints.join('\n')}` : text
-    const enrichedText = `${baseText}\n\n${timeContext}`
-    const parsedUserId = Number.parseInt(userId, 10)
-    this.currentToolUserId = Number.isFinite(parsedUserId) ? parsedUserId : undefined
+    entry.interactiveSessionId = sessionId
+    entry.activeTurns++
 
     try {
+      // Group chats get no per-user profile.
+      const scope = source !== 'telegram-group' ? resolveUserScope(this.db, userId) : null
+
+      // Pass channel as 'telegram' for both DM and group sources
+      const channel = source.startsWith('telegram') ? 'telegram' : source
+      runtime.refreshSystemPrompt(channel, scope ? { username: scope.username, role: scope.role } : undefined)
+      this.sessionManager.recordMessage(userId)
+
+      const { images, hints: fileHints } = attachments?.length
+        ? await buildUploadPromptContext(attachments, runtime.getCurrentModel().inputLimits?.images?.resize)
+        : { images: [], hints: [] }
+
+      const timeContext = runtime.getCurrentTimeContext()
+      const baseText = fileHints.length > 0 ? `${text}\n\n${fileHints.join('\n')}` : text
+      const enrichedText = `${baseText}\n\n${timeContext}`
+
       const stream = retry
-        ? this.runtime.retryLastTurn(enrichedText, sessionId, images.length > 0 ? images : undefined)
-        : this.runtime.streamPrompt(enrichedText, sessionId, images.length > 0 ? images : undefined)
+        ? runtime.retryLastTurn(enrichedText, sessionId, images.length > 0 ? images : undefined)
+        : runtime.streamPrompt(enrichedText, sessionId, images.length > 0 ? images : undefined)
       yield* stream
     } finally {
-      this.currentToolUserId = undefined
-      this.currentInteractiveSessionId = undefined
+      entry.activeTurns--
+      if (entry.activeTurns === 0) entry.interactiveSessionId = null
     }
 
     // Count the agent response as a message too
     this.sessionManager.recordMessage(userId)
-  }
-
-  /**
-   * Returns the active interactive session ID for the user currently being
-   * served (set during processUserMessage). Used by tools (e.g. create_task)
-   * to link background sessions back to the triggering interactive session.
-   */
-  // Used by backend task/tool wiring to associate background work with the active chat session.
-  // fallow-ignore-next-line unused-class-member
-  getCurrentInteractiveSessionId(): string | null {
-    return this.currentInteractiveSessionId ?? null
-  }
-
-  /**
-   * Returns the numeric user id of the user currently being served (set
-   * during `processUserMessage`/`processTaskInjection`). Tools that need to
-   * attribute side-effects (uploads, notifications, ...) to a concrete user
-   * consume this via the same indirection used by AgentRuntime.
-   *
-   * Returns `undefined` outside an active turn.
-   */
-  // Used by tool factories that need to attribute side effects to the active user.
-  // fallow-ignore-next-line unused-class-member
-  getCurrentToolUserId(): number | undefined {
-    return this.currentToolUserId
   }
 
   /**
@@ -373,13 +400,12 @@ export class AgentCore {
       sessionId = session.id
       this.sessionManager.recordMessage(targetUserId)
     }
-    this.currentInteractiveSessionId = sessionId
-
-    const parsedUserId = Number.parseInt(targetUserId, 10)
-    this.currentToolUserId = Number.isFinite(parsedUserId) ? parsedUserId : undefined
+    const entry = this.getOrCreateRuntime(targetUserId)
+    entry.interactiveSessionId = sessionId
+    entry.activeTurns++
 
     try {
-      for await (const chunk of this.runtime.streamPrompt(injection, sessionId)) {
+      for await (const chunk of entry.runtime.streamPrompt(injection, sessionId)) {
         // Tag task-injection chunks with the actual session used AND the
         // per-injection correlation token. Downstream correlation MUST
         // key off `chunk.injectionId` (unique per call) and not
@@ -388,8 +414,8 @@ export class AgentCore {
         yield { ...chunk, sessionId, injectionId }
       }
     } finally {
-      this.currentToolUserId = undefined
-      this.currentInteractiveSessionId = undefined
+      entry.activeTurns--
+      if (entry.activeTurns === 0) entry.interactiveSessionId = null
     }
 
     // Count the agent response as a message too (only when we're driving
@@ -508,8 +534,8 @@ export class AgentCore {
     console.log(`[session-summary] Generating summary for ${conversationHistory.length} chars of history`)
 
     // Resolve model + apiKey: use dedicated summary provider if configured, else current model
-    let summaryModel = this.runtime.getCurrentModel()
-    let summaryApiKey = this.runtime.getCurrentApiKey()
+    let summaryModel = this.model
+    let summaryApiKey = this.apiKey
     try {
       const summarySettings = loadConfig<{ sessionSummaryProviderId?: string }>('settings.json')
       const summaryProviderId = summarySettings.sessionSummaryProviderId
@@ -631,8 +657,8 @@ Do NOT add this section if everything discussed was resolved or if there is noth
    */
   // Used by web/Telegram cancellation handlers.
   // fallow-ignore-next-line unused-class-member
-  abort(): void {
-    this.runtime.abort()
+  abort(userId: string): void {
+    this.runtimes.get(userId)?.runtime.abort()
   }
 
   /**
@@ -663,8 +689,11 @@ Do NOT add this section if everything discussed was resolved or if there is noth
     // summary still uses `buildConversationHistory()` (sourced from the
     // `chat_messages` table), so we don't lose anything by clearing the
     // in-memory copy here.
-    this.runtime.clearMessages()
-    this.refreshSystemPrompt()
+    const entry = this.runtimes.get(userId)
+    if (entry) {
+      entry.runtime.clearMessages()
+      this.refreshRuntimePrompt(entry)
+    }
     return this.sessionManager.handleNewCommandAsync(userId, source)
   }
 
@@ -680,8 +709,8 @@ Do NOT add this section if everything discussed was resolved or if there is noth
   /**
    * Refresh the system prompt from current memory state.
    */
-  refreshSystemPrompt(channel?: string, currentUser?: { username: string }): void {
-    this.runtime.refreshSystemPrompt(channel, currentUser)
+  refreshSystemPrompt(): void {
+    for (const entry of this.runtimes.values()) this.refreshRuntimePrompt(entry)
   }
 
   /**
@@ -691,7 +720,9 @@ Do NOT add this section if everything discussed was resolved or if there is noth
   // Used by settings updates to apply reasoning changes without recreating the agent.
   // fallow-ignore-next-line unused-class-member
   setThinkingLevel(level: string): void {
-    this.runtime.setThinkingLevel(level)
+    if (!normalizeThinkingLevel(level)) return
+    this.thinkingLevel = level
+    for (const entry of this.runtimes.values()) entry.runtime.setThinkingLevel(level)
   }
 
   /**
@@ -704,25 +735,26 @@ Do NOT add this section if everything discussed was resolved or if there is noth
   }
 
   /**
-   * Get a stable runtime snapshot for diagnostics/testing.
+   * Get a stable snapshot of a user's runtime for diagnostics/testing.
+   * Creates the runtime when the user has none yet.
    */
-  getRuntimeStateSnapshot(): AgentRuntimeStateSnapshot {
-    return this.runtime.getStateSnapshot()
+  getRuntimeStateSnapshot(userId: string): AgentRuntimeStateSnapshot {
+    return this.getOrCreateRuntime(userId).runtime.getStateSnapshot()
   }
 
   /**
-   * Get the underlying pi-mono agent (for advanced usage).
+   * Get a user's underlying pi-mono agent (for advanced usage).
    * @deprecated Prefer boundary methods like sendMessage()/abort()/getRuntimeStateSnapshot().
    */
   // Public escape hatch kept for compatibility with advanced internal integrations.
   // fallow-ignore-next-line unused-class-member
-  getAgent(): PiAgent {
-    const runtimeWithAgent = this.runtime as Partial<AgentRuntimePiAgentAccess>
-    if (typeof runtimeWithAgent.getAgent !== 'function') {
+  getAgent(userId: string): PiAgent {
+    const runtime = this.getOrCreateRuntime(userId).runtime as Partial<AgentRuntimePiAgentAccess>
+    if (typeof runtime.getAgent !== 'function') {
       throw new Error('Direct agent access is not available on this runtime implementation.')
     }
 
-    return runtimeWithAgent.getAgent()
+    return runtime.getAgent()
   }
 
   /**

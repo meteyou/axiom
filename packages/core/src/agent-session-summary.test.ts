@@ -369,7 +369,7 @@ describe('session end releases pooled provider resources', () => {
 
   function createAgent() {
     const agent = new AgentCore({ model: makeModel(), apiKey: 'sk-test', db, tools: [] })
-    const internals = agent as unknown as { sessionManager: SessionManager; currentInteractiveSessionId?: string }
+    const internals = agent as unknown as { sessionManager: SessionManager; runtimes: Map<string, { interactiveSessionId: string | null }> }
     return { agent, internals }
   }
 
@@ -385,7 +385,8 @@ describe('session end releases pooled provider resources', () => {
   it('does not release a session that is still serving a turn', async () => {
     const { agent, internals } = createAgent()
     const session = internals.sessionManager.getOrCreateSession('user1', 'web')
-    internals.currentInteractiveSessionId = session.id
+    agent.getRuntimeStateSnapshot('user1')
+    internals.runtimes.get('user1')!.interactiveSessionId = session.id
 
     await agent.resetSession('user1')
 

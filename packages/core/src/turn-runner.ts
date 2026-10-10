@@ -49,7 +49,7 @@ export interface TurnAgentLike {
     source?: string,
     attachments?: UploadDescriptor[],
   ): AsyncIterable<ResponseChunk>
-  abort(): void
+  abort(userId: string): void
 }
 
 export interface TurnInfo {
@@ -408,7 +408,7 @@ export class TurnRunner {
       turn.attemptController.abort()
     }
 
-    if (aborted) this.getAgent()?.abort()
+    if (aborted) this.getAgent()?.abort(String(user))
     return aborted
   }
 
@@ -876,7 +876,7 @@ export class TurnRunner {
         turn.attemptController.abort()
         // Propagate abort into pi-agent-core so the underlying SSE fetch /
         // WebSocket gets cancelled (mirrors the /stop command handler).
-        agent.abort()
+        agent.abort(turn.key)
         return
       }
 
