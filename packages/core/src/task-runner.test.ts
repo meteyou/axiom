@@ -2216,6 +2216,27 @@ describe('TaskRunner', () => {
       expect(toolCallRows).toEqual([{ tool_name: 'shell', input: '{"command":"git push"}' }])
     })
 
+    it('omits structured content from the logged tool result', async () => {
+      const { emit } = await startTaskWithControllableAgent('journal-structured-session')
+
+      emit({ type: 'tool_execution_start', toolCallId: 'call-1', toolName: 'shell', args: { command: 'echo hi' } })
+      emit({
+        type: 'tool_execution_end',
+        toolCallId: 'call-1',
+        toolName: 'shell',
+        result: {
+          content: [{ type: 'text', text: 'hi\n' }],
+          details: { exitCode: 0 },
+          structuredContent: { output: 'hi\n', exit_code: 0 },
+        },
+        isError: false,
+      })
+
+      const rows = db.prepare('SELECT output FROM tool_calls WHERE session_id = ?').all('journal-structured-session') as Array<{ output: string }>
+      expect(rows).toHaveLength(1)
+      expect(JSON.parse(rows[0].output)).toEqual({ content: [{ type: 'text', text: 'hi\n' }], details: { exitCode: 0 } })
+    })
+
     it('records the replay policy of each tool', async () => {
       const { task, emit } = await startTaskWithControllableAgent('journal-replay-session')
 

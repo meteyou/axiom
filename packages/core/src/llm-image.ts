@@ -328,6 +328,18 @@ export function redactToolResultImages<T>(result: T): T {
   }
 }
 
+/**
+ * Copy of a tool result without `structuredContent`. Structured content is for
+ * programmatic callers (e.g. codemode scripts) that read it directly from the
+ * tool outcome — for the shell tool it mirrors the model-facing text, so
+ * persisting or broadcasting it would store and render the output twice.
+ */
+export function omitToolResultStructuredContent<T>(result: T): T {
+  if (typeof result !== 'object' || result === null) return result
+  const { structuredContent, ...rest } = result as Record<string, unknown>
+  return structuredContent === undefined ? result : rest as T
+}
+
 function isImageBlock(block: unknown): block is ImageContent {
   return typeof block === 'object' && block !== null && (block as { type?: unknown }).type === 'image'
     && typeof (block as { data?: unknown }).data === 'string'
