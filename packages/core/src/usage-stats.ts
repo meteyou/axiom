@@ -47,7 +47,7 @@ export interface UsageStatsRow extends UsageTotals {
 export interface UsageUserRow extends UsageTotals {
   userId: number | null
   username: string | null
-  /** True when the owning user no longer exists. */
+  /** True when the owning user was deleted. */
   deleted: boolean
 }
 
@@ -222,6 +222,7 @@ function queryUsagePerUser(db: Database, options: UsageStatsQueryOptions, priceT
     SELECT
       owner.user_id AS userId,
       owner.username AS username,
+      owner.deleted_at AS deletedAt,
       COUNT(*) AS requests,
       COALESCE(SUM(prompt_tokens), 0) AS promptTokens,
       COALESCE(SUM(completion_tokens), 0) AS completionTokens,
@@ -229,7 +230,7 @@ function queryUsagePerUser(db: Database, options: UsageStatsQueryOptions, priceT
       COALESCE(SUM(cache_write), 0) AS cacheWrite,
       ${costExpression} AS estimatedCost
     FROM (
-      SELECT token_usage.*, s.user_id AS user_id, u.username AS username
+      SELECT token_usage.*, s.user_id AS user_id, u.username AS username, u.deleted_at AS deleted_at
       FROM token_usage
       LEFT JOIN sessions s ON s.id = token_usage.session_id
       LEFT JOIN users u ON u.id = s.user_id
@@ -240,6 +241,7 @@ function queryUsagePerUser(db: Database, options: UsageStatsQueryOptions, priceT
   `).all(...params) as Array<{
     userId: number | null
     username: string | null
+    deletedAt?: string | null
     requests?: number | null
     promptTokens?: number | null
     completionTokens?: number | null
@@ -251,7 +253,7 @@ function queryUsagePerUser(db: Database, options: UsageStatsQueryOptions, priceT
   return rows.map((row) => ({
     userId: row.userId,
     username: row.username,
-    deleted: row.userId !== null && row.username === null,
+    deleted: row.userId !== null && (row.username === null || row.deletedAt != null),
     ...normalizeTotals(row),
   }))
 }

@@ -549,6 +549,20 @@ export class SessionManager {
   }
 
   /**
+   * Ends a user's active session without summary, daily-note entry or `onSessionEnd` callback
+   * (so no fact extraction runs). Used when the user is deleted.
+   */
+  discardSession(userId: string): void {
+    const session = this.sessions.get(userId)
+    this.clearTimer(userId)
+    if (!session) return
+    this.db.prepare(
+      "UPDATE sessions SET ended_at = datetime('now'), message_count = ? WHERE id = ?"
+    ).run(session.messageCount, session.id)
+    this.sessions.delete(userId)
+  }
+
+  /**
    * Handle /new command: immediately summarize and reset (blocking).
    *
    * The returned Promise resolves only AFTER the summary has been

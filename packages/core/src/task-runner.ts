@@ -14,7 +14,7 @@ import { getToolReplayPolicy } from './tool-replay.js'
 import { formatJournalRecoveryContext } from './task-recovery-prompt.js'
 import type { Task, TaskResultStatus, TaskTriggerType } from './task-store.js'
 import type { SessionManager, SessionType } from './session-manager.js'
-import { logTokenUsage, logToolCall } from './token-logger.js'
+import { logTokenUsage, logToolCall, SESSION_OWNER_NOT_DELETED } from './token-logger.js'
 import { estimateCost, parseProviderModelId, buildStreamFn, getProviderDefaultModel, isProviderModelUsable } from './provider-config.js'
 import type { ProviderConfig } from './provider-config.js'
 import { releaseProviderSession } from './pi-models.js'
@@ -904,8 +904,9 @@ export class TaskRunner {
             })
             try {
               this.db.prepare(
-                'INSERT INTO chat_messages (session_id, user_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)'
-              ).run(sessionId, null, 'assistant', content, metadata)
+                `INSERT INTO chat_messages (session_id, user_id, role, content, metadata)
+                 SELECT ?, ?, ?, ?, ? WHERE ${SESSION_OWNER_NOT_DELETED}`
+              ).run(sessionId, null, 'assistant', content, metadata, sessionId)
             } catch {
               // Ignore persistence errors — non-critical
             }

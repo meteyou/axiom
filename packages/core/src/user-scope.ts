@@ -98,7 +98,7 @@ export function getBootstrapAdminId(db: Database): number | null {
 }
 
 export function isMultiUser(db: Database): boolean {
-  const row = db.prepare('SELECT COUNT(*) AS count FROM users').get() as { count: number }
+  const row = db.prepare('SELECT COUNT(*) AS count FROM users WHERE deleted_at IS NULL').get() as { count: number }
   return row.count > 1
 }
 
@@ -110,7 +110,7 @@ export function isMultiUser(db: Database): boolean {
 export function resolveUserScope(db: Database, userId: number | string): UserScope | null {
   const numericId = typeof userId === 'number' ? userId : Number(userId)
   if (!Number.isSafeInteger(numericId)) return null
-  const row = db.prepare('SELECT id, username, role FROM users WHERE id = ?').get(numericId) as UserRow | undefined
+  const row = db.prepare('SELECT id, username, role FROM users WHERE id = ? AND deleted_at IS NULL').get(numericId) as UserRow | undefined
   if (!row) return null
   const identity = {
     id: row.id,

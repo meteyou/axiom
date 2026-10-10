@@ -88,13 +88,17 @@ export function getAverageImageCost(
   return { usd: rows.reduce((sum, row) => sum + row.cost, 0) / rows.length, images: rows.length }
 }
 
+// Aborted runs still emit events after their owner was deleted and purged; rows written then would survive the purge.
+export const SESSION_OWNER_NOT_DELETED =
+  'NOT EXISTS (SELECT 1 FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ? AND u.deleted_at IS NOT NULL)'
+
 /**
- * Log a tool call to the SQLite database
+ * Log a tool call to the SQLite database. Returns 0 when skipped because the session's owner is deleted.
  */
 export function logToolCall(db: Database, record: ToolCallRecord): number {
   const result = db.prepare(
     `INSERT INTO tool_calls (session_id, tool_name, input, output, duration_ms, status, tool_call_id, parent_tool_call_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+     SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE ${SESSION_OWNER_NOT_DELETED}`
   ).run(
     record.sessionId,
     record.toolName,
@@ -104,8 +108,9 @@ export function logToolCall(db: Database, record: ToolCallRecord): number {
     record.status ?? 'success',
     record.toolCallId ?? null,
     record.parentToolCallId ?? null,
+    record.sessionId,
   )
-  return Number(result.lastInsertRowid)
+  return result.changes > 0 ? Number(result.lastInsertRowid) : 0
 }
 
 /**

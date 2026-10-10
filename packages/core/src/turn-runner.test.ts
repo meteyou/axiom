@@ -471,6 +471,24 @@ describe('TurnRunner', () => {
     expect(runner.abortTurn(USER_ID)).toBe(false)
   })
 
+  it('writes no chat rows when the user was deleted while the turn was streaming', async () => {
+    const db = freshDb()
+    const { agent, push } = controllableAgent()
+    const runner = startRunner(db, agent)
+
+    const events: TurnEvent[] = []
+    runner.subscribe(USER_ID, collect(events))
+    runner.startTurn({ userId: USER_ID, sessionId: SESSION_ID, text: 'hi' })
+    push({ type: 'text', text: 'partial answer' })
+    await waitFor(() => chunkTypes(events).length === 1)
+
+    db.prepare("UPDATE users SET deleted_at = datetime('now') WHERE id = ?").run(USER_ID)
+    expect(runner.abortTurn(USER_ID)).toBe(true)
+    await waitFor(() => !runner.hasActiveTurn(USER_ID))
+
+    expect(rows(db)).toHaveLength(0)
+  })
+
   it('reports an agent error as an error chunk followed by done', async () => {
     const db = freshDb()
     const runner = startRunner(db, {
