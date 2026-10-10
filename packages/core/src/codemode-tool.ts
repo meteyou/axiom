@@ -459,9 +459,18 @@ Do NOT wrap a single tool call in a script — call that tool directly instead.
 
 /** What a script sees a nested call resolve to, in a few words. */
 function describeResolveHint(tool: AgentTool): string {
-  return tool.outputSchema
-    ? 'an object (the tool\'s structured output)'
-    : 'a string (the tool\'s text output)'
+  if (!tool.outputSchema) return 'a string (the tool\'s text output)'
+  const props = objectPropertyNames(tool.outputSchema)
+  const shape = props.length > 0 ? `an object { ${props.join(', ')} }` : 'an object (the tool\'s structured output)'
+  if (tool.name === 'shell') {
+    return `${shape}; a non-zero exit code does NOT reject — branch on \`exit_code\``
+  }
+  return shape
+}
+
+function objectPropertyNames(schema: unknown): string[] {
+  const props = (schema as { properties?: unknown } | undefined)?.properties
+  return props && typeof props === 'object' ? Object.keys(props) : []
 }
 
 function firstSentence(text: string): string {

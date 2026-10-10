@@ -131,6 +131,60 @@ describe('codemode tool', () => {
     expect(textOf(result)).not.toContain('ignored text')
   })
 
+  it('resolves a shell tool to { output, exit_code } without rejecting on non-zero exit', async () => {
+    const tool = makeTool({
+      name: 'shell',
+      description: 'Execute a shell command and return stdout/stderr.',
+      outputSchema: Type.Object({ output: Type.String(), exit_code: Type.Number() }),
+      execute: async () => ({
+        content: [{ type: 'text' as const, text: 'boom\nCommand failed' }],
+        details: { exitCode: 1 },
+        structuredContent: { output: 'boom\nCommand failed', exit_code: 1 },
+      }),
+    })
+    const codemode = createCodemodeTool({ owner: makeOwner([tool]) })
+    const result = await run(codemode,
+      'const r = await tools.shell({ command: "false" });\n'
+      + 'return "exit=" + r.exit_code + "|out=" + r.output;')
+    expect(result.isError).toBeFalsy()
+    const text = textOf(result)
+    expect(text).toContain('exit=1|out=boom')
+    expect(text).toContain('Command failed')
+    expect(text).not.toContain('Script error')
+    expect(text).not.toContain('rejected')
+  })
+
+  it('resolves a shell tool to { output, exit_code } on success', async () => {
+    const tool = makeTool({
+      name: 'shell',
+      description: 'Execute a shell command and return stdout/stderr.',
+      outputSchema: Type.Object({ output: Type.String(), exit_code: Type.Number() }),
+      execute: async () => ({
+        content: [{ type: 'text' as const, text: 'ok' }],
+        details: { exitCode: 0 },
+        structuredContent: { output: 'ok', exit_code: 0 },
+      }),
+    })
+    const codemode = createCodemodeTool({ owner: makeOwner([tool]) })
+    const result = await run(codemode, `const r = await tools.shell({ command: 'echo ok' }); return r.exit_code;`)
+    expect(result.isError).toBeFalsy()
+    expect(textOf(result)).toContain('0')
+  })
+
+  it('resolves the real shell tool to { output, exit_code } in a script, including non-zero exit', async () => {
+    const { createYoloTools } = await import('./agent-runtime.js')
+    const shell = createYoloTools().find(t => t.name === 'shell')
+    if (!shell) throw new Error('shell tool missing')
+    const codemode = createCodemodeTool({ owner: makeOwner([shell]) })
+    const result = await run(codemode,
+      'const r = await tools.shell({ command: "echo o; exit 2" });\n'
+      + 'return "exit=" + r.exit_code + "|out=" + r.output;')
+    expect(result.isError).toBeFalsy()
+    const text = textOf(result)
+    expect(text).toContain('exit=2|out=o')
+    expect(text).not.toContain('Script error')
+  })
+
   it('resolves tools without an output schema to their text output', async () => {
     const tool = makeTool({
       name: 'plain',
@@ -321,6 +375,19 @@ describe('codemode description', () => {
     // v1 does not advertise store/load or the models API
     expect(description).not.toContain('store(')
     expect(description).not.toContain('models.')
+  })
+
+  it('shows that shell resolves to { output, exit_code } without rejecting on non-zero exit', () => {
+    const tools = [
+      makeTool({
+        name: 'shell',
+        description: 'Execute a shell command and return stdout/stderr.',
+        outputSchema: Type.Object({ output: Type.String(), exit_code: Type.Number() }),
+      }),
+    ]
+    const description = buildCodemodeDescription(tools)
+    expect(description).toContain('an object { output, exit_code }')
+    expect(description).toContain('non-zero exit code does NOT reject')
   })
 
   it('maps non-identifier tool names to identifiers in the description', () => {
