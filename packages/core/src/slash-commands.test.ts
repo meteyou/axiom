@@ -14,6 +14,9 @@ import {
   listLoadableSkills,
 } from './slash-commands.js'
 import type { SlashCommandPicker, SlashCommandReply } from './slash-commands.js'
+import { initDatabase } from './database.js'
+import type { Database } from './database.js'
+import { TaskStore } from './task-store.js'
 
 function asText(reply: SlashCommandReply): string {
   expect(typeof reply).toBe('string')
@@ -260,47 +263,50 @@ describe('built-in slash commands', () => {
     if (r.kind === 'handled') expect(asText(r.reply)).toMatch(/not available/)
   })
 
-  it('/tasks renders running and recent tasks', async () => {
-    const taskStore = {
-      list: vi.fn((filters?: { status?: string; limit?: number }) => {
-        if (filters?.status === 'running') {
-          return [
-            {
-              id: '1',
-              name: 'do thing',
-              status: 'running',
-              triggerType: 'user',
-              createdAt: '2024-01-01 10:00:00',
-            },
-          ]
-        }
-        return [
-          {
-            id: '2',
-            name: 'old thing',
-            status: 'completed',
-            triggerType: 'agent',
-            createdAt: '2024-01-01 09:00:00',
-            finishedAt: '2024-01-01 09:05:00',
-          },
-        ]
-      }),
-    }
-    const r = await registry.dispatch('/tasks', {
-      surface: 'web',
-      userId: '1',
-      registry,
-      taskStore: taskStore as never,
+  describe('/tasks scoping', () => {
+    let db: Database
+    let store: TaskStore
+
+    beforeEach(() => {
+      db = initDatabase(':memory:')
+      db.prepare("INSERT INTO users (id, username, password_hash, role) VALUES (1, 'admin', 'h', 'admin'), (2, 'alice', 'h', 'user'), (3, 'bob', 'h', 'user')").run()
+      store = new TaskStore(db)
     })
-    expect(r.kind).toBe('handled')
-    if (r.kind === 'handled') {
-      const text = asText(r.reply)
+
+    afterEach(() => db.close())
+
+    async function tasksReplyFor(userId: string): Promise<string> {
+      const r = await registry.dispatch('/tasks', { surface: 'web', userId, registry, db, taskStore: store })
+      expect(r.kind).toBe('handled')
+      return r.kind === 'handled' ? asText(r.reply) : ''
+    }
+
+    it('renders running and recent tasks of the caller', async () => {
+      store.create({ name: 'do thing', prompt: 'p', triggerType: 'user', ownerUserId: 2 })
+      const done = store.create({ name: 'old thing', prompt: 'p', triggerType: 'agent', ownerUserId: 2 })
+      store.update(done.id, { status: 'completed' })
+
+      const text = await tasksReplyFor('2')
       expect(text).toContain('Running tasks: 1')
       expect(text).toContain('do thing')
       expect(text).toContain('[completed]')
       expect(text).toContain('old thing')
-    }
-    expect(taskStore.list).toHaveBeenCalledTimes(2)
+    })
+
+    it('hides other users\' tasks from a regular user', async () => {
+      store.create({ name: 'bobs secret task', prompt: 'p', triggerType: 'user', ownerUserId: 3 })
+      const text = await tasksReplyFor('2')
+      expect(text).toContain('Running tasks: 0')
+      expect(text).not.toContain('bobs secret task')
+    })
+
+    it('shows the admin only name, owner and status of foreign running tasks', async () => {
+      store.create({ name: 'bobs task', prompt: 'secret prompt', triggerType: 'user', ownerUserId: 3 })
+      const text = await tasksReplyFor('1')
+      expect(text).toContain('Running tasks of other users')
+      expect(text).toContain('bobs task — bob (running)')
+      expect(text).not.toContain('secret prompt')
+    })
   })
 
   it('/cronjobs falls back gracefully without a store', async () => {

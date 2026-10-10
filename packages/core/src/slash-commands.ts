@@ -240,9 +240,21 @@ export function registerBuiltInSlashCommands(registry: SlashCommandRegistry): vo
     surfaces: ['web', 'telegram'],
     handler: (ctx) => {
       if (!ctx.taskStore) return 'Task store is not available on this surface.'
-      const running = ctx.taskStore.list({ status: 'running', limit: 10 })
-      const recent = ctx.taskStore.list({ limit: 5 })
-      return formatTasksReply(running, recent)
+      const scope = ctx.db && ctx.userId !== null ? resolveUserScope(ctx.db, ctx.userId) : null
+      if (!scope) return formatTasksReply([], [])
+      const running = ctx.taskStore.list({ status: 'running', limit: 10, ownerUserId: scope.id })
+      const recent = ctx.taskStore.list({ limit: 5, ownerUserId: scope.id })
+      const reply = formatTasksReply(running, recent)
+      if (scope.role !== 'admin' || !ctx.db) return reply
+
+      const foreignRunning = ctx.taskStore.list({ status: 'running', limit: 50 }).filter(t => t.ownerUserId !== scope.id)
+      if (foreignRunning.length === 0) return reply
+      const lookup = ctx.db.prepare('SELECT username FROM users WHERE id = ?')
+      const lines = foreignRunning.slice(0, 10).map(t => {
+        const owner = (lookup.get(t.ownerUserId) as { username: string } | undefined)?.username ?? 'unknown'
+        return `  • ${truncate(t.name, 60)} — ${owner} (${t.status})`
+      })
+      return `${reply}\n\nRunning tasks of other users:\n${lines.join('\n')}`
     },
   })
 
