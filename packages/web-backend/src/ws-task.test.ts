@@ -89,6 +89,32 @@ describe('GET /api/tasks/:id/events', () => {
     expect((body.events[0] as { type: string }).type).toBe('tool_call')
   })
 
+  it('excludes nested codemode calls from task events', async () => {
+    const store = new TaskStore(db)
+    const task = store.create({
+      name: 'Codemode task',
+      prompt: 'Run script',
+      triggerType: 'user',
+      sessionId: 'codemode-session-1',
+    })
+
+    const insertCall = db.prepare(
+      'INSERT INTO tool_calls (session_id, tool_name, input, output, duration_ms, status, tool_call_id, parent_tool_call_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    )
+    insertCall.run('codemode-session-1', 'codemode', '{"code":"x"}', '{"details":{"calls":[]}}', 100, 'success', 'call-parent-1', null)
+    insertCall.run('codemode-session-1', 'read_file', '{"path":"a.txt"}', '"data"', 30, 'success', 'call-parent-1/read_file/1', 'call-parent-1')
+
+    const token = getToken()
+    const res = await fetch(`${baseUrl}/api/tasks/${task.id}/events`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    expect(res.status).toBe(200)
+
+    const body = await res.json() as { events: Array<{ type: string, toolName: string }> }
+    const toolEvents = body.events.filter(e => e.type === 'tool_call')
+    expect(toolEvents.map(e => e.toolName)).toEqual(['codemode'])
+  })
+
   it('requires authentication', async () => {
     const res = await fetch(`${baseUrl}/api/tasks/any/events`)
     expect(res.status).toBe(401)
@@ -155,6 +181,52 @@ describe('WebSocket /ws/task/:id', () => {
     expect(messages[0].name).toBe('Completed task')
     expect(messages[1].type).toBe('history_start')
     expect(messages[messages.length - 1].type).toBe('history_end')
+  })
+
+  it('excludes nested codemode calls from completed task history', async () => {
+    const store = new TaskStore(db)
+    const task = store.create({
+      name: 'Completed codemode task',
+      prompt: 'Run script',
+      triggerType: 'user',
+      sessionId: 'codemode-completed-session-1',
+    })
+    store.update(task.id, { status: 'completed', resultStatus: 'completed', completedAt: '2024-01-01 00:00:00' })
+
+    const insertCall = db.prepare(
+      'INSERT INTO tool_calls (session_id, tool_name, input, output, duration_ms, status, tool_call_id, parent_tool_call_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    )
+    insertCall.run('codemode-completed-session-1', 'codemode', '{"code":"x"}', '{"details":{"calls":[]}}', 100, 'success', 'call-ws-parent', null)
+    insertCall.run('codemode-completed-session-1', 'bash', '{"command":"ls"}', '"out"', 20, 'success', 'call-ws-parent/bash/1', 'call-ws-parent')
+
+    const token = getToken()
+    const messages: Record<string, unknown>[] = []
+
+    await new Promise<void>((resolve, reject) => {
+      const ws = new WebSocket(`${wsBaseUrl}/ws/task/${task.id}?token=${token}`)
+      const timeout = setTimeout(() => {
+        ws.close()
+        reject(new Error('Timeout waiting for messages'))
+      }, 3000)
+
+      ws.on('message', (data: Buffer) => {
+        const msg = JSON.parse(data.toString()) as Record<string, unknown>
+        messages.push(msg)
+        if (msg.type === 'history_end') {
+          clearTimeout(timeout)
+          ws.close()
+          resolve()
+        }
+      })
+
+      ws.on('error', (err: Error) => {
+        clearTimeout(timeout)
+        reject(err)
+      })
+    })
+
+    const toolEnds = messages.filter(m => m.type === 'tool_call_end')
+    expect(toolEnds.map(m => m.toolName)).toEqual(['codemode'])
   })
 
   it('streams live events for running tasks', async () => {
