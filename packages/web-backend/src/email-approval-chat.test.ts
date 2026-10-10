@@ -87,6 +87,7 @@ beforeAll(async () => {
   await new Promise<void>((resolve) => server.listen(0, resolve))
 
   baseUrl = `http://127.0.0.1:${(server.address() as { port: number }).port}`
+  db.prepare("INSERT OR IGNORE INTO users (id, username, password_hash, role) VALUES (2, 'alice', 'x', 'user')").run()
   token = generateAccessToken({ userId: 2, username: 'alice', role: 'user' })
 })
 
