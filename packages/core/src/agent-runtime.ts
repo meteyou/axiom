@@ -89,7 +89,7 @@ export function createBaseAgentTools(options: BaseAgentToolsOptions): AgentTool[
       getSessionUser: () => options.sessionUser,
     }),
     ...createAgentSkillTools(),
-    ...createEmailTools({ workspaceDir: getUserWorkspace }),
+    ...(options.user ? createEmailTools({ ownerUserId: options.user.id, workspaceDir: getUserWorkspace }) : []),
     ...(options.sttEnabled ? [createTranscribeAudioTool(getUserWorkspace)] : []),
     ...(options.quotaService
       ? [createProviderQuotaTool({

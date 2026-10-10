@@ -7,6 +7,7 @@ import {
   getEmailSendLogEntry,
   initEmailSendLogTable,
   listEmailSendLog,
+  migrateEmailSendLogOwners,
   updateEmailSendLogEntry,
 } from './email-send-log.js'
 import type { CreateEmailSendLogInput } from './email-send-log.js'
@@ -33,6 +34,21 @@ describe('email send log', () => {
 
   afterEach(() => {
     db.close()
+  })
+
+  it('filters by owner and backfills legacy entries to the bootstrap admin', () => {
+    db.exec('CREATE TABLE users (id INTEGER PRIMARY KEY)')
+    db.exec('INSERT INTO users (id) VALUES (4), (7)')
+    createEmailSendLogEntry(db, makeInput({ ownerUserId: 7 }))
+    const legacy = createEmailSendLogEntry(db, makeInput())
+    expect(legacy.ownerUserId).toBeNull()
+
+    migrateEmailSendLogOwners(db)
+
+    expect(getEmailSendLogEntry(db, legacy.id)?.ownerUserId).toBe(4)
+    expect(listEmailSendLog(db, { ownerUserId: 7 })).toHaveLength(1)
+    expect(countEmailSendLog(db, { ownerUserId: 4 })).toBe(1)
+    expect(countEmailSendLog(db)).toBe(2)
   })
 
   it('persists the full message including attachments and thread headers', () => {

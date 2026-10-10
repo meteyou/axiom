@@ -2,8 +2,9 @@ import BetterSqlite3 from 'better-sqlite3'
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 import fs from 'node:fs'
-import { initEmailSendLogTable } from './email-send-log.js'
+import { initEmailSendLogTable, migrateEmailSendLogOwners } from './email-send-log.js'
 import { initTaskToolJournalTable } from './task-tool-journal.js'
+import { migrateEmailAccountOwners } from './email-account-store.js'
 import { migrateTaskOwners } from './task-store.js'
 
 export type Database = BetterSqlite3.Database
@@ -670,6 +671,8 @@ export function initDatabase(dbPath?: string): Database {
   // in UUID form. Wrapped in a single transaction for atomicity.
   migrateLegacySessionIds(db)
   migrateTaskOwners(db)
+  migrateEmailSendLogOwners(db)
+  migrateEmailAccountOwners(db)
 
   // Backfill token counts from token_usage only when the columns are first added
   if (needsTokenBackfill) {
