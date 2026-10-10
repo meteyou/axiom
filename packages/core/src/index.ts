@@ -53,11 +53,12 @@ export {
   readRecentDailyFiles,
   assembleSystemPrompt,
 } from './memory.js'
+export { getUserProfileTemplate } from './memory.js'
 export { getUserProfileDir, ensureUserProfile, readUserProfile, ensureWikiDir, ensureProjectsDir, parseProjectAliases, listWikiPages, listProjectNotes } from './memory.js'
 export type { SkillPromptEntry } from './memory.js'
 export type { ConsolidationResult } from './memory-consolidation.js'
-export { resolveUserScope, getBootstrapAdminId, isMultiUser } from './user-scope.js'
-export type { UserScope, UserRole } from './user-scope.js'
+export { resolveUserScope, getBootstrapAdminId, isMultiUser, checkUsernameAvailable, createUserFolders } from './user-scope.js'
+export type { UserScope, UserRole, UserPaths } from './user-scope.js'
 export {
   getGlobalChatDefaults,
   getUserSettingsOverrides,
