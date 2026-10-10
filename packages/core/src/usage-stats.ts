@@ -44,9 +44,17 @@ export interface UsageStatsRow extends UsageTotals {
   hour?: string
 }
 
+export interface UsageUserRow extends UsageTotals {
+  userId: number | null
+  username: string | null
+  /** True when the owning user no longer exists. */
+  deleted: boolean
+}
+
 export interface UsageStatsResult {
   groupBy: UsageGroupBy[]
   rows: UsageStatsRow[]
+  perUser: UsageUserRow[]
   totals: UsageTotals
   availableProviders: string[]
   availableModels: string[]
@@ -207,6 +215,47 @@ function getUsageTotalsInternal(db: Database, options: UsageStatsQueryOptions): 
   return normalizeTotals(row)
 }
 
+function queryUsagePerUser(db: Database, options: UsageStatsQueryOptions, priceTable: TokenPriceTable): UsageUserRow[] {
+  const costExpression = buildCostExpression(priceTable)
+  const { clause, params } = buildWhereClause(options)
+  const rows = db.prepare(`
+    SELECT
+      owner.user_id AS userId,
+      owner.username AS username,
+      COUNT(*) AS requests,
+      COALESCE(SUM(prompt_tokens), 0) AS promptTokens,
+      COALESCE(SUM(completion_tokens), 0) AS completionTokens,
+      COALESCE(SUM(cache_read), 0) AS cacheRead,
+      COALESCE(SUM(cache_write), 0) AS cacheWrite,
+      ${costExpression} AS estimatedCost
+    FROM (
+      SELECT token_usage.*, s.user_id AS user_id, u.username AS username
+      FROM token_usage
+      LEFT JOIN sessions s ON s.id = token_usage.session_id
+      LEFT JOIN users u ON u.id = s.user_id
+    ) AS owner
+    WHERE ${clause.replace(/token_usage\.session_id/g, 'owner.session_id')}
+    GROUP BY owner.user_id
+    ORDER BY estimatedCost DESC, requests DESC
+  `).all(...params) as Array<{
+    userId: number | null
+    username: string | null
+    requests?: number | null
+    promptTokens?: number | null
+    completionTokens?: number | null
+    cacheRead?: number | null
+    cacheWrite?: number | null
+    estimatedCost?: number | null
+  }>
+
+  return rows.map((row) => ({
+    userId: row.userId,
+    username: row.username,
+    deleted: row.userId !== null && row.username === null,
+    ...normalizeTotals(row),
+  }))
+}
+
 export function queryUsageStats(db: Database, options: UsageStatsQueryOptions = {}): UsageStatsResult {
   const priceTable = options.priceTable ?? getConfiguredPriceTable()
   const groupBy = Array.from(new Set(options.groupBy ?? []))
@@ -271,6 +320,7 @@ export function queryUsageStats(db: Database, options: UsageStatsQueryOptions = 
       hour: row.hour,
       ...normalizeTotals(row),
     })),
+    perUser: queryUsagePerUser(db, options, priceTable),
     totals,
     availableProviders,
     availableModels,

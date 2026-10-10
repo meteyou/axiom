@@ -211,7 +211,7 @@ export {
 } from './token-logger.js'
 export type { AverageImageCost, TokenUsageRecord, ToolCallRecord, ToolCallQueryOptions, ToolCallQueryResult, MemoryFileReadStat, MemorySearchStat, MemoryUsageStats } from './token-logger.js'
 export { queryUsageStats, getUsageSummary } from './usage-stats.js'
-export type { UsageGroupBy, UsageStatsQueryOptions, UsageTotals, UsageStatsRow, UsageStatsResult, UsageSummary } from './usage-stats.js'
+export type { UsageGroupBy, UsageStatsQueryOptions, UsageTotals, UsageStatsRow, UsageUserRow, UsageStatsResult, UsageSummary } from './usage-stats.js'
 export {
   performProviderHealthCheck,
   logHealthCheck,
@@ -394,6 +394,7 @@ export {
 export type { ProviderStallMetadata, StallStats, StallStatsQueryOptions, StallThresholds } from './provider-stall.js'
 export { ProviderManager } from './provider-manager.js'
 export type { OperatingMode, ProviderManagerEvents } from './provider-manager.js'
+export { migrateSessionOwners } from './session-owners.js'
 export { TaskStore, initTasksTable, migrateTaskOwners, buildTaskFilterClause } from './task-store.js'
 export { can as canAccess, canCreateFor, getViewLevel } from './access-policy.js'
 export type { AccessActor, AccessResource, AccessChannel, AccessAction, ViewLevel } from './access-policy.js'
