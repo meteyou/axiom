@@ -25,6 +25,9 @@ import type {
   CodemodeTool as PiCodemodeTool,
 } from '@earendil-works/pi-codemode'
 import { isFailedToolResult } from './loop-detection.js'
+import { logToolCall } from './token-logger.js'
+import { omitToolResultStructuredContent, redactToolResultImages } from './llm-image.js'
+import type { Database } from './database.js'
 import { getWorkspaceDir } from './workspace.js'
 
 export const CODEMODE_TOOL_NAME = 'codemode'
@@ -51,6 +54,17 @@ export interface CodemodeNestedCall {
   name: string
   status: 'running' | 'ok' | 'error' | 'cancelled'
   args: unknown
+  durationMs?: number
+  errorPreview?: string
+}
+
+/** Snapshot entry streamed as progress after every nested call start/end. */
+export interface CodemodeNestedCallSnapshot {
+  id: string
+  name: string
+  status: 'running' | 'ok' | 'error' | 'cancelled'
+  durationMs?: number
+  errorPreview?: string
 }
 
 export interface CodemodeNestedCallStart {
@@ -129,7 +143,7 @@ export function createCodemodeTool(options: CodemodeToolOptions): AgentTool {
     }),
     // Capable models emit the raw script as unescaped text instead of a JSON string.
     constrainedSampling: { type: 'grammar', variants: { openai_lark: CODEMODE_SOURCE_GRAMMAR } },
-    async execute(toolCallId, params, signal) {
+    async execute(toolCallId, params, signal, onUpdate) {
       const rawCode = (params as { code?: string }).code ?? ''
       const startedAt = performance.now()
 
@@ -148,10 +162,31 @@ export function createCodemodeTool(options: CodemodeToolOptions): AgentTool {
       const timeoutMs = resolveTimeoutMs(parsed.options.timeoutMs)
 
       const calls: CodemodeNestedCall[] = []
+      // After every nested call start/end the tool streams a snapshot of all
+      // nested calls as a partial update, so consumers (chat, task viewer,
+      // watchdog) see live progress while the script runs.
+      const emitProgress = (): void => {
+        onUpdate?.({
+          content: [],
+          details: { calls: calls.map(toNestedCallSnapshot) },
+        })
+      }
+      const consumerObserver = options.observer
+      const observer: CodemodeNestedCallObserver = {
+        onCallStart: info => {
+          consumerObserver?.onCallStart?.(info)
+          emitProgress()
+        },
+        onCallEnd: info => {
+          consumerObserver?.onCallEnd?.(info)
+          emitProgress()
+        },
+      }
+
       const sandbox = new CodemodeSandbox({
         tools: options.owner.getTools()
           .filter(tool => tool.name !== CODEMODE_TOOL_NAME)
-          .map(tool => buildSandboxTool(tool, toolCallId, calls, options)),
+          .map(tool => buildSandboxTool(tool, toolCallId, calls, options, observer)),
         timeoutMs,
         memoryLimitBytes: CODEMODE_MEMORY_LIMIT_BYTES,
       })
@@ -172,12 +207,54 @@ export function createCodemodeTool(options: CodemodeToolOptions): AgentTool {
   }
 }
 
+function toNestedCallSnapshot(call: CodemodeNestedCall): CodemodeNestedCallSnapshot {
+  return {
+    id: call.id,
+    name: call.name,
+    status: call.status,
+    durationMs: call.durationMs,
+    errorPreview: call.errorPreview,
+  }
+}
+
+/**
+ * Observer that writes finished nested calls to the `tool_calls` log with a
+ * link to their parent codemode call, the same way direct calls are logged.
+ * Consumed by the main runtime and the task runner so nested calls stay as
+ * visible in the activity logs as direct calls.
+ */
+export function createNestedCallLogObserver(
+  db: Database,
+  getSessionId: () => string | null | undefined,
+): CodemodeNestedCallObserver {
+  return {
+    onCallEnd: info => {
+      try {
+        const toolResult = omitToolResultStructuredContent(redactToolResultImages(info.result))
+        logToolCall(db, {
+          sessionId: getSessionId() ?? '',
+          toolName: info.toolName,
+          input: JSON.stringify(info.args ?? {}),
+          output: JSON.stringify(toolResult ?? {}),
+          durationMs: info.durationMs,
+          status: info.isError ? 'error' : 'success',
+          toolCallId: info.toolCallId,
+          parentToolCallId: info.parentToolCallId,
+        })
+      } catch (err) {
+        console.warn('[codemode] nested call log write failed:', err)
+      }
+    },
+  }
+}
+
 /** Build one sandbox tool that dispatches a nested call through `runToolCall`. */
 function buildSandboxTool(
   tool: AgentTool,
   toolCallId: string,
   calls: CodemodeNestedCall[],
   options: CodemodeToolOptions,
+  observer: CodemodeNestedCallObserver,
 ): PiCodemodeTool {
   let counter = 0
   return {
@@ -190,7 +267,7 @@ function buildSandboxTool(
       const id = `${toolCallId}/${tool.name}/${++counter}`
       const record: CodemodeNestedCall = { id, name: tool.name, status: 'running', args }
       calls.push(record)
-      options.observer?.onCallStart?.({ parentToolCallId: toolCallId, toolCallId: id, toolName: tool.name, args })
+      observer.onCallStart?.({ parentToolCallId: toolCallId, toolCallId: id, toolName: tool.name, args })
 
       const startedAt = performance.now()
       let outcome: AgentToolCallOutcome
@@ -219,7 +296,12 @@ function buildSandboxTool(
       const durationMs = Math.round(performance.now() - startedAt)
       const failed = isFailedToolResult(outcome.isError, outcome.result)
       record.status = context.signal.aborted ? 'cancelled' : failed ? 'error' : 'ok'
-      options.observer?.onCallEnd?.({
+      record.durationMs = durationMs
+      if (failed) {
+        const text = resultText(outcome.result)
+        if (text) record.errorPreview = text.slice(0, 200)
+      }
+      observer.onCallEnd?.({
         parentToolCallId: toolCallId,
         toolCallId: id,
         toolName: tool.name,
@@ -298,7 +380,7 @@ function buildCodemodeResult(
 ): AgentToolResult<Record<string, unknown>> {
   const wallTime = ((performance.now() - startedAt) / 1000).toFixed(1)
   const details: Record<string, unknown> = {
-    calls: calls.map(call => ({ id: call.id, name: call.name, status: call.status })),
+    calls: calls.map(call => ({ id: call.id, name: call.name, status: call.status, durationMs: call.durationMs })),
   }
 
   const scriptOutput: CodemodeOutputItem[] = [...result.output]

@@ -8,9 +8,15 @@ import type { AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core'
 import {
   CODEMODE_SPILL_DIR,
   createCodemodeTool,
+  createNestedCallLogObserver,
   buildCodemodeDescription,
 } from './codemode-tool.js'
-import type { CodemodeToolOwner } from './codemode-tool.js'
+import type {
+  CodemodeToolOwner,
+  CodemodeNestedCallStart,
+  CodemodeNestedCallEnd,
+} from './codemode-tool.js'
+import { initDatabase } from './database.js'
 
 function makeModel(): Model<Api> {
   return { api: 'openai-completions', provider: 'test', id: 'test-model' } as unknown as Model<Api>
@@ -355,6 +361,132 @@ await tools.hang({});`)
     expect(removed).toBe(1)
     expect(fs.existsSync(fresh)).toBe(true)
     expect(fs.existsSync(stale)).toBe(false)
+  })
+})
+
+describe('nested call observer and progress', () => {
+  let workspace: string
+  let previousWorkspace: string | undefined
+
+  beforeEach(() => {
+    workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'axiom-codemode-obs-'))
+    previousWorkspace = process.env.WORKSPACE_DIR
+    process.env.WORKSPACE_DIR = workspace
+  })
+
+  afterEach(() => {
+    if (previousWorkspace === undefined) delete process.env.WORKSPACE_DIR
+    else process.env.WORKSPACE_DIR = previousWorkspace
+    fs.rmSync(workspace, { recursive: true, force: true })
+  })
+
+  function runWith(tool: AgentTool, code: string, onUpdate?: (partial: AgentToolResult<Record<string, unknown>>) => void): Promise<AgentToolResult<Record<string, unknown>>> {
+    return tool.execute('parent-1', { code }, undefined, onUpdate) as Promise<AgentToolResult<Record<string, unknown>>>
+  }
+
+  it('emits observer start and end events with parent and nested ids', async () => {
+    const starts: CodemodeNestedCallStart[] = []
+    const ends: CodemodeNestedCallEnd[] = []
+    const tool = makeTool({
+      name: 'read_file',
+      execute: async () => ({ content: [{ type: 'text' as const, text: 'file contents' }], details: {} }),
+    })
+    const codemode = createCodemodeTool({
+      owner: makeOwner([tool]),
+      observer: {
+        onCallStart: info => starts.push(info),
+        onCallEnd: info => ends.push(info),
+      },
+    })
+    const result = await runWith(codemode, `const r = await tools.read_file({ path: 'a.md' }); return r;`)
+    expect(result.isError).toBeFalsy()
+
+    expect(starts).toHaveLength(1)
+    expect(starts[0]).toMatchObject({
+      parentToolCallId: 'parent-1',
+      toolCallId: 'parent-1/read_file/1',
+      toolName: 'read_file',
+    })
+    expect(starts[0]!.args).toMatchObject({ path: 'a.md' })
+
+    expect(ends).toHaveLength(1)
+    expect(ends[0]).toMatchObject({
+      parentToolCallId: 'parent-1',
+      toolCallId: 'parent-1/read_file/1',
+      toolName: 'read_file',
+      isError: false,
+    })
+    expect(ends[0]!.result).toEqual({ content: [{ type: 'text', text: 'file contents' }], details: {} })
+    expect(typeof ends[0]!.durationMs).toBe('number')
+  })
+
+  it('flags failed nested calls in the observer end event', async () => {
+    const ends: CodemodeNestedCallEnd[] = []
+    const tool = makeTool({
+      name: 'bad',
+      execute: async () => ({ content: [{ type: 'text' as const, text: 'it broke' }], details: { error: true } }),
+    })
+    const codemode = createCodemodeTool({
+      owner: makeOwner([tool]),
+      observer: { onCallEnd: info => ends.push(info) },
+    })
+    const result = await runWith(codemode, `try { await tools.bad({}) } catch (e) { return 'caught' }`)
+    expect(result.isError).toBeFalsy()
+
+    expect(ends).toHaveLength(1)
+    expect(ends[0]).toMatchObject({ toolName: 'bad', isError: true, toolCallId: 'parent-1/bad/1', parentToolCallId: 'parent-1' })
+    expect(ends[0]!.result).toEqual({ content: [{ type: 'text', text: 'it broke' }], details: { error: true } })
+  })
+
+  it('streams a nested-call snapshot to onUpdate after every nested start and end', async () => {
+    const updates: AgentToolResult<Record<string, unknown>>[] = []
+    const tool = makeTool({
+      name: 'slow',
+      execute: async () => {
+        await new Promise(r => setTimeout(r, 50))
+        return { content: [{ type: 'text' as const, text: 'done' }], details: {} }
+      },
+    })
+    const codemode = createCodemodeTool({ owner: makeOwner([tool]) })
+    await runWith(codemode, `await tools.slow({});`, partial => updates.push(partial))
+
+    expect(updates).toHaveLength(2)
+    expect(updates[0]!.details.calls).toEqual([
+      { id: 'parent-1/slow/1', name: 'slow', status: 'running', durationMs: undefined, errorPreview: undefined },
+    ])
+    const finalCalls = updates[1]!.details.calls as Array<Record<string, unknown>>
+    expect(finalCalls).toHaveLength(1)
+    expect(finalCalls[0]).toMatchObject({ id: 'parent-1/slow/1', name: 'slow', status: 'ok' })
+    expect(finalCalls[0]!.durationMs).toBeGreaterThanOrEqual(50)
+  })
+
+  it('createNestedCallLogObserver writes nested calls to the tool-call log with the parent link', () => {
+    const dbPath = path.join(workspace, 'log-test.db')
+    const db = initDatabase(dbPath)
+    const observer = createNestedCallLogObserver(db, () => 'session-log-1')
+
+    observer.onCallEnd?.({
+      parentToolCallId: 'parent-1',
+      toolCallId: 'parent-1/shell/1',
+      toolName: 'shell',
+      args: { command: 'ls' },
+      result: { content: [{ type: 'text', text: 'out' }], details: {} },
+      isError: false,
+      durationMs: 42,
+    })
+
+    const rows = db.prepare('SELECT * FROM tool_calls').all() as Record<string, unknown>[]
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      session_id: 'session-log-1',
+      tool_name: 'shell',
+      input: JSON.stringify({ command: 'ls' }),
+      duration_ms: 42,
+      status: 'success',
+      tool_call_id: 'parent-1/shell/1',
+      parent_tool_call_id: 'parent-1',
+    })
+    db.close()
   })
 })
 
