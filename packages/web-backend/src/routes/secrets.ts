@@ -1,44 +1,64 @@
 import { Router } from 'express'
+import type { Response } from 'express'
 import {
   loadSecretsMasked,
   setSecrets,
   deleteSecret,
   injectSecretsIntoEnv,
+  resolveUserScope,
 } from '@axiom/core'
+import type { Database } from '@axiom/core'
 import { jwtMiddleware } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
 
-export function createSecretsRouter(): Router {
+const SECRET_KEY_PATTERN = /^[A-Z][A-Z0-9_]*$/
+
+interface SecretsTarget {
+  /** Personal folder of a non-bootstrap user; null for the bootstrap admin, who manages the global secrets. */
+  userDir: string | null
+  isAdmin: boolean
+}
+
+/**
+ * The bootstrap admin manages the global secrets. Every other user manages
+ * personal secrets, which only reach that user's shell commands.
+ */
+export function createSecretsRouter(options: { db: Database }): Router {
   const router = Router()
 
   router.use(jwtMiddleware)
-  router.use((req: AuthenticatedRequest, res, next) => {
-    if (req.user?.role !== 'admin') {
-      res.status(403).json({ error: 'Admin access required' })
-      return
-    }
-    next()
-  })
 
-  /**
-   * GET /api/secrets
-   * Returns masked secrets — never returns real values
-   */
-  router.get('/', (_req, res) => {
+  function resolveTarget(req: AuthenticatedRequest, res: Response): SecretsTarget | null {
+    const userId = req.user?.userId
+    const scope = userId === undefined ? null : resolveUserScope(options.db, userId)
+    if (!scope) {
+      res.status(401).json({ error: 'Unknown user' })
+      return null
+    }
+    return { userDir: scope.paths.userDir, isAdmin: scope.role === 'admin' }
+  }
+
+  function listFor(target: SecretsTarget) {
+    return {
+      scope: target.userDir ? 'personal' : 'global',
+      secrets: loadSecretsMasked(target.userDir),
+      ...(target.userDir && target.isAdmin ? { globalSecrets: loadSecretsMasked() } : {}),
+    }
+  }
+
+  router.get('/', (req: AuthenticatedRequest, res) => {
+    const target = resolveTarget(req, res)
+    if (!target) return
     try {
-      const secrets = loadSecretsMasked()
-      res.json({ secrets })
+      res.json(listFor(target))
     } catch (err) {
       res.status(500).json({ error: `Failed to read secrets: ${(err as Error).message}` })
     }
   })
 
-  /**
-   * PUT /api/secrets
-   * Set one or more secrets. Only non-empty values are updated.
-   * Body: { secrets: { KEY: "value", KEY2: "value2" } }
-   */
   router.put('/', (req: AuthenticatedRequest, res) => {
+    const target = resolveTarget(req, res)
+    if (!target) return
     const body = req.body as { secrets?: Record<string, string> }
 
     if (!body.secrets || typeof body.secrets !== 'object') {
@@ -46,43 +66,36 @@ export function createSecretsRouter(): Router {
       return
     }
 
-    // Validate keys: only alphanumeric + underscore
     for (const key of Object.keys(body.secrets)) {
-      if (!/^[A-Z][A-Z0-9_]*$/.test(key)) {
+      if (!SECRET_KEY_PATTERN.test(key)) {
         res.status(400).json({ error: `Invalid secret key "${key}". Keys must be uppercase with underscores only.` })
         return
       }
     }
 
     try {
-      setSecrets(body.secrets)
-      // Re-inject into process.env so changes take effect immediately
-      injectSecretsIntoEnv()
-      const updated = loadSecretsMasked()
-      res.json({ message: 'Secrets updated', secrets: updated })
+      setSecrets(body.secrets, target.userDir)
+      if (!target.userDir) injectSecretsIntoEnv()
+      res.json({ message: 'Secrets updated', ...listFor(target) })
     } catch (err) {
       res.status(500).json({ error: `Failed to update secrets: ${(err as Error).message}` })
     }
   })
 
-  /**
-   * DELETE /api/secrets/:key
-   * Remove a single secret
-   */
   router.delete('/:key', (req: AuthenticatedRequest, res) => {
+    const target = resolveTarget(req, res)
+    if (!target) return
     const key = req.params.key as string
 
-    if (!key || !/^[A-Z][A-Z0-9_]*$/.test(key)) {
+    if (!key || !SECRET_KEY_PATTERN.test(key)) {
       res.status(400).json({ error: 'Invalid secret key' })
       return
     }
 
     try {
-      deleteSecret(key)
-      // Remove from process.env
-      delete process.env[key]
-      const updated = loadSecretsMasked()
-      res.json({ message: `Secret "${key}" deleted`, secrets: updated })
+      deleteSecret(key, target.userDir)
+      if (!target.userDir) delete process.env[key]
+      res.json({ message: `Secret "${key}" deleted`, ...listFor(target) })
     } catch (err) {
       res.status(500).json({ error: `Failed to delete secret: ${(err as Error).message}` })
     }
