@@ -540,6 +540,10 @@ export function initDatabase(dbPath?: string): Database {
     }
   }
 
+  if (!userCols.find(c => c.name === 'token_version')) {
+    db.exec('ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0')
+  }
+
   // Migration: add cache token columns to tasks table
   const taskColsForCache = db.prepare("PRAGMA table_info(tasks)").all() as { name: string }[]
   if (!taskColsForCache.find(c => c.name === 'cache_read')) {
