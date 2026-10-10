@@ -53,23 +53,15 @@ Values: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. Like the chat
 
 ## Codemode (experimental)
 
-Switches for the [codemode](../concepts/codemode) tool — a JavaScript script that batches, chains and filters tool calls, so only the script's output reaches the model. Both switches are **off by default**, and the section is marked *Experimental* in the UI: the feature may change between releases, and script quality depends on the model.
+Adds the [codemode](../concepts/codemode) tool — a JavaScript script that batches, chains and filters tool calls, so only the script's output reaches the model — to task agents: user tasks, agent-created tasks, cronjob runs and heartbeat runs. **Off by default**, and the section is marked *Experimental* in the UI: the feature may change between releases, and script quality depends on the model.
 
-### Codemode for the main agent
-
-Adds the `codemode` tool to the interactive chat agent on every channel (web UI and Telegram). Applies from the next turn — no restart needed.
-
-```json
-{ "codemode": { "mainAgent": true } }
-```
-
-### Codemode for background tasks
-
-Adds the `codemode` tool to task agents — user tasks, agent-created tasks, cronjob runs and heartbeat runs. Applies to tasks **started after** the change; already-running tasks are unaffected. Memory consolidation never uses codemode. Individual cronjobs can override this switch with the three-way control in the [cronjob form](../web-ui/cronjobs#codemode) (inherit / on / off).
+Applies to tasks **started after** the change; already-running tasks are unaffected. Memory consolidation never uses codemode. Individual cronjobs can override this switch with the three-way control in the [cronjob form](../web-ui/cronjobs#codemode) (inherit / on / off).
 
 ```json
 { "codemode": { "tasks": true } }
 ```
+
+The interactive chat agent has its own switch in [Agent → Codemode](./agent#codemode-experimental).
 
 When to use it, what scripts can do, the limits and where the switches' effects show up: [Codemode](../concepts/codemode).
 

@@ -4,7 +4,7 @@ Codemode is an **experimental, off-by-default** tool that lets an agent write a 
 
 There are many ways to run tools. This one runs them as a script, and the model only sees what the script returns.
 
-**Where to turn it on:** [Settings → Tasks](../settings/tasks#codemode-experimental) → **Codemode** section (marked *Experimental* in the UI).
+**Where to turn it on:** the **Codemode** section (marked *Experimental* in the UI) under [Settings → Agent](../settings/agent#codemode-experimental) for the chat agent and under [Settings → Tasks](../settings/tasks#codemode-experimental) for background tasks.
 
 ## What it changes
 
@@ -43,10 +43,10 @@ The model receives the final `return` value — one compact line — instead of 
 
 ## Turn it on
 
-The **Codemode** section under [Settings → Tasks](../settings/tasks#codemode-experimental) has two switches, both **off by default**:
+There are two switches, both **off by default**, each in a **Codemode** section of its settings page:
 
-- **Codemode for the main agent** — the interactive chat agent (web UI and Telegram) gets a `codemode` tool for batching, chaining and filtering. Applies from the next turn; no restart needed.
-- **Codemode for background tasks** — task agents (user tasks, agent-created tasks, cronjob runs, heartbeat runs) get the tool. Applies to tasks **started after** the change; already-running tasks are unaffected. **Memory consolidation never gets codemode.**
+- **Codemode for the main agent** ([Settings → Agent](../settings/agent#codemode-experimental)) — the interactive chat agent (web UI and Telegram) gets a `codemode` tool for batching, chaining and filtering. Applies from the next turn; no restart needed.
+- **Codemode for background tasks** ([Settings → Tasks](../settings/tasks#codemode-experimental)) — task agents (user tasks, agent-created tasks, cronjob runs, heartbeat runs) get the tool. Applies to tasks **started after** the change; already-running tasks are unaffected. **Memory consolidation never gets codemode.**
 
 ```json
 { "codemode": { "mainAgent": true, "tasks": true } }
@@ -115,7 +115,8 @@ When a script's output exceeds the budget, the result keeps its **head and tail*
 ## See also
 
 - [Built-in Tools](./tools) — the tool registry codemode scripts call.
-- [Settings → Tasks](../settings/tasks) — the two codemode switches.
+- [Settings → Agent](../settings/agent#codemode-experimental) — the main-agent codemode switch.
+- [Settings → Tasks](../settings/tasks#codemode-experimental) — the background-task codemode switch.
 - [Web UI → Cronjobs](../web-ui/cronjobs) — the per-cronjob three-way control.
 - [Tasks & Cronjobs](./tasks-and-cronjobs) — background tasks and the scheduler.
 - [Activity Logs](../web-ui/activity-logs) — where nested calls are recorded.
