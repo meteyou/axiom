@@ -1324,7 +1324,12 @@
       "systemPromptPlaceholder": "You are a background task agent. Your task: ...\n\nLeave empty to use the default system prompt.",
       "thinkingLevel": "Thinking level",
       "thinkingLevelDefault": "Default (background thinking level)",
-      "thinkingLevelHelp": "Reasoning effort of the task agent on each run. Only levels the selected model supports are offered."
+      "thinkingLevelHelp": "Reasoning effort of the task agent on each run. Only levels the selected model supports are offered.",
+      "codemode": "Scripted tool calls (codemode)",
+      "codemodeInherit": "Inherit (global task setting)",
+      "codemodeOn": "On",
+      "codemodeOff": "Off",
+      "codemodeHelp": "Whether the task agent can batch and chain tool calls in a JavaScript script. Inherit follows the global background-task codemode setting. Tool overrides still apply inside scripts."
     },
     "badges": {
       "customTools": "custom tools",

@@ -1324,7 +1324,12 @@
       "systemPromptPlaceholder": "Du bist ein Hintergrund-Task-Agent. Deine Aufgabe: ...\n\nLeer lassen, um den Standard-System-Prompt zu verwenden.",
       "thinkingLevel": "Thinking-Stufe",
       "thinkingLevelDefault": "Standard (Hintergrund-Thinking-Stufe)",
-      "thinkingLevelHelp": "Denkaufwand des Task-Agenten bei jedem Lauf. Angeboten werden nur Stufen, die das gewählte Modell unterstützt."
+      "thinkingLevelHelp": "Denkaufwand des Task-Agenten bei jedem Lauf. Angeboten werden nur Stufen, die das gewählte Modell unterstützt.",
+      "codemode": "Skriptierte Tool-Aufrufe (Codemode)",
+      "codemodeInherit": "Übernehmen (globale Task-Einstellung)",
+      "codemodeOn": "An",
+      "codemodeOff": "Aus",
+      "codemodeHelp": "Bestimmt, ob der Task-Agent Tool-Aufrufe in einem JavaScript-Skript bündeln und verketten darf. Inherit folgt der globalen Codemode-Einstellung für Hintergrund-Tasks. Tool-Überschreibungen gelten auch innerhalb von Skripten."
     },
     "badges": {
       "customTools": "eigene Tools",
