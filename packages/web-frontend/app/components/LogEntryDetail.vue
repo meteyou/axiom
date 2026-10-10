@@ -140,6 +140,8 @@ const isSkillLoad = computed(() => {
       <!-- Meta row -->
       <div class="flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted-foreground">
         <span>{{ t('logs.sessionId') }}: {{ entry.sessionId }}</span>
+        <span v-if="entry.toolCallId">{{ t('logs.toolCallId') }}: <span class="break-all font-mono">{{ entry.toolCallId }}</span></span>
+        <span v-if="entry.parentToolCallId">{{ t('logs.parentToolCallId') }}: <span class="break-all font-mono">{{ entry.parentToolCallId }}</span></span>
         <span>{{ t('logs.duration') }}: {{ formatDuration(entry.durationMs) }}</span>
         <span>{{ t('logs.status') }}: {{ entry.status }}</span>
       </div>

@@ -149,6 +149,11 @@ export function useTaskEvents() {
         events.value.push(data as unknown as TaskEventItem)
         break
 
+      case 'codemode_progress':
+        // Live nested-call snapshots from a running codemode script. Ignored
+        // for now — a dedicated codemode card renders them in a later change.
+        break
+
       case 'status_change':
         events.value.push(data as unknown as TaskEventItem)
         if (data.status && taskInfo.value) {

@@ -412,6 +412,8 @@
     "sessionId": "Sitzung",
     "duration": "Dauer",
     "status": "Status",
+    "toolCallId": "Aufruf-ID",
+    "parentToolCallId": "ID des übergeordneten Aufrufs",
     "prev": "Zurück",
     "next": "Weiter",
     "pageInfo": "Seite {page} von {total}",
@@ -423,7 +425,9 @@
     "preset_yesterday": "Gestern",
     "preset_last7": "Letzte 7 Tage",
     "preset_last30": "Letzte 30 Tage",
-    "unchangedLines": "{count} unveränderte Zeilen"
+    "unchangedLines": "{count} unveränderte Zeilen",
+    "viaCodemode": "via Codemode",
+    "viaCodemodeTitle": "Verschachtelter Aufruf des Codemode-Aufrufs {id}"
   },
   "memory": {
     "kicker": "Persistenter Kontext",
