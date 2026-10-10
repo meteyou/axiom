@@ -7,6 +7,7 @@ import type { Api, AssistantMessage, Message, ImageContent, Model } from '@earen
 import { Type, getCurrentSystemMessage } from '@earendil-works/pi-ai'
 import type { Database } from './database.js'
 import { logTokenUsage, logToolCall } from './token-logger.js'
+import { isFailedToolResult } from './loop-detection.js'
 import { estimateCost, getApiKeyForProvider, buildModel, buildStreamFn, loadProvidersDecrypted, parseProviderModelId, getProviderDefaultModel, getUsableModels } from './provider-config.js'
 import type { ProviderConfig } from './provider-config.js'
 import type { ProviderManager } from './provider-manager.js'
@@ -980,14 +981,15 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
         this.toolCallTimers.delete(event.toolCallId)
         this.toolCallArgs.delete(event.toolCallId)
         const toolResult = redactToolResultImages(event.result)
+        const isError = isFailedToolResult(event.isError, toolResult)
 
-        // Log tool call
         logToolCall(this.db, {
           sessionId,
           toolName: event.toolName,
           input: JSON.stringify(args),
           output: JSON.stringify(toolResult ?? {}),
           durationMs,
+          status: isError ? 'error' : 'success',
         })
 
         chunks.push({
@@ -995,7 +997,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
           toolName: event.toolName,
           toolCallId: event.toolCallId,
           toolResult,
-          toolIsError: event.isError,
+          toolIsError: isError,
         })
         break
       }
