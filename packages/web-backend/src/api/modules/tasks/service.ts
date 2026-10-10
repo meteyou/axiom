@@ -172,7 +172,11 @@ export class TasksService {
       return { task, events: [] }
     }
 
+    // Nested codemode calls are persisted in the same session but belong to
+    // their parent call's card (rendered from the parent's result details);
+    // showing them as top-level events would duplicate them.
     const toolCalls: TaskToolCallTimelineEvent[] = getToolCalls(this.options.db, { sessionId })
+      .filter(toolCall => toolCall.parentToolCallId == null)
       .reverse()
       .map((toolCall) => ({
         type: 'tool_call' as const,
