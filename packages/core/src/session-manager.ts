@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Database } from './database.js'
-import { appendToDailyFile } from './memory.js'
+import { appendToDailyFile, formatTimeKey } from './memory.js'
+import { getGlobalChatDefaults } from './user-settings.js'
 import { getBootstrapAdminId, resolveUserScope } from './user-scope.js'
 import { logToolCall } from './token-logger.js'
 
@@ -336,12 +337,11 @@ export class SessionManager {
    */
   private writeSummaryToDailyFile(summary: string, timestamp: number, userId: string): void {
     const activityDate = new Date(timestamp)
-    const hh = String(activityDate.getHours()).padStart(2, '0')
-    const mm = String(activityDate.getMinutes()).padStart(2, '0')
-    const formattedSummary = `\n## ${hh}:${mm}\n\n${summary}\n`
     const scope = resolveUserScope(this.db, userId)
+    const timezone = scope?.settings.timezone ?? getGlobalChatDefaults().timezone
+    const formattedSummary = `\n## ${formatTimeKey(activityDate, timezone)}\n\n${summary}\n`
     const dailyDir = scope && !scope.isBootstrapAdmin ? scope.paths.dailyDir : undefined
-    appendToDailyFile(formattedSummary, activityDate, this.memoryDir, dailyDir)
+    appendToDailyFile(formattedSummary, activityDate, this.memoryDir, dailyDir, timezone)
   }
 
   /**

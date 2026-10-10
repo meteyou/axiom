@@ -3,6 +3,8 @@ import { SessionManager, generateSessionId, type SessionInfo } from './session-m
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 import { initDatabase } from './database.js'
+import { getDefaultTimezone } from './config.js'
+import { formatDateKey, formatTimeKey } from './memory.js'
 import { logTokenUsage } from './token-logger.js'
 import type { Database } from './database.js'
 import fs from 'node:fs'
@@ -282,9 +284,8 @@ describe('SessionManager', () => {
 
       // The lastActivity is set to "now" (fake timer time)
       const lastActivityDate = new Date(session.lastActivity)
-      const expectedHH = String(lastActivityDate.getHours()).padStart(2, '0')
-      const expectedMM = String(lastActivityDate.getMinutes()).padStart(2, '0')
-      const expectedDateStr = lastActivityDate.toISOString().split('T')[0]
+      const expectedTime = formatTimeKey(lastActivityDate, getDefaultTimezone())
+      const expectedDateStr = formatDateKey(lastActivityDate, getDefaultTimezone())
 
       await vi.advanceTimersByTimeAsync(61 * 1000)
 
@@ -292,7 +293,7 @@ describe('SessionManager', () => {
       const dailyPath = path.join(memoryDir, 'daily', `${expectedDateStr}.md`)
       expect(fs.existsSync(dailyPath)).toBe(true)
       const content = fs.readFileSync(dailyPath, 'utf-8')
-      expect(content).toContain(`## ${expectedHH}:${expectedMM}`)
+      expect(content).toContain(`## ${expectedTime}`)
     })
 
     it('updates SQLite on session end with summary flag', async () => {
@@ -956,16 +957,14 @@ describe('SessionManager', () => {
       expect(metadata!.summary_written).toBe(1)
 
       // Summary should NOT be in today's daily file but in the file for twoHoursAgo's date
-      const expectedDate = twoHoursAgo.toISOString().split('T')[0]
+      const expectedDate = formatDateKey(twoHoursAgo, getDefaultTimezone())
       const dailyPath = path.join(memoryDir, 'daily', `${expectedDate}.md`)
       expect(fs.existsSync(dailyPath)).toBe(true)
       const content = fs.readFileSync(dailyPath, 'utf-8')
       expect(content).toContain('Session covered deployment strategies.')
 
       // Should use the lastActivity time, not current time
-      const expectedHH = String(twoHoursAgo.getHours()).padStart(2, '0')
-      const expectedMM = String(twoHoursAgo.getMinutes()).padStart(2, '0')
-      expect(content).toContain(`## ${expectedHH}:${expectedMM}`)
+      expect(content).toContain(`## ${formatTimeKey(twoHoursAgo, getDefaultTimezone())}`)
 
       // No active session should remain
       expect(manager2.hasActiveSession('user1')).toBe(false)
@@ -1032,8 +1031,8 @@ describe('SessionManager', () => {
 
       // Set last_activity to yesterday at 23:35
       const yesterday = new Date()
-      yesterday.setDate(yesterday.getDate() - 1)
-      yesterday.setHours(23, 35, 0, 0)
+      yesterday.setUTCDate(yesterday.getUTCDate() - 1)
+      yesterday.setUTCHours(23, 35, 0, 0)
 
       db.prepare(
         `UPDATE sessions SET last_activity = datetime(? / 1000, 'unixepoch') WHERE id = ?`
@@ -1050,11 +1049,11 @@ describe('SessionManager', () => {
       await manager2.init()
 
       // Summary should be in yesterday's daily file at 23:35
-      const expectedDateStr = yesterday.toISOString().split('T')[0]
+      const expectedDateStr = formatDateKey(yesterday, getDefaultTimezone())
       const dailyPath = path.join(memoryDir, 'daily', `${expectedDateStr}.md`)
       expect(fs.existsSync(dailyPath)).toBe(true)
       const content = fs.readFileSync(dailyPath, 'utf-8')
-      expect(content).toContain('## 23:35')
+      expect(content).toContain(`## ${formatTimeKey(yesterday, getDefaultTimezone())}`)
       expect(content).toContain('Late night deployment discussion.')
     })
 
