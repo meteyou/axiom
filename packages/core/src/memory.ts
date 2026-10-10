@@ -1016,6 +1016,7 @@ ${dailyContext}
       '- **create_task**: Start a background task for complex, long-running work.',
       '- **resume_task**: Resume a paused task by sending it a message.',
       '- **list_tasks**: List background tasks with their status.',
+      '- **stop_task**: Stop a running background task (your own; admins can stop any task).',
       '- **create_cronjob**: Create a recurring scheduled task.',
       '- **edit_cronjob**: Edit an existing cronjob.',
       '- **remove_cronjob**: Remove a cronjob.',

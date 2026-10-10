@@ -7,6 +7,8 @@ import { normalizeAttachedSkills } from './attached-skills.js'
 import type { TaskRuntimeTaskBoundary } from './task-runtime.js'
 import { SETTINGS_THINKING_LEVELS } from './contracts/settings.js'
 import { normalizeThinkingLevel } from './thinking-level.js'
+import { can, canCreateFor, getViewLevel } from './access-policy.js'
+import type { AccessActor } from './access-policy.js'
 
 export const THINKING_LEVEL_PARAM_DESCRIPTION =
   `Optional reasoning effort for the task agent: ${SETTINGS_THINKING_LEVELS.join(', ')}. ` +
@@ -46,6 +48,35 @@ export interface TaskToolsOptions {
    * from a background context).
    */
   getParentSessionId?: () => string | null
+  /**
+   * The user the tools act for. Tasks are created for this user and tools only
+   * reach tasks the access policy allows. Without an actor (tests, legacy
+   * callers) the tools stay unscoped.
+   */
+  actor?: AccessActor
+  /** Username lookup for the owner shown in admin listings of foreign tasks. */
+  getUsername?: (userId: number) => string | null
+}
+
+type ToolErrorResult = { content: { type: 'text'; text: string }[]; details: { error: true } }
+
+function toolError(text: string): ToolErrorResult {
+  return { content: [{ type: 'text' as const, text }], details: { error: true } }
+}
+
+function taskResource(task: { ownerUserId: number | null }) {
+  return { kind: 'task' as const, ownerId: task.ownerUserId }
+}
+
+/**
+ * A task the actor may not see is reported as missing so its existence stays
+ * private; an admin gets an explicit reason for actions only the owner may do.
+ */
+function foreignTaskError(actor: AccessActor, taskId: string, action: string): ToolErrorResult {
+  if (actor.role === 'admin') {
+    return toolError(`Error: Task "${taskId}" belongs to another user; only its owner can ${action} it.`)
+  }
+  return toolError(`Error: Task "${taskId}" not found.`)
 }
 
 /** e.g. "Thinking: high", "Thinking: high (default)", "Thinking: medium → high (clamped to model)". */
@@ -93,6 +124,10 @@ export function createResumeTaskTool(options: TaskToolsOptions): AgentTool {
             content: [{ type: 'text' as const, text: `Error: Task "${task_id}" is not paused (current status: ${task.status}).` }],
             details: { error: true },
           }
+        }
+
+        if (options.actor && !can(options.actor, taskResource(task), 'resume', 'agent')) {
+          return foreignTaskError(options.actor, task_id, 'resume')
         }
 
         // Check if the task agent is still in memory
@@ -251,6 +286,7 @@ export function createTaskTool(options: TaskToolsOptions): AgentTool {
           name,
           prompt,
           triggerType: 'agent',
+          ownerUserId: options.actor && canCreateFor(options.actor, options.actor.id) ? options.actor.id : undefined,
           provider: provider.name,
           model: getProviderDefaultModel(provider),
           isDefaultModel,
@@ -299,7 +335,7 @@ export function createTaskTool(options: TaskToolsOptions): AgentTool {
 /**
  * Create the `list_tasks` agent tool
  */
-export function listTasksTool(options: Pick<TaskToolsOptions, 'taskRuntime'>): AgentTool {
+export function listTasksTool(options: Pick<TaskToolsOptions, 'taskRuntime' | 'actor' | 'getUsername'>): AgentTool {
   return {
     name: 'list_tasks',
     label: 'List Background Tasks',
@@ -331,10 +367,12 @@ export function listTasksTool(options: Pick<TaskToolsOptions, 'taskRuntime'>): A
       }
 
       try {
+        const { actor } = options
         const tasks = options.taskRuntime.list({
           status: status as TaskStatus | undefined,
           triggerType: trigger_type as TaskTriggerType | undefined,
           limit: Math.min(limit ?? 20, 50),
+          ownerUserId: actor && actor.role !== 'admin' ? actor.id : undefined,
         })
 
         if (tasks.length === 0) {
@@ -349,6 +387,11 @@ export function listTasksTool(options: Pick<TaskToolsOptions, 'taskRuntime'>): A
         }
 
         const lines = tasks.map(t => {
+          if (actor && !can(actor, taskResource(t), 'view', 'agent') ) return null
+          if (actor && getViewLevel(actor, taskResource(t), 'agent') === 'metadata') {
+            const owner = t.ownerUserId != null ? options.getUsername?.(t.ownerUserId) ?? `user ${t.ownerUserId}` : 'unknown'
+            return `\u2022 [${t.status.toUpperCase()}] ${t.name}\n  ID: ${t.id}\n  Owner: ${owner} (details are private)`
+          }
           const duration = t.startedAt
             ? (() => {
                 const start = new Date(t.startedAt.replace(' ', 'T') + 'Z').getTime()
@@ -364,9 +407,10 @@ export function listTasksTool(options: Pick<TaskToolsOptions, 'taskRuntime'>): A
           return `\u2022 [${t.status.toUpperCase()}] ${t.name}\n  ID: ${t.id}\n  Trigger: ${t.triggerType} | Duration: ${duration} | Tokens: ${tokens} | Cost: $${t.estimatedCost.toFixed(4)}${modelLine}\n  Created: ${t.createdAt}`
         })
 
+        const visibleLines = lines.filter((line): line is string => line !== null)
         return {
-          content: [{ type: 'text' as const, text: `Found ${tasks.length} task(s):\n\n${lines.join('\n\n')}` }],
-          details: { count: tasks.length },
+          content: [{ type: 'text' as const, text: `Found ${visibleLines.length} task(s):\n\n${visibleLines.join('\n\n')}` }],
+          details: { count: visibleLines.length },
         }
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : String(err)
@@ -374,6 +418,46 @@ export function listTasksTool(options: Pick<TaskToolsOptions, 'taskRuntime'>): A
           content: [{ type: 'text' as const, text: `Error listing tasks: ${errorMsg}` }],
           details: { error: true },
         }
+      }
+    },
+  }
+}
+
+/**
+ * Create the `stop_task` agent tool: stops a running task of the actor, or of
+ * any user when the actor is an admin.
+ */
+export function createStopTaskTool(options: Pick<TaskToolsOptions, 'taskRuntime' | 'actor'>): AgentTool {
+  return {
+    name: 'stop_task',
+    label: 'Stop Background Task',
+    description:
+      'Stop a running background task. Use this when the user asks to cancel or stop a task. ' +
+      'Regular users can stop their own tasks; admins can stop any user\'s task. Find the task id with `list_tasks`.',
+    parameters: Type.Object({
+      task_id: Type.String({ description: 'The ID of the running task to stop.' }),
+    }),
+    execute: async (_toolCallId, params) => {
+      const { task_id } = params as { task_id: string }
+      try {
+        const task = options.taskRuntime.getById(task_id)
+        if (!task || (options.actor && getViewLevel(options.actor, taskResource(task), 'agent') === 'none')) {
+          return toolError(`Error: Task "${task_id}" not found.`)
+        }
+        if (options.actor && !can(options.actor, taskResource(task), 'stop', 'agent')) {
+          return toolError(`Error: You are not allowed to stop task "${task_id}".`)
+        }
+        if (task.status !== 'running') {
+          return toolError(`Error: Task "${task_id}" is not running (current status: ${task.status}).`)
+        }
+
+        options.taskRuntime.abort(task.id, 'Stopped by user via stop_task')
+        return {
+          content: [{ type: 'text' as const, text: `Task "${task.name}" (${task.id}) has been stopped.` }],
+          details: { taskId: task.id, name: task.name, status: 'failed' },
+        }
+      } catch (err) {
+        return toolError(`Error stopping task: ${err instanceof Error ? err.message : String(err)}`)
       }
     },
   }

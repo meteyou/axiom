@@ -35,6 +35,7 @@ const TOOL_REPLAY_POLICIES: ReadonlyMap<string, ToolReplayPolicy> = new Map([
   ['email_download_attachment', 'unsafe'],
   ['create_task', 'unsafe'],
   ['resume_task', 'unsafe'],
+  ['stop_task', 'unsafe'],
   ['create_cronjob', 'unsafe'],
   ['edit_cronjob', 'unsafe'],
   ['remove_cronjob', 'unsafe'],

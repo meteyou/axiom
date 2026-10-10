@@ -57,7 +57,7 @@ export { getUserProfileTemplate } from './memory.js'
 export { getUserProfileDir, ensureUserProfile, readUserProfile, ensureWikiDir, ensureProjectsDir, parseProjectAliases, listWikiPages, listProjectNotes } from './memory.js'
 export type { SkillPromptEntry } from './memory.js'
 export type { ConsolidationResult } from './memory-consolidation.js'
-export { resolveUserScope, getBootstrapAdminId, isMultiUser, checkUsernameAvailable, createUserFolders } from './user-scope.js'
+export { resolveUserScope, resolveUserPaths, getBootstrapAdminId, isMultiUser, checkUsernameAvailable, createUserFolders } from './user-scope.js'
 export type { UserScope, UserRole, UserPaths } from './user-scope.js'
 export {
   getGlobalChatDefaults,
@@ -309,6 +309,8 @@ export type {
   TurnPreambleToolCall,
 } from './turn-runner.js'
 export { createAgentRuntime, createBaseAgentTools } from './agent-runtime.js'
+export { createScopedTools } from './scoped-tools.js'
+export type { ScopedToolsDeps } from './scoped-tools.js'
 export type { AgentRuntimeBoundary, AgentRuntimeOptions, AgentRuntimePiAgentAccess, BaseAgentToolsOptions } from './agent-runtime.js'
 export type {
   AgentRuntimeStateSnapshot,
@@ -391,7 +393,9 @@ export {
 export type { ProviderStallMetadata, StallStats, StallStatsQueryOptions, StallThresholds } from './provider-stall.js'
 export { ProviderManager } from './provider-manager.js'
 export type { OperatingMode, ProviderManagerEvents } from './provider-manager.js'
-export { TaskStore, initTasksTable, buildTaskFilterClause } from './task-store.js'
+export { TaskStore, initTasksTable, migrateTaskOwners, buildTaskFilterClause } from './task-store.js'
+export { can as canAccess, canCreateFor, getViewLevel } from './access-policy.js'
+export type { AccessActor, AccessResource, AccessChannel, AccessAction, ViewLevel } from './access-policy.js'
 export type {
   Task,
   TaskStatus,

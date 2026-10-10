@@ -40,6 +40,8 @@ import {
 import type { LoopDetectionConfig, LoopDetectionResult } from './loop-detection.js'
 import type { TaskEventBus } from './task-event-bus.js'
 import { getWorkspaceDir } from './agent.js'
+import { getBootstrapAdminId, resolveUserScope } from './user-scope.js'
+import type { UserScope } from './user-scope.js'
 
 const MAX_STATUS_UPDATE_INTERVAL_MINUTES = 120
 
@@ -80,8 +82,10 @@ export interface TaskRunnerOptions {
   buildModel: (provider: ProviderConfig) => Model<Api>
   /** Function to get API key for a provider */
   getApiKey: (provider: ProviderConfig) => Promise<string>
-  /** Tools to give to each task agent */
-  tools: AgentTool[]
+  /** Builds the tools of one task agent, bound to the task owner's scope. */
+  createTools?: (context: { scope: UserScope; task: Task }) => AgentTool[]
+  /** Fixed tools for task agents; used when `createTools` is not given. */
+  tools?: AgentTool[]
   /** Memory directory reference for task agent system prompt */
   memoryDir?: string
   /** Callback when a task completes/fails — delivers the injection message */
@@ -224,10 +228,10 @@ const CLEANUP_INTERVAL_MS = 60 * 60 * 1000
 /** Max time a task can remain paused before being cleaned up (24 hours) */
 const MAX_PAUSE_DURATION_MS = 24 * 60 * 60 * 1000
 
-function buildTaskSystemPrompt(taskPrompt: string, memoryDir?: string, configDir?: string): string {
+function buildTaskSystemPrompt(taskPrompt: string, memoryDir?: string, configDir?: string, scope?: UserScope | null): string {
   const sections: string[] = []
 
-  const workspaceDir = getWorkspaceDir()
+  const workspaceDir = scope?.paths.workspace ?? getWorkspaceDir()
   sections.push(`You are a background task agent. You are NOT a chatbot — you are an autonomous worker.
 
 Your task: ${taskPrompt}
@@ -246,10 +250,20 @@ ${taskGuidelines}
 </task_guidelines>`)
   }
 
+  if (scope) {
+    sections.push(`<task_owner>
+This task belongs to the user "${scope.username}" (role: ${scope.role}). Results are delivered only to this user.
+Memory tools and chat history only return this user's data. Never include or act on other users' personal data.
+</task_owner>`)
+  }
+
   if (memoryDir) {
+    const personalReference = scope
+      ? `\nThe owner's profile is ${scope.paths.profile} and their daily notes are in ${scope.paths.dailyDir}.`
+      : ''
     sections.push(`<memory_reference>
 Your memory files are located in: ${memoryDir}
-You can read SOUL.md and MEMORY.md if you need context about the user's preferences or prior interactions.
+You can read SOUL.md and MEMORY.md if you need context about the user's preferences or prior interactions.${personalReference}
 </memory_reference>`)
   }
 
@@ -402,6 +416,20 @@ export class TaskRunner {
   }
 
   /**
+   * The owner's scope. A task whose owner was deleted must not borrow another
+   * user's workspace and memory, so it fails instead of running.
+   */
+  private resolveTaskScope(task: Task): UserScope | null {
+    if (task.ownerUserId != null) {
+      const ownerScope = resolveUserScope(this.db, task.ownerUserId)
+      if (!ownerScope) throw new Error(`Task owner (user ${task.ownerUserId}) no longer exists`)
+      return ownerScope
+    }
+    const bootstrapAdminId = getBootstrapAdminId(this.db)
+    return bootstrapAdminId !== null ? resolveUserScope(this.db, bootstrapAdminId) : null
+  }
+
+  /**
    * Get the task store
    */
   getStore(): TaskStore {
@@ -422,6 +450,7 @@ export class TaskRunner {
     const session = this.options.sessionManager.createSession({
       type: sessionType,
       source: 'system',
+      userId: task.ownerUserId != null ? String(task.ownerUserId) : undefined,
       parentSessionId: parentSessionId ?? undefined,
     })
     const sessionId = session.id
@@ -459,10 +488,12 @@ export class TaskRunner {
       this.store.update(taskId, { effectiveThinkingLevel: thinkingLevel })
       task.effectiveThinkingLevel = thinkingLevel
 
+      const scope = this.resolveTaskScope(task)
+
       // Determine effective system prompt
       const baseSystemPrompt = overrides?.systemPromptOverride
         ? overrides.systemPromptOverride
-        : buildTaskSystemPrompt(task.prompt, this.options.memoryDir)
+        : buildTaskSystemPrompt(task.prompt, this.options.memoryDir, undefined, scope)
 
       // Codemode eligibility is decided once at start: memory consolidation never
       // gets it, a per-cronjob override wins when set, otherwise the global
@@ -481,7 +512,9 @@ export class TaskRunner {
         : withAttached
 
       // Determine effective tools (filter out disabled tools)
-      let effectiveTools = this.options.tools
+      let effectiveTools = scope && this.options.createTools
+        ? this.options.createTools({ scope, task })
+        : (this.options.tools ?? [])
       if (overrides?.toolsOverride) {
         try {
           const disabledTools: string[] = JSON.parse(overrides.toolsOverride)
@@ -1050,10 +1083,13 @@ export class TaskRunner {
       })
 
       // Track token usage from detection — register a child session of the task
-      const taskSessionId = this.store.getById(runningTask.taskId)?.sessionId ?? null
+      const taskRow = this.store.getById(runningTask.taskId)
+      const taskSessionId = taskRow?.sessionId ?? null
+      const runningTaskOwner = taskRow?.ownerUserId ?? null
       const sessionId = this.options.sessionManager.createSession({
         type: 'loop_detection',
         source: 'system',
+        userId: runningTaskOwner != null ? String(runningTaskOwner) : undefined,
         parentSessionId: taskSessionId ?? undefined,
       }).id
       detectionAgent.subscribe((event: AgentEvent) => {
@@ -1774,6 +1810,7 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
         thinkingLevel: task.thinkingLevel,
         maxDurationMinutes: task.maxDurationMinutes ?? undefined,
         sessionId: task.sessionId ?? undefined,
+        ownerUserId: task.ownerUserId ?? undefined,
       })
 
       // Mark the old task as failed
