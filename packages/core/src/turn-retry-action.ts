@@ -25,6 +25,7 @@ export const TURN_RETRY_RESOLUTIONS = {
   unavailable: '\u26A0\uFE0F Retry is no longer available.',
   sessionEnded: '\u26A0\uFE0F Retry is no longer available \u2014 the session has ended.',
   movedOn: '\u26A0\uFE0F Retry is no longer available \u2014 the conversation moved on.',
+  notOwner: '\u26A0\uFE0F Only the owner of this conversation can retry it.',
   busy: '\u26A0\uFE0F Retry is no longer available \u2014 a turn is already running.',
 } as const
 
@@ -51,8 +52,12 @@ export interface TurnRetryServiceDeps {
 }
 
 export interface TurnRetryService {
-  /** Re-run the turn that failed with the given `turn_error` row. */
-  retry(errorMessageId: number): TurnRetryOutcome
+  /**
+   * Re-run the turn that failed with the given `turn_error` row. When
+   * `actorUserId` is given, only the turn's owner may retry; anyone else is
+   * refused without announcing anything, so the owner's button stays live.
+   */
+  retry(errorMessageId: number, actorUserId?: number): TurnRetryOutcome
 }
 
 interface ErrorRow {
@@ -124,7 +129,13 @@ export function createTurnRetryService(deps: TurnRetryServiceDeps): TurnRetrySer
   }
 
   return {
-    retry(errorMessageId: number): TurnRetryOutcome {
+    retry(errorMessageId: number, actorUserId?: number): TurnRetryOutcome {
+      if (actorUserId !== undefined) {
+        const owner = db.prepare('SELECT user_id FROM chat_messages WHERE id = ?').get(errorMessageId) as
+          | { user_id: number | null }
+          | undefined
+        if (owner?.user_id !== actorUserId) return fail(TURN_RETRY_RESOLUTIONS.notOwner)
+      }
       const outcome = decide(errorMessageId)
       void notifyTurnRetryResolved({ errorMessageId, ...outcome })
       return outcome

@@ -71,6 +71,21 @@ beforeEach(() => {
 })
 
 describe('manual turn retry', () => {
+  it('refuses a retry from another user without announcing anything', () => {
+    seedSession()
+    const errorId = seedFailedTurn()
+    const { runner, retryTurn } = fakeRunner()
+    const resolved: TurnRetryResolution[] = []
+    registerTurnRetryNotifier({ retryResolved: r => { resolved.push(r) } })
+
+    const outcome = createTurnRetryService({ db, runner }).retry(errorId, USER_ID + 1)
+
+    expect(outcome).toEqual({ ok: false, resolution: TURN_RETRY_RESOLUTIONS.notOwner })
+    expect(retryTurn).not.toHaveBeenCalled()
+    expect(resolved).toEqual([])
+    expect(createTurnRetryService({ db, runner }).retry(errorId, USER_ID).ok).toBe(true)
+  })
+
   it('re-runs the failed turn continue-style and reports it as started', () => {
     seedSession()
     const errorId = seedFailedTurn()
