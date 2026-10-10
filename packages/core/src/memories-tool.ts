@@ -6,6 +6,8 @@ import { searchMemories } from './memories-store.js'
 export interface SearchMemoriesToolOptions {
   db: Database
   getCurrentUserId?: () => number | undefined
+  /** Session identity of a caller without a user row; restricts results to facts from its own sessions. */
+  getSessionUser?: () => string | undefined
 }
 
 export function createSearchMemoriesTool(options: SearchMemoriesToolOptions): AgentTool {
@@ -52,6 +54,7 @@ export function createSearchMemoriesTool(options: SearchMemoriesToolOptions): Ag
         const userId = options.getCurrentUserId?.()
         const facts = searchMemories(options.db, query, {
           userId,
+          sessionUser: userId === undefined ? options.getSessionUser?.() : undefined,
           limit,
         })
 

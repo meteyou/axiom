@@ -5,6 +5,15 @@ import { normalizeFtsQuery } from './fts-utils.js'
 
 export interface ChatHistoryToolsOptions {
   db: Database
+  /** Restricts results to sessions owned by this user. */
+  getCurrentUserId?: () => number | undefined
+  /**
+   * Session identity of a caller without a user row (e.g. unlinked Telegram `telegram-<id>`); restricts results to its
+   * own sessions. Unrestricted only when neither this nor getCurrentUserId yields a value (background agents).
+   */
+  getSessionUser?: () => string | undefined
+  /** Also include sessions without an owner (background task/heartbeat/consolidation sessions). */
+  includeOwnerlessSessions?: () => boolean
 }
 
 interface ChatMessageRow {
@@ -124,6 +133,23 @@ export function createReadChatHistoryTool(options: ChatHistoryToolsOptions): Age
           '  INNER JOIN tool_calls tc ON tc.session_id = cm2.session_id' +
           '  WHERE tc.input LIKE ? OR tc.output LIKE ?' +
           ')'
+
+        const ownerId = options.getCurrentUserId?.()
+        if (ownerId !== undefined) {
+          const ownerlessCondition = options.includeOwnerlessSessions?.()
+            ? ' OR (so.user_id IS NULL AND so.session_user IS NULL)'
+            : ''
+          baseConditions.push(
+            `EXISTS (SELECT 1 FROM sessions so WHERE so.id = cm.session_id AND (so.user_id = ? OR so.session_user = ?${ownerlessCondition}))`
+          )
+          baseParams.push(ownerId, String(ownerId))
+        } else {
+          const sessionUser = options.getSessionUser?.()
+          if (sessionUser !== undefined) {
+            baseConditions.push('EXISTS (SELECT 1 FROM sessions so WHERE so.id = cm.session_id AND so.session_user = ?)')
+            baseParams.push(sessionUser)
+          }
+        }
 
         // Datetime filters — normalize to SQLite-compatible format
         if (start) {
