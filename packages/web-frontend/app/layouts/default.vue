@@ -74,16 +74,16 @@
             <span>{{ $t('nav.tasks') }}</span>
           </NuxtLink>
 
-          <template v-if="isAdmin">
-            <NuxtLink
-              to="/cronjobs"
-              :class="navItemClass('/cronjobs')"
-              @click="closeSidebarOnMobile"
-            >
-              <AppIcon name="calendar" class="shrink-0" />
-              <span>{{ $t('nav.cronjobs') }}</span>
-            </NuxtLink>
+          <NuxtLink
+            to="/cronjobs"
+            :class="navItemClass('/cronjobs')"
+            @click="closeSidebarOnMobile"
+          >
+            <AppIcon name="calendar" class="shrink-0" />
+            <span>{{ $t('nav.cronjobs') }}</span>
+          </NuxtLink>
 
+          <template v-if="isAdmin">
             <NuxtLink
               to="/logs"
               :class="navItemClass('/logs')"

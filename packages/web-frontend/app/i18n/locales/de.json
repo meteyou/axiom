@@ -1306,6 +1306,7 @@
     "noFilterMatchesTitle": "Keine Cronjobs für diese Filter",
     "noFilterMatchesDescription": "Passe die Filter an oder setze sie zurück, um mehr Cronjobs zu sehen.",
     "filters": {
+      "allOwners": "Alle Besitzer",
       "button": "Filter",
       "reset": "Filter zurücksetzen",
       "search": "Cronjobs durchsuchen…",
@@ -1324,6 +1325,7 @@
     "actionTypeTask": "Task",
     "actionTypeInjection": "Injection",
     "columns": {
+      "owner": "Besitzer",
       "name": "Name",
       "schedule": "Zeitplan",
       "actionType": "Aktion",

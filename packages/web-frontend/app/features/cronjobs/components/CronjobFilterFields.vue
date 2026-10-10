@@ -7,6 +7,18 @@
     :aria-label="$t('cronjobs.filters.search')"
   />
 
+  <Select v-if="ownerOptions" v-model="ownerUserId">
+    <SelectTrigger class="w-full md:w-[160px]" :aria-label="$t('cronjobs.columns.owner')">
+      <SelectValue />
+    </SelectTrigger>
+    <SelectContent>
+      <SelectItem value="">{{ $t('cronjobs.filters.allOwners') }}</SelectItem>
+      <SelectItem v-for="option in ownerOptions" :key="option.value" :value="option.value">
+        {{ option.label }}
+      </SelectItem>
+    </SelectContent>
+  </Select>
+
   <Select v-model="enabled">
     <SelectTrigger class="w-full md:w-[140px]">
       <SelectValue />
@@ -77,11 +89,14 @@ import {
 } from '~/features/cronjobs/composables/useCronjobFilters'
 
 defineProps<{
+  /** Owner choices; only passed for admins, who see every user's cronjobs. */
+  ownerOptions?: { value: string; label: string }[]
   hasDefaultProviderOption: boolean
   providerOptions: { value: string; label: string }[]
 }>()
 
 const search = defineModel<string>('search', { required: true })
+const ownerUserId = defineModel<string>('ownerUserId', { default: '' })
 const enabled = defineModel<CronjobEnabledFilter>('enabled', { required: true })
 const actionType = defineModel<string>('actionType', { required: true })
 const provider = defineModel<string>('provider', { required: true })

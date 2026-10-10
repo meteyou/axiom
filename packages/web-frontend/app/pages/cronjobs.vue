@@ -1,15 +1,5 @@
 <template>
-  <!-- Admin gate -->
-  <div
-    v-if="!isAdmin"
-    class="flex h-full flex-col items-center justify-center gap-3 p-10 text-center text-muted-foreground"
-  >
-    <AppIcon name="lock" size="xl" class="opacity-50" />
-    <h1 class="text-lg font-semibold text-foreground">{{ $t('admin.title') }}</h1>
-    <p class="max-w-xs text-sm">{{ $t('admin.description') }}</p>
-  </div>
-
-  <div v-else class="flex h-full flex-col overflow-hidden">
+  <div class="flex h-full flex-col overflow-hidden">
     <PageHeader :title="$t('cronjobs.pageTitle')" :subtitle="$t('cronjobs.pageSubtitle')">
       <template #actions>
         <Button class="h-8 gap-2 px-3 text-xs md:h-10 md:px-4 md:py-2 md:text-sm" @click="openCreateCronjob">
@@ -34,6 +24,8 @@
           <PopoverContent align="start" class="flex w-[calc(100vw-1.5rem)] max-w-sm flex-col gap-2">
             <CronjobFilterFields
               v-model:search="filters.search"
+              v-model:owner-user-id="filters.ownerUserId"
+              :owner-options="ownerOptions"
               v-model:enabled="filters.enabled"
               v-model:action-type="filters.actionType"
               v-model:provider="filters.provider"
@@ -60,6 +52,8 @@
         <div class="flex flex-1 flex-wrap items-center gap-2">
           <CronjobFilterFields
             v-model:search="filters.search"
+            v-model:owner-user-id="filters.ownerUserId"
+            :owner-options="ownerOptions"
             v-model:enabled="filters.enabled"
             v-model:action-type="filters.actionType"
             v-model:provider="filters.provider"
@@ -148,6 +142,8 @@
             :key="cj.id"
             :cronjob="cj"
             :provider-label="providerLabel(cj)"
+            :show-owner="isAdmin"
+            :can-manage="canManage(cj)"
             @edit="openEditCronjob(cj)"
             @trigger="handleTrigger(cj)"
             @delete="confirmDeleteCronjob(cj)"
@@ -161,6 +157,7 @@
             <TableHeader>
               <TableRow>
                 <TableHead>{{ $t('cronjobs.columns.name') }}</TableHead>
+                <TableHead v-if="isAdmin">{{ $t('cronjobs.columns.owner') }}</TableHead>
                 <TableHead>{{ $t('cronjobs.columns.schedule') }}</TableHead>
                 <TableHead>{{ $t('cronjobs.columns.actionType') }}</TableHead>
                 <TableHead>{{ $t('cronjobs.columns.provider') }}</TableHead>
@@ -173,8 +170,8 @@
               <TableRow
                 v-for="cj in filteredCronjobs"
                 :key="cj.id"
-                class="cursor-pointer"
-                @click="openEditCronjob(cj)"
+                :class="{ 'cursor-pointer': canManage(cj) }"
+                @click="canManage(cj) && openEditCronjob(cj)"
               >
                 <TableCell class="max-w-[260px] font-medium">
                   <div class="flex flex-wrap items-center gap-1.5">
@@ -200,6 +197,9 @@
                       📎 {{ skill }}
                     </Badge>
                   </div>
+                </TableCell>
+                <TableCell v-if="isAdmin" class="text-muted-foreground">
+                  {{ cj.ownerUsername ?? '—' }}
                 </TableCell>
                 <TableCell>
                   <div class="flex flex-col">
@@ -240,15 +240,17 @@
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem @click="openEditCronjob(cj)">
-                        <AppIcon name="edit" size="sm" class="mr-2" />
-                        {{ $t('common.edit') }}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem @click="handleTrigger(cj)">
-                        <AppIcon name="send" size="sm" class="mr-2" />
-                        {{ $t('cronjobs.runNow') }}
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
+                      <template v-if="canManage(cj)">
+                        <DropdownMenuItem @click="openEditCronjob(cj)">
+                          <AppIcon name="edit" size="sm" class="mr-2" />
+                          {{ $t('common.edit') }}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem @click="handleTrigger(cj)">
+                          <AppIcon name="send" size="sm" class="mr-2" />
+                          {{ $t('cronjobs.runNow') }}
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                      </template>
                       <DropdownMenuItem destructive @click="confirmDeleteCronjob(cj)">
                         <AppIcon name="trash" size="sm" class="mr-2" />
                         {{ $t('common.delete') }}
@@ -299,6 +301,15 @@ const { t } = useI18n()
 const { formatTimestamp } = useFormat()
 const { user } = useAuth()
 const isAdmin = computed(() => user.value?.role === 'admin')
+const { users, fetchUsers } = useUsers()
+
+const ownerOptions = computed(() =>
+  isAdmin.value ? users.value.map(entry => ({ value: String(entry.id), label: entry.username })) : undefined,
+)
+
+function canManage(cj: Cronjob): boolean {
+  return cj.ownerUserId === user.value?.id
+}
 
 const { providers, fetchProviders } = useProviders()
 
@@ -396,7 +407,7 @@ async function executeDeleteCronjob() {
 }
 
 onMounted(async () => {
-  if (!isAdmin.value) return
-  await Promise.all([loadCronjobs(), fetchProviders()])
+  if (isAdmin.value) void fetchUsers()
+  await Promise.all([loadCronjobs(), isAdmin.value ? fetchProviders() : Promise.resolve()])
 })
 </script>
