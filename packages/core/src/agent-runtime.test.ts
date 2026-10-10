@@ -228,6 +228,12 @@ describe('AgentRuntime boundary', () => {
       { name: 'Enabled skill', description: 'desc', location: '/skills/enabled' },
       { name: 'recent skill', description: 'desc', location: '/skills-agent/recent' },
     ]))
+    expect(latestCall?.recentDays).toBeUndefined()
+  })
+
+  it('omits daily notes from the prompt of callers without a user row', () => {
+    createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db: initDatabase(':memory:'), tools: [], user: null, sessionUser: 'telegram-42' })
+    expect(vi.mocked(assembleSystemPrompt).mock.calls.at(-1)?.[0]?.recentDays).toBe(0)
   })
 
   it('replaces the leading system message on refresh and keeps it when clearing messages', () => {
