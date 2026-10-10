@@ -62,7 +62,7 @@ function getJwtSecret(): string {
  * Ensure admin user exists on first boot
  */
 export function ensureAdminUser(db: Database): void {
-  const existing = db.prepare('SELECT id FROM users WHERE role = ?').get('admin')
+  const existing = db.prepare('SELECT id FROM users WHERE role = ? AND deleted_at IS NULL').get('admin')
   if (existing) return
 
   const username = process.env.ADMIN_USERNAME ?? 'admin'
@@ -85,7 +85,7 @@ export function validateCredentials(
   password: string
 ): { id: number; username: string; role: string } | null {
   const row = db.prepare(
-    'SELECT id, username, password_hash, role FROM users WHERE username = ?'
+    'SELECT id, username, password_hash, role FROM users WHERE username = ? AND deleted_at IS NULL'
   ).get(username) as { id: number; username: string; password_hash: string; role: string } | undefined
 
   if (!row) return null
@@ -132,7 +132,7 @@ export function verifyToken(token: string): JwtPayload | null {
 export function authenticateToken(db: Database, token: string): JwtPayload | null {
   const payload = verifyToken(token)
   if (!payload) return null
-  const row = db.prepare('SELECT id, username, role, token_version FROM users WHERE id = ?').get(payload.userId) as
+  const row = db.prepare('SELECT id, username, role, token_version FROM users WHERE id = ? AND deleted_at IS NULL').get(payload.userId) as
     | { id: number; username: string; role: string; token_version: number }
     | undefined
   if (!row || row.token_version !== (payload.tokenVersion ?? 0)) return null
