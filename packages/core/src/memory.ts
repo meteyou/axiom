@@ -263,7 +263,9 @@ source files so their factual claims stay verifiable.
 - **Be concise**: Use bullet points and short descriptions. Core memory should be scannable.
 - **Daily files are read-only**: Never modify daily log files — they are append-only source material.
 - **Sources are read-only**: Never modify files under \`sources/\` — they are the immutable archival layer.
+- **MEMORY.md is shared by all users**: It may only contain general lessons and project context. Personal content (preferences, habits, private facts about a person) must be moved into the affected user's profile and removed from MEMORY.md.
 
+<admin_only>
 ## Wiki lint: content gaps, source coverage, oversized pages
 
 During consolidation, also run these checks on the wiki and report findings
@@ -278,6 +280,11 @@ During consolidation, also run these checks on the wiki and report findings
   - Wiki pages that make factual claims (dates, numbers, quotes, attributed statements) but have no \`## Sources\` / \`## Quellen\` section → flag them.
   - Files in \`sources/\` that are not cited by any wiki page → flag as orphaned source (either stale raw material or a candidate for ingest).
 - **Oversized pages** — flag wiki pages longer than ~500 lines as split candidates. Do NOT split during lint; splitting (hub page + subpages, see the wiki skill) is reserved for the weekly compaction run.
+
+## Global steps
+
+Only the admin run performs these: wiki lint (above), source coverage, and compaction of MEMORY.md (merge duplicates, enforce the size budget).
+</admin_only>
 `
 
 
@@ -341,6 +348,13 @@ export function getUserProfileTemplate(username: string): string {
 
 export function getDefaultHeartbeatContent(): string {
   return HEARTBEAT_TEMPLATE
+}
+
+/**
+ * Remove `<admin_only>…</admin_only>` blocks (and their tags) from consolidation rules.
+ */
+export function stripAdminOnlyBlocks(content: string): string {
+  return content.replace(/<admin_only>[\s\S]*?<\/admin_only>\n*/g, '').replace(/\n{3,}/g, '\n\n').trim() + '\n'
 }
 
 export function getDefaultConsolidationContent(): string {
