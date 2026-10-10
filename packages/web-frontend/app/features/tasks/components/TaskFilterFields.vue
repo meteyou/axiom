@@ -1,4 +1,16 @@
 <template>
+  <Select v-if="ownerOptions" v-model="ownerUserId" @update:model-value="$emit('change')">
+    <SelectTrigger class="w-full md:w-[160px]" :aria-label="$t('tasks.columns.owner')">
+      <SelectValue />
+    </SelectTrigger>
+    <SelectContent>
+      <SelectItem value="">{{ $t('tasks.filters.allOwners') }}</SelectItem>
+      <SelectItem v-for="option in ownerOptions" :key="option.value" :value="option.value">
+        {{ option.label }}
+      </SelectItem>
+    </SelectContent>
+  </Select>
+
   <Select v-model="status" @update:model-value="$emit('change')">
     <SelectTrigger class="w-full md:w-[160px]">
       <SelectValue />
@@ -72,6 +84,8 @@
 import { TASK_DEFAULT_PROVIDER_FILTER } from '~/features/tasks/composables/useTasksList'
 
 defineProps<{
+  /** Owner choices; only passed for admins, who see every user's tasks. */
+  ownerOptions?: { value: string; label: string }[]
   hasDefaultProviderOption: boolean
   providerModelOptions: { value: string; label: string }[]
 }>()
@@ -80,6 +94,7 @@ defineEmits<{
   change: []
 }>()
 
+const ownerUserId = defineModel<string>('ownerUserId', { default: '' })
 const status = defineModel<string>('status', { required: true })
 const triggerType = defineModel<string>('triggerType', { required: true })
 const providerFilter = defineModel<string>('providerFilter', { required: true })

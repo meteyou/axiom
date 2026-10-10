@@ -66,7 +66,7 @@
           <span class="hidden sm:inline">{{ $t('taskViewer.restartButton') }}</span>
         </Button>
         <Button
-          v-else-if="!editing && taskInfo?.status && !canRestart"
+          v-else-if="!editing && taskInfo?.status && isOwnTask && !canRestart"
           variant="outline"
           size="sm"
           class="gap-1.5"
@@ -457,7 +457,8 @@ const taskMeta = computed(() => {
     thinkingLevel: info.thinkingLevel ?? null,
     effectiveThinkingLevel: info.effectiveThinkingLevel ?? null,
   }, t)
-  return [model, thinking].filter(Boolean).join(' · ') || null
+  const owner = !isOwnTask.value && info.ownerUsername ? t('taskViewer.ownerLabel', { owner: info.ownerUsername }) : null
+  return [owner, model, thinking].filter(Boolean).join(' · ') || null
 })
 
 const thinkingLevelOptions = computed(() => {
@@ -472,9 +473,14 @@ const thinkingLevelOptions = computed(() => {
 
 /** Only terminal tasks can be restarted. `running` / `paused` must be
  *  killed or resumed first. Agreed behaviour. */
+const { user } = useAuth()
+
+/** Admins may view and stop foreign tasks, but only the owner can restart one. */
+const isOwnTask = computed(() => taskInfo.value?.ownerUserId === user.value?.id)
+
 const canRestart = computed(() => {
   const s = taskInfo.value?.status
-  return s === 'completed' || s === 'failed'
+  return isOwnTask.value && (s === 'completed' || s === 'failed')
 })
 
 const canSubmit = computed(() =>

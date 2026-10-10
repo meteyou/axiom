@@ -1088,6 +1088,7 @@
     "filters": {
       "allStatuses": "Alle Status",
       "allTriggers": "Alle Auslöser",
+      "allOwners": "Alle Besitzer",
       "allProviders": "Alle Provider",
       "defaultProvider": "Standard",
       "button": "Filter",
@@ -1101,7 +1102,8 @@
       "duration": "Dauer",
       "tokens": "Tokens",
       "cost": "Gesch. Kosten",
-      "created": "Erstellt"
+      "created": "Erstellt",
+      "owner": "Besitzer"
     },
     "status": {
       "running": "Läuft",
@@ -1353,6 +1355,7 @@
     }
   },
   "taskViewer": {
+    "ownerLabel": "Besitzer: {owner}",
     "back": "Zurück zu Tasks",
     "live": "Live",
     "loading": "Lade Task-Events...",
