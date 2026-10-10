@@ -18,6 +18,8 @@ import { getWorkspaceDir } from './workspace.js'
 export interface SendFileToolOptions {
   /** Resolve the current user id (numeric, matches `users.id`). */
   getCurrentToolUserId: () => number | undefined
+  /** Directory relative paths resolve against; defaults to the global workspace. */
+  getWorkspaceDir?: () => string
   /** Resolve the currently active interactive session id, if any. */
   getCurrentInteractiveSessionId?: () => string | null
 }
@@ -86,9 +88,9 @@ const MAX_FILE_SIZE = 50 * 1024 * 1024
  * Resolve `inputPath` against the workspace dir (same semantics as the
  * `read_file`/`write_file` YOLO tools). Returns an absolute path.
  */
-function resolvePath(inputPath: string): string {
+function resolvePath(inputPath: string, workspaceDir: string): string {
   if (path.isAbsolute(inputPath)) return inputPath
-  return path.resolve(getWorkspaceDir(), inputPath)
+  return path.resolve(workspaceDir, inputPath)
 }
 
 function formatBytes(size: number): string {
@@ -167,7 +169,7 @@ export function createSendFileTool(options: SendFileToolOptions): AgentTool {
 
       let absolutePath: string
       try {
-        absolutePath = resolvePath(inputPath)
+        absolutePath = resolvePath(inputPath, (options.getWorkspaceDir ?? getWorkspaceDir)())
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
         return {

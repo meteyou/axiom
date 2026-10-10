@@ -5,7 +5,7 @@ import { Type } from '@earendil-works/pi-ai'
 import { trackAgentSkillUsage } from './agent-skills.js'
 import { detectImageMimeType, prepareImageForLlm } from './llm-image.js'
 import { getSkillDecrypted, loadSkills } from './skill-config.js'
-import { resolveWorkspacePath } from './workspace.js'
+import { getWorkspaceDir, resolveWorkspacePath } from './workspace.js'
 
 export const READ_FILE_MAX_LINES = 2000
 export const READ_FILE_MAX_BYTES = 50 * 1024
@@ -119,7 +119,7 @@ function readSkillFile(resolved: string, raw: string, offset?: number, limit?: n
   })
 }
 
-export function createReadFileTool(): AgentTool {
+export function createReadFileTool(getWorkspace: () => string = getWorkspaceDir): AgentTool {
   return {
     name: 'read_file',
     label: 'Read File',
@@ -132,7 +132,7 @@ export function createReadFileTool(): AgentTool {
     execute: async (_toolCallId, params) => {
       const { path: filePath, offset, limit } = params as { path: string; offset?: number; limit?: number }
       try {
-        const resolved = resolveWorkspacePath(filePath)
+        const resolved = resolveWorkspacePath(filePath, getWorkspace())
         const buffer = await fs.readFile(resolved)
 
         const imageMimeType = detectImageMimeType(buffer)

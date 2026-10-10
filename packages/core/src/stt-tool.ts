@@ -21,9 +21,9 @@ const SUPPORTED_EXTENSIONS = Object.keys(AUDIO_EXTENSIONS)
 /**
  * Resolve a path relative to the workspace directory.
  */
-function resolveWorkspacePath(filePath: string): string {
+function resolveWorkspacePath(filePath: string, workspaceDir: string): string {
   if (nodePath.isAbsolute(filePath)) return filePath
-  return nodePath.resolve(getWorkspaceDir(), filePath)
+  return nodePath.resolve(workspaceDir, filePath)
 }
 
 /**
@@ -36,7 +36,7 @@ function resolveWorkspacePath(filePath: string): string {
  * (e.g. from yt-dlp). The agent downloads the audio via shell, then uses this
  * tool to transcribe it.
  */
-export function createTranscribeAudioTool(): AgentTool {
+export function createTranscribeAudioTool(getWorkspace: () => string = getWorkspaceDir): AgentTool {
   return {
     name: 'transcribe_audio',
     label: 'Transcribe Audio',
@@ -77,7 +77,7 @@ export function createTranscribeAudioTool(): AgentTool {
         }
 
         // Resolve path
-        const resolved = resolveWorkspacePath(filePath)
+        const resolved = resolveWorkspacePath(filePath, getWorkspace())
 
         // Check file exists
         if (!fs.existsSync(resolved)) {

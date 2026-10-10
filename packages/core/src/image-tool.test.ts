@@ -240,6 +240,30 @@ describe('generate_image tool', () => {
     }))
   })
 
+  it('resolves input_images and saves results in the given user workspace', async () => {
+    const userWorkspace = path.join(workspace, 'bob')
+    fs.mkdirSync(userWorkspace)
+    fs.writeFileSync(path.join(userWorkspace, 'source.png'), IMAGE_BYTES)
+    const generate = vi.fn(async () => resultWith())
+    const tool = createGenerateImageTool({
+      db,
+      readSettings: settingsWith({}),
+      generate,
+      resolveModel: resolvesTo('recraft/recraft-v4.1'),
+      now: () => FIXED_NOW,
+      getWorkspaceDir: () => userWorkspace,
+    })
+
+    const output = await run(tool, { prompt: 'Logo', input_images: ['source.png'] })
+    expect(generate).toHaveBeenCalledWith(expect.objectContaining({
+      inputImages: [{ type: 'image', mimeType: 'image/png', data: IMAGE_BASE64 }],
+    }))
+    const relativePath = path.join('images', '2026-10-05', 'logo.webp')
+    expect(output.details.files?.[0]?.path).toBe(relativePath)
+    expect(fs.existsSync(path.join(userWorkspace, relativePath))).toBe(true)
+    expect(fs.existsSync(path.join(workspace, 'images'))).toBe(false)
+  })
+
   it('rejects missing or unsupported input images and models without image input', async () => {
     const generate = vi.fn(async () => resultWith())
     const tool = createTool(generate)
