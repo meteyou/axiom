@@ -533,12 +533,84 @@ describe('nested call observer and progress', () => {
 
     expect(updates).toHaveLength(2)
     expect(updates[0]!.details.calls).toEqual([
-      { id: 'parent-1/slow/1', name: 'slow', status: 'running', durationMs: undefined, errorPreview: undefined },
+      { id: 'parent-1/slow/1', name: 'slow', status: 'running', args: {}, durationMs: undefined, errorPreview: undefined },
     ])
     const finalCalls = updates[1]!.details.calls as Array<Record<string, unknown>>
     expect(finalCalls).toHaveLength(1)
-    expect(finalCalls[0]).toMatchObject({ id: 'parent-1/slow/1', name: 'slow', status: 'ok' })
+    expect(finalCalls[0]).toMatchObject({ id: 'parent-1/slow/1', name: 'slow', status: 'ok', args: {} })
     expect(finalCalls[0]!.durationMs).toBeGreaterThanOrEqual(50)
+  })
+
+  it('includes the nested call args in the final result details', async () => {
+    const tool = makeTool({
+      name: 'read_file',
+      execute: async () => ({ content: [{ type: 'text' as const, text: 'file contents' }], details: {} }),
+    })
+    const codemode = createCodemodeTool({ owner: makeOwner([tool]) })
+    const result = await runWith(codemode, `await tools.read_file({ path: 'a.md' });`)
+    const calls = result.details.calls as Array<Record<string, unknown>>
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toMatchObject({ id: 'parent-1/read_file/1', name: 'read_file', status: 'ok', args: { path: 'a.md' } })
+  })
+
+  it('persists the nested call error preview in the final result details', async () => {
+    const tool = makeTool({
+      name: 'read_file',
+      execute: async () => ({ content: [{ type: 'text' as const, text: 'ENOENT: no such file or directory' }], details: { error: true } }),
+    })
+    const codemode = createCodemodeTool({ owner: makeOwner([tool]) })
+    const result = await runWith(codemode, `try { await tools.read_file({ path: 'missing.md' }); } catch (err) { return 'handled' }`)
+    const calls = result.details.calls as Array<Record<string, unknown>>
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toMatchObject({
+      id: 'parent-1/read_file/1',
+      name: 'read_file',
+      status: 'error',
+      args: { path: 'missing.md' },
+      errorPreview: 'ENOENT: no such file or directory',
+    })
+  })
+
+  it('compacts nested call args in snapshots and result details but keeps them full for the observer', async () => {
+    const content = 'first line of the file\n' + 'x'.repeat(5000)
+    const updates: AgentToolResult<Record<string, unknown>>[] = []
+    const starts: CodemodeNestedCallStart[] = []
+    const tool = makeTool({
+      name: 'write_file',
+      execute: async () => ({ content: [{ type: 'text' as const, text: 'written' }], details: {} }),
+    })
+    const codemode = createCodemodeTool({
+      owner: makeOwner([tool]),
+      observer: { onCallStart: info => starts.push(info) },
+    })
+    const result = await runWith(
+      codemode,
+      `await tools.write_file({ path: 'a.md', content: ${JSON.stringify(content)} });`,
+      partial => updates.push(partial),
+    )
+
+    const compactArgs = { path: 'a.md', content: 'first line of the file' }
+    for (const update of updates) {
+      expect((update.details.calls as Array<Record<string, unknown>>)[0]).toMatchObject({ args: compactArgs })
+    }
+    const calls = result.details.calls as Array<Record<string, unknown>>
+    expect(calls[0]).toMatchObject({ status: 'ok', args: compactArgs })
+    // The observer (tool-call log, task journal, loop detection) still gets the full args.
+    expect(starts[0]!.args).toMatchObject({ path: 'a.md', content })
+  })
+
+  it('caps long single-line string args in the result details', async () => {
+    const tool = makeTool({
+      name: 'shell',
+      execute: async () => ({ content: [{ type: 'text' as const, text: 'ok' }], details: {} }),
+    })
+    const command = `echo ${'a'.repeat(300)}`
+    const codemode = createCodemodeTool({ owner: makeOwner([tool]) })
+    const result = await runWith(codemode, `await tools.shell({ command: ${JSON.stringify(command)} });`)
+    const calls = result.details.calls as Array<Record<string, unknown>>
+    const args = calls[0]!.args as { command: string }
+    expect(args.command).toBe(`echo ${'a'.repeat(194)}…`)
+    expect(args.command).toHaveLength(200)
   })
 
   it('createNestedCallLogObserver writes nested calls to the tool-call log with the parent link', () => {

@@ -50,7 +50,9 @@ const CODEMODE_SPILL_RETENTION_MS = 7 * 24 * 60 * 60 * 1000
 
 /**
  * One nested tool call, as tracked by the codemode tool for the observer and the
- * failure summary. `status` transitions running → ok | error | cancelled.
+ * failure summary. `status` transitions running → ok | error | cancelled. `args`
+ * is compacted for display (see `compactNestedCallArgs`); the full arguments
+ * remain on the nested call's own tool-call log row and task journal.
  */
 export interface CodemodeNestedCall {
   id: string
@@ -66,6 +68,8 @@ export interface CodemodeNestedCallSnapshot {
   id: string
   name: string
   status: 'running' | 'ok' | 'error' | 'cancelled'
+  /** The nested call's arguments, compacted so clients can render the per-tool summary line. */
+  args?: unknown
   durationMs?: number
   errorPreview?: string
 }
@@ -218,11 +222,38 @@ export function createCodemodeTool(options: CodemodeToolOptions): AgentTool {
   }
 }
 
+/** Cap in characters for a string value in the compacted nested-call args. */
+const NESTED_CALL_ARG_STRING_MAX = 200
+
+/**
+ * Compact a nested call's arguments for the progress snapshot and the persisted
+ * result details: string values keep only their first line, capped, because the
+ * client-side per-tool summary line renders nothing else. Without this, a script
+ * that writes large files re-sends and re-persists every file body in each
+ * snapshot and in the result details.
+ */
+function compactNestedCallArgs(args: unknown): unknown {
+  if (typeof args === 'string') {
+    const line = args.trim().split('\n', 1)[0] ?? ''
+    return line.length > NESTED_CALL_ARG_STRING_MAX
+      ? `${line.slice(0, NESTED_CALL_ARG_STRING_MAX - 1)}…`
+      : line
+  }
+  if (Array.isArray(args)) return args.map(compactNestedCallArgs)
+  if (args !== null && typeof args === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(args)) out[key] = compactNestedCallArgs(value)
+    return out
+  }
+  return args
+}
+
 function toNestedCallSnapshot(call: CodemodeNestedCall): CodemodeNestedCallSnapshot {
   return {
     id: call.id,
     name: call.name,
     status: call.status,
+    args: call.args,
     durationMs: call.durationMs,
     errorPreview: call.errorPreview,
   }
@@ -277,7 +308,7 @@ function buildSandboxTool(
     async execute(args, context) {
       const owner = options.owner
       const id = `${toolCallId}/${tool.name}/${++counter}`
-      const record: CodemodeNestedCall = { id, name: tool.name, status: 'running', args }
+      const record: CodemodeNestedCall = { id, name: tool.name, status: 'running', args: compactNestedCallArgs(args) }
       calls.push(record)
       observer.onCallStart?.({ parentToolCallId: toolCallId, toolCallId: id, toolName: tool.name, args })
 
@@ -394,7 +425,7 @@ function buildCodemodeResult(
 ): AgentToolResult<Record<string, unknown>> {
   const wallTime = ((performance.now() - startedAt) / 1000).toFixed(1)
   const details: Record<string, unknown> = {
-    calls: calls.map(call => ({ id: call.id, name: call.name, status: call.status, durationMs: call.durationMs })),
+    calls: calls.map(call => ({ id: call.id, name: call.name, status: call.status, args: call.args, durationMs: call.durationMs, errorPreview: call.errorPreview })),
   }
   if (uploads.length > 0) details.uploadedFiles = uploads
 
