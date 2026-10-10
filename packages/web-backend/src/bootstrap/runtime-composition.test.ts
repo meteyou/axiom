@@ -108,6 +108,16 @@ describe('background task tools rebuild on email account change', () => {
     expect(toolNames).toContain('email_send')
     expect(toolNames).toContain('create_task')
   })
+
+  it('never lists codemode among the background task tools, even when the task switch is on', async () => {
+    const configDir = path.join(tempDataDir, 'config')
+    fs.mkdirSync(configDir, { recursive: true })
+    fs.writeFileSync(path.join(configDir, 'settings.json'), JSON.stringify({ codemode: { tasks: true } }))
+
+    composition = await createRuntimeComposition({ logger: silentLogger })
+
+    expect(composition.getBackgroundTaskToolNames()).not.toContain('codemode')
+  })
 })
 
 describe('resolveTaskDefaultProvider', () => {

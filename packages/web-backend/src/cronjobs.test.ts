@@ -55,6 +55,7 @@ afterAll(async () => {
 
 describe('Cronjobs REST API', () => {
   let createdId: string
+  let codemodeJobId: string
 
   describe('POST /api/cronjobs', () => {
     it('creates a new cronjob', async () => {
@@ -101,6 +102,45 @@ describe('Cronjobs REST API', () => {
       expect(res.status).toBe(400)
       const body = await res.json() as { error: string }
       expect(body.error).toContain('Missing required fields')
+    })
+
+    it('creates with a codemode override and returns it', async () => {
+      const res = await apiFetch('/api/cronjobs', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: 'Codemode Job',
+          prompt: 'test',
+          schedule: '0 9 * * *',
+          codemode: 'on',
+        }),
+      })
+
+      expect(res.status).toBe(201)
+      const body = await res.json() as { cronjob: { id: string; codemode: string | null } }
+      expect(body.cronjob.codemode).toBe('on')
+      codemodeJobId = body.cronjob.id
+    })
+
+    it('defaults codemode to null (inherit) when not sent', async () => {
+      const res = await apiFetch('/api/cronjobs', {
+        method: 'POST',
+        body: JSON.stringify({ name: 'Plain Job', prompt: 'test', schedule: '0 9 * * *' }),
+      })
+
+      expect(res.status).toBe(201)
+      const body = await res.json() as { cronjob: { codemode: string | null } }
+      expect(body.cronjob.codemode).toBeNull()
+    })
+
+    it('rejects an invalid codemode value with 400', async () => {
+      const res = await apiFetch('/api/cronjobs', {
+        method: 'POST',
+        body: JSON.stringify({ name: 'Bad Codemode', prompt: 'test', schedule: '0 9 * * *', codemode: 'sometimes' }),
+      })
+
+      expect(res.status).toBe(400)
+      const body = await res.json() as { error: string }
+      expect(body.error).toContain('codemode')
     })
   })
 
@@ -155,6 +195,38 @@ describe('Cronjobs REST API', () => {
         body: JSON.stringify({ thinkingLevel: 'turbo' }),
       })
       expect(invalid.status).toBe(400)
+    })
+
+    it('sets, keeps and resets the codemode override', async () => {
+      const set = await apiFetch(`/api/cronjobs/${codemodeJobId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ codemode: 'off' }),
+      })
+      expect(set.status).toBe(200)
+      expect((await set.json() as { cronjob: { codemode: string | null } }).cronjob.codemode).toBe('off')
+
+      const untouched = await apiFetch(`/api/cronjobs/${codemodeJobId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ name: 'Codemode Job' }),
+      })
+      expect((await untouched.json() as { cronjob: { codemode: string | null } }).cronjob.codemode).toBe('off')
+
+      const reset = await apiFetch(`/api/cronjobs/${codemodeJobId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ codemode: null }),
+      })
+      expect((await reset.json() as { cronjob: { codemode: string | null } }).cronjob.codemode).toBeNull()
+    })
+
+    it('rejects an invalid codemode value on update', async () => {
+      const res = await apiFetch(`/api/cronjobs/${codemodeJobId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ codemode: 42 }),
+      })
+
+      expect(res.status).toBe(400)
+      const body = await res.json() as { error: string }
+      expect(body.error).toContain('codemode')
     })
 
     it('validates cron expression on update', async () => {

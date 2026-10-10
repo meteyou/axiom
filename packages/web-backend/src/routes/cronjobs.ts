@@ -4,6 +4,7 @@ import { ScheduledTaskStore, validateCronExpression, cronToHumanReadable, loadSk
 import type { SettingsThinkingLevel } from '@axiom/core'
 import { jwtMiddleware } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
+import type { ScheduledTaskCodemode } from '@axiom/core'
 
 export interface CronjobsRouterOptions {
   db: Database
@@ -16,13 +17,21 @@ export interface CronjobsRouterOptions {
   getBackgroundTaskToolNames?: () => string[]
 }
 
-/** `undefined` = not sent, `null`/'' = background default, otherwise a valid level. */
+/** `undefined` = not sent, `null`/'' = inherit, otherwise a valid level. */
 function parseThinkingLevelBody(value: unknown): { ok: true; value: SettingsThinkingLevel | null | undefined } | { ok: false; error: string } {
   if (value === undefined) return { ok: true, value: undefined }
   if (value === null || value === '') return { ok: true, value: null }
   const level = normalizeThinkingLevel(value)
   if (!level) return { ok: false, error: `thinkingLevel must be one of: ${SETTINGS_THINKING_LEVELS.join(', ')}` }
   return { ok: true, value: level }
+}
+
+/** `undefined` = not sent, `null` = inherit, `'on'`/`'off'` = explicit override. */
+function parseCodemodeBody(value: unknown): { ok: true; value: ScheduledTaskCodemode | null | undefined } | { ok: false; error: string } {
+  if (value === undefined) return { ok: true, value: undefined }
+  if (value === null || value === '') return { ok: true, value: null }
+  if (value === 'on' || value === 'off') return { ok: true, value }
+  return { ok: false, error: "codemode must be 'on', 'off' or null" }
 }
 
 export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
@@ -104,7 +113,7 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
    */
   router.post('/', (req: AuthenticatedRequest, res) => {
     try {
-      const { name, prompt, schedule, actionType, provider, enabled, attachedSkills, thinkingLevel } = req.body as {
+      const { name, prompt, schedule, actionType, provider, enabled, attachedSkills, thinkingLevel, codemode } = req.body as {
         name?: string
         prompt?: string
         schedule?: string
@@ -113,11 +122,18 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
         enabled?: boolean
         attachedSkills?: string[] | null
         thinkingLevel?: string | null
+        codemode?: string | null
       }
 
       const thinking = parseThinkingLevelBody(thinkingLevel)
       if (!thinking.ok) {
         res.status(400).json({ error: thinking.error })
+        return
+      }
+
+      const codemodeParsed = parseCodemodeBody(codemode)
+      if (!codemodeParsed.ok) {
+        res.status(400).json({ error: codemodeParsed.error })
         return
       }
 
@@ -160,6 +176,7 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
             enabled: enabled !== undefined ? enabled : true,
             attachedSkills: normalizedAttachedSkills,
             thinkingLevel: thinking.value ?? null,
+            codemode: codemodeParsed.value ?? null,
           })
         : store.create({
             name,
@@ -170,6 +187,7 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
             enabled: enabled !== undefined ? enabled : true,
             attachedSkills: normalizedAttachedSkills,
             thinkingLevel: thinking.value ?? null,
+            codemode: codemodeParsed.value ?? null,
           })
 
       // Register with scheduler boundary when available
@@ -202,7 +220,7 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
         return
       }
 
-      const { name, prompt, schedule, actionType, provider, enabled, toolsOverride, skillsOverride, systemPromptOverride, attachedSkills, thinkingLevel } = req.body as {
+      const { name, prompt, schedule, actionType, provider, enabled, toolsOverride, skillsOverride, systemPromptOverride, attachedSkills, thinkingLevel, codemode } = req.body as {
         name?: string
         prompt?: string
         schedule?: string
@@ -214,11 +232,18 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
         systemPromptOverride?: string | null
         attachedSkills?: string[] | null
         thinkingLevel?: string | null
+        codemode?: string | null
       }
 
       const thinking = parseThinkingLevelBody(thinkingLevel)
       if (!thinking.ok) {
         res.status(400).json({ error: thinking.error })
+        return
+      }
+
+      const codemodeParsed = parseCodemodeBody(codemode)
+      if (!codemodeParsed.ok) {
+        res.status(400).json({ error: codemodeParsed.error })
         return
       }
 
@@ -292,6 +317,7 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
             systemPromptOverride: systemPromptOverride !== undefined ? systemPromptOverride : undefined,
             attachedSkills: attachedSkillsUpdate,
             thinkingLevel: thinking.value,
+            codemode: codemodeParsed.value,
           })
         : store.update(id, {
             name,
@@ -305,6 +331,7 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
             systemPromptOverride: systemPromptOverride !== undefined ? systemPromptOverride : undefined,
             attachedSkills: attachedSkillsUpdate,
             thinkingLevel: thinking.value,
+            codemode: codemodeParsed.value,
           })
 
       if (!updated) {
