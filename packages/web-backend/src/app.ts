@@ -194,7 +194,7 @@ export function createApp(options?: AppOptions): express.Express {
       db: options.db,
       onAccountsChanged: () => options.onActiveProviderChanged?.(),
     }))
-    app.use('/api/secrets', createSecretsRouter())
+    app.use('/api/secrets', createSecretsRouter({ db: options.db }))
     app.use('/api/tts', createTtsRouter())
     app.use('/api/stt', createSttRouter(options.db))
     app.use('/api/deepgram', createDeepgramRouter())
