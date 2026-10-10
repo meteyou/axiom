@@ -1,10 +1,11 @@
 import { Router } from 'express'
-import { loadConfig, ensureConfigTemplates, transcribeAudio, loadSttSettings } from '@axiom/core'
+import { getGlobalChatDefaults, resolveUserScope, toSttLanguage, transcribeAudio, loadSttSettings } from '@axiom/core'
+import type { Database } from '@axiom/core'
 import { jwtMiddleware } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
 import { uploadMiddleware } from '../uploads.js'
 
-export function createSttRouter(): Router {
+export function createSttRouter(db?: Database): Router {
   const router = Router()
   router.use(jwtMiddleware)
 
@@ -24,14 +25,8 @@ export function createSttRouter(): Router {
           return
         }
 
-        // Auto-resolve language from settings (unless "match" or "auto")
-        ensureConfigTemplates()
-        const settings = loadConfig<Record<string, unknown>>('settings.json')
-        const settingsLanguage = (settings.language as string) ?? ''
-        const autoLanguages = ['match', 'auto', '']
-        const language = autoLanguages.includes(settingsLanguage.toLowerCase())
-          ? undefined
-          : settingsLanguage
+        const scope = db && req.user ? resolveUserScope(db, req.user.userId) : null
+        const language = toSttLanguage(scope?.settings.language ?? getGlobalChatDefaults().language)
 
         const result = await transcribeAudio(file.buffer, { language, filename: file.originalname })
         const body: { transcript: string; rewritten?: string } = { transcript: result.transcript }
