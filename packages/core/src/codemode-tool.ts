@@ -544,10 +544,18 @@ function getSpillDir(): string {
   return dir
 }
 
+// The spill folder lives in the shared workspace, so pruning must only ever
+// delete files that writeSpillFile created — never user or agent files.
+const SPILL_FILE_PATTERN = /^spill-\d+-[0-9a-f]{8}\.txt$/
+
+function spillFileName(): string {
+  return `spill-${Date.now()}-${randomUUID().slice(0, 8)}.txt`
+}
+
 /** Write the full (untruncated) text of an oversized script output; returns the file path. */
 function writeSpillFile(text: string): string | null {
   try {
-    const file = path.join(getSpillDir(), `spill-${Date.now()}-${randomUUID().slice(0, 8)}.txt`)
+    const file = path.join(getSpillDir(), spillFileName())
     fs.writeFileSync(file, text, 'utf-8')
     return file
   } catch {
@@ -566,7 +574,7 @@ export function pruneCodemodeSpillFolder(nowMs = Date.now()): number {
     if (!fs.existsSync(dir)) return 0
     let removed = 0
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      if (!entry.isFile()) continue
+      if (!entry.isFile() || !SPILL_FILE_PATTERN.test(entry.name)) continue
       const file = path.join(dir, entry.name)
       const stat = fs.statSync(file)
       if (nowMs - stat.mtimeMs > CODEMODE_SPILL_RETENTION_MS) {

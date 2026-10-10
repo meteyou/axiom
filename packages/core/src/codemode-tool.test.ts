@@ -432,8 +432,8 @@ await tools.hang({});`)
     const { pruneCodemodeSpillFolder } = await import('./codemode-tool.js')
     const dir = path.join(workspace, CODEMODE_SPILL_DIR)
     fs.mkdirSync(dir, { recursive: true })
-    const fresh = path.join(dir, 'fresh.txt')
-    const stale = path.join(dir, 'stale.txt')
+    const fresh = path.join(dir, 'spill-1700000000000-0a1b2c3d.txt')
+    const stale = path.join(dir, 'spill-1600000000000-deadbeef.txt')
     fs.writeFileSync(fresh, 'x')
     fs.writeFileSync(stale, 'x')
     const oldTime = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000)
@@ -442,6 +442,36 @@ await tools.hang({});`)
     expect(removed).toBe(1)
     expect(fs.existsSync(fresh)).toBe(true)
     expect(fs.existsSync(stale)).toBe(false)
+  })
+
+  it('never prunes files in the spill folder that the tool did not write', async () => {
+    const { pruneCodemodeSpillFolder } = await import('./codemode-tool.js')
+    const dir = path.join(workspace, CODEMODE_SPILL_DIR)
+    fs.mkdirSync(dir, { recursive: true })
+    const userFiles = ['notes.txt', 'package.json', 'spill-notes.txt', 'spill-1600000000000-deadbeef.txt.bak']
+      .map(name => path.join(dir, name))
+    const oldTime = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+    for (const file of userFiles) {
+      fs.writeFileSync(file, 'x')
+      fs.utimesSync(file, oldTime, oldTime)
+    }
+
+    expect(pruneCodemodeSpillFolder()).toBe(0)
+    for (const file of userFiles) expect(fs.existsSync(file)).toBe(true)
+  })
+
+  it('prunes a stale spill file written by the tool itself', async () => {
+    const { pruneCodemodeSpillFolder } = await import('./codemode-tool.js')
+    const codemode = createCodemodeTool({ owner: makeOwner([]) })
+    const result = await run(codemode, `// @options: {"max_output_tokens": 10}
+text('A'.repeat(1000));`)
+    const spillPath = result.details.fullOutputPath as string
+    expect(fs.existsSync(spillPath)).toBe(true)
+    const oldTime = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000)
+    fs.utimesSync(spillPath, oldTime, oldTime)
+
+    expect(pruneCodemodeSpillFolder()).toBe(1)
+    expect(fs.existsSync(spillPath)).toBe(false)
   })
 })
 
