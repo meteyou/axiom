@@ -4,7 +4,7 @@ Tune how the agent behaves, how long sessions live, which provider answers, and 
 
 All settings described in this section live in the web UI under **Settings**, and are persisted to `/data/config/settings.json`. You can edit either — the UI is the supported path, the file is documented for power users and for the agent itself to reason about.
 
-> **Admin only, except personal agent settings.** Only users with role `admin` can see and change the settings described in this section. Regular users get only the **Agent** tab, where they set their own chat model, thinking level and language — see [Agent → Personal agent settings](./agent#personal-agent-settings-regular-users).
+> **Admin only, except personal agent settings.** Only users with role `admin` can see and change the settings described in this section. Regular users get the **Agent** tab, where they set their own chat model, thinking level and language — see [Agent → Personal agent settings](./agent#personal-agent-settings-regular-users) — and the **Email** tab for their own mail accounts — see [Email](./email).
 
 ## The Settings Subpages
 
@@ -14,6 +14,7 @@ The Settings page has one sidebar entry per concern. Each gets its own docs page
 |--------------------------------------|-----------------------------------------------------------------------------------------|
 | [Agent](./agent)                     | Language, timezone, active provider + model, reasoning level, codemode (experimental), upload retention, `AGENTS.md` rules. |
 | [Agent Heartbeat](./agent-heartbeat) | Whether (and when) the agent runs recurring self-driven tasks from `HEARTBEAT.md`.      |
+| [Email](./email)                     | Your own IMAP/SMTP accounts for the agent, send rules, approvals and the sent log.      |
 | [Health Monitor](./health-monitor)   | Provider health checks, automatic fallback, notification toggles.                       |
 | [Image Generation](./image-generation) | Switch for `generate_image`, default image model, variant limit, output folder. |
 | [Memory](./memory)                   | Session timeout, memory consolidation, fact extraction.                                 |
