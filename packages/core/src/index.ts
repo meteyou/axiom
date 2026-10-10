@@ -308,6 +308,7 @@ export {
   CODEMODE_MAX_TIMEOUT_MS,
   CODEMODE_SPILL_DIR,
   createCodemodeTool,
+  createNestedCallLogObserver,
   buildCodemodeDescription,
   buildCodemodePromptGuideline,
   pruneCodemodeSpillFolder,
@@ -319,6 +320,7 @@ export type {
   CodemodeNestedCallStart,
   CodemodeNestedCallEnd,
   CodemodeNestedCallObserver,
+  CodemodeNestedCallSnapshot,
 } from './codemode-tool.js'
 export {
   TURN_ERROR_KIND,
