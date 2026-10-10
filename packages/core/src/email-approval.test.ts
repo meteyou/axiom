@@ -15,6 +15,7 @@ import { createEmailApprovalService, recoverStuckApprovedEmails } from './email-
 const ACCOUNT: EmailAccount = {
   id: 'acc-1',
   name: 'Work',
+  ownerUserId: 1,
   imapHost: 'imap.example.com',
   imapPort: 993,
   imapUser: 'agent@example.com',
@@ -47,6 +48,7 @@ function makeInput(overrides: Partial<CreateEmailSendLogInput> = {}): CreateEmai
   return {
     accountId: 'acc-1',
     accountName: 'Work',
+    ownerUserId: 1,
     status: 'pending',
     to: ['stranger@partner.org'],
     subject: 'Quarterly numbers',
@@ -89,6 +91,17 @@ describe('email approval', () => {
     db.close()
   })
 
+  it('rejects decisions from users other than the owner', async () => {
+    const entry = createEmailSendLogEntry(db, makeInput())
+    const approval = service()
+
+    for (const action of ['approve', 'reject', 'retry'] as const) {
+      const result = await approval[action](entry.id, { name: 'mallory', userId: 2 })
+      expect(result).toMatchObject({ ok: false, code: 'forbidden' })
+    }
+    expect(getEmailSendLogEntry(db, entry.id)?.status).toBe('pending')
+  })
+
   it('sends the stored message on approve and records the decider', async () => {
     const entry = seed({
       cc: ['cc@partner.org'],
@@ -99,7 +112,7 @@ describe('email approval', () => {
       attachments: [{ filename: 'report.pdf', path: '/tmp/report.pdf', size: 10 }],
     })
 
-    const result = await service().approve(entry.id, { name: 'alice' })
+    const result = await service().approve(entry.id, { name: 'alice', userId: 1 })
 
     expect(result.ok).toBe(true)
     expect(result.entry!.status).toBe('sent')
@@ -126,7 +139,7 @@ describe('email approval', () => {
   it('rejects without sending and records the decider', async () => {
     const entry = seed()
 
-    const result = await service().reject(entry.id, { name: 'bob' })
+    const result = await service().reject(entry.id, { name: 'bob', userId: 1 })
 
     expect(result.ok).toBe(true)
     expect(result.entry!.status).toBe('rejected')
@@ -139,8 +152,8 @@ describe('email approval', () => {
     const approval = service()
 
     const [first, second] = await Promise.all([
-      approval.approve(entry.id, { name: 'alice' }),
-      approval.approve(entry.id, { name: 'bob' }),
+      approval.approve(entry.id, { name: 'alice', userId: 1 }),
+      approval.approve(entry.id, { name: 'bob', userId: 1 }),
     ])
 
     const winners = [first, second].filter(r => r.ok)
@@ -160,8 +173,8 @@ describe('email approval', () => {
     const entry = seed()
     const approval = service()
 
-    const approved = await approval.approve(entry.id, { name: 'alice' })
-    const rejected = await approval.reject(entry.id, { name: 'bob' })
+    const approved = await approval.approve(entry.id, { name: 'alice', userId: 1 })
+    const rejected = await approval.reject(entry.id, { name: 'bob', userId: 1 })
 
     expect(approved.ok).toBe(true)
     expect(rejected.ok).toBe(false)
@@ -174,7 +187,7 @@ describe('email approval', () => {
     sendMessage.mockRejectedValueOnce(new Error('SMTP connection refused'))
 
     const approval = service()
-    const failed = await approval.approve(entry.id, { name: 'alice' })
+    const failed = await approval.approve(entry.id, { name: 'alice', userId: 1 })
 
     expect(failed.ok).toBe(false)
     expect(failed).toMatchObject({ code: 'send_failed' })
@@ -182,7 +195,7 @@ describe('email approval', () => {
     expect(failed.entry!.errorMessage).toBe('SMTP connection refused')
     expect(failed.entry!.decidedBy).toBe('alice')
 
-    const retried = await approval.retry(entry.id, { name: 'bob' })
+    const retried = await approval.retry(entry.id, { name: 'bob', userId: 1 })
 
     expect(retried.ok).toBe(true)
     expect(retried.entry!.status).toBe('sent')
@@ -195,7 +208,7 @@ describe('email approval', () => {
     const entry = seed()
     sendMessage.mockRejectedValue(new Error('nope'))
 
-    await service().approve(entry.id, { name: 'alice' })
+    await service().approve(entry.id, { name: 'alice', userId: 1 })
     await new Promise(resolve => setTimeout(resolve, 10))
 
     expect(sendMessage).toHaveBeenCalledTimes(1)
@@ -205,7 +218,7 @@ describe('email approval', () => {
   it('refuses to retry an entry that is not failed', async () => {
     const entry = seed()
 
-    const result = await service().retry(entry.id, { name: 'alice' })
+    const result = await service().retry(entry.id, { name: 'alice', userId: 1 })
 
     expect(result).toMatchObject({ code: 'not_retryable' })
     expect(sendMessage).not.toHaveBeenCalled()
@@ -214,7 +227,7 @@ describe('email approval', () => {
   it('refuses to decide entries that never waited for approval', async () => {
     for (const status of ['sent', 'blocked', 'rejected', 'approved'] as const) {
       const entry = seed({ status })
-      const result = await service().approve(entry.id, { name: 'alice' })
+      const result = await service().approve(entry.id, { name: 'alice', userId: 1 })
       expect(result).toMatchObject({ ok: false, code: 'already_decided' })
     }
     expect(sendMessage).not.toHaveBeenCalled()
@@ -222,15 +235,15 @@ describe('email approval', () => {
 
   it('reports unknown entries', async () => {
     const approval = service()
-    expect(await approval.approve('nope', { name: 'alice' })).toMatchObject({ ok: false, code: 'not_found' })
-    expect(await approval.reject('nope', { name: 'alice' })).toMatchObject({ ok: false, code: 'not_found' })
-    expect(await approval.retry('nope', { name: 'alice' })).toMatchObject({ ok: false, code: 'not_found' })
+    expect(await approval.approve('nope', { name: 'alice', userId: 1 })).toMatchObject({ ok: false, code: 'not_found' })
+    expect(await approval.reject('nope', { name: 'alice', userId: 1 })).toMatchObject({ ok: false, code: 'not_found' })
+    expect(await approval.retry('nope', { name: 'alice', userId: 1 })).toMatchObject({ ok: false, code: 'not_found' })
   })
 
   it('fails the entry when the account was deleted in the meantime', async () => {
     const entry = seed()
 
-    const result = await service({ account: null }).approve(entry.id, { name: 'alice' })
+    const result = await service({ account: null }).approve(entry.id, { name: 'alice', userId: 1 })
 
     expect(result).toMatchObject({ ok: false, code: 'account_missing' })
     expect(result.entry!.status).toBe('failed')
@@ -247,9 +260,9 @@ describe('email approval', () => {
 
     const entry = seed()
     await notifyEmailApprovalRequested(entry)
-    await service().approve(entry.id, { name: 'alice' })
+    await service().approve(entry.id, { name: 'alice', userId: 1 })
     const other = seed()
-    await service().reject(other.id, { name: 'bob' })
+    await service().reject(other.id, { name: 'bob', userId: 1 })
 
     expect(requested).toEqual([entry.id])
     // The approve notification carries the send result, not the interim state.
@@ -261,7 +274,7 @@ describe('email approval', () => {
     registerEmailApprovalNotifier({ approvalResolved: e => { resolvedStatuses.push(e.status) } })
     sendMessage.mockRejectedValueOnce(new Error('SMTP connection refused'))
 
-    await service().approve(seed().id, { name: 'alice' })
+    await service().approve(seed().id, { name: 'alice', userId: 1 })
 
     expect(resolvedStatuses).toEqual(['failed'])
   })
@@ -276,7 +289,7 @@ describe('email approval', () => {
     expect(getEmailSendLogEntry(db, stuck.id)!.status).toBe('failed')
     expect(getEmailSendLogEntry(db, inFlight.id)!.status).toBe('approved')
 
-    const retried = await service().retry(stuck.id, { name: 'alice' })
+    const retried = await service().retry(stuck.id, { name: 'alice', userId: 1 })
     expect(retried.ok).toBe(true)
     expect(retried.entry!.status).toBe('sent')
   })
@@ -288,7 +301,7 @@ describe('email approval', () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
     const entry = seed()
-    const result = await service().approve(entry.id, { name: 'alice' })
+    const result = await service().approve(entry.id, { name: 'alice', userId: 1 })
 
     expect(result.ok).toBe(true)
     expect(result.entry!.status).toBe('sent')
