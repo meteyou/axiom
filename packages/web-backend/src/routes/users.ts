@@ -8,9 +8,13 @@ import {
   getDefaultHeartbeatContent,
   getBootstrapAdminId,
   getUserProfileTemplate,
+  listUserActiveTaskIds,
+  listUserCronjobIds,
+  purgeUserData,
+  resolveUserPaths,
   resolveUserScope,
 } from '@axiom/core'
-import type { Database } from '@axiom/core'
+import type { AgentCore, Database, TaskRuntimeBoundary } from '@axiom/core'
 import { issueTokens, jwtMiddleware, revokeUserSessions } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
 
@@ -25,7 +29,18 @@ interface UserRow {
   updated_at: string
 }
 
-export function createUsersRouter(db: Database): Router {
+export interface UsersRouterOptions {
+  db: Database
+  getAgentCore?: () => AgentCore | null
+  getTaskRuntime?: () => TaskRuntimeBoundary | null
+  abortUserTurns?: (userId: number) => void
+}
+
+export function createUsersRouter(options: UsersRouterOptions | Database): Router {
+  const db = 'db' in options ? options.db : options
+  const getAgentCore = 'db' in options ? options.getAgentCore : undefined
+  const getTaskRuntime = 'db' in options ? options.getTaskRuntime : undefined
+  const abortUserTurns = 'db' in options ? options.abortUserTurns : undefined
   const router = Router()
 
   router.use(jwtMiddleware)
@@ -45,7 +60,7 @@ export function createUsersRouter(db: Database): Router {
     try {
       const columns = 'id, username, role, telegram_id, created_at, updated_at'
       const rows = (req.user?.role === 'admin'
-        ? db.prepare(`SELECT ${columns} FROM users ORDER BY id`).all()
+        ? db.prepare(`SELECT ${columns} FROM users WHERE deleted_at IS NULL ORDER BY id`).all()
         : db.prepare(`SELECT ${columns} FROM users WHERE id = ?`).all(req.user?.userId)) as UserRow[]
 
       const users = rows.map(row => ({
@@ -127,7 +142,13 @@ export function createUsersRouter(db: Database): Router {
     const userRole = role === 'admin' ? 'admin' : 'user'
 
     // Check for duplicate username
-    const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(username.trim())
+    const existing = db.prepare('SELECT id, deleted_at FROM users WHERE username = ?').get(username.trim()) as
+      | { id: number; deleted_at: string | null }
+      | undefined
+    if (existing?.deleted_at) {
+      res.status(409).json({ error: 'Username belongs to a deleted user and stays reserved' })
+      return
+    }
     if (existing) {
       res.status(409).json({ error: 'Username already exists' })
       return
@@ -195,7 +216,7 @@ export function createUsersRouter(db: Database): Router {
     }
 
     const existing = db.prepare(
-      'SELECT id, username, role FROM users WHERE id = ?'
+      'SELECT id, username, role FROM users WHERE id = ? AND deleted_at IS NULL'
     ).get(id) as UserRow | undefined
 
     if (!existing) {
@@ -258,7 +279,8 @@ export function createUsersRouter(db: Database): Router {
   })
 
   /**
-   * DELETE /api/users/:id — delete user (cannot delete self)
+   * DELETE /api/users/:id — soft delete with cascade (cannot delete self or the bootstrap admin).
+   * `?deleteFiles=false` keeps the personal folder and workspace.
    */
   router.delete('/:id', (req: AuthenticatedRequest, res) => {
     const rawId = req.params.id
@@ -268,7 +290,6 @@ export function createUsersRouter(db: Database): Router {
       return
     }
 
-    // Cannot delete self
     if (req.user?.userId === id) {
       res.status(400).json({ error: 'Cannot delete your own account' })
       return
@@ -279,15 +300,42 @@ export function createUsersRouter(db: Database): Router {
       return
     }
 
-    const existing = db.prepare('SELECT id FROM users WHERE id = ?').get(id)
+    // Already deleted users are accepted so a cascade that failed halfway can be resumed; every step is idempotent.
+    const existing = db.prepare('SELECT id, username FROM users WHERE id = ?').get(id) as
+      | { id: number; username: string }
+      | undefined
     if (!existing) {
       res.status(404).json({ error: 'User not found' })
       return
     }
 
+    const deleteFilesParam = req.query.deleteFiles
+    const deleteFiles = !(deleteFilesParam === 'false' || deleteFilesParam === '0')
+
     try {
-      db.prepare('DELETE FROM users WHERE id = ?').run(id)
+      const paths = resolveUserPaths(existing.username, false)
+      const taskRuntime = getTaskRuntime?.() ?? null
+
+      // Marked first so results of the aborted tasks are not injected into the user's agent.
+      db.prepare("UPDATE users SET deleted_at = COALESCE(deleted_at, datetime('now')) WHERE id = ?").run(id)
       revokeUserSessions(db, id)
+      abortUserTurns?.(id)
+
+      for (const taskId of listUserActiveTaskIds(db, id)) {
+        taskRuntime?.tasks.abort(taskId, 'User deleted')
+      }
+      for (const cronjobId of listUserCronjobIds(db, id)) {
+        taskRuntime?.schedules.unregister(cronjobId)
+      }
+
+      getAgentCore?.()?.discardUser(String(id))
+      purgeUserData(db, id)
+
+      if (deleteFiles && paths.userDir) {
+        fs.rmSync(paths.userDir, { recursive: true, force: true })
+        fs.rmSync(paths.workspace, { recursive: true, force: true })
+      }
+
       res.json({ message: 'User deleted' })
     } catch (err) {
       res.status(500).json({ error: `Failed to delete user: ${(err as Error).message}` })

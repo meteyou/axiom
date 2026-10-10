@@ -73,6 +73,7 @@ beforeAll(async () => {
       }),
     }),
     refreshSystemPrompt,
+    discardUser: vi.fn(),
     setThinkingLevel,
   } as unknown as AgentCore
   const mockHealthMonitorService = {

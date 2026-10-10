@@ -454,7 +454,7 @@ export class HealthMonitorService {
     const dbIds = (this.db.prepare(
       `SELECT telegram_id
        FROM users
-       WHERE role = 'admin' AND telegram_id IS NOT NULL AND trim(telegram_id) != ''`
+       WHERE role = 'admin' AND deleted_at IS NULL AND telegram_id IS NOT NULL AND trim(telegram_id) != ''`
     ).all() as Array<{ telegram_id: string }>).map((row) => Number.parseInt(row.telegram_id, 10))
 
     return Array.from(new Set([...configuredIds, ...dbIds].filter((id) => Number.isFinite(id))))

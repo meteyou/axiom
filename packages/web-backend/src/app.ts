@@ -72,6 +72,7 @@ export interface AppOptions {
   taskEventBus?: TaskEventBus | null
   /** Backs the interactive action buttons rendered inside chat messages. */
   chatActions?: ChatActionRegistry | null
+  abortUserTurns?: (userId: number) => void
   /**
    * Returns the latest cached subscriber usage snapshots keyed by provider id.
    * Used by the providers list endpoint to surface quota in the UI without
@@ -168,7 +169,12 @@ export function createApp(options?: AppOptions): express.Express {
       },
       onImageGenerationSettingsChanged: options.onImageModelsChanged,
     }))
-    app.use('/api/users', createUsersRouter(options.db))
+    app.use('/api/users', createUsersRouter({
+      db: options.db,
+      getAgentCore,
+      getTaskRuntime: () => options.getTaskRuntime?.() ?? null,
+      abortUserTurns: options.abortUserTurns,
+    }))
     app.use('/api/telegram-users', createTelegramUsersRouter({
       db: options.db,
       getTelegramBot: options.getTelegramBot ?? (() => null),

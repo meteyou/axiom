@@ -52,7 +52,7 @@ export function createAuthRouter(db: Database): Router {
       return
     }
 
-    const row = db.prepare('SELECT token_version FROM users WHERE id = ?').get(payload.userId) as
+    const row = db.prepare('SELECT token_version FROM users WHERE id = ? AND deleted_at IS NULL').get(payload.userId) as
       | { token_version: number }
       | undefined
 
@@ -80,7 +80,7 @@ export function createAuthRouter(db: Database): Router {
     }
 
     // Verify user still exists in the database
-    const user = db.prepare('SELECT id, username, role FROM users WHERE id = ?').get(req.user.userId) as
+    const user = db.prepare('SELECT id, username, role FROM users WHERE id = ? AND deleted_at IS NULL').get(req.user.userId) as
       | { id: number; username: string; role: string }
       | undefined
 

@@ -218,3 +218,73 @@ describe('bootstrap admin', () => {
     expect((await call(admin.accessToken, 'GET', '/api/auth/me')).status).toBe(200)
   })
 })
+
+describe('soft delete', () => {
+  it('cascades, keeps sessions and usage, and reserves the username', async () => {
+    const admin = await adminLogin()
+    const id = await createUser(admin.accessToken, 'victim')
+    const tokens = await login('victim', 'secret1')
+    const personalDir = path.join(tempDataDir, 'users', 'victim')
+    expect(fs.existsSync(personalDir)).toBe(true)
+
+    db.prepare("INSERT INTO sessions (id, user_id, source) VALUES ('s-victim', ?, 'web')").run(id)
+    db.prepare("INSERT INTO chat_messages (session_id, user_id, role, content) VALUES ('s-victim', ?, 'user', 'hi')").run(id)
+    db.prepare("INSERT INTO tool_calls (session_id, tool_name) VALUES ('s-victim', 'shell')").run()
+    db.prepare("INSERT INTO memories (user_id, session_id, content, source) VALUES (?, 's-victim', 'fact', 'chat')").run(id)
+    db.prepare("INSERT INTO token_usage (session_id, provider, model, prompt_tokens, completion_tokens) VALUES ('s-victim', 'p', 'm', 5, 5)").run()
+    db.prepare("INSERT INTO tasks (id, name, prompt, status, trigger_type, owner_user_id) VALUES ('t-victim', 'n', 'p', 'running', 'user', ?)").run(id)
+    db.prepare("INSERT INTO scheduled_tasks (id, name, prompt, schedule, action_type, enabled, owner_user_id) VALUES ('c-victim', 'n', 'p', '* * * * *', 'task', 1, ?)").run(id)
+    db.prepare("UPDATE users SET telegram_id = '123' WHERE id = ?").run(id)
+
+    const res = await call(admin.accessToken, 'DELETE', `/api/users/${id}`)
+    expect(res.status).toBe(200)
+
+    const count = (sql: string) => (db.prepare(sql).get(id) as { n: number }).n
+    expect(count('SELECT COUNT(*) AS n FROM chat_messages WHERE user_id = ?')).toBe(0)
+    expect((db.prepare("SELECT COUNT(*) AS n FROM tool_calls WHERE session_id = 's-victim'").get() as { n: number }).n).toBe(0)
+    expect(count('SELECT COUNT(*) AS n FROM memories WHERE user_id = ?')).toBe(0)
+    expect(count('SELECT COUNT(*) AS n FROM tasks WHERE owner_user_id = ?')).toBe(0)
+    expect(count('SELECT COUNT(*) AS n FROM scheduled_tasks WHERE owner_user_id = ?')).toBe(0)
+    expect(count('SELECT COUNT(*) AS n FROM sessions WHERE user_id = ?')).toBe(1)
+    expect((db.prepare("SELECT COUNT(*) AS n FROM token_usage WHERE session_id = 's-victim'").get() as { n: number }).n).toBe(1)
+    const row = db.prepare('SELECT deleted_at, telegram_id FROM users WHERE id = ?').get(id) as { deleted_at: string | null; telegram_id: string | null }
+    expect(row.deleted_at).not.toBeNull()
+    expect(row.telegram_id).toBeNull()
+    expect(fs.existsSync(personalDir)).toBe(false)
+
+    expect((await call(tokens.accessToken, 'GET', '/api/users')).status).toBe(401)
+    const relogin = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'victim', password: 'secret1' }),
+    })
+    expect(relogin.status).toBe(401)
+
+    // A repeated DELETE resumes the idempotent cascade instead of 404ing.
+    db.prepare("INSERT INTO memories (user_id, session_id, content, source) VALUES (?, 's-victim', 'late', 'chat')").run(id)
+    expect((await call(admin.accessToken, 'DELETE', `/api/users/${id}`)).status).toBe(200)
+    expect(count('SELECT COUNT(*) AS n FROM memories WHERE user_id = ?')).toBe(0)
+
+    const listed = await call(admin.accessToken, 'GET', '/api/users')
+    expect(((await listed.json()) as { users: { username: string }[] }).users.map(u => u.username)).not.toContain('victim')
+    const reuse = await call(admin.accessToken, 'POST', '/api/users', { username: 'victim', password: 'secret1' })
+    expect(reuse.status).toBe(409)
+  })
+
+  it('keeps files when deleteFiles=false', async () => {
+    const admin = await adminLogin()
+    const id = await createUser(admin.accessToken, 'keeper')
+    const personalDir = path.join(tempDataDir, 'users', 'keeper')
+    expect((await call(admin.accessToken, 'DELETE', `/api/users/${id}?deleteFiles=false`)).status).toBe(200)
+    expect(fs.existsSync(personalDir)).toBe(true)
+  })
+
+  it('rejects deleting yourself and the bootstrap admin', async () => {
+    const admin = await adminLogin()
+    const bootstrapId = (db.prepare('SELECT MIN(id) AS id FROM users').get() as { id: number }).id
+    expect((await call(admin.accessToken, 'DELETE', `/api/users/${bootstrapId}`)).status).toBe(400)
+    const otherId = await createUser(admin.accessToken, 'otheradmin', 'secret1', 'admin')
+    const other = await login('otheradmin', 'secret1')
+    expect((await call(other.accessToken, 'DELETE', `/api/users/${otherId}`)).status).toBe(400)
+  })
+})

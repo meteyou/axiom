@@ -44,6 +44,7 @@ export async function startHttpBoundary(
     onImageModelsChanged: runtimeComposition.onImageModelsChanged,
     taskEventBus: runtimeComposition.taskEventBus,
     chatActions: runtimeComposition.chatActions,
+    abortUserTurns: userId => { runtimeComposition.turnRunner.abortTurn(userId) },
   })
 
   const server = http.createServer(app)
