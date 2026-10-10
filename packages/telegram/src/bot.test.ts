@@ -1586,6 +1586,7 @@ describe('email approval channel', () => {
       id: 'entry-1',
       accountId: 'acc-1',
       accountName: 'Work',
+      ownerUserId: 42,
       status: 'pending',
       to: ['stranger@partner.org'],
       cc: [],
@@ -1625,7 +1626,7 @@ describe('email approval channel', () => {
               updated_at: 'now',
             }
           : undefined),
-        all: () => approvedChatIds.map(telegram_id => ({ telegram_id })),
+        all: (...params: unknown[]) => (params.includes(42) ? approvedChatIds.map(telegram_id => ({ telegram_id })) : []),
       }),
     } as unknown as Database
   }
@@ -1661,6 +1662,15 @@ describe('email approval channel', () => {
     expect(api.sendMessage).not.toHaveBeenCalled()
   })
 
+  it('sends nothing for entries whose owner has no linked Telegram chat', async () => {
+    const bot = new TelegramBot({ agentCore, db: makeDb(), config })
+    const api = (bot.getBot() as any).api
+
+    await bot.createEmailApprovalNotifier().approvalRequested!(makeEntry({ ownerUserId: 7 }))
+
+    expect(api.sendMessage).not.toHaveBeenCalled()
+  })
+
   it('accept callback approves via the core boundary and edits the prompt', async () => {
     const sentEntry = makeEntry({ status: 'sent', decidedBy: 'John Doe' })
     const approval = {
@@ -1679,7 +1689,7 @@ describe('email approval channel', () => {
     })
     await underlying._handlers.get('callback_query:data')!(ctx as any)
 
-    expect(approval.approve).toHaveBeenCalledWith('entry-1', { name: 'John Doe' })
+    expect(approval.approve).toHaveBeenCalledWith('entry-1', { name: 'John Doe', userId: 42 })
     expect((ctx as any).answerCallbackQuery).toHaveBeenCalledWith({ text: 'Email approved.' })
 
     const [chatId, messageId, editedText] = underlying.api.editMessageText.mock.calls[0]
@@ -1707,7 +1717,7 @@ describe('email approval channel', () => {
     })
     await underlying._handlers.get('callback_query:data')!(ctx as any)
 
-    expect(approval.reject).toHaveBeenCalledWith('entry-1', { name: 'John Doe' })
+    expect(approval.reject).toHaveBeenCalledWith('entry-1', { name: 'John Doe', userId: 42 })
     expect(underlying.api.editMessageText.mock.calls[0][2]).toContain('rejected')
   })
 
