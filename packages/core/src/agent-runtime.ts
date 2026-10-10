@@ -109,6 +109,8 @@ export interface AgentRuntimeOptions {
   baseInstructions?: string
   providerConfig?: ProviderConfig
   providerManager?: ProviderManager
+  /** Whether a pre-stream failure may switch the global provider to the fallback; defaults to true. */
+  canUseProviderFallback?: () => boolean
   /** User this runtime serves; null for identities without a user row (e.g. Telegram pseudo users). */
   user?: UserScope | null
   quotaService?: QuotaServiceLike
@@ -480,6 +482,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
   private imageHook: NonNullable<AgentOptions['afterToolCall']>
   private providerConfig?: ProviderConfig
   private providerManager?: ProviderManager
+  private canUseProviderFallback: () => boolean
   private user: UserScope | null
 
   constructor(options: AgentRuntimeOptions) {
@@ -490,6 +493,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
     this.baseInstructions = options.baseInstructions
     this.providerConfig = options.providerConfig
     this.providerManager = options.providerManager
+    this.canUseProviderFallback = options.canUseProviderFallback ?? (() => true)
     this.user = options.user ?? null
 
     // Ensure memory/config structure exists before prompt assembly.
@@ -532,22 +536,20 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
         && { transport: this.providerConfig.transport }),
       afterToolCall: this.imageHook,
       transformContext: createTranscriptImageBudget(() => this.agent.state.model),
-      getApiKey: this.providerConfig?.authMethod === 'oauth'
-        ? async () => {
-            try {
-              // Reload provider config to get latest OAuth credentials
-              const { loadProvidersDecrypted } = await import('./provider-config.js')
-              const file = loadProvidersDecrypted()
-              const freshProvider = file.providers.find(p => p.id === this.providerConfig!.id)
-              if (freshProvider) {
-                return await getApiKeyForProvider(freshProvider)
-              }
-            } catch (err) {
-              console.error('OAuth token refresh failed:', err)
-            }
-            return this.apiKey
+      getApiKey: async () => {
+        if (this.providerConfig?.authMethod !== 'oauth') return this.apiKey
+        try {
+          const { loadProvidersDecrypted } = await import('./provider-config.js')
+          const file = loadProvidersDecrypted()
+          const freshProvider = file.providers.find(p => p.id === this.providerConfig!.id)
+          if (freshProvider) {
+            return await getApiKeyForProvider(freshProvider)
           }
-        : () => this.apiKey,
+        } catch (err) {
+          console.error('OAuth token refresh failed:', err)
+        }
+        return this.apiKey
+      },
     })
   }
 
@@ -736,6 +738,10 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
       sttEnabled = loadSttSettings().enabled
     } catch {
       // STT settings not available
+    }
+
+    if (this.user) {
+      language = resolveUserScope(this.db, this.user.id)?.settings.language ?? language
     }
 
     return { language, timezone, builtinToolsConfig, sttEnabled, thinkingLevel }
@@ -940,6 +946,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
     // Handle pre-stream error with fallback retry
     if (preStreamError) {
       const canRetry = !isRetry
+        && this.canUseProviderFallback()
         && this.providerManager
         && this.providerManager.getOperatingMode() === 'normal'
         && this.providerManager.getFallbackProvider() !== null

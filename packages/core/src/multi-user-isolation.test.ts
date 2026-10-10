@@ -6,6 +6,7 @@ import type { AgentTool } from '@earendil-works/pi-agent-core'
 import { AgentCore } from './agent.js'
 import type { UserToolsContext } from './agent.js'
 import { initDatabase } from './database.js'
+import { updateUserSettings } from './user-settings.js'
 import type { Database } from './database.js'
 import type { ResponseChunk } from './agent-runtime-types.js'
 import type { AgentRuntimeOptions } from './agent-runtime.js'
@@ -18,13 +19,32 @@ interface FakeRuntime {
   aborted: boolean
   cleared: number
   swaps: number
+  lastSwap?: { providerId: string; apiKey: string; modelId?: string }
   systemPrompts: Array<{ username: string; role?: string } | undefined>
 }
 
-const { runtimes, gates } = vi.hoisted(() => ({
+const { runtimes, gates, providerFixtures } = vi.hoisted(() => ({
   runtimes: [] as unknown[],
   gates: new Map<string, { promise: Promise<void>; release: () => void }>(),
+  providerFixtures: { providers: null as unknown[] | null, apiKeyError: null as string | null },
 }))
+
+vi.mock('./provider-config.js', async (importOriginal) => {
+  const original = await importOriginal<typeof import('./provider-config.js')>()
+  return {
+    ...original,
+    loadProviders: () => providerFixtures.providers
+      ? { ...original.loadProviders(), providers: providerFixtures.providers }
+      : original.loadProviders(),
+    loadProvidersDecrypted: () => providerFixtures.providers
+      ? { ...original.loadProvidersDecrypted(), providers: providerFixtures.providers }
+      : original.loadProvidersDecrypted(),
+    getApiKeyForProvider: async (provider: Parameters<typeof original.getApiKeyForProvider>[0]) => {
+      if (providerFixtures.apiKeyError) throw new Error(providerFixtures.apiKeyError)
+      return original.getApiKeyForProvider(provider)
+    },
+  }
+})
 
 vi.mock('./agent-runtime.js', async (importOriginal) => {
   const original = await importOriginal<typeof import('./agent-runtime.js')>()
@@ -46,7 +66,10 @@ vi.mock('./agent-runtime.js', async (importOriginal) => {
           runtime.systemPrompts.push(user)
         },
         getCurrentTimeContext: () => '',
-        swapProvider: () => { runtime.swaps++ },
+        swapProvider: (provider: { id: string }, apiKey: string, modelId?: string) => {
+          runtime.swaps++
+          runtime.lastSwap = { providerId: provider.id, apiKey, modelId }
+        },
         getProviderManager: () => undefined,
         clearMessages: () => {
           runtime.transcript = []
@@ -105,6 +128,8 @@ describe('multi-user isolation', () => {
   beforeEach(() => {
     runtimes.length = 0
     gates.clear()
+    providerFixtures.providers = null
+    providerFixtures.apiKeyError = null
     toolContexts = []
     db = initDatabase(':memory:')
     alice = Number(db.prepare("INSERT INTO users (username, password_hash, role) VALUES ('alice', 'h', 'admin')").run().lastInsertRowid)
@@ -203,7 +228,7 @@ describe('multi-user isolation', () => {
   it('builds provider_quota per runtime user role', async () => {
     const quotaService = { getSnapshot: () => ({}), refreshProvider: vi.fn() }
     const run = async (userId: number) => {
-      const scope = { id: userId, username: 'x', role: userId === alice ? 'admin' as const : 'user' as const, isBootstrapAdmin: false }
+      const scope = { id: userId, username: 'x', role: userId === alice ? 'admin' as const : 'user' as const, isBootstrapAdmin: false, settings: { chatModel: null, thinkingLevel: 'off' as const, language: 'match' } }
       const tool = createBaseAgentTools({ db, quotaService: quotaService as never, user: scope })
         .find((t: AgentTool) => t.name === 'provider_quota')!
       const result = await tool.execute('call', {})
@@ -216,7 +241,7 @@ describe('multi-user isolation', () => {
 
   it('re-checks the provider_quota role on every call', async () => {
     const quotaService = { getSnapshot: () => ({}), refreshProvider: vi.fn() }
-    const scope = { id: alice, username: 'alice', role: 'admin' as const, isBootstrapAdmin: true }
+    const scope = { id: alice, username: 'alice', role: 'admin' as const, isBootstrapAdmin: true, settings: { chatModel: null, thinkingLevel: 'off' as const, language: 'match' } }
     const tool = createBaseAgentTools({ db, quotaService: quotaService as never, user: scope })
       .find((t: AgentTool) => t.name === 'provider_quota')!
 
@@ -245,6 +270,52 @@ describe('multi-user isolation', () => {
     agent.swapProvider(provider, 'key', 'gpt-4o')
 
     expect((runtimes as FakeRuntime[]).map(r => r.swaps)).toEqual([1, 1])
+  })
+
+  it('keeps runtimes on their own model from triggering the global provider fallback', async () => {
+    providerFixtures.providers = [{ id: 'own', providerType: 'openai', name: 'Own', apiKey: 'k', baseUrl: 'https://x/v1', defaultModel: 'gpt-4o', enabledModels: ['gpt-4o'] }]
+    updateUserSettings(db, bob, { chatModel: { providerId: 'own', modelId: 'gpt-4o' } })
+
+    await drain(agent.sendMessage(String(alice), 'a'))
+    await drain(agent.sendMessage(String(bob), 'b'))
+
+    expect(runtimeFor(alice).options.canUseProviderFallback?.()).toBe(true)
+    expect(runtimeFor(bob).swaps).toBe(1)
+    expect(runtimeFor(bob).options.canUseProviderFallback?.()).toBe(false)
+  })
+
+  it('re-checks and refreshes the active model override on every turn', async () => {
+    const globalProvider = { id: 'global', providerType: 'openai', name: 'Global', apiKey: 'gk', baseUrl: 'https://g/v1', defaultModel: 'gpt-4o' }
+    agent.swapProvider(globalProvider as never, 'gk', 'gpt-4o')
+    const own = { id: 'own', providerType: 'openai', name: 'Own', apiKey: 'k1', baseUrl: 'https://x/v1', defaultModel: 'gpt-4o', enabledModels: ['gpt-4o'] }
+    providerFixtures.providers = [own]
+    updateUserSettings(db, bob, { chatModel: { providerId: 'own', modelId: 'gpt-4o' } })
+
+    await drain(agent.sendMessage(String(bob), 'one'))
+    expect(runtimeFor(bob).lastSwap).toEqual({ providerId: 'own', apiKey: 'k1', modelId: 'gpt-4o' })
+
+    providerFixtures.providers = [{ ...own, apiKey: 'k2' }]
+    await drain(agent.sendMessage(String(bob), 'two'))
+    expect(runtimeFor(bob).lastSwap).toEqual({ providerId: 'own', apiKey: 'k2', modelId: 'gpt-4o' })
+
+    providerFixtures.providers = [{ ...own, apiKey: 'k2', disabled: true }]
+    await drain(agent.sendMessage(String(bob), 'three'))
+    expect(runtimeFor(bob).lastSwap).toEqual({ providerId: 'global', apiKey: 'gk', modelId: 'gpt-4o' })
+    expect(runtimeFor(bob).options.canUseProviderFallback?.()).toBe(true)
+  })
+
+  it('fails the turn instead of answering with another model when the own model cannot be applied', async () => {
+    providerFixtures.providers = [{ id: 'own', providerType: 'openai', name: 'Own', apiKey: 'k', baseUrl: 'https://x/v1', defaultModel: 'gpt-4o', enabledModels: ['gpt-4o'] }]
+    updateUserSettings(db, bob, { chatModel: { providerId: 'own', modelId: 'gpt-4o' } })
+    providerFixtures.apiKeyError = 'token refresh failed'
+
+    const chunks = await drain(agent.sendMessage(String(bob), 'hi'))
+
+    expect(chunks[0]).toMatchObject({ type: 'error' })
+    expect((chunks[0] as { error: string }).error).toContain('own/gpt-4o')
+    expect(chunks.at(-1)).toEqual({ type: 'done' })
+    expect(runtimeFor(bob).transcript).toEqual([])
+    expect(runtimeFor(bob).swaps).toBe(0)
   })
 })
 
