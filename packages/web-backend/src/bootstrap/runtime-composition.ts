@@ -1018,6 +1018,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
 
   const agentHeartbeatService = new AgentHeartbeatService({
     taskRuntime: taskRuntime.tasks,
+    db,
     getDefaultProvider: getTaskDefaultProvider,
   })
   agentHeartbeatService.start()

@@ -45,6 +45,8 @@ export interface MemoryController {
   getHeartbeat: (req: AuthenticatedRequest, res: Response) => void
   putHeartbeat: (req: AuthenticatedRequest, res: Response) => void
   getDefaultHeartbeat: (req: AuthenticatedRequest, res: Response) => void
+  getHeartbeatSettings: (req: AuthenticatedRequest, res: Response) => void
+  putHeartbeatSettings: (req: AuthenticatedRequest, res: Response) => void
   getProfile: (req: AuthenticatedRequest, res: Response) => void
   putProfile: (req: AuthenticatedRequest, res: Response) => void
   listFacts: (req: AuthenticatedRequest, res: Response) => void
@@ -410,16 +412,19 @@ export function createMemoryController(options: MemoryModuleOptions): MemoryCont
       }
     },
 
-    getHeartbeat(_req, res) {
+    getHeartbeat(req, res) {
+      const scope = scopeOf(req, res)
+      if (!scope) return
       try {
-        const content = service.readHeartbeat()
-        res.json({ content })
+        res.json({ content: service.readHeartbeat(scope) })
       } catch (err) {
         res.status(500).json({ error: `Failed to read HEARTBEAT.md: ${(err as Error).message}` })
       }
     },
 
     putHeartbeat(req, res) {
+      const scope = scopeOf(req, res)
+      if (!scope) return
       const parsedContent = parseContentBody(req.body)
       if (!parsedContent.ok) {
         res.status(400).json({ error: parsedContent.error })
@@ -427,10 +432,35 @@ export function createMemoryController(options: MemoryModuleOptions): MemoryCont
       }
 
       try {
-        service.writeHeartbeat(parsedContent.value)
+        service.writeHeartbeat(scope, parsedContent.value)
         res.json({ message: 'HEARTBEAT.md updated', content: parsedContent.value })
       } catch (err) {
         res.status(500).json({ error: `Failed to write HEARTBEAT.md: ${(err as Error).message}` })
+      }
+    },
+
+    getHeartbeatSettings(req, res) {
+      const scope = scopeOf(req, res)
+      if (!scope) return
+      try {
+        res.json(service.readHeartbeatSettings(scope))
+      } catch (err) {
+        res.status(500).json({ error: `Failed to read heartbeat settings: ${(err as Error).message}` })
+      }
+    },
+
+    putHeartbeatSettings(req, res) {
+      const scope = scopeOf(req, res)
+      if (!scope) return
+      const enabled = (req.body as { enabled?: unknown } | undefined)?.enabled
+      if (typeof enabled !== 'boolean') {
+        res.status(400).json({ error: 'enabled must be a boolean' })
+        return
+      }
+      try {
+        res.json(service.setHeartbeatEnabled(scope, enabled))
+      } catch (err) {
+        res.status(500).json({ error: `Failed to update heartbeat settings: ${(err as Error).message}` })
       }
     },
 
