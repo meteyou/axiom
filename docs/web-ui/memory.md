@@ -2,7 +2,7 @@
 
 The Memory page is the inspector and editor for everything the agent remembers. Every tab here maps directly onto a directory or file under `/data/memory/`. Edit a file in the UI, and the agent reads your changes on its next turn — no restart needed.
 
-> **Admin only.** Regular users don't see this page.
+> **Admins and regular users.** Admins see the full page described below. Regular users get a reduced Memory page, see [Memory page for regular users](#memory-page-for-regular-users).
 
 > **What is the memory system?** This page documents the *UI*. For what each tier is *for*, when it's loaded into the prompt, how the consolidation job and fact extraction work, and the file layout under `/data/memory/`, see [Memory System concept](../concepts/memory).
 
@@ -168,3 +168,16 @@ You can edit historical days freely, but be aware that the nightly consolidator 
 - [Agent Instructions](../concepts/instructions) — `AGENTS.md`, `HEARTBEAT.md`, `CONSOLIDATION.md` (edited under [Instructions](./instructions), not here).
 - [System Prompt](../concepts/system-prompt) — how `SOUL.md`, `MEMORY.md`, daily notes, user profiles, and wiki excerpts are layered into every prompt.
 - [Users](./users) — managing the user accounts whose profiles appear under *User Profile*.
+
+## Memory page for regular users
+
+In a multi-user instance, regular users see a reduced Memory page with four tabs. Everything else (Core Memory, Soul, agent rules, consolidation rules, task guidelines, the raw file tree, consolidation status/run and memory usage stats) stays admin-only, and the matching API endpoints return `403` for regular users.
+
+| Tab                | What you can do                                                                                   | Scope                                  |
+|--------------------|---------------------------------------------------------------------------------------------------|----------------------------------------|
+| **Profile**        | Read and edit your own profile.                                                                   | Private, `/data/users/<username>/PROFILE.md` |
+| **Daily notes**    | List, read and edit your own daily notes.                                                         | Private, `/data/users/<username>/daily/`     |
+| **Facts**          | List, edit and delete the facts extracted from your own conversations.                            | Private                                |
+| **Wiki**           | Read, create, edit and delete wiki pages.                                                         | Shared with all users                  |
+
+The wiki is shared: don't put personal information there. Admins do not browse other users' profiles or daily notes in the web UI; the admin Facts tab lists facts across all users.
