@@ -96,6 +96,14 @@ function buildTasksResponse(settingsRaw: Record<string, unknown>) {
   }
 }
 
+function buildCodemodeResponse(settingsRaw: Record<string, unknown>) {
+  const codemode = (settingsRaw.codemode ?? {}) as Record<string, unknown>
+  return {
+    mainAgent: codemode.mainAgent === true,
+    tasks: codemode.tasks === true,
+  }
+}
+
 function buildImageGenerationResponse(settingsRaw: Record<string, unknown>) {
   return normalizeImageGenerationSettings(settingsRaw.imageGeneration as SettingsData['imageGeneration'])
 }
@@ -205,6 +213,7 @@ export function mapSettingsResponse(context: SettingsResponseContext) {
     factExtraction: buildFactExtractionResponse(settingsRaw),
     agentHeartbeat: buildAgentHeartbeatResponse(settingsRaw),
     tasks: buildTasksResponse(settingsRaw),
+    codemode: buildCodemodeResponse(settingsRaw),
     imageGeneration: buildImageGenerationResponse(settingsRaw),
     tts: buildTtsResponse(settingsRaw),
     stt: buildSttResponse(settingsRaw),
