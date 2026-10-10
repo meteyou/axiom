@@ -1,4 +1,4 @@
-import type { SettingsContract, SettingsUpdateContract, TtsSettingsContract } from '@axiom/core/contracts'
+import type { SettingsThinkingLevel, SettingsContract, SettingsUpdateContract, TtsSettingsContract } from '@axiom/core/contracts'
 
 interface ConsolidationRunResult {
   updated: boolean
@@ -18,6 +18,39 @@ interface TtsPreviewPayload {
   >
 }
 
+export interface ChatModelRef {
+  providerId: string
+  modelId: string
+}
+
+export interface OwnSettings {
+  scope: 'personal' | 'global'
+  overrides: {
+    chatModel: ChatModelRef | null
+    thinkingLevel: SettingsThinkingLevel | null
+    language: string | null
+  }
+  defaults: {
+    chatModel: (ChatModelRef & { providerName: string | null }) | null
+    thinkingLevel: SettingsThinkingLevel
+    language: string
+  }
+  effective: {
+    chatModel: ChatModelRef | null
+    thinkingLevel: SettingsThinkingLevel
+    language: string
+  }
+}
+
+export type OwnSettingsUpdate = Partial<OwnSettings['overrides']>
+
+export interface SelectableChatProvider {
+  id: string
+  name: string
+  providerType: string
+  models: { id: string; name: string }[]
+}
+
 export function useSettingsApi() {
   const { apiFetch, getAuthHeaders } = useApi()
   const config = useRuntimeConfig()
@@ -28,6 +61,15 @@ export function useSettingsApi() {
     method: 'PUT',
     body: JSON.stringify(updates),
   })
+
+  const getOwnSettings = () => apiFetch<OwnSettings>('/api/settings/me')
+
+  const updateOwnSettings = (updates: OwnSettingsUpdate) => apiFetch<OwnSettings>('/api/settings/me', {
+    method: 'PUT',
+    body: JSON.stringify(updates),
+  })
+
+  const getChatModels = () => apiFetch<{ providers: SelectableChatProvider[] }>('/api/settings/chat-models')
 
   const getConsolidationStatus = () => apiFetch<ConsolidationStatus>('/api/memory/consolidation/status')
 
@@ -56,6 +98,9 @@ export function useSettingsApi() {
   return {
     getSettings,
     updateSettings,
+    getOwnSettings,
+    updateOwnSettings,
+    getChatModels,
     getConsolidationStatus,
     runConsolidation,
     previewTts,

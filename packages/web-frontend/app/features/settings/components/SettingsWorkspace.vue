@@ -1,16 +1,9 @@
 <template>
-  <!-- Admin gate -->
-  <div v-if="!isAdmin" class="flex h-full flex-col items-center justify-center gap-3 p-10 text-center text-muted-foreground">
-    <AppIcon name="lock" size="xl" />
-    <h1 class="text-xl font-semibold text-foreground">{{ $t('admin.title') }}</h1>
-    <p class="text-sm">{{ $t('admin.description') }}</p>
-  </div>
-
   <!-- Settings page -->
-  <div v-else class="flex h-full flex-col overflow-hidden">
+  <div class="flex h-full flex-col overflow-hidden">
     <!-- Header with save action (hidden on secrets tab which has its own save flow) -->
     <PageHeader :title="$t('settings.title')" :subtitle="$t('settings.subtitle')">
-      <template v-if="activeTab !== 'secrets' && activeTab !== 'email'" #actions>
+      <template v-if="isAdmin && activeTab !== 'secrets' && activeTab !== 'email'" #actions>
         <Button class="h-8 px-3 text-xs md:h-10 md:px-4 md:py-2 md:text-sm" :disabled="saving || !form" @click="handleSave">
           <span
             v-if="saving"
@@ -23,7 +16,7 @@
     </PageHeader>
 
     <!-- Feedback alerts — only for non-secrets tabs (secrets tab handles its own feedback) -->
-    <div v-if="activeTab !== 'secrets' && activeTab !== 'email' && (error || successMessage)" class="shrink-0 border-b border-border px-6 py-3">
+    <div v-if="isAdmin && activeTab !== 'secrets' && activeTab !== 'email' && (error || successMessage)" class="shrink-0 border-b border-border px-6 py-3">
       <Alert v-if="error" variant="destructive">
         <AlertDescription class="flex items-center justify-between">
           <span>{{ error }}</span>
@@ -86,8 +79,10 @@
       <div class="flex-1 overflow-y-auto" role="tabpanel">
         <div :class="['mx-auto px-6 py-6 md:px-8 md:py-8', activeTab === 'email' ? 'max-w-5xl' : 'max-w-xl']">
 
+          <UserAgentSettingsTab v-if="!isAdmin" />
+
           <!-- Loading skeletons -->
-          <div v-if="loading" class="flex flex-col gap-6">
+          <div v-else-if="loading" class="flex flex-col gap-6">
             <div>
               <Skeleton class="mb-2 h-5 w-28" />
               <Skeleton class="h-4 w-72" />
@@ -2094,6 +2089,8 @@ import { buildProviderModelOptions } from '~/utils/providerModelOptions'
 import { useSettingsApi } from '~/api/settings'
 import EmailAccountsWorkspace from '~/features/email/components/EmailAccountsWorkspace.vue'
 import ImageGenerationSettingsTab from './ImageGenerationSettingsTab.vue'
+import UserAgentSettingsTab from './UserAgentSettingsTab.vue'
+import { filterSettingsTabsByRole, resolveSettingsTab, type SettingsTabId } from '~/utils/settingsTabs'
 import type { MemoryConsolidationSettings, FactExtractionSettings, HealthMonitorNotificationToggles, HealthMonitorSettings, AgentHeartbeatSettings, TasksSettings, CodemodeSettings, ImageGenerationSettings, TtsSettings, SttSettings, UploadsSettings, TelegramSettings, WatchdogSettings, RetrySettings } from '~/composables/useSettings'
 import type { TelegramUser } from '~/composables/useTelegramUsers'
 
@@ -2139,20 +2136,18 @@ const timezones = [
   'America/Argentina/Buenos_Aires',
 ]
 
-const VALID_TABS = ['agent', 'memory', 'agentHeartbeat', 'healthMonitor', 'imageGeneration', 'telegram', 'tasks', 'tts', 'stt', 'secrets', 'email'] as const
-type TabId = (typeof VALID_TABS)[number]
+type TabId = SettingsTabId
 
 const activeTab = computed<TabId>({
   get() {
-    const raw = route.query.tab as string
-    return VALID_TABS.includes(raw as TabId) ? (raw as TabId) : 'agent'
+    return resolveSettingsTab(route.query.tab, user.value?.role)
   },
   set(value: TabId) {
     router.replace({ query: { tab: value } })
   },
 })
 
-const tabs = computed(() => [
+const tabs = computed(() => filterSettingsTabsByRole([
   { id: 'agent' as TabId, icon: 'bot', label: t('settings.tabs.agent') },
   { id: 'agentHeartbeat' as TabId, icon: 'activity', label: t('settings.tabs.agentHeartbeat') },
   { id: 'email' as TabId, icon: 'mail', label: t('settings.tabs.email') },
@@ -2164,7 +2159,7 @@ const tabs = computed(() => [
   { id: 'tasks' as TabId, icon: 'bot', label: t('settings.tabs.tasks') },
   { id: 'telegram' as TabId, icon: 'send', label: t('settings.tabs.telegram') },
   { id: 'tts' as TabId, icon: 'volume', label: t('settings.ttsTitle') },
-])
+], user.value?.role))
 
 /* ── Settings state ── */
 const {
