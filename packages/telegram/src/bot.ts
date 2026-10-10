@@ -29,6 +29,7 @@ import {
   parseUploadsMetadata,
   loadSttSettings,
   resolveUserScope,
+  isMultiUser,
   toSttLanguage,
   getGlobalChatDefaults,
   transcribeAudio,
@@ -710,11 +711,12 @@ export class TelegramBot {
 
   private async checkAuthorized(ctx: Context): Promise<boolean> {
     if (!this.db) return true // No db = no access control
+    if (!this.isDMChat(ctx)) return this.isGroupSenderAllowed(ctx)
 
     const user = this.ensureTelegramUser(ctx)
     if (!user) return true
 
-    if (user.status === 'approved') return true
+    if (user.status === 'approved') return this.checkApprovedAccess(ctx)
 
     if (user.status === 'pending') {
       await this.safeSendMessage(ctx, '⏳ Your access request has been sent to the administrator. Please wait for approval.')
@@ -723,6 +725,37 @@ export class TelegramBot {
 
     // rejected — silently ignore
     return false
+  }
+
+  private async isGroupSenderAllowed(ctx: Context): Promise<boolean> {
+    if (!this.db || !ctx.from) return true
+    const row = this.db.prepare(
+      'SELECT status FROM telegram_users WHERE telegram_id = ?'
+    ).get(String(ctx.from.id)) as { status: string } | undefined
+    return row?.status === 'approved' && await this.checkApprovedAccess(ctx)
+  }
+
+  private async checkApprovedAccess(ctx: Context): Promise<boolean> {
+    if (!this.db) return true
+
+    const linkedId = this.resolveNumericUserId(ctx)
+    const scope = linkedId !== null ? resolveUserScope(this.db, linkedId) : null
+    const multiUser = isMultiUser(this.db)
+
+    if (!this.isDMChat(ctx)) {
+      if (scope) return scope.role === 'admin'
+      return !multiUser
+    }
+
+    if (!scope && multiUser) {
+      await this.safeSendMessage(
+        ctx,
+        '🔒 Your Telegram account is not linked to an Axiom user. Please ask the administrator to link it.',
+      )
+      return false
+    }
+
+    return true
   }
 
   private resolveUserId(ctx: Context): string {
@@ -1704,6 +1737,8 @@ export class TelegramBot {
   }
 
   private async handleKillSwitch(ctx: Context): Promise<void> {
+    if (!this.isDMChat(ctx) && !await this.isGroupSenderAllowed(ctx)) return
+
     const chatKey = getChatKey(ctx)
     const state = this.getOrCreateChatState(chatKey)
     const hadActiveTask = state.processing

@@ -114,7 +114,7 @@ vi.mock('@axiom/core', async (importOriginal) => {
 
 import { TelegramBot, createTelegramBot, extractReplyContext, buildAgentMessage } from './bot.js'
 import type { TelegramConfig, TelegramChatEvent } from './bot.js'
-import { clearTurnRetryNotifiers, initDatabase, loadConfig, notifyTurnRetryResolved, TurnRunner } from '@axiom/core'
+import { clearTurnRetryNotifiers, getUserSettingsOverrides, initDatabase, loadConfig, notifyTurnRetryResolved, ScheduledTaskStore, TaskStore, TurnRunner } from '@axiom/core'
 
 async function* errorStream(error: string): AsyncGenerator<ResponseChunk> {
   yield { type: 'error', error }
@@ -1614,7 +1614,11 @@ describe('email approval channel', () => {
     return {
       prepare: (sql: string) => ({
         run: () => ({ changes: 1, lastInsertRowid: 1 }),
-        get: () => (sql.includes('telegram_users')
+        get: () => (sql.includes('COUNT(*)')
+          ? { count: 1 }
+          : sql.includes('FROM users WHERE id')
+          ? { id: 42, username: 'tester', role: 'admin' }
+          : sql.includes('telegram_users')
           ? {
               id: 1,
               telegram_id: '12345',
@@ -2049,6 +2053,247 @@ describe('turn retry channel', () => {
       const texts = api.sendMessage.mock.calls.map((c: any[]) => c[1] as string)
       expect(texts.some((t: string) => t.includes('has not responded'))).toBe(false)
       expect(retryButton(api)).toBeDefined()
+    })
+  })
+})
+
+describe('multi-user Telegram access rules', () => {
+  const config: TelegramConfig = {
+    enabled: true,
+    botToken: 'test-token-123',
+    adminUserIds: [],
+    pollingMode: true,
+    webhookUrl: '',
+    batchingDelayMs: 0,
+  }
+  let agentCore: AgentCore
+  let db: Database
+
+  function addUser(username: string, role: 'admin' | 'user'): number {
+    return Number(db.prepare('INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)')
+      .run(username, 'x', role).lastInsertRowid)
+  }
+
+  function approve(telegramId: string, userId: number | null): void {
+    db.prepare("INSERT INTO telegram_users (telegram_id, status, user_id) VALUES (?, 'approved', ?)")
+      .run(telegramId, userId)
+  }
+
+  function ctxFor(telegramId: number, chatType: string, text = 'Hello') {
+    return createMockContext({
+      from: { id: telegramId, is_bot: false, first_name: 'T', username: `u${telegramId}` },
+      chat: { id: 500 + telegramId, type: chatType },
+      message: { text, message_id: 1 },
+    })
+  }
+
+  function handlers(): MockBotInternals {
+    return new TelegramBot({ agentCore, db, config }).getBot() as unknown as MockBotInternals
+  }
+
+  beforeEach(() => {
+    agentCore = createMockAgentCore()
+    vi.clearAllMocks()
+    db = initDatabase(':memory:')
+  })
+
+  it('refuses an approved but unlinked account with a hint when several users exist', async () => {
+    addUser('admin', 'admin')
+    addUser('bob', 'user')
+    approve('900', null)
+    const ctx = ctxFor(900, 'private')
+
+    await handlers()._handlers.get('message:text')!(ctx)
+
+    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('ask the administrator'), expect.anything())
+    expect(agentCore.sendMessage).not.toHaveBeenCalled()
+  })
+
+  it('still answers an unlinked account in a single-user instance', async () => {
+    addUser('admin', 'admin')
+    approve('900', null)
+    vi.mocked(agentCore.sendMessage).mockReturnValue(doneOnlyStream())
+    vi.useFakeTimers()
+    try {
+      await handlers()._handlers.get('message:text')!(ctxFor(900, 'private'))
+      await vi.advanceTimersByTimeAsync(10)
+    } finally {
+      vi.useRealTimers()
+    }
+
+    expect(agentCore.sendMessage).toHaveBeenCalled()
+  })
+
+  it('ignores group messages from non-admin senders and answers admins', async () => {
+    const adminId = addUser('admin', 'admin')
+    const bobId = addUser('bob', 'user')
+    approve('901', adminId)
+    approve('902', bobId)
+    vi.mocked(agentCore.sendMessage).mockReturnValue(doneOnlyStream())
+    const handler = handlers()._handlers.get('message:text')!
+    vi.useFakeTimers()
+    try {
+      const bobCtx = ctxFor(902, 'group')
+      await handler(bobCtx)
+      await vi.advanceTimersByTimeAsync(10)
+      expect(agentCore.sendMessage).not.toHaveBeenCalled()
+      expect(bobCtx.reply).not.toHaveBeenCalled()
+
+      await handler(ctxFor(901, 'supergroup'))
+      await vi.advanceTimersByTimeAsync(10)
+    } finally {
+      vi.useRealTimers()
+    }
+
+    expect(agentCore.sendMessage).toHaveBeenCalledTimes(1)
+  })
+
+  it('stays silent for unknown or pending group senders without registering them', async () => {
+    addUser('admin', 'admin')
+    addUser('bob', 'user')
+    db.prepare("INSERT INTO telegram_users (telegram_id, status) VALUES ('903', 'pending')").run()
+    const handler = handlers()._handlers.get('message:text')!
+    const unknownCtx = ctxFor(904, 'group')
+    const pendingCtx = ctxFor(903, 'group')
+
+    await handler(unknownCtx)
+    await handler(pendingCtx)
+
+    expect(unknownCtx.reply).not.toHaveBeenCalled()
+    expect(pendingCtx.reply).not.toHaveBeenCalled()
+    expect(db.prepare("SELECT 1 FROM telegram_users WHERE telegram_id = '904'").get()).toBeUndefined()
+    expect(agentCore.sendMessage).not.toHaveBeenCalled()
+  })
+
+  it('ignores slash commands and /stop from non-admins in groups', async () => {
+    addUser('admin', 'admin')
+    const bobId = addUser('bob', 'user')
+    approve('902', bobId)
+    const underlying = handlers()
+    const modelCtx = ctxFor(902, 'group', '/thinking high')
+    await underlying._commandHandlers.get('thinking')!(modelCtx)
+    const stopCtx = ctxFor(902, 'group', '/stop')
+    await underlying._commandHandlers.get('stop')!(stopCtx)
+
+    expect(modelCtx.reply).not.toHaveBeenCalled()
+    expect(stopCtx.reply).not.toHaveBeenCalled()
+  })
+
+  it('/thinking changes only the sender\'s own setting', async () => {
+    const adminId = addUser('admin', 'admin')
+    const bobId = addUser('bob', 'user')
+    approve('901', adminId)
+    approve('902', bobId)
+    const ctx = ctxFor(902, 'private', '/thinking high')
+
+    await handlers()._commandHandlers.get('thinking')!(ctx)
+
+    expect(ctx.reply).toHaveBeenCalledWith('Thinking level set to: high')
+    const rows = db.prepare('SELECT id, thinking_level FROM users ORDER BY id').all() as { id: number; thinking_level: string | null }[]
+    expect(rows.find(r => r.id === bobId)?.thinking_level).toBe('high')
+    expect(rows.find(r => r.id === adminId)?.thinking_level ?? null).toBeNull()
+  })
+
+  it('/tasks lists only the sender\'s own tasks', async () => {
+    const adminId = addUser('admin', 'admin')
+    const bobId = addUser('bob', 'user')
+    approve('902', bobId)
+    const store = new TaskStore(db)
+    store.create({ name: 'admin-secret-task', prompt: 'p', triggerType: 'user', ownerUserId: adminId })
+    store.create({ name: 'bob-task', prompt: 'p', triggerType: 'user', ownerUserId: bobId })
+    const ctx = ctxFor(902, 'private', '/tasks')
+
+    await handlers()._commandHandlers.get('tasks')!(ctx)
+
+    const reply = String(ctx.reply.mock.calls[0]?.[0])
+    expect(reply).toContain('bob-task')
+    expect(reply).not.toContain('admin-secret-task')
+  })
+
+  it('/cronjobs lists only the sender\'s own cronjobs', async () => {
+    const adminId = addUser('admin', 'admin')
+    const bobId = addUser('bob', 'user')
+    approve('902', bobId)
+    const store = new ScheduledTaskStore(db)
+    store.create({ name: 'admin-secret-job', prompt: 'p', schedule: '0 * * * *', ownerUserId: adminId })
+    store.create({ name: 'bob-job', prompt: 'p', schedule: '0 * * * *', ownerUserId: bobId })
+    const ctx = ctxFor(902, 'private', '/cronjobs')
+
+    await handlers()._commandHandlers.get('cronjobs')!(ctx)
+
+    const reply = String(ctx.reply.mock.calls[0]?.[0])
+    expect(reply).toContain('bob-job')
+    expect(reply).not.toContain('admin-secret-job')
+  })
+
+  it('/new resets only the linked user\'s session', async () => {
+    addUser('admin', 'admin')
+    const bobId = addUser('bob', 'user')
+    approve('902', bobId)
+    vi.mocked(agentCore.handleNewCommand).mockResolvedValue(null)
+
+    await handlers()._commandHandlers.get('new')!(ctxFor(902, 'private', '/new'))
+
+    expect(agentCore.handleNewCommand).toHaveBeenCalledTimes(1)
+    expect(agentCore.handleNewCommand).toHaveBeenCalledWith(String(bobId))
+  })
+
+  it('/stop aborts only the sender\'s own turn', async () => {
+    addUser('admin', 'admin')
+    const bobId = addUser('bob', 'user')
+    approve('902', bobId)
+    const runner = new TurnRunner({ db, getAgent: () => agentCore })
+    const abortTurn = vi.spyOn(runner, 'abortTurn').mockReturnValue(undefined as never)
+    const bot = new TelegramBot({ agentCore, db, config, turnRunner: runner })
+    const ctx = ctxFor(902, 'private', '/stop')
+    ;(bot as any).getOrCreateChatState(`telegram-chat-${ctx.chat.id}`).processing = true
+
+    await (bot.getBot() as unknown as MockBotInternals)._commandHandlers.get('stop')!(ctx)
+
+    expect(abortTurn).toHaveBeenCalledTimes(1)
+    expect(abortTurn).toHaveBeenCalledWith(String(bobId))
+  })
+
+  describe('/model', () => {
+    let dataDir: string
+    let previousDataDir: string | undefined
+    const providersPath = () => path.join(dataDir, 'config', 'providers.json')
+
+    beforeEach(() => {
+      previousDataDir = process.env.DATA_DIR
+      dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'axiom-tg-multiuser-'))
+      process.env.DATA_DIR = dataDir
+      fs.mkdirSync(path.join(dataDir, 'config'), { recursive: true })
+      fs.writeFileSync(providersPath(), JSON.stringify({
+        activeProvider: 'p1',
+        activeModel: 'gpt-4o',
+        providers: [{
+          id: 'p1', name: 'OpenAI', type: 'openai-completions', providerType: 'openai',
+          provider: 'openai', baseUrl: '', apiKey: '',
+          enabledModels: ['gpt-4o', 'gpt-4o-mini'],
+        }],
+      }), 'utf-8')
+    })
+
+    afterEach(() => {
+      if (previousDataDir === undefined) delete process.env.DATA_DIR
+      else process.env.DATA_DIR = previousDataDir
+      fs.rmSync(dataDir, { recursive: true, force: true })
+    })
+
+    it('stores a personal override for a regular user instead of changing providers.json', async () => {
+      const adminId = addUser('admin', 'admin')
+      const bobId = addUser('bob', 'user')
+      approve('902', bobId)
+      const ctx = ctxFor(902, 'private', '/model p1 gpt-4o-mini')
+
+      await handlers()._commandHandlers.get('model')!(ctx)
+
+      expect(String(ctx.reply.mock.calls[0]?.[0])).toContain('Your chat model')
+      expect(getUserSettingsOverrides(db, bobId).chatModel).toEqual({ providerId: 'p1', modelId: 'gpt-4o-mini' })
+      expect(getUserSettingsOverrides(db, adminId).chatModel ?? null).toBeNull()
+      const stored = JSON.parse(fs.readFileSync(providersPath(), 'utf-8'))
+      expect(stored.activeModel).toBe('gpt-4o')
     })
   })
 })
