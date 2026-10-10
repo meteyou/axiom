@@ -81,10 +81,10 @@ function seedFailedTurn(): { errorMessageId: number; retryActionId: string } {
   return { errorMessageId, retryActionId }
 }
 
-async function postAction(messageId: string, actionId = 'retry') {
+async function postAction(messageId: string, actionId = 'retry', authToken = token) {
   const res = await fetch(`${baseUrl}/api/chat/actions/${encodeURIComponent(messageId)}`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${authToken}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ actionId }),
   })
   return { res, body: await res.json() as { status?: string; resolution?: string; error?: string } }
@@ -143,6 +143,18 @@ beforeEach(() => {
 })
 
 describe('manual retry webchat channel', () => {
+  it('only lets the turn owner invoke the retry button', async () => {
+    const { retryActionId } = seedFailedTurn()
+    const intruder = generateAccessToken({ userId: USER_ID + 1, username: 'mallory', role: 'admin' })
+
+    const { res } = await postAction(retryActionId, 'retry', intruder)
+
+    expect(res.status).toBe(403)
+    expect(retryTurn).not.toHaveBeenCalled()
+    expect(published).toHaveLength(0)
+    expect((await postAction(retryActionId)).res.status).toBe(200)
+  })
+
   it('re-runs the failed turn and broadcasts the resolution to every client', async () => {
     const { errorMessageId, retryActionId } = seedFailedTurn()
 

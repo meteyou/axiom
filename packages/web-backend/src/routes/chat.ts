@@ -162,6 +162,11 @@ export function createChatRouter(options: ChatRouterOptions): Router {
         return
       }
 
+      if (result.status === 'forbidden') {
+        res.status(403).json({ error: 'Only the owner can use this action.' })
+        return
+      }
+
       if (result.status === 'ok') {
         res.json({ status: result.status, resolution: result.resolution })
         return

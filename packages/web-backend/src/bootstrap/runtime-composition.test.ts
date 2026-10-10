@@ -88,6 +88,9 @@ describe('background task tools rebuild on email account change', () => {
   it('adds email tools to the background task tool set after an account change without a restart', async () => {
     composition = await createRuntimeComposition({ logger: silentLogger })
 
+    composition.db.prepare("INSERT INTO users (id, username, password_hash, role) VALUES (1, 'admin', 'x', 'admin')").run()
+    const ownerId = 1
+
     expect(composition.getBackgroundTaskToolNames()).not.toContain('email_list')
 
     createEmailAccount({
@@ -99,7 +102,7 @@ describe('background task tools rebuild on email account change', () => {
       smtpPort: 465,
       smtpUser: 'user@example.com',
       canSend: true,
-    })
+    }, ownerId)
 
     composition.onActiveProviderChanged()
 

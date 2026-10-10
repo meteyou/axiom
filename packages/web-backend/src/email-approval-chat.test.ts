@@ -22,6 +22,7 @@ let db: Database
 let server: http.Server
 let baseUrl: string
 let token: string
+let otherToken: string
 let tempDataDir: string
 let previousDataDir: string | undefined
 
@@ -62,6 +63,7 @@ function seedEntry(overrides: Partial<EmailSendLogEntry> = {}): EmailSendLogEntr
   const entry = createEmailSendLogEntry(db, {
     accountId: 'acc-1',
     accountName: 'Work',
+    ownerUserId: 2,
     status: 'pending',
     to: ['stranger@partner.org'],
     subject: 'Quarterly numbers',
@@ -89,6 +91,8 @@ beforeAll(async () => {
   baseUrl = `http://127.0.0.1:${(server.address() as { port: number }).port}`
   db.prepare("INSERT OR IGNORE INTO users (id, username, password_hash, role) VALUES (2, 'alice', 'x', 'user')").run()
   token = generateAccessToken({ userId: 2, username: 'alice', role: 'user' })
+  db.prepare("INSERT OR IGNORE INTO users (id, username, password_hash, role) VALUES (3, 'bob', 'x', 'user')").run()
+  otherToken = generateAccessToken({ userId: 3, username: 'bob', role: 'user' })
 })
 
 afterAll(async () => {
@@ -143,6 +147,25 @@ describe('email approval webchat channel', () => {
     expect(message.text).toContain('report.pdf (2.0 KB)')
     expect(message.text).toContain('\u2026')
     expect(message.text).not.toContain('x'.repeat(500))
+  })
+
+  it('publishes only to the owner and refuses invocations from other users', async () => {
+    const entry = seedEntry()
+    await notifyEmailApprovalRequested(entry)
+    const message = lastPublished()
+    expect(message.ownerUserId).toBe(2)
+
+    const foreign = await postAction(message.messageId, 'approve', otherToken)
+    expect(foreign.res.status).toBe(403)
+    expect(decisions).toHaveLength(0)
+    expect(lastPublished().resolution).toBeUndefined()
+
+    expect((await postAction(message.messageId, 'approve')).res.status).toBe(200)
+  })
+
+  it('does not publish entries without an owner', async () => {
+    await notifyEmailApprovalRequested(seedEntry({ ownerUserId: null }))
+    expect(published).toHaveLength(0)
   })
 
   it('ignores entries that are not pending', async () => {

@@ -72,7 +72,7 @@ export function registerEmailApprovalChatChannel(deps: EmailApprovalChatChannelD
   const unregisterHandler = deps.chatActions.registerHandler(
     EMAIL_APPROVAL_CHAT_KIND,
     async ({ refId, actionId, user }) => {
-      const decider = { name: user.username }
+      const decider = { name: user.username, userId: user.userId }
       const result = actionId === 'reject'
         ? await deps.approval.reject(refId, decider)
         : await deps.approval.approve(refId, decider)
@@ -88,10 +88,11 @@ export function registerEmailApprovalChatChannel(deps: EmailApprovalChatChannelD
 
   const unregisterNotifier = registerEmailApprovalNotifier({
     approvalRequested: (entry) => {
-      if (entry.status !== 'pending') return
+      if (entry.status !== 'pending' || entry.ownerUserId === null) return
       deps.chatActions.publish({
         kind: EMAIL_APPROVAL_CHAT_KIND,
         refId: entry.id,
+        ownerUserId: entry.ownerUserId,
         text: formatEmailApprovalRequestText(entry),
         actions: [
           { actionId: 'approve', label: 'Accept', style: 'primary' },
