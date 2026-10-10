@@ -704,18 +704,27 @@ export function writeTasksGuidelinesFile(content: string, configDir?: string): v
 /**
  * Get the path for today's daily memory file
  */
-export function getDailyFilePath(date?: Date, memoryDir?: string, dailyDir?: string): string {
+export function getDailyFilePath(date?: Date, memoryDir?: string, dailyDir?: string, timezone?: string): string {
   const dir = dailyDir ?? path.join(memoryDir ?? getMemoryDir(), 'daily')
-  const d = date ?? new Date()
-  const dateStr = d.toISOString().split('T')[0] // YYYY-MM-DD
-  return path.join(dir, `${dateStr}.md`)
+  return path.join(dir, `${formatDateKey(date ?? new Date(), timezone)}.md`)
+}
+
+/** `YYYY-MM-DD` of an instant on the wall clock of `timezone` (UTC when omitted). */
+export function formatDateKey(date: Date, timezone?: string): string {
+  if (!timezone) return date.toISOString().split('T')[0]
+  return date.toLocaleDateString('en-CA', { timeZone: timezone })
+}
+
+/** `HH:MM` of an instant on the wall clock of `timezone` (UTC when omitted). */
+export function formatTimeKey(date: Date, timezone?: string): string {
+  return date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: timezone ?? 'UTC' })
 }
 
 /**
  * Ensure a daily memory file exists, creating it with a header if needed
  */
-export function ensureDailyFile(date?: Date, memoryDir?: string, dailyDir?: string): string {
-  const filePath = getDailyFilePath(date, memoryDir, dailyDir)
+export function ensureDailyFile(date?: Date, memoryDir?: string, dailyDir?: string, timezone?: string): string {
+  const filePath = getDailyFilePath(date, memoryDir, dailyDir, timezone)
   const dir = path.dirname(filePath)
 
   if (!fs.existsSync(dir)) {
@@ -723,8 +732,7 @@ export function ensureDailyFile(date?: Date, memoryDir?: string, dailyDir?: stri
   }
 
   if (!fs.existsSync(filePath)) {
-    const d = date ?? new Date()
-    const dateStr = d.toISOString().split('T')[0]
+    const dateStr = formatDateKey(date ?? new Date(), timezone)
     fs.writeFileSync(filePath, `# Daily Memory — ${dateStr}\n\n`, 'utf-8')
   }
 
@@ -742,15 +750,15 @@ export function readDailyFile(date?: Date, memoryDir?: string): string {
 /**
  * Append content to a daily memory file
  */
-export function appendToDailyFile(content: string, date?: Date, memoryDir?: string, dailyDir?: string): void {
-  const filePath = ensureDailyFile(date, memoryDir, dailyDir)
+export function appendToDailyFile(content: string, date?: Date, memoryDir?: string, dailyDir?: string, timezone?: string): void {
+  const filePath = ensureDailyFile(date, memoryDir, dailyDir, timezone)
   fs.appendFileSync(filePath, content, 'utf-8')
 }
 
 /**
  * Read recent daily files (for context injection)
  */
-export function readRecentDailyFiles(days: number = 3, memoryDir?: string, dailyDirOverride?: string): string {
+export function readRecentDailyFiles(days: number = 3, memoryDir?: string, dailyDirOverride?: string, timezone?: string): string {
   const dailyDir = dailyDirOverride ?? path.join(memoryDir ?? getMemoryDir(), 'daily')
 
   if (!fs.existsSync(dailyDir)) {
@@ -762,8 +770,8 @@ export function readRecentDailyFiles(days: number = 3, memoryDir?: string, daily
 
   for (let i = 0; i < days; i++) {
     const d = new Date(now)
-    d.setDate(d.getDate() - i)
-    const dateStr = d.toISOString().split('T')[0]
+    d.setTime(now.getTime() - i * 86_400_000)
+    const dateStr = formatDateKey(d, timezone)
     const filePath = path.join(dailyDir, `${dateStr}.md`)
 
     if (fs.existsSync(filePath)) {
@@ -985,7 +993,7 @@ export function assembleSystemPrompt(options?: {
     : `<core_memory>\n${agents.trim()}\n</core_memory>`)
 
   // 5. Recent daily context
-  const dailyContext = readRecentDailyFiles(recentDays, memoryDir, personal?.paths.dailyDir)
+  const dailyContext = readRecentDailyFiles(recentDays, memoryDir, personal?.paths.dailyDir, options?.timezone)
   if (dailyContext) {
     sections.push(`<recent_memory>
 These are summarized session notes from recent days. They are condensed — for full conversation details, use the read_chat_history tool.
@@ -1141,7 +1149,7 @@ ${pageLines}
   // 9. Memory and config file paths for agent self-access
   const dir = memoryDir ?? getMemoryDir()
   const cfgDir = options?.configDir ?? getConfigDir()
-  const today = new Date().toISOString().split('T')[0]
+  const today = formatDateKey(new Date(), options?.timezone || undefined)
   sections.push(buildMemoryPathsSection({
     dir,
     cfgDir,

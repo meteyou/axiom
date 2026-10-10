@@ -2,6 +2,7 @@ import type { AgentTool } from '@earendil-works/pi-agent-core'
 import { Type } from '@earendil-works/pi-ai'
 import type { ScheduledTask, ScheduledTaskActionType } from './scheduled-task-store.js'
 import type { TaskRuntimeScheduleBoundary } from './task-runtime.js'
+import { formatDateKey, formatTimeKey } from './memory.js'
 import { validateCronExpression, cronToHumanReadable, parseCronExpression, getNextRunTime } from './cron-parser.js'
 import { resolveProviderModelInput } from './provider-config.js'
 import { normalizeAttachedSkills } from './attached-skills.js'
@@ -38,6 +39,8 @@ export interface CronjobToolsOptions {
   actor?: AccessActor
   /** Username lookup for the owner shown in admin listings of foreign cronjobs. */
   getUsername?: (userId: number) => string | null
+  /** Timezone a cronjob of this owner runs in; UTC when not provided. */
+  getTimezone?: (ownerUserId: number | null) => string
 }
 
 type CronjobToolError = { content: { type: 'text'; text: string }[]; details: { error: true } }
@@ -67,6 +70,14 @@ function denyCronjobAction(
     return cronjobError(`Error: Cronjob "${cronjob.id}" belongs to another user; you may only disable or delete it, not ${verb} it.`)
   }
   return cronjobError(`Error: Cronjob "${cronjob.id}" not found.`)
+}
+
+function timezoneFor(options: CronjobToolsOptions, ownerUserId: number | null): string {
+  return options.getTimezone?.(ownerUserId) ?? 'UTC'
+}
+
+function formatRunTime(date: Date, timezone: string): string {
+  return `${formatDateKey(date, timezone)} ${formatTimeKey(date, timezone)} ${timezone}`
 }
 
 function ownerLabel(options: CronjobToolsOptions, ownerUserId: number | null): string {
@@ -575,12 +586,13 @@ export function listCronjobsTool(options: CronjobToolsOptions): AgentTool {
           if (cj.enabled) {
             try {
               const fields = parseCronExpression(cj.schedule)
+              const timezone = timezoneFor(options, cj.ownerUserId)
               const runs: string[] = []
               let cursor = new Date(now.getTime() - 60000) // start from now
               for (let i = 0; i < numRuns; i++) {
-                const next = getNextRunTime(fields, cursor)
+                const next = getNextRunTime(fields, cursor, timezone)
                 if (!next) break
-                runs.push(next.toISOString().replace('T', ' ').slice(0, 16) + ' UTC')
+                runs.push(formatRunTime(next, timezone))
                 cursor = next
               }
               if (runs.length > 0) {
@@ -764,9 +776,10 @@ export function createReminderTool(options: CronjobToolsOptions): AgentTool {
         let nextRunStr = ''
         try {
           const fields = parseCronExpression(schedule)
-          const nextRun = getNextRunTime(fields)
+          const timezone = timezoneFor(options, ownerFor(options) ?? null)
+          const nextRun = getNextRunTime(fields, new Date(), timezone)
           if (nextRun) {
-            nextRunStr = `\nNext delivery: ${nextRun.toISOString().replace('T', ' ').slice(0, 16)} UTC`
+            nextRunStr = `\nNext delivery: ${formatRunTime(nextRun, timezone)}`
           }
         } catch {
           // skip

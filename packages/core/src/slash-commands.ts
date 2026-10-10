@@ -5,6 +5,7 @@ import type { Database } from './database.js'
 import type { TaskStore } from './task-store.js'
 import type { ScheduledTaskStore } from './scheduled-task-store.js'
 import { parseCronExpression, getNextRunTime } from './cron-parser.js'
+import { formatDateKey, formatTimeKey } from './memory.js'
 import {
   loadProviders,
   setActiveProvider,
@@ -272,7 +273,7 @@ export function registerBuiltInSlashCommands(registry: SlashCommandRegistry): vo
       name: j.name,
         cronExpression: j.schedule,
         enabled: j.enabled,
-        nextRunAt: computeNextRunAt(j.schedule),
+        nextRunAt: computeNextRunAt(j.schedule, scope.settings.timezone),
         lastRunAt: j.lastRunAt,
       }))
       return formatCronjobsReply(jobs)
@@ -724,12 +725,12 @@ function truncate(s: string, max: number): string {
   return s.slice(0, max - 1) + '…'
 }
 
-function computeNextRunAt(schedule: string): string | null {
+function computeNextRunAt(schedule: string, timezone: string): string | null {
   try {
     const fields = parseCronExpression(schedule)
-    const next = getNextRunTime(fields, new Date())
+    const next = getNextRunTime(fields, new Date(), timezone)
     if (!next) return null
-    return next.toISOString().replace('T', ' ').slice(0, 16)
+    return `${formatDateKey(next, timezone)} ${formatTimeKey(next, timezone)} (${timezone})`
   } catch {
     return null
   }
