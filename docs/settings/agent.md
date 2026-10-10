@@ -4,6 +4,20 @@ Language preferences, active provider + model, reasoning level, the experimental
 
 **URL:** `/settings?tab=agent`
 
+## Personal agent settings (regular users)
+
+Regular users open **Settings** and see only the **Agent** tab, with their own:
+
+- **Chat model** — any enabled model of any provider.
+- **Thinking level** — `off` to `max`.
+- **Language** — the agent's reply language and the language speech-to-text transcribes in.
+
+Each field offers **Use default (admin: …)**. On default, the user follows the admin's global settings below, including later changes by the admin. An override applies from that user's next message and affects nobody else.
+
+The thinking-level button next to the chat input is available to everyone: it changes the user's own level, and the global level for admins. The same applies to `/model` and `/thinking` in the web chat and Telegram — see [Chat → Slash commands](../web-ui/chat#slash-commands). Regular users can also run `/model default` and `/thinking default` to go back to the default.
+
+The remaining settings on this page (rules, provider, codemode, uploads, resilience, …) and all other tabs are admin-only. Admin settings are the global defaults for everyone; admins have no personal layer.
+
 ## Agent Rules
 
 A card at the top of the panel links to `/data/config/AGENTS.md` — the file the agent reads on every conversation as its "user-editable behavior rules" block.

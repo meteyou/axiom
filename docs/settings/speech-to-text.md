@@ -81,6 +81,10 @@ The dropdown is pre-populated with a small list of common models. Click the **re
 { "stt": { "deepgramModel": "nova-3" } }
 ```
 
+## Transcription language
+
+Transcription uses the requesting user's [language setting](./agent#personal-agent-settings-regular-users) (the global one for admins). `match` lets the provider auto-detect. The agent's `transcribe_audio` tool (e.g. for downloaded audio files) auto-detects unless the agent passes a language.
+
 ## Deepgram language
 
 Shown when provider is `deepgram`. ISO‑639‑1 language code (`en`, `de`, `es`, ...) or `multi` for multilingual transcription. Leave empty to auto-detect.

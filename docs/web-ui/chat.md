@@ -125,8 +125,8 @@ carries between surfaces.
 | `/stop`     | Abort the current agent turn and clear queued work. (alias `/kill`)         |
 | `/tasks`    | Show running and recent background tasks (read-only).                       |
 | `/cronjobs` | Show configured cronjobs and their next run time. (alias `/cron`)           |
-| `/model`    | Show or switch the active provider and model. (alias `/provider`)           |
-| `/thinking` | Show or set the global main-agent thinking level.                           |
+| `/model`    | Show or switch the provider and model — yours for regular users, the global one for admins. (alias `/provider`) |
+| `/thinking` | Show or set the thinking level — yours for regular users, the global one for admins. |
 | `/skill`    | Load a skill into the current conversation. (`/skill:<name> [prompt]`)      |
 
 On the web chat, `/model` (and its alias `/provider`) responds as an
