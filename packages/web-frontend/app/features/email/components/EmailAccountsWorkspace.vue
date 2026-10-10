@@ -51,6 +51,7 @@
             <TableHeader>
               <TableRow class="hover:bg-transparent">
                 <TableHead>{{ $t('email.columns.name') }}</TableHead>
+                <TableHead v-if="isAdmin">{{ $t('email.columns.owner') }}</TableHead>
                 <TableHead>{{ $t('email.columns.server') }}</TableHead>
                 <TableHead>{{ $t('email.columns.permissions') }}</TableHead>
                 <TableHead class="w-12" />
@@ -60,12 +61,15 @@
               <TableRow
                 v-for="account in accounts"
                 :key="account.id"
-                class="cursor-pointer"
-                @click="openEdit(account)"
+                :class="isOwn(account) ? 'cursor-pointer' : ''"
+                @click="isOwn(account) && openEdit(account)"
               >
                 <TableCell>
                   <div class="font-semibold text-foreground">{{ account.name }}</div>
                   <div class="text-xs text-muted-foreground">{{ account.imapUser }}</div>
+                </TableCell>
+                <TableCell v-if="isAdmin" class="text-sm text-muted-foreground">
+                  {{ account.ownerUsername ?? '—' }}
                 </TableCell>
                 <TableCell class="font-mono text-xs">
                   <div><span class="text-muted-foreground">IMAP:</span> {{ account.imapHost }}:{{ account.imapPort }}</div>
@@ -89,11 +93,13 @@
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem @click="openEdit(account)">
-                        <AppIcon name="edit" class="h-4 w-4" />
-                        {{ $t('common.edit') }}
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
+                      <template v-if="isOwn(account)">
+                        <DropdownMenuItem @click="openEdit(account)">
+                          <AppIcon name="edit" class="h-4 w-4" />
+                          {{ $t('common.edit') }}
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                      </template>
                       <DropdownMenuItem destructive @click="deleteTarget = account">
                         <AppIcon name="trash" class="h-4 w-4" />
                         {{ $t('common.delete') }}
@@ -136,6 +142,9 @@ import { useEmailAccounts } from '../composables/useEmailAccounts'
 import EmailAccountFormDialog from './EmailAccountFormDialog.vue'
 
 const { t } = useI18n()
+const { user } = useAuth()
+const isAdmin = computed(() => user.value?.role === 'admin')
+const isOwn = (account: EmailAccount) => account.ownerUserId === user.value?.id
 const { accounts, loading, error, fetchAccounts, createAccount, updateAccount, deleteAccount } = useEmailAccounts()
 
 const showDialog = ref(false)
