@@ -1,10 +1,12 @@
 import type { Response } from 'express'
+import type { Task } from '@axiom/core'
 import type { AuthenticatedRequest } from '../../../auth.js'
 import { mapTaskEventsResponse, mapTaskResponse, mapTasksListResponse } from './mapper.js'
 import { parseListTasksQuery, parseRestartTaskBody, parseTaskIdParam } from './schema.js'
 import {
   TaskCannotBeKilledError,
   TaskCannotBeRestartedError,
+  TaskForbiddenError,
   TaskNotFoundError,
   TaskRestartProviderError,
   TaskRuntimeUnavailableError,
@@ -19,7 +21,13 @@ export interface TasksController {
   restartTask: (req: AuthenticatedRequest, res: Response) => Promise<void>
 }
 
+function actorOf(req: AuthenticatedRequest) {
+  return { id: req.user!.userId, role: req.user!.role }
+}
+
 export function createTasksController(service: TasksService): TasksController {
+  const ownersOf = (...tasks: Task[]) => service.getOwnerNames(tasks)
+
   return {
     listTasks(req, res) {
       try {
@@ -29,7 +37,7 @@ export function createTasksController(service: TasksService): TasksController {
           return
         }
 
-        const { tasks, total, providerOptions } = service.listTasks(parsedQuery.value)
+        const { tasks, total, providerOptions } = service.listTasks(actorOf(req), parsedQuery.value)
 
         res.json(
           mapTasksListResponse({
@@ -38,6 +46,7 @@ export function createTasksController(service: TasksService): TasksController {
             limit: parsedQuery.value.limit,
             total,
             providerOptions,
+            owners: ownersOf(...tasks),
           }),
         )
       } catch (err) {
@@ -48,13 +57,13 @@ export function createTasksController(service: TasksService): TasksController {
     getTaskById(req, res) {
       try {
         const id = parseTaskIdParam(req.params.id)
-        const task = service.getTaskById(id)
+        const task = service.getTaskForActor(actorOf(req), id)
         if (!task) {
           res.status(404).json({ error: 'Task not found' })
           return
         }
 
-        res.json(mapTaskResponse(task))
+        res.json(mapTaskResponse(task, ownersOf(task)))
       } catch (err) {
         res.status(500).json({ error: `Failed to get task: ${(err as Error).message}` })
       }
@@ -63,8 +72,8 @@ export function createTasksController(service: TasksService): TasksController {
     getTaskEvents(req, res) {
       try {
         const id = parseTaskIdParam(req.params.id)
-        const payload = service.getTaskEvents(id)
-        res.json(mapTaskEventsResponse(payload))
+        const payload = service.getTaskEvents(actorOf(req), id)
+        res.json(mapTaskEventsResponse({ ...payload, owners: ownersOf(payload.task) }))
       } catch (err) {
         if (err instanceof TaskNotFoundError) {
           res.status(404).json({ error: err.message })
@@ -78,9 +87,14 @@ export function createTasksController(service: TasksService): TasksController {
     killTask(req, res) {
       try {
         const id = parseTaskIdParam(req.params.id)
-        const task = service.killTask(id)
-        res.json(mapTaskResponse(task))
+        const task = service.killTask(actorOf(req), id)
+        res.json(mapTaskResponse(task, ownersOf(task)))
       } catch (err) {
+        if (err instanceof TaskForbiddenError) {
+          res.status(403).json({ error: err.message })
+          return
+        }
+
         if (err instanceof TaskNotFoundError) {
           res.status(404).json({ error: err.message })
           return
@@ -104,9 +118,14 @@ export function createTasksController(service: TasksService): TasksController {
           return
         }
 
-        const task = await service.restartTask(id, parsed.value)
-        res.status(201).json(mapTaskResponse(task))
+        const task = await service.restartTask(actorOf(req), id, parsed.value)
+        res.status(201).json(mapTaskResponse(task, ownersOf(task)))
       } catch (err) {
+        if (err instanceof TaskForbiddenError) {
+          res.status(403).json({ error: err.message })
+          return
+        }
+
         if (err instanceof TaskNotFoundError) {
           res.status(404).json({ error: err.message })
           return
