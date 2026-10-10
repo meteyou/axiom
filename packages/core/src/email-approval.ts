@@ -18,10 +18,13 @@ import type { Database } from './database.js'
 export interface EmailApprovalDecider {
   /** Stable identity of the deciding user, used for the audit trail. */
   name: string
+  /** Only the owner of the entry may decide it. */
+  userId: number
 }
 
 export type EmailApprovalErrorCode =
   | 'not_found'
+  | 'forbidden'
   | 'already_decided'
   | 'not_retryable'
   | 'account_missing'
@@ -192,10 +195,15 @@ export function createEmailApprovalService(deps: EmailApprovalDeps): EmailApprov
     return { ok: false, code: 'not_found', message: `Send log entry not found: ${id}`, entry: null }
   }
 
+  function forbidden(): EmailApprovalResult {
+    return { ok: false, code: 'forbidden', message: 'Only the owner of this email can decide on it.', entry: null }
+  }
+
   return {
     async approve(id, decider) {
       const current = getEmailSendLogEntry(resolved.db, id)
       if (!current) return missing(id)
+      if (current.ownerUserId !== decider.userId) return forbidden()
 
       const approved = transition(resolved.db, id, ['pending'], 'approved', decider)
       if (!approved) {
@@ -214,6 +222,7 @@ export function createEmailApprovalService(deps: EmailApprovalDeps): EmailApprov
     async reject(id, decider) {
       const current = getEmailSendLogEntry(resolved.db, id)
       if (!current) return missing(id)
+      if (current.ownerUserId !== decider.userId) return forbidden()
 
       const rejected = transition(resolved.db, id, ['pending'], 'rejected', decider)
       if (!rejected) {
@@ -228,6 +237,7 @@ export function createEmailApprovalService(deps: EmailApprovalDeps): EmailApprov
     async retry(id, decider) {
       const current = getEmailSendLogEntry(resolved.db, id)
       if (!current) return missing(id)
+      if (current.ownerUserId !== decider.userId) return forbidden()
 
       const retrying = transition(resolved.db, id, ['failed'], 'approved', decider)
       if (!retrying) {
