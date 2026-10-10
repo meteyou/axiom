@@ -41,6 +41,8 @@ const TOOL_REPLAY_POLICIES: ReadonlyMap<string, ToolReplayPolicy> = new Map([
   ['create_reminder', 'unsafe'],
   ['send_file_to_user', 'unsafe'],
   ['generate_image', 'unsafe'],
+  // A script runs arbitrary nested calls with side effects, so it is never blindly replayable.
+  ['codemode', 'unsafe'],
 ])
 
 export function hasExplicitToolReplayPolicy(toolName: string): boolean {
