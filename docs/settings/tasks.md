@@ -51,6 +51,28 @@ Values: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. Like the chat
 { "tasks": { "backgroundThinkingLevel": "minimal" } }
 ```
 
+## Codemode (experimental)
+
+Switches for the [codemode](../concepts/codemode) tool — a JavaScript script that batches, chains and filters tool calls, so only the script's output reaches the model. Both switches are **off by default**, and the section is marked *Experimental* in the UI: the feature may change between releases, and script quality depends on the model.
+
+### Codemode for the main agent
+
+Adds the `codemode` tool to the interactive chat agent on every channel (web UI and Telegram). Applies from the next turn — no restart needed.
+
+```json
+{ "codemode": { "mainAgent": true } }
+```
+
+### Codemode for background tasks
+
+Adds the `codemode` tool to task agents — user tasks, agent-created tasks, cronjob runs and heartbeat runs. Applies to tasks **started after** the change; already-running tasks are unaffected. Memory consolidation never uses codemode. Individual cronjobs can override this switch with the three-way control in the [cronjob form](../web-ui/cronjobs#codemode) (inherit / on / off).
+
+```json
+{ "codemode": { "tasks": true } }
+```
+
+When to use it, what scripts can do, the limits and where the switches' effects show up: [Codemode](../concepts/codemode).
+
 ## Loop detection
 
 Tasks can get stuck — repeating the same failing tool call over and over, or going in circles without making progress. Loop detection catches this and terminates the task. Which of the two it catches depends on the detection method below.

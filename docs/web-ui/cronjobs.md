@@ -150,6 +150,18 @@ Each entry expands every provider's *enabled* models into its own option, so the
 
 Only visible when **Action Type** is `Task`. *Default* uses the [background thinking level](../settings/tasks#background-thinking-level) at run time; any other value pins the reasoning effort for every run. The list only offers the levels the selected model supports; a stored level the model doesn't support is marked *not supported* and runs as the nearest supported level.
 
+### Codemode
+
+Only visible when **Action Type** is `Task`. The **Scripted tool calls (codemode)** control decides whether this cronjob's task agent gets the [codemode](../concepts/codemode) tool:
+
+| Value | Behavior |
+|---|---|
+| **Inherit** (default) | Follow the [global background-task switch](../settings/tasks#codemode-experimental). |
+| **On** | This cronjob's runs get codemode even when the global switch is off. |
+| **Off** | This cronjob's runs never get it, even when the global switch is on. |
+
+Tool restrictions still apply inside scripts: a tool you disabled in the [tool override list](#tool-overrides) cannot be called from a codemode script. `codemode` itself is deliberately absent from that list — this three-way control is the only place to manage it.
+
 ### Advanced Configuration
 
 Collapsible section, only available for `Task`-type cronjobs. The header carries a `customized` badge whenever any override is set, so you can tell at a glance whether to expand it.
@@ -197,6 +209,6 @@ The destructive *Delete* button is styled red. Confirming removes the `scheduled
 ## See also
 
 - [Tasks & Cronjobs concept](../concepts/tasks-and-cronjobs) — scheduler internals, cron grammar, action types, reminders, attached skills, the OS-scheduler safety rule.
-- [Settings → Tasks](../settings/tasks) — defaults that apply to every `Task`-type cronjob (provider, max duration, loop detection, telegram delivery, status updates, background thinking level).
+- [Settings → Tasks](../settings/tasks) — defaults that apply to every `Task`-type cronjob (provider, max duration, loop detection, telegram delivery, status updates, background thinking level, codemode).
 - [Settings → Agent](../settings/agent) — timezone, which controls how cron expressions are interpreted.
 - [Tasks](./tasks) — every `Task`-type firing creates a row there with trigger `cronjob`.
