@@ -13,6 +13,8 @@ export interface MemoryFact {
 
 export interface SearchMemoriesOptions {
   userId?: number
+  /** Restricts results to facts from sessions with this `sessions.session_user` (callers without a user row). */
+  sessionUser?: string
   limit?: number
   dateFrom?: string
   dateTo?: string
@@ -90,7 +92,7 @@ function normalizeDateTo(input: string): string {
 }
 
 function buildMemoryFilters(
-  options: Pick<SearchMemoriesOptions, 'userId' | 'dateFrom' | 'dateTo'>,
+  options: Pick<SearchMemoriesOptions, 'userId' | 'sessionUser' | 'dateFrom' | 'dateTo'>,
   alias: string,
 ): { conditions: string[]; params: unknown[] } {
   const conditions: string[] = []
@@ -99,6 +101,11 @@ function buildMemoryFilters(
   if (options.userId !== undefined) {
     conditions.push(`${alias}.user_id = ?`)
     params.push(options.userId)
+  }
+
+  if (options.sessionUser !== undefined) {
+    conditions.push(`EXISTS (SELECT 1 FROM sessions ms WHERE ms.id = ${alias}.session_id AND ms.session_user = ?)`)
+    params.push(options.sessionUser)
   }
 
   if (options.dateFrom) {
