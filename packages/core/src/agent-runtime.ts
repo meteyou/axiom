@@ -56,6 +56,8 @@ export interface BaseAgentToolsOptions {
   sttEnabled?: boolean
   /** User the tools act for; scopes search_memories and gates provider_quota. Omitted for background agents. */
   user?: UserScope | null
+  /** Session identity of an interactive caller without a user row (e.g. `telegram-<id>`); scopes read_chat_history and search_memories. */
+  sessionUser?: string
   quotaService?: QuotaServiceLike
   /** Session that `generate_image` books its cost on; omitted for background agents. */
   getSessionId?: () => string | null | undefined
@@ -70,21 +72,32 @@ export interface BaseAgentToolsOptions {
  * - Background tasks: create_task, resume_task, list_tasks
  */
 export function createBaseAgentTools(options: BaseAgentToolsOptions): AgentTool[] {
+  const getUserWorkspace = options.user ? () => options.user!.paths.workspace : undefined
   return [
-    ...createYoloTools(),
+    ...createYoloTools(getUserWorkspace),
     ...createBuiltinWebTools(options.builtinToolsConfig),
-    createReadChatHistoryTool({ db: options.db }),
-    createSearchMemoriesTool({ db: options.db, getCurrentUserId: () => options.user?.id }),
+    createReadChatHistoryTool({
+      db: options.db,
+      getCurrentUserId: () => options.user?.id,
+      getSessionUser: () => options.sessionUser,
+      // Background sessions have no owner until task ownership lands; the PRD backfill attributes them to the bootstrap admin.
+      includeOwnerlessSessions: () => options.user?.isBootstrapAdmin === true,
+    }),
+    createSearchMemoriesTool({
+      db: options.db,
+      getCurrentUserId: () => options.user?.id,
+      getSessionUser: () => options.sessionUser,
+    }),
     ...createAgentSkillTools(),
-    ...createEmailTools(),
-    ...(options.sttEnabled ? [createTranscribeAudioTool()] : []),
+    ...createEmailTools({ workspaceDir: getUserWorkspace }),
+    ...(options.sttEnabled ? [createTranscribeAudioTool(getUserWorkspace)] : []),
     ...(options.quotaService
       ? [createProviderQuotaTool({
           quotaService: options.quotaService,
           isAuthorized: () => isQuotaVisibleToUser(options.db, options.user),
         })]
       : []),
-    ...createImageGenerationTools({ db: options.db, getSessionId: options.getSessionId }),
+    ...createImageGenerationTools({ db: options.db, getSessionId: options.getSessionId, getWorkspaceDir: getUserWorkspace }),
   ]
 }
 
@@ -113,6 +126,8 @@ export interface AgentRuntimeOptions {
   canUseProviderFallback?: () => boolean
   /** User this runtime serves; null for identities without a user row (e.g. Telegram pseudo users). */
   user?: UserScope | null
+  /** Session identity of the interactive caller (e.g. `telegram-<id>`); omitted for runtimes not bound to a caller. */
+  sessionUser?: string
   quotaService?: QuotaServiceLike
   /**
    * Reasoning / thinking level applied to every LLM turn. Defaults to the value
@@ -163,7 +178,7 @@ const SHELL_MAX_OUTPUT_BYTES = 10 * 1024 * 1024
 // Uses spawn instead of exec: execFile drops `detached`, and we need the child
 // to lead its own process group so that killing the group (negative pid)
 // reaches pipelines/`&&` chains/npm wrappers instead of only `/bin/sh`.
-function runShellCommand(command: string, timeout: number, signal?: AbortSignal): Promise<ShellResult> {
+function runShellCommand(command: string, timeout: number, cwd: string, signal?: AbortSignal): Promise<ShellResult> {
   return new Promise((resolve) => {
     let killReason: 'timeout' | 'abort' | 'maxBuffer' | null = null
     let stdout = ''
@@ -173,7 +188,7 @@ function runShellCommand(command: string, timeout: number, signal?: AbortSignal)
     const child = spawn(command, {
       shell: true,
       detached: true,
-      cwd: getWorkspaceDir(),
+      cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
     })
 
@@ -248,7 +263,8 @@ function runShellCommand(command: string, timeout: number, signal?: AbortSignal)
 /**
  * Build YOLO-mode tools that give the agent unrestricted access
  */
-export function createYoloTools(): AgentTool[] {
+export function createYoloTools(getWorkspace: () => string = getWorkspaceDir): AgentTool[] {
+  const resolvePath = (filePath: string): string => resolveWorkspacePath(filePath, getWorkspace())
   const shellTool: AgentTool = {
     name: 'shell',
     label: 'Execute Shell Command',
@@ -263,7 +279,9 @@ export function createYoloTools(): AgentTool[] {
     }),
     execute: async (_toolCallId, params, signal) => {
       const { command, timeout = 60000 } = params as { command: string; timeout?: number }
-      return runShellCommand(command, timeout, signal)
+      const cwd = getWorkspace()
+      fs.mkdirSync(cwd, { recursive: true })
+      return runShellCommand(command, timeout, cwd, signal)
     },
   }
 
@@ -278,7 +296,7 @@ export function createYoloTools(): AgentTool[] {
     execute: async (_toolCallId, params) => {
       const { path: filePath, content } = params as { path: string; content: string }
       try {
-        const resolved = resolveWorkspacePath(filePath)
+        const resolved = resolvePath(filePath)
         const dir = nodePath.dirname(resolved)
         if (!fs.existsSync(dir)) {
           fs.mkdirSync(dir, { recursive: true })
@@ -315,7 +333,7 @@ export function createYoloTools(): AgentTool[] {
     execute: async (_toolCallId, params) => {
       const { path: filePath, edits } = params as { path: string; edits: Array<{ oldText: string; newText: string }> }
       try {
-        const resolved = resolveWorkspacePath(filePath)
+        const resolved = resolvePath(filePath)
 
         if (!fs.existsSync(resolved)) {
           return {
@@ -394,7 +412,7 @@ export function createYoloTools(): AgentTool[] {
     execute: async (_toolCallId, params) => {
       const { path: dirPath } = params as { path: string }
       try {
-        const resolved = resolveWorkspacePath(dirPath)
+        const resolved = resolvePath(dirPath)
         const entries = fs.readdirSync(resolved, { withFileTypes: true })
         const listing = entries.map(e =>
           `${e.isDirectory() ? '[dir]' : '[file]'} ${e.name}`
@@ -412,7 +430,7 @@ export function createYoloTools(): AgentTool[] {
     },
   }
 
-  return [shellTool, createReadFileTool(), writeFileTool, editFileTool, listFilesTool]
+  return [shellTool, createReadFileTool(getWorkspace), writeFileTool, editFileTool, listFilesTool]
 }
 
 /**
@@ -484,6 +502,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
   private providerManager?: ProviderManager
   private canUseProviderFallback: () => boolean
   private user: UserScope | null
+  private sessionUser?: string
 
   constructor(options: AgentRuntimeOptions) {
     this.model = options.model
@@ -495,6 +514,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
     this.providerManager = options.providerManager
     this.canUseProviderFallback = options.canUseProviderFallback ?? (() => true)
     this.user = options.user ?? null
+    this.sessionUser = options.sessionUser
 
     // Ensure memory/config structure exists before prompt assembly.
     ensureMemoryStructure(options.memoryDir)
@@ -516,6 +536,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
         builtinToolsConfig: () => this.readRuntimeSettings().builtinToolsConfig,
         sttEnabled,
         user: this.user,
+        sessionUser: this.sessionUser,
         quotaService: options.quotaService,
         getSessionId: () => this.agent.sessionId,
       }),
@@ -607,7 +628,12 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
   private syncImageGenerationTool(): void {
     const tools = this.agent.state.tools
     const registered = tools.find(tool => tool.name === GENERATE_IMAGE_TOOL_NAME)
-    const [current] = createImageGenerationTools({ db: this.db, getSessionId: () => this.agent.sessionId })
+    const user = this.user
+    const [current] = createImageGenerationTools({
+      db: this.db,
+      getSessionId: () => this.agent.sessionId,
+      getWorkspaceDir: user ? () => user.paths.workspace : undefined,
+    })
     if (!registered && !current) return
     if (registered && current && hasSameDeclaration(registered, current)) return
     this.agent.state.tools = [...tools.filter(tool => tool.name !== GENERATE_IMAGE_TOOL_NAME), ...(current ? [current] : [])]
@@ -828,8 +854,13 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
       availableProviders = undefined
     }
 
+    const userScope = this.user ? resolveUserScope(this.db, this.user.id) : null
+
     return assembleSystemPrompt({
       memoryDir: this.memoryDir,
+      userScope: userScope ?? undefined,
+      // Callers without a user row must not see the bootstrap admin's legacy daily notes.
+      recentDays: !this.user && this.sessionUser !== undefined ? 0 : undefined,
       baseInstructions: this.baseInstructions,
       language,
       timezone,

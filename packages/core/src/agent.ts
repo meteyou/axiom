@@ -187,6 +187,7 @@ export class AgentCore {
       providerManager: this.options.providerManager,
       canUseProviderFallback: () => !entry.hasModelOverride,
       user: scope,
+      sessionUser: userId,
       quotaService: this.options.quotaService,
       thinkingLevel: scope?.settings.thinkingLevel ?? normalizeThinkingLevel(this.thinkingLevel),
     })
