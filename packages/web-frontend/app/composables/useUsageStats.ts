@@ -23,9 +23,16 @@ interface UsageRow extends UsageTotals {
   hour?: string
 }
 
+interface UsageUserRow extends UsageTotals {
+  userId: number | null
+  username: string | null
+  deleted: boolean
+}
+
 interface UsageStatsResponse {
   groupBy: string[]
   rows: UsageRow[]
+  perUser?: UsageUserRow[]
   totals: UsageTotals
   availableProviders: string[]
   availableModels: string[]
@@ -142,6 +149,7 @@ export function useUsageStats() {
   )
 
   const totals = computed(() => breakdown.value.totals)
+  const perUser = computed(() => breakdown.value.perUser ?? [])
 
   // ── Internals ──────────────────────────────────────────────
   function initFilters() {
@@ -227,6 +235,7 @@ export function useUsageStats() {
     hasAnyUsage,
     hasFilteredResults,
     totals,
+    perUser,
     loadStats,
     resetFilters,
   }
