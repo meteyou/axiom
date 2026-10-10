@@ -14,6 +14,8 @@ export {
   getImageDimensions,
 } from './uploads.js'
 export type { UploadDescriptor, SaveUploadInput, UploadSettings } from './uploads.js'
+export { purgeUserData, listUserActiveTaskIds, listUserCronjobIds } from './user-deletion.js'
+export type { UserPurgeResult } from './user-deletion.js'
 export { loadConfig, warnConfigReadFailed, getConfigDir, ensureConfigTemplates, getDefaultTimezone, getProjectRootDir, getReadmePath, getDocsPath, getAgentDocsPath } from './config.js'
 export * from './contracts/index.js'
 export {
