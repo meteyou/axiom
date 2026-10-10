@@ -7,6 +7,21 @@ export interface MemoryTreeNode {
   children?: MemoryTreeNode[]
 }
 
+export interface MemoryDailyFile {
+  filename: string
+  date: string
+  size: number
+  modifiedAt: string
+}
+
+export interface MemoryWikiFile {
+  filename: string
+  name: string
+  title: string
+  size: number
+  modifiedAt: string
+}
+
 export interface MemoryFact {
   id: number
   userId: number | null
@@ -113,6 +128,29 @@ export function useMemoryApi() {
     method: 'DELETE',
   })
 
+  const getProfile = () => apiFetch<{ username: string; content: string }>('/api/memory/profile')
+  const updateProfile = (content: string) => apiFetch('/api/memory/profile', {
+    method: 'PUT',
+    body: JSON.stringify({ content }),
+  })
+
+  const listDaily = () => apiFetch<{ files: MemoryDailyFile[] }>('/api/memory/daily')
+  const getDaily = (date: string) => apiFetch<{ content: string }>(`/api/memory/daily/${encodeURIComponent(date)}`)
+  const updateDaily = (date: string, content: string) => apiFetch(`/api/memory/daily/${encodeURIComponent(date)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ content }),
+  })
+
+  const listWiki = () => apiFetch<{ files: MemoryWikiFile[] }>('/api/memory/wiki')
+  const getWikiPage = (name: string) => apiFetch<{ content: string }>(`/api/memory/wiki/${encodeURIComponent(name)}`)
+  const updateWikiPage = (name: string, content: string) => apiFetch(`/api/memory/wiki/${encodeURIComponent(name)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ content }),
+  })
+  const deleteWikiPage = (name: string) => apiFetch(`/api/memory/wiki/${encodeURIComponent(name)}`, {
+    method: 'DELETE',
+  })
+
   const getUsageStats = (days: number) => apiFetch<MemoryUsageStats>(`/api/memory/usage-stats?days=${days}`)
 
   return {
@@ -135,6 +173,15 @@ export function useMemoryApi() {
     listFacts,
     updateFact,
     deleteFact,
+    getProfile,
+    updateProfile,
+    listDaily,
+    getDaily,
+    updateDaily,
+    listWiki,
+    getWikiPage,
+    updateWikiPage,
+    deleteWikiPage,
     getUsageStats,
   }
 }

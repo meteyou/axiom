@@ -431,6 +431,17 @@
     "viaCodemodeTitle": "Verschachtelter Aufruf des Codemode-Aufrufs {id}"
   },
   "memory": {
+    "profileTab": "Profil",
+    "dailyTab": "Tagesnotizen",
+    "wikiTab": "Wiki",
+    "userSubtitle": "Prüfe und korrigiere, was der Agent über dich weiß, und bearbeite das gemeinsame Wiki.",
+    "wikiShared": "Das Wiki wird mit allen Benutzern geteilt. Speichere hier keine persönlichen Informationen.",
+    "noDaily": "Noch keine Tagesnotizen.",
+    "noWiki": "Noch keine Wiki-Seiten.",
+    "newWikiPage": "Neue Seite",
+    "wikiPageName": "seiten-name",
+    "createPage": "Erstellen",
+    "deletePage": "Seite löschen",
     "kicker": "Persistenter Kontext",
     "title": "Gedächtnis",
     "subtitle": "Alle Gedächtnisdateien durchsuchen und bearbeiten sowie extrahierte Fakten verwalten.",

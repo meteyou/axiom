@@ -431,6 +431,17 @@
     "viaCodemodeTitle": "Nested call of the codemode call {id}"
   },
   "memory": {
+    "profileTab": "Profile",
+    "dailyTab": "Daily notes",
+    "wikiTab": "Wiki",
+    "userSubtitle": "Review and correct what the agent knows about you, and edit the shared wiki.",
+    "wikiShared": "The wiki is shared with all users. Don't store personal information here.",
+    "noDaily": "No daily notes yet.",
+    "noWiki": "No wiki pages yet.",
+    "newWikiPage": "New page",
+    "wikiPageName": "page-name",
+    "createPage": "Create",
+    "deletePage": "Delete page",
     "kicker": "Persistent context",
     "title": "Memory",
     "subtitle": "Browse and edit every memory file, and manage extracted facts.",
