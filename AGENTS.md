@@ -62,6 +62,7 @@ This repo has two documentation trees — keep them strictly separated:
 
 Current contributor docs:
 - `agent_docs/architecture-conventions.md` — package boundaries, backend/frontend layering, verification commands
+- `agent_docs/multi-user-architecture.md` — `UserScope`, per-user runtime pool, scoped tools, `AccessPolicy`
 - `agent_docs/session-id-architecture.md` — session ID design and conventions
 - `agent_docs/skill-versioning.md` — built-in agent-skill versioning mechanism
 
