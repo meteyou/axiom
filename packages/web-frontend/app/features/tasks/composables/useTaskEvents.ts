@@ -1,5 +1,6 @@
 import type { TaskEventItem, TaskInfo } from '~/api/tasks'
 import { useTasksApi } from '~/api/tasks'
+import { parseContextCompactionInfo } from '@axiom/core/contracts'
 
 /**
  * Composable for viewing task events — live via WebSocket or historical via REST API.
@@ -188,6 +189,10 @@ export function useTaskEvents() {
         error.value = (data.error as string) ?? 'Unknown error'
         break
 
+      case 'compaction':
+        events.value = upsertCompactionEvent(events.value, data as unknown as TaskEventItem)
+        break
+
       default:
         events.value.push(data as unknown as TaskEventItem)
         break
@@ -206,6 +211,13 @@ export function useTaskEvents() {
           toolIsError: event.status === 'error',
           durationMs: event.durationMs,
         }
+      }
+
+      const compaction = event.type === 'message' && event.role === 'system'
+        ? parseContextCompactionInfo(event.metadata)
+        : null
+      if (compaction) {
+        return { type: 'compaction', timestamp: event.timestamp, statusMessage: event.content, compaction }
       }
 
       if (event.type === 'message') {
@@ -248,6 +260,16 @@ export function useTaskEvents() {
     loadTaskEvents,
     disconnect,
   }
+}
+
+/** The `running` keepalives and the final status of one compaction share a single entry. */
+function upsertCompactionEvent(list: TaskEventItem[], event: TaskEventItem): TaskEventItem[] {
+  const compactionId = event.compaction?.compactionId
+  const index = compactionId ? list.findIndex(item => item.compaction?.compactionId === compactionId) : -1
+  if (index < 0) return [...list, event]
+  const updated = [...list]
+  updated[index] = event
+  return updated
 }
 
 function safeParseJson(rawValue: string | undefined | null): unknown {

@@ -1,5 +1,4 @@
-import { Agent as PiAgent } from '@earendil-works/pi-agent-core'
-import type { AgentEvent, AgentTool } from '@earendil-works/pi-agent-core'
+import type { Agent as PiAgent, AgentEvent, AgentMessage, AgentTool } from '@earendil-works/pi-agent-core'
 import type { AssistantMessage, Message, Model, Api, TextContent } from '@earendil-works/pi-ai'
 
 import type { Database } from './database.js'
@@ -15,11 +14,11 @@ import { formatJournalRecoveryContext } from './task-recovery-prompt.js'
 import type { Task, TaskResultStatus, TaskTriggerType } from './task-store.js'
 import type { SessionManager, SessionType } from './session-manager.js'
 import { logTokenUsage, logToolCall } from './token-logger.js'
-import { estimateCost, parseProviderModelId, buildStreamFn, getProviderDefaultModel, isProviderModelUsable } from './provider-config.js'
+import { estimateCost, parseProviderModelId, getProviderDefaultModel, isProviderModelUsable, loadModelCompactionOverride } from './provider-config.js'
 import type { ProviderConfig } from './provider-config.js'
 import { releaseProviderSession } from './pi-models.js'
 import { assertLlmResponseOk } from './llm-response.js'
-import { createToolResultImageHook, createTranscriptImageBudget, omitToolResultStructuredContent, redactToolResultImages } from './llm-image.js'
+import { createToolResultImageHook, omitToolResultStructuredContent, redactToolResultImages } from './llm-image.js'
 import { loadConfig } from './config.js'
 import {
   CODEMODE_TOOL_NAME,
@@ -40,6 +39,13 @@ import {
 import type { LoopDetectionConfig, LoopDetectionResult } from './loop-detection.js'
 import type { TaskEventBus } from './task-event-bus.js'
 import { getWorkspaceDir } from './agent.js'
+import { createAxiomAgent } from './agent-factory.js'
+import { ContextCompactor, describeContextOverflow } from './context-compactor.js'
+import type { CompactionUsage } from './context-compactor.js'
+import { estimateMessageTokens } from './compaction.js'
+import type { ContextCompactionInfo } from './contracts/compaction.js'
+import { formatContextCompactionContent, saveContextCompactionNotice } from './context-compaction-notice.js'
+import { loadRetryPolicy } from './turn-retry.js'
 
 const MAX_STATUS_UPDATE_INTERVAL_MINUTES = 120
 
@@ -186,6 +192,7 @@ interface RunningTask {
   taskId: string
   sessionId: string
   agent: PiAgent
+  compactor: ContextCompactor
   abortController: AbortController
   timeoutTimer: ReturnType<typeof setTimeout> | null
   promptTokens: number
@@ -209,6 +216,7 @@ interface RunningTask {
 interface PausedTask {
   taskId: string
   agent: PiAgent
+  compactor: ContextCompactor
   provider: ProviderConfig
   pausedAt: number
   promptTokens: number
@@ -339,6 +347,22 @@ function describeOutputLimitWithoutAnswer(model: Model<Api>, outputTokens: numbe
 }
 
 /**
+ * A provider overflow error becomes a clear task failure. A length stop is
+ * left to `readFinalAnswerText`, which already explains the window cap.
+ */
+function throwIfProviderOverflow(model: Model<Api>, message: AssistantMessage, cause: string): void {
+  if (message.stopReason === 'error') throw new Error(describeContextOverflow(model, message, cause))
+}
+
+function lastAssistantMessage(messages: readonly AgentMessage[]): AssistantMessage | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i]
+    if (message.role === 'assistant') return message
+  }
+  return null
+}
+
+/**
  * Format a task injection message for the main agent
  */
 export function formatTaskInjection(task: Task, durationMinutes: number): string {
@@ -358,6 +382,7 @@ export class TaskRunner {
   private pausedTasks: Map<string, PausedTask> = new Map()
   private options: TaskRunnerOptions
   private cleanupTimer: ReturnType<typeof setInterval> | null = null
+  private announcedCompactions = new Set<string>()
 
   constructor(options: TaskRunnerOptions) {
     this.options = options
@@ -555,20 +580,29 @@ export class TaskRunner {
         }
       }
 
-      const agent = new PiAgent({
+      const compactor = new ContextCompactor({
+        scope: 'task',
+        db: this.db,
+        getSessionId: () => sessionId,
+        resolveApiKey,
+        getModelOverride: compactedModel => loadModelCompactionOverride(provider.id, compactedModel.id),
+        onEvent: info => this.handleCompactionEvent(taskId, sessionId, info),
+        onUsage: usage => this.addCompactionUsage(taskId, usage),
+        retryPolicy: () => loadRetryPolicy(),
+      })
+
+      const agent = createAxiomAgent({
         initialState: {
           systemPrompt,
           model,
           tools: agentTools,
           thinkingLevel,
         },
-        streamFn: buildStreamFn(provider),
+        provider,
         sessionId,
-        ...(provider.transport && provider.transport !== 'sse'
-          && { transport: provider.transport }),
         afterToolCall: imageHook,
-        transformContext: createTranscriptImageBudget(() => model),
         getApiKey: resolveApiKey,
+        compactor,
       })
       agentRef.current = agent
 
@@ -578,6 +612,7 @@ export class TaskRunner {
         taskId,
         sessionId,
         agent,
+        compactor,
         abortController,
         timeoutTimer: null,
         promptTokens: 0,
@@ -661,7 +696,7 @@ export class TaskRunner {
 
     try {
       // Prompt the task agent with the task — the system prompt already contains the full task description
-      await agent.prompt('Begin working on the task described in your system prompt. Work autonomously and report your results when done.')
+      await this.runWithOverflowRecovery(runningTask, () => agent.prompt('Begin working on the task described in your system prompt. Work autonomously and report your results when done.'))
 
       if (this.wasFinalizedElsewhere(taskId)) {
         unsubscribe()
@@ -690,6 +725,7 @@ export class TaskRunner {
         const pausedTask: PausedTask = {
           taskId,
           agent: runningTask.agent,
+          compactor: runningTask.compactor,
           provider: {} as ProviderConfig, // provider info already saved in DB
           pausedAt: Date.now(),
           promptTokens: runningTask.promptTokens,
@@ -985,6 +1021,60 @@ export class TaskRunner {
   }
 
   /**
+   * Run the agent and, when the provider rejected the context as too large,
+   * compact and continue exactly once. A second overflow fails the task with
+   * a message that says so instead of the raw provider error.
+   */
+  private async runWithOverflowRecovery(runningTask: RunningTask, run: () => Promise<void>): Promise<void> {
+    const { agent, compactor, taskId } = runningTask
+    await run()
+    const failed = lastAssistantMessage(agent.state.messages)
+    if (!failed || this.wasFinalizedElsewhere(taskId) || !compactor.isRecoverableOverflow(failed)) return
+
+    if (!await compactor.recoverFromOverflow(runningTask.abortController.signal)) {
+      throwIfProviderOverflow(agent.state.model, failed, 'compaction could not reduce it')
+      return
+    }
+    await agent.continue()
+    const retried = lastAssistantMessage(agent.state.messages)
+    if (retried && !this.wasFinalizedElsewhere(taskId) && compactor.isRecoverableOverflow(retried)) {
+      throwIfProviderOverflow(agent.state.model, retried, 'compacting once did not help')
+    }
+  }
+
+  /**
+   * Mirror compaction progress into the task viewer: live via the event bus,
+   * and as a persisted row so the divider survives a reload. The repeated
+   * `running` keepalives are only useful to the chat watchdog.
+   */
+  private handleCompactionEvent(taskId: string, sessionId: string, info: ContextCompactionInfo): void {
+    if (info.status === 'running' && this.announcedCompactions.has(info.compactionId)) return
+    this.announcedCompactions.add(info.compactionId)
+    if (info.status !== 'running') this.announcedCompactions.delete(info.compactionId)
+
+    const persisted = saveContextCompactionNotice(this.db, { sessionId, userId: null, info })
+    this.options.taskEventBus?.emitTaskEvent({
+      type: 'compaction',
+      taskId,
+      timestamp: info.occurredAt,
+      compaction: persisted,
+      statusMessage: formatContextCompactionContent(info),
+    })
+  }
+
+  /** The summary call is part of the task's cost, like any other LLM call it makes. */
+  private addCompactionUsage(taskId: string, usage: CompactionUsage): void {
+    const runningTask = this.runningTasks.get(taskId)
+    if (!runningTask) return
+    runningTask.promptTokens += usage.promptTokens
+    runningTask.completionTokens += usage.completionTokens
+    runningTask.cacheRead += usage.cacheRead
+    runningTask.cacheWrite += usage.cacheWrite
+    runningTask.estimatedCost += usage.estimatedCost
+    this.persistLiveMetrics(runningTask)
+  }
+
+  /**
    * Check for loops after each tool call
    */
   private checkForLoops(runningTask: RunningTask): void {
@@ -1036,16 +1126,14 @@ export class TaskRunner {
       const prompt = buildSmartDetectionPrompt(runningTask.toolCallTracker.getHistory())
 
       // Create a lightweight agent for the detection call
-      const detectionAgent = new PiAgent({
+      const detectionAgent = createAxiomAgent({
         initialState: {
           systemPrompt: 'You are a loop detection assistant. Analyze tool call patterns and determine if an agent is making progress or stuck.',
           model,
           tools: [],
           thinkingLevel: this.resolveBackgroundThinkingLevel(),
         },
-        streamFn: buildStreamFn(provider),
-        ...(provider.transport && provider.transport !== 'sse'
-          && { transport: provider.transport }),
+        provider,
         getApiKey: () => apiKey,
       })
 
@@ -1482,6 +1570,7 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
       taskId,
       sessionId,
       agent,
+      compactor: pausedTask.compactor,
       abortController: new AbortController(),
       timeoutTimer: null,
       promptTokens: pausedTask.promptTokens,
@@ -1536,7 +1625,11 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
 
     try {
       // Send the follow-up via prompt (which adds a user message and continues the agentic loop)
-      await agent.prompt(message)
+      await runningTask.compactor.compactBeforePrompt(
+        estimateMessageTokens({ role: 'user', content: message, timestamp: Date.now() }),
+        runningTask.abortController.signal,
+      )
+      await this.runWithOverflowRecovery(runningTask, () => agent.prompt(message))
 
       if (this.wasFinalizedElsewhere(taskId)) {
         unsubscribe()
@@ -1562,6 +1655,7 @@ Hint: Use /kill_task ${task.id} if the task needs to be cleaned up.
         const pausedTask: PausedTask = {
           taskId,
           agent: runningTask.agent,
+          compactor: runningTask.compactor,
           provider: {} as ProviderConfig,
           pausedAt: Date.now(),
           promptTokens: runningTask.promptTokens,

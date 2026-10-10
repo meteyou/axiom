@@ -243,6 +243,14 @@
                       <Badge v-if="isFallbackModel(provider.id, modelId)" variant="outline" class="px-1.5 py-0 text-[10px]">
                         {{ $t('providers.fallback') }}
                       </Badge>
+                      <Badge
+                        v-if="getCompactionWarnings(provider, modelId).length > 0"
+                        variant="warning"
+                        class="px-1.5 py-0 text-[10px]"
+                        :title="$t('providers.compactionWarning', { scopes: formatCompactionScopes(getCompactionWarnings(provider, modelId)) })"
+                      >
+                        {{ $t('providers.compactionWarningBadge') }}
+                      </Badge>
 
                     </div>
                   </TableCell>
@@ -522,7 +530,7 @@
 </template>
 
 <script setup lang="ts">
-import type { ImageBillingContract, ProviderCatalogRefreshResultContract, ProviderUpdatePayloadContract } from '@axiom/core/contracts'
+import type { CompactionScopeContract, ImageBillingContract, ProviderCatalogRefreshResultContract, ProviderUpdatePayloadContract } from '@axiom/core/contracts'
 import type { Provider } from '~/features/providers/composables/useProviders'
 import type { ProviderFormPayload } from '~/components/ProviderFormDialog.vue'
 import { useProviders } from '~/features/providers/composables/useProviders'
@@ -700,6 +708,14 @@ function getDisplayModels(provider: Provider): string[] {
 
 function isModelDisabled(provider: Provider, modelId: string): boolean {
   return provider.disabledModels?.includes(modelId) ?? false
+}
+
+function getCompactionWarnings(provider: Provider, modelId: string): CompactionScopeContract[] {
+  return provider.modelSpecs?.[modelId]?.compactionWarnings ?? []
+}
+
+function formatCompactionScopes(scopes: CompactionScopeContract[]): string {
+  return scopes.map(scope => t(`providers.compactionScopes.${scope}`)).join(', ')
 }
 
 function isModelUnavailable(provider: Provider, modelId: string): boolean {

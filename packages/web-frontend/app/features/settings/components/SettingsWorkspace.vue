@@ -378,6 +378,10 @@
                   </p>
                 </div>
 
+                <Separator />
+
+                <SettingsCompactionSection v-model="form.compaction" :warnings="compactionWarnings" />
+
               </div>
             </div>
 
@@ -2094,7 +2098,8 @@ import { buildProviderModelOptions } from '~/utils/providerModelOptions'
 import { useSettingsApi } from '~/api/settings'
 import EmailAccountsWorkspace from '~/features/email/components/EmailAccountsWorkspace.vue'
 import ImageGenerationSettingsTab from './ImageGenerationSettingsTab.vue'
-import type { MemoryConsolidationSettings, FactExtractionSettings, HealthMonitorNotificationToggles, HealthMonitorSettings, AgentHeartbeatSettings, TasksSettings, CodemodeSettings, ImageGenerationSettings, TtsSettings, SttSettings, UploadsSettings, TelegramSettings, WatchdogSettings, RetrySettings } from '~/composables/useSettings'
+import SettingsCompactionSection from '~/features/settings/components/SettingsCompactionSection.vue'
+import type { MemoryConsolidationSettings, FactExtractionSettings, HealthMonitorNotificationToggles, HealthMonitorSettings, AgentHeartbeatSettings, TasksSettings, CodemodeSettings, ImageGenerationSettings, TtsSettings, SttSettings, UploadsSettings, TelegramSettings, WatchdogSettings, RetrySettings, CompactionSettings } from '~/composables/useSettings'
 import type { TelegramUser } from '~/composables/useTelegramUsers'
 
 /* ── Auth ── */
@@ -2173,6 +2178,7 @@ const {
   saving,
   error,
   successMessage,
+  compactionWarnings,
   fetchSettings,
   updateSettings,
   clearMessages,
@@ -2409,6 +2415,7 @@ interface SettingsForm {
   uploads: UploadsSettings
   watchdog: WatchdogSettings
   retry: RetrySettings
+  compaction: CompactionSettings
   telegram: TelegramSettings
   healthMonitor: HealthMonitorSettings
   memoryConsolidation: MemoryConsolidationSettings
@@ -2448,6 +2455,7 @@ function hydrateForm() {
     uploads: { ...s.uploads },
     watchdog: { ...s.watchdog },
     retry: { ...s.retry },
+    compaction: { ...s.compaction, tasks: { ...s.compaction.tasks } },
     telegram: { ...s.telegram },
     healthMonitor: {
       enabled: s.healthMonitor.enabled,

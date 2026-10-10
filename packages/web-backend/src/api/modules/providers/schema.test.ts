@@ -217,6 +217,18 @@ describe('providers schema', () => {
     expect(negativeCost.ok).toBe(false)
     if (!negativeCost.ok) expect(negativeCost.error).toContain('No valid fields')
 
+    const compaction = parseProviderModelUpdatePayload({ compaction: { reserveTokens: 8_192, keepRecentTokens: null } })
+    expect(compaction.ok).toBe(true)
+    if (compaction.ok) expect(compaction.value).toEqual({ compaction: { reserveTokens: 8_192, keepRecentTokens: null } })
+
+    const clearedCompaction = parseProviderModelUpdatePayload({ compaction: null })
+    expect(clearedCompaction.ok).toBe(true)
+    if (clearedCompaction.ok) expect(clearedCompaction.value.compaction).toBeNull()
+
+    const badCompaction = parseProviderModelUpdatePayload({ compaction: { keepRecentTokens: -1 } })
+    expect(badCompaction.ok).toBe(false)
+    if (!badCompaction.ok) expect(badCompaction.error).toContain('compaction.keepRecentTokens must be a positive integer')
+
     const nonStringDescription = parseProviderModelUpdatePayload({ description: 42 })
     expect(nonStringDescription.ok).toBe(false)
     if (!nonStringDescription.ok) expect(nonStringDescription.error).toContain('description must be a string')

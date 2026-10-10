@@ -12,7 +12,7 @@ The Settings page has one sidebar entry per concern. Each gets its own docs page
 
 | Panel                                | What it controls                                                                        |
 |--------------------------------------|-----------------------------------------------------------------------------------------|
-| [Agent](./agent)                     | Language, timezone, active provider + model, reasoning level, codemode (experimental), upload retention, `AGENTS.md` rules. |
+| [Agent](./agent)                     | Language, timezone, active provider + model, reasoning level, codemode (experimental), upload retention, resilience, context compaction, `AGENTS.md` rules. |
 | [Agent Heartbeat](./agent-heartbeat) | Whether (and when) the agent runs recurring self-driven tasks from `HEARTBEAT.md`.      |
 | [Health Monitor](./health-monitor)   | Provider health checks, automatic fallback, notification toggles.                       |
 | [Image Generation](./image-generation) | Switch for `generate_image`, default image model, variant limit, output folder. |

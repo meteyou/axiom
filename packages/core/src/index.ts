@@ -66,6 +66,7 @@ export {
   addProvider,
   updateProvider,
   updateProviderModel,
+  getModelCompactionOverride,
   ProviderNotFoundError,
   deleteProvider,
   setActiveProvider,
@@ -300,6 +301,25 @@ export type {
   TurnErrorInfo,
 } from './agent-runtime-types.js'
 export { STALL_OUTCOMES, TURN_ERROR_CAUSES } from './agent-runtime-types.js'
+export { saveContextCompactionNotice } from './context-compaction-notice.js'
+export { listCompactionWarnings, loadCompactionSettings } from './compaction-diagnostics.js'
+export {
+  TYPICAL_SYSTEM_PROMPT_TOKENS,
+  getCompactionWarningScopes,
+  checkCompactionInvariant,
+  resolveCompactionSettings,
+  resolveEffectiveCompactionBudget,
+} from './compaction.js'
+export type {
+  CompactionScope,
+  CompactionReason,
+  CompactionInvariantCheck,
+  CompactionSettingsSource,
+  EffectiveCompactionBudget,
+  ResolvedCompactionSettings,
+} from './compaction.js'
+export { listContextCompactions } from './compaction-store.js'
+export type { ContextCompactionRecord } from './compaction-store.js'
 export {
   CODEMODE_TOOL_NAME,
   CODEMODE_MEMORY_LIMIT_BYTES,
@@ -649,6 +669,7 @@ export {
   formatCronjobsReply,
   isSlashCommandPicker,
   isSlashCommandAgentTurn,
+  isSlashCommandCompaction,
   listLoadableSkills,
 } from './slash-commands.js'
 export type {
@@ -662,5 +683,6 @@ export type {
   SlashCommandPickerOption,
   SlashCommandReply,
   SlashCommandAgentTurn,
+  SlashCommandCompaction,
   LoadableSkill,
 } from './slash-commands.js'

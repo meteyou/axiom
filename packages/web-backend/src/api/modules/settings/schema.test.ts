@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   mergeAgentHeartbeat,
+  mergeCompaction,
   mergeConsolidation,
   mergeCodemode,
   mergeFactExtraction,
@@ -153,6 +154,37 @@ describe('settings schema', () => {
       changed: true,
     })
     expect(settingsRaw.retry).toEqual({ enabled: false, maxRetries: 0, baseDelayMs: 500 })
+  })
+
+  it('merges compaction settings, including nullable soft budgets', () => {
+    const settingsRaw: Record<string, unknown> = {}
+
+    expect(mergeCompaction({}, settingsRaw)).toEqual({ error: null, changed: false })
+    expect(mergeCompaction({ compaction: { keepRecentTokens: 10 } }, settingsRaw)).toEqual({
+      error: 'compaction.keepRecentTokens must be an integer 1000-1000000',
+      changed: false,
+    })
+    expect(mergeCompaction({ compaction: { maxContextTokens: 1_000 } }, settingsRaw)).toEqual({
+      error: 'compaction.maxContextTokens must be an integer 8192-10000000',
+      changed: false,
+    })
+    expect(mergeCompaction({ compaction: { tasks: 'yes' } }, settingsRaw)).toEqual({
+      error: 'compaction.tasks must be an object',
+      changed: false,
+    })
+
+    expect(mergeCompaction({
+      compaction: { enabled: false, reserveTokens: 8_192, maxContextTokens: null, tasks: { maxContextTokens: 100_000 } },
+    }, settingsRaw)).toEqual({ error: null, changed: true })
+    expect(settingsRaw.compaction).toEqual({
+      enabled: false,
+      reserveTokens: 8_192,
+      maxContextTokens: null,
+      tasks: { maxContextTokens: 100_000 },
+    })
+
+    expect(mergeCompaction({ compaction: { tasks: { enabled: false, maxContextTokens: null } } }, settingsRaw).error).toBeNull()
+    expect(settingsRaw.compaction).toMatchObject({ reserveTokens: 8_192, tasks: { enabled: false, maxContextTokens: null } })
   })
 
   it('leaves watchdog and retry untouched when the payload omits them', () => {

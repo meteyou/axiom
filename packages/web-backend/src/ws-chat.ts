@@ -6,9 +6,9 @@ import type {
   SlashCommandRegistry,
   SlashCommandPicker,
 } from '@axiom/core'
-import { isSlashCommandPicker, isSlashCommandAgentTurn } from '@axiom/core'
+import { isSlashCommandPicker, isSlashCommandAgentTurn, isSlashCommandCompaction } from '@axiom/core'
 import type { TurnPreambleToolCall } from '@axiom/core'
-import type { AgentCore, ResponseChunk, RetryInfo, StallInfo, TurnErrorInfo, TurnEvent, CodemodeNestedCallSnapshot } from '@axiom/core'
+import type { AgentCore, ContextCompactionInfo, ResponseChunk, RetryInfo, StallInfo, TurnErrorInfo, TurnEvent, CodemodeNestedCallSnapshot } from '@axiom/core'
 import {
   TaskStore,
   ScheduledTaskStore,
@@ -35,8 +35,13 @@ interface ChatMessage {
 }
 
 interface ChatResponse {
-  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_update' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'session_summary' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'reminder' | 'pong' | 'attachment' | 'chat_action' | 'chat_action_resolved' | 'turn_replay_start' | 'turn_replay_end' | 'stall_warning' | 'stall_resolved' | 'retry_scheduled'
+  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_update' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'session_summary' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'reminder' | 'pong' | 'attachment' | 'chat_action' | 'chat_action_resolved' | 'turn_replay_start' | 'turn_replay_end' | 'stall_warning' | 'stall_resolved' | 'retry_scheduled' | 'compaction'
   text?: string
+  /**
+   * Context compaction progress (for `compaction`). Finished compactions carry
+   * the id of their persisted `context_compaction` row.
+   */
+  compaction?: ContextCompactionInfo
   /**
    * Auto-retry details (for `retry_scheduled`). Live-only status: the failed
    * attempt is discarded, so nothing about it is persisted.
@@ -219,6 +224,27 @@ export function setupWebSocketChat(
     turnSubscriptions.set(ws, detach)
   }
 
+  /**
+   * `/compact` runs as a turn so it is serialized with prompts, streams to
+   * every channel of the user and can be stopped with `/stop`.
+   */
+  function startCompaction(ws: WebSocket, userId: number, instructions?: string): void {
+    const agentCore = resolveAgentCore()
+    if (!agentCore) {
+      sendMessage(ws, { type: 'error', error: 'Agent core not available' })
+      return
+    }
+    const session = agentCore.getSessionManager().getOrCreateSession(String(userId), 'web')
+    clientSessions.set(ws, session.id)
+    turnRunner.startTurn({
+      userId,
+      sessionId: session.id,
+      text: '/compact',
+      source: 'web',
+      compact: { instructions },
+    })
+  }
+
   wss.on('connection', (ws, req) => {
     // Try to authenticate from query parameter
     let user: JwtPayload | null = null
@@ -316,6 +342,10 @@ export function setupWebSocketChat(
         })
         if (dispatch.kind === 'handled') {
           const reply = dispatch.reply
+          if (isSlashCommandCompaction(reply)) {
+            startCompaction(ws, currentUser.userId, reply.instructions)
+            return
+          }
           if (isSlashCommandAgentTurn(reply)) {
             // Fall through to the regular message flow below with the
             // expanded text; the raw command is what gets persisted.
@@ -563,6 +593,7 @@ export function setupWebSocketChat(
             errorInfo: event.errorInfo,
             stall: event.stall,
             retry: event.retry,
+            compaction: event.compaction,
             telegramDelivered: event.telegramDelivered,
             isTaskInjection: event.isTaskInjection,
           })
@@ -639,5 +670,6 @@ function chunkToResponse(chunk: ResponseChunk): ChatResponse {
     errorInfo: chunk.errorInfo,
     stall: chunk.stall,
     retry: chunk.retry,
+    compaction: chunk.compaction,
   }
 }

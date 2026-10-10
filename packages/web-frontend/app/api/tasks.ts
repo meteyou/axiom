@@ -1,4 +1,4 @@
-import type { SettingsThinkingLevel } from '@axiom/core/contracts'
+import type { ContextCompactionInfo, SettingsThinkingLevel } from '@axiom/core/contracts'
 
 export interface Task {
   id: string
@@ -102,6 +102,8 @@ export interface TaskEventItem {
   content?: string
   metadata?: unknown
   thinking?: string
+  /** Context-compaction progress (for type='compaction') */
+  compaction?: ContextCompactionInfo
 }
 
 interface TaskEventsResponse {

@@ -24,7 +24,7 @@ export function useSettingsApi() {
 
   const getSettings = () => apiFetch<Partial<SettingsContract>>('/api/settings')
 
-  const updateSettings = (updates: Partial<SettingsUpdateContract>) => apiFetch<Partial<SettingsContract> & { message: string }>('/api/settings', {
+  const updateSettings = (updates: Partial<SettingsUpdateContract>) => apiFetch<Partial<SettingsContract> & { message: string; warnings?: string[] }>('/api/settings', {
     method: 'PUT',
     body: JSON.stringify(updates),
   })

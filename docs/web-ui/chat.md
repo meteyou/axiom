@@ -127,12 +127,20 @@ carries between surfaces.
 | `/cronjobs` | Show configured cronjobs and their next run time. (alias `/cron`)           |
 | `/model`    | Show or switch the active provider and model. (alias `/provider`)           |
 | `/thinking` | Show or set the global main-agent thinking level.                           |
+| `/compact`  | Summarize older messages to free up context. (`/compact [instructions]`)    |
 | `/skill`    | Load a skill into the current conversation. (`/skill:<name> [prompt]`)      |
 
 On the web chat, `/model` (and its alias `/provider`) responds as an
 interactive button group: provider picker → model picker → confirmation.
 Selecting a model writes `providers.json` and switches the active model for
 the next turn.
+
+`/compact` replaces the older part of the conversation with a summary and keeps
+the most recent messages — see [Context Compaction](../concepts/compaction).
+Optional instructions steer the summary (`/compact keep the PR numbers`). It
+waits for a running answer, shows a *Context compacted (368k → 41k tokens)*
+divider you can expand to read the summary, and can be stopped with `/stop`.
+Automatic compactions show the same divider.
 
 `/thinking` accepts `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`. Levels the active model doesn't support are rounded to the nearest supported one.
 Like the brain-icon selector, it changes the global main-agent setting and

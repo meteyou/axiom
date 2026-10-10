@@ -2,7 +2,7 @@ import { WebSocketServer, WebSocket } from 'ws'
 import type { Server } from 'node:http'
 import type { Database } from '@axiom/core'
 import type { TaskEventBus, TaskEvent } from '@axiom/core'
-import { TaskStore } from '@axiom/core'
+import { TaskStore, parseContextCompactionInfo } from '@axiom/core'
 import { getToolCalls } from '@axiom/core'
 import { verifyToken } from './auth.js'
 import { URL } from 'node:url'
@@ -139,21 +139,27 @@ export function setupWebSocketTask(options: WebSocketTaskOptions): WebSocketServ
       const messages = (db.prepare(
         'SELECT role, content, metadata, timestamp FROM chat_messages WHERE session_id = ? ORDER BY timestamp ASC'
       ).all(sessionId) as { role: string; content: string; metadata: string | null; timestamp: string }[])
-        .filter(m => m.role === 'assistant')
-        .map(m => {
+        .flatMap((m): TaskWsMessage[] => {
+          if (m.role === 'system') {
+            const compaction = parseContextCompactionInfo(safeParseJson(m.metadata))
+            return compaction
+              ? [{ type: 'compaction', taskId, timestamp: m.timestamp, statusMessage: m.content, compaction }]
+              : []
+          }
+          if (m.role !== 'assistant') return []
           const meta = m.metadata ? safeParseJson(m.metadata) as Record<string, unknown> | null : null
-          return {
-            type: 'text_delta' as const,
+          return [{
+            type: 'text_delta',
             taskId,
             timestamp: m.timestamp,
             text: m.content,
             thinking: meta?.thinking as string | undefined,
-          }
+          }]
         })
 
       // Merge chronologically
       const events = [...toolCalls, ...messages].sort((a, b) =>
-        a.timestamp.localeCompare(b.timestamp)
+        String(a.timestamp).localeCompare(String(b.timestamp))
       )
 
       sendMessage(ws, { type: 'history_start', count: events.length })
@@ -190,6 +196,7 @@ function taskEventToWsMessage(event: TaskEvent): TaskWsMessage {
     text: event.text,
     status: event.status,
     statusMessage: event.statusMessage,
+    compaction: event.compaction,
   }
 }
 

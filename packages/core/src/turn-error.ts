@@ -73,7 +73,7 @@ export function parseTurnErrorMetadata(raw: string | null | undefined): TurnErro
  * and what a history reload shows verbatim.
  */
 export function formatTurnErrorContent(info: TurnErrorInfo): string {
-  if (info.cause === 'agent_unavailable') return `\u274C ${info.error}`
+  if (info.cause === 'agent_unavailable' || info.cause === 'context_overflow') return `\u274C ${info.error}`
   if (info.attempts > 0) {
     const retries = info.attempts === 1 ? 'retry' : 'retries'
     return `\u274C Provider error after ${info.attempts} ${retries}: ${info.error}`

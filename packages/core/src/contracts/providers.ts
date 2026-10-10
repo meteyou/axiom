@@ -113,7 +113,18 @@ export interface ProviderModelContract {
   fixedTemperature?: number
   /** Only the fields the user overrode; the rest follows the catalog. */
   cost?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number }
+  /** Per-model compaction budget; unset fields follow `settings.json → compaction`. */
+  compaction?: ModelCompactionOverrideContract
 }
+
+export interface ModelCompactionOverrideContract {
+  reserveTokens?: number
+  keepRecentTokens?: number
+}
+
+export const COMPACTION_SCOPES = ['interactive', 'task'] as const
+/** Which agent kind a compaction budget is resolved for. */
+export type CompactionScopeContract = (typeof COMPACTION_SCOPES)[number]
 
 export const MODEL_THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
 export type ModelThinkingLevelContract = (typeof MODEL_THINKING_LEVELS)[number]
@@ -129,6 +140,12 @@ export interface ProviderModelSpecContract {
   reasoning: boolean
   input: ModelInputModalityContract[]
   thinkingLevelMap?: ModelThinkingLevelMapContract
+  /**
+   * Agent kinds whose system prompt plus compaction summary and kept tail do
+   * not fit this model's window with enough headroom; compaction would keep
+   * re-triggering for them.
+   */
+  compactionWarnings?: CompactionScopeContract[]
 }
 
 export interface ImageModelSpecContract {
@@ -441,6 +458,11 @@ export interface ProviderModelUpdatePayloadContract {
     cacheRead?: number | null
     cacheWrite?: number | null
   }
+  /** `null` drops the whole override; a `null` field drops only that field. */
+  compaction?: {
+    reserveTokens?: number | null
+    keepRecentTokens?: number | null
+  } | null
 }
 
 export interface ProviderReferenceContract {

@@ -104,11 +104,11 @@
             // Mobile: messages fill the available width (minus avatar + gap
             // or the pl-11 offset for tool cards). On sm+ screens we cap them
             // so bubbles don't span edge-to-edge on wider viewports.
-            msg.role === 'divider' ? 'w-full' : (msg.role === 'tool' || (msg.role === 'system' && (msg.isTaskResult || msg.isTaskStatusUpdate || msg.isReminder || msg.stallInfo || msg.errorInfo || msg.picker || msg.chatAction)) || msg.isThinking) ? 'self-start w-full max-w-full sm:max-w-[75%] pl-11' : 'flex max-w-full gap-3 sm:max-w-[75%]',
+            msg.role === 'divider' || msg.compactionInfo ? 'w-full' : (msg.role === 'tool' || (msg.role === 'system' && (msg.isTaskResult || msg.isTaskStatusUpdate || msg.isReminder || msg.stallInfo || msg.errorInfo || msg.picker || msg.chatAction)) || msg.isThinking) ? 'self-start w-full max-w-full sm:max-w-[75%] pl-11' : 'flex max-w-full gap-3 sm:max-w-[75%]',
             {
               'self-end flex-row-reverse': msg.role === 'user',
               'self-start': msg.role === 'assistant' && !msg.isThinking,
-              'self-center max-w-full sm:max-w-[85%]': msg.role === 'system' && !msg.isTaskResult && !msg.isTaskStatusUpdate && !msg.isReminder && !msg.stallInfo && !msg.errorInfo && !msg.picker && !msg.chatAction,
+              'self-center max-w-full sm:max-w-[85%]': msg.role === 'system' && !msg.compactionInfo && !msg.isTaskResult && !msg.isTaskStatusUpdate && !msg.isReminder && !msg.stallInfo && !msg.errorInfo && !msg.picker && !msg.chatAction,
             },
           ]"
         >
@@ -249,6 +249,10 @@
                 </span>
               </div>
             </div>
+          </template>
+
+          <template v-else-if="msg.role === 'system' && msg.compactionInfo">
+            <ChatCompactionDivider :info="msg.compactionInfo" />
           </template>
 
           <!-- Provider stall notice. Backed by a persisted chat row, so it
@@ -688,7 +692,7 @@ import {
   codemodeScriptCode,
 } from '~/utils/codemodeDisplay'
 import type { LoadableSkill } from '~/composables/useSkillAutocomplete'
-import { SETTINGS_THINKING_LEVELS, type SettingsThinkingLevel } from '@axiom/core/contracts'
+import { SETTINGS_THINKING_LEVELS, parseContextCompactionInfo, type SettingsThinkingLevel } from '@axiom/core/contracts'
 import { findModelSpec, getThinkingLevelChoices } from '~/utils/thinkingLevels'
 import { formatDurationSeconds } from '~/utils/datetime'
 import { useSettingsApi } from '~/api/settings'
@@ -1024,6 +1028,14 @@ async function loadHistory() {
               durationMs: typeof meta.durationMs === 'number' ? meta.durationMs : 0,
               outcome: meta.outcome ?? undefined,
             },
+          } as ChatMessage
+        }
+
+        const compaction = m.role === 'system' ? parseContextCompactionInfo(meta, m.id) : null
+        if (compaction) {
+          return {
+            id: m.id, role: 'system' as const, content: m.content, timestamp: m.timestamp, source,
+            compactionInfo: compaction,
           } as ChatMessage
         }
 

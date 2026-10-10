@@ -1,4 +1,4 @@
-import { isRetryableAssistantError } from '@earendil-works/pi-ai'
+import { isContextOverflow, isRetryableAssistantError } from '@earendil-works/pi-ai'
 import type { AssistantMessage, RetryPolicy } from '@earendil-works/pi-ai'
 import { loadConfig, warnConfigReadFailed } from './config.js'
 import { DEFAULT_RETRY_SETTINGS } from './contracts/settings.js'
@@ -62,12 +62,32 @@ export function loadRetryPolicy(
  * `AssistantMessage`, which is what a turn's error chunk boils down to here.
  */
 export function isRetryableTurnError(errorMessage: string): boolean {
-  return isRetryableAssistantError({
+  if (isContextOverflowError(errorMessage)) return false
+  return isRetryableAssistantError(asFailedAssistantMessage(errorMessage))
+}
+
+/**
+ * Prefix of the error the runtime reports once its own compact-and-retry
+ * could not get the context under the limit.
+ */
+export const CONTEXT_OVERFLOW_ERROR_PREFIX = 'Context window exceeded ('
+
+/**
+ * A context overflow is never fixed by sending the same request again; the
+ * runtime already compacted and retried once before it surfaced the error.
+ */
+export function isContextOverflowError(errorMessage: string): boolean {
+  return errorMessage.startsWith(CONTEXT_OVERFLOW_ERROR_PREFIX)
+    || isContextOverflow(asFailedAssistantMessage(errorMessage))
+}
+
+function asFailedAssistantMessage(errorMessage: string): AssistantMessage {
+  return {
     role: 'assistant',
     content: [],
     stopReason: 'error',
     errorMessage,
-  } as unknown as AssistantMessage)
+  } as unknown as AssistantMessage
 }
 
 /** Exponential backoff for a 1-indexed attempt: `base * 2^(attempt-1)`. */

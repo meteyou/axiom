@@ -1,14 +1,13 @@
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import nodePath from 'node:path'
-import { Agent as PiAgent } from '@earendil-works/pi-agent-core'
-import type { AgentEvent, AgentOptions, AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core'
+import type { Agent as PiAgent, AgentEvent, AgentOptions, AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core'
 import type { Api, AssistantMessage, Message, ImageContent, Model } from '@earendil-works/pi-ai'
 import { Type, getCurrentSystemMessage } from '@earendil-works/pi-ai'
 import type { Database } from './database.js'
 import { logTokenUsage, logToolCall } from './token-logger.js'
 import { isFailedToolResult } from './loop-detection.js'
-import { estimateCost, getApiKeyForProvider, buildModel, buildStreamFn, loadProvidersDecrypted, parseProviderModelId, getProviderDefaultModel, getUsableModels } from './provider-config.js'
+import { estimateCost, getApiKeyForProvider, buildModel, loadModelCompactionOverride, loadProvidersDecrypted, parseProviderModelId, getProviderDefaultModel, getUsableModels } from './provider-config.js'
 import type { ProviderConfig } from './provider-config.js'
 import type { ProviderManager } from './provider-manager.js'
 import type { SettingsThinkingLevel } from './contracts/settings.js'
@@ -22,7 +21,7 @@ import { loadSkills } from './skill-config.js'
 import { createBuiltinWebTools } from './web-tools.js'
 import type { BuiltinToolsConfig, BuiltinToolsConfigSource } from './web-tools.js'
 import { createReadFileTool } from './read-file-tool.js'
-import { createToolResultImageHook, createTranscriptImageBudget, omitToolResultStructuredContent, redactToolResultImages } from './llm-image.js'
+import { createToolResultImageHook, omitToolResultStructuredContent, redactToolResultImages } from './llm-image.js'
 import { createTranscribeAudioTool } from './stt-tool.js'
 import { loadSttSettings } from './stt.js'
 import { createAgentSkillTools, getAgentSkillsForPrompt, getAgentSkillsCount, getAgentSkillsDir, currentPlatform } from './agent-skills.js'
@@ -42,6 +41,12 @@ import {
 import type { CodemodeNestedCallSnapshot } from './codemode-tool.js'
 import type { QuotaServiceLike } from './quota-tool.js'
 import type { AgentRuntimeStateSnapshot, ResponseChunk } from './agent-runtime-types.js'
+import type { ContextCompactionInfo } from './contracts/compaction.js'
+import { createAxiomAgent } from './agent-factory.js'
+import { ContextCompactor, describeContextOverflow, withoutFailedAssistantTail } from './context-compactor.js'
+import { estimateMessageTokens } from './compaction.js'
+import { formatContextCompactionContent } from './context-compaction-notice.js'
+import { loadRetryPolicy } from './turn-retry.js'
 
 /**
  * Options for the shared base agent tool factory.
@@ -125,6 +130,12 @@ export interface AgentRuntimeBoundary {
    * back to a normal prompt when the transcript has no continuable tail.
    */
   retryLastTurn(text: string, sessionId: string, images?: ImageContent[]): AsyncIterable<ResponseChunk>
+  /**
+   * Summarize the older part of the conversation now (`/compact`). Streams
+   * `compaction` chunks: `running` while the summary is written, then the
+   * outcome. `instructions` steer what the summary focuses on.
+   */
+  compact(instructions?: string, sessionId?: string): AsyncIterable<ResponseChunk>
   refreshSystemPrompt(channel?: string, currentUser?: { username: string }): void
   getCurrentTimeContext(): string
   swapProvider(provider: ProviderConfig, apiKey: string, modelId?: string): void
@@ -478,6 +489,11 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
   private providerConfig?: ProviderConfig
   private providerManager?: ProviderManager
   private getCurrentToolUserId: () => number | undefined
+  private compactor: ContextCompactor
+  /** Receives compaction chunks while a prompt or manual compaction is streaming. */
+  private compactionSink: ((chunk: ResponseChunk) => void) | null = null
+  /** Aborts a prompt that is still waiting for its pre-prompt compaction. */
+  private pendingStart: AbortController | null = null
 
   constructor(options: AgentRuntimeOptions) {
     this.model = options.model
@@ -514,38 +530,47 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
       }),
     ]
 
-    this.agent = new PiAgent({
+    this.compactor = new ContextCompactor({
+      scope: 'interactive',
+      db: this.db,
+      getSessionId: () => this.agent.sessionId,
+      resolveApiKey: () => this.resolveApiKey(),
+      getModelOverride: model => loadModelCompactionOverride(this.providerConfig?.id, model.id),
+      onEvent: info => this.emitCompactionChunk(info),
+      retryPolicy: () => loadRetryPolicy(),
+    })
+
+    this.agent = createAxiomAgent({
       initialState: {
         systemPrompt,
         model: this.model,
         tools,
         thinkingLevel: effectiveThinkingLevel,
       },
-      streamFn: buildStreamFn({
-        textVerbosity: this.providerConfig?.textVerbosity,
-        transport: this.providerConfig?.transport,
-      }),
-      ...(this.providerConfig?.transport && this.providerConfig.transport !== 'sse'
-        && { transport: this.providerConfig.transport }),
+      provider: this.providerConfig,
+      getApiKey: () => this.resolveApiKey(),
+      compactor: this.compactor,
       afterToolCall: this.imageHook,
-      transformContext: createTranscriptImageBudget(() => this.agent.state.model),
-      getApiKey: this.providerConfig?.authMethod === 'oauth'
-        ? async () => {
-            try {
-              // Reload provider config to get latest OAuth credentials
-              const { loadProvidersDecrypted } = await import('./provider-config.js')
-              const file = loadProvidersDecrypted()
-              const freshProvider = file.providers.find(p => p.id === this.providerConfig!.id)
-              if (freshProvider) {
-                return await getApiKeyForProvider(freshProvider)
-              }
-            } catch (err) {
-              console.error('OAuth token refresh failed:', err)
-            }
-            return this.apiKey
-          }
-        : () => this.apiKey,
     })
+  }
+
+  private async resolveApiKey(): Promise<string> {
+    if (this.providerConfig?.authMethod !== 'oauth') return this.apiKey
+    try {
+      // Reload provider config to get latest OAuth credentials
+      const file = loadProvidersDecrypted()
+      const freshProvider = file.providers.find(p => p.id === this.providerConfig!.id)
+      if (freshProvider) {
+        return await getApiKeyForProvider(freshProvider)
+      }
+    } catch (err) {
+      console.error('OAuth token refresh failed:', err)
+    }
+    return this.apiKey
+  }
+
+  private emitCompactionChunk(info: ContextCompactionInfo): void {
+    this.compactionSink?.({ type: 'compaction', text: formatContextCompactionContent(info), compaction: info })
   }
 
   streamPrompt(text: string, sessionId: string, images?: ImageContent[]): AsyncIterable<ResponseChunk> {
@@ -565,15 +590,46 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
    */
   private dropFailedAssistantTail(): boolean {
     const messages = this.agent.state.messages
-    let end = messages.length
-    while (end > 0 && (messages[end - 1] as { role?: string }).role === 'assistant') end--
-    if (end === 0) return false
-
-    const last = messages[end - 1] as { role?: string }
-    if (last.role !== 'user' && last.role !== 'toolResult') return false
-
-    if (end !== messages.length) this.agent.state.messages = messages.slice(0, end)
+    const continuable = withoutFailedAssistantTail(messages)
+    if (!continuable) return false
+    if (continuable.length !== messages.length) this.agent.state.messages = continuable
     return true
+  }
+
+  compact(instructions?: string, sessionId?: string): AsyncIterable<ResponseChunk> {
+    if (sessionId) this.agent.sessionId = sessionId
+    return this.streamCompaction(() => this.compactor.compactNow({ reason: 'manual', instructions }))
+  }
+
+  /**
+   * Run compaction work outside a prompt and stream the chunks it emits.
+   * Resolves `result.value` with the work's return value.
+   */
+  private async *streamCompaction<T>(work: () => Promise<T>, result: { value?: T } = {}): AsyncIterable<ResponseChunk> {
+    const chunks: ResponseChunk[] = []
+    let wake: (() => void) | null = null
+    let finished = false
+    this.compactionSink = (chunk) => {
+      chunks.push(chunk)
+      wake?.()
+    }
+    const running = work()
+      .then((value) => { result.value = value })
+      .finally(() => {
+        finished = true
+        wake?.()
+      })
+    try {
+      for (;;) {
+        while (chunks.length > 0) yield chunks.shift()!
+        if (finished) break
+        await new Promise<void>((resolve) => { wake = resolve })
+        wake = null
+      }
+      await running
+    } finally {
+      this.compactionSink = null
+    }
   }
 
   refreshSystemPrompt(channel?: string, currentUser?: { username: string }): void {
@@ -671,9 +727,12 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
     // The leading system message carries the system prompt and tool declarations.
     const baseline = getCurrentSystemMessage(this.agent.state.messages)
     this.agent.state.messages = baseline ? [baseline] : []
+    this.compactor.reset()
   }
 
   abort(): void {
+    this.pendingStart?.abort()
+    this.compactor.abort()
     this.agent.abort()
   }
 
@@ -849,75 +908,88 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
   }
 
   /**
-   * Execute a prompt with optional fallback retry on pre-stream errors.
+   * Execute a prompt with optional fallback retry on pre-stream errors, and
+   * one compact-and-retry when the provider rejects the context as too large.
    */
-  private async *executePromptWithRetry(text: string, sessionId: string, isRetry: boolean = false, images?: ImageContent[], continueTranscript = false): AsyncIterable<ResponseChunk> {
-    const eventQueue: AgentEvent[] = []
+  private async *executePromptWithRetry(
+    text: string,
+    sessionId: string,
+    isRetry: boolean = false,
+    images?: ImageContent[],
+    continueTranscript = false,
+    overflowRetried = false,
+  ): AsyncIterable<ResponseChunk> {
+    const queue: Array<{ event: AgentEvent } | { chunk: ResponseChunk }> = []
     let resolveWaiting: (() => void) | null = null
     let done = false
+    let receivedAgentEvent = false
     let preStreamError: unknown = null
     let midStreamError: unknown = null
+    let overflowMessage: AssistantMessage | null = null
+    const wake = () => {
+      resolveWaiting?.()
+      resolveWaiting = null
+    }
 
     const unsubscribe = this.agent.subscribe((event: AgentEvent) => {
-      eventQueue.push(event)
-      if (resolveWaiting) {
-        resolveWaiting()
-        resolveWaiting = null
-      }
+      receivedAgentEvent = true
+      queue.push({ event })
+      wake()
     })
+    this.compactionSink = (chunk) => {
+      queue.push({ chunk })
+      wake()
+    }
 
     // Safe only because AgentCore serializes prompts via MessageQueue.
     // If prompts ever run concurrently on one runtime, pass sessionId per request instead.
     this.agent.sessionId = sessionId
 
-    // Start the prompt (non-blocking)
-    const started = continueTranscript ? this.agent.continue() : this.agent.prompt(text, images)
-    const promptPromise = started.then(() => {
+    const promptPromise = this.startRun(text, images, continueTranscript).then(() => {
       done = true
-      if (resolveWaiting) {
-        resolveWaiting()
-        resolveWaiting = null
-      }
+      wake()
     }).catch((err) => {
-      // If no events have been received yet, this is a pre-stream error
-      if (eventQueue.length === 0) {
+      if (!receivedAgentEvent) {
         preStreamError = err
       } else {
         // Mid-stream error — surface error to the user, then signal agent_end
         console.error('Agent prompt error (mid-stream):', err)
         midStreamError = err
-        eventQueue.push({ type: 'agent_end', messages: [] })
+        queue.push({ event: { type: 'agent_end', messages: [] } })
       }
       done = true
-      if (resolveWaiting) {
-        resolveWaiting()
-        resolveWaiting = null
-      }
+      wake()
     })
 
     let yieldedDone = false
 
     try {
       while (true) {
-        // Process all queued events
-        while (eventQueue.length > 0) {
-          const event = eventQueue.shift()!
-          const chunks = this.processEvent(event, sessionId)
-          for (const chunk of chunks) {
+        while (queue.length > 0) {
+          const item = queue.shift()!
+          if ('chunk' in item) {
+            yield item.chunk
+            continue
+          }
+          const overflow = this.recoverableOverflow(item.event, overflowRetried)
+          if (overflow) overflowMessage = overflow
+          for (const chunk of this.processEvent(item.event, sessionId, { suppressProviderError: overflow !== null, overflowRetried })) {
+            // The recovery below either retries (with its own `done`) or reports an error first.
+            if (chunk.type === 'done' && overflowMessage) continue
             if (chunk.type === 'done') yieldedDone = true
             yield chunk
           }
         }
 
-        if (done && eventQueue.length === 0) break
+        if (done && queue.length === 0) break
 
-        // Wait for more events
         await new Promise<void>(resolve => {
           resolveWaiting = resolve
         })
       }
     } finally {
       unsubscribe()
+      this.compactionSink = null
       await promptPromise
     }
 
@@ -926,6 +998,16 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
       const errMsg = (midStreamError instanceof Error ? midStreamError.message : String(midStreamError)) || 'Unknown error'
       console.error('Agent mid-stream error surfaced to user:', errMsg)
       yield { type: 'error' as const, error: errMsg }
+    }
+
+    if (overflowMessage && !preStreamError && !midStreamError) {
+      const recovered: { value?: boolean } = {}
+      yield* this.streamCompaction(() => this.compactor.recoverFromOverflow(), recovered)
+      if (recovered.value) {
+        yield* this.executePromptWithRetry(text, sessionId, isRetry, images, true, true)
+        return
+      }
+      yield { type: 'error' as const, error: describeContextOverflow(this.model, overflowMessage, 'compaction could not reduce it') }
     }
 
     // Safety net: if no 'done' chunk was yielded (e.g. agent_end never fired),
@@ -950,7 +1032,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
         this.swapProvider(fallback, apiKey)
 
         // Retry once with fallback
-        yield* this.executePromptWithRetry(text, sessionId, true, images, continueTranscript)
+        yield* this.executePromptWithRetry(text, sessionId, true, images, continueTranscript, overflowRetried)
         return
       }
 
@@ -962,9 +1044,42 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
   }
 
   /**
+   * Compact first when the context (plus the prompt about to be added) is
+   * over the threshold — this is also what catches a switch to a model with
+   * a smaller window.
+   */
+  private async startRun(text: string, images: ImageContent[] | undefined, continueTranscript: boolean): Promise<void> {
+    const pendingStart = new AbortController()
+    this.pendingStart = pendingStart
+    try {
+      const pendingTokens = continueTranscript
+        ? 0
+        : estimateMessageTokens({ role: 'user', content: [{ type: 'text', text }, ...(images ?? [])], timestamp: Date.now() })
+      await this.compactor.compactBeforePrompt(pendingTokens, pendingStart.signal)
+    } finally {
+      if (this.pendingStart === pendingStart) this.pendingStart = null
+    }
+    if (pendingStart.signal.aborted) return
+    if (continueTranscript) await this.agent.continue()
+    else await this.agent.prompt(text, images)
+  }
+
+  /** The failed assistant message when it is an overflow worth one compact-and-retry. */
+  private recoverableOverflow(event: AgentEvent, overflowRetried: boolean): AssistantMessage | null {
+    if (overflowRetried || event.type !== 'message_end') return null
+    const message = event.message as Message
+    if (message.role !== 'assistant') return null
+    return this.compactor.isRecoverableOverflow(message) ? message : null
+  }
+
+  /**
    * Process an agent event into response chunks.
    */
-  private processEvent(event: AgentEvent, sessionId: string): ResponseChunk[] {
+  private processEvent(
+    event: AgentEvent,
+    sessionId: string,
+    options: { suppressProviderError?: boolean; overflowRetried?: boolean } = {},
+  ): ResponseChunk[] {
     const chunks: ResponseChunk[] = []
 
     switch (event.type) {
@@ -1017,7 +1132,10 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
           // error (expired key, failed OAuth refresh, quota): it ends the run
           // with this message and `agent_end`. Without surfacing it here the
           // turn would finish silently and the user would see nothing at all.
-          if (assistantMsg.stopReason === 'error') {
+          if (options.suppressProviderError) break
+          if (options.overflowRetried && this.compactor.isRecoverableOverflow(assistantMsg)) {
+            chunks.push({ type: 'error', error: describeContextOverflow(this.model, assistantMsg, 'compacting once did not help') })
+          } else if (assistantMsg.stopReason === 'error') {
             chunks.push({
               type: 'error',
               error: assistantMsg.errorMessage || 'Unknown provider error',

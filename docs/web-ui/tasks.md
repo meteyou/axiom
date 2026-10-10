@@ -104,6 +104,10 @@ When a reasoning model is in use, the agent's chain-of-thought appears as a smal
 
 The task's final `STATUS: completed | failed | question | silent` block is rendered as a green checkmark (completed) or red close icon (failed) with the `SUMMARY` body underneath as Markdown. This is the same body that gets injected into the parent chat as a `<task_injection>` (see [Tasks & Cronjobs → `<task_injection>`](../concepts/tasks-and-cronjobs#task-injection-how-results-come-back)).
 
+#### Context compaction
+
+When a long task compacts its context, a divider *Context compacted (120k → 18k tokens)* appears in the timeline. Click it to read the summary the task continues from. See [Context Compaction](../concepts/compaction).
+
 #### Status changes
 
 Every transition between `running`, `paused`, `completed`, `failed` shows as a small info row with the new status badge.

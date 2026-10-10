@@ -1,3 +1,4 @@
+import type { ContextCompactionInfo } from '@axiom/core/contracts'
 import { ApiError } from './useApi'
 
 export interface ToolCallData {
@@ -176,6 +177,8 @@ export interface ChatMessage {
    * `turn_error` row), so the failure never silently disappears.
    */
   errorInfo?: ChatTurnErrorInfo
+  /** Context-compaction notice for a `role: 'system'` row (live and from history). */
+  compactionInfo?: ContextCompactionInfo
   /**
    * Excerpt of the message the user replied to (e.g. Telegram reply-to), truncated to 500 chars.
    * When present, the UI renders a WhatsApp/Telegram-style quote bubble above the
@@ -216,8 +219,10 @@ export interface CodemodeNestedCall {
 }
 
 interface WsMessage {
-  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_update' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'session_summary' | 'reminder' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'pong' | 'attachment' | 'chat_action' | 'chat_action_resolved' | 'turn_replay_start' | 'turn_replay_end' | 'stall_warning' | 'stall_resolved' | 'retry_scheduled'
+  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_update' | 'tool_call_end' | 'error' | 'done' | 'system' | 'external_user_message' | 'session_end' | 'session_summary' | 'reminder' | 'task_completed' | 'task_failed' | 'task_question' | 'task_status_update' | 'pong' | 'attachment' | 'chat_action' | 'chat_action_resolved' | 'turn_replay_start' | 'turn_replay_end' | 'stall_warning' | 'stall_resolved' | 'retry_scheduled' | 'compaction'
   text?: string
+  /** Context-compaction progress (for type='compaction') */
+  compaction?: ContextCompactionInfo
   /** Provider-stall details (for stall_warning / stall_resolved) */
   stall?: ChatStallInfo
   /** Auto-retry details (for retry_scheduled) */
@@ -345,7 +350,7 @@ export function stripTrailingTurn(list: ChatMessage[]): ChatMessage[] {
     // replay re-emits both, so nothing is lost.
     const belongsToTurn = message.role === 'assistant'
       || message.role === 'tool'
-      || (message.role === 'system' && (!!message.stallInfo || !!message.errorInfo))
+      || (message.role === 'system' && (!!message.stallInfo || !!message.errorInfo || !!message.compactionInfo))
     if (!belongsToTurn) break
     end--
   }
@@ -365,7 +370,7 @@ export function stripFailedAttempt(list: ChatMessage[]): ChatMessage[] {
       result.splice(i, 1)
       continue
     }
-    if (message.role === 'system' && message.stallInfo) continue
+    if (message.role === 'system' && (message.stallInfo || message.compactionInfo)) continue
     break
   }
   return result
@@ -393,6 +398,33 @@ export function upsertStallMessage(list: ChatMessage[], stall: ChatStallInfo, co
     content,
     timestamp: new Date().toISOString(),
     stallInfo: stall,
+  })
+}
+
+/**
+ * Insert or update the notice for one compaction. The `running` keepalives,
+ * the terminal status, a mid-turn replay and a history reload all share the
+ * compaction id, so the notice is a single row that changes state in place.
+ */
+export function upsertCompactionMessage(
+  list: ChatMessage[],
+  info: ContextCompactionInfo,
+  content: string,
+): ChatMessage[] {
+  const index = list.findIndex(m => m.compactionInfo?.compactionId === info.compactionId)
+  if (index >= 0) {
+    const updated = [...list]
+    const existing = updated[index]!
+    updated[index] = { ...existing, id: info.messageId ?? existing.id, content, compactionInfo: info }
+    return updated
+  }
+
+  return insertBeforeTrailingStreams(list, {
+    id: info.messageId,
+    role: 'system',
+    content,
+    timestamp: info.occurredAt || new Date().toISOString(),
+    compactionInfo: info,
   })
 }
 
@@ -915,6 +947,10 @@ export function useChat() {
         // The backend sends the same text it persisted on the row, so live
         // rendering and a history reload never disagree.
         if (msg.stall) messages.value = upsertStallMessage(messages.value, msg.stall, msg.text ?? '')
+        break
+
+      case 'compaction':
+        if (msg.compaction) messages.value = upsertCompactionMessage(messages.value, msg.compaction, msg.text ?? '')
         break
 
       case 'retry_scheduled':

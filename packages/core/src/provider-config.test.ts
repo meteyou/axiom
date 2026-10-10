@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import {
+  getModelCompactionOverride,
   loadProviders,
   loadProvidersDecrypted,
   loadProvidersMasked,
@@ -378,6 +379,35 @@ describe('provider-config', () => {
     const model = buildModel(provider)
     const cost = estimateCost(model, 1000, 500, 2000, 1000)
     expect(cost).toBeCloseTo(0.035, 6)
+  })
+
+  it('updateProviderModel stores, merges and clears a per-model compaction override', () => {
+    setupTmpConfig({
+      providers: [
+        {
+          id: 'local-id',
+          name: 'Local',
+          type: 'openai-completions',
+          providerType: 'custom-openai-completions',
+          provider: 'openai',
+          baseUrl: 'http://localhost:1234/v1',
+          apiKey: 'sk-local',
+          enabledModels: ['qwen-27b'],
+        },
+      ],
+    })
+
+    const set = updateProviderModel('local-id', 'qwen-27b', { compaction: { reserveTokens: 8_192 } })
+    const merged = updateProviderModel('local-id', 'qwen-27b', { compaction: { keepRecentTokens: 8_000 } })
+    expect(set.models?.find(m => m.id === 'qwen-27b')?.compaction).toEqual({ reserveTokens: 8_192 })
+    expect(getModelCompactionOverride(merged, 'qwen-27b')).toEqual({ reserveTokens: 8_192, keepRecentTokens: 8_000 })
+
+    const partlyCleared = updateProviderModel('local-id', 'qwen-27b', { compaction: { reserveTokens: null } })
+    expect(getModelCompactionOverride(partlyCleared, 'qwen-27b')).toEqual({ keepRecentTokens: 8_000 })
+
+    const cleared = updateProviderModel('local-id', 'qwen-27b', { compaction: null })
+    expect(getModelCompactionOverride(cleared, 'qwen-27b')).toBeUndefined()
+    expect(cleared.models?.find(m => m.id === 'qwen-27b')).toBeUndefined()
   })
 
   it('updateProviderModel stores only the patched fields and keeps catalog defaults live', () => {

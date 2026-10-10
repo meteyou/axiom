@@ -87,7 +87,22 @@ export function isSlashCommandAgentTurn(value: unknown): value is SlashCommandAg
     && (value as { kind?: unknown }).kind === 'agent_turn'
 }
 
-export type SlashCommandReply = string | SlashCommandPicker | SlashCommandAgentTurn | null
+/**
+ * Reply that asks the surface to compact the conversation context through the
+ * turn runner (`StartTurnInput.compact`).
+ */
+export interface SlashCommandCompaction {
+  kind: 'compact'
+  /** Optional focus for the summary, e.g. "keep the PR review details". */
+  instructions?: string
+}
+
+export function isSlashCommandCompaction(value: unknown): value is SlashCommandCompaction {
+  return typeof value === 'object' && value !== null
+    && (value as { kind?: unknown }).kind === 'compact'
+}
+
+export type SlashCommandReply = string | SlashCommandPicker | SlashCommandAgentTurn | SlashCommandCompaction | null
 
 export interface SlashCommandDefinition extends SlashCommandMetadata {
   handler?: (ctx: SlashCommandContext) => Promise<SlashCommandReply> | SlashCommandReply
@@ -277,6 +292,17 @@ export function registerBuiltInSlashCommands(registry: SlashCommandRegistry): vo
   usage: `/thinking <${SETTINGS_THINKING_LEVELS.join('|')}>`,
     surfaces: ['web', 'telegram'],
     handler: (ctx) => handleThinkingCommand(ctx),
+  })
+
+  registry.register({
+    name: 'compact',
+    description: 'Summarize older messages to free up context.',
+    usage: '/compact [instructions]',
+    surfaces: ['web', 'telegram'],
+    handler: (ctx): SlashCommandCompaction => ({
+      kind: 'compact',
+      ...(ctx.args ? { instructions: ctx.args } : {}),
+    }),
   })
 
   registry.register({

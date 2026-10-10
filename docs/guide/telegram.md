@@ -76,6 +76,7 @@ to the input field) is populated automatically on bot startup via
 | `/cronjobs` | Show configured cronjobs and their next run time. (alias `/cron`)           |
 | `/model`    | Show or switch the active provider and model. (alias `/provider`)           |
 | `/thinking` | Show or set the global main-agent thinking level.                           |
+| `/compact`  | Summarize older messages to free up context. (`/compact [instructions]`)    |
 | `/tts`      | Toggle automatic Telegram voice replies. (alias `/voice`)                   |
 | `/skill`    | Load a skill into the current conversation. (`/skill:<name> [prompt]`)      |
 
@@ -95,6 +96,12 @@ a two-step flow. If you already know the name, type everything in one line:
 `/skill:<name> <prompt>` loads the skill and runs the prompt immediately (no
 native autocomplete for the name, but the same result). Unknown names reply
 with the list of available skills.
+
+`/compact [instructions]` summarizes the older part of the conversation to
+free up context — see [Context Compaction](../concepts/compaction). After a
+compaction, manual or automatic, the bot posts one short status line such as
+*Context compacted (368k → 41k tokens)*. The main agent shares one
+conversation across channels, so this also compacts what the web chat sees.
 
 Everything else is treated as a normal message and forwarded to the agent.
 If the menu does not appear in your Telegram client, restart the chat or wait

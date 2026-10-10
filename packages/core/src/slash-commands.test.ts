@@ -11,6 +11,7 @@ import {
   renderHelp,
   isSlashCommandPicker,
   isSlashCommandAgentTurn,
+  isSlashCommandCompaction,
   listLoadableSkills,
 } from './slash-commands.js'
 import type { SlashCommandPicker, SlashCommandReply } from './slash-commands.js'
@@ -194,6 +195,21 @@ describe('built-in slash commands', () => {
     expect(names).toContain('model')
     expect(names).toContain('thinking')
     expect(registry.list('telegram').map((c) => c.name)).toEqual(names)
+  })
+
+  it('/compact asks the surface to compact, with optional instructions', async () => {
+    expect(registry.list('telegram').map((c) => c.name)).toContain('compact')
+
+    const plain = await registry.dispatch('/compact', { surface: 'web', userId: '1', registry })
+    expect(plain.kind).toBe('handled')
+    if (plain.kind === 'handled') {
+      expect(isSlashCommandCompaction(plain.reply)).toBe(true)
+      expect(plain.reply).toEqual({ kind: 'compact' })
+    }
+
+    const focused = await registry.dispatch('/compact keep the PR numbers', { surface: 'telegram', userId: '1', registry })
+    expect(focused.kind).toBe('handled')
+    if (focused.kind === 'handled') expect(focused.reply).toEqual({ kind: 'compact', instructions: 'keep the PR numbers' })
   })
 
   it('exposes /provider as an alias of /model and does not register /settings', () => {

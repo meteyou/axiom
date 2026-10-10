@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
+import type { ContextCompactionInfo } from '@axiom/core/contracts'
 import {
   buildTurnRetryAction,
   closeOpenStreams,
   stripFailedAttempt,
   stripTrailingTurn,
   turnErrorFromHistoryMetadata,
+  upsertCompactionMessage,
   upsertErrorMessage,
   upsertStallMessage,
 } from './useChat'
@@ -312,5 +314,40 @@ describe('closeOpenStreams', () => {
   it('returns the same list when nothing is streaming', () => {
     const list = [msg('user', 'hi'), msg('assistant', 'hello')]
     expect(closeOpenStreams(list)).toBe(list)
+  })
+})
+
+function compaction(overrides: Partial<ContextCompactionInfo> = {}): ContextCompactionInfo {
+  return {
+    compactionId: 'c-1',
+    status: 'running',
+    reason: 'threshold',
+    tokensBefore: 368_000,
+    occurredAt: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  }
+}
+
+describe('upsertCompactionMessage', () => {
+  it('turns the running notice into the completed one in place', () => {
+    const running = upsertCompactionMessage([msg('user', 'hi')], compaction(), 'Compacting…')
+    const again = upsertCompactionMessage(running, compaction(), 'Compacting…')
+    expect(again).toHaveLength(2)
+
+    const done = upsertCompactionMessage(again, compaction({
+      status: 'completed', tokensAfter: 41_000, summary: '## Goal', messageId: 7,
+    }), 'Context compacted')
+    expect(done).toHaveLength(2)
+    expect(done[1]).toMatchObject({ id: 7, content: 'Context compacted', compactionInfo: { status: 'completed', tokensAfter: 41_000 } })
+  })
+
+  it('is kept when a failed attempt is discarded and dropped with a replayed turn', () => {
+    const list: ChatMessage[] = [
+      msg('user', 'hi'),
+      { role: 'system', content: 'compacted', compactionInfo: compaction({ status: 'completed' }) },
+      msg('assistant', 'partial'),
+    ]
+    expect(stripFailedAttempt(list)).toHaveLength(2)
+    expect(stripTrailingTurn(list)).toHaveLength(1)
   })
 })

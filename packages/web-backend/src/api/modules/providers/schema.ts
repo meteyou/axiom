@@ -155,8 +155,36 @@ function parseOptionalNullableBoolean(body: Record<string, unknown>, key: 'reaso
 }
 
 const MODEL_UPDATE_FIELDS = [
-  'name', 'description', 'contextWindow', 'maxTokens', 'reasoning', 'input', 'output', 'thinkingLevelMap', 'disabled',
+  'name', 'description', 'contextWindow', 'maxTokens', 'reasoning', 'input', 'output', 'thinkingLevelMap', 'disabled', 'compaction',
 ] as const
+
+const MODEL_COMPACTION_FIELDS = ['reserveTokens', 'keepRecentTokens'] as const
+
+function parseOptionalModelCompaction(
+  body: Record<string, unknown>,
+): ParseResult<ProviderModelUpdatePayloadContract['compaction']> {
+  if (!Object.prototype.hasOwnProperty.call(body, 'compaction')) return { ok: true, value: undefined }
+  const raw = body.compaction
+  if (raw === null) return { ok: true, value: null }
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    return { ok: false, error: 'compaction must be an object or null' }
+  }
+  const record = raw as Record<string, unknown>
+  const value: NonNullable<ProviderModelUpdatePayloadContract['compaction']> = {}
+  for (const key of MODEL_COMPACTION_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(record, key)) continue
+    if (record[key] === null) {
+      value[key] = null
+      continue
+    }
+    const parsed = Number(record[key])
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+      return { ok: false, error: `compaction.${key} must be a positive integer or null` }
+    }
+    value[key] = parsed
+  }
+  return { ok: true, value }
+}
 
 function parseOptionalPositiveInteger(
   body: Record<string, unknown>,
@@ -250,6 +278,8 @@ export function parseProviderModelUpdatePayload(payload: unknown): ParseResult<P
   if (!output.ok) return output
   const thinkingLevelMap = parseOptionalThinkingLevelMap(body)
   if (!thinkingLevelMap.ok) return thinkingLevelMap
+  const compaction = parseOptionalModelCompaction(body)
+  if (!compaction.ok) return compaction
 
   const value: ProviderModelUpdatePayloadContract = {}
   if (disabled.value !== undefined) value.disabled = disabled.value
@@ -262,6 +292,7 @@ export function parseProviderModelUpdatePayload(payload: unknown): ParseResult<P
   if (input.value !== undefined) value.input = input.value
   if (output.value !== undefined) value.output = output.value
   if (thinkingLevelMap.value !== undefined) value.thinkingLevelMap = thinkingLevelMap.value
+  if (compaction.value !== undefined) value.compaction = compaction.value
   const cost = hasCost ? parseModelCostPatch(body.cost) : undefined
   if (cost) value.cost = cost
 

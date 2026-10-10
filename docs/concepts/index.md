@@ -9,6 +9,7 @@ Read these when you want to understand *why* the agent behaves the way it does, 
 | Page | What it covers |
 |---|---|
 | [Agent Instructions](./instructions) | `AGENTS.md`, `HEARTBEAT.md`, `CONSOLIDATION.md` — the plain-Markdown files that shape day-to-day behavior. |
+| [Context Compaction](./compaction) | How long chats and tasks stay inside the model's context window: triggers, the summary format, budgets, `/compact`. |
 | [Built-in Tools](./tools) | The tool registry: which tools the agent has every turn, which are opt-in, what each one does. |
 | [Codemode](./codemode) | The experimental scripted-tool-call tool: batching, chaining, filtering; the switches, the cronjob override, limits and the spill folder. |
 | [Image Generation](./image-generation) | Image models per provider, the default image model, the `generate_image` tool, output files, real cost tracking. |
