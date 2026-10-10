@@ -17,7 +17,8 @@
     "instructions": "Instructions",
     "tasks": "Tasks",
     "cronjobs": "Cronjobs",
-    "email": "Email"
+    "email": "Email",
+    "account": "Account"
   },
   "roles": {
     "admin": "Admin",
@@ -865,7 +866,13 @@
       "telegram": "Telegram ID",
       "createdAt": "Created",
       "actions": "Actions"
-    }
+    },
+    "changePassword": "Change password",
+    "changePasswordDescription": "Enter your current password and choose a new one. Your other logins will be signed out.",
+    "currentPassword": "Current password",
+    "newPassword": "New password",
+    "passwordChanged": "Password changed. Other logins were signed out.",
+    "ownSubtitle": "Your account."
   },
   "dashboard": {
     "kicker": "Operations overview",

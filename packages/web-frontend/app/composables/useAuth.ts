@@ -230,5 +230,6 @@ export function useAuth() {
     getAccessToken,
     refreshAccessToken,
     validateSession,
+    setAuth,
   }
 }

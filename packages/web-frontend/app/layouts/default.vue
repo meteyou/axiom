@@ -122,6 +122,19 @@
             <span>{{ $t('nav.email') }}</span>
           </NuxtLink>
 
+          <template v-if="!isAdmin">
+            <div class="my-2 border-t border-sidebar-border/60" />
+
+            <NuxtLink
+              to="/users"
+              :class="navItemClass('/users')"
+              @click="closeSidebarOnMobile"
+            >
+              <AppIcon name="users" class="shrink-0" />
+              <span>{{ $t('nav.account') }}</span>
+            </NuxtLink>
+          </template>
+
           <template v-if="isAdmin">
             <!-- Separator -->
             <div class="my-2 border-t border-sidebar-border/60" />
