@@ -641,7 +641,7 @@ describe('database', () => {
       }
 
       expect(row.id).toMatch(UUID_RE)
-      expect(row.user_id).toBeNull()
+      expect(row.user_id).toBe(1)
       expect(row.session_user).toBe('alice')
 
       db.close()
