@@ -29,16 +29,19 @@ export interface OwnSettings {
     chatModel: ChatModelRef | null
     thinkingLevel: SettingsThinkingLevel | null
     language: string | null
+    timezone: string | null
   }
   defaults: {
     chatModel: (ChatModelRef & { providerName: string | null }) | null
     thinkingLevel: SettingsThinkingLevel
     language: string
+    timezone: string
   }
   effective: {
     chatModel: ChatModelRef | null
     thinkingLevel: SettingsThinkingLevel
     language: string
+    timezone: string
   }
 }
 

@@ -33,6 +33,34 @@
           </Select>
         </div>
 
+        <template v-if="mode === 'create' && form.role === 'user'">
+          <div class="flex flex-col gap-1.5">
+            <Label for="modal-language">{{ $t('settings.language') }}</Label>
+            <Select v-model="form.language">
+              <SelectTrigger id="modal-language">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem :value="DEFAULT_VALUE">{{ $t('users.useDefault') }}</SelectItem>
+                <SelectItem v-for="lang in LANGUAGE_OPTIONS" :key="lang.value" :value="lang.value">{{ $t(`settings.${lang.key}`) }}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div class="flex flex-col gap-1.5">
+            <Label for="modal-timezone">{{ $t('settings.timezone') }}</Label>
+            <Select v-model="form.timezone">
+              <SelectTrigger id="modal-timezone">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem :value="DEFAULT_VALUE">{{ $t('users.useDefault') }}</SelectItem>
+                <SelectItem v-for="tz in TIMEZONE_OPTIONS" :key="tz" :value="tz">{{ tz }}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </template>
+
         <!-- Password -->
         <div class="flex flex-col gap-1.5">
           <Label for="modal-password">
@@ -71,6 +99,9 @@
 
 <script setup lang="ts">
 import type { User } from '~/composables/useUsers'
+import { LANGUAGE_OPTIONS, TIMEZONE_OPTIONS } from '~/utils/settingsOptions'
+
+const DEFAULT_VALUE = '__default__'
 
 const props = defineProps<{
   open: boolean
@@ -81,13 +112,15 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: []
-  submit: [payload: { username: string; password: string; role: string }]
+  submit: [payload: { username: string; password: string; role: string; language: string; timezone: string }]
 }>()
 
 const form = reactive({
   username: '',
   password: '',
   role: 'user',
+  language: DEFAULT_VALUE,
+  timezone: DEFAULT_VALUE,
 })
 
 // Sync form state when dialog opens or user changes
@@ -100,10 +133,16 @@ watch(() => [props.open, props.user] as const, ([isOpen, entry]) => {
     form.username = ''
     form.password = ''
     form.role = 'user'
+    form.language = DEFAULT_VALUE
+    form.timezone = DEFAULT_VALUE
   }
 }, { immediate: true })
 
 function handleSubmit() {
-  emit('submit', { ...form })
+  emit('submit', {
+    ...form,
+    language: form.language === DEFAULT_VALUE ? '' : form.language,
+    timezone: form.timezone === DEFAULT_VALUE ? '' : form.timezone,
+  })
 }
 </script>
