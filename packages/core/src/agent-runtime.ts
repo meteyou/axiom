@@ -1000,6 +1000,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
           output: JSON.stringify(toolResult ?? {}),
           durationMs,
           status: isError ? 'error' : 'success',
+          toolCallId: event.toolCallId,
         })
 
         chunks.push({

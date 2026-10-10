@@ -233,6 +233,45 @@ describe('token-logger', () => {
       expect(rows[0].input).toBe('{"command": "ls -la"}')
       expect(rows[0].duration_ms).toBe(250)
     })
+
+    it('stores the tool-call id of direct calls and the parent link of codemode nested calls', () => {
+      const testDb = createDb()
+
+      const parentId = logToolCall(testDb, {
+        sessionId: 's1',
+        toolName: 'codemode',
+        input: '{"code": "..."}',
+        output: '{}',
+        durationMs: 1200,
+        toolCallId: 'call-parent',
+      })
+      logToolCall(testDb, {
+        sessionId: 's1',
+        toolName: 'read_file',
+        input: '{"path":"MEMORY.md"}',
+        output: '{}',
+        durationMs: 5,
+        toolCallId: 'call-parent/read_file/1',
+        parentToolCallId: 'call-parent',
+      })
+
+      const rows = testDb.prepare(
+        'SELECT id, tool_name, tool_call_id, parent_tool_call_id FROM tool_calls ORDER BY id'
+      ).all() as Array<{ id: number; tool_name: string; tool_call_id: string | null; parent_tool_call_id: string | null }>
+      expect(rows).toHaveLength(2)
+      expect(rows[0]).toEqual({ id: parentId, tool_name: 'codemode', tool_call_id: 'call-parent', parent_tool_call_id: null })
+      expect(rows[1]).toEqual({ id: rows[1].id, tool_name: 'read_file', tool_call_id: 'call-parent/read_file/1', parent_tool_call_id: 'call-parent' })
+
+      const queried = getToolCallById(testDb, rows[1].id)!
+      expect(queried.toolCallId).toBe('call-parent/read_file/1')
+      expect(queried.parentToolCallId).toBe('call-parent')
+
+      const paged = queryToolCalls(testDb)
+      expect(paged.records.map(r => [r.toolCallId, r.parentToolCallId])).toContainEqual(['call-parent', null])
+
+      const bySession = getToolCalls(testDb, { sessionId: 's1' })
+      expect(bySession.map(r => r.parentToolCallId)).toContain('call-parent')
+    })
   })
 
   describe('getTokenUsage', () => {
