@@ -92,12 +92,13 @@ Selecting *Delete* from the row menu opens a `ConfirmDialog`:
 
 > **Delete `<username>`?** This action cannot be undone.
 
-A few rules:
+The dialog has a **Also delete the personal folder and workspace** checkbox, on by default. Deleting is a *soft delete*:
 
-- **You can't delete yourself.** The *Delete* item in the row menu is disabled for the currently signed-in account. To remove your own account, sign in as a different admin first.
-- **Memory files stay on disk.** Deleting a user removes the row from the database, but `/data/memory/users/<username>.md` is *not* removed automatically — it lives on as a historical artifact. Delete it manually if you want a clean wipe.
-- **Telegram link is dropped.** If the user was linked to a Telegram identity, that link is broken — the corresponding row in the telegram-users table goes back to "unassigned" and can be linked to a different account.
-- **Past chat history is preserved.** Sessions and messages reference the user by id, so deleting the user does not delete history. The history just shows the (now-orphaned) id; the UI typically renders this as a missing user.
+- **Removed:** running tasks are stopped; cronjobs and reminders are deleted and unregistered; email accounts (including credentials) and the user's sent-log entries are deleted; chat messages, tool calls, facts, task rows and task journals are deleted, as are uploads referenced in their chats. The Telegram link is dropped, and the user's runtime and session end without a summary or fact extraction.
+- **Files:** with the checkbox on, `/data/users/<username>/` and `/workspace/<username>/` are deleted too. With it off they stay on disk.
+- **Kept:** sessions and token usage stay, so the [Usage](./token-usage) page lists the user as `<name> (deleted)`. The user row stays too, so the **username stays reserved** and cannot be used for a new account.
+- **Signed out immediately:** all tokens and open sockets of the deleted user are rejected.
+- **Protected accounts:** you can't delete yourself, and the bootstrap admin can't be deleted by anyone.
 
 ## Telegram linking
 
