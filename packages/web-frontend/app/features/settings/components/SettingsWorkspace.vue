@@ -217,6 +217,36 @@
                   <p class="text-xs text-muted-foreground">{{ $t('settings.thinkingLevelHint') }}</p>
                 </div>
 
+                <!-- ─── Codemode (experimental) ─── -->
+                <Separator />
+
+                <div>
+                  <h3 class="text-base font-semibold tracking-tight text-foreground">
+                    {{ $t('settings.codemodeSection') }}
+                    <Badge variant="outline" class="ml-2 align-middle text-[10px] font-medium uppercase tracking-wide">
+                      {{ $t('settings.experimental') }}
+                    </Badge>
+                  </h3>
+                  <p class="mt-1 text-sm text-muted-foreground">
+                    {{ $t('settings.codemodeSectionHint') }}
+                  </p>
+                </div>
+
+                <div class="flex items-center justify-between rounded-lg border border-border px-4 py-3">
+                  <div class="flex flex-col gap-0.5 pr-4">
+                    <Label for="codemode-main-agent-enabled" class="cursor-pointer">
+                      {{ $t('settings.codemodeMainAgentEnabled') }}
+                    </Label>
+                    <p class="text-xs text-muted-foreground">
+                      {{ $t('settings.codemodeMainAgentEnabledHint') }}
+                    </p>
+                  </div>
+                  <Switch
+                    id="codemode-main-agent-enabled"
+                    v-model:checked="form.codemode.mainAgent"
+                  />
+                </div>
+
                 <!-- ─── Storage ─── -->
                 <Separator />
 
@@ -1228,7 +1258,9 @@
                   <p class="text-xs text-muted-foreground">{{ $t('settings.backgroundThinkingLevelHint') }}</p>
                 </div>
 
-                <!-- Codemode (experimental) -->
+                <!-- ─── Codemode (experimental) ─── -->
+                <Separator />
+
                 <div>
                   <h3 class="text-base font-semibold tracking-tight text-foreground">
                     {{ $t('settings.codemodeSection') }}
@@ -1239,21 +1271,6 @@
                   <p class="mt-1 text-sm text-muted-foreground">
                     {{ $t('settings.codemodeSectionHint') }}
                   </p>
-                </div>
-
-                <div class="flex items-center justify-between rounded-lg border border-border px-4 py-3">
-                  <div class="flex flex-col gap-0.5 pr-4">
-                    <Label for="codemode-main-agent-enabled" class="cursor-pointer">
-                      {{ $t('settings.codemodeMainAgentEnabled') }}
-                    </Label>
-                    <p class="text-xs text-muted-foreground">
-                      {{ $t('settings.codemodeMainAgentEnabledHint') }}
-                    </p>
-                  </div>
-                  <Switch
-                    id="codemode-main-agent-enabled"
-                    v-model:checked="form.codemode.mainAgent"
-                  />
                 </div>
 
                 <div class="flex items-center justify-between rounded-lg border border-border px-4 py-3">

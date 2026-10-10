@@ -127,7 +127,7 @@ Only the keys relevant to the chosen `provider` are read — the others are igno
 
 Experimental, **off by default**. A script tool: the agent writes a JavaScript script that calls its own tools — in parallel, chained, filtered — and only the script's output reaches the model. It is registered separately for the interactive agent and for background task agents, and each cronjob can override the task-side switch (inherit / on / off). When active, the agent's system prompt gets a short guideline telling it when a script pays off (batching, chaining, filtering) and when a single call should go direct.
 
-**Where to configure:** [Settings → Tasks → Codemode](../settings/tasks#codemode-experimental) (both switches) and the [per-cronjob three-way control](../web-ui/cronjobs#codemode). Full details — use cases, limits, the spill folder: [Codemode](./codemode).
+**Where to configure:** [Settings → Agent → Codemode](../settings/agent#codemode-experimental) (interactive agent), [Settings → Tasks → Codemode](../settings/tasks#codemode-experimental) (background tasks) and the [per-cronjob three-way control](../web-ui/cronjobs#codemode). Full details — use cases, limits, the spill folder: [Codemode](./codemode).
 
 ## See also
 
