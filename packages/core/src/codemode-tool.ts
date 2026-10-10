@@ -25,7 +25,9 @@ import type {
   CodemodeTool as PiCodemodeTool,
 } from '@earendil-works/pi-codemode'
 import { isFailedToolResult } from './loop-detection.js'
+import { extractUploadsFromToolResult } from './send-file-tool.js'
 import { logToolCall } from './token-logger.js'
+import type { UploadDescriptor } from './uploads.js'
 import { omitToolResultStructuredContent, redactToolResultImages } from './llm-image.js'
 import type { Database } from './database.js'
 import { getWorkspaceDir } from './workspace.js'
@@ -163,6 +165,14 @@ export function createCodemodeTool(options: CodemodeToolOptions): AgentTool {
       const timeoutMs = resolveTimeoutMs(parsed.options.timeoutMs)
 
       const calls: CodemodeNestedCall[] = []
+      // Uploads reported by nested calls (e.g. send_file_to_user) are lifted into
+      // this result's details so the channel layers deliver them like direct calls.
+      const uploads: UploadDescriptor[] = []
+      const collectUploads = (toolResult: unknown): void => {
+        for (const upload of extractUploadsFromToolResult(toolResult)) {
+          if (!uploads.some(u => u.relativePath === upload.relativePath)) uploads.push(upload)
+        }
+      }
       // After every nested call start/end the tool streams a snapshot of all
       // nested calls as a partial update, so consumers (chat, task viewer,
       // watchdog) see live progress while the script runs.
@@ -187,7 +197,7 @@ export function createCodemodeTool(options: CodemodeToolOptions): AgentTool {
       const sandbox = new CodemodeSandbox({
         tools: options.owner.getTools()
           .filter(tool => tool.name !== CODEMODE_TOOL_NAME)
-          .map(tool => buildSandboxTool(tool, toolCallId, calls, options, observer)),
+          .map(tool => buildSandboxTool(tool, toolCallId, calls, options, observer, collectUploads)),
         timeoutMs,
         memoryLimitBytes: CODEMODE_MEMORY_LIMIT_BYTES,
       })
@@ -203,7 +213,7 @@ export function createCodemodeTool(options: CodemodeToolOptions): AgentTool {
         if (call.status === 'running') call.status = 'cancelled'
       }
 
-      return buildCodemodeResult(result, startedAt, maxOutputTokens, calls)
+      return buildCodemodeResult(result, startedAt, maxOutputTokens, calls, uploads)
     },
   }
 }
@@ -256,6 +266,7 @@ function buildSandboxTool(
   calls: CodemodeNestedCall[],
   options: CodemodeToolOptions,
   observer: CodemodeNestedCallObserver,
+  collectUploads: (toolResult: unknown) => void,
 ): PiCodemodeTool {
   let counter = 0
   return {
@@ -296,6 +307,7 @@ function buildSandboxTool(
 
       const durationMs = Math.round(performance.now() - startedAt)
       const failed = isFailedToolResult(outcome.isError, outcome.result)
+      collectUploads(outcome.result)
       record.status = context.signal.aborted ? 'cancelled' : failed ? 'error' : 'ok'
       record.durationMs = durationMs
       if (failed) {
@@ -378,11 +390,13 @@ function buildCodemodeResult(
   startedAt: number,
   maxOutputTokens: number,
   calls: CodemodeNestedCall[],
+  uploads: UploadDescriptor[],
 ): AgentToolResult<Record<string, unknown>> {
   const wallTime = ((performance.now() - startedAt) / 1000).toFixed(1)
   const details: Record<string, unknown> = {
     calls: calls.map(call => ({ id: call.id, name: call.name, status: call.status, durationMs: call.durationMs })),
   }
+  if (uploads.length > 0) details.uploadedFiles = uploads
 
   const scriptOutput: CodemodeOutputItem[] = [...result.output]
   if (result.ok && result.value !== undefined) {
