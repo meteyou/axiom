@@ -41,6 +41,7 @@ import {
 } from './codemode-tool.js'
 import type { CodemodeNestedCallSnapshot } from './codemode-tool.js'
 import type { QuotaServiceLike } from './quota-tool.js'
+import { loadSecretsDecrypted } from './secrets-config.js'
 import { resolveUserScope } from './user-scope.js'
 import type { UserScope } from './user-scope.js'
 import type { AgentRuntimeStateSnapshot, ResponseChunk } from './agent-runtime-types.js'
@@ -73,8 +74,10 @@ export interface BaseAgentToolsOptions {
  */
 export function createBaseAgentTools(options: BaseAgentToolsOptions): AgentTool[] {
   const getUserWorkspace = options.user ? () => options.user!.paths.workspace : undefined
+  const userDir = options.user?.paths.userDir
+  const getUserShellEnv = userDir ? () => Object.fromEntries(Object.entries(loadSecretsDecrypted(userDir)).filter(([, value]) => value)) : undefined
   return [
-    ...createYoloTools(getUserWorkspace),
+    ...createYoloTools(getUserWorkspace, getUserShellEnv),
     ...createBuiltinWebTools(options.builtinToolsConfig),
     createReadChatHistoryTool({
       db: options.db,
@@ -178,7 +181,7 @@ const SHELL_MAX_OUTPUT_BYTES = 10 * 1024 * 1024
 // Uses spawn instead of exec: execFile drops `detached`, and we need the child
 // to lead its own process group so that killing the group (negative pid)
 // reaches pipelines/`&&` chains/npm wrappers instead of only `/bin/sh`.
-function runShellCommand(command: string, timeout: number, cwd: string, signal?: AbortSignal): Promise<ShellResult> {
+function runShellCommand(command: string, timeout: number, cwd: string, env: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<ShellResult> {
   return new Promise((resolve) => {
     let killReason: 'timeout' | 'abort' | 'maxBuffer' | null = null
     let stdout = ''
@@ -189,6 +192,7 @@ function runShellCommand(command: string, timeout: number, cwd: string, signal?:
       shell: true,
       detached: true,
       cwd,
+      env,
       stdio: ['ignore', 'pipe', 'pipe'],
     })
 
@@ -263,7 +267,10 @@ function runShellCommand(command: string, timeout: number, cwd: string, signal?:
 /**
  * Build YOLO-mode tools that give the agent unrestricted access
  */
-export function createYoloTools(getWorkspace: () => string = getWorkspaceDir): AgentTool[] {
+export function createYoloTools(
+  getWorkspace: () => string = getWorkspaceDir,
+  getExtraEnv?: () => Record<string, string>,
+): AgentTool[] {
   const resolvePath = (filePath: string): string => resolveWorkspacePath(filePath, getWorkspace())
   const shellTool: AgentTool = {
     name: 'shell',
@@ -281,7 +288,7 @@ export function createYoloTools(getWorkspace: () => string = getWorkspaceDir): A
       const { command, timeout = 60000 } = params as { command: string; timeout?: number }
       const cwd = getWorkspace()
       fs.mkdirSync(cwd, { recursive: true })
-      return runShellCommand(command, timeout, cwd, signal)
+      return runShellCommand(command, timeout, cwd, { ...process.env, ...getExtraEnv?.() }, signal)
     },
   }
 
