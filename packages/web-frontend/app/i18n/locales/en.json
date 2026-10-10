@@ -1368,5 +1368,16 @@
     "fieldMaxDuration": "Max duration (minutes)",
     "fieldThinkingLevel": "Thinking level",
     "fieldThinkingLevelDefault": "Default (background thinking level)"
+  },
+  "codemode": {
+    "title": "Codemode",
+    "script": "Script",
+    "toolCalls": "Tool calls",
+    "noToolCalls": "No tool calls",
+    "output": "Output",
+    "error": "Error",
+    "cancelled": "Cancelled",
+    "running": "Running",
+    "callsSummary": "1 call · {names} | {count} calls · {names}"
   }
 }

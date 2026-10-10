@@ -221,52 +221,65 @@
 
       <template v-for="(event, idx) in groupedEvents" :key="idx">
         <!-- Tool call event -->
-        <TaskEventCard
-          v-if="event.type === 'tool_call_end' || event.type === 'tool_call_start'"
-          collapsible
-          icon="wrench"
-          :icon-class="event.toolIsError ? 'text-destructive' : undefined"
-          :meta="event.durationMs != null ? formatDurationMs(event.durationMs) : undefined"
-          :timestamp="formatTime(event.timestamp)"
-          :expanded="isExpanded(`tool-${idx}`)"
-          @toggle="toggleExpanded(`tool-${idx}`)"
-        >
-          <template #header>
-            <span class="text-xs font-medium" :class="event.toolIsError ? 'text-destructive' : 'text-foreground'">
-              {{ formatToolName(event.toolName ?? 'unknown') }}
-            </span>
-            <span
-              v-if="getToolCallSummary(event.toolName ?? '', event.toolArgs)"
-              class="hidden min-w-0 truncate font-mono text-xs text-muted-foreground sm:inline"
-              :title="getToolCallSummary(event.toolName ?? '', event.toolArgs)!"
-            >
-              {{ getToolCallSummary(event.toolName ?? '', event.toolArgs) }}
-            </span>
-            <Badge v-if="event.toolIsError" variant="destructive" class="text-[10px] px-1.5 py-0">
-              {{ $t('taskViewer.error') }}
-            </Badge>
-          </template>
-
-          <div class="space-y-3">
-            <div v-if="event.toolArgs">
-              <p class="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                {{ $t('taskViewer.arguments') }}
-              </p>
-              <div class="rounded border border-border bg-background p-2.5 text-xs">
-                <ToolDataDisplay :data="event.toolArgs" />
+        <template v-if="event.type === 'tool_call_end' || event.type === 'tool_call_start'">
+          <CodemodeToolCard
+            v-if="event.toolName === 'codemode'"
+            :code="codemodeCode(event)"
+            :nested-calls="codemodeNestedCalls(event)"
+            :output="codemodeOutput(event)"
+            :is-error="event.toolIsError === true"
+            :running="event.type === 'tool_call_start' && event.toolResult === undefined"
+            :expanded="isExpanded(`tool-${idx}`)"
+            :meta="formatTime(event.timestamp)"
+            @toggle="toggleExpanded(`tool-${idx}`)"
+          />
+          <TaskEventCard
+            v-else
+            collapsible
+            icon="wrench"
+            :icon-class="event.toolIsError ? 'text-destructive' : undefined"
+            :meta="event.durationMs != null ? formatDurationMs(event.durationMs) : undefined"
+            :timestamp="formatTime(event.timestamp)"
+            :expanded="isExpanded(`tool-${idx}`)"
+            @toggle="toggleExpanded(`tool-${idx}`)"
+          >
+            <template #header>
+              <span class="text-xs font-medium" :class="event.toolIsError ? 'text-destructive' : 'text-foreground'">
+                {{ formatToolName(event.toolName ?? 'unknown') }}
+              </span>
+              <span
+                v-if="getToolCallSummary(event.toolName ?? '', event.toolArgs)"
+                class="hidden min-w-0 truncate font-mono text-xs text-muted-foreground sm:inline"
+                :title="getToolCallSummary(event.toolName ?? '', event.toolArgs)!"
+              >
+                {{ getToolCallSummary(event.toolName ?? '', event.toolArgs) }}
+              </span>
+              <Badge v-if="event.toolIsError" variant="destructive" class="text-[10px] px-1.5 py-0">
+                {{ $t('taskViewer.error') }}
+              </Badge>
+            </template>
+  
+            <div class="space-y-3">
+              <div v-if="event.toolArgs">
+                <p class="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  {{ $t('taskViewer.arguments') }}
+                </p>
+                <div class="rounded border border-border bg-background p-2.5 text-xs">
+                  <ToolDataDisplay :data="event.toolArgs" />
+                </div>
+              </div>
+  
+              <div v-if="event.type === 'tool_call_end' && event.toolResult !== undefined">
+                <p class="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  {{ $t('taskViewer.result') }}
+                </p>
+                <div class="max-h-[300px] overflow-y-auto rounded border border-border bg-background p-2.5 text-xs">
+                  <ToolDataDisplay :data="event.toolResult" :is-error="event.toolIsError" />
+                </div>
               </div>
             </div>
-
-            <div v-if="event.type === 'tool_call_end' && event.toolResult !== undefined">
-              <p class="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                {{ $t('taskViewer.result') }}
-              </p>
-              <div class="max-h-[300px] overflow-y-auto rounded border border-border bg-background p-2.5 text-xs">
-                <ToolDataDisplay :data="event.toolResult" :is-error="event.toolIsError" />
-              </div>
-            </div>
-          </div>
-        </TaskEventCard>
+          </TaskEventCard>
+        </template>
 
         <!-- Thinking -->
         <TaskEventCard
@@ -349,6 +362,12 @@ import TaskEventCard from '~/features/tasks/components/TaskEventCard.vue'
 import { useTaskEvents } from '~/features/tasks/composables/useTaskEvents'
 import { useTasksApi } from '~/api/tasks'
 import { formatToolName, getToolCallSummary } from '~/utils/toolNameFormat'
+import {
+  codemodeCallsToDisplay,
+  codemodeOutputText,
+  codemodeScriptCode,
+  type CodemodeNestedCall,
+} from '~/utils/codemodeDisplay'
 import { useProviders } from '~/composables/useProviders'
 import { formatTaskThinking, formatTaskTriggerModel, taskStatusVariant } from '~/features/tasks/utils/taskFormat'
 import { buildThinkingLevelSelectOptions, findModelSpecByComposite } from '~/utils/thinkingLevels'
@@ -622,6 +641,16 @@ watch(() => events.value.length, () => {
 function formatDurationMs(ms: number): string {
   if (ms < 1000) return `${ms}ms`
   return `${(ms / 1000).toFixed(1)}s`
+}
+
+function codemodeCode(event: TaskEventItem): string {
+  return codemodeScriptCode(event.toolArgs)
+}
+function codemodeNestedCalls(event: TaskEventItem): CodemodeNestedCall[] {
+  return codemodeCallsToDisplay(event.nestedCalls, event.toolResult)
+}
+function codemodeOutput(event: TaskEventItem): string | null {
+  return codemodeOutputText(event.toolResult)
 }
 
 function parseStructuredResponse(text: string): { status: string; statusLabel: string; summary: string } | null {

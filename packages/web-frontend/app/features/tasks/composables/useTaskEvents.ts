@@ -149,10 +149,21 @@ export function useTaskEvents() {
         events.value.push(data as unknown as TaskEventItem)
         break
 
-      case 'codemode_progress':
-        // Live nested-call snapshots from a running codemode script. Ignored
-        // for now — a dedicated codemode card renders them in a later change.
+      case 'codemode_progress': {
+        // Live nested-call snapshot of a running codemode script. Merged into
+        // the event of its parent codemode call so the card updates in place;
+        // the card falls back to the result details once the call ends.
+        const toolCallId = (data.toolCallId as string) ?? ''
+        const existingIdx = toolCallId ? pendingToolCalls.get(toolCallId) : undefined
+        if (existingIdx !== undefined && events.value[existingIdx]) {
+          const existing = events.value[existingIdx]!
+          events.value[existingIdx] = {
+            ...existing,
+            nestedCalls: data.nestedCalls as TaskEventItem['nestedCalls'],
+          }
+        }
         break
+      }
 
       case 'status_change':
         events.value.push(data as unknown as TaskEventItem)
