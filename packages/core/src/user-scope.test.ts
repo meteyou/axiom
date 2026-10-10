@@ -24,8 +24,8 @@ describe('user-scope', () => {
     const bob = addUser('bob', 'user')
 
     expect(getBootstrapAdminId(db)).toBe(admin)
-    expect(resolveUserScope(db, admin)).toEqual({ id: admin, username: 'admin', role: 'admin', isBootstrapAdmin: true })
-    expect(resolveUserScope(db, String(bob))).toEqual({ id: bob, username: 'bob', role: 'user', isBootstrapAdmin: false })
+    expect(resolveUserScope(db, admin)).toEqual({ id: admin, username: 'admin', role: 'admin', isBootstrapAdmin: true, settings: expect.any(Object) })
+    expect(resolveUserScope(db, String(bob))).toEqual({ id: bob, username: 'bob', role: 'user', isBootstrapAdmin: false, settings: expect.any(Object) })
   })
 
   it('detects multi-user mode once a second user exists', () => {
