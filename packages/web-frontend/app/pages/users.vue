@@ -176,7 +176,12 @@
     destructive
     @confirm="handleDelete"
     @cancel="deleteTarget = null"
-  />
+  >
+    <label class="flex items-start gap-2 text-sm">
+      <input v-model="deleteFiles" type="checkbox" class="mt-0.5 h-4 w-4">
+      <span>{{ $t('users.deleteFiles') }}</span>
+    </label>
+  </ConfirmDialog>
 </template>
 
 <script setup lang="ts">
@@ -195,6 +200,7 @@ const showModal = ref(false)
 const formMode = ref<'create' | 'edit'>('create')
 const editingUser = ref<User | null>(null)
 const deleteTarget = ref<User | null>(null)
+const deleteFiles = ref(true)
 const showPasswordDialog = ref(false)
 const actionPending = ref(false)
 const successMessage = ref<string | null>(null)
@@ -293,6 +299,7 @@ async function handlePasswordChange(payload: { currentPassword: string; newPassw
 /* ── Delete ── */
 function openDelete(entry: User) {
   clearMessages()
+  deleteFiles.value = true
   deleteTarget.value = entry
 }
 
@@ -301,7 +308,7 @@ async function handleDelete() {
   clearMessages()
   actionPending.value = true
 
-  const success = await deleteUser(deleteTarget.value.id)
+  const success = await deleteUser(deleteTarget.value.id, deleteFiles.value)
   if (success) {
     successMessage.value = t('users.deleteSuccess')
     deleteTarget.value = null

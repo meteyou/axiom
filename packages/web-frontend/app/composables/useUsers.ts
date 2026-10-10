@@ -58,10 +58,10 @@ export function useUsers() {
     }
   }
 
-  async function deleteUser(id: number): Promise<boolean> {
+  async function deleteUser(id: number, deleteFiles = true): Promise<boolean> {
     error.value = null
     try {
-      await apiFetch(`/api/users/${id}`, {
+      await apiFetch(`/api/users/${id}?deleteFiles=${deleteFiles}`, {
         method: 'DELETE',
       })
       await fetchUsers()
