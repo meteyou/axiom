@@ -451,8 +451,8 @@ export class SessionManager {
       // docstring for rationale).
       this.db.prepare(
         `INSERT INTO sessions (id, user_id, source, type, parent_session_id, started_at, last_activity, session_user, message_count, summary_written)
-         VALUES (?, ?, ?, 'interactive', NULL, datetime(? / 1000, 'unixepoch'), datetime(? / 1000, 'unixepoch'), ?, 0, 0)`
-      ).run(session.id, null, source, session.startedAt, session.lastActivity, userId)
+         VALUES (?, (SELECT id FROM users WHERE id = ?), ?, 'interactive', NULL, datetime(? / 1000, 'unixepoch'), datetime(? / 1000, 'unixepoch'), ?, 0, 0)`
+      ).run(session.id, userId, source, session.startedAt, session.lastActivity, userId)
 
       // Log session start to tool_calls for activity log visibility
       logToolCall(this.db, {
