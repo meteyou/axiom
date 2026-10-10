@@ -937,29 +937,24 @@ describe('memory API', () => {
     expect(deletedFact).toBeUndefined()
   })
 
-  it('enforces admin-only access for facts endpoints', async () => {
+  it('scopes facts endpoints to the calling regular user', async () => {
     const userToken = generateAccessToken({ userId: 2, username: 'regular', role: 'user' })
+    const headers = { Authorization: `Bearer ${userToken}`, 'Content-Type': 'application/json' }
 
-    const listRes = await fetch(`${baseUrl}/api/memory/facts`, {
-      headers: { Authorization: `Bearer ${userToken}` },
-    })
-    expect(listRes.status).toBe(403)
+    const listRes = await fetch(`${baseUrl}/api/memory/facts`, { headers })
+    expect(listRes.status).toBe(200)
+    const list = await listRes.json() as { facts: Array<{ userId: number }> }
+    expect(list.facts.every(fact => fact.userId === 2)).toBe(true)
 
     const updateRes = await fetch(`${baseUrl}/api/memory/facts/1`, {
       method: 'PUT',
-      headers: {
-        Authorization: `Bearer ${userToken}`,
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify({ content: 'Nope' }),
     })
-    expect(updateRes.status).toBe(403)
+    expect(updateRes.status).toBe(404)
 
-    const deleteRes = await fetch(`${baseUrl}/api/memory/facts/1`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${userToken}` },
-    })
-    expect(deleteRes.status).toBe(403)
+    const deleteRes = await fetch(`${baseUrl}/api/memory/facts/1`, { method: 'DELETE', headers })
+    expect(deleteRes.status).toBe(404)
   })
 
   it('requires authentication for memory routes', async () => {

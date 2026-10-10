@@ -20,14 +20,14 @@ import {
   readTasksGuidelinesFile,
   writeTasksGuidelinesFile,
   getDefaultTasksGuidelinesContent,
-  readUserProfile,
-  ensureUserProfile,
+  getUserProfileTemplate,
+  getMemoryById,
   listMemories,
   updateMemory,
   deleteMemory,
   getMemoryUsageStats,
 } from '@axiom/core'
-import type { ConsolidationResult } from '@axiom/core'
+import type { ConsolidationResult, UserScope } from '@axiom/core'
 import type {
   DailyFileSummary,
   FactsQuery,
@@ -127,11 +127,8 @@ class MemoryService {
     this.refreshAgentPrompt()
   }
 
-  listDailyFiles(): DailyFileSummary[] {
-    const memoryDir = getMemoryDir()
-    const dailyDir = path.join(memoryDir, 'daily')
-
-    ensureMemoryStructure(memoryDir)
+  listDailyFiles(dailyDir: string): DailyFileSummary[] {
+    ensureMemoryStructure(getMemoryDir())
 
     if (!fs.existsSync(dailyDir)) {
       return []
@@ -156,9 +153,8 @@ class MemoryService {
     })
   }
 
-  readDailyFile(date: string): string {
-    const memoryDir = getMemoryDir()
-    const filePath = path.join(memoryDir, 'daily', `${date}.md`)
+  readDailyFile(dailyDir: string, date: string): string {
+    const filePath = path.join(dailyDir, `${date}.md`)
 
     if (!fs.existsSync(filePath)) {
       throw new MemoryFileNotFoundError(`Daily file for ${date} not found`)
@@ -167,11 +163,8 @@ class MemoryService {
     return fs.readFileSync(filePath, 'utf-8')
   }
 
-  writeDailyFile(date: string, content: string): void {
-    const memoryDir = getMemoryDir()
-    const dailyDir = path.join(memoryDir, 'daily')
-
-    ensureMemoryStructure(memoryDir)
+  writeDailyFile(dailyDir: string, date: string, content: string): void {
+    ensureMemoryStructure(getMemoryDir())
 
     if (!fs.existsSync(dailyDir)) {
       fs.mkdirSync(dailyDir, { recursive: true })
@@ -318,13 +311,13 @@ class MemoryService {
     return getDefaultHeartbeatContent()
   }
 
-  readProfile(username: string): string {
-    return readUserProfile(username)
+  readProfile(scope: UserScope): string {
+    return readProfileFile(scope)
   }
 
-  writeProfile(username: string, content: string): void {
-    const profilePath = ensureUserProfile(username)
-    fs.writeFileSync(profilePath, content, 'utf-8')
+  writeProfile(scope: UserScope, content: string): void {
+    readProfileFile(scope)
+    fs.writeFileSync(scope.paths.profile, content, 'utf-8')
     this.refreshAgentPrompt()
   }
 
@@ -341,6 +334,13 @@ class MemoryService {
 
   getUsageStats(days: number) {
     return getMemoryUsageStats(this.options.db, { memoryDir: getMemoryDir(), days })
+  }
+
+  assertFactOwner(id: number, ownerId: number): void {
+    const fact = getMemoryById(this.options.db, id)
+    if (!fact || fact.userId !== ownerId) {
+      throw new NotFoundError(`Memory not found: ${id}`)
+    }
   }
 
   updateFact(id: number, content: string): void {
@@ -412,6 +412,15 @@ class MemoryService {
 
 export function createMemoryService(options: MemoryModuleOptions): MemoryService {
   return new MemoryService(options)
+}
+
+function readProfileFile(scope: UserScope): string {
+  const profilePath = scope.paths.profile
+  if (!fs.existsSync(profilePath)) {
+    fs.mkdirSync(path.dirname(profilePath), { recursive: true })
+    fs.writeFileSync(profilePath, getUserProfileTemplate(scope.username), 'utf-8')
+  }
+  return fs.readFileSync(profilePath, 'utf-8')
 }
 
 function readTree(dir: string, relPath: string): MemoryTreeNode[] {
