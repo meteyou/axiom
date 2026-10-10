@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import BetterSqlite3 from 'better-sqlite3'
 import { initDatabase } from './database.js'
 import { ScheduledTaskStore } from './scheduled-task-store.js'
 import type { Database } from './database.js'
@@ -201,6 +202,77 @@ describe('ScheduledTaskStore', () => {
     })
   })
 
+  describe('codemode', () => {
+    it('defaults to null (inherit) when not set', () => {
+      const task = store.create({ name: 'Job', prompt: 'x', schedule: '0 9 * * *' })
+      expect(task.codemode).toBeNull()
+      expect(store.getById(task.id)!.codemode).toBeNull()
+    })
+
+    it('creates with an explicit override and reads it back', () => {
+      const on = store.create({ name: 'On', prompt: 'x', schedule: '0 9 * * *', codemode: 'on' })
+      expect(on.codemode).toBe('on')
+      expect(store.getById(on.id)!.codemode).toBe('on')
+
+      const off = store.create({ name: 'Off', prompt: 'x', schedule: '0 9 * * *', codemode: 'off' })
+      expect(store.getById(off.id)!.codemode).toBe('off')
+    })
+
+    it('updates and resets the override', () => {
+      const task = store.create({ name: 'Job', prompt: 'x', schedule: '0 9 * * *' })
+      expect(store.update(task.id, { codemode: 'on' })!.codemode).toBe('on')
+      expect(store.update(task.id, { codemode: 'off' })!.codemode).toBe('off')
+      expect(store.update(task.id, { codemode: null })!.codemode).toBeNull()
+    })
+  })
+
+  describe('migration', () => {
+    it('adds the codemode column to legacy scheduled_tasks tables and stays idempotent', () => {
+      const legacyPath = path.join(os.tmpdir(), `axiom-scheduled-task-legacy-${Date.now()}-${Math.random().toString(36).slice(2)}.db`)
+      tmpFiles.push(legacyPath)
+      try {
+        const legacy = new BetterSqlite3(legacyPath)
+        legacy.exec(`
+          CREATE TABLE scheduled_tasks (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            prompt TEXT NOT NULL,
+            schedule TEXT NOT NULL,
+            provider TEXT,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            tools_override TEXT,
+            skills_override TEXT,
+            system_prompt_override TEXT,
+            last_run_at TEXT,
+            last_run_task_id TEXT,
+            last_run_status TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+          );
+          INSERT INTO scheduled_tasks (id, name, prompt, schedule) VALUES ('legacy-1', 'Legacy', 'x', '0 9 * * *');
+        `)
+        legacy.close()
+
+        const migrated = initDatabase(legacyPath)
+        const rows = new ScheduledTaskStore(migrated).list()
+        expect(rows).toHaveLength(1)
+        expect(rows[0].id).toBe('legacy-1')
+        expect(rows[0].codemode).toBeNull()
+        migrated.close()
+
+        // A second init on the same file must not fail or duplicate the column.
+        const again = initDatabase(legacyPath)
+        const cols = again.prepare('PRAGMA table_info(scheduled_tasks)').all() as { name: string }[]
+        expect(cols.filter(c => c.name === 'codemode')).toHaveLength(1)
+        again.close()
+      } finally {
+        for (const suffix of ['', '-wal', '-shm']) {
+          try { fs.unlinkSync(legacyPath + suffix) } catch { /* ignore */ }
+        }
+      }
+    })
+  })
+
   describe('schema', () => {
     it('has all required columns', () => {
       const cols = db.prepare("PRAGMA table_info(scheduled_tasks)").all() as { name: string }[]
@@ -216,6 +288,9 @@ describe('ScheduledTaskStore', () => {
       expect(colNames).toContain('tools_override')
       expect(colNames).toContain('skills_override')
       expect(colNames).toContain('system_prompt_override')
+      expect(colNames).toContain('attached_skills')
+      expect(colNames).toContain('thinking_level')
+      expect(colNames).toContain('codemode')
       expect(colNames).toContain('last_run_at')
       expect(colNames).toContain('last_run_task_id')
       expect(colNames).toContain('last_run_status')

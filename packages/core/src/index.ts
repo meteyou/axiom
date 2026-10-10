@@ -567,7 +567,7 @@ export type {
 } from './email-approval.js'
 export type { EmailApprovalNotifier } from './email-approval-notifier.js'
 export { ScheduledTaskStore, initScheduledTasksTable } from './scheduled-task-store.js'
-export type { ScheduledTask, ScheduledTaskActionType, CreateScheduledTaskInput, UpdateScheduledTaskInput } from './scheduled-task-store.js'
+export type { ScheduledTask, ScheduledTaskActionType, ScheduledTaskCodemode, CreateScheduledTaskInput, UpdateScheduledTaskInput } from './scheduled-task-store.js'
 export { TaskScheduler } from './task-scheduler.js'
 export type { TaskSchedulerOptions } from './task-scheduler.js'
 export { createCronjobTool, editCronjobTool, removeCronjobTool, listCronjobsTool, getCronjobTool, createReminderTool } from './cronjob-tools.js'
