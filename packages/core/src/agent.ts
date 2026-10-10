@@ -3,7 +3,7 @@ import type { Agent as PiAgent } from '@earendil-works/pi-agent-core'
 import type { Api, Model } from '@earendil-works/pi-ai'
 import { completeSimple, releaseProviderSession } from './pi-models.js'
 import type { Database } from './database.js'
-import { getApiKeyForProvider, buildModel } from './provider-config.js'
+import { getApiKeyForProvider, buildModel, isProviderModelUsable, loadProvidersDecrypted } from './provider-config.js'
 import { assertLlmResponseOk } from './llm-response.js'
 import type { ProviderConfig } from './provider-config.js'
 import type { ProviderManager } from './provider-manager.js'
@@ -43,6 +43,8 @@ interface UserRuntime {
   queue: MessageQueue
   interactiveSessionId: string | null
   activeTurns: number
+  /** The runtime currently runs on the user's own model instead of the global default. */
+  hasModelOverride: boolean
 }
 
 export interface AgentCoreOptions {
@@ -157,6 +159,7 @@ export class AgentCore {
     this.apiKey = apiKey
     this.providerConfig = provider
     for (const entry of this.runtimes.values()) {
+      if (entry.hasModelOverride) continue
       entry.runtime.swapProvider(provider, apiKey, modelId)
     }
   }
@@ -166,7 +169,7 @@ export class AgentCore {
     if (existing) return existing
 
     const scope = resolveUserScope(this.db, userId)
-    const entry = { userId, queue: new MessageQueue(), interactiveSessionId: null, activeTurns: 0 } as unknown as UserRuntime
+    const entry = { userId, queue: new MessageQueue(), interactiveSessionId: null, activeTurns: 0, hasModelOverride: false } as unknown as UserRuntime
     const userTools = this.options.createUserTools?.({
       userId,
       scope,
@@ -182,9 +185,10 @@ export class AgentCore {
       baseInstructions: this.options.baseInstructions,
       providerConfig: this.providerConfig,
       providerManager: this.options.providerManager,
+      canUseProviderFallback: () => !entry.hasModelOverride,
       user: scope,
       quotaService: this.options.quotaService,
-      thinkingLevel: normalizeThinkingLevel(this.thinkingLevel),
+      thinkingLevel: scope?.settings.thinkingLevel ?? normalizeThinkingLevel(this.thinkingLevel),
     })
     this.runtimes.set(userId, entry)
     return entry
@@ -201,6 +205,41 @@ export class AgentCore {
       return
     }
     this.refreshRuntimePrompt(entry)
+  }
+
+  /**
+   * Applies the user's current effective model and thinking level; runs at the start of every turn.
+   * Returns an error message when the user's own model cannot be applied — the turn must then not
+   * run, otherwise it would silently answer with a different model than the user's settings report.
+   */
+  private async syncUserSettings(entry: UserRuntime): Promise<string | null> {
+    const scope = resolveUserScope(this.db, entry.userId)
+    if (!scope) return null
+    const { runtime } = entry
+    runtime.setThinkingLevel(scope.settings.thinkingLevel)
+
+    // Reloaded every turn: admins may disable the model or rotate its credentials at any time.
+    const override = scope.settings.chatModel
+    if (override) {
+      try {
+        const provider = loadProvidersDecrypted().providers.find(p => p.id === override.providerId)
+        if (!provider || !isProviderModelUsable(provider, override.modelId)) {
+          throw new Error('the model is no longer available')
+        }
+        runtime.swapProvider(provider, await getApiKeyForProvider(provider), override.modelId)
+        entry.hasModelOverride = true
+        return null
+      } catch (err) {
+        console.error(`[agent] Failed to apply chat model of user ${entry.userId}:`, err)
+        return `Your chat model ${override.providerId}/${override.modelId} could not be used: ${(err as Error).message}. Pick another model or switch back to the default (/model default).`
+      }
+    }
+
+    if (entry.hasModelOverride && this.providerConfig) {
+      runtime.swapProvider(this.providerConfig, this.apiKey, this.model.id)
+      entry.hasModelOverride = false
+    }
+    return null
   }
 
   private refreshRuntimePrompt(entry: UserRuntime, channel?: string): void {
@@ -321,6 +360,12 @@ export class AgentCore {
     entry.activeTurns++
 
     try {
+      const settingsError = await this.syncUserSettings(entry)
+      if (settingsError) {
+        yield { type: 'error', error: settingsError }
+        yield { type: 'done' }
+        return
+      }
       // Group chats get no per-user profile.
       const scope = source !== 'telegram-group' ? resolveUserScope(this.db, userId) : null
 
@@ -405,6 +450,12 @@ export class AgentCore {
     entry.activeTurns++
 
     try {
+      const settingsError = await this.syncUserSettings(entry)
+      if (settingsError) {
+        yield { type: 'error', error: settingsError, sessionId, injectionId }
+        yield { type: 'done', sessionId, injectionId }
+        return
+      }
       for await (const chunk of entry.runtime.streamPrompt(injection, sessionId)) {
         // Tag task-injection chunks with the actual session used AND the
         // per-injection correlation token. Downstream correlation MUST
