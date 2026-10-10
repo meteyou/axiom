@@ -60,6 +60,7 @@ beforeAll(async () => {
   baseUrl = `http://127.0.0.1:${port}`
 
   adminToken = generateAccessToken({ userId: 1, username: 'admin', role: 'admin' })
+  db.prepare("INSERT OR IGNORE INTO users (id, username, password_hash, role) VALUES (2, 'user', 'x', 'user')").run()
   userToken = generateAccessToken({ userId: 2, username: 'user', role: 'user' })
 })
 

@@ -54,6 +54,7 @@ beforeEach(() => {
   refreshSystemPrompt.mockClear()
   db.prepare('DELETE FROM memories').run()
   db.prepare('DELETE FROM users WHERE id != 1').run()
+  db.prepare("INSERT INTO users (id, username, password_hash, role) VALUES (2, 'user', 'x', 'user')").run()
 })
 
 function authHeaders(token: string): Record<string, string> {
