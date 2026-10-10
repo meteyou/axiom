@@ -37,8 +37,8 @@
       <div v-if="code">
         <p class="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{{ t('codemode.script') }}</p>
         <!-- eslint-disable-next-line vue/no-v-html -->
-        <div v-if="scriptHtml" class="max-h-80 overflow-auto rounded-md" v-html="scriptHtml" />
-        <pre v-else class="max-h-80 overflow-x-auto whitespace-pre rounded-md border border-border/60 bg-muted/20 px-2.5 py-2">{{ code }}</pre>
+        <div v-if="scriptHtml" class="max-h-80 overflow-auto rounded-md [&_pre]:min-w-full [&_pre]:w-max [&_pre]:px-2.5 [&_pre]:py-2 [&_pre]:leading-5" v-html="scriptHtml" />
+        <pre v-else class="max-h-80 overflow-x-auto whitespace-pre rounded-md border border-border/60 bg-muted/20 px-2.5 py-2 leading-5">{{ code }}</pre>
       </div>
 
       <div>
@@ -87,7 +87,7 @@
       <div v-if="output">
         <p class="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{{ t('codemode.output') }}</p>
         <pre
-          class="max-h-80 overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-border/60 bg-muted/20 px-2.5 py-2"
+          class="max-h-80 overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-border/60 bg-muted/20 px-2.5 py-2 leading-5"
           :class="isError ? 'text-destructive' : 'text-foreground'"
         >{{ output }}</pre>
       </div>
