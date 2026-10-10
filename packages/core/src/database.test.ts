@@ -190,6 +190,45 @@ describe('database', () => {
     db.close()
   })
 
+  it('adds the codemode nested-call id columns to an existing tool_calls table, idempotently', () => {
+    const dbPath = tmpDbPath()
+    const legacyDb = new BetterSqlite3(dbPath)
+    legacyDb.exec(`
+      CREATE TABLE tool_calls (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+        session_id TEXT,
+        tool_name TEXT NOT NULL,
+        input TEXT,
+        output TEXT,
+        duration_ms INTEGER,
+        status TEXT NOT NULL DEFAULT 'success' CHECK(status IN ('success', 'error'))
+      );
+    `)
+    legacyDb.prepare(
+      "INSERT INTO tool_calls (session_id, tool_name, input, output, duration_ms, status) VALUES ('s', 'shell', '{}', '{}', 5, 'success')"
+    ).run()
+    legacyDb.close()
+
+    const db = initDatabase(dbPath)
+    const cols = db.prepare('PRAGMA table_info(tool_calls)').all() as { name: string }[]
+    const colNames = cols.map(col => col.name)
+    expect(colNames).toContain('tool_call_id')
+    expect(colNames).toContain('parent_tool_call_id')
+
+    // Pre-existing rows keep NULL for both links.
+    const rows = db.prepare('SELECT tool_name, tool_call_id, parent_tool_call_id FROM tool_calls').all() as
+      Array<{ tool_name: string, tool_call_id: string | null, parent_tool_call_id: string | null }>
+    expect(rows).toEqual([{ tool_name: 'shell', tool_call_id: null, parent_tool_call_id: null }])
+    db.close()
+
+    // Re-opening must not fail (idempotent migration) and the columns survive.
+    const db2 = initDatabase(dbPath)
+    const cols2 = db2.prepare('PRAGMA table_info(tool_calls)').all() as { name: string }[]
+    expect(cols2.map(col => col.name)).toEqual(colNames)
+    db2.close()
+  })
+
   it('rebuilds FTS indexes only when the virtual tables are first created', () => {
     const execSpy = vi.spyOn(BetterSqlite3.prototype, 'exec')
     const dbPath = tmpDbPath()
