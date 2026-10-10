@@ -393,6 +393,58 @@ describe('TurnRunner', () => {
     expect(meta.files[0]!.relativePath).toBe(upload.relativePath)
   })
 
+  it('emits attachment events and merges uploads from a codemode result into the assistant row', async () => {
+    const db = freshDb()
+    const uploadA = {
+      kind: 'file' as const,
+      originalName: 'a.txt',
+      storedName: 'aa-a.txt',
+      relativePath: '2026/05/01/aa-a.txt',
+      urlPath: '/api/uploads/2026/05/01/aa-a.txt',
+      mimeType: 'text/plain',
+      size: 1,
+    }
+    const uploadB = {
+      kind: 'image' as const,
+      originalName: 'b.png',
+      storedName: 'bb-b.png',
+      relativePath: '2026/05/01/bb-b.png',
+      urlPath: '/api/uploads/2026/05/01/bb-b.png',
+      mimeType: 'image/png',
+      size: 2,
+    }
+    const runner = startRunner(db, scriptedAgent([
+      { type: 'tool_call_start', toolName: 'codemode', toolCallId: 'code-1', toolArgs: { code: 'await tools.send_file_to_user({})' } },
+      { type: 'tool_call_update', toolName: 'codemode', toolCallId: 'code-1', nestedCalls: [{ id: 'code-1/send_file_to_user/1', name: 'send_file_to_user', status: 'running' }] },
+      { type: 'tool_call_end', toolName: 'codemode', toolCallId: 'code-1', toolResult: { content: [], details: { calls: [{ id: 'code-1/send_file_to_user/1', name: 'send_file_to_user', status: 'ok', durationMs: 5 }], uploadedFiles: [uploadA, uploadB] } }, toolIsError: false },
+      { type: 'text', text: 'Here they are.' },
+      { type: 'done' },
+    ]))
+
+    const events: TurnEvent[] = []
+    runner.subscribe(USER_ID, collect(events))
+    runner.startTurn({ userId: USER_ID, sessionId: SESSION_ID, text: 'send me the files' })
+    await waitFor(() => !runner.hasActiveTurn(USER_ID))
+
+    const attachments = events.filter(e => e.type === 'attachment')
+    expect(attachments.map(e => (e as { attachment: { relativePath: string } }).attachment.relativePath)).toEqual([
+      '2026/05/01/aa-a.txt',
+      '2026/05/01/bb-b.png',
+    ])
+
+    const assistantRow = rows(db).find(r => r.role === 'assistant')!
+    const meta = JSON.parse(assistantRow.metadata!) as { files: Array<{ relativePath: string }> }
+    expect(meta.files.map(f => f.relativePath)).toEqual([
+      '2026/05/01/aa-a.txt',
+      '2026/05/01/bb-b.png',
+    ])
+
+    // The persisted codemode tool row carries the uploads too, so reload keeps them.
+    const toolRow = rows(db).find(r => r.role === 'tool')!
+    const toolMeta = JSON.parse(toolRow.metadata!)
+    expect(toolMeta.toolResult.details.uploadedFiles).toHaveLength(2)
+  })
+
   it('aborts the running turn, propagates the abort to the agent and still emits done', async () => {
     const db = freshDb()
     const { agent, push } = controllableAgent()
