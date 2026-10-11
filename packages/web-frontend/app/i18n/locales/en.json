@@ -891,6 +891,7 @@
     "createSuccess": "User created successfully.",
     "updateSuccess": "User updated successfully.",
     "deleteSuccess": "User deleted successfully.",
+    "deleteSuccessKeptFolders": "User deleted. These folders were kept because Axiom did not create them for this user: {folders}",
     "notLinked": "Not linked",
     "you": "You",
     "updatedAt": "Updated {date}",

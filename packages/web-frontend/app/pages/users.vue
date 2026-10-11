@@ -308,9 +308,11 @@ async function handleDelete() {
   clearMessages()
   actionPending.value = true
 
-  const success = await deleteUser(deleteTarget.value.id, deleteFiles.value)
-  if (success) {
-    successMessage.value = t('users.deleteSuccess')
+  const result = await deleteUser(deleteTarget.value.id, deleteFiles.value)
+  if (result) {
+    successMessage.value = result.keptFolders.length > 0
+      ? t('users.deleteSuccessKeptFolders', { folders: result.keptFolders.join(', ') })
+      : t('users.deleteSuccess')
     deleteTarget.value = null
     autoHideSuccess()
   } else {

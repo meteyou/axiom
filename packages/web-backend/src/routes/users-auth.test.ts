@@ -265,6 +265,7 @@ describe('soft delete', () => {
     expect(row.deleted_at).not.toBeNull()
     expect(row.telegram_id).toBeNull()
     expect(fs.existsSync(personalDir)).toBe(false)
+    expect(fs.existsSync(path.join(tempDataDir, 'workspace', 'victim'))).toBe(false)
 
     expect((await call(tokens.accessToken, 'GET', '/api/users')).status).toBe(401)
     const relogin = await fetch(`${baseUrl}/api/auth/login`, {
@@ -283,6 +284,18 @@ describe('soft delete', () => {
     expect(((await listed.json()) as { users: { username: string }[] }).users.map(u => u.username)).not.toContain('victim')
     const reuse = await call(admin.accessToken, 'POST', '/api/users', { username: 'victim', password: 'secret1' })
     expect(reuse.status).toBe(409)
+  })
+
+  it('keeps a workspace folder Axiom did not create for the user', async () => {
+    const admin = await adminLogin()
+    const id = Number(db.prepare("INSERT INTO users (username, password_hash, role) VALUES ('legacyuser', 'h', 'user')").run().lastInsertRowid)
+    const workspace = path.join(tempDataDir, 'workspace', 'legacyuser')
+    fs.mkdirSync(path.join(workspace, 'repo'), { recursive: true })
+
+    const res = await call(admin.accessToken, 'DELETE', `/api/users/${id}`)
+    expect(res.status).toBe(200)
+    expect(((await res.json()) as { keptFolders: string[] }).keptFolders).toEqual([workspace])
+    expect(fs.existsSync(path.join(workspace, 'repo'))).toBe(true)
   })
 
   it('keeps files when deleteFiles=false', async () => {

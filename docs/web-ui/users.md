@@ -96,7 +96,7 @@ Selecting *Delete* from the row menu opens a `ConfirmDialog`:
 The dialog has a **Also delete the personal folder and workspace** checkbox, on by default. Deleting is a *soft delete*:
 
 - **Removed:** running tasks are stopped; cronjobs and reminders are deleted and unregistered; email accounts (including credentials) and the user's sent-log entries are deleted; chat messages, tool calls, facts, task rows and task journals are deleted, as are uploads referenced in their chats. The Telegram link is dropped, and the user's runtime and session end without a summary or fact extraction.
-- **Files:** with the checkbox on, `/data/users/<username>/` and `/workspace/<username>/` are deleted too. With it off they stay on disk.
+- **Files:** with the checkbox on, `/data/users/<username>/` and `/workspace/<username>/` are deleted too. With it off they stay on disk. The workspace is only deleted if Axiom created it when the account was added: for accounts from before multi-user support, `/workspace/<username>/` may be an unrelated folder, so it is kept and the success message lists it.
 - **Kept:** sessions and token usage stay, so the [Usage](./token-usage) page lists the user as `<name> (deleted)`. The user row stays too, so the **username stays reserved** and cannot be used for a new account.
 - **Signed out immediately:** all tokens and open sockets of the deleted user are rejected.
 - **Protected accounts:** you can't delete yourself, and the bootstrap admin can't be deleted by anyone.

@@ -11,8 +11,9 @@ import {
   isValidTimezone,
   listUserActiveTaskIds,
   listUserCronjobIds,
+  markWorkspaceProvisioned,
   purgeUserData,
-  resolveUserPaths,
+  removeUserFolders,
   resolveUserScope,
 } from '@axiom/core'
 import type { AgentCore, Database, TaskRuntimeBoundary } from '@axiom/core'
@@ -194,6 +195,7 @@ export function createUsersRouter(options: UsersRouterOptions | Database): Route
             profile: getUserProfileTemplate(scope.username),
             heartbeat: getDefaultHeartbeatContent(),
           })
+          markWorkspaceProvisioned(db, scope.id)
         } catch (err) {
           // Roll back so a retry is not blocked by a half-created user (409 / folder-exists check).
           db.prepare('DELETE FROM users WHERE id = ?').run(result.lastInsertRowid)
@@ -340,7 +342,6 @@ export function createUsersRouter(options: UsersRouterOptions | Database): Route
     const deleteFiles = !(deleteFilesParam === 'false' || deleteFilesParam === '0')
 
     try {
-      const paths = resolveUserPaths(existing.username, false)
       const taskRuntime = getTaskRuntime?.() ?? null
 
       // Marked first so results of the aborted tasks are not injected into the user's agent.
@@ -358,12 +359,9 @@ export function createUsersRouter(options: UsersRouterOptions | Database): Route
       getAgentCore?.()?.discardUser(String(id))
       purgeUserData(db, id)
 
-      if (deleteFiles && paths.userDir) {
-        fs.rmSync(paths.userDir, { recursive: true, force: true })
-        fs.rmSync(paths.workspace, { recursive: true, force: true })
-      }
+      const keptFolders = deleteFiles ? removeUserFolders(db, id).kept : []
 
-      res.json({ message: 'User deleted' })
+      res.json({ message: 'User deleted', keptFolders })
     } catch (err) {
       res.status(500).json({ error: `Failed to delete user: ${(err as Error).message}` })
     }

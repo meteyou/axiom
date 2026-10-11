@@ -14,8 +14,8 @@ export {
   getImageDimensions,
 } from './uploads.js'
 export type { UploadDescriptor, SaveUploadInput, UploadSettings } from './uploads.js'
-export { purgeUserData, listUserActiveTaskIds, listUserCronjobIds } from './user-deletion.js'
-export type { UserPurgeResult } from './user-deletion.js'
+export { purgeUserData, listUserActiveTaskIds, listUserCronjobIds, removeUserFolders } from './user-deletion.js'
+export type { UserPurgeResult, UserFolderRemoval } from './user-deletion.js'
 export { loadConfig, warnConfigReadFailed, getConfigDir, ensureConfigTemplates, getDefaultTimezone, getProjectRootDir, getReadmePath, getDocsPath, getAgentDocsPath } from './config.js'
 export * from './contracts/index.js'
 export {
@@ -62,7 +62,7 @@ export { getUserProfileTemplate } from './memory.js'
 export { getUserProfileDir, ensureUserProfile, readUserProfile, ensureWikiDir, ensureProjectsDir, parseProjectAliases, listWikiPages, listProjectNotes } from './memory.js'
 export type { SkillPromptEntry } from './memory.js'
 export type { ConsolidationResult } from './memory-consolidation.js'
-export { resolveUserScope, resolveUserPaths, getBootstrapAdminId, isMultiUser, checkUsernameAvailable, createUserFolders } from './user-scope.js'
+export { resolveUserScope, resolveUserPaths, getBootstrapAdminId, isMultiUser, checkUsernameAvailable, createUserFolders, markWorkspaceProvisioned } from './user-scope.js'
 export type { UserScope, UserRole, UserPaths } from './user-scope.js'
 export {
   getGlobalChatDefaults,

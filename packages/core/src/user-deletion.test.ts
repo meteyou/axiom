@@ -8,7 +8,8 @@ import { createEmailAccount, listEmailAccounts } from './email-account-store.js'
 import { initEmailSendLogTable, createEmailSendLogEntry, listEmailSendLog } from './email-send-log.js'
 import { saveUpload, serializeUploadsMetadata } from './uploads.js'
 import { logToolCall } from './token-logger.js'
-import { purgeUserData } from './user-deletion.js'
+import { purgeUserData, removeUserFolders } from './user-deletion.js'
+import { markWorkspaceProvisioned } from './user-scope.js'
 
 describe('purgeUserData', () => {
   let db: Database
@@ -63,5 +64,59 @@ describe('purgeUserData', () => {
     expect(logToolCall(db, { ...record, sessionId: 's2' })).toBe(0)
     expect(logToolCall(db, { ...record, sessionId: 's1' })).toBeGreaterThan(0)
     expect(db.prepare('SELECT session_id FROM tool_calls').all()).toEqual([{ session_id: 's1' }])
+  })
+})
+
+describe('removeUserFolders', () => {
+  let db: Database
+  let dir: string
+  let workspaceDir: string
+  const previous = { data: process.env.DATA_DIR, workspace: process.env.WORKSPACE_DIR }
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'axiom-user-folders-'))
+    workspaceDir = path.join(dir, 'workspace')
+    process.env.DATA_DIR = dir
+    process.env.WORKSPACE_DIR = workspaceDir
+    db = initDatabase(':memory:')
+    db.prepare("INSERT INTO users (id, username, password_hash, role) VALUES (1, 'admin', 'h', 'admin'), (2, 'alice', 'h', 'user'), (3, 'images', 'h', 'user'), (4, '..', 'h', 'user'), (5, 'john.doe', 'h', 'user')").run()
+    for (const folder of ['users/alice', 'users/images', 'users/john.doe', 'workspace/alice', 'workspace/images/2025-01-01']) {
+      fs.mkdirSync(path.join(dir, folder), { recursive: true })
+    }
+  })
+
+  afterEach(() => {
+    for (const [key, value] of [['DATA_DIR', previous.data], ['WORKSPACE_DIR', previous.workspace]] as const) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+    fs.rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('removes the personal folder and the workspace Axiom created for the user', () => {
+    markWorkspaceProvisioned(db, 2)
+    expect(removeUserFolders(db, 2)).toEqual({
+      removed: [path.join(dir, 'users', 'alice'), path.join(workspaceDir, 'alice')],
+      kept: [],
+    })
+    expect(fs.existsSync(path.join(workspaceDir, 'alice'))).toBe(false)
+  })
+
+  it('keeps a workspace folder Axiom did not create for the user', () => {
+    expect(removeUserFolders(db, 3)).toEqual({
+      removed: [path.join(dir, 'users', 'images')],
+      kept: [path.join(workspaceDir, 'images')],
+    })
+    expect(fs.existsSync(path.join(workspaceDir, 'images', '2025-01-01'))).toBe(true)
+  })
+
+  it('never touches folders of invalid legacy usernames or the bootstrap admin', () => {
+    markWorkspaceProvisioned(db, 4)
+    markWorkspaceProvisioned(db, 5)
+    expect(removeUserFolders(db, 4)).toEqual({ removed: [], kept: [] })
+    expect(removeUserFolders(db, 5)).toEqual({ removed: [], kept: [path.join(dir, 'users', 'john.doe')] })
+    expect(removeUserFolders(db, 1)).toEqual({ removed: [], kept: [] })
+    expect(fs.existsSync(workspaceDir)).toBe(true)
+    expect(fs.existsSync(path.join(dir, 'users'))).toBe(true)
   })
 })

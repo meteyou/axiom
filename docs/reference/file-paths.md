@@ -99,7 +99,7 @@ The bootstrap admin (the oldest admin account, normally the first one) keeps all
 /workspace/<username>/   ← the user's workspace (default cwd for shell and file tools)
 ```
 
-Usernames are alphanumeric. Creating a user fails when `/workspace/<username>` or `/data/users/<username>` already exists, so a user never takes over an existing repo or folder. `SOUL.md`, `MEMORY.md`, `wiki/` and `sources/` stay shared.
+Usernames are alphanumeric. Creating a user fails when `/workspace/<username>` or `/data/users/<username>` already exists, so a user never takes over an existing repo or folder. Deleting a user only removes `/workspace/<username>` if Axiom created it that way (`users.workspace_provisioned`); accounts from before multi-user support keep it. `SOUL.md`, `MEMORY.md`, `wiki/` and `sources/` stay shared.
 
 The SQLite `memories` table (atomic facts the agent searches on demand) is **not** in this directory — it lives in `/data/db/axiom.db`.
 

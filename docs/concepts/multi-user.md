@@ -32,7 +32,7 @@ The **bootstrap admin** (see [below](#bootstrap-admin)) keeps every location a s
 - `/data/users/<username>/` — `PROFILE.md`, `HEARTBEAT.md`, `daily/`
 - `/workspace/<username>/` — the default working directory for that user's shell and file tools
 
-Usernames are alphanumeric only and are rejected if a matching folder already exists under `/workspace` or `/data/users`. Deleted usernames stay reserved. See [File Paths](../reference/file-paths).
+Usernames are alphanumeric only and are rejected if a matching folder already exists under `/workspace` or `/data/users`. Deleted usernames stay reserved. Accounts created before multi-user support skipped that check, so deleting such an account keeps its `/workspace/<username>/` folder — it may belong to someone else. See [File Paths](../reference/file-paths).
 
 ## Roles
 
