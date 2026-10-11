@@ -78,6 +78,17 @@
         "auto_paused": "Der Kontext liegt weiterhin über der Komprimierungsschwelle. Die automatische Komprimierung pausiert, bis weitere Nachrichten hinzukommen; /new startet eine neue Unterhaltung."
       }
     },
+    "context": {
+      "label": "Kontextfenster zu {percent}% belegt",
+      "title": "Kontextfenster",
+      "tokens": "Tokens",
+      "model": "Modell",
+      "threshold": "Komprimierung ab",
+      "thresholdValue": "{tokens} ({percent}%)",
+      "autoOff": "Automatische Komprimierung aus",
+      "paused": "Die automatische Komprimierung pausiert: Die letzte Komprimierung konnte den Kontext nicht unter die Schwelle bringen. /new startet eine neue Unterhaltung.",
+      "estimated": "Geschätzt: Seit Sitzungsbeginn oder der letzten Komprimierung gab es noch keine Modellantwort. Der genaue Wert folgt mit der nächsten Antwort."
+    },
     "statusConnected": "Chat verbunden",
     "statusConnecting": "Verbinde",
     "statusDisconnected": "Chat getrennt",

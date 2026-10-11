@@ -47,8 +47,19 @@
           }"
         />
         <span class="hidden sm:inline">{{ chatStatusText }}</span>
+        <template v-if="contextUsage">
+          <span class="h-4 w-px bg-border" aria-hidden="true" />
+          <!-- Pulls the button's own padding back so the ring sits as far from the divider as the text does. -->
+          <div class="-ml-1.5">
+            <ChatContextMeter :usage="contextUsage" />
+          </div>
+        </template>
       </div>
       <template #actions>
+        <!-- The left-side toolbar slot is desktop-only; on mobile the meter rides along with the actions. -->
+        <div v-if="contextUsage" class="md:hidden">
+          <ChatContextMeter :usage="contextUsage" compact />
+        </div>
         <Button variant="outline" size="sm" class="gap-2 hover:border-destructive hover:text-destructive" :disabled="!isStreaming" @click="handleStop">
           <AppIcon name="square" class="h-4 w-4" />
           <span class="hidden sm:inline">{{ $t('chat.stop') }}</span>
@@ -877,7 +888,8 @@ function formatTokenCount(count: number): string {
 function formatStallDuration(durationMs: number): string {
   return formatDurationSeconds(Math.max(1, Math.round(durationMs / 1000)))
 }
-const { messages, connectionStatus, isStreaming, connect, disconnect, sendMessage, newSession, stopTask, resolvePicker, submitChatAction } = useChat()
+const { messages, connectionStatus, isStreaming, contextRevision, connect, disconnect, sendMessage, newSession, stopTask, resolvePicker, submitChatAction } = useChat()
+const { usage: contextUsage } = useContextUsage(contextRevision)
 
 /** Message ids with an in-flight action click, so buttons can't be double-fired. */
 const pendingChatActions = ref<Set<string>>(new Set())

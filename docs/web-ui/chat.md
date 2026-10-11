@@ -18,6 +18,8 @@ The top of the page has a slim toolbar (`PageHeader`). On mobile its action butt
 | Amber     | Connecting / reconnecting. The WebSocket is mid-handshake.     |
 | Gray      | Disconnected. Send is disabled until the socket comes back.    |
 
+Next to it, a **context meter** shows how full the agent's context window is, e.g. *33k / 262k* with a ring. Click it for details: model, used tokens with a bar, and where [automatic compaction](../concepts/compaction) starts (the marker on the bar). The ring turns amber at 80% of the compaction threshold (of the window when automatic compaction is off) and red while automatic compaction is paused. A `~` marks an estimate: right after a new session or a compaction there is no model response to measure yet. The meter updates after every answer and compaction, and appears once the agent has run since the server started. On mobile it shows as a ring next to the action buttons.
+
 **Right side — actions:**
 
 - **Stop** — aborts whatever the agent is currently doing (only enabled while a response is streaming). Equivalent to typing `/stop` in chat or hitting the Kill button on the parent task.

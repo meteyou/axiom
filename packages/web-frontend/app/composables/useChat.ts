@@ -560,6 +560,8 @@ export function useChat() {
   const connectionStatus = useState<ConnectionStatus>('chat_status', () => 'disconnected')
   const sessionId = useState<string | null>('chat_session_id', () => null)
   const isStreaming = useState<boolean>('chat_streaming', () => false)
+  /** Bumped whenever the agent's context may have changed (turn end, compaction, new session, reconnect). */
+  const contextRevision = useState<number>('chat_context_revision', () => 0)
 
   function connect() {
     const { getAccessToken } = useAuth()
@@ -603,6 +605,7 @@ export function useChat() {
     ws.onopen = () => {
       reconnectDelay = 2000 // reset exponential backoff after successful connect
       connectionStatus.value = 'connected'
+      contextRevision.value++
       startHeartbeat(() => ws)
 
       // Clean up stale streaming messages from before the reconnect.
@@ -681,6 +684,7 @@ export function useChat() {
         if (msg.sessionId) {
           sessionId.value = msg.sessionId
         }
+        contextRevision.value++
         // Add a divider with optional summary to the chat
         messages.value = [...messages.value, {
           role: 'divider',
@@ -875,6 +879,7 @@ export function useChat() {
           messages.value = updated
         }
         isStreaming.value = false
+        contextRevision.value++
         break
 
       case 'error': {
@@ -951,6 +956,7 @@ export function useChat() {
 
       case 'compaction':
         if (msg.compaction) messages.value = upsertCompactionMessage(messages.value, msg.compaction, msg.text ?? '')
+        if (msg.compaction && msg.compaction.status !== 'running') contextRevision.value++
         break
 
       case 'retry_scheduled':
@@ -1209,6 +1215,7 @@ export function useChat() {
     connectionStatus,
     sessionId,
     isStreaming,
+    contextRevision,
     connect,
     disconnect,
     sendMessage,
