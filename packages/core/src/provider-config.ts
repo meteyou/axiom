@@ -13,7 +13,7 @@ import { encrypt, decrypt, isEncrypted, maskApiKey } from './encryption.js'
 import { RADIUS_BASE_URL, findRadiusCatalogModel, radiusCatalogToAvailableModels } from './radius-catalog.js'
 import { validateModelCompat } from './contracts/providers.js'
 import type { CompatApiTypeContract } from './contracts/providers.js'
-import type { ModelInputModalityContract, ModelThinkingLevelMapContract, ProviderModelTypeContract, ProviderModelUpdatePayloadContract } from './contracts/providers.js'
+import type { ModelCompactionOverrideContract, ModelInputModalityContract, ModelThinkingLevelMapContract, ProviderModelTypeContract, ProviderModelUpdatePayloadContract } from './contracts/providers.js'
 
 /**
  * Claude Code CLI version to advertise in the user-agent header for Anthropic requests.
@@ -824,6 +824,7 @@ export interface ProviderModelConfig {
     cacheRead?: number
     cacheWrite?: number
   }
+  compaction?: ModelCompactionOverrideContract
 }
 
 export interface ProvidersFile {
@@ -1518,12 +1519,56 @@ export function updateProviderModel(
     else delete entry.cost
   }
 
+  applyCompactionOverridePatch(entry, patch.compaction)
+
   if (Object.keys(entry).length === 1) {
     provider.models = provider.models.filter(m => m !== entry)
   }
 
   saveProviders(file)
   return provider
+}
+
+function applyCompactionOverridePatch(
+  entry: ProviderModelConfig,
+  patch: ProviderModelUpdatePayloadContract['compaction'],
+): void {
+  if (patch === undefined) return
+  if (patch === null) {
+    delete entry.compaction
+    return
+  }
+  const compaction = { ...entry.compaction }
+  for (const key of ['reserveTokens', 'keepRecentTokens'] as const) {
+    const value = patch[key]
+    if (value === null) delete compaction[key]
+    else if (value !== undefined) compaction[key] = value
+  }
+  if (Object.keys(compaction).length > 0) entry.compaction = compaction
+  else delete entry.compaction
+}
+
+/** The user's per-model compaction budget override, if any. */
+export function getModelCompactionOverride(
+  provider: Pick<ProviderConfig, 'providerType' | 'models'> | null | undefined,
+  modelId: string,
+): ModelCompactionOverrideContract | undefined {
+  if (!provider) return undefined
+  return provider.models?.find(m => m.id === modelId)?.compaction
+}
+
+/** Reads `providers.json` fresh, so edits apply without restarting running agents. */
+export function loadModelCompactionOverride(
+  providerId: string | null | undefined,
+  modelId: string,
+): ModelCompactionOverrideContract | undefined {
+  if (!providerId) return undefined
+  try {
+    return getModelCompactionOverride(loadProviders().providers.find(p => p.id === providerId), modelId)
+  } catch (err) {
+    console.warn('[compaction] Failed to read model compaction override:', err)
+    return undefined
+  }
 }
 
 /**

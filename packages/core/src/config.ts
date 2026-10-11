@@ -61,6 +61,18 @@ const TEMPLATES: Record<string, object> = {
       maxRetries: 3,
       baseDelayMs: 2000,
     },
+    compaction: {
+      enabled: true,
+      reserveTokens: 16384,
+      keepRecentTokens: 20000,
+      summaryMaxTokens: 8192,
+      maxContextTokens: 200000,
+      toolResultMaxChars: 2000,
+      tasks: {
+        enabled: true,
+        maxContextTokens: 150000,
+      },
+    },
     tokenPriceTable: {
       'gpt-4o': { input: 2.5, output: 10 },
       'gpt-4o-mini': { input: 0.15, output: 0.6 },

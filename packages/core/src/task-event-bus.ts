@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events'
 import type { CodemodeNestedCallSnapshot } from './codemode-tool.js'
+import type { ContextCompactionInfo } from './contracts/compaction.js'
 
 /**
  * Event types emitted during task execution
@@ -10,6 +11,7 @@ export type TaskEventType =
   | 'codemode_progress'
   | 'text_delta'
   | 'status_change'
+  | 'compaction'
 
 export interface TaskEvent {
   /** The type of event */
@@ -38,6 +40,8 @@ export interface TaskEvent {
   status?: string
   /** Additional info for status changes (e.g. error message, summary) */
   statusMessage?: string
+  /** Context compaction progress (for compaction) */
+  compaction?: ContextCompactionInfo
 }
 
 /**

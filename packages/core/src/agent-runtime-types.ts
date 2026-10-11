@@ -1,4 +1,5 @@
 import type { CodemodeNestedCallSnapshot } from './codemode-tool.js'
+import type { ContextCompactionInfo } from './contracts/compaction.js'
 
 export const STALL_OUTCOMES = ['recovered', 'aborted'] as const
 
@@ -39,7 +40,7 @@ export interface RetryInfo {
   error: string
 }
 
-export const TURN_ERROR_CAUSES = ['non_retryable', 'retry_exhausted', 'agent_unavailable'] as const
+export const TURN_ERROR_CAUSES = ['non_retryable', 'retry_exhausted', 'agent_unavailable', 'context_overflow'] as const
 
 /**
  * Why a turn ended terminally:
@@ -47,6 +48,8 @@ export const TURN_ERROR_CAUSES = ['non_retryable', 'retry_exhausted', 'agent_una
  * - `retry_exhausted`: transient error, but the retry budget ran out (or
  *   auto-retry is disabled)
  * - `agent_unavailable`: no agent runtime was available to run the turn
+ * - `context_overflow`: the provider rejected the context as too large and
+ *   one compact-and-retry did not get it under the limit
  */
 export type TurnErrorCause = (typeof TURN_ERROR_CAUSES)[number]
 
@@ -76,7 +79,7 @@ export interface TurnErrorInfo {
 }
 
 export interface ResponseChunk {
-  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_update' | 'tool_call_end' | 'error' | 'done' | 'stall_warning' | 'stall_resolved' | 'retry_scheduled'
+  type: 'text' | 'thinking' | 'tool_call_start' | 'tool_call_update' | 'tool_call_end' | 'error' | 'done' | 'stall_warning' | 'stall_resolved' | 'retry_scheduled' | 'compaction'
   text?: string
   /** Streamed thinking/reasoning delta (for `type: 'thinking'`) */
   thinking?: string
@@ -104,6 +107,8 @@ export interface ResponseChunk {
   retry?: RetryInfo
   /** Terminal-error details (for `type: 'error'`), when the turn persisted one. */
   errorInfo?: TurnErrorInfo
+  /** Context compaction details (for `type: 'compaction'`). */
+  compaction?: ContextCompactionInfo
 }
 
 export interface AgentRuntimeStateSnapshot {

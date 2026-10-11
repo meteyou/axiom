@@ -544,6 +544,71 @@ export function mergeRetry(
   return { error: null, changed: true }
 }
 
+const COMPACTION_TOKEN_LIMITS = {
+  reserveTokens: [1_024, 1_000_000],
+  keepRecentTokens: [1_000, 1_000_000],
+  summaryMaxTokens: [256, 200_000],
+  toolResultMaxChars: [200, 100_000],
+} as const
+
+const MAX_CONTEXT_TOKENS_RANGE = [8_192, 10_000_000] as const
+
+function validateNullableMaxContextTokens(value: unknown, name: string): string | null {
+  if (value === null) return null
+  return validateIntegerRange(value, name, MAX_CONTEXT_TOKENS_RANGE[0], MAX_CONTEXT_TOKENS_RANGE[1])
+}
+
+function mergeCompactionTasks(
+  tasks: Record<string, unknown>,
+  existing: Record<string, unknown>,
+): string | null {
+  const existingTasks = (existing.tasks ?? {}) as Record<string, unknown>
+  if (tasks.enabled !== undefined) existingTasks.enabled = !!tasks.enabled
+  if (tasks.maxContextTokens !== undefined) {
+    const err = validateNullableMaxContextTokens(tasks.maxContextTokens, 'compaction.tasks.maxContextTokens')
+    if (err) return err
+    existingTasks.maxContextTokens = tasks.maxContextTokens
+  }
+  existing.tasks = existingTasks
+  return null
+}
+
+export function mergeCompaction(
+  body: Record<string, unknown>,
+  settingsRaw: Record<string, unknown>,
+): MergeGroupResult {
+  const compaction = body.compaction as Record<string, unknown> | undefined
+  if (!compaction) return { error: null, changed: false }
+
+  const existing = (settingsRaw.compaction ?? {}) as Record<string, unknown>
+
+  if (compaction.enabled !== undefined) existing.enabled = !!compaction.enabled
+
+  for (const [key, [min, max]] of Object.entries(COMPACTION_TOKEN_LIMITS)) {
+    if (compaction[key] === undefined) continue
+    const err = validateIntegerRange(compaction[key], `compaction.${key}`, min, max)
+    if (err) return { error: err, changed: false }
+    existing[key] = compaction[key]
+  }
+
+  if (compaction.maxContextTokens !== undefined) {
+    const err = validateNullableMaxContextTokens(compaction.maxContextTokens, 'compaction.maxContextTokens')
+    if (err) return { error: err, changed: false }
+    existing.maxContextTokens = compaction.maxContextTokens
+  }
+
+  if (compaction.tasks !== undefined) {
+    if (typeof compaction.tasks !== 'object' || compaction.tasks === null) {
+      return { error: 'compaction.tasks must be an object', changed: false }
+    }
+    const err = mergeCompactionTasks(compaction.tasks as Record<string, unknown>, existing)
+    if (err) return { error: err, changed: false }
+  }
+
+  settingsRaw.compaction = existing
+  return { error: null, changed: true }
+}
+
 export function mergeStt(
   body: Record<string, unknown>,
   settingsRaw: Record<string, unknown>,

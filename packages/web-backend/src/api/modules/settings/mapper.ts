@@ -1,4 +1,5 @@
 import {
+  normalizeCompactionSettings,
   DEFAULT_HEALTH_MONITOR_NOTIFICATION_TOGGLES,
   DEFAULT_RETRY_SETTINGS,
   DEFAULT_WATCHDOG_SETTINGS,
@@ -16,6 +17,8 @@ export interface SettingsResponseContext {
   settings: SettingsData
   telegram: TelegramData
   batchingDelayMs: number
+  /** Models whose window is too small for the saved compaction settings. */
+  warnings?: string[]
 }
 
 function buildHealthMonitorResponse(settingsRaw: Record<string, unknown>) {
@@ -207,6 +210,7 @@ export function mapSettingsResponse(context: SettingsResponseContext) {
     uploads: buildUploadsResponse(settingsRaw),
     watchdog: buildWatchdogResponse(settingsRaw),
     retry: buildRetryResponse(settingsRaw),
+    compaction: normalizeCompactionSettings(context.settings.compaction),
     telegram: buildTelegramResponse(context.telegram, context.batchingDelayMs),
     healthMonitor: buildHealthMonitorResponse(settingsRaw),
     memoryConsolidation: buildConsolidationResponse(settingsRaw),
@@ -225,5 +229,6 @@ export function mapSettingsUpdateResponse(context: SettingsResponseContext) {
     message: 'Settings updated',
     ...mapSettingsResponse(context),
     healthMonitorIntervalMinutes: context.settings.healthMonitorIntervalMinutes,
+    ...(context.warnings && context.warnings.length > 0 ? { warnings: context.warnings } : {}),
   }
 }
