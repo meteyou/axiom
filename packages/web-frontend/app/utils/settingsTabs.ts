@@ -11,11 +11,12 @@ export const SETTINGS_TAB_IDS = [
   'stt',
   'secrets',
   'email',
+  'notifications',
 ] as const
 
 export type SettingsTabId = (typeof SETTINGS_TAB_IDS)[number]
 
-const USER_SETTINGS_TAB_IDS: readonly SettingsTabId[] = ['agent', 'agentHeartbeat', 'email', 'secrets']
+const USER_SETTINGS_TAB_IDS: readonly SettingsTabId[] = ['agent', 'agentHeartbeat', 'email', 'notifications', 'secrets']
 
 export function filterSettingsTabsByRole<T extends { id: SettingsTabId }>(tabs: T[], role: string | undefined): T[] {
   if (role === 'admin') return tabs
