@@ -9,6 +9,8 @@ import { initEmailSendLogTable, createEmailSendLogEntry, listEmailSendLog } from
 import { saveUpload, serializeUploadsMetadata } from './uploads.js'
 import { logToolCall } from './token-logger.js'
 import { purgeUserData, removeUserFolders } from './user-deletion.js'
+import { saveContextCompaction } from './compaction-store.js'
+import { saveContextCompactionNotice } from './context-compaction-notice.js'
 import { markWorkspaceProvisioned } from './user-scope.js'
 
 describe('purgeUserData', () => {
@@ -64,6 +66,26 @@ describe('purgeUserData', () => {
     expect(logToolCall(db, { ...record, sessionId: 's2' })).toBe(0)
     expect(logToolCall(db, { ...record, sessionId: 's1' })).toBeGreaterThan(0)
     expect(db.prepare('SELECT session_id FROM tool_calls').all()).toEqual([{ session_id: 's1' }])
+  })
+
+  it('removes compaction summaries and drops notices written after the purge', () => {
+    db.prepare("INSERT INTO sessions (id, user_id) VALUES ('s1', 1), ('s2', 2)").run()
+    const record = {
+      scope: 'interactive' as const, reason: 'threshold' as const, provider: 'p', model: 'm',
+      tokensBefore: 10, tokensAfter: 5, summary: 'private', firstKeptTimestamp: null,
+      promptTokens: 0, completionTokens: 0, cacheRead: 0, cacheWrite: 0, estimatedCost: 0,
+    }
+    saveContextCompaction(db, { ...record, sessionId: 's1' })
+    saveContextCompaction(db, { ...record, sessionId: 's2' })
+
+    purgeUserData(db, 2)
+
+    expect(db.prepare('SELECT session_id FROM context_compactions').all()).toEqual([{ session_id: 's1' }])
+    expect(saveContextCompaction(db, { ...record, sessionId: 's2' })).toBe(0)
+    const info = { compactionId: 'c', status: 'completed' as const, reason: 'manual' as const, tokensBefore: 1, occurredAt: '' }
+    expect(saveContextCompactionNotice(db, { sessionId: 's2', userId: 2, info }).messageId).toBeUndefined()
+    expect(saveContextCompactionNotice(db, { sessionId: 's2', userId: null, info }).messageId).toBeUndefined()
+    expect(saveContextCompactionNotice(db, { sessionId: 's1', userId: 1, info }).messageId).toBeTypeOf('number')
   })
 })
 
