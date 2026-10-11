@@ -1059,7 +1059,11 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
         yield* this.executePromptWithRetry(text, sessionId, isRetry, images, true, true)
         return
       }
-      yield { type: 'error' as const, error: describeContextOverflow(this.model, overflowMessage, 'compaction could not reduce it') }
+      yield {
+        type: 'error' as const,
+        error: describeContextOverflow(this.model, overflowMessage, 'compaction could not reduce it'),
+        errorCause: 'context_overflow' as const,
+      }
     }
 
     // Safety net: if no 'done' chunk was yielded (e.g. agent_end never fired),
@@ -1187,7 +1191,11 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
           // turn would finish silently and the user would see nothing at all.
           if (options.suppressProviderError) break
           if (options.overflowRetried && this.compactor.isRecoverableOverflow(assistantMsg)) {
-            chunks.push({ type: 'error', error: describeContextOverflow(this.model, assistantMsg, 'compacting once did not help') })
+            chunks.push({
+              type: 'error',
+              error: describeContextOverflow(this.model, assistantMsg, 'compacting once did not help'),
+              errorCause: 'context_overflow',
+            })
           } else if (assistantMsg.stopReason === 'error') {
             chunks.push({
               type: 'error',

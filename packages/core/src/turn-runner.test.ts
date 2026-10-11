@@ -1026,6 +1026,23 @@ describe('TurnRunner', () => {
       expect(error.chunk.error).toContain('insufficient_quota')
     })
 
+    it('fails a structured context overflow without retrying, even when its text looks transient', async () => {
+      const db = freshDb()
+      const { agent, calls } = sequenceAgent([
+        [{ type: 'error', error: 'Context window exceeded and compacting once did not help: 503', errorCause: 'context_overflow' }],
+        [{ type: 'text', text: 'never reached' }, { type: 'done' }],
+      ])
+      const runner = startRunner(db, agent, { retryPolicy: { maxRetries: 3, baseDelayMs: 1 } })
+
+      const events: TurnEvent[] = []
+      runner.subscribe(USER_ID, collect(events))
+      runner.startTurn({ userId: USER_ID, sessionId: SESSION_ID, text: 'hi' })
+      await waitFor(() => !runner.hasActiveTurn(USER_ID))
+
+      expect(calls).toHaveLength(1)
+      expect(errorChunk(events)!.errorInfo).toMatchObject({ cause: 'context_overflow', retryable: false })
+    })
+
     it('ends in a terminal error chunk once the retry budget is exhausted', async () => {
       vi.useFakeTimers()
       const db = freshDb()
