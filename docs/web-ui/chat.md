@@ -170,6 +170,10 @@ slash-command interception and are delivered to the agent verbatim.
 
 If the WebSocket drops (network blip, server restart), the connection dot turns amber and the client reconnects automatically with backoff. Messages you sent before the drop arrive when the socket is back. The Send button stays disabled while disconnected.
 
+## Leaving while the agent works
+
+Closing the tab or locking your phone does not stop a reply: the backend finishes the turn, stores it, and shows it when you come back. With [push notifications](../guide/push-notifications) enabled, you also get a notification once the reply is ready — but only while no chat page of yours is visible.
+
 ## Keyboard shortcuts
 
 | Shortcut      | Action                             |
@@ -185,3 +189,4 @@ If the WebSocket drops (network blip, server restart), the connection dot turns 
 - [Settings → Agent](../settings/agent) — provider, model, language, reasoning level.
 - [Settings → Speech-to-Text](../settings/speech-to-text) and [Text-to-Speech](../settings/text-to-speech) — voice input and output.
 - [Settings → Telegram](../settings/telegram) — how Telegram-tagged messages get into the chat.
+- [App & Push Notifications](../guide/push-notifications) — install Axiom on your phone and get notified when a reply is ready.

@@ -4,7 +4,7 @@ Tune how the agent behaves, how long sessions live, which provider answers, and 
 
 All settings described in this section live in the web UI under **Settings**, and are persisted to `/data/config/settings.json`. You can edit either — the UI is the supported path, the file is documented for power users and for the agent itself to reason about.
 
-> **Admin only, except personal settings.** Only users with role `admin` can see and change the settings described in this section. Regular users get the **Agent** tab, where they set their own chat model, thinking level, language and timezone — see [Agent → Personal agent settings](./agent#personal-agent-settings-regular-users) — plus the **Heartbeat** tab for their own heartbeat, the **Email** tab for their own mail accounts — see [Email](./email) — and the **Secrets** tab for personal secrets that override global ones of the same name — see [Secrets](./secrets).
+> **Admin only, except personal settings.** Only users with role `admin` can see and change the settings described in this section. Regular users get the **Agent** tab, where they set their own chat model, thinking level, language and timezone — see [Agent → Personal agent settings](./agent#personal-agent-settings-regular-users) — plus the **Heartbeat** tab for their own heartbeat, the **Email** tab for their own mail accounts — see [Email](./email) — the **Notifications** tab for push notifications on their own devices — see [App & Push Notifications](../guide/push-notifications) — and the **Secrets** tab for personal secrets that override global ones of the same name — see [Secrets](./secrets).
 
 ## The Settings Subpages
 
@@ -19,6 +19,7 @@ The Settings page has one sidebar entry per concern. Each gets its own docs page
 | [Health Monitor](./health-monitor)   | Provider health checks, automatic fallback, notification toggles.                       |
 | [Image Generation](./image-generation) | Switch for `generate_image`, default image model, variant limit, output folder. |
 | [Memory](./memory)                   | Session timeout, memory consolidation, fact extraction.                                 |
+| [Notifications](../guide/push-notifications#enable-notifications) | Push notifications for finished chat replies on your own devices (every user, not only admins). |
 | [Secrets](./secrets)                 | API keys and other sensitive values stored in `/data/config/secrets.json`.              |
 | [Speech-to-Text](./speech-to-text)   | Transcription provider (OpenAI, Whisper URL, Ollama) and optional LLM rewrite.          |
 | [Tasks](./tasks)                     | Default task provider, max duration, loop detection, status updates, Telegram delivery, codemode (experimental). |
@@ -27,7 +28,7 @@ The Settings page has one sidebar entry per concern. Each gets its own docs page
 
 ## Saving changes
 
-Every panel except **Secrets** uses the same **Save** button in the page header. Changes take effect on the next agent turn — no restart needed. Secrets have their own per-row save/delete flow because they are write-only from the UI's perspective (existing values are masked, never returned in full).
+Every panel except **Secrets**, **Email** and **Notifications** uses the same **Save** button in the page header. Changes take effect on the next agent turn — no restart needed. Secrets have their own per-row save/delete flow because they are write-only from the UI's perspective (existing values are masked, never returned in full).
 
 ## Where values live
 
