@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatTokenCount, parseContextCompactionInfo } from './compaction.js'
+import { formatTokenCount, formatTokensAfter, parseContextCompactionInfo } from './compaction.js'
 
 describe('parseContextCompactionInfo', () => {
   it('rebuilds a persisted compaction row', () => {
@@ -31,6 +31,14 @@ describe('parseContextCompactionInfo', () => {
     expect(parseContextCompactionInfo({ kind: 'turn_error', error: 'x' }, 1)).toBeNull()
     expect(parseContextCompactionInfo(null, 1)).toBeNull()
     expect(parseContextCompactionInfo('{"kind":"context_compaction"}')).toBeNull()
+  })
+})
+
+describe('formatTokensAfter', () => {
+  it('marks an estimate until the provider reported the real size', () => {
+    expect(formatTokensAfter({ tokensAfter: 29_121 })).toBe('~29k')
+    expect(formatTokensAfter({ tokensAfter: 33_106, tokensAfterMeasured: true })).toBe('33k')
+    expect(parseContextCompactionInfo({ kind: 'context_compaction', compactionId: 'c', tokensAfterMeasured: true })?.tokensAfterMeasured).toBe(true)
   })
 })
 

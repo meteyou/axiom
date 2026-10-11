@@ -118,13 +118,18 @@ describe('AgentRuntime context compaction', () => {
     expect(core.state.callCount).toBe(3)
     expect(chunks.filter(chunk => chunk.type === 'error')).toEqual([])
     expect(chunks.filter(chunk => chunk.type === 'text').map(chunk => chunk.text).join('')).toBe('fresh answer')
+    // The retried answer reports the real context size, which replaces the estimate.
     const finished = chunks.filter(chunk => chunk.type === 'compaction' && chunk.compaction?.status !== 'running')
-    expect(finished.map(chunk => [chunk.compaction?.status, chunk.compaction?.reason])).toEqual([['completed', 'overflow']])
+    expect(finished.map(chunk => [chunk.compaction?.status, chunk.compaction?.reason, chunk.compaction?.tokensAfterMeasured]))
+      .toEqual([['completed', 'overflow', undefined], ['completed', 'overflow', true]])
+    expect(finished[1]!.compaction!.compactionId).toBe(finished[0]!.compaction!.compactionId)
     expect(chunks.filter(chunk => chunk.type === 'done')).toHaveLength(1)
 
     expect(findSummaryMessage(agent.state.messages)?.summary).toContain('## Goal')
     expect(agent.state.messages.some(m => m.role === 'assistant' && m.stopReason === 'error')).toBe(false)
-    expect(listContextCompactions(db, 'session-1')).toHaveLength(1)
+    const records = listContextCompactions(db, 'session-1')
+    expect(records).toHaveLength(1)
+    expect(records[0]!.tokensAfter).toBe(finished[1]!.compaction!.tokensAfter)
     const usage = db.prepare('SELECT COUNT(*) AS n FROM token_usage WHERE session_id = ?').get('session-1') as { n: number }
     expect(usage.n).toBeGreaterThanOrEqual(2)
   })

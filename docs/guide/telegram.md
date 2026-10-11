@@ -100,7 +100,8 @@ with the list of available skills.
 `/compact [instructions]` summarizes the older part of the conversation to
 free up context — see [Context Compaction](../concepts/compaction). After a
 compaction, manual or automatic, the bot posts one short status line such as
-*Context compacted (368k → 41k tokens)*. The main agent shares one
+*Context compacted (368k → ~41k tokens)* (`~`: estimated; the web chat later
+shows the measured size). The main agent shares one
 conversation across channels, so this also compacts what the web chat sees.
 
 Everything else is treated as a normal message and forwarded to the agent.

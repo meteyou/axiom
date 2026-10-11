@@ -41,7 +41,7 @@
 </template>
 
 <script setup lang="ts">
-import { formatTokenCount, type ContextCompactionInfo } from '@axiom/core/contracts'
+import { formatTokenCount, formatTokensAfter, type ContextCompactionInfo } from '@axiom/core/contracts'
 
 const props = defineProps<{
   info: ContextCompactionInfo
@@ -59,7 +59,7 @@ const label = computed(() => {
     case 'running':
       return t('chat.compaction.running', { before })
     case 'completed':
-      return t('chat.compaction.completed', { before, after: formatTokenCount(props.info.tokensAfter ?? 0) })
+      return t('chat.compaction.completed', { before, after: formatTokensAfter(props.info) })
     case 'skipped':
       return t('chat.compaction.skipped')
     case 'failed':

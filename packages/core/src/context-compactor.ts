@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { Agent as PiAgent, AgentLoopTurnUpdate, AgentMessage, PrepareNextTurnContext } from '@earendil-works/pi-agent-core'
+import type { Agent as PiAgent, AgentEvent, AgentLoopTurnUpdate, AgentMessage, PrepareNextTurnContext } from '@earendil-works/pi-agent-core'
 import { isContextOverflow } from '@earendil-works/pi-ai'
 import type { Api, AssistantMessage, Model, RetryPolicy } from '@earendil-works/pi-ai'
 import type { Database } from './database.js'
@@ -10,9 +10,11 @@ import {
   compactMessages,
   estimateContextTokens,
   estimateMessageTokens,
+  estimateMessagesTokens,
   estimateSystemTokens,
   findSummaryMessage,
   projectCompactedTokens,
+  requestContextTokens,
   resolveCompactionSettings,
   resolveEffectiveCompactionBudget,
   shouldCompact,
@@ -25,7 +27,7 @@ import type {
   EffectiveCompactionBudget,
   ResolvedCompactionSettings,
 } from './compaction.js'
-import { saveContextCompaction } from './compaction-store.js'
+import { saveContextCompaction, updateContextCompactionTokensAfter } from './compaction-store.js'
 import { loadCompactionSettings } from './compaction-diagnostics.js'
 import { estimateCost } from './provider-config.js'
 import { logTokenUsage } from './token-logger.js'
@@ -103,6 +105,13 @@ function linkSignals(signals: (AbortSignal | undefined)[]): AbortController {
   return controller
 }
 
+interface PendingMeasurement {
+  info: ContextCompactionInfo
+  /** Last message of the compacted transcript; the next request covers it and anything added after. */
+  anchor: AgentMessage
+  recordId: number | null
+}
+
 /**
  * Owns context compaction for one pi agent: the between-turn hook, the check
  * before a new prompt, overflow recovery and manual `/compact`. Both the main
@@ -123,6 +132,8 @@ export class ContextCompactor {
    */
   private pausedSummaryTokens: number | null = null
   private warned = new Set<ContextCompactionWarning>()
+  /** Last compaction whose estimated `tokensAfter` still waits for the provider's number. */
+  private pendingMeasurement: PendingMeasurement | null = null
 
   constructor(private readonly options: ContextCompactorOptions) {}
 
@@ -131,6 +142,7 @@ export class ContextCompactor {
   attach(agent: PiAgent): void {
     this.agent = agent
     agent.prepareNextTurnWithContext = (turn, signal) => this.prepareNextTurn(turn, signal)
+    agent.subscribe(event => this.measureAfterCompaction(event))
   }
 
   /** Forget per-conversation state (new session, cleared transcript). */
@@ -138,6 +150,7 @@ export class ContextCompactor {
     this.lastCompactionAnchor = undefined
     this.pausedSummaryTokens = null
     this.warned.clear()
+    this.pendingMeasurement = null
   }
 
   abort(): void {
@@ -283,14 +296,18 @@ export class ContextCompactor {
 
       agent.state.messages = outcome.messages
       this.lastCompactionAnchor = lastAssistant(outcome.messages)
-      this.recordUsage(outcome, options.reason, model)
+      const recordId = this.recordUsage(outcome, options.reason, model)
       const warnings = this.checkHeadroom(outcome, budget)
-      emit({
+      const completed: ContextCompactionInfo = {
+        ...base,
         status: 'completed',
         tokensAfter: outcome.tokensAfter,
         summary: outcome.summary,
         ...(warnings.length > 0 ? { warnings } : {}),
-      })
+        occurredAt: new Date(now()).toISOString(),
+      }
+      this.options.onEvent?.(completed)
+      this.pendingMeasurement = { info: completed, anchor: outcome.messages[outcome.messages.length - 1], recordId }
       return outcome
     } catch (err) {
       const aborted = err instanceof CompactionAbortedError || controller.signal.aborted
@@ -337,7 +354,37 @@ export class ContextCompactor {
     return true
   }
 
-  private recordUsage(outcome: CompactionOutcome, reason: CompactionReason, model: Model<Api>): void {
+  /**
+   * Replace the estimated `tokensAfter` of the last compaction with the size
+   * the provider reports for the first request after it, minus a heuristic
+   * for messages added since (typically just the next user prompt).
+   */
+  private measureAfterCompaction(event: AgentEvent): void {
+    const pending = this.pendingMeasurement
+    if (!pending || event.type !== 'message_end') return
+    const requestTokens = requestContextTokens(event.message)
+    if (requestTokens === null) return
+
+    this.pendingMeasurement = null
+    const messages = this.requireAgent().state.messages
+    const anchorIndex = messages.lastIndexOf(pending.anchor)
+    if (anchorIndex === -1) return
+    const added = messages.slice(anchorIndex + 1).filter(message => message !== event.message)
+    const tokensAfter = Math.max(0, requestTokens - estimateMessagesTokens(added))
+
+    const db = this.options.db
+    if (db && pending.recordId !== null) {
+      try {
+        updateContextCompactionTokensAfter(db, pending.recordId, tokensAfter)
+      } catch (err) {
+        console.error('[compaction] Failed to store the measured context size:', err)
+      }
+    }
+    this.options.onEvent?.({ ...pending.info, tokensAfter, tokensAfterMeasured: true })
+  }
+
+  /** Returns the id of the `context_compactions` row, or null when nothing was stored. */
+  private recordUsage(outcome: CompactionOutcome, reason: CompactionReason, model: Model<Api>): number | null {
     const usage = outcome.usage
     const tokens: CompactionUsage = {
       promptTokens: usage.input,
@@ -351,10 +398,10 @@ export class ContextCompactor {
     this.options.onUsage?.(tokens)
 
     const db = this.options.db
-    if (!db) return
+    if (!db) return null
     const sessionId = this.options.getSessionId() ?? null
     try {
-      saveContextCompaction(db, {
+      const recordId = saveContextCompaction(db, {
         sessionId,
         scope: this.options.scope,
         reason,
@@ -367,8 +414,10 @@ export class ContextCompactor {
         ...tokens,
       })
       logTokenUsage(db, { provider: model.provider, model: model.id, ...tokens, sessionId: sessionId ?? undefined })
+      return recordId > 0 ? recordId : null
     } catch (err) {
       console.error('[compaction] Failed to persist compaction record:', err)
+      return null
     }
   }
 

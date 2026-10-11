@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentMessage, PrepareNextTurnContext, StreamFn } from '@earendil-works/pi-agent-core'
 import { createAssistantMessageEventStream, createFauxCore, fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai'
-import type { TranscriptContext } from '@earendil-works/pi-ai'
+import type { AssistantMessage, TranscriptContext } from '@earendil-works/pi-ai'
 import type { ContextCompactionInfo } from './contracts/compaction.js'
 import { createAxiomAgent } from './agent-factory.js'
 import { ContextCompactor } from './context-compactor.js'
 import type { ContextCompactorOptions } from './context-compactor.js'
-import { SUMMARIZATION_SYSTEM_PROMPT, findSummaryMessage } from './compaction.js'
+import { SUMMARIZATION_SYSTEM_PROMPT, estimateMessageTokens, findSummaryMessage } from './compaction.js'
 import type { CompactionSettingsSource } from './compaction.js'
 
 const SUMMARY_TEXT = '## Goal\n- Finish the report\n\n## Open Threads & Next Steps\n1. Continue'
@@ -41,10 +41,16 @@ function toolTurn(id: string, resultTokens: number): AgentMessage[] {
 /**
  * 40k window: reserve 10k → trigger 30k, keep 1.5k.
  */
-function setup(options: Partial<ContextCompactorOptions> & { settings?: CompactionSettingsSource; streamFn?: StreamFn } = {}) {
+function setup(options: Partial<ContextCompactorOptions> & {
+  settings?: CompactionSettingsSource
+  streamFn?: StreamFn
+  /** Answers agent turns; without it every request must be a summary call. */
+  answer?: () => ReturnType<typeof fauxAssistantMessage>
+} = {}) {
   const core = createFauxCore({ models: [{ id: 'small-model', contextWindow: 40_000, maxTokens: 4_000 }] })
   let summaryCalls = 0
   const summarize = (context: TranscriptContext) => {
+    if (options.answer && !isSummaryRequest(context)) return options.answer()
     expect(isSummaryRequest(context)).toBe(true)
     summaryCalls++
     return fauxAssistantMessage(SUMMARY_TEXT)
@@ -173,6 +179,29 @@ describe('ContextCompactor', () => {
 
     expect(await compactor.compactNow({ reason: 'manual' })).toBeNull()
     expect(finished()).toEqual([expect.objectContaining({ status: 'failed', error: expect.stringMatching(/timed out/) })])
+  })
+
+  it('replaces the estimated size with the one the provider reports for the next request', async () => {
+    const { agent, compactor, finished } = setup({ answer: () => fauxAssistantMessage('next answer') })
+    agent.state.messages = [agent.state.messages[0], user(4_000), assistant(4_000), user(4_000), assistant(500)]
+    expect(await compactor.compactNow({ reason: 'manual' })).not.toBeNull()
+    const [completed] = finished()
+    expect(completed.status).toBe('completed')
+    expect(completed).not.toHaveProperty('tokensAfterMeasured')
+
+    await agent.prompt('what did we do so far?')
+    const answer = agent.state.messages.at(-1) as AssistantMessage
+    const prompt = agent.state.messages.at(-2)!
+    const requestTokens = answer.usage.input + answer.usage.cacheRead + answer.usage.cacheWrite
+    expect(finished()).toHaveLength(2)
+    expect(finished()[1]).toEqual({
+      ...completed,
+      tokensAfter: requestTokens - estimateMessageTokens(prompt),
+      tokensAfterMeasured: true,
+    })
+
+    await agent.prompt('and then?')
+    expect(finished()).toHaveLength(2)
   })
 
   it('stays out of the way below the trigger and when tasks have compaction disabled', async () => {

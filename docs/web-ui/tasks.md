@@ -108,7 +108,7 @@ The task's final `STATUS: completed | failed | question | silent` block is rende
 
 #### Context compaction
 
-When a long task compacts its context, a divider *Context compacted (120k → 18k tokens)* appears in the timeline. Click it to read the summary the task continues from. See [Context Compaction](../concepts/compaction).
+When a long task compacts its context, a divider *Context compacted (120k → ~18k tokens)* appears in the timeline; the estimated size after `~` is replaced by the measured one once the task's next model call returns. Click it to read the summary the task continues from. See [Context Compaction](../concepts/compaction).
 
 #### Status changes
 

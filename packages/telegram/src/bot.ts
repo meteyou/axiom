@@ -1265,10 +1265,11 @@ export class TelegramBot {
       return
     }
 
-    // The keepalive `running` chunks only matter to the watchdog; the outcome
-    // is worth one short line because the next answer may refer to less detail.
+    // The keepalive `running` chunks only matter to the watchdog, and the later
+    // measured context size would repeat a line already sent; the outcome is
+    // worth one short line because the next answer may refer to less detail.
     if (chunk.type === 'compaction') {
-      if (!chunk.text || chunk.compaction?.status === 'running') return
+      if (!chunk.text || chunk.compaction?.status === 'running' || chunk.compaction?.tokensAfterMeasured) return
       void this.sendPlainOrFormatted(chatId, chunk.text).catch((err) => {
         console.error('[telegram] Failed to deliver compaction notice:', err)
       })

@@ -44,6 +44,21 @@ describe('saveContextCompactionNotice', () => {
     expect(parseContextCompactionInfo(JSON.parse(row.metadata), saved.messageId)).toEqual(saved)
   })
 
+  it('updates the row of a compaction in place when its measured size arrives', () => {
+    const saved = saveContextCompactionNotice(db, { sessionId: 's-1', userId: null, info: completed })
+    const measured = saveContextCompactionNotice(db, {
+      sessionId: 's-1',
+      userId: null,
+      info: { ...completed, tokensAfter: 33_000, tokensAfterMeasured: true },
+    })
+
+    expect(measured.messageId).toBe(saved.messageId)
+    const rows = db.prepare('SELECT content, metadata FROM chat_messages').all() as { content: string; metadata: string }[]
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.content).toContain('368k \u2192 33k tokens')
+    expect(parseContextCompactionInfo(JSON.parse(rows[0]!.metadata))).toMatchObject({ tokensAfter: 33_000, tokensAfterMeasured: true })
+  })
+
   it('keeps running keepalives live-only', () => {
     const running = { ...completed, status: 'running' as const }
     expect(saveContextCompactionNotice(db, { sessionId: 's-1', userId: null, info: running })).toBe(running)
@@ -54,7 +69,7 @@ describe('saveContextCompactionNotice', () => {
 describe('formatContextCompactionContent', () => {
   it('adds one line per warning', () => {
     const lines = formatContextCompactionContent(completed).split('\n')
-    expect(lines[0]).toContain('368k \u2192 41k')
+    expect(lines[0]).toContain('368k \u2192 ~41k')
     expect(lines[1]).toContain('Automatic compaction is paused')
   })
 })

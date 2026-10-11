@@ -97,6 +97,10 @@ export function saveContextCompaction(db: Database, record: ContextCompactionRec
   return result.changes > 0 ? Number(result.lastInsertRowid) : 0
 }
 
+export function updateContextCompactionTokensAfter(db: Database, id: number, tokensAfter: number): void {
+  db.prepare('UPDATE context_compactions SET tokens_after = ? WHERE id = ?').run(tokensAfter, id)
+}
+
 export function listContextCompactions(db: Database, sessionId: string): ContextCompactionRecord[] {
   const rows = db.prepare(
     'SELECT * FROM context_compactions WHERE session_id = ? ORDER BY id ASC',
