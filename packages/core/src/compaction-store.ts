@@ -1,4 +1,5 @@
 import type { Database } from './database.js'
+import { SESSION_OWNER_NOT_DELETED } from './token-logger.js'
 import type { CompactionReason, CompactionScope } from './compaction.js'
 
 export interface ContextCompactionRecord {
@@ -75,7 +76,7 @@ export function saveContextCompaction(db: Database, record: ContextCompactionRec
     INSERT INTO context_compactions (
       session_id, scope, reason, provider, model, tokens_before, tokens_after, summary,
       first_kept_timestamp, prompt_tokens, completion_tokens, cache_read, cache_write, estimated_cost
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE ${SESSION_OWNER_NOT_DELETED}
   `).run(
     record.sessionId,
     record.scope,
@@ -91,8 +92,9 @@ export function saveContextCompaction(db: Database, record: ContextCompactionRec
     record.cacheRead,
     record.cacheWrite,
     record.estimatedCost,
+    record.sessionId,
   )
-  return Number(result.lastInsertRowid)
+  return result.changes > 0 ? Number(result.lastInsertRowid) : 0
 }
 
 export function listContextCompactions(db: Database, sessionId: string): ContextCompactionRecord[] {
