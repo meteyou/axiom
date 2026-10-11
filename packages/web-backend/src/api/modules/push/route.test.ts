@@ -95,12 +95,12 @@ describe('push API', () => {
   })
 
   it('subscribes a device and lists it for its owner only', async () => {
-    const res = await subscribe(aliceToken, 'https://push.example/alice-phone')
+    const res = await subscribe(aliceToken, 'https://fcm.googleapis.com/fcm/send/alice-phone')
     expect(res.status).toBe(201)
 
     const alice = await listDevices(aliceToken)
     expect(alice.body.devices).toEqual([expect.objectContaining({
-      endpoint: 'https://push.example/alice-phone',
+      endpoint: 'https://fcm.googleapis.com/fcm/send/alice-phone',
       deviceLabel: 'Chrome on Android',
       userAgent: 'TestBrowser/1.0',
     })])
@@ -112,18 +112,21 @@ describe('push API', () => {
   })
 
   it('rejects malformed subscriptions', async () => {
-    expect((await subscribe(aliceToken, 'http://push.example/plain-http')).status).toBe(400)
+    expect((await subscribe(aliceToken, 'http://fcm.googleapis.com/fcm/send/plain-http')).status).toBe(400)
     expect((await subscribe(aliceToken, 'not a url')).status).toBe(400)
+    expect((await subscribe(aliceToken, 'https://10.0.0.5:8443/internal')).status).toBe(400)
+    expect((await subscribe(aliceToken, 'https://fcm.googleapis.com.evil.example/fcm/send/x')).status).toBe(400)
+    expect(listPushSubscriptions(db, aliceId)).toEqual([])
     const missingKeys = await fetch(`${baseUrl}/api/push/subscriptions`, {
       method: 'POST',
       headers: headers(aliceToken),
-      body: JSON.stringify({ subscription: { endpoint: 'https://push.example/x', keys: { p256dh: 'a b', auth: '' } } }),
+      body: JSON.stringify({ subscription: { endpoint: 'https://fcm.googleapis.com/fcm/send/x', keys: { p256dh: 'a b', auth: '' } } }),
     })
     expect(missingKeys.status).toBe(400)
   })
 
   it('does not let a user remove someone else\'s device', async () => {
-    await subscribe(aliceToken, 'https://push.example/alice-phone')
+    await subscribe(aliceToken, 'https://fcm.googleapis.com/fcm/send/alice-phone')
     const [device] = (await listDevices(aliceToken)).body.devices
 
     const asBob = await fetch(`${baseUrl}/api/push/subscriptions/${device!.id}`, { method: 'DELETE', headers: headers(bobToken) })
@@ -136,8 +139,8 @@ describe('push API', () => {
   })
 
   it('sends a test notification to the caller\'s devices only', async () => {
-    await subscribe(aliceToken, 'https://push.example/alice-phone')
-    await subscribe(bobToken, 'https://push.example/bob-phone')
+    await subscribe(aliceToken, 'https://fcm.googleapis.com/fcm/send/alice-phone')
+    await subscribe(bobToken, 'https://fcm.googleapis.com/fcm/send/bob-phone')
 
     const res = await fetch(`${baseUrl}/api/push/test`, { method: 'POST', headers: headers(aliceToken) })
 
@@ -147,13 +150,13 @@ describe('push API', () => {
     ])
     expect(send).toHaveBeenCalledTimes(1)
     const [subscription, payload, options] = send.mock.calls[0]!
-    expect(subscription.endpoint).toBe('https://push.example/alice-phone')
+    expect(subscription.endpoint).toBe('https://fcm.googleapis.com/fcm/send/alice-phone')
     expect(JSON.parse(payload)).toMatchObject({ kind: 'test', title: 'Axiom', body: expect.stringContaining('Testbenachrichtigung') })
     expect(options.vapidDetails?.subject).toBe('https://axiom.example.org')
   })
 
   it('removes devices the push service reports as gone during a test', async () => {
-    await subscribe(aliceToken, 'https://push.example/expired')
+    await subscribe(aliceToken, 'https://fcm.googleapis.com/fcm/send/expired')
     send.mockRejectedValue(Object.assign(new Error('Received unexpected response code'), { statusCode: 410 }))
 
     const res = await fetch(`${baseUrl}/api/push/test`, { method: 'POST', headers: headers(aliceToken) })
