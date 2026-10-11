@@ -13,6 +13,7 @@ import {
   TaskStore,
   ScheduledTaskStore,
   TurnRunner,
+  getPushPreviewEnabled,
 } from '@axiom/core'
 import { buildWebChatSlashCommandRegistry } from './slash-commands.js'
 import { authenticateToken, onUserSessionsRevoked } from './auth.js'
@@ -24,10 +25,14 @@ import type { ChatEventBus, ChatEvent } from './chat-event-bus.js'
 import type { ChatActionMessage, ChatActionRegistry } from './chat-actions.js'
 import { registerTurnRetryChatChannel } from './turn-retry-chat.js'
 import type { TurnRetryChatChannel } from './turn-retry-chat.js'
+import type { PushNotifier } from './push/push-notifier.js'
+import { createWebTurnPush } from './push/turn-push.js'
 
 interface ChatMessage {
-  type: 'message' | 'command' | 'ping'
+  type: 'message' | 'command' | 'ping' | 'visibility'
   content: string
+  /** For `visibility`: whether the page is currently visible to the user. */
+  visible?: boolean
   /** When true, skip saving to DB (message already persisted via HTTP upload) */
   skipSave?: boolean
   /** Upload descriptors for file attachments (passed when skipSave is true) */
@@ -168,6 +173,7 @@ export function setupWebSocketChat(
   chatEventBus?: ChatEventBus,
   chatActions?: ChatActionRegistry | null,
   sharedTurnRunner?: TurnRunner,
+  pushNotifier?: PushNotifier | null,
 ): WebSocketChatResult {
   // Support both getter function and direct reference (backward compat)
   const resolveAgentCore = typeof getAgentCore === 'function' ? getAgentCore : () => getAgentCore
@@ -217,6 +223,23 @@ export function setupWebSocketChat(
   const userClients = new Map<number, Set<WebSocket>>()
   /** Turn-runner unsubscribe handles, one per authenticated connection. */
   const turnSubscriptions = new Map<WebSocket, () => void>()
+  /**
+   * Page visibility reported by each connection. A connection counts as visible
+   * until it says otherwise, so clients that never report keep the old
+   * behavior of not being notified while connected.
+   */
+  const clientVisibility = new Map<WebSocket, boolean>()
+
+  const webTurnPush = pushNotifier
+    ? createWebTurnPush({
+        runner: turnRunner,
+        notifier: pushNotifier,
+        getClients: userId => [...(userClients.get(userId) ?? [])].map(client => ({
+          visible: clientVisibility.get(client) ?? true,
+        })),
+        getShowPreview: userId => getPushPreviewEnabled(db, userId),
+      })
+    : null
 
   /**
    * Attach a connection to its user's turn stream. Subscribing replays the
@@ -335,6 +358,11 @@ export function setupWebSocketChat(
         return
       }
 
+      if (parsed.type === 'visibility') {
+        if (typeof parsed.visible === 'boolean') clientVisibility.set(ws, parsed.visible)
+        return
+      }
+
       // What the agent receives. Differs from `parsed.content` only for
       // slash commands that enrich the input (e.g. /skill), where the raw
       // command is persisted but the agent sees the expanded text.
@@ -400,6 +428,7 @@ export function setupWebSocketChat(
             : parsed.content.replace(/^\//, '').trim().toLowerCase()
 
         if (command === 'new') {
+          webTurnPush?.cancelForUser(currentUser.userId)
           turnRunner.abortTurn(currentUser.userId)
 
           const agentCore = resolveAgentCore()
@@ -429,6 +458,7 @@ export function setupWebSocketChat(
         }
 
         if (command === 'stop' || command === 'kill') {
+          webTurnPush?.cancelForUser(currentUser.userId)
           if (!turnRunner.abortTurn(currentUser.userId)) {
             sendMessage(ws, { type: 'system', text: 'Nothing to stop.' })
             return
@@ -478,7 +508,7 @@ export function setupWebSocketChat(
       // chunks, attachments, stall notices, `done` — arrives through the
       // per-connection turn subscription, so the turn survives this socket
       // going away and is replayed to whoever attaches next.
-      turnRunner.startTurn({
+      const turn = turnRunner.startTurn({
         userId: currentUser.userId,
         sessionId: resolvedSessionId,
         text: agentText,
@@ -486,6 +516,7 @@ export function setupWebSocketChat(
         attachments: parsed.attachments,
         preambleToolCalls,
       })
+      webTurnPush?.watch(currentUser.userId, turn.turnId)
     })
 
     ws.on('close', () => {
@@ -509,6 +540,7 @@ export function setupWebSocketChat(
       authenticatedClients.delete(ws)
       clientSessions.delete(ws)
       connectionIds.delete(ws)
+      clientVisibility.delete(ws)
     })
   })
 

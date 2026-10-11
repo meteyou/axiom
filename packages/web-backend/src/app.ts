@@ -31,6 +31,9 @@ import type { RuntimeMetrics } from './runtime-metrics.js'
 import type { MemoryConsolidationScheduler } from './memory-consolidation-scheduler.js'
 import { createUploadsRouter } from './routes/uploads.js'
 import type { ChatActionRegistry } from './chat-actions.js'
+import { createPushRouter } from './api/modules/push/route.js'
+import { createPushNotifier } from './push/push-notifier.js'
+import type { PushNotifier } from './push/push-notifier.js'
 
 const startTime = Date.now()
 
@@ -80,6 +83,8 @@ export interface AppOptions {
    */
   getQuotaSnapshot?: () => Record<string, ProviderQuotaContract>
   refreshQuota?: (providerId: string) => Promise<ProviderQuotaContract | null>
+  /** Shared with the chat WebSocket so turn notifications and the test endpoint use the same keys. */
+  pushNotifier?: PushNotifier | null
 }
 
 export function createApp(options?: AppOptions): express.Express {
@@ -209,6 +214,10 @@ export function createApp(options?: AppOptions): express.Express {
     app.use('/api/tts', createTtsRouter())
     app.use('/api/stt', createSttRouter(options.db))
     app.use('/api/deepgram', createDeepgramRouter())
+    app.use('/api/push', createPushRouter({
+      db: options.db,
+      notifier: options.pushNotifier ?? createPushNotifier({ db: options.db }),
+    }))
 
     if (options.healthMonitorService && options.runtimeMetrics) {
       app.use('/api/health', createHealthRouter({
