@@ -14,7 +14,7 @@ import { formatJournalRecoveryContext } from './task-recovery-prompt.js'
 import type { Task, TaskResultStatus, TaskTriggerType } from './task-store.js'
 import type { SessionManager, SessionType } from './session-manager.js'
 import { logTokenUsage, logToolCall, SESSION_OWNER_NOT_DELETED } from './token-logger.js'
-import { estimateCost, parseProviderModelId, getProviderDefaultModel, isProviderModelUsable, loadModelCompactionOverride } from './provider-config.js'
+import { estimateCost, parseProviderModelId, getProviderDefaultModel, isProviderModelUsable } from './provider-config.js'
 import type { ProviderConfig } from './provider-config.js'
 import { releaseProviderSession } from './pi-models.js'
 import { assertLlmResponseOk } from './llm-response.js'
@@ -627,7 +627,6 @@ export class TaskRunner {
         db: this.db,
         getSessionId: () => sessionId,
         resolveApiKey,
-        getModelOverride: compactedModel => loadModelCompactionOverride(provider.id, compactedModel.id),
         onEvent: info => this.handleCompactionEvent(taskId, sessionId, info),
         onUsage: usage => this.addCompactionUsage(taskId, usage),
         retryPolicy: () => loadRetryPolicy(),

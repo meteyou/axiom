@@ -63,14 +63,8 @@ const TEMPLATES: Record<string, object> = {
     },
     compaction: {
       enabled: true,
-      reserveTokens: 16384,
-      keepRecentTokens: 20000,
-      summaryMaxTokens: 8192,
-      maxContextTokens: 200000,
-      toolResultMaxChars: 2000,
       tasks: {
         enabled: true,
-        maxContextTokens: 150000,
       },
     },
     tokenPriceTable: {

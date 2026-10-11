@@ -34,7 +34,7 @@ vi.mock('./compaction-diagnostics.js', async (importOriginal) => {
   const original = await importOriginal() as Record<string, unknown>
   return {
     ...original,
-    loadCompactionSettings: vi.fn(() => ({ keepRecentTokens: 1_500, tasks: { maxContextTokens: 20_000 } })),
+    loadCompactionSettings: vi.fn(() => ({ keepRecentTokens: 1_500 })),
   }
 })
 
@@ -107,7 +107,8 @@ describe('TaskRunner context compaction', () => {
   })
 
   it('compacts between tool turns and finishes the task on the compacted context', async () => {
-    faux.core = createFauxCore({ models: [{ id: 'faux-model', contextWindow: 128_000, maxTokens: 4_000 }] })
+    // reserve 6.5k (25% of the window) → trigger 19.5k
+    faux.core = createFauxCore({ models: [{ id: 'faux-model', contextWindow: 26_000, maxTokens: 4_000 }] })
     const agentRequests: TranscriptContext[] = []
     let agentCalls = 0
     const respond = (context: TranscriptContext) => {

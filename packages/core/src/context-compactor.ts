@@ -4,7 +4,6 @@ import { isContextOverflow } from '@earendil-works/pi-ai'
 import type { Api, AssistantMessage, Model, RetryPolicy } from '@earendil-works/pi-ai'
 import type { Database } from './database.js'
 import type { ContextCompactionInfo, ContextCompactionWarning } from './contracts/compaction.js'
-import type { ModelCompactionOverrideContract } from './contracts/providers.js'
 import {
   CompactionAbortedError,
   checkCompactionInvariant,
@@ -47,7 +46,6 @@ export interface ContextCompactorOptions {
   db?: Database | null
   getSessionId: () => string | undefined
   resolveApiKey: () => Promise<string | undefined> | string | undefined
-  getModelOverride?: (model: Model<Api>) => ModelCompactionOverrideContract | undefined
   loadSettings?: () => CompactionSettingsSource | undefined
   /** Lifecycle of every compaction: `running` (repeated as keepalive), then one terminal status. */
   onEvent?: (info: ContextCompactionInfo) => void
@@ -145,13 +143,13 @@ export class ContextCompactor {
     this.activeAbort?.abort()
   }
 
-  resolveSettings(model: Model<Api>): ResolvedCompactionSettings {
+  private resolveSettings(): ResolvedCompactionSettings {
     const settings = (this.options.loadSettings ?? loadCompactionSettings)()
-    return resolveCompactionSettings(this.options.scope, settings, this.options.getModelOverride?.(model))
+    return resolveCompactionSettings(this.options.scope, settings)
   }
 
-  resolveBudget(model: Model<Api>): { settings: ResolvedCompactionSettings; budget: EffectiveCompactionBudget } {
-    const settings = this.resolveSettings(model)
+  private resolveBudget(model: Model<Api>): { settings: ResolvedCompactionSettings; budget: EffectiveCompactionBudget } {
+    const settings = this.resolveSettings()
     return { settings, budget: resolveEffectiveCompactionBudget(settings, model.contextWindow) }
   }
 
@@ -191,7 +189,7 @@ export class ContextCompactor {
    */
   async recoverFromOverflow(signal?: AbortSignal): Promise<boolean> {
     const agent = this.requireAgent()
-    if (!this.resolveSettings(agent.state.model).enabled) return false
+    if (!this.resolveSettings().enabled) return false
     const continuable = withoutFailedAssistantTail(agent.state.messages)
     if (!continuable) return false
     // The failed turn stays in the transcript unless compaction succeeds, so

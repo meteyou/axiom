@@ -2,7 +2,7 @@
 
 Every LLM call sends the whole conversation so far. Long chats and long-running background tasks (research, PR work, many tool calls) eventually grow past what the model can hold, or past what you want to pay for on every call. **Context compaction** replaces the older part of the conversation with a structured summary written by the same model, keeps the most recent messages verbatim, and lets the run continue.
 
-Compaction works for both the main chat agent and [background tasks](./tasks-and-cronjobs). It is on by default and tuned in [Settings → Agent → Context compaction](../settings/agent#context-compaction).
+Compaction works for both the main chat agent and [background tasks](./tasks-and-cronjobs). It is on by default and switched in [Settings → Agent → Context compaction](../settings/agent#context-compaction).
 
 ## When it runs
 
@@ -21,7 +21,7 @@ After a compaction the model sees:
 
 1. The unchanged system prompt.
 2. A `<context_summary>` message with the summary.
-3. The most recent messages, verbatim (about `keepRecentTokens` worth).
+3. The most recent messages, verbatim (about 20k tokens, less on small models).
 
 The cut never separates a tool call from its result. If the cut lands inside one long request, the beginning of that request is summarized separately and merged into the summary, so the original ask is not lost.
 
@@ -47,32 +47,33 @@ The next compaction updates the previous summary instead of starting from scratc
 
 ## Budgets
 
-All token values are **upper bounds**. Axiom caps them against the context window `W` of the active model so small models do not compact on every turn:
+There is nothing to configure: all budgets derive from the context window `W` of the active model. Fixed defaults apply to large windows; the percentage caps take over on small windows so they do not compact on every turn:
 
 ```
-reserve  = min(reserveTokens,    25% of W)
-trigger  = min(W − reserve, maxContextTokens)     // maxContextTokens empty → W − reserve
-keep     = min(keepRecentTokens, 30% of trigger)
-summary  = min(summaryMaxTokens, 15% of trigger)
+reserve  = min(16384, 25% of W)       // room for the model's answer
+trigger  = W − reserve                // compaction starts above this
+keep     = min(20000, 30% of trigger) // recent messages kept verbatim
+summary  = min(8192,  15% of trigger) // length the summary is asked to stay under
 ```
 
-Compaction starts when the context exceeds `trigger`. `maxContextTokens` is a soft budget independent of the window: with a 1M-token model and the default of 200,000, compaction starts around 200k instead of near 1M. Background tasks have their own soft budget (default 150,000).
+The summary call itself may use up to 80% of the reserve as output (at least the summary length, at most the model's output limit). The extra room is for reasoning models, which spend part of their output on thinking before writing the summary — some providers cannot switch that off.
 
-Example for a background task on a 40k model with a ~4k system prompt: reserve 10k, trigger 30k, keep 9k, summary up to 4.5k. After a compaction the context is ~17.5k, leaving room for several more turns.
+Example for a background task on a 40k model with a ~4k system prompt: reserve 10k, trigger 30k, keep 9k, summary up to 4.5k. After a compaction the context is ~17.5k, leaving room for several more turns. On a 262k model, compaction starts around 246k and keeps the last 20k tokens.
 
-### Values per model
+To compact earlier on a model with a large window, lower its context window in the [Edit Model dialog](../web-ui/providers#edit-model-dialog).
 
-Each model can override `reserveTokens` and `keepRecentTokens` in the [Edit Model dialog](../web-ui/providers#edit-model-dialog). Every field is resolved on its own: model override → task settings (for background tasks) → global settings → default.
+### Tuning
+
+`reserveTokens` and `keepRecentTokens` can be changed in `settings.json` (see the [settings reference](../reference/settings#compaction)); they are not shown in the UI and are still capped by the percentages above. Most setups never need this.
 
 ### Window too small
 
 After a compaction there should be headroom: system prompt + summary + kept messages must stay below 60% of the trigger. Models that cannot meet this are flagged:
 
 - On the [Providers page](../web-ui/providers#model-sub-row-columns) the model gets a **Window too small** badge, with the affected agent kind (main chat, background tasks) in its tooltip. The main chat's system prompt is much larger (~35k tokens) than a task's (~4k), so a model can be fine for tasks but too small for the main chat.
-- Saving the compaction settings returns the list of affected models, shown above the settings.
 - At runtime the first compaction that hits the problem shows it as a warning under its divider (and in its Telegram status line).
 
-If a compaction cannot bring the context below the trigger (for example a single huge tool result in the kept messages, or a system prompt that nearly fills the window), automatic compaction pauses instead of compacting on every turn, and the divider says so. It resumes on its own as soon as a compaction could get below the trigger again: once newer messages let the cut move past a huge message, or after a switch to a model with a larger window or a settings change. `/compact` always runs, and a provider overflow still triggers its one compact-and-retry.
+If a compaction cannot bring the context below the trigger (for example a single huge tool result in the kept messages, or a system prompt that nearly fills the window), automatic compaction pauses instead of compacting on every turn, and the divider says so. It resumes on its own as soon as a compaction could get below the trigger again: once newer messages let the cut move past a huge message, or after a switch to a model with a larger window. `/compact` always runs, and a provider overflow still triggers its one compact-and-retry.
 
 At most one compaction runs per model response.
 
@@ -86,7 +87,7 @@ At most one compaction runs per model response.
 
 The summary is one extra LLM call with the current model. It is logged to token usage with the session id of the chat or task, so it shows up on the [Token Usage](../web-ui/token-usage) page like any other call, and it counts towards a task's token and cost totals. Every compaction is also stored in the `context_compactions` table (tokens before/after, summary, model, cost).
 
-A compaction invalidates the provider's prompt cache once. That is why the trigger should not be set too low and `keepRecentTokens` not too small.
+A compaction invalidates the provider's prompt cache once, so compacting much earlier than necessary costs more than it saves.
 
 ## Limits
 

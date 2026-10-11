@@ -133,7 +133,6 @@ export type {
   ModelThinkingLevelContract,
   ModelThinkingLevelMapContract,
   ModelInputModalityContract,
-  ModelCompactionOverrideContract,
   CompactionScopeContract,
   ProviderReferenceContract,
 } from './providers.js'

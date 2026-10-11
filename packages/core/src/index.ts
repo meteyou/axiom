@@ -92,7 +92,6 @@ export {
   addProvider,
   updateProvider,
   updateProviderModel,
-  getModelCompactionOverride,
   ProviderNotFoundError,
   deleteProvider,
   setActiveProvider,
@@ -330,7 +329,7 @@ export type {
 } from './agent-runtime-types.js'
 export { STALL_OUTCOMES, TURN_ERROR_CAUSES } from './agent-runtime-types.js'
 export { saveContextCompactionNotice } from './context-compaction-notice.js'
-export { listCompactionWarnings, loadCompactionSettings } from './compaction-diagnostics.js'
+export { loadCompactionSettings } from './compaction-diagnostics.js'
 export {
   TYPICAL_SYSTEM_PROMPT_TOKENS,
   getCompactionWarningScopes,

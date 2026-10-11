@@ -17,8 +17,6 @@ export interface SettingsResponseContext {
   settings: SettingsData
   telegram: TelegramData
   batchingDelayMs: number
-  /** Models whose window is too small for the saved compaction settings. */
-  warnings?: string[]
 }
 
 function buildHealthMonitorResponse(settingsRaw: Record<string, unknown>) {
@@ -229,6 +227,5 @@ export function mapSettingsUpdateResponse(context: SettingsResponseContext) {
     message: 'Settings updated',
     ...mapSettingsResponse(context),
     healthMonitorIntervalMinutes: context.settings.healthMonitorIntervalMinutes,
-    ...(context.warnings && context.warnings.length > 0 ? { warnings: context.warnings } : {}),
   }
 }

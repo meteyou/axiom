@@ -39,7 +39,7 @@ function toolTurn(id: string, resultTokens: number): AgentMessage[] {
 }
 
 /**
- * 40k window, no soft budget: reserve 10k → trigger 30k, keep 1.5k.
+ * 40k window: reserve 10k → trigger 30k, keep 1.5k.
  */
 function setup(options: Partial<ContextCompactorOptions> & { settings?: CompactionSettingsSource; streamFn?: StreamFn } = {}) {
   const core = createFauxCore({ models: [{ id: 'small-model', contextWindow: 40_000, maxTokens: 4_000 }] })
@@ -52,7 +52,7 @@ function setup(options: Partial<ContextCompactorOptions> & { settings?: Compacti
   core.setResponses(Array.from({ length: 8 }, () => summarize))
 
   const events: ContextCompactionInfo[] = []
-  const settings = { current: options.settings ?? { maxContextTokens: null, keepRecentTokens: 1_500, tasks: { maxContextTokens: null } } }
+  const settings = { current: options.settings ?? { keepRecentTokens: 1_500 } }
   const compactor = new ContextCompactor({
     scope: 'task',
     getSessionId: () => 'session-1',
@@ -181,7 +181,7 @@ describe('ContextCompactor', () => {
     small.agent.state.messages = shortTranscript
     expect(await small.compactor.prepareNextTurn(turnContext(shortTranscript))).toBeUndefined()
 
-    const disabled = setup({ settings: { maxContextTokens: null, tasks: { enabled: false } } })
+    const disabled = setup({ settings: { tasks: { enabled: false } } })
     const longTranscript = [disabled.agent.state.messages[0], user(20_000), assistant(20_000), user(500)]
     disabled.agent.state.messages = longTranscript
     expect(await disabled.compactor.prepareNextTurn(turnContext(longTranscript))).toBeUndefined()

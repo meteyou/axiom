@@ -1,4 +1,4 @@
-import { buildModel, getAvailableImageModels, getCompactionWarningScopes, getImageProviderCapabilities, getModelCompactionOverride, getPiCatalogModels, getProviderDefaultModel, isQuotaProvider, loadCompactionSettings, maskProviderExtraFields, PROVIDER_TYPE_MODEL_OVERRIDES, PROVIDER_TYPE_PRESETS, supportsModelSpecOverrides } from '@axiom/core'
+import { buildModel, getAvailableImageModels, getCompactionWarningScopes, getImageProviderCapabilities, getPiCatalogModels, getProviderDefaultModel, isQuotaProvider, loadCompactionSettings, maskProviderExtraFields, PROVIDER_TYPE_MODEL_OVERRIDES, PROVIDER_TYPE_PRESETS, supportsModelSpecOverrides } from '@axiom/core'
 import type {
   AverageImageCost,
   CompactionSettingsSource,
@@ -69,11 +69,7 @@ function resolveModelSpec(
 ): ProviderModelSpecContract | null {
   try {
     const model = buildModel(provider, modelId)
-    const compactionWarnings = getCompactionWarningScopes(
-      model.contextWindow,
-      compactionSettings,
-      getModelCompactionOverride(provider, modelId),
-    )
+    const compactionWarnings = getCompactionWarningScopes(model.contextWindow, compactionSettings)
     return {
       name: model.name,
       contextWindow: model.contextWindow,
