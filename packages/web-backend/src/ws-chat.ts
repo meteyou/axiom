@@ -88,6 +88,11 @@ interface ChatResponse {
   error?: string
   sessionId?: string
   /**
+   * For `turn_replay_start`: the replayed turn is a `/compact`. It has no user
+   * message, so the client must not strip back to the previous one.
+   */
+  compact?: boolean
+  /**
    * For `session_end`: the id of the session that just ended. The frontend
    * tags the rendered divider with this so a late-arriving `session_summary`
    * (background /new flow) can be matched back to the correct divider. Sent
@@ -628,7 +633,13 @@ export function setupWebSocketChat(
 function forwardTurnEvent(ws: WebSocket, event: TurnEvent): void {
   switch (event.type) {
     case 'turn_start':
-      if (event.replay) sendMessage(ws, { type: 'turn_replay_start', sessionId: event.sessionId })
+      if (event.replay) {
+        sendMessage(ws, {
+          type: 'turn_replay_start',
+          sessionId: event.sessionId,
+          ...(event.compact ? { compact: true } : {}),
+        })
+      }
       break
     case 'chunk':
       sendMessage(ws, chunkToResponse(event.chunk))

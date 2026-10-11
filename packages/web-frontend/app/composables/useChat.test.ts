@@ -3,6 +3,7 @@ import type { ContextCompactionInfo } from '@axiom/core/contracts'
 import {
   buildTurnRetryAction,
   closeOpenStreams,
+  prepareTurnReplay,
   stripFailedAttempt,
   stripTrailingTurn,
   turnErrorFromHistoryMetadata,
@@ -349,5 +350,19 @@ describe('upsertCompactionMessage', () => {
     ]
     expect(stripFailedAttempt(list)).toHaveLength(2)
     expect(stripTrailingTurn(list)).toHaveLength(1)
+  })
+
+  it('keeps the previous answer when a /compact turn is replayed after a reload', () => {
+    const history: ChatMessage[] = [
+      msg('user', 'hi'),
+      msg('assistant', 'previous answer'),
+      { role: 'system', content: 'compacted', compactionInfo: compaction({ status: 'completed', messageId: 7 }) },
+    ]
+    const replayed = upsertCompactionMessage(prepareTurnReplay(history, true), compaction({
+      status: 'completed', messageId: 7,
+    }), 'compacted')
+    expect(replayed.map(m => m.content)).toEqual(['hi', 'previous answer', 'compacted'])
+
+    expect(prepareTurnReplay(history, false)).toHaveLength(1)
   })
 })
