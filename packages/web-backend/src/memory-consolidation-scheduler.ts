@@ -46,7 +46,7 @@ export const DEFAULT_CONSOLIDATION_SETTINGS: ConsolidationSettings = {
  * Build the consolidation prompt that instructs the task agent what to do.
  * Embeds the user-defined consolidation rules from CONSOLIDATION.md directly.
  */
-export function buildConsolidationTaskPrompt(
+function buildConsolidationTaskPrompt(
   lookbackDays: number,
   consolidationRules: string,
   compactionRun: boolean,
