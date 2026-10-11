@@ -275,11 +275,27 @@ function buildSummaryMessage(summary: string, timestamp: number): AgentMessage {
   }
 }
 
-/** The summary of the previous compaction sits right after the system message. */
+/**
+ * Index of the first non-system message. pi-agent-core declares tools in a
+ * system message of its own right after the system prompt, so the leading
+ * run is usually longer than one message.
+ */
+function leadingSystemEnd(messages: readonly AgentMessage[]): number {
+  let index = 0
+  while (index < messages.length && messages[index].role === 'system') index++
+  return index
+}
+
+/** System prompt plus the tool declarations that precede the conversation. */
+export function estimateSystemTokens(messages: readonly AgentMessage[]): number {
+  return estimateMessagesTokens(messages.slice(0, leadingSystemEnd(messages)))
+}
+
+/** The summary of the previous compaction directly follows the leading system messages. */
 export function findSummaryMessage(
   messages: readonly AgentMessage[],
 ): { index: number; message: AgentMessage; summary: string } | null {
-  const index = messages[0]?.role === 'system' ? 1 : 0
+  const index = leadingSystemEnd(messages)
   const message = messages[index]
   if (!message || message.role !== 'user') return null
   const text = messageText(message).trim()
@@ -690,16 +706,20 @@ interface CompactionPlan {
 
 /** Split the transcript into what stays, what gets summarized and what is never touched. */
 function planCompaction(messages: readonly AgentMessage[], keepRecentTokens: number): CompactionPlan | null {
-  const head = messages[0]?.role === 'system' ? [messages[0]] : []
+  const leadingEnd = leadingSystemEnd(messages)
   const previous = findSummaryMessage(messages)
-  const startIndex = previous ? previous.index + 1 : head.length
+  const startIndex = previous ? previous.index + 1 : leadingEnd
   const cut = findCutPoint(messages, startIndex, keepRecentTokens)
   const historyEnd = cut.isSplitTurn ? cut.turnStartIndex : cut.firstKeptIndex
-  const toSummarize = messages.slice(startIndex, historyEnd)
-  const turnPrefix = cut.isSplitTurn ? messages.slice(cut.turnStartIndex, cut.firstKeptIndex) : []
+  const isConversation = (message: AgentMessage) => message.role !== 'system'
+  const toSummarize = messages.slice(startIndex, historyEnd).filter(isConversation)
+  const turnPrefix = cut.isSplitTurn ? messages.slice(cut.turnStartIndex, cut.firstKeptIndex).filter(isConversation) : []
   if (toSummarize.length === 0 && turnPrefix.length === 0) return null
+  // System messages carry tool declarations and prompt updates; summarizing
+  // them away would drop the tools from the transcript.
+  const movedSystem = messages.slice(startIndex, cut.firstKeptIndex).filter(message => !isConversation(message))
   return {
-    head,
+    head: [...messages.slice(0, leadingEnd), ...movedSystem],
     previousSummary: previous?.summary,
     toSummarize,
     turnPrefix,

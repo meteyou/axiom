@@ -10,6 +10,7 @@ import {
   compactMessages,
   estimateContextTokens,
   estimateMessageTokens,
+  estimateSystemTokens,
   findSummaryMessage,
   projectCompactedTokens,
   resolveCompactionSettings,
@@ -283,7 +284,7 @@ export class ContextCompactor {
       agent.state.messages = outcome.messages
       this.lastCompactionAnchor = lastAssistant(outcome.messages)
       this.recordUsage(outcome, options.reason, model)
-      const warnings = this.checkHeadroom(outcome, budget, messages)
+      const warnings = this.checkHeadroom(outcome, budget)
       emit({
         status: 'completed',
         tokensAfter: outcome.tokensAfter,
@@ -306,14 +307,9 @@ export class ContextCompactor {
   }
 
   /** Warnings worth showing with this compaction; each is reported once per conversation. */
-  private checkHeadroom(
-    outcome: CompactionOutcome,
-    budget: EffectiveCompactionBudget,
-    before: AgentMessage[],
-  ): ContextCompactionWarning[] {
+  private checkHeadroom(outcome: CompactionOutcome, budget: EffectiveCompactionBudget): ContextCompactionWarning[] {
     const warnings: ContextCompactionWarning[] = []
-    const systemPromptTokens = before[0]?.role === 'system' ? estimateMessageTokens(before[0]) : 0
-    const invariant = checkCompactionInvariant(budget, systemPromptTokens)
+    const invariant = checkCompactionInvariant(budget, estimateSystemTokens(outcome.messages))
     if (!invariant.ok && this.warnOnce('window_too_small', `Context window of ${budget.contextWindow} tokens is too small `
       + `for the system prompt plus compaction summary and kept tail (${invariant.requiredTokens} > `
       + `${invariant.budgetTokens} tokens). Compaction will keep re-triggering.`)) {

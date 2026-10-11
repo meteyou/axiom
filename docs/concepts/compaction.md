@@ -19,11 +19,11 @@ The context size is the token count the provider reported for the last response 
 
 After a compaction the model sees:
 
-1. The unchanged system prompt.
+1. The unchanged system prompt and tool declarations.
 2. A `<context_summary>` message with the summary.
 3. The most recent messages, verbatim (about 20k tokens, less on small models).
 
-The cut never separates a tool call from its result. If the cut lands inside one long request, the beginning of that request is summarized separately and merged into the summary, so the original ask is not lost.
+If everything older than the kept messages is only system prompt and tool declarations, there is nothing to summarize: `/compact` answers *Nothing to compact yet* and no summary call is made. The cut never separates a tool call from its result. If the cut lands inside one long request, the beginning of that request is summarized separately and merged into the summary, so the original ask is not lost.
 
 Images in the summarized part are not sent to the summary call; they appear there as `[image]` placeholders, so the agent has to re-open the file with `read_file` if it needs to see it again. Images in the recent messages stay and are still subject to the per-request [image limits](../web-ui/chat#attachments).
 

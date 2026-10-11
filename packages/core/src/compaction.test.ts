@@ -50,6 +50,16 @@ function system(text = 'You are a helpful agent.'): AgentMessage {
   return { role: 'system', content: text, timestamp: 0 }
 }
 
+/** The system message pi-agent-core inserts to declare tools. */
+function toolDeclaration(name = 'shell'): AgentMessage {
+  return {
+    role: 'system',
+    content: '',
+    toolsAdded: [{ name, description: `${name} tool`, parameters: { type: 'object', properties: {} } }],
+    timestamp: ++clock,
+  } as AgentMessage
+}
+
 function user(text: string): AgentMessage {
   return { role: 'user', content: [{ type: 'text', text }], timestamp: ++clock }
 }
@@ -377,6 +387,34 @@ describe('compactMessages', () => {
     expect(outcome).toBeNull()
   })
 
+  it('never summarizes the tool declaration that follows the system prompt', async () => {
+    const calls: RecordedCall[] = []
+    const short = [system(), toolDeclaration(), user('hi'), assistant(filler(200))]
+    expect(await compactMessages(short, { budget, model, streamFn: fakeStreamFn(() => SUMMARY, calls) })).toBeNull()
+    expect(calls).toHaveLength(0)
+
+    const messages = [system(), toolDeclaration(), ...conversation().slice(1)]
+    const outcome = await compactMessages(messages, { budget, model, streamFn: fakeStreamFn(() => SUMMARY, calls) })
+    expect(outcome!.messages[0]).toBe(messages[0])
+    expect(outcome!.messages[1]).toBe(messages[1])
+    expect(findSummaryMessage(outcome!.messages)?.index).toBe(2)
+    expect(outcome!.messages.slice(3)).toEqual(messages.slice(6))
+    expect(calls[0].prompt).toContain('Open a PR for the fix')
+
+    const next = [...outcome!.messages, user(`more ${filler(600)}`), assistant(filler(1_500)), user(filler(600)), assistant(filler(500))]
+    const second = await compactMessages(next, { budget, model, streamFn: fakeStreamFn(() => SUMMARY, calls) })
+    expect(second!.messages[1]).toBe(messages[1])
+    expect(findSummaryMessage(second!.messages)?.index).toBe(2)
+    expect(calls[1].prompt).toContain('<previous-summary>')
+  })
+
+  it('keeps a tool change from the summarized part ahead of the summary', async () => {
+    const change = toolDeclaration('generate_image')
+    const messages = [system(), toolDeclaration(), user(`draw ${filler(600)}`), assistant(filler(1_500)), change, ...conversation().slice(1)]
+    const outcome = await compactMessages(messages, { budget, model, streamFn: fakeStreamFn(() => SUMMARY) })
+    expect(outcome!.messages.slice(0, 3)).toEqual([messages[0], messages[1], change])
+    expect(findSummaryMessage(outcome!.messages)?.index).toBe(3)
+  })
 
   it('stops when aborted during the summary call', async () => {
     const controller = new AbortController()
