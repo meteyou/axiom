@@ -53,7 +53,7 @@ The agent can spawn its own background workers and schedule recurring or one-sho
 
 | Tool | Notes |
 |---|---|
-| `send_file_to_user` | Deliver a file (≤ 50 MB) to the active user's channel — web chat or Telegram. Refuses to run in background contexts where there is no active user (e.g. cronjob `task` runs); use the chat session as the delivery surface in those cases. |
+| `send_file_to_user` | Deliver a file (≤ 50 MB) to the active user's channel — web chat or Telegram. Chat only: background tasks (including cronjob `task` runs and the heartbeat) don't get this tool, because nothing would deliver the file; they report the path and the chat agent sends it. |
 
 ---
 

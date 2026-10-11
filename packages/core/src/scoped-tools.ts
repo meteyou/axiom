@@ -28,7 +28,10 @@ export interface ScopedToolsDeps {
   taskTools: Omit<TaskToolsOptions, 'actor' | 'getUsername' | 'getParentSessionId'>
   /** Cronjob and reminder tools; only the interactive chat gets them. */
   cronjobTools?: Omit<CronjobToolsOptions, 'actor' | 'getUsername' | 'getTimezone'>
-  /** Interactive session of the calling turn; omitted for background task agents. */
+  /**
+   * Interactive session of the calling turn; omitted for background task agents,
+   * which then get no `send_file_to_user` (nothing would deliver the file).
+   */
   getInteractiveSessionId?: () => string | null
   /** Set when the caller adds the base tool set itself (the chat runtime does). */
   excludeBaseTools?: boolean
@@ -91,10 +94,12 @@ export function createScopedTools(scope: UserScope, deps: ScopedToolsDeps): Agen
           createReminderTool(cronjobOptions),
         ]
       : []),
-    createSendFileTool({
-      getCurrentToolUserId: () => scope.id,
-      getWorkspaceDir: () => scope.paths.workspace,
-      getCurrentInteractiveSessionId: deps.getInteractiveSessionId,
-    }),
+    ...(deps.getInteractiveSessionId
+      ? [createSendFileTool({
+          getCurrentToolUserId: () => scope.id,
+          getWorkspaceDir: () => scope.paths.workspace,
+          getCurrentInteractiveSessionId: deps.getInteractiveSessionId,
+        })]
+      : []),
   ]
 }
