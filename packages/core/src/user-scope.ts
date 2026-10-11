@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { Database } from './database.js'
+import { isValidUsername } from './username.js'
 import { getWorkspaceDir } from './workspace.js'
 import { resolveEffectiveSettings, type EffectiveUserSettings } from './user-settings.js'
 
@@ -28,12 +29,6 @@ interface UserRow {
   id: number
   username: string
   role: string
-}
-
-const USERNAME_PATTERN = /^[A-Za-z0-9]+$/
-
-export function isValidUsername(username: string): boolean {
-  return USERNAME_PATTERN.test(username)
 }
 
 function dataDir(): string {

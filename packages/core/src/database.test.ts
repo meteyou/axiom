@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import BetterSqlite3 from 'better-sqlite3'
-import { initDatabase, isValidUsername, validateUsername } from './database.js'
+import { initDatabase } from './database.js'
+import { isValidUsername, validateUsername } from './username.js'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
