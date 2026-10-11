@@ -34,6 +34,7 @@ import {
   isProviderModelUsable,
   ProviderManager,
   refreshRadiusCatalog,
+  saveContextCompactionNotice,
   SessionManager,
   createEmailApprovalService,
   registerEmailApprovalNotifier,
@@ -1196,12 +1197,18 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
           }
         }
 
+        // Injection turns bypass the TurnRunner, so their compaction notices are persisted here.
+        const compaction = chunk.type === 'compaction' && chunk.compaction
+          ? saveContextCompactionNotice(db, { sessionId: persistSessionId, userId: pendingMeta.userId, info: chunk.compaction })
+          : undefined
+
         try {
           chatEventBus.broadcast({
             type: chunk.type === 'done' ? 'done' : chunk.type,
             userId: pendingMeta.userId,
             source: 'task',
             sessionId: persistSessionId,
+            compaction,
             text: chunk.text,
             toolName: chunk.toolName,
             toolCallId: chunk.toolCallId,

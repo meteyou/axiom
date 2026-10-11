@@ -4,6 +4,7 @@ import path from 'node:path'
 import fs from 'node:fs'
 import { initEmailSendLogTable, migrateEmailSendLogOwners } from './email-send-log.js'
 import { initTaskToolJournalTable } from './task-tool-journal.js'
+import { initContextCompactionsTable } from './compaction-store.js'
 import { migrateEmailAccountOwners } from './email-account-store.js'
 import { migrateTaskOwners } from './task-store.js'
 import { migrateScheduledTaskOwners } from './scheduled-task-store.js'
@@ -334,6 +335,7 @@ export function initDatabase(dbPath?: string): Database {
 
   initEmailSendLogTable(db)
   initTaskToolJournalTable(db)
+  initContextCompactionsTable(db)
 
   // Create scheduled_tasks table
   db.exec(`
