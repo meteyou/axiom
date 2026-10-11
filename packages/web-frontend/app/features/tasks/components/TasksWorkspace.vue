@@ -116,6 +116,9 @@
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead class="w-10 pr-0">
+                  <span class="sr-only">{{ $t('tasks.columns.status') }}</span>
+                </TableHead>
                 <TableHead
                   class="cursor-pointer select-none hover:text-foreground"
                   @click="sortBy('name')"
@@ -125,7 +128,6 @@
                     <SortIndicator :field="'name'" :sort-field="sortField" :sort-direction="sortDirection" />
                   </span>
                 </TableHead>
-                <TableHead>{{ $t('tasks.columns.status') }}</TableHead>
                 <TableHead>{{ $t('tasks.columns.trigger') }}</TableHead>
                 <TableHead
                   class="cursor-pointer select-none text-right hover:text-foreground"
@@ -173,16 +175,27 @@
                 class="cursor-pointer"
                 @click="openViewer(task.id)"
               >
+                <TableCell class="w-10 pr-0">
+                  <Tooltip>
+                    <TooltipTrigger as-child>
+                      <span class="inline-flex" :aria-label="$t(`tasks.status.${task.status}`)">
+                        <AppIcon
+                          :name="taskStatusIcon(task.status).name"
+                          size="lg"
+                          :class="taskStatusIcon(task.status).class"
+                        />
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">
+                      {{ $t(`tasks.status.${task.status}`) }}
+                    </TooltipContent>
+                  </Tooltip>
+                </TableCell>
                 <TableCell class="max-w-[240px]">
                   <div class="truncate font-medium">{{ task.name }}</div>
                   <div v-if="isAdmin" class="truncate text-xs text-muted-foreground">
                     {{ task.ownerUsername ?? '—' }}
                   </div>
-                </TableCell>
-                <TableCell>
-                  <Badge :variant="taskStatusVariant(task.status)">
-                    {{ $t(`tasks.status.${task.status}`) }}
-                  </Badge>
                 </TableCell>
                 <TableCell>
                   <div class="flex flex-col items-start gap-1">
@@ -314,7 +327,7 @@ import {
   formatTaskThinking,
   formatTaskTriggerModel,
   hasCacheTokens,
-  taskStatusVariant,
+  taskStatusIcon,
 } from '~/features/tasks/utils/taskFormat'
 import {
   encodeTaskProviderModelFilter,
