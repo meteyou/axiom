@@ -99,7 +99,7 @@
       </template>
     </PageHeader>
 
-    <div ref="messagesContainer" class="relative flex flex-1 flex-col gap-4 overflow-y-auto p-4" @scroll="onMessagesScroll" @copy="handleCopyAsMarkdown" @click="handleMarkdownCodeCopy">
+    <div ref="messagesContainer" class="relative flex flex-1 flex-col gap-4 overflow-y-auto p-4" @scroll="onMessagesScroll" @wheel.passive="onMessagesWheel" @touchstart.passive="onMessagesTouchStart" @touchmove.passive="onMessagesTouchMove" @copy="handleCopyAsMarkdown" @click="handleMarkdownCodeCopy">
       <div v-if="loadingHistory" class="flex flex-col gap-3">
         <div class="flex items-start gap-3 self-start"><Skeleton class="h-8 w-8 shrink-0 rounded-avatar" /><div class="space-y-2"><Skeleton class="h-4 w-48 rounded-xl" /><Skeleton class="h-4 w-64 rounded-xl" /></div></div>
       </div>
@@ -524,7 +524,7 @@
     </div>
 
     <Transition enter-active-class="transition duration-200 ease-out" enter-from-class="translate-y-2 opacity-0" enter-to-class="translate-y-0 opacity-100" leave-active-class="transition duration-150 ease-in" leave-from-class="translate-y-0 opacity-100" leave-to-class="translate-y-2 opacity-0">
-      <button v-if="!isNearBottom" class="absolute bottom-28 right-6 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-md" @click="jumpToBottom">
+      <button v-if="!followingOutput" class="absolute bottom-28 right-6 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-md" @click="jumpToBottom">
         <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9" /></svg>
       </button>
     </Transition>
@@ -934,10 +934,15 @@ const hasText = computed(() => inputText.value.trim().length > 0 || pendingFiles
 const inputRef = ref<HTMLTextAreaElement | null>(null)
 const messagesContainer = ref<HTMLDivElement | null>(null)
 const loadingHistory = ref(false)
-const isNearBottom = ref(true)
-const SCROLL_THRESHOLD = 120
-function onMessagesScroll() { const el = messagesContainer.value; if (!el) return; isNearBottom.value = el.scrollHeight - el.scrollTop - el.clientHeight <= SCROLL_THRESHOLD }
-function jumpToBottom() { isNearBottom.value = true; nextTick(() => scrollToBottom()) }
+const {
+  following: followingOutput,
+  onScroll: onMessagesScroll,
+  onWheel: onMessagesWheel,
+  onTouchStart: onMessagesTouchStart,
+  onTouchMove: onMessagesTouchMove,
+  followIfPinned,
+  jumpToBottom,
+} = useChatAutoScroll(messagesContainer)
 // History must be in place before the socket opens: connecting attaches to a
 // still-running turn and replays it, and a later history load would wipe that
 // replayed tail. A failed history load must never keep the socket closed —
@@ -953,12 +958,12 @@ onMounted(async () => {
 })
 onUnmounted(() => { disconnect(); ttsStop(); sttCleanup() })
 watch(() => messages.value.length, () => {
-  if (isNearBottom.value) nextTick(() => scrollToBottom())
+  followIfPinned()
   // Reset sessionResetting flag when a divider appears (session_end received)
   const last = messages.value[messages.value.length - 1]
   if (last?.role === 'divider') sessionResetting.value = false
 })
-watch(() => messages.value[messages.value.length - 1]?.content?.length ?? 0, () => { if (isNearBottom.value) nextTick(() => scrollToBottom()) })
+watch(() => messages.value[messages.value.length - 1]?.content?.length ?? 0, followIfPinned)
 async function loadHistory() {
   loadingHistory.value = true
   try {
@@ -1090,7 +1095,7 @@ async function loadHistory() {
         return base
       })
     }
-  } finally { loadingHistory.value = false; nextTick(() => scrollToBottom()) }
+  } finally { loadingHistory.value = false; jumpToBottom() }
 }
 const skillAutocomplete = useSkillAutocomplete(inputText)
 
@@ -1123,7 +1128,6 @@ function handleNewSession() {
   newSession()
 }
 function handleStop() { stopTask() }
-function scrollToBottom() { if (messagesContainer.value) messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight }
 function autoResize() { const el = inputRef.value; if (!el) return; el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 150) + 'px' }
 function handleFileSelection(event: Event) { const target = event.target as HTMLInputElement; const files = Array.from(target.files || []); pendingFiles.value = [...pendingFiles.value, ...files]; target.value = '' }
 function removePendingFile(index: number) { pendingFiles.value.splice(index, 1) }
