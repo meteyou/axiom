@@ -1,3 +1,5 @@
+import { isTrustedPushEndpoint } from '../../../push/push-endpoint.js'
+
 interface ParseSuccess<T> {
   ok: true
   value: T
@@ -17,7 +19,6 @@ export interface SubscribeInput {
   locale: string | null
 }
 
-const MAX_ENDPOINT_LENGTH = 2048
 const MAX_KEY_LENGTH = 256
 const MAX_LABEL_LENGTH = 100
 const MAX_LOCALE_LENGTH = 16
@@ -33,16 +34,6 @@ function optionalText(value: unknown, maxLength: number): string | null {
   return trimmed || null
 }
 
-/** Push services only hand out HTTPS endpoints; anything else is not a real subscription. */
-function isPushEndpoint(value: unknown): value is string {
-  if (typeof value !== 'string' || value.length > MAX_ENDPOINT_LENGTH) return false
-  try {
-    return new URL(value).protocol === 'https:'
-  } catch {
-    return false
-  }
-}
-
 function isKey(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0 && value.length <= MAX_KEY_LENGTH && BASE64URL.test(value)
 }
@@ -53,8 +44,8 @@ export function parseSubscribeBody(body: unknown): ParseResult<SubscribeInput> {
     return { ok: false, error: 'subscription is required' }
   }
   const { endpoint, keys } = body.subscription
-  if (!isPushEndpoint(endpoint)) {
-    return { ok: false, error: 'subscription.endpoint must be an https URL' }
+  if (!isTrustedPushEndpoint(endpoint)) {
+    return { ok: false, error: 'subscription.endpoint must be a URL of a known browser push service' }
   }
   if (!isObject(keys) || !isKey(keys.p256dh) || !isKey(keys.auth)) {
     return { ok: false, error: 'subscription.keys.p256dh and subscription.keys.auth are required' }

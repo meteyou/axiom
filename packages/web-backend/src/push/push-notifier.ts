@@ -6,6 +6,7 @@ import {
   markPushSubscriptionDelivered,
 } from '@axiom/core'
 import type { Database, PushSubscriptionRecord } from '@axiom/core'
+import { isTrustedPushEndpoint } from './push-endpoint.js'
 import { loadOrCreateVapidKeys } from './vapid-keys.js'
 import type { VapidKeys } from './vapid-keys.js'
 
@@ -93,8 +94,13 @@ export function createPushNotifier(options: PushNotifierOptions): PushNotifier {
   }
 
   async function deliver(device: PushSubscriptionRecord, payload: PushNotificationPayload): Promise<PushDeliveryResult> {
-    const vapid = keys()
     const base = { subscriptionId: device.id, deviceLabel: device.deviceLabel }
+    if (!isTrustedPushEndpoint(device.endpoint)) {
+      deletePushSubscriptionByEndpoint(options.db, device.endpoint)
+      logger.warn(`[push] Removed subscription ${device.id} (user ${device.userId}): endpoint is not a known push service`)
+      return { ...base, status: 'removed', error: 'Endpoint is not a known push service' }
+    }
+    const vapid = keys()
     try {
       await send(
         { endpoint: device.endpoint, keys: device.keys },

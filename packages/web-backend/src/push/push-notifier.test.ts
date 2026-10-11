@@ -21,9 +21,9 @@ describe('createPushNotifier', () => {
   })
 
   it('sends the payload to every device of the user and records the delivery', async () => {
-    savePushSubscription(db, { userId: 2, endpoint: 'https://push.example/a', keys, origin: 'https://axiom.example.org' })
-    savePushSubscription(db, { userId: 2, endpoint: 'https://push.example/b', keys })
-    savePushSubscription(db, { userId: 1, endpoint: 'https://push.example/admin', keys })
+    savePushSubscription(db, { userId: 2, endpoint: 'https://fcm.googleapis.com/fcm/send/a', keys, origin: 'https://axiom.example.org' })
+    savePushSubscription(db, { userId: 2, endpoint: 'https://fcm.googleapis.com/fcm/send/b', keys })
+    savePushSubscription(db, { userId: 1, endpoint: 'https://fcm.googleapis.com/fcm/send/admin', keys })
     const send = vi.fn<SendPushFn>(async () => ({ statusCode: 201 }))
     const notifier = createPushNotifier({ db, loadKeys: () => vapid, send })
 
@@ -32,8 +32,8 @@ describe('createPushNotifier', () => {
     expect(results.map(result => result.status)).toEqual(['sent', 'sent'])
     expect(send).toHaveBeenCalledTimes(2)
     const endpoints = send.mock.calls.map(([subscription]) => subscription.endpoint).sort()
-    expect(endpoints).toEqual(['https://push.example/a', 'https://push.example/b'])
-    const callForA = send.mock.calls.find(([subscription]) => subscription.endpoint === 'https://push.example/a')!
+    expect(endpoints).toEqual(['https://fcm.googleapis.com/fcm/send/a', 'https://fcm.googleapis.com/fcm/send/b'])
+    const callForA = send.mock.calls.find(([subscription]) => subscription.endpoint === 'https://fcm.googleapis.com/fcm/send/a')!
     expect(JSON.parse(callForA[1])).toEqual(payload)
     expect(callForA[2].vapidDetails).toEqual({ subject: 'https://axiom.example.org', publicKey: 'public', privateKey: 'private' })
     expect(callForA[2].timeout).toBeGreaterThan(0)
@@ -41,8 +41,8 @@ describe('createPushNotifier', () => {
   })
 
   it.each([404, 410])('removes a subscription the push service reports as gone (%i)', async (statusCode) => {
-    savePushSubscription(db, { userId: 2, endpoint: 'https://push.example/gone', keys })
-    savePushSubscription(db, { userId: 2, endpoint: 'https://push.example/alive', keys })
+    savePushSubscription(db, { userId: 2, endpoint: 'https://fcm.googleapis.com/fcm/send/gone', keys })
+    savePushSubscription(db, { userId: 2, endpoint: 'https://fcm.googleapis.com/fcm/send/alive', keys })
     const send = vi.fn<SendPushFn>(async (subscription) => {
       if (subscription.endpoint.endsWith('/gone')) throw pushError(statusCode)
       return { statusCode: 201 }
@@ -52,11 +52,11 @@ describe('createPushNotifier', () => {
     const results = await notifier.sendToUser(2, () => payload)
 
     expect(results.find(result => result.status === 'removed')).toMatchObject({ statusCode })
-    expect(listPushSubscriptions(db, 2).map(device => device.endpoint)).toEqual(['https://push.example/alive'])
+    expect(listPushSubscriptions(db, 2).map(device => device.endpoint)).toEqual(['https://fcm.googleapis.com/fcm/send/alive'])
   })
 
   it('keeps a subscription on other failures and reports the error', async () => {
-    savePushSubscription(db, { userId: 2, endpoint: 'https://push.example/flaky', keys, deviceLabel: 'Safari on iPhone' })
+    savePushSubscription(db, { userId: 2, endpoint: 'https://fcm.googleapis.com/fcm/send/flaky', keys, deviceLabel: 'Safari on iPhone' })
     const logger = { warn: vi.fn() }
     const notifier = createPushNotifier({ db, loadKeys: () => vapid, send: async () => { throw pushError(403) }, logger })
 
@@ -68,8 +68,22 @@ describe('createPushNotifier', () => {
     expect(logger.warn).toHaveBeenCalledTimes(1)
   })
 
+  it('removes a stored endpoint that is not a known push service without sending to it', async () => {
+    savePushSubscription(db, { userId: 2, endpoint: 'https://10.0.0.5:8443/internal', keys })
+    const send = vi.fn<SendPushFn>(async () => ({ statusCode: 201 }))
+    const logger = { warn: vi.fn() }
+    const notifier = createPushNotifier({ db, loadKeys: () => vapid, send, logger })
+
+    const [result] = await notifier.sendToUser(2, () => payload)
+
+    expect(result).toMatchObject({ status: 'removed' })
+    expect(send).not.toHaveBeenCalled()
+    expect(listPushSubscriptions(db, 2)).toEqual([])
+    expect(logger.warn).toHaveBeenCalledTimes(1)
+  })
+
   it('builds the payload per device', async () => {
-    savePushSubscription(db, { userId: 2, endpoint: 'https://push.example/de', keys, locale: 'de' })
+    savePushSubscription(db, { userId: 2, endpoint: 'https://fcm.googleapis.com/fcm/send/de', keys, locale: 'de' })
     const send = vi.fn<SendPushFn>(async () => ({ statusCode: 201 }))
     const notifier = createPushNotifier({ db, loadKeys: () => vapid, send })
 
