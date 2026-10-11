@@ -76,7 +76,7 @@ Opened by clicking a row or selecting *Edit* from the row menu. Same dialog as A
 
 Resetting a password or changing a role **signs the user out everywhere immediately**: every issued access and refresh token is rejected (HTTP and WebSocket) and the user's open chat/task/log sockets are closed. A role change therefore takes effect right away — the user logs in again and gets the new role. Roles are always read from the database, never trusted from the token.
 
-The bootstrap admin (the first account) cannot be demoted or deleted.
+The bootstrap admin (the oldest admin account, normally the first account) cannot be demoted or deleted. An account older than it cannot be promoted to admin either, because it would take over the bootstrap admin's legacy data.
 
 ## Your own account
 

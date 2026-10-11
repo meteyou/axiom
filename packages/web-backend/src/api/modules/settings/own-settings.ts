@@ -106,7 +106,7 @@ export function createOwnSettingsService(
     const scope = resolveUserScope(db, userId)
     if (!scope) throw new SettingsValidationError('User not found')
     const defaults = getGlobalChatDefaults()
-    const global = scope.role === 'admin' || scope.isBootstrapAdmin
+    const global = scope.role === 'admin'
     const overrides = global
       ? { chatModel: null, thinkingLevel: null, language: null, timezone: null }
       : getUserSettingsOverrides(db, userId)
@@ -131,7 +131,7 @@ export function createOwnSettingsService(
   function update(userId: number, body: Record<string, unknown>): OwnSettingsResponse {
     const scope = resolveUserScope(db, userId)
     if (!scope) throw new SettingsValidationError('User not found')
-    const global = scope.role === 'admin' || scope.isBootstrapAdmin
+    const global = scope.role === 'admin'
     const patch = parsePatch(body, global)
 
     if (!global) {

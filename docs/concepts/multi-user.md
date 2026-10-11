@@ -27,7 +27,7 @@ The agent is instructed to keep personal information out of the wiki, `MEMORY.md
 
 ## Where files live
 
-The first account — the **bootstrap admin** — keeps every location a single-user instance has always used. Each additional user gets:
+The **bootstrap admin** (see [below](#bootstrap-admin)) keeps every location a single-user instance has always used. Each additional user gets:
 
 - `/data/users/<username>/` — `PROFILE.md`, `HEARTBEAT.md`, `daily/`
 - `/workspace/<username>/` — the default working directory for that user's shell and file tools
@@ -45,7 +45,7 @@ The admin's settings (model, thinking level, language, timezone) are the **globa
 
 ## Bootstrap admin
 
-The first account is created from `ADMIN_PASSWORD` on first start (see [Configuration](../guide/configuration)). It can be neither deleted nor demoted, so the instance always has its legacy owner. Nightly [memory consolidation](./memory#memory-consolidation) runs once per user, with the bootstrap admin last.
+The bootstrap admin is the oldest admin account — normally the first account, created from `ADMIN_PASSWORD` on first start (see [Configuration](../guide/configuration)). If that account was demoted before multi-user support existed, the next-oldest admin takes its place. The bootstrap admin can be neither deleted nor demoted, and an older account cannot be promoted past it, so the instance always keeps the same legacy owner. Nightly [memory consolidation](./memory#memory-consolidation) runs once per user, with the bootstrap admin last.
 
 ## Recommended setup
 

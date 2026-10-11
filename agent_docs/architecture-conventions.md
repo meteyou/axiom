@@ -197,7 +197,7 @@ unchanged), rewrites all FK references across `chat_messages`, `token_usage`,
 - Tools that depend on the user are built per runtime through `AgentCoreOptions.createUserTools(context)` (`UserToolsContext`: `userId`, `scope`, `getInteractiveSessionId`). There is no global "current tool user" or "current interactive session" on `AgentCore`; `send_file`, task tools (parent session) and `provider_quota` (role) are bound to their runtime's user.
 - `abort(userId)` aborts only that user's runtime; the `TurnRunner` calls it with the turn's agent user id.
 - `swapProvider` and `setThinkingLevel` fan out to all live runtimes and are remembered for runtimes created later. Provider changes still end all sessions and rebuild `AgentCore`.
-- `UserScope` (`packages/core/src/user-scope.ts`) is the single place that resolves identity: `resolveUserScope`, `getBootstrapAdminId` (lowest user id) and `isMultiUser`. Later tasks extend it with paths and effective settings.
+- `UserScope` (`packages/core/src/user-scope.ts`) is the single place that resolves identity: `resolveUserScope`, `getBootstrapAdminId` (lowest admin id) and `isMultiUser`. Later tasks extend it with paths and effective settings.
 - The system prompt contains a `<current_user>` block (username, role); interactive sessions persist `sessions.user_id`.
 - Isolation regressions are covered by `packages/core/src/multi-user-isolation.test.ts`; extend it when adding user-bound behavior.
 

@@ -91,9 +91,14 @@ function toRole(role: string): UserRole {
   return role === 'admin' ? 'admin' : 'user'
 }
 
-/** The legacy owner: the user with the lowest id, or null on an empty instance. */
+/**
+ * The legacy owner: the admin with the lowest id, or null without any admin.
+ * Restricted to admins: instances from before multi-user support may have
+ * demoted their first account, and the legacy owner manages the global
+ * secrets and the shared legacy folders.
+ */
 export function getBootstrapAdminId(db: Database): number | null {
-  const row = db.prepare('SELECT MIN(id) AS id FROM users').get() as { id: number | null } | undefined
+  const row = db.prepare("SELECT MIN(id) AS id FROM users WHERE role = 'admin'").get() as { id: number | null } | undefined
   return row?.id ?? null
 }
 

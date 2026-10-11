@@ -7,9 +7,10 @@ Axiom is multi-user with **cooperative isolation**: separation at context, tool 
 `UserScope` is the single identity object passed through core: `id`, `username`, `role`, `isBootstrapAdmin`, `paths` and effective `settings`.
 
 - `resolveUserScope(db, userId)` accepts number or string, returns `null` for non-numeric ids (e.g. `telegram-<id>` pseudo users), unknown ids and soft-deleted users.
-- The bootstrap admin is the user with the lowest id (`getBootstrapAdminId`). Its `paths` are the legacy locations (`/data/memory/users/<name>.md`, `/data/memory/daily`, `/data/config/HEARTBEAT.md`, `/workspace`). Everyone else gets `/data/users/<name>/{PROFILE.md,HEARTBEAT.md,daily/}` and `/workspace/<name>`.
+- The bootstrap admin is the admin with the lowest id (`getBootstrapAdminId`). Admins only: legacy instances may have demoted their first account, and the bootstrap admin manages the global secrets and owns the legacy folders. `PUT /api/users/:id` refuses to demote it or to promote an older account past it, so it never changes. Its `paths` are the legacy locations (`/data/memory/users/<name>.md`, `/data/memory/daily`, `/data/config/HEARTBEAT.md`, `/workspace`). Everyone else gets `/data/users/<name>/{PROFILE.md,HEARTBEAT.md,daily/}` and `/workspace/<name>`.
 - `resolveUserPaths`, `checkUsernameAvailable` and `createUserFolders` are the only places that know the layout. Don't build user paths by hand.
 - `settings` comes from `resolveEffectiveSettings` (`user-settings.ts`): per-user model, thinking level, language and timezone, falling back to the admin's values.
+- Authorization always uses `role`, never `isBootstrapAdmin`; the latter only selects legacy paths and ownership.
 - `isMultiUser(db)` gates behavior that must stay unchanged on single-user instances.
 
 Rule: new per-user features take a `UserScope` (or an owner id) explicitly. Never read "the current user" from module state.
