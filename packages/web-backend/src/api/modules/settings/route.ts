@@ -10,6 +10,10 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
   const router = Router()
   const controller = createSettingsController(options)
 
+  // Registered before the auth guard: the login page and the favicon need the
+  // logo before anyone is signed in, and it exposes nothing sensitive.
+  router.get('/appearance', controller.getAppearance)
+
   router.use(jwtMiddleware)
 
   router.get('/me', controller.getOwnSettings)

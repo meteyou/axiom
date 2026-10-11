@@ -1382,6 +1382,12 @@
               </div>
             </div>
 
+            <!-- ═══ Appearance ═══ -->
+            <AppearanceSettingsTab
+              v-else-if="activeTab === 'appearance'"
+              v-model="form.appearance"
+            />
+
             <!-- ═══ Image generation ═══ -->
             <ImageGenerationSettingsTab
               v-else-if="activeTab === 'imageGeneration'"
@@ -2151,12 +2157,13 @@ import { buildProviderModelOptions } from '~/utils/providerModelOptions'
 import { useSettingsApi } from '~/api/settings'
 import { TIMEZONE_OPTIONS } from '~/utils/settingsOptions'
 import EmailAccountsWorkspace from '~/features/email/components/EmailAccountsWorkspace.vue'
+import AppearanceSettingsTab from './AppearanceSettingsTab.vue'
 import ImageGenerationSettingsTab from './ImageGenerationSettingsTab.vue'
 import SettingsCompactionSection from '~/features/settings/components/SettingsCompactionSection.vue'
 import UserAgentSettingsTab from './UserAgentSettingsTab.vue'
 import UserHeartbeatSettingsTab from './UserHeartbeatSettingsTab.vue'
 import { filterSettingsTabsByRole, resolveSettingsTab, type SettingsTabId } from '~/utils/settingsTabs'
-import type { MemoryConsolidationSettings, FactExtractionSettings, HealthMonitorNotificationToggles, HealthMonitorSettings, AgentHeartbeatSettings, TasksSettings, CodemodeSettings, ImageGenerationSettings, TtsSettings, SttSettings, UploadsSettings, TelegramSettings, WatchdogSettings, RetrySettings, CompactionSettings } from '~/composables/useSettings'
+import type { MemoryConsolidationSettings, FactExtractionSettings, HealthMonitorNotificationToggles, HealthMonitorSettings, AgentHeartbeatSettings, TasksSettings, CodemodeSettings, ImageGenerationSettings, TtsSettings, SttSettings, UploadsSettings, TelegramSettings, WatchdogSettings, RetrySettings, CompactionSettings, AppearanceSettings } from '~/composables/useSettings'
 import type { TelegramUser } from '~/composables/useTelegramUsers'
 
 /* ── Auth ── */
@@ -2185,6 +2192,7 @@ const activeTab = computed<TabId>({
 const tabs = computed(() => filterSettingsTabsByRole([
   { id: 'agent' as TabId, icon: 'bot', label: t('settings.tabs.agent') },
   { id: 'agentHeartbeat' as TabId, icon: 'activity', label: t('settings.tabs.agentHeartbeat') },
+  { id: 'appearance' as TabId, icon: 'palette', label: t('settings.tabs.appearance') },
   { id: 'email' as TabId, icon: 'mail', label: t('settings.tabs.email') },
   { id: 'healthMonitor' as TabId, icon: 'activity', label: t('settings.tabs.healthMonitor') },
   { id: 'imageGeneration' as TabId, icon: 'image', label: t('settings.tabs.imageGeneration') },
@@ -2453,6 +2461,7 @@ interface SettingsForm {
   imageGeneration: ImageGenerationSettings
   tts: TtsSettings
   stt: SttSettings
+  appearance: AppearanceSettings
 }
 
 const form = ref<SettingsForm | null>(null)
@@ -2520,6 +2529,7 @@ function hydrateForm() {
         providerId: migrateProviderValue(s.stt.rewrite?.providerId ?? ''),
       },
     },
+    appearance: { ...s.appearance },
   }
 }
 

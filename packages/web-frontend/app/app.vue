@@ -19,4 +19,10 @@ if (import.meta.client) {
   document.documentElement.classList.toggle('dark', resolved === 'dark')
   document.documentElement.classList.toggle('light', resolved === 'light')
 }
+
+const { asset: appLogoAsset, loadAppLogo } = useAppLogo()
+useHead({
+  link: [{ key: 'favicon-svg', rel: 'icon', type: 'image/svg+xml', href: () => appLogoAsset.value.favicon }],
+})
+void loadAppLogo()
 </script>

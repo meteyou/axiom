@@ -454,13 +454,16 @@
           </template>
 
           <template v-else>
-            <div class="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border bg-muted text-muted-foreground">
+            <div
+              class="relative flex h-8 w-8 shrink-0 items-center justify-center"
+              :class="msg.role === 'assistant' ? '' : 'rounded-full border border-border bg-muted text-muted-foreground'"
+            >
               <template v-if="msg.role === 'user'">
                 <img v-if="userAvatarUrl && !avatarFailed" :src="userAvatarUrl" :alt="user?.username" class="h-8 w-8 rounded-full object-cover" @error="onAvatarError">
                 <span v-else-if="user?.username" class="text-xs font-semibold">{{ userInitial }}</span>
                 <AppIcon v-else name="user" class="h-4 w-4" />
               </template>
-              <AppIcon v-else-if="msg.role === 'assistant'" name="bot" class="h-4 w-4" />
+              <AppLogo v-else-if="msg.role === 'assistant'" size="xs" />
               <AppIcon v-else name="info" class="h-4 w-4" />
               <!-- Telegram badge (source or delivered) -->
               <span

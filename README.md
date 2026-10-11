@@ -1,4 +1,8 @@
-# Axiom
+<p align="center">
+  <img src="docs/public/logo.svg" width="112" height="112" alt="Axiom logo">
+</p>
+
+<h1 align="center">Axiom</h1>
 
 > **There are many agents, but this one is mine.**  
 > *Inspired by [pi.dev](https://pi.dev)*

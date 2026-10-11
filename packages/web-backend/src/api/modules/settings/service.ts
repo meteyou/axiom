@@ -4,6 +4,7 @@ import { ensureConfigTemplates, getConfigDir, isValidTimezone, loadConfig, SETTI
 import type { SettingsData, SettingsRouterOptions, TelegramData } from './types.js'
 import {
   mergeAgentHeartbeat,
+  mergeAppearance,
   mergeConsolidation,
   mergeCodemode,
   mergeFactExtraction,
@@ -22,12 +23,13 @@ import {
   validateNonNegativeNumber,
   validatePositiveNumber,
 } from './schema.js'
-import { mapSettingsResponse, mapSettingsUpdateResponse } from './mapper.js'
+import { buildAppearanceResponse, mapSettingsResponse, mapSettingsUpdateResponse } from './mapper.js'
 
 export class SettingsValidationError extends Error {}
 
 export interface SettingsService {
   readSettings: () => ReturnType<typeof mapSettingsResponse>
+  readAppearance: () => ReturnType<typeof buildAppearanceResponse>
   updateSettings: (payload: Record<string, unknown>) => ReturnType<typeof mapSettingsUpdateResponse>
 }
 
@@ -51,6 +53,11 @@ export function createSettingsService(options: SettingsRouterOptions = {}): Sett
       telegram,
       batchingDelayMs: telegram.batchingDelayMs ?? 2500,
     })
+  }
+
+  function readAppearance() {
+    const { settings } = readConfigFiles()
+    return buildAppearanceResponse(settings as unknown as Record<string, unknown>)
   }
 
   function updateSettings(payload: Record<string, unknown>) {
@@ -151,6 +158,9 @@ export function createSettingsService(options: SettingsRouterOptions = {}): Sett
     const compactionMerge = mergeCompaction(body, settingsRaw)
     if (compactionMerge.error) throw new SettingsValidationError(compactionMerge.error)
 
+    const appearanceMerge = mergeAppearance(body, settingsRaw)
+    if (appearanceMerge.error) throw new SettingsValidationError(appearanceMerge.error)
+
     const telegramBody = body.telegram as Record<string, unknown> | undefined
     if (telegramBody !== undefined) {
       if (telegramBody.enabled !== undefined) {
@@ -232,6 +242,7 @@ export function createSettingsService(options: SettingsRouterOptions = {}): Sett
 
   return {
     readSettings,
+    readAppearance,
     updateSettings,
   }
 }

@@ -349,6 +349,43 @@ describe('settings route module', () => {
     expect(await escaping.json()).toEqual({ error: 'imageGeneration.outputDir must be a relative folder inside the workspace' })
   })
 
+  it('round-trips the app logo and serves it without authentication', async () => {
+    const readPublicLogo = async () => {
+      const response = await fetch(`${baseUrl}/api/settings/appearance`)
+      expect(response.status).toBe(200)
+      return response.json()
+    }
+
+    expect(await readPublicLogo()).toEqual({ logo: 'prism' })
+
+    const put = (appearance: Record<string, unknown>) => fetch(`${baseUrl}/api/settings`, {
+      method: 'PUT',
+      headers: { ...authHeaders(adminToken), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ appearance }),
+    })
+
+    const updated = await put({ logo: 'robot' })
+    expect(updated.status).toBe(200)
+    expect((await updated.json() as { appearance: unknown }).appearance).toEqual({ logo: 'robot' })
+    expect(await readPublicLogo()).toEqual({ logo: 'robot' })
+
+    const invalid = await put({ logo: 'unicorn' })
+    expect(invalid.status).toBe(400)
+    expect(await invalid.json()).toEqual({ error: 'appearance.logo must be "prism" or "raccoon" or "robot"' })
+
+    const settingsPath = path.join(tempDataDir, 'config', 'settings.json')
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as Record<string, unknown>
+    fs.writeFileSync(settingsPath, JSON.stringify({ ...settings, appearance: { logo: 'unicorn' } }))
+    expect(await readPublicLogo()).toEqual({ logo: 'prism' })
+
+    const nonAdminWrite = await fetch(`${baseUrl}/api/settings`, {
+      method: 'PUT',
+      headers: { ...authHeaders(userToken), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ appearance: { logo: 'raccoon' } }),
+    })
+    expect(nonAdminWrite.status).toBe(403)
+  })
+
   it('enforces authentication and admin boundaries', async () => {
     const unauthenticated = await fetch(`${baseUrl}/api/settings`)
     expect(unauthenticated.status).toBe(401)

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   mergeAgentHeartbeat,
+  mergeAppearance,
   mergeCompaction,
   mergeConsolidation,
   mergeCodemode,
@@ -261,5 +262,21 @@ describe('settings schema', () => {
     for (const [imageGeneration, error] of rejected) {
       expect(mergeImageGeneration({ imageGeneration }, {})).toEqual({ error, changed: false })
     }
+  })
+
+  it('validates and merges the app logo', () => {
+    const settingsRaw: Record<string, unknown> = {}
+
+    expect(mergeAppearance({}, settingsRaw)).toEqual({ error: null, changed: false })
+    expect(settingsRaw).toEqual({})
+
+    expect(mergeAppearance({ appearance: { logo: 'raccoon' } }, settingsRaw)).toEqual({ error: null, changed: true })
+    expect(settingsRaw.appearance).toEqual({ logo: 'raccoon' })
+
+    expect(mergeAppearance({ appearance: { logo: 'unicorn' } }, settingsRaw)).toEqual({
+      error: 'appearance.logo must be "prism" or "raccoon" or "robot"',
+      changed: false,
+    })
+    expect(settingsRaw.appearance).toEqual({ logo: 'raccoon' })
   })
 })

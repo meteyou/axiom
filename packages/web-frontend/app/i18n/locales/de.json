@@ -746,10 +746,19 @@
       "tasksDescription": "Standard-Provider, maximale Dauer, Schleifenerkennung und Zustellungseinstellungen für Hintergrundaufgaben.",
       "agentHeartbeat": "Agent Heartbeat",
       "agentHeartbeatDescription": "Periodische Hintergrundaufgaben für Gedächtnispflege, tägliche Notizen und proaktive Wartung.",
+      "appearance": "Erscheinungsbild",
+      "appearanceDescription": "Branding der Weboberfläche für alle Benutzer dieser Instanz.",
       "secrets": "Secrets",
       "secretsDescription": "Verschlüsselte Umgebungsvariablen verwalten, die zur Laufzeit injiziert werden.",
       "email": "E-Mail",
       "emailDescription": "IMAP/SMTP-Konten des Agenten — inklusive Berechtigungen und Sende-Regeln."
+    },
+    "appearanceLogo": "Logo",
+    "appearanceLogoHint": "Erscheint in der Seitenleiste, auf der Login-Seite, als Avatar des Assistenten im Chat und als Icon im Browser-Tab. Gilt für alle Benutzer.",
+    "appearanceLogoOptions": {
+      "prism": "Prisma",
+      "raccoon": "Waschbär",
+      "robot": "Roboter"
     },
     "agentHeartbeatEnabled": "Agent Heartbeat aktivieren",
     "agentHeartbeatEnabledHint": "Wenn aktiviert, führt der Agent periodisch Wartungsaufgaben aus HEARTBEAT.md durch (Gedächtnis-Updates, Hygiene-Checks).",

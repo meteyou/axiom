@@ -1,4 +1,4 @@
-import type { SettingsThinkingLevel, SettingsContract, SettingsUpdateContract, TtsSettingsContract } from '@axiom/core/contracts'
+import type { AppearanceSettingsContract, SettingsThinkingLevel, SettingsContract, SettingsUpdateContract, TtsSettingsContract } from '@axiom/core/contracts'
 
 interface ConsolidationRunResult {
   updated: boolean
@@ -74,6 +74,8 @@ export function useSettingsApi() {
 
   const getChatModels = () => apiFetch<{ providers: SelectableChatProvider[] }>('/api/settings/chat-models')
 
+  const getAppearance = () => apiFetch<AppearanceSettingsContract>('/api/settings/appearance')
+
   const getConsolidationStatus = () => apiFetch<ConsolidationStatus>('/api/memory/consolidation/status')
 
   const runConsolidation = () => apiFetch<ConsolidationRunResult>('/api/memory/consolidation/run', {
@@ -104,6 +106,7 @@ export function useSettingsApi() {
     getOwnSettings,
     updateOwnSettings,
     getChatModels,
+    getAppearance,
     getConsolidationStatus,
     runConsolidation,
     previewTts,

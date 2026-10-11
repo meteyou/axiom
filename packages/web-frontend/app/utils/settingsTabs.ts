@@ -1,5 +1,6 @@
 export const SETTINGS_TAB_IDS = [
   'agent',
+  'appearance',
   'memory',
   'agentHeartbeat',
   'healthMonitor',

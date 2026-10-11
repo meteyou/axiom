@@ -18,6 +18,7 @@ import {
   type CompactionSettingsContract,
   type AgentHeartbeatNightModeContract,
   type TelegramSettingsContract,
+  type AppearanceSettingsContract,
 } from '@axiom/core/contracts'
 import { useSettingsApi } from '~/api/settings'
 
@@ -37,10 +38,13 @@ export type WatchdogSettings = WatchdogSettingsContract
 export type RetrySettings = RetrySettingsContract
 export type CompactionSettings = CompactionSettingsContract
 export type TelegramSettings = TelegramSettingsContract
+export type AppearanceSettings = AppearanceSettingsContract
 export type Settings = SettingsContract
 
 export function useSettings() {
   const settingsApi = useSettingsApi()
+
+  const { setAppLogo } = useAppLogo()
 
   const settings = ref<Settings | null>(null)
   const loading = ref(false)
@@ -54,6 +58,7 @@ export function useSettings() {
     try {
       const result = await settingsApi.getSettings()
       settings.value = normalizeSettingsContract(result)
+      setAppLogo(settings.value.appearance.logo)
     } catch (err) {
       error.value = (err as Error).message
     } finally {
@@ -71,6 +76,7 @@ export function useSettings() {
       const result = await settingsApi.updateSettings(updates)
 
       settings.value = normalizeSettingsContract(result)
+      setAppLogo(settings.value.appearance.logo)
       successMessage.value = 'saved'
 
       // Refresh global connection status so the topbar reflects changes

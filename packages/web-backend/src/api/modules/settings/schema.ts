@@ -4,6 +4,7 @@ import {
   HEALTH_MONITOR_FALLBACK_TRIGGERS,
   IMAGE_GENERATION_MAX_VARIANTS_BOUNDS,
   normalizeImageOutputDir,
+  SETTINGS_APP_LOGOS,
   SETTINGS_STT_OPENAI_MODELS,
   SETTINGS_STT_PROVIDERS,
   SETTINGS_THINKING_LEVELS,
@@ -655,4 +656,23 @@ export function mergeStt(
 
   settingsRaw.stt = existing
   return { error: null }
+}
+
+export function mergeAppearance(
+  body: Record<string, unknown>,
+  settingsRaw: Record<string, unknown>,
+): MergeGroupResult {
+  const appearance = body.appearance as Record<string, unknown> | undefined
+  if (!appearance) return { error: null, changed: false }
+
+  const existing = (settingsRaw.appearance ?? {}) as Record<string, unknown>
+
+  if (appearance.logo !== undefined) {
+    const err = validateEnum(appearance.logo, SETTINGS_APP_LOGOS, 'appearance.logo')
+    if (err) return { error: err, changed: false }
+    existing.logo = appearance.logo
+  }
+
+  settingsRaw.appearance = existing
+  return { error: null, changed: true }
 }

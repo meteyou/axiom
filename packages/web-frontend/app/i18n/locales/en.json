@@ -746,10 +746,19 @@
       "tasksDescription": "Default provider, max duration, loop detection, and delivery settings for background tasks.",
       "agentHeartbeat": "Agent Heartbeat",
       "agentHeartbeatDescription": "Periodic background tasks for memory maintenance, daily note-taking, and proactive housekeeping.",
+      "appearance": "Appearance",
+      "appearanceDescription": "Branding of the web interface for all users of this instance.",
       "secrets": "Secrets",
       "secretsDescription": "Manage encrypted environment variables injected at runtime.",
       "email": "Email",
       "emailDescription": "IMAP/SMTP accounts the agent may use, including permissions and send rules."
+    },
+    "appearanceLogo": "Logo",
+    "appearanceLogoHint": "Shown in the sidebar, on the login page, as the assistant avatar in chat and as the browser tab icon. Applies to every user.",
+    "appearanceLogoOptions": {
+      "prism": "Prism",
+      "raccoon": "Raccoon",
+      "robot": "Robot"
     },
     "agentHeartbeatEnabled": "Enable Agent Heartbeat",
     "agentHeartbeatEnabledHint": "When enabled, the agent periodically runs maintenance tasks defined in HEARTBEAT.md (memory updates, hygiene checks).",
