@@ -556,6 +556,10 @@ export function initDatabase(dbPath?: string): Database {
     db.exec('ALTER TABLE users ADD COLUMN deleted_at TEXT')
   }
 
+  if (!userCols.find(c => c.name === 'workspace_provisioned')) {
+    db.exec('ALTER TABLE users ADD COLUMN workspace_provisioned INTEGER NOT NULL DEFAULT 0')
+  }
+
   // Migration: add cache token columns to tasks table
   const taskColsForCache = db.prepare("PRAGMA table_info(tasks)").all() as { name: string }[]
   if (!taskColsForCache.find(c => c.name === 'cache_read')) {

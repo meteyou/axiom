@@ -3,6 +3,7 @@ import path from 'node:path'
 import type { Database } from './database.js'
 import { listEmailAccounts, deleteEmailAccount } from './email-account-store.js'
 import { getUploadsDir, parseUploadsMetadata } from './uploads.js'
+import { getBootstrapAdminId, isValidUsername, resolveUserPaths } from './user-scope.js'
 
 export interface UserPurgeResult {
   /** Tasks that were still running or paused when the purge started. */
@@ -100,4 +101,38 @@ export function purgeUserData(db: Database, userId: number): UserPurgeResult {
   })()
 
   return { activeTaskIds, cronjobIds, deletedEmailAccounts, deletedUploads }
+}
+
+export interface UserFolderRemoval {
+  removed: string[]
+  /** Existing folders left on disk because they may not belong to the user. */
+  kept: string[]
+}
+
+/**
+ * Deletes the personal folder and workspace of a deleted user. The workspace is
+ * only removed when Axiom created it for the user: accounts from before
+ * multi-user support map to `/workspace/<name>` without that check, so the
+ * folder may be an unrelated repo, and their names were never validated.
+ */
+export function removeUserFolders(db: Database, userId: number): UserFolderRemoval {
+  const row = db.prepare('SELECT username, workspace_provisioned FROM users WHERE id = ?').get(userId) as
+    | { username: string; workspace_provisioned: number }
+    | undefined
+  if (!row || userId === getBootstrapAdminId(db)) return { removed: [], kept: [] }
+
+  const { userDir, workspace } = resolveUserPaths(row.username, false)
+  const validName = isValidUsername(row.username)
+  const result: UserFolderRemoval = { removed: [], kept: [] }
+  for (const [folder, removable] of [[userDir, validName], [workspace, validName && row.workspace_provisioned === 1]] as const) {
+    // Names like `..` or `a/b` resolve outside the user's own folder; those are not reported either.
+    if (!folder || path.basename(folder) !== row.username || !fs.existsSync(folder)) continue
+    if (removable) {
+      fs.rmSync(folder, { recursive: true, force: true })
+      result.removed.push(folder)
+    } else {
+      result.kept.push(folder)
+    }
+  }
+  return result
 }

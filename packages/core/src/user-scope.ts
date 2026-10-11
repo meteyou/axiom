@@ -87,6 +87,14 @@ export function createUserFolders(paths: UserPaths, templates: UserFolderTemplat
   if (!fs.existsSync(paths.heartbeatFile)) fs.writeFileSync(paths.heartbeatFile, templates.heartbeat, 'utf-8')
 }
 
+/**
+ * Records that Axiom created the user's workspace (see `checkUsernameAvailable`),
+ * which is what allows deleting the user to remove it.
+ */
+export function markWorkspaceProvisioned(db: Database, userId: number): void {
+  db.prepare('UPDATE users SET workspace_provisioned = 1 WHERE id = ?').run(userId)
+}
+
 function toRole(role: string): UserRole {
   return role === 'admin' ? 'admin' : 'user'
 }

@@ -58,17 +58,18 @@ export function useUsers() {
     }
   }
 
-  async function deleteUser(id: number, deleteFiles = true): Promise<boolean> {
+  /** Resolves to the folders the backend kept on disk, or null on failure. */
+  async function deleteUser(id: number, deleteFiles = true): Promise<{ keptFolders: string[] } | null> {
     error.value = null
     try {
-      await apiFetch(`/api/users/${id}?deleteFiles=${deleteFiles}`, {
+      const data = await apiFetch<{ keptFolders?: string[] }>(`/api/users/${id}?deleteFiles=${deleteFiles}`, {
         method: 'DELETE',
       })
       await fetchUsers()
-      return true
+      return { keptFolders: data.keptFolders ?? [] }
     } catch (err) {
       error.value = (err as Error).message
-      return false
+      return null
     }
   }
 
