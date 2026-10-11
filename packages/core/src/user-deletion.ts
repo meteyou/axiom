@@ -98,6 +98,9 @@ export function purgeUserData(db: Database, userId: number): UserPurgeResult {
     if (tableExists(db, 'email_send_log')) {
       db.prepare('DELETE FROM email_send_log WHERE owner_user_id = ?').run(userId)
     }
+    if (tableExists(db, 'push_subscriptions')) {
+      db.prepare('DELETE FROM push_subscriptions WHERE user_id = ?').run(userId)
+    }
     db.prepare("UPDATE telegram_users SET user_id = NULL, updated_at = datetime('now') WHERE user_id = ?").run(userId)
     db.prepare(
       "UPDATE users SET deleted_at = COALESCE(deleted_at, datetime('now')), telegram_id = NULL, updated_at = datetime('now') WHERE id = ?",

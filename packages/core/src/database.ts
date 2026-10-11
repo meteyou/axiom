@@ -5,6 +5,7 @@ import fs from 'node:fs'
 import { initEmailSendLogTable, migrateEmailSendLogOwners } from './email-send-log.js'
 import { initTaskToolJournalTable } from './task-tool-journal.js'
 import { initContextCompactionsTable } from './compaction-store.js'
+import { initPushSubscriptionsTable } from './push-subscriptions.js'
 import { migrateEmailAccountOwners } from './email-account-store.js'
 import { migrateTaskOwners } from './task-store.js'
 import { migrateScheduledTaskOwners } from './scheduled-task-store.js'
@@ -336,6 +337,7 @@ export function initDatabase(dbPath?: string): Database {
   initEmailSendLogTable(db)
   initTaskToolJournalTable(db)
   initContextCompactionsTable(db)
+  initPushSubscriptionsTable(db)
 
   // Create scheduled_tasks table
   db.exec(`
@@ -560,6 +562,10 @@ export function initDatabase(dbPath?: string): Database {
 
   if (!userCols.find(c => c.name === 'workspace_provisioned')) {
     db.exec('ALTER TABLE users ADD COLUMN workspace_provisioned INTEGER NOT NULL DEFAULT 0')
+  }
+
+  if (!userCols.find(c => c.name === 'push_show_preview')) {
+    db.exec('ALTER TABLE users ADD COLUMN push_show_preview INTEGER NOT NULL DEFAULT 0')
   }
 
   // Migration: add cache token columns to tasks table
