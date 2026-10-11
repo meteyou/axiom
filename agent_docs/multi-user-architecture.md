@@ -47,7 +47,7 @@ Pure functions deciding who may do what with tasks and cronjobs:
 - **Soft delete:** the user row stays (username reserved, usage attributed as "<name> (deleted)"); owned data is removed.
 - **Consolidation:** runs once per user, sequentially, bootstrap admin last; global steps are `<admin_only>` sections of `CONSOLIDATION.md`.
 - **Heartbeat:** per-user switch and `HEARTBEAT.md`; interval, night hours and master switch are global; night mode uses the user's timezone.
-- **Telegram:** with several users, approved accounts without a linked user are refused; groups answer only admin-linked accounts.
+- **Telegram:** with several users, approved accounts without a linked user are refused; groups answer only admin-linked accounts. On a single-user instance an unlinked approved account acts as the bootstrap admin (`resolveNumericUserId` in `bot.ts`), including email approval prompts.
 
 ## Verification
 

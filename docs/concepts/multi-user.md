@@ -55,7 +55,7 @@ On an instance with more than one user, don't use the admin account for daily ch
 2. Create your own regular account for everyday use, plus one for each other person. Set their language and timezone in the dialog.
 3. Keep the admin account for monitoring, usage and cleanup.
 
-Link each person's Telegram identity to their own account in [Settings → Telegram](../settings/telegram). An approved Telegram account without a linked user is refused once several users exist.
+Link each person's Telegram identity to their own account in [Settings → Telegram](../settings/telegram). An approved Telegram account without a linked user is refused once several users exist; on a single-user instance it acts as the admin account.
 
 A single-user instance behaves exactly as before.
 

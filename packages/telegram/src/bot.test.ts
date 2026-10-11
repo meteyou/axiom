@@ -2109,8 +2109,8 @@ describe('multi-user Telegram access rules', () => {
     expect(agentCore.sendMessage).not.toHaveBeenCalled()
   })
 
-  it('still answers an unlinked account in a single-user instance', async () => {
-    addUser('admin', 'admin')
+  it('lets an unlinked account act as the admin in a single-user instance', async () => {
+    const adminId = addUser('admin', 'admin')
     approve('900', null)
     vi.mocked(agentCore.sendMessage).mockReturnValue(doneOnlyStream())
     vi.useFakeTimers()
@@ -2121,7 +2121,39 @@ describe('multi-user Telegram access rules', () => {
       vi.useRealTimers()
     }
 
-    expect(agentCore.sendMessage).toHaveBeenCalled()
+    expect(vi.mocked(agentCore.sendMessage).mock.calls[0]?.[0]).toBe(String(adminId))
+  })
+
+  it('shows the admin\'s tasks to an unlinked account in a single-user instance', async () => {
+    const adminId = addUser('admin', 'admin')
+    approve('900', null)
+    new TaskStore(db).create({ name: 'admin-task', prompt: 'p', triggerType: 'user', ownerUserId: adminId })
+    const ctx = ctxFor(900, 'private', '/tasks')
+
+    await handlers()._commandHandlers.get('tasks')!(ctx)
+
+    expect(String(ctx.reply.mock.calls[0]?.[0])).toContain('admin-task')
+  })
+
+  it('sends the admin\'s email approval prompts to unlinked accounts only while single-user', async () => {
+    const adminId = addUser('admin', 'admin')
+    approve('900', null)
+    const bot = new TelegramBot({ agentCore, db, config })
+    const api = (bot.getBot() as any).api
+    const entry = {
+      id: 'entry-1', accountId: 'acc-1', accountName: 'Work', ownerUserId: adminId, status: 'pending',
+      to: ['x@example.org'], cc: [], bcc: [], subject: 'S', bodyText: 'B', bodyHtml: null, attachments: [],
+      inReplyTo: null, references: [], reason: null, errorMessage: null, messageId: null, sessionId: null,
+      decidedBy: null, decidedAt: null, sentAt: null, createdAt: 'now', updatedAt: 'now',
+    } as EmailSendLogEntry
+
+    await bot.createEmailApprovalNotifier().approvalRequested!(entry)
+    expect(api.sendMessage.mock.calls.map((call: unknown[]) => call[0])).toEqual(['900'])
+
+    api.sendMessage.mockClear()
+    addUser('bob', 'user')
+    await bot.createEmailApprovalNotifier().approvalRequested!(entry)
+    expect(api.sendMessage).not.toHaveBeenCalled()
   })
 
   it('ignores group messages from non-admin senders and answers admins', async () => {

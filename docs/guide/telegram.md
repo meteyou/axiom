@@ -86,10 +86,6 @@ switches the active model for the next turn. The picker auto-expires after
 10 minutes if untouched, so scrolling back to an old picker and tapping a
 button will return an "expired" notice instead of switching models.
 
-Telegram accounts that are approved but not linked to an Axiom user can only
-view the current model and thinking level; `/model` and `/thinking` cannot
-change them until the account is linked.
-
 `/skill` works in two ways. A bare `/skill` opens an inline keyboard listing
 every loadable skill (self-created agent skills and enabled installed
 skills). Tapping one injects its `SKILL.md` into the conversation; the agent
@@ -111,7 +107,7 @@ just stays empty until the next successful start.
 When more than one Axiom user exists, Telegram follows these rules:
 
 - **Linked accounts** run as their Axiom user: own conversation, model, thinking level, language and timezone, and notifications go only to that user. `/model`, `/thinking`, `/tasks`, `/cronjobs`, `/stop` and `/new` affect only your own settings, tasks and session.
-- **Approved but unlinked accounts** are refused with a hint to ask the administrator to link the account (see [Settings → Telegram](../settings/telegram#telegram-users)). In an instance with a single user nothing changes.
+- **Approved but unlinked accounts** are refused with a hint to ask the administrator to link the account (see [Settings → Telegram](../settings/telegram#telegram-users)). In an instance with a single user they keep full access and act as the admin account: same conversation, tasks, cronjobs, settings and email approval prompts.
 - **Group chats:** the bot only answers senders whose linked Axiom user has the admin role. Messages and commands from everyone else are ignored silently. Dedicated group modes are planned.
 
 ## Voice messages
