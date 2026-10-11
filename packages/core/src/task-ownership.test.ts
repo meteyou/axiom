@@ -207,6 +207,15 @@ describe('task ownership', () => {
       expect(aborted).toEqual([])
     })
 
+    it('applies a role change to tools that were built before it', async () => {
+      const bobs = store.create({ name: 'b', prompt: 'p', triggerType: 'user', ownerUserId: 3 })
+      const adminTools = toolsFor(1)
+      db.prepare("UPDATE users SET role = 'user' WHERE id = 1").run()
+
+      expect(textOf(await adminTools.get('stop_task')!.execute('call', { task_id: bobs.id }) as never)).toContain('not found')
+      expect(aborted).toEqual([])
+    })
+
     it('rejects resuming foreign tasks for everyone', async () => {
       const bobs = store.create({ name: 'b', prompt: 'p', triggerType: 'user', ownerUserId: 3 })
       store.update(bobs.id, { status: 'paused' })
