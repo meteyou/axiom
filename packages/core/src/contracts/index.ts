@@ -75,6 +75,8 @@ export {
   CONTEXT_COMPACTION_REASONS,
   CONTEXT_COMPACTION_STATUSES,
   CONTEXT_COMPACTION_WARNINGS,
+  contextUsagePercent,
+  formatContextUsage,
   formatTokenCount,
   formatTokensAfter,
   parseContextCompactionInfo,
@@ -85,6 +87,7 @@ export type {
   ContextCompactionReason,
   ContextCompactionStatus,
   ContextCompactionWarning,
+  ContextUsageInfo,
 } from './compaction.js'
 
 export type {

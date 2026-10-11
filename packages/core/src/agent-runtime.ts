@@ -44,7 +44,7 @@ import { loadSecretsDecrypted } from './secrets-config.js'
 import { isMultiUser, resolveUserScope } from './user-scope.js'
 import type { UserScope } from './user-scope.js'
 import type { AgentRuntimeStateSnapshot, ResponseChunk } from './agent-runtime-types.js'
-import type { ContextCompactionInfo } from './contracts/compaction.js'
+import type { ContextCompactionInfo, ContextUsageInfo } from './contracts/compaction.js'
 import { createAxiomAgent } from './agent-factory.js'
 import { ContextCompactor, describeContextOverflow, withoutFailedAssistantTail } from './context-compactor.js'
 import { estimateMessageTokens } from './compaction.js'
@@ -159,6 +159,8 @@ export interface AgentRuntimeBoundary {
    * outcome. `instructions` steer what the summary focuses on.
    */
   compact(instructions?: string, sessionId?: string): AsyncIterable<ResponseChunk>
+  /** How full the context window is; null while the model's window is unknown. */
+  getContextUsage(): ContextUsageInfo | null
   refreshSystemPrompt(channel?: string, currentUser?: { username: string; role?: string }): void
   getCurrentTimeContext(): string
   swapProvider(provider: ProviderConfig, apiKey: string, modelId?: string): void
@@ -628,6 +630,10 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
     if (!continuable) return false
     if (continuable.length !== messages.length) this.agent.state.messages = continuable
     return true
+  }
+
+  getContextUsage(): ContextUsageInfo | null {
+    return this.compactor.getContextUsage()
   }
 
   compact(instructions?: string, sessionId?: string): AsyncIterable<ResponseChunk> {

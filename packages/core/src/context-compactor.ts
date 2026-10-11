@@ -3,7 +3,7 @@ import type { Agent as PiAgent, AgentEvent, AgentLoopTurnUpdate, AgentMessage, P
 import { isContextOverflow } from '@earendil-works/pi-ai'
 import type { Api, AssistantMessage, Model, RetryPolicy } from '@earendil-works/pi-ai'
 import type { Database } from './database.js'
-import type { ContextCompactionInfo, ContextCompactionWarning } from './contracts/compaction.js'
+import type { ContextCompactionInfo, ContextCompactionWarning, ContextUsageInfo } from './contracts/compaction.js'
 import {
   CompactionAbortedError,
   checkCompactionInvariant,
@@ -155,6 +155,25 @@ export class ContextCompactor {
 
   abort(): void {
     this.activeAbort?.abort()
+  }
+
+  /** How full the context window is right now; null while the model's window is unknown. */
+  getContextUsage(): ContextUsageInfo | null {
+    const agent = this.requireAgent()
+    const model = agent.state.model
+    if (!model || !(model.contextWindow > 0)) return null
+    const { settings, budget } = this.resolveBudget(model)
+    const estimate = estimateContextTokens(agent.state.messages)
+    return {
+      tokens: estimate.tokens,
+      estimated: estimate.lastUsageIndex === null,
+      contextWindow: model.contextWindow,
+      compactionThreshold: budget.triggerTokens,
+      modelId: model.id,
+      modelName: model.name || model.id,
+      autoCompaction: settings.enabled,
+      autoCompactionPaused: settings.enabled && this.pausedSummaryTokens !== null,
+    }
   }
 
   private resolveSettings(): ResolvedCompactionSettings {

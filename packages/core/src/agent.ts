@@ -16,6 +16,7 @@ import { MessageQueue } from './message-queue.js'
 import { createAgentRuntime } from './agent-runtime.js'
 import type { AgentRuntimeBoundary, AgentRuntimePiAgentAccess } from './agent-runtime.js'
 import type { AgentRuntimeStateSnapshot, ResponseChunk } from './agent-runtime-types.js'
+import type { ContextUsageInfo } from './contracts/compaction.js'
 import { normalizeThinkingLevel, resolveBackgroundReasoning } from './thinking-level.js'
 import { resolveUserScope } from './user-scope.js'
 import type { UserScope } from './user-scope.js'
@@ -787,6 +788,16 @@ Do NOT add this section if everything discussed was resolved or if there is noth
       this.refreshRuntimePrompt(entry)
     }
     return this.sessionManager.handleNewCommandAsync(userId, source)
+  }
+
+  /**
+   * How full the user's context window is. Null until the user's runtime
+   * exists (first message since the server started).
+   */
+  // Called via the injected getAgentCore() accessor in routes/chat.ts and by channels.
+  // fallow-ignore-next-line unused-class-member
+  getContextUsage(userId: string): ContextUsageInfo | null {
+    return this.runtimes.get(userId)?.runtime.getContextUsage() ?? null
   }
 
   /**
