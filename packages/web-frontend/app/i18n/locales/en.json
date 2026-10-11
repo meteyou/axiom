@@ -78,6 +78,17 @@
         "auto_paused": "The context is still above the compaction threshold. Automatic compaction is paused until more messages are added; /new starts a fresh conversation."
       }
     },
+    "context": {
+      "label": "Context window {percent}% full",
+      "title": "Context window",
+      "tokens": "tokens",
+      "model": "Model",
+      "threshold": "Compaction at",
+      "thresholdValue": "{tokens} ({percent}%)",
+      "autoOff": "Automatic compaction off",
+      "paused": "Automatic compaction is paused: the last compaction could not get the context below the threshold. /new starts a fresh conversation.",
+      "estimated": "Estimated: no model response since the session started or the last compaction. The exact size follows with the next answer."
+    },
     "statusConnected": "Chat connected",
     "statusConnecting": "Connecting",
     "statusDisconnected": "Chat disconnected",

@@ -74,6 +74,20 @@ export function createChatRouter(options: ChatRouterOptions): Router {
   })
 
   /**
+   * GET /api/chat/context
+   * How full the caller's context window is; `usage` is null until their
+   * agent has run once since the server started.
+   */
+  router.get('/context', (req: AuthenticatedRequest, res) => {
+    const agentCore = getAgentCore()
+    if (!agentCore) {
+      res.status(503).json({ error: 'Agent core not available' })
+      return
+    }
+    res.json({ usage: agentCore.getContextUsage(String(req.user!.userId)) })
+  })
+
+  /**
    * GET /api/chat/history
    * Query: ?session_id=xxx&page=1&limit=50
    * Returns paginated chat messages, joined with `sessions` so each message
