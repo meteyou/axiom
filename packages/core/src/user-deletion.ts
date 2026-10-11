@@ -1,9 +1,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { Database } from './database.js'
+import { isValidUsername } from './username.js'
 import { listEmailAccounts, deleteEmailAccount } from './email-account-store.js'
 import { getUploadsDir, parseUploadsMetadata } from './uploads.js'
-import { getBootstrapAdminId, isValidUsername, resolveUserPaths } from './user-scope.js'
+import { getBootstrapAdminId, resolveUserPaths } from './user-scope.js'
 
 export interface UserPurgeResult {
   /** Tasks that were still running or paused when the purge started. */
