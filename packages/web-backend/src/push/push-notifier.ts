@@ -54,6 +54,8 @@ export interface PushNotifierOptions {
 
 /** Undelivered notifications expire after a day: a reply that old is no longer news. */
 const PUSH_TTL_SECONDS = 24 * 60 * 60
+/** Without a timeout a push service that never answers keeps the request and its socket open forever. */
+const PUSH_REQUEST_TIMEOUT_MS = 10_000
 
 /**
  * Apple's push service rejects VAPID tokens whose subject is not a public
@@ -99,6 +101,7 @@ export function createPushNotifier(options: PushNotifierOptions): PushNotifier {
         JSON.stringify(payload),
         {
           TTL: PUSH_TTL_SECONDS,
+          timeout: PUSH_REQUEST_TIMEOUT_MS,
           urgency: 'normal',
           vapidDetails: {
             subject: resolveVapidSubject(vapid.subject, device.origin),

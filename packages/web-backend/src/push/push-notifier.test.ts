@@ -36,6 +36,7 @@ describe('createPushNotifier', () => {
     const callForA = send.mock.calls.find(([subscription]) => subscription.endpoint === 'https://push.example/a')!
     expect(JSON.parse(callForA[1])).toEqual(payload)
     expect(callForA[2].vapidDetails).toEqual({ subject: 'https://axiom.example.org', publicKey: 'public', privateKey: 'private' })
+    expect(callForA[2].timeout).toBeGreaterThan(0)
     expect(listPushSubscriptions(db, 2).every(device => device.lastSuccessAt !== null)).toBe(true)
   })
 
