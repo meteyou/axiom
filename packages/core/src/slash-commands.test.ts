@@ -215,6 +215,31 @@ describe('built-in slash commands', () => {
     if (focused.kind === 'handled') expect(focused.reply).toEqual({ kind: 'compact', instructions: 'keep the PR numbers' })
   })
 
+  it('/context reports the caller\'s context usage', async () => {
+    expect(registry.list('telegram').map((c) => c.name)).toContain('context')
+
+    const empty = await registry.dispatch('/context', { surface: 'telegram', userId: '1', registry, getContextUsage: () => null })
+    if (empty.kind === 'handled') expect(empty.reply).toBe('No context yet. Send a message first.')
+
+    const usage = {
+      tokens: 33_121,
+      estimated: false,
+      contextWindow: 262_144,
+      compactionThreshold: 245_760,
+      modelId: 'Qwen3.8-27B-FP8',
+      modelName: 'Qwen3.8 27B',
+      autoCompaction: true,
+      autoCompactionPaused: false,
+    }
+    const full = await registry.dispatch('/context', { surface: 'telegram', userId: '1', registry, getContextUsage: () => usage })
+    expect(full.kind).toBe('handled')
+    if (full.kind === 'handled') {
+      expect(full.reply).toBe(
+        '\u{1F9E0} Context: 33k / 262k tokens (13%)\nAutomatic compaction at 246k (94%)\nModel: Qwen3.8 27B',
+      )
+    }
+  })
+
   it('exposes /provider as an alias of /model and does not register /settings', () => {
     expect(registry.resolve('provider')?.name).toBe('model')
     expect(registry.resolve('model')?.name).toBe('model')

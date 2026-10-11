@@ -15,6 +15,8 @@ import {
 import type { ProviderConfig } from './provider-config.js'
 import { getConfigDir, loadConfig } from './config.js'
 import { SETTINGS_THINKING_LEVELS, type SettingsThinkingLevel } from './contracts/settings.js'
+import { formatContextUsage } from './contracts/compaction.js'
+import type { ContextUsageInfo } from './contracts/compaction.js'
 import { normalizeThinkingLevel } from './thinking-level.js'
 import { resolveUserScope } from './user-scope.js'
 import type { UserScope } from './user-scope.js'
@@ -122,6 +124,8 @@ export interface SlashCommandContext {
   taskStore?: TaskStore
   scheduledTaskStore?: ScheduledTaskStore
   onThinkingLevelChanged?: (level: SettingsThinkingLevel) => void
+  /** Context usage of the calling user's main agent; null until it has run once. */
+  getContextUsage?: () => ContextUsageInfo | null
 }
 
 export interface ParsedSlashCommand {
@@ -321,6 +325,17 @@ export function registerBuiltInSlashCommands(registry: SlashCommandRegistry): vo
       kind: 'compact',
       ...(ctx.args ? { instructions: ctx.args } : {}),
     }),
+  })
+
+  registry.register({
+    name: 'context',
+    description: 'Show how full the context window is.',
+    usage: '/context',
+    surfaces: ['web', 'telegram'],
+    handler: (ctx) => {
+      const usage = ctx.getContextUsage?.()
+      return usage ? formatContextUsage(usage) : 'No context yet. Send a message first.'
+    },
   })
 
   registry.register({
