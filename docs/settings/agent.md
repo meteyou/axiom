@@ -169,8 +169,9 @@ When a chat approaches the model's context window, older messages are replaced b
 | Field                    | Default | Effect                                                                                        |
 |--------------------------|---------|-----------------------------------------------------------------------------------------------|
 | **Automatic compaction** | on      | Master switch for automatic compaction (main chat and tasks). `/compact` works even when off. |
-| **Compact background tasks** | on  | Apply automatic compaction to background tasks too (requires the master switch).              |
+
+Whether background tasks are compacted too is switched under [Tasks → Context compaction](./tasks#context-compaction).
 
 ```json
-{ "compaction": { "enabled": true, "tasks": { "enabled": true } } }
+{ "compaction": { "enabled": true } }
 ```

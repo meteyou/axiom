@@ -65,6 +65,14 @@ The interactive chat agent has its own switch in [Agent → Codemode](./agent#co
 
 When to use it, what scripts can do, the limits and where the switches' effects show up: [Codemode](../concepts/codemode).
 
+## Context compaction
+
+**Compact background tasks** (default: on) summarizes older turns of long-running tasks so they stay inside the model's context window. It needs the master switch [Agent → Context compaction → Automatic compaction](./agent#context-compaction); while that is off, this switch is disabled. Thresholds derive from the task model's context window. How it works: [Context Compaction](../concepts/compaction).
+
+```json
+{ "compaction": { "tasks": { "enabled": true } } }
+```
+
 ## Loop detection
 
 Tasks can get stuck — repeating the same failing tool call over and over, or going in circles without making progress. Loop detection catches this and terminates the task. Which of the two it catches depends on the detection method below.

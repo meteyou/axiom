@@ -712,7 +712,9 @@
       "enabled": "Automatische Komprimierung",
       "enabledHint": "Ältere Nachrichten automatisch zusammenfassen, bevor der Kontext zu groß wird. /compact funktioniert auch, wenn dies aus ist. Standard: an.",
       "tasksEnabled": "Hintergrund-Tasks komprimieren",
-      "tasksEnabledHint": "Die automatische Komprimierung auch auf Hintergrund-Tasks anwenden. Standard: an."
+      "tasksEnabledHint": "Die automatische Komprimierung auch auf Hintergrund-Tasks anwenden. Standard: an.",
+      "tasksEnabledMasterOff": "Die automatische Komprimierung ist unter Agent → Kontext-Komprimierung ausgeschaltet, daher werden auch Tasks nicht komprimiert.",
+      "tasksSectionHint": "Ältere Turns lang laufender Tasks zusammenfassen, damit sie im Kontextfenster des Modells bleiben."
     },
     "days": "Tage",
     "attemptsUnit": "Versuche",

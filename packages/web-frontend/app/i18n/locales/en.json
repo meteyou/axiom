@@ -712,7 +712,9 @@
       "enabled": "Automatic compaction",
       "enabledHint": "Summarize older messages automatically before the context gets too large. /compact works even when this is off. Default: on.",
       "tasksEnabled": "Compact background tasks",
-      "tasksEnabledHint": "Apply automatic compaction to background tasks as well. Default: on."
+      "tasksEnabledHint": "Apply automatic compaction to background tasks as well. Default: on.",
+      "tasksEnabledMasterOff": "Automatic compaction is off under Agent → Context compaction, so tasks are not compacted either.",
+      "tasksSectionHint": "Summarize older turns of long-running tasks so they stay inside the model's context window."
     },
     "days": "days",
     "attemptsUnit": "attempts",
