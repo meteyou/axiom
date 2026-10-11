@@ -95,6 +95,6 @@ A compaction invalidates the provider's prompt cache once, so compacting much ea
 ## Limits
 
 - **Summaries lose detail.** Exact identifiers are asked for explicitly, and external actions are carried over deterministically, but nuances of older messages can get lost.
-- **If the summary call fails**, nothing is compacted and the run continues with the full context. Only on a real overflow does this end the turn with an error. A summary call that gets no response from the provider for 5 minutes is aborted and counts as failed.
+- **If the summary call fails**, nothing is compacted and the run continues with the full context. Only on a real overflow does this end the turn with an error. A summary call that gets no response from the provider for 5 minutes is aborted and counts as failed. After a failure, automatic compaction waits until the context has grown by half the reserve before it tries again, so a summary call that keeps failing is not repeated (and billed) on every turn; `/compact` and the compact-and-retry on a provider overflow still run right away.
 - **One shared main conversation.** The main agent has one runtime for all channels, so a compaction (automatic or `/compact`) affects web chat and Telegram alike.
 - **Not restored after a restart.** After a server restart the in-memory conversation starts fresh as before; the stored summaries are not used to rebuild it yet.
