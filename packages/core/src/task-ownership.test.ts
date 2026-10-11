@@ -261,6 +261,7 @@ describe('task ownership', () => {
       expect(call.initialState.tools.map(t => t.name)).toEqual(['tool_for_alice'])
       expect(call.initialState.systemPrompt).toContain(path.join(workspaceDir, 'alice'))
       expect(call.initialState.systemPrompt).toContain(path.join(dataDir, 'users', 'alice', 'PROFILE.md'))
+      expect(call.initialState.systemPrompt).toContain('MEMORY.md, the wiki and skills are shared by all users')
       const session = db.prepare('SELECT user_id, session_user FROM sessions WHERE id = ?').get(store.getById(task.id)!.sessionId) as { user_id: number; session_user: string }
       expect(session).toEqual({ user_id: 2, session_user: '2' })
 

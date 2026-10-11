@@ -13,7 +13,7 @@ Axiom is multi-user with **cooperative isolation**: separation at context, tool 
 - `users.workspace_provisioned` records that Axiom created `/workspace/<name>` for the user (`markWorkspaceProvisioned`). `removeUserFolders` only deletes a workspace with that flag: accounts from before multi-user support map to `/workspace/<name>` without the availability check, so the folder may be someone else's.
 - `settings` comes from `resolveEffectiveSettings` (`user-settings.ts`): per-user model, thinking level, language and timezone, falling back to the admin's values.
 - Authorization always uses `role`, never `isBootstrapAdmin`; the latter only selects legacy paths and ownership.
-- `isMultiUser(db)` gates behavior that must stay unchanged on single-user instances.
+- `isMultiUser(db)` gates behavior that must stay unchanged on single-user instances. On multi-user instances every prompt, the bootstrap admin's included, carries the shared-data rules (`assembleSystemPrompt({ multiUser })`, `<task_owner>` in task prompts), because `MEMORY.md`, the wiki and skills reach every user.
 
 Rule: new per-user features take a `UserScope` (or an owner id) explicitly. Never read "the current user" from module state.
 

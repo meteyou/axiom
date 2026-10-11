@@ -42,7 +42,7 @@ import {
 import type { CodemodeNestedCallSnapshot } from './codemode-tool.js'
 import type { QuotaServiceLike } from './quota-tool.js'
 import { loadSecretsDecrypted } from './secrets-config.js'
-import { resolveUserScope } from './user-scope.js'
+import { isMultiUser, resolveUserScope } from './user-scope.js'
 import type { UserScope } from './user-scope.js'
 import type { AgentRuntimeStateSnapshot, ResponseChunk } from './agent-runtime-types.js'
 
@@ -868,6 +868,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
     return assembleSystemPrompt({
       memoryDir: this.memoryDir,
       userScope: userScope ?? undefined,
+      multiUser: isMultiUser(this.db),
       // Callers without a user row must not see the bootstrap admin's legacy daily notes.
       recentDays: !this.user && this.sessionUser !== undefined ? 0 : undefined,
       baseInstructions: this.baseInstructions,
