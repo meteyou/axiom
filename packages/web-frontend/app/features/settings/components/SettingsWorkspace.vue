@@ -1,9 +1,9 @@
 <template>
   <!-- Settings page -->
   <div class="flex h-full flex-col overflow-hidden">
-    <!-- Header with save action (hidden on secrets tab which has its own save flow) -->
+    <!-- Header with save action (hidden on tabs that have their own save flow) -->
     <PageHeader :title="$t('settings.title')" :subtitle="$t('settings.subtitle')">
-      <template v-if="isAdmin && activeTab !== 'secrets' && activeTab !== 'email'" #actions>
+      <template v-if="isAdmin && usesGlobalSave" #actions>
         <Button class="h-8 px-3 text-xs md:h-10 md:px-4 md:py-2 md:text-sm" :disabled="saving || !form" @click="handleSave">
           <span
             v-if="saving"
@@ -15,8 +15,8 @@
       </template>
     </PageHeader>
 
-    <!-- Feedback alerts — only for non-secrets tabs (secrets tab handles its own feedback) -->
-    <div v-if="isAdmin && activeTab !== 'secrets' && activeTab !== 'email' && (error || successMessage)" class="shrink-0 border-b border-border px-6 py-3">
+    <!-- Feedback alerts — only for tabs saved through the header button -->
+    <div v-if="isAdmin && usesGlobalSave && (error || successMessage)" class="shrink-0 border-b border-border px-6 py-3">
       <Alert v-if="error" variant="destructive">
         <AlertDescription class="flex items-center justify-between">
           <span>{{ error }}</span>
@@ -82,6 +82,8 @@
           <UserAgentSettingsTab v-if="!isAdmin && activeTab === 'agent'" />
 
           <UserHeartbeatSettingsTab v-else-if="!isAdmin && activeTab === 'agentHeartbeat'" />
+
+          <NotificationSettingsTab v-else-if="activeTab === 'notifications'" />
 
           <div v-else-if="!isAdmin && activeTab === 'email'">
             <div class="mb-8">
@@ -2162,6 +2164,7 @@ import ImageGenerationSettingsTab from './ImageGenerationSettingsTab.vue'
 import SettingsCompactionSection from '~/features/settings/components/SettingsCompactionSection.vue'
 import UserAgentSettingsTab from './UserAgentSettingsTab.vue'
 import UserHeartbeatSettingsTab from './UserHeartbeatSettingsTab.vue'
+import NotificationSettingsTab from './NotificationSettingsTab.vue'
 import { filterSettingsTabsByRole, resolveSettingsTab, type SettingsTabId } from '~/utils/settingsTabs'
 import type { MemoryConsolidationSettings, FactExtractionSettings, HealthMonitorNotificationToggles, HealthMonitorSettings, AgentHeartbeatSettings, TasksSettings, CodemodeSettings, ImageGenerationSettings, TtsSettings, SttSettings, UploadsSettings, TelegramSettings, WatchdogSettings, RetrySettings, CompactionSettings, AppearanceSettings } from '~/composables/useSettings'
 import type { TelegramUser } from '~/composables/useTelegramUsers'
@@ -2189,6 +2192,9 @@ const activeTab = computed<TabId>({
   },
 })
 
+/** Tabs that save through the page-level button; the others manage their own state. */
+const usesGlobalSave = computed(() => !['secrets', 'email', 'notifications'].includes(activeTab.value))
+
 const tabs = computed(() => filterSettingsTabsByRole([
   { id: 'agent' as TabId, icon: 'bot', label: t('settings.tabs.agent') },
   { id: 'agentHeartbeat' as TabId, icon: 'activity', label: t('settings.tabs.agentHeartbeat') },
@@ -2197,6 +2203,7 @@ const tabs = computed(() => filterSettingsTabsByRole([
   { id: 'healthMonitor' as TabId, icon: 'activity', label: t('settings.tabs.healthMonitor') },
   { id: 'imageGeneration' as TabId, icon: 'image', label: t('settings.tabs.imageGeneration') },
   { id: 'memory' as TabId, icon: 'brain', label: t('settings.tabs.memory') },
+  { id: 'notifications' as TabId, icon: 'bell', label: t('settings.tabs.notifications') },
   { id: 'secrets' as TabId, icon: 'key', label: t('settings.tabs.secrets') },
   { id: 'stt' as TabId, icon: 'mic', label: t('settings.sttTitle') },
   { id: 'tasks' as TabId, icon: 'bot', label: t('settings.tabs.tasks') },

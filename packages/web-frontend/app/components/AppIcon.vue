@@ -11,6 +11,7 @@
 <script setup lang="ts">
 import {
   Activity,
+  Bell,
   Bot,
   Brain,
   CalendarDays,
@@ -79,6 +80,7 @@ const iconMap = {
   add: Plus,
   arrowLeft: ChevronLeft,
   arrowRight: ChevronRight,
+  bell: Bell,
   bot: Bot,
   brain: Brain,
   calendar: CalendarDays,

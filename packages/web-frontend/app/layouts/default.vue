@@ -363,6 +363,7 @@
 <script setup lang="ts">
 import { useMediaQuery } from '@vueuse/core'
 import { useEmailApi } from '~/api/email'
+import { usePushLogoutCleanup } from '~/features/settings/composables/usePushNotifications'
 
 const route = useRoute()
 const runtimeConfig = useRuntimeConfig()
@@ -462,7 +463,10 @@ function closeSidebarOnMobile() {
   }
 }
 
-function handleLogout() {
+const { forgetThisDevice } = usePushLogoutCleanup()
+
+async function handleLogout() {
+  await forgetThisDevice()
   logout()
 }
 

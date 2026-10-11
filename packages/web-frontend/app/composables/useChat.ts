@@ -1,5 +1,6 @@
 import type { ContextCompactionInfo } from '@axiom/core/contracts'
 import { ApiError } from './useApi'
+import { closeChatNotifications } from '../utils/pushSupport'
 
 export interface ToolCallData {
   toolName: string
@@ -555,6 +556,18 @@ function stopHeartbeat() {
   if (pongTimeout) { clearTimeout(pongTimeout); pongTimeout = null }
 }
 
+/**
+ * Tells the server whether this page is visible. A hidden tab counts as away,
+ * so a reply that finishes while the app is in the background is pushed to
+ * the user's devices instead of only streaming into the hidden page.
+ */
+function reportVisibility(socket: WebSocket | null) {
+  if (!socket || socket.readyState !== WebSocket.OPEN) return
+  const visible = document.visibilityState === 'visible'
+  socket.send(JSON.stringify({ type: 'visibility', visible }))
+  if (visible) closeChatNotifications().catch(() => {})
+}
+
 function startHeartbeat(wsRef: () => WebSocket | null) {
   stopHeartbeat()
   heartbeatInterval = setInterval(() => {
@@ -601,6 +614,7 @@ export function useChat() {
       })
 
       document.addEventListener('visibilitychange', () => {
+        reportVisibility(ws)
         if (document.visibilityState !== 'visible' || intentionalDisconnect) return
         if (!ws || ws.readyState !== WebSocket.OPEN) {
           connect()
@@ -618,6 +632,7 @@ export function useChat() {
       connectionStatus.value = 'connected'
       contextRevision.value++
       startHeartbeat(() => ws)
+      reportVisibility(ws)
 
       // Clean up stale streaming messages from before the reconnect.
       // If we lost the connection mid-stream, those messages will never

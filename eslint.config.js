@@ -45,6 +45,19 @@ export default tseslint.config(
     },
   },
 
+  {
+    files: ['packages/web-frontend/public/sw.js'],
+    languageOptions: {
+      sourceType: 'script',
+      globals: {
+        self: 'readonly',
+        fetch: 'readonly',
+        Request: 'readonly',
+        URL: 'readonly',
+      },
+    },
+  },
+
   restrictedImportBoundaries(['packages/**/*.ts'], [
     {
       group: ['@axiom/core/src/*'],
