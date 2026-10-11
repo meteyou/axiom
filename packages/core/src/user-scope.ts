@@ -35,7 +35,7 @@ function dataDir(): string {
   return process.env.DATA_DIR ?? '/data'
 }
 
-export function getUsersDir(): string {
+function getUsersDir(): string {
   return path.join(dataDir(), 'users')
 }
 
