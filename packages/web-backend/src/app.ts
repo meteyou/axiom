@@ -9,7 +9,7 @@ import { createChatRouter } from './routes/chat.js'
 import { createLogsRouter } from './routes/logs.js'
 import { createProvidersRouter } from './api/modules/providers/route.js'
 import { createMemoryRouter } from './api/modules/memory/route.js'
-import { createSettingsRouter } from './api/modules/settings/route.js'
+import { createSettingsRouter, createWebManifestRouter } from './api/modules/settings/route.js'
 import { createUsersRouter } from './routes/users.js'
 import { createTelegramUsersRouter } from './routes/telegram-users.js'
 import type { TelegramBot } from '@axiom/telegram'
@@ -173,6 +173,7 @@ export function createApp(options?: AppOptions): express.Express {
       },
       onImageGenerationSettingsChanged: options.onImageModelsChanged,
     }))
+    app.use(createWebManifestRouter())
     app.use('/api/users', createUsersRouter({
       db: options.db,
       getAgentCore,

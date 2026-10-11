@@ -4,7 +4,7 @@ import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
 import type { AgentCore, Database } from '@axiom/core'
-import { initDatabase, loadRetryPolicy, loadStallThresholds } from '@axiom/core'
+import { ensureConfigTemplates, initDatabase, loadRetryPolicy, loadStallThresholds } from '@axiom/core'
 import { createApp } from '../../../app.js'
 import type { AppOptions } from '../../../app.js'
 import { generateAccessToken } from '../../../auth.js'
@@ -384,6 +384,52 @@ describe('settings route module', () => {
       body: JSON.stringify({ appearance: { logo: 'raccoon' } }),
     })
     expect(nonAdminWrite.status).toBe(403)
+  })
+
+  it('serves a public web app manifest whose icons follow the app logo', async () => {
+    const frontendPublicDir = path.resolve(__dirname, '../../../../../web-frontend/public')
+    const settingsPath = path.join(tempDataDir, 'config', 'settings.json')
+    const writeLogo = (logo: unknown) => {
+      const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as Record<string, unknown>
+      fs.writeFileSync(settingsPath, JSON.stringify({ ...settings, appearance: { logo } }))
+    }
+    const readManifest = async () => {
+      const response = await fetch(`${baseUrl}/site.webmanifest`)
+      expect(response.status).toBe(200)
+      expect(response.headers.get('content-type')).toMatch(/^application\/manifest\+json/)
+      expect(response.headers.get('cache-control')).toBe('no-cache')
+      return await response.json() as { icons: Array<{ src: string, sizes: string, purpose: string }> } & Record<string, unknown>
+    }
+
+    ensureConfigTemplates()
+
+    for (const logo of ['prism', 'raccoon', 'robot']) {
+      writeLogo(logo)
+      const manifest = await readManifest()
+      expect(manifest).toMatchObject({
+        id: '/',
+        name: 'Axiom',
+        short_name: 'Axiom',
+        start_url: '/',
+        scope: '/',
+        display: 'standalone',
+        theme_color: '#0C8D62',
+        background_color: '#181B25',
+      })
+      expect(manifest.icons).toEqual([
+        { src: `/icons/${logo}-192.png`, sizes: '192x192', type: 'image/png', purpose: 'any' },
+        { src: `/icons/${logo}-512.png`, sizes: '512x512', type: 'image/png', purpose: 'any' },
+        { src: `/icons/${logo}-maskable-512.png`, sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+      ])
+      for (const icon of manifest.icons) {
+        expect(fs.existsSync(path.join(frontendPublicDir, icon.src))).toBe(true)
+      }
+    }
+
+    for (const invalidLogo of ['unicorn', null, undefined]) {
+      writeLogo(invalidLogo)
+      expect((await readManifest()).icons[0].src).toBe('/icons/prism-192.png')
+    }
   })
 
   it('enforces authentication and admin boundaries', async () => {

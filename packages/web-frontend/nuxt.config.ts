@@ -58,17 +58,30 @@ export default defineNuxtConfig({
     port: 3001,
   },
 
+  // The backend builds the manifest from the logo setting. In dev the frontend
+  // runs on its own port, but the manifest's start_url must be same-origin
+  // with the page, so it is proxied instead of linked cross-origin.
+  nitro: {
+    devProxy: {
+      '/site.webmanifest': {
+        target: `${process.env.NUXT_PUBLIC_API_BASE || 'http://localhost:3000'}/site.webmanifest`,
+        changeOrigin: true,
+      },
+    },
+  },
+
   app: {
     head: {
       title: 'Axiom',
       meta: [
         { name: 'viewport', content: 'width=device-width, initial-scale=1' },
         { name: 'description', content: 'Self-hosted AI Agent with Web Dashboard' },
+        { name: 'apple-mobile-web-app-title', content: 'Axiom' },
       ],
       link: [
         { rel: 'icon', href: '/favicon.ico', sizes: '48x48' },
         { key: 'favicon-svg', rel: 'icon', type: 'image/svg+xml', href: '/logos/prism.svg' },
-        { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' },
+        { key: 'apple-touch-icon', rel: 'apple-touch-icon', href: '/apple-touch-icon.png' },
         { rel: 'manifest', href: '/site.webmanifest' },
         {
           rel: 'stylesheet',
