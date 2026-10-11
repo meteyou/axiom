@@ -5,6 +5,7 @@ import {
   buildModel,
   createScopedTools,
   getBootstrapAdminId,
+  migrateLegacyUserProfiles,
   resolveUserPaths,
   resolveUserScope,
   createSendFileTool,
@@ -387,6 +388,10 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
   logger.log('[axiom] Ensuring memory structure...')
   ensureMemoryStructure()
   ensureConfigStructure()
+  const movedProfiles = migrateLegacyUserProfiles(db)
+  if (movedProfiles.length > 0) {
+    logger.log(`[axiom] Moved legacy profiles into personal folders: ${movedProfiles.join(', ')}`)
+  }
 
   logger.log('[axiom] Injecting global secrets into environment...')
   injectSecretsIntoEnv()
