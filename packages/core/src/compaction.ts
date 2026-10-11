@@ -23,26 +23,22 @@ import type {
   Usage,
 } from '@earendil-works/pi-ai'
 import { DEFAULT_COMPACTION_SETTINGS } from './contracts/settings.js'
-import type { CompactionSettingsContract } from './contracts/settings.js'
+import type { SettingsStorageContract } from './contracts/settings.js'
 import { COMPACTION_SCOPES } from './contracts/providers.js'
-import type { CompactionScopeContract, ModelCompactionOverrideContract } from './contracts/providers.js'
+import type { CompactionScopeContract } from './contracts/providers.js'
 import type { ContextCompactionReason } from './contracts/compaction.js'
 import { getToolReplayPolicy } from './tool-replay.js'
 
 export type CompactionScope = CompactionScopeContract
 export type CompactionReason = ContextCompactionReason
 
-export type CompactionSettingsSource = Partial<Omit<CompactionSettingsContract, 'tasks'>> & {
-  tasks?: Partial<CompactionSettingsContract['tasks']>
-}
+/** `settings.json → compaction` as stored; the token fields are optional file-only tuning. */
+export type CompactionSettingsSource = NonNullable<SettingsStorageContract['compaction']>
 
 export interface ResolvedCompactionSettings {
   enabled: boolean
   reserveTokens: number
   keepRecentTokens: number
-  summaryMaxTokens: number
-  maxContextTokens: number | null
-  toolResultMaxChars: number
 }
 
 /** Budgets after capping the configured values against the model's window. */
@@ -52,8 +48,10 @@ export interface EffectiveCompactionBudget {
   /** Compaction runs once the context grows beyond this many tokens. */
   triggerTokens: number
   keepRecentTokens: number
+  /** Length the summary is asked to stay under. */
+  summaryTargetTokens: number
+  /** Output ceiling of the summary call; includes room for reasoning tokens. */
   summaryMaxTokens: number
-  toolResultMaxChars: number
 }
 
 export interface CompactionInvariantCheck {
@@ -64,9 +62,15 @@ export interface CompactionInvariantCheck {
   budgetTokens: number
 }
 
+const DEFAULT_RESERVE_TOKENS = 16_384
+const DEFAULT_KEEP_RECENT_TOKENS = 20_000
+const SUMMARY_TARGET_TOKENS = 8_192
+const TOOL_RESULT_MAX_CHARS = 2_000
+
 const RESERVE_WINDOW_SHARE = 0.25
 const KEEP_TRIGGER_SHARE = 0.3
 const SUMMARY_TRIGGER_SHARE = 0.15
+const SUMMARY_RESERVE_SHARE = 0.8
 const POST_COMPACTION_TRIGGER_SHARE = 0.6
 
 /** Rough system-prompt sizes used where the real prompt is not at hand (provider UI warnings). */
@@ -75,65 +79,54 @@ export const TYPICAL_SYSTEM_PROMPT_TOKENS: Readonly<Record<CompactionScope, numb
   task: 4_000,
 }
 
-function pickTokenSetting(
-  key: 'reserveTokens' | 'keepRecentTokens' | 'summaryMaxTokens' | 'toolResultMaxChars',
-  scope: CompactionScope,
+function readTokenSetting(
   settings: CompactionSettingsSource | undefined,
-  modelOverride: ModelCompactionOverrideContract | undefined,
+  key: 'reserveTokens' | 'keepRecentTokens',
+  fallback: number,
 ): number {
-  const fromModel = key === 'reserveTokens' || key === 'keepRecentTokens' ? modelOverride?.[key] : undefined
-  const fromTasks = scope === 'task'
-    ? (settings?.tasks as Record<string, number | undefined> | undefined)?.[key]
-    : undefined
-  return fromModel ?? fromTasks ?? settings?.[key] ?? DEFAULT_COMPACTION_SETTINGS[key]
+  const value = settings?.[key]
+  if (value === undefined) return fallback
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error(`settings.json: compaction.${key} must be a positive integer, got ${JSON.stringify(value)}`)
+  }
+  return value
 }
 
-function pickMaxContextTokens(scope: CompactionScope, settings: CompactionSettingsSource | undefined): number | null {
-  if (scope === 'task' && settings?.tasks?.maxContextTokens !== undefined) return settings.tasks.maxContextTokens
-  if (settings?.maxContextTokens !== undefined) return settings.maxContextTokens
-  return scope === 'task' ? DEFAULT_COMPACTION_SETTINGS.tasks.maxContextTokens : DEFAULT_COMPACTION_SETTINGS.maxContextTokens
-}
-
-/**
- * Resolve each field independently: model override → (tasks) `compaction.tasks`
- * → global `compaction` → built-in default. `enabled` is a master switch:
- * tasks additionally need `compaction.tasks.enabled`.
- */
+/** `enabled` is a master switch: tasks additionally need `compaction.tasks.enabled`. */
 export function resolveCompactionSettings(
   scope: CompactionScope,
   settings: CompactionSettingsSource | undefined,
-  modelOverride?: ModelCompactionOverrideContract,
 ): ResolvedCompactionSettings {
   const globallyEnabled = settings?.enabled ?? DEFAULT_COMPACTION_SETTINGS.enabled
   const tasksEnabled = settings?.tasks?.enabled ?? DEFAULT_COMPACTION_SETTINGS.tasks.enabled
   return {
     enabled: globallyEnabled && (scope !== 'task' || tasksEnabled),
-    reserveTokens: pickTokenSetting('reserveTokens', scope, settings, modelOverride),
-    keepRecentTokens: pickTokenSetting('keepRecentTokens', scope, settings, modelOverride),
-    summaryMaxTokens: pickTokenSetting('summaryMaxTokens', scope, settings, modelOverride),
-    maxContextTokens: pickMaxContextTokens(scope, settings),
-    toolResultMaxChars: pickTokenSetting('toolResultMaxChars', scope, settings, modelOverride),
+    reserveTokens: readTokenSetting(settings, 'reserveTokens', DEFAULT_RESERVE_TOKENS),
+    keepRecentTokens: readTokenSetting(settings, 'keepRecentTokens', DEFAULT_KEEP_RECENT_TOKENS),
   }
 }
 
 /**
- * Cap the configured budgets relative to the context window `W`. Without the
- * caps a small window (e.g. 40k) would keep more tail than the trigger leaves
- * room for and compact again on every turn.
+ * Cap the budgets relative to the context window `W`. Without the caps a
+ * small window (e.g. 40k) would keep more tail than the trigger leaves room
+ * for and compact again on every turn.
  */
 export function resolveEffectiveCompactionBudget(
   settings: ResolvedCompactionSettings,
   contextWindow: number,
 ): EffectiveCompactionBudget {
   const reserveTokens = Math.min(settings.reserveTokens, Math.floor(RESERVE_WINDOW_SHARE * contextWindow))
-  const triggerTokens = Math.min(contextWindow - reserveTokens, settings.maxContextTokens ?? Number.POSITIVE_INFINITY)
+  const triggerTokens = contextWindow - reserveTokens
+  const summaryTargetTokens = Math.min(SUMMARY_TARGET_TOKENS, Math.floor(SUMMARY_TRIGGER_SHARE * triggerTokens))
   return {
     contextWindow,
     reserveTokens,
     triggerTokens,
     keepRecentTokens: Math.min(settings.keepRecentTokens, Math.floor(KEEP_TRIGGER_SHARE * triggerTokens)),
-    summaryMaxTokens: Math.min(settings.summaryMaxTokens, Math.floor(SUMMARY_TRIGGER_SHARE * triggerTokens)),
-    toolResultMaxChars: settings.toolResultMaxChars,
+    summaryTargetTokens,
+    // Reasoning models spend part of the ceiling on thinking that cannot always
+    // be switched off (e.g. custom OpenAI-compatible gateways).
+    summaryMaxTokens: Math.max(summaryTargetTokens, Math.floor(SUMMARY_RESERVE_SHARE * reserveTokens)),
   }
 }
 
@@ -142,7 +135,7 @@ export function checkCompactionInvariant(
   budget: EffectiveCompactionBudget,
   systemPromptTokens: number,
 ): CompactionInvariantCheck {
-  const requiredTokens = systemPromptTokens + budget.summaryMaxTokens + budget.keepRecentTokens
+  const requiredTokens = systemPromptTokens + budget.summaryTargetTokens + budget.keepRecentTokens
   const budgetTokens = Math.floor(POST_COMPACTION_TRIGGER_SHARE * budget.triggerTokens)
   return { ok: requiredTokens <= budgetTokens, requiredTokens, budgetTokens }
 }
@@ -154,11 +147,10 @@ export function checkCompactionInvariant(
 export function getCompactionWarningScopes(
   contextWindow: number,
   settings: CompactionSettingsSource | undefined,
-  modelOverride?: ModelCompactionOverrideContract,
 ): CompactionScope[] {
   if (!(contextWindow > 0)) return []
   return COMPACTION_SCOPES.filter((scope) => {
-    const resolved = resolveCompactionSettings(scope, settings, modelOverride)
+    const resolved = resolveCompactionSettings(scope, settings)
     if (!resolved.enabled) return false
     const budget = resolveEffectiveCompactionBudget(resolved, contextWindow)
     return !checkCompactionInvariant(budget, TYPICAL_SYSTEM_PROMPT_TOKENS[scope]).ok
@@ -577,8 +569,10 @@ export interface GenerateSummaryOptions {
   model: Model<Api>
   apiKey?: string
   streamFn: StreamFn
+  /** Output ceiling of the call, reasoning included. */
   maxTokens: number
-  toolResultMaxChars: number
+  /** Length the summary is asked to stay under. */
+  targetTokens: number
   signal?: AbortSignal
   sessionId?: string
   retryPolicy?: RetryPolicy
@@ -594,12 +588,16 @@ export class CompactionAbortedError extends Error {
 }
 
 function buildSummaryPrompt(options: GenerateSummaryOptions): string {
-  const conversation = serializeConversation(options.messages, options.toolResultMaxChars)
-  if (options.mode === 'turnPrefix') return `<conversation>\n${conversation}\n</conversation>\n\n${TURN_PREFIX_PROMPT}`
+  const conversation = serializeConversation(options.messages, TOOL_RESULT_MAX_CHARS)
+  const lengthRule = `\n\nKeep the whole summary under about ${options.targetTokens} tokens.`
+  if (options.mode === 'turnPrefix') {
+    return `<conversation>\n${conversation}\n</conversation>\n\n${TURN_PREFIX_PROMPT}${lengthRule}`
+  }
 
   let prompt = `<conversation>\n${conversation}\n</conversation>\n\n`
   if (options.previousSummary) prompt += `<previous-summary>\n${options.previousSummary}\n</previous-summary>\n\n`
   prompt += options.previousSummary ? UPDATE_SUMMARY_PROMPT : INITIAL_SUMMARY_PROMPT
+  prompt += lengthRule
   if (options.customInstructions) prompt += `\n\nAdditional focus: ${options.customInstructions}`
   return prompt
 }
@@ -634,10 +632,16 @@ async function generateSummary(options: GenerateSummaryOptions): Promise<Summary
 
   if (response.stopReason === 'aborted' || options.signal?.aborted) throw new CompactionAbortedError()
   if (response.stopReason === 'error') throw new Error(`Summarization failed: ${response.errorMessage || 'Unknown error'}`)
-  if (response.stopReason === 'length') throw new Error('Summarization failed: the summary hit its token limit and is incomplete')
   if (response.content.some(block => block.type === 'toolCall')) throw new Error('Summarization attempted to call a tool')
 
   const text = response.content.filter((block): block is TextContent => block.type === 'text').map(block => block.text).join('').trim()
+  if (response.stopReason === 'length') {
+    const limit = requestOptions.maxTokens
+    throw new Error(text
+      ? `Summarization failed: the summary hit the ${limit}-token output limit and is incomplete`
+      : `Summarization failed: the model used its whole ${limit}-token output limit for reasoning before writing the summary. `
+        + 'Map the "off" thinking level for this model in the provider settings, or raise compaction.reserveTokens in settings.json.')
+  }
   if (!text) throw new Error('Summarization returned an empty summary')
   return { text, usage: response.usage }
 }
@@ -659,7 +663,7 @@ function addUsage(a: Usage, b: Usage): Usage {
   }
 }
 
-export interface CompactMessagesOptions extends Omit<GenerateSummaryOptions, 'messages' | 'previousSummary' | 'mode' | 'maxTokens' | 'toolResultMaxChars'> {
+export interface CompactMessagesOptions extends Omit<GenerateSummaryOptions, 'messages' | 'previousSummary' | 'mode' | 'maxTokens' | 'targetTokens'> {
   budget: EffectiveCompactionBudget
   now?: () => number
 }
@@ -721,7 +725,7 @@ async function summarizePlan(plan: CompactionPlan, options: CompactMessagesOptio
   const base = {
     ...options,
     maxTokens: options.budget.summaryMaxTokens,
-    toolResultMaxChars: options.budget.toolResultMaxChars,
+    targetTokens: options.budget.summaryTargetTokens,
   }
   // A turn cut in the middle with no earlier history is summarized as plain
   // history, so the first compaction of a long task gets the full format.
@@ -734,6 +738,7 @@ async function summarizePlan(plan: CompactionPlan, options: CompactMessagesOptio
     messages: plan.turnPrefix,
     mode: 'turnPrefix',
     maxTokens: Math.max(1, Math.floor(base.maxTokens / 2)),
+    targetTokens: Math.max(1, Math.floor(base.targetTokens / 2)),
   })
   return {
     text: `${history.text}\n\n---\n\n**Turn Context (split turn):**\n\n${prefix.text}`,

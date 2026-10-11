@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { ensureConfigTemplates, getConfigDir, isValidTimezone, listCompactionWarnings, loadConfig, loadProviders, SETTINGS_THINKING_LEVELS } from '@axiom/core'
+import { ensureConfigTemplates, getConfigDir, isValidTimezone, loadConfig, SETTINGS_THINKING_LEVELS } from '@axiom/core'
 import type { SettingsData, SettingsRouterOptions, TelegramData } from './types.js'
 import {
   mergeAgentHeartbeat,
@@ -227,21 +227,11 @@ export function createSettingsService(options: SettingsRouterOptions = {}): Sett
       settings,
       telegram,
       batchingDelayMs: telegram.batchingDelayMs ?? previousBatchingDelayMs,
-      warnings: compactionMerge.changed ? readCompactionWarnings(settings) : undefined,
     })
   }
 
   return {
     readSettings,
     updateSettings,
-  }
-}
-
-function readCompactionWarnings(settings: SettingsData): string[] {
-  try {
-    return listCompactionWarnings(loadProviders().providers, settings.compaction)
-  } catch (err) {
-    console.warn('[settings] Failed to check models against compaction settings:', err)
-    return []
   }
 }

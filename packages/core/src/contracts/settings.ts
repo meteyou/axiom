@@ -88,45 +88,25 @@ export interface RetrySettingsContract {
   baseDelayMs: number
 }
 
-/**
- * Task-specific compaction overrides. `maxContextTokens: null` means tasks
- * compact only against the model's context window.
- */
 export interface CompactionTasksSettingsContract {
   enabled: boolean
-  maxContextTokens: number | null
 }
 
 /**
- * Automatic context compaction. Token budgets are upper bounds; the runtime
- * caps them relative to the active model's context window (see
- * `resolveEffectiveCompactionBudget`).
+ * Automatic context compaction switches. The token budgets are derived from
+ * the model's context window; `settings.json` may tune them via
+ * `compaction.reserveTokens` / `compaction.keepRecentTokens`, which are not
+ * part of the settings API.
  */
 export interface CompactionSettingsContract {
   enabled: boolean
-  /** Tokens kept free for the model's answer. */
-  reserveTokens: number
-  /** Most recent conversation tokens that are kept verbatim. */
-  keepRecentTokens: number
-  /** Upper bound for the summary the compaction call may write. */
-  summaryMaxTokens: number
-  /** Soft context budget independent of the window; `null` = window only. */
-  maxContextTokens: number | null
-  /** Tool results are cut to this length when serialized for the summary call. */
-  toolResultMaxChars: number
   tasks: CompactionTasksSettingsContract
 }
 
 export const DEFAULT_COMPACTION_SETTINGS: CompactionSettingsContract = {
   enabled: true,
-  reserveTokens: 16_384,
-  keepRecentTokens: 20_000,
-  summaryMaxTokens: 8_192,
-  maxContextTokens: 200_000,
-  toolResultMaxChars: 2_000,
   tasks: {
     enabled: true,
-    maxContextTokens: 150_000,
   },
 }
 
@@ -324,7 +304,13 @@ export interface SettingsStorageContract {
   uploads?: Partial<UploadsSettingsContract>
   watchdog?: Partial<WatchdogSettingsContract>
   retry?: Partial<RetrySettingsContract>
-  compaction?: Partial<Omit<CompactionSettingsContract, 'tasks'>> & { tasks?: Partial<CompactionTasksSettingsContract> }
+  compaction?: Partial<Omit<CompactionSettingsContract, 'tasks'>> & {
+    tasks?: Partial<CompactionTasksSettingsContract>
+    /** File-only tuning: tokens kept free for the answer (default 16384, capped at 25% of the window). */
+    reserveTokens?: number
+    /** File-only tuning: recent tokens kept verbatim (default 20000, capped at 30% of the trigger). */
+    keepRecentTokens?: number
+  }
   memoryConsolidation?: Partial<MemoryConsolidationSettingsContract>
   factExtraction?: Partial<FactExtractionSettingsContract>
   agentHeartbeat?: Partial<AgentHeartbeatSettingsContract>
@@ -525,24 +511,14 @@ export function normalizeImageGenerationSettings(
   }
 }
 
-function nullableOrDefault(value: number | null | undefined, fallback: number | null): number | null {
-  return value === undefined ? fallback : value
-}
-
 export function normalizeCompactionSettings(
   source: DeepPartial<CompactionSettingsContract> | undefined,
 ): CompactionSettingsContract {
   const fallback = DEFAULT_COMPACTION_SETTINGS
   return {
     enabled: source?.enabled ?? fallback.enabled,
-    reserveTokens: source?.reserveTokens ?? fallback.reserveTokens,
-    keepRecentTokens: source?.keepRecentTokens ?? fallback.keepRecentTokens,
-    summaryMaxTokens: source?.summaryMaxTokens ?? fallback.summaryMaxTokens,
-    maxContextTokens: nullableOrDefault(source?.maxContextTokens, fallback.maxContextTokens),
-    toolResultMaxChars: source?.toolResultMaxChars ?? fallback.toolResultMaxChars,
     tasks: {
       enabled: source?.tasks?.enabled ?? fallback.tasks.enabled,
-      maxContextTokens: nullableOrDefault(source?.tasks?.maxContextTokens, fallback.tasks.maxContextTokens),
     },
   }
 }

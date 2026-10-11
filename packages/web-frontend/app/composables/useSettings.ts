@@ -47,8 +47,6 @@ export function useSettings() {
   const saving = ref(false)
   const error = ref<string | null>(null)
   const successMessage = ref<string | null>(null)
-  /** Models too small for the compaction settings, as reported by the last save. */
-  const compactionWarnings = ref<string[]>([])
 
   async function fetchSettings(): Promise<void> {
     loading.value = true
@@ -73,7 +71,6 @@ export function useSettings() {
       const result = await settingsApi.updateSettings(updates)
 
       settings.value = normalizeSettingsContract(result)
-      compactionWarnings.value = result.warnings ?? []
       successMessage.value = 'saved'
 
       // Refresh global connection status so the topbar reflects changes
@@ -100,7 +97,6 @@ export function useSettings() {
     saving,
     error,
     successMessage,
-    compactionWarnings,
     fetchSettings,
     updateSettings,
     clearMessages,

@@ -7,7 +7,7 @@ import { Type, getCurrentSystemMessage } from '@earendil-works/pi-ai'
 import type { Database } from './database.js'
 import { logTokenUsage, logToolCall } from './token-logger.js'
 import { isFailedToolResult } from './loop-detection.js'
-import { estimateCost, getApiKeyForProvider, buildModel, loadModelCompactionOverride, loadProvidersDecrypted, parseProviderModelId, getProviderDefaultModel, getUsableModels } from './provider-config.js'
+import { estimateCost, getApiKeyForProvider, buildModel, loadProvidersDecrypted, parseProviderModelId, getProviderDefaultModel, getUsableModels } from './provider-config.js'
 import type { ProviderConfig } from './provider-config.js'
 import type { ProviderManager } from './provider-manager.js'
 import type { SettingsThinkingLevel } from './contracts/settings.js'
@@ -570,7 +570,6 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
       db: this.db,
       getSessionId: () => this.agent.sessionId,
       resolveApiKey: () => this.resolveApiKey(),
-      getModelOverride: model => loadModelCompactionOverride(this.providerConfig?.id, model.id),
       onEvent: info => this.emitCompactionChunk(info),
       retryPolicy: () => loadRetryPolicy(),
     })

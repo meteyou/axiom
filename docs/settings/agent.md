@@ -164,31 +164,13 @@ Stall frequency and average duration (split by recovered vs. aborted) are aggreg
 
 ## Context compaction
 
-When a chat or background task approaches the model's context limit, older messages are replaced by a summary and the most recent messages are kept verbatim. How this works — triggers, the summary format, the per-window caps — is explained in [Context Compaction](../concepts/compaction). Values are read fresh before every check, so a save applies without a restart.
+When a chat approaches the model's context window, older messages are replaced by a summary and the most recent messages are kept verbatim. All thresholds derive from the active model's context window — there are no budgets to set. How this works — triggers, the summary format, the per-window caps — is explained in [Context Compaction](../concepts/compaction). The switch is read fresh before every check, so a save applies without a restart.
 
-| Field                                   | Default    | Range                     | Effect                                                                                                   |
-|-----------------------------------------|------------|---------------------------|----------------------------------------------------------------------------------------------------------|
-| **Automatic compaction**                | on         | —                         | Master switch for automatic compaction (main chat and tasks). `/compact` works even when off.            |
-| **Soft context budget**                 | `200000`   | `8192` – `10000000`, empty | Compact above this many tokens even if the window is larger. Empty = compact only near the window limit. |
-| **Reserve tokens**                      | `16384`    | `1024` – `1000000`        | Room left for the answer; compaction triggers at window minus reserve. Capped at 25% of the window.     |
-| **Keep recent tokens**                  | `20000`    | `1000` – `1000000`        | Most recent part of the conversation kept verbatim. Capped at 30% of the trigger.                        |
-| **Summary limit**                       | `8192`     | `256` – `200000`          | Maximum output tokens of the summary. Capped at 15% of the trigger.                                      |
-| **Tool result length in summary input** | `2000`     | `200` – `100000` chars    | Tool results are cut to this length when the summarizer reads them.                                      |
-| **Compact background tasks**            | on         | —                         | Apply automatic compaction to background tasks too (requires the master switch).                         |
-| **Soft context budget for tasks**       | `150000`   | `8192` – `10000000`, empty | Replaces the soft budget for background tasks. Empty = compact only near the window limit.              |
-
-`reserveTokens` and `keepRecentTokens` can be overridden per model in the [Edit Model dialog](../web-ui/providers#edit-model-dialog). If a save leaves some models with a window too small for system prompt + summary + kept messages, the affected models are listed above the fields.
+| Field                    | Default | Effect                                                                                        |
+|--------------------------|---------|-----------------------------------------------------------------------------------------------|
+| **Automatic compaction** | on      | Master switch for automatic compaction (main chat and tasks). `/compact` works even when off. |
+| **Compact background tasks** | on  | Apply automatic compaction to background tasks too (requires the master switch).              |
 
 ```json
-{
-  "compaction": {
-    "enabled": true,
-    "reserveTokens": 16384,
-    "keepRecentTokens": 20000,
-    "summaryMaxTokens": 8192,
-    "maxContextTokens": 200000,
-    "toolResultMaxChars": 2000,
-    "tasks": { "enabled": true, "maxContextTokens": 150000 }
-  }
-}
+{ "compaction": { "enabled": true, "tasks": { "enabled": true } } }
 ```

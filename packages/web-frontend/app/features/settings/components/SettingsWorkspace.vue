@@ -592,7 +592,7 @@
 
                 <Separator />
 
-                <SettingsCompactionSection v-model="form.compaction" :warnings="compactionWarnings" />
+                <SettingsCompactionSection v-model="form.compaction" />
 
               </div>
             </div>
@@ -2176,7 +2176,6 @@ const {
   saving,
   error,
   successMessage,
-  compactionWarnings,
   fetchSettings,
   updateSettings,
   clearMessages,

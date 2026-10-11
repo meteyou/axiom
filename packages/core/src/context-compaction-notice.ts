@@ -5,7 +5,7 @@ import { SESSION_OWNER_NOT_DELETED } from './token-logger.js'
 
 const WARNING_TEXT: Record<ContextCompactionWarning, string> = {
   window_too_small: 'The model\'s context window is too small for the system prompt, summary and kept messages, '
-    + 'so compaction will run often. Use a model with a larger window or lower "Keep recent tokens" in the compaction settings.',
+    + 'so compaction will run often. Use a model with a larger context window.',
   auto_paused: 'The context is still above the compaction threshold. Automatic compaction is paused until more '
     + 'messages are added; /new starts a fresh conversation.',
 }

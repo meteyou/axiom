@@ -113,13 +113,6 @@ export interface ProviderModelContract {
   fixedTemperature?: number
   /** Only the fields the user overrode; the rest follows the catalog. */
   cost?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number }
-  /** Per-model compaction budget; unset fields follow `settings.json → compaction`. */
-  compaction?: ModelCompactionOverrideContract
-}
-
-export interface ModelCompactionOverrideContract {
-  reserveTokens?: number
-  keepRecentTokens?: number
 }
 
 export const COMPACTION_SCOPES = ['interactive', 'task'] as const
@@ -458,11 +451,6 @@ export interface ProviderModelUpdatePayloadContract {
     cacheRead?: number | null
     cacheWrite?: number | null
   }
-  /** `null` drops the whole override; a `null` field drops only that field. */
-  compaction?: {
-    reserveTokens?: number | null
-    keepRecentTokens?: number | null
-  } | null
 }
 
 export interface ProviderReferenceContract {

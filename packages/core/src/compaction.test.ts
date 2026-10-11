@@ -134,69 +134,51 @@ const SUMMARY = `## Goal
 - PR #42`
 
 describe('resolveCompactionSettings', () => {
-  it('resolves each field model override → tasks → global → default', () => {
-    const settings = {
-      reserveTokens: 10_000,
-      keepRecentTokens: 12_000,
-      maxContextTokens: 180_000,
-      tasks: { enabled: true, maxContextTokens: 90_000 },
-    }
-
-    const task = resolveCompactionSettings('task', settings, { keepRecentTokens: 4_000 })
-    expect(task.keepRecentTokens).toBe(4_000)
-    expect(task.reserveTokens).toBe(10_000)
-    expect(task.maxContextTokens).toBe(90_000)
-    expect(task.summaryMaxTokens).toBe(8_192)
-
-    const interactive = resolveCompactionSettings('interactive', settings)
-    expect(interactive.maxContextTokens).toBe(180_000)
-    expect(interactive.keepRecentTokens).toBe(12_000)
+  it('uses the defaults unless settings.json tunes the token budgets', () => {
+    expect(resolveCompactionSettings('interactive', undefined)).toEqual({ enabled: true, reserveTokens: 16_384, keepRecentTokens: 20_000 })
+    expect(resolveCompactionSettings('task', { reserveTokens: 10_000, keepRecentTokens: 12_000 }))
+      .toEqual({ enabled: true, reserveTokens: 10_000, keepRecentTokens: 12_000 })
   })
 
-  it('treats an explicit null budget as "window only" and keeps the defaults otherwise', () => {
-    expect(resolveCompactionSettings('interactive', { maxContextTokens: null }).maxContextTokens).toBeNull()
-    expect(resolveCompactionSettings('task', { tasks: { enabled: true, maxContextTokens: null } }).maxContextTokens).toBeNull()
-    expect(resolveCompactionSettings('interactive', undefined).maxContextTokens).toBe(200_000)
-    expect(resolveCompactionSettings('task', undefined).maxContextTokens).toBe(150_000)
+  it('rejects invalid token values from settings.json', () => {
+    expect(() => resolveCompactionSettings('interactive', { reserveTokens: 0 })).toThrow('compaction.reserveTokens must be a positive integer')
+    expect(() => resolveCompactionSettings('interactive', { keepRecentTokens: '5000' as unknown as number }))
+      .toThrow('compaction.keepRecentTokens must be a positive integer')
   })
 
   it('uses the global switch as a master switch for tasks', () => {
-    expect(resolveCompactionSettings('task', { enabled: false, tasks: { enabled: true, maxContextTokens: null } }).enabled).toBe(false)
-    expect(resolveCompactionSettings('task', { enabled: true, tasks: { enabled: false, maxContextTokens: null } }).enabled).toBe(false)
-    expect(resolveCompactionSettings('interactive', { enabled: true, tasks: { enabled: false, maxContextTokens: null } }).enabled).toBe(true)
+    expect(resolveCompactionSettings('task', { enabled: false, tasks: { enabled: true } }).enabled).toBe(false)
+    expect(resolveCompactionSettings('task', { enabled: true, tasks: { enabled: false } }).enabled).toBe(false)
+    expect(resolveCompactionSettings('interactive', { enabled: true, tasks: { enabled: false } }).enabled).toBe(true)
   })
 })
 
 describe('resolveEffectiveCompactionBudget', () => {
   it('caps budgets on a 40k window so a compaction leaves room for several turns', () => {
     const budget = resolveEffectiveCompactionBudget(resolveCompactionSettings('task', undefined), 40_000)
-    expect(budget).toMatchObject({ reserveTokens: 10_000, triggerTokens: 30_000, keepRecentTokens: 9_000, summaryMaxTokens: 4_500 })
+    expect(budget).toMatchObject({ reserveTokens: 10_000, triggerTokens: 30_000, keepRecentTokens: 9_000, summaryTargetTokens: 4_500, summaryMaxTokens: 8_000 })
     const invariant = checkCompactionInvariant(budget, 4_000)
     expect(invariant).toEqual({ ok: true, requiredTokens: 17_500, budgetTokens: 18_000 })
   })
 
   it('flags an 8k window as too small for a 4k system prompt', () => {
     const budget = resolveEffectiveCompactionBudget(resolveCompactionSettings('task', undefined), 8_000)
-    expect(budget).toMatchObject({ reserveTokens: 2_000, triggerTokens: 6_000, keepRecentTokens: 1_800, summaryMaxTokens: 900 })
+    expect(budget).toMatchObject({ reserveTokens: 2_000, triggerTokens: 6_000, keepRecentTokens: 1_800, summaryTargetTokens: 900, summaryMaxTokens: 1_600 })
     expect(checkCompactionInvariant(budget, 4_000).ok).toBe(false)
     expect(getCompactionWarningScopes(8_000, undefined)).toEqual(['interactive', 'task'])
   })
 
-  it('applies the soft budget on a 1M window', () => {
-    const interactive = resolveEffectiveCompactionBudget(resolveCompactionSettings('interactive', undefined), 1_000_000)
-    expect(interactive).toMatchObject({ reserveTokens: 16_384, triggerTokens: 200_000, keepRecentTokens: 20_000, summaryMaxTokens: 8_192 })
-    const task = resolveEffectiveCompactionBudget(resolveCompactionSettings('task', undefined), 1_000_000)
-    expect(task.triggerTokens).toBe(150_000)
-    const windowOnly = resolveEffectiveCompactionBudget(resolveCompactionSettings('interactive', { maxContextTokens: null }), 1_000_000)
-    expect(windowOnly.triggerTokens).toBe(1_000_000 - 16_384)
+  it('triggers near the window limit on a 1M window', () => {
+    const budget = resolveEffectiveCompactionBudget(resolveCompactionSettings('interactive', undefined), 1_000_000)
+    expect(budget).toMatchObject({ reserveTokens: 16_384, triggerTokens: 983_616, keepRecentTokens: 20_000, summaryTargetTokens: 8_192, summaryMaxTokens: 13_107 })
     expect(getCompactionWarningScopes(1_000_000, undefined)).toEqual([])
   })
 
-  it('compacts only above the trigger, including the soft budget', () => {
+  it('compacts only above the trigger', () => {
     const budget = resolveEffectiveCompactionBudget(resolveCompactionSettings('interactive', undefined), 1_000_000)
-    expect(shouldCompact(200_000, budget)).toBe(false)
-    expect(shouldCompact(200_001, budget)).toBe(true)
-    expect(shouldCompact(500_000, budget, false)).toBe(false)
+    expect(shouldCompact(983_616, budget)).toBe(false)
+    expect(shouldCompact(983_617, budget)).toBe(true)
+    expect(shouldCompact(990_000, budget, false)).toBe(false)
   })
 })
 
@@ -343,6 +325,7 @@ describe('compactMessages', () => {
     expect(outcome!.tokensAfter).toBeLessThan(outcome!.tokensBefore)
     expect(calls[0].systemPrompt).toBe(SUMMARIZATION_SYSTEM_PROMPT)
     expect(calls[0].maxTokens).toBe(Math.min(budget.summaryMaxTokens, model.maxTokens))
+    expect(calls[0].prompt).toContain(`under about ${budget.summaryTargetTokens} tokens`)
     expect(calls[0].prompt).not.toContain('<previous-summary>')
   })
 
@@ -394,6 +377,7 @@ describe('compactMessages', () => {
     expect(outcome).toBeNull()
   })
 
+
   it('stops when aborted during the summary call', async () => {
     const controller = new AbortController()
     const streamFn = fakeStreamFn(() => {
@@ -406,6 +390,16 @@ describe('compactMessages', () => {
 
   it('refuses a truncated summary', async () => {
     const streamFn: StreamFn = (async () => streamOf({ ...assistant('## Goal\npartial'), stopReason: 'length' })) as StreamFn
-    await expect(compactMessages(conversation(), { budget, model, streamFn })).rejects.toThrow(/token limit/)
+    await expect(compactMessages(conversation(), { budget, model, streamFn })).rejects.toThrow(/output limit and is incomplete/)
+  })
+
+  it('explains a summary call that spent its whole output limit on reasoning', async () => {
+    const thinkingOnly: AssistantMessage = {
+      ...assistant(''),
+      content: [{ type: 'thinking', thinking: 'Let me think about the conversation...' }],
+      stopReason: 'length',
+    }
+    const streamFn: StreamFn = (async () => streamOf(thinkingOnly)) as StreamFn
+    await expect(compactMessages(conversation(), { budget, model, streamFn })).rejects.toThrow(/whole \d+-token output limit for reasoning/)
   })
 })

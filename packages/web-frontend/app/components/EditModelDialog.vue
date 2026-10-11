@@ -221,46 +221,6 @@
         </div>
       </div>
 
-      <div v-if="provider && modelId" class="flex flex-col gap-2">
-        <Label>{{ $t('providers.editModelCompactionSection') }}</Label>
-        <div class="grid grid-cols-2 gap-2">
-          <div class="flex flex-col gap-1">
-            <Label for="model-compaction-reserve" class="text-xs text-muted-foreground">
-              {{ $t('providers.editModelCompactionReserve') }}
-            </Label>
-            <Input
-              id="model-compaction-reserve"
-              v-model="form.compactionReserveTokens"
-              type="number"
-              min="1"
-              step="1"
-              inputmode="numeric"
-              :placeholder="$t('providers.editModelCompactionGlobal')"
-              class="text-sm"
-            />
-          </div>
-          <div class="flex flex-col gap-1">
-            <Label for="model-compaction-keep" class="text-xs text-muted-foreground">
-              {{ $t('providers.editModelCompactionKeep') }}
-            </Label>
-            <Input
-              id="model-compaction-keep"
-              v-model="form.compactionKeepRecentTokens"
-              type="number"
-              min="1"
-              step="1"
-              inputmode="numeric"
-              :placeholder="$t('providers.editModelCompactionGlobal')"
-              class="text-sm"
-            />
-          </div>
-        </div>
-        <p class="text-xs text-muted-foreground">{{ $t('providers.editModelCompactionHint') }}</p>
-        <p v-if="compactionWarningScopes.length > 0" class="text-xs text-destructive">
-          {{ $t('providers.compactionWarning', { scopes: compactionWarningScopes }) }}
-        </p>
-      </div>
-
       <p v-if="provider && modelId" class="text-xs text-muted-foreground">{{ $t('providers.editModelOverrideHint') }}</p>
 
       <DialogFooter>
@@ -325,8 +285,6 @@ const form = reactive({
   costOutput: '',
   costCacheRead: '',
   costCacheWrite: '',
-  compactionReserveTokens: '',
-  compactionKeepRecentTokens: '',
 })
 const saving = ref(false)
 const showImport = ref(false)
@@ -355,11 +313,7 @@ const resolvedCost = computed(() =>
   ?? existingEntry.value?.cost,
 )
 
-const OVERRIDE_KEYS = ['name', 'contextWindow', 'maxTokens', 'reasoning', 'input', 'thinkingLevelMap', 'cost', 'compaction'] as const
-
-const compactionWarningScopes = computed(() =>
-  (spec.value?.compactionWarnings ?? []).map(scope => t(`providers.compactionScopes.${scope}`)).join(', '),
-)
+const OVERRIDE_KEYS = ['name', 'contextWindow', 'maxTokens', 'reasoning', 'input', 'thinkingLevelMap', 'cost'] as const
 
 const hasOverrides = computed(() => {
   const entry = existingEntry.value
@@ -434,16 +388,6 @@ function applySpecPatch(payload: ProviderModelUpdatePayloadContract) {
   }
 }
 
-function buildCompactionPatch(): ProviderModelUpdatePayloadContract['compaction'] {
-  const current = existingEntry.value?.compaction
-  const patch: NonNullable<ProviderModelUpdatePayloadContract['compaction']> = {}
-  const reserveTokens = overrideChange(parsePositiveInteger(form.compactionReserveTokens), current?.reserveTokens)
-  if (reserveTokens !== undefined) patch.reserveTokens = reserveTokens
-  const keepRecentTokens = overrideChange(parsePositiveInteger(form.compactionKeepRecentTokens), current?.keepRecentTokens)
-  if (keepRecentTokens !== undefined) patch.keepRecentTokens = keepRecentTokens
-  return Object.keys(patch).length > 0 ? patch : undefined
-}
-
 async function handleSave() {
   if (!props.provider || !props.modelId) return
   saving.value = true
@@ -467,9 +411,6 @@ async function handleSave() {
     }
     if (Object.keys(cost).length > 0) payload.cost = cost
 
-    const compaction = buildCompactionPatch()
-    if (compaction) payload.compaction = compaction
-
     const result = await updateProviderModel(props.provider.id, props.modelId, payload)
     if (result) {
       emit('saved')
@@ -492,7 +433,6 @@ async function handleReset() {
       input: null,
       thinkingLevelMap: null,
       cost: { input: null, output: null, cacheRead: null, cacheWrite: null },
-      compaction: null,
     })
     if (result) {
       emit('saved')
@@ -548,8 +488,6 @@ function loadFromEntry() {
   form.costOutput = entry?.cost?.output != null ? String(entry.cost.output) : ''
   form.costCacheRead = entry?.cost?.cacheRead != null ? String(entry.cost.cacheRead) : ''
   form.costCacheWrite = entry?.cost?.cacheWrite != null ? String(entry.cost.cacheWrite) : ''
-  form.compactionReserveTokens = entry?.compaction?.reserveTokens != null ? String(entry.compaction.reserveTokens) : ''
-  form.compactionKeepRecentTokens = entry?.compaction?.keepRecentTokens != null ? String(entry.compaction.keepRecentTokens) : ''
 
   showImport.value = false
   importText.value = ''
