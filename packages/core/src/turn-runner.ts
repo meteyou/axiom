@@ -75,7 +75,14 @@ export interface TurnInfo {
  * verbatim (with `replay: true`) when a consumer attaches mid-turn.
  */
 export type TurnEvent =
-  | { type: 'turn_start'; turnId: string; sessionId: string; replay?: boolean }
+  | {
+    type: 'turn_start'
+    turnId: string
+    sessionId: string
+    /** A `/compact` turn: it has no user message of its own to rebuild from. */
+    compact?: boolean
+    replay?: boolean
+  }
   | { type: 'chunk'; turnId: string; chunk: ResponseChunk; replay?: boolean }
   | { type: 'attachment'; turnId: string; attachment: UploadDescriptor; replay?: boolean }
   | { type: 'system'; turnId: string; text: string; replay?: boolean }
@@ -299,9 +306,6 @@ export class TurnRunner {
    * replayed synchronously, flagged with `replay: true`, before any live event
    * is delivered.
    */
-  // Consumed cross-workspace (web-backend, telegram); Fallow cannot resolve the
-  // @axiom/core exports map, so it sees no caller outside this class.
-  // fallow-ignore-next-line unused-class-member
   subscribe(user: number | string, subscriber: TurnSubscriber): () => void {
     const key = String(user)
     let set = this.subscribers.get(key)
@@ -331,9 +335,6 @@ export class TurnRunner {
   }
 
   /** True while a turn for this user is queued or streaming. */
-  // Called through the TurnRetryRunnerLike interface and cross-workspace; Fallow
-  // attributes neither to this class.
-  // fallow-ignore-next-line unused-class-member
   hasActiveTurn(user: number | string): boolean {
     const turns = this.liveTurns.get(String(user))
     if (!turns) return false
@@ -394,9 +395,6 @@ export class TurnRunner {
    * tail is dropped and the user message is never re-sent, so a retry cannot
    * duplicate it.
    */
-  // Called through the TurnRetryRunnerLike interface and cross-workspace; Fallow
-  // attributes neither to this class.
-  // fallow-ignore-next-line unused-class-member
   retryTurn(input: StartTurnInput): TurnInfo {
     return this.startTurn({ ...input, continueFromTranscript: true })
   }
@@ -405,9 +403,6 @@ export class TurnRunner {
    * Abort every queued/streaming turn of a user (the `/stop` command, `/new`,
    * or an explicit kill). Returns true when something was actually aborted.
    */
-  // Consumed cross-workspace (web-backend, telegram); Fallow cannot resolve the
-  // @axiom/core exports map, so it sees no caller outside this class.
-  // fallow-ignore-next-line unused-class-member
   abortTurn(user: number | string): boolean {
     const turns = this.liveTurns.get(String(user))
     if (!turns) return false
@@ -532,7 +527,12 @@ export class TurnRunner {
       return
     }
 
-    this.emit(turn, { type: 'turn_start', turnId: turn.id, sessionId: turn.sessionId })
+    this.emit(turn, {
+      type: 'turn_start',
+      turnId: turn.id,
+      sessionId: turn.sessionId,
+      ...(input.compact ? { compact: true } : {}),
+    })
 
     const thresholds = this.resolveStallThresholds()
     const policy = this.resolveRetryPolicy()

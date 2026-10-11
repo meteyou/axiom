@@ -1026,6 +1026,31 @@ describe('TurnRunner', () => {
       expect(error.chunk.error).toContain('insufficient_quota')
     })
 
+    it('marks a /compact turn on turn_start, also when it is replayed', async () => {
+      const agent: TurnAgentLike = {
+        sendMessage: async function* () { yield { type: 'text', text: 'never used' } },
+        compactContext: async function* () { yield { type: 'compaction', text: 'compacted' } },
+        abort: vi.fn(),
+      }
+      const runner = new TurnRunner({ db: null, getAgent: () => agent })
+
+      const events: TurnEvent[] = []
+      runner.subscribe(USER_ID, collect(events))
+      runner.startTurn({ userId: USER_ID, sessionId: SESSION_ID, text: '/compact', compact: {} })
+      await waitFor(() => !runner.hasActiveTurn(USER_ID))
+
+      expect(events[0]).toMatchObject({ type: 'turn_start', compact: true })
+      expect(chunkTypes(events)).toEqual(['compaction', 'done'])
+
+      const replayed: TurnEvent[] = []
+      runner.subscribe(USER_ID, collect(replayed))
+      expect(replayed[0]).toMatchObject({ type: 'turn_start', compact: true, replay: true })
+
+      runner.startTurn({ userId: USER_ID, sessionId: SESSION_ID, text: 'hi' })
+      await waitFor(() => !runner.hasActiveTurn(USER_ID))
+      expect(events.filter(e => e.type === 'turn_start')[1]).not.toHaveProperty('compact')
+    })
+
     it('fails a structured context overflow without retrying, even when its text looks transient', async () => {
       const db = freshDb()
       const { agent, calls } = sequenceAgent([

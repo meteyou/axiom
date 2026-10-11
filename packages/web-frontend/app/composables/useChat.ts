@@ -246,6 +246,8 @@ interface WsMessage {
   nestedCalls?: CodemodeNestedCall[]
   error?: string
   sessionId?: string
+  /** For `turn_replay_start`: the replayed turn is a `/compact` (see {@link prepareTurnReplay}). */
+  compact?: boolean
   /**
    * For `session_end`: the id of the session that just ended (sent explicitly
    * by the backend). Used to tag the divider so a late `session_summary` can
@@ -399,6 +401,15 @@ export function upsertStallMessage(list: ChatMessage[], stall: ChatStallInfo, co
     timestamp: new Date().toISOString(),
     stallInfo: stall,
   })
+}
+
+/**
+ * The list a replayed turn is rebuilt on. A `/compact` turn has no user
+ * message to stop at, so stripping would also remove the previous answer; its
+ * notices are upserted by id and replay in place without a strip.
+ */
+export function prepareTurnReplay(list: ChatMessage[], compact: boolean): ChatMessage[] {
+  return compact ? list : stripTrailingTurn(list)
 }
 
 /**
@@ -980,7 +991,7 @@ export function useChat() {
         // show — from a mid-stream reconnect or from history — so the replayed
         // chunks rebuild it exactly once.
         if (msg.sessionId) sessionId.value = msg.sessionId
-        messages.value = stripTrailingTurn(messages.value)
+        messages.value = prepareTurnReplay(messages.value, msg.compact === true)
         isStreaming.value = true
         break
 
