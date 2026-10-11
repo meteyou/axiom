@@ -125,7 +125,6 @@
                     <SortIndicator :field="'name'" :sort-field="sortField" :sort-direction="sortDirection" />
                   </span>
                 </TableHead>
-                <TableHead v-if="isAdmin">{{ $t('tasks.columns.owner') }}</TableHead>
                 <TableHead>{{ $t('tasks.columns.status') }}</TableHead>
                 <TableHead>{{ $t('tasks.columns.trigger') }}</TableHead>
                 <TableHead
@@ -174,11 +173,11 @@
                 class="cursor-pointer"
                 @click="openViewer(task.id)"
               >
-                <TableCell class="max-w-[240px] truncate font-medium">
-                  {{ task.name }}
-                </TableCell>
-                <TableCell v-if="isAdmin" class="text-muted-foreground">
-                  {{ task.ownerUsername ?? '—' }}
+                <TableCell class="max-w-[240px]">
+                  <div class="truncate font-medium">{{ task.name }}</div>
+                  <div v-if="isAdmin" class="truncate text-xs text-muted-foreground">
+                    {{ task.ownerUsername ?? '—' }}
+                  </div>
                 </TableCell>
                 <TableCell>
                   <Badge :variant="taskStatusVariant(task.status)">
