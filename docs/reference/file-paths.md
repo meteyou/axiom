@@ -35,7 +35,7 @@ The two environment variables `DATA_DIR` and `WORKSPACE_DIR` are the only knobs.
 
 | File | Purpose | Helper |
 |---|---|---|
-| `/data/db/axiom.db` | Single SQLite database: sessions, chat_messages, tasks, task_tool_journal, scheduled_tasks, token_usage, tool_calls, telegram_users, memories (atomic facts). WAL mode + FK on. | `initDatabase()` in `packages/core/src/database.ts` |
+| `/data/db/axiom.db` | Single SQLite database: sessions, chat_messages, tasks, task_tool_journal, scheduled_tasks, token_usage, tool_calls, telegram_users, memories (atomic facts), push_subscriptions (one row per device that receives push notifications). WAL mode + FK on. | `initDatabase()` in `packages/core/src/database.ts` |
 
 Schema is defined inline in `database.ts` (`SCHEMA` const). Migrations are idempotent and run on startup. Session-ID conventions: see `agent_docs/session-id-architecture.md` and `agent_docs/architecture-conventions.md` §8.
 
@@ -49,6 +49,7 @@ Resolved by `getConfigDir()` in `packages/core/src/config.ts`. Default templates
 | `settings.json` | `contracts/settings.ts` (full schema) + defaults in `config.ts` `TEMPLATES['settings.json']` | Web UI Settings pages | [`reference/settings`](./settings) for the schema; [Settings](../settings/) for per-section meaning |
 | `secrets.json` | AES-256-GCM-encrypted blob (Brave key, OAuth tokens, etc.) | Secrets API | [Settings → Secrets](../settings/secrets) |
 | `skills.json` | `{ skills: [{ source, enabled, env }] }` | Web UI Skills page | [Web UI → Skills](../web-ui/skills) |
+| `vapid.json` | `{ publicKey, privateKey, createdAt, subject? }`, generated on first start by `loadOrCreateVapidKeys()` (`web-backend/src/push/vapid-keys.ts`); mode `0600` | Backend (once); `VAPID_*` env vars override it | [App & Push Notifications](../guide/push-notifications#server-configuration) |
 | `telegram.json` | Stored separately from `settings.json` (see comment in `contracts/settings.ts:150`) | Web UI Telegram settings | [Settings → Telegram](../settings/telegram) |
 | `AGENTS.md` | `AGENTS_TEMPLATE` in `memory.ts` | User (Web UI Instructions); migrated from legacy `/data/memory/AGENTS.md` if present | [Web UI → Instructions](../web-ui/instructions) |
 | `HEARTBEAT.md` | `HEARTBEAT_TEMPLATE` in `memory.ts` | User; read pre-flight by `agent-heartbeat.ts` (skipped if empty) | [Settings → Agent Heartbeat](../settings/agent-heartbeat) |

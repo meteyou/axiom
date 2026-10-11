@@ -38,6 +38,8 @@ These three must be set for any non-development deployment.
 | `NODE_ENV` | _(unset)_ | Set to `production` in the default Compose file. Controls Nuxt/Express behavior; rarely needs changing. |
 | `FRONTEND_DIR` | _(auto-detected)_ | Override the path where the backend looks for the built Nuxt frontend. Only useful for custom builds where `web-frontend/dist` isn't where the backend expects it. |
 | `GITHUB_TOKEN` | _(unset)_ | When set, used as `Authorization: token <value>` for skill downloads from GitHub (avoids unauthenticated rate limits when installing many skills from public repos). |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | _(generated into `/data/config/vapid.json`)_ | Your own VAPID key pair for [push notifications](../guide/push-notifications#server-configuration). Set both or neither. Changing the keys invalidates every existing device subscription. |
+| `VAPID_SUBJECT` | _(the HTTPS origin a device subscribed from)_ | Contact sent to the push services, as `mailto:you@example.org` or `https://your-axiom.example.org`. Apple rejects `localhost` and made-up domains. |
 | `AXIOM_PROJECT_DIR` | _(auto-detected)_ | Overrides the resolved repo root for `getDocsPath()`/`getReadmePath()`/`getAgentDocsPath()`. Only needed for unusual deployments where source files don't live next to the running code (e.g. read-only image overlays). |
 
 ## Compose-file convention
