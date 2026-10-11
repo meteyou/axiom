@@ -27,7 +27,7 @@ Rule: new per-user features take a `UserScope` (or an owner id) explicitly. Neve
 
 ## Scoped tools (`scoped-tools.ts`)
 
-`createScopedTools(scope, deps)` builds the tool set for one user and binds every tool to the scope at creation: task tools (`create_task`, `list_tasks`, `resume_task`, `stop_task`), cronjob/reminder tools (chat only), `send_file`, plus the base tools unless `excludeBaseTools` is set. The actor's role is read from the database on every access check, because a runtime outlives role changes. Both the chat runtime and background task agents use it, so tasks inherit the owner's workspace, email accounts, secrets, facts and chat history. Don't add tools to a runtime outside this factory when they touch user data.
+`createScopedTools(scope, deps)` builds the tool set for one user and binds every tool to the scope at creation: task tools (`create_task`, `list_tasks`, `resume_task`, `stop_task`), cronjob/reminder tools (chat only), `send_file_to_user` (chat only — task runs have no channel that would deliver the file), plus the base tools unless `excludeBaseTools` is set. The actor's role is read from the database on every access check, because a runtime outlives role changes. Both the chat runtime and background task agents use it, so tasks inherit the owner's workspace, email accounts, secrets, facts and chat history. Don't add tools to a runtime outside this factory when they touch user data.
 
 Data tools filter by the scope's user id: `read_chat_history`, `search_memories` (also in background tasks), email accounts, secrets (user secrets override global ones for that user only).
 

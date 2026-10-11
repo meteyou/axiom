@@ -216,6 +216,16 @@ describe('task ownership', () => {
       expect(aborted).toEqual([])
     })
 
+    it('gives send_file_to_user only to tools of an interactive turn', () => {
+      expect(toolsFor(2).has('send_file_to_user')).toBe(false)
+      const chatTools = createScopedTools(resolveUserScope(db, 2)!, {
+        db,
+        taskTools: { taskRuntime: runtime, getDefaultProvider: () => provider, resolveProvider: () => provider, defaultMaxDurationMinutes: 10, maxDurationMinutesCap: 20 },
+        getInteractiveSessionId: () => 'chat-session',
+      })
+      expect(chatTools.some(tool => tool.name === 'send_file_to_user')).toBe(true)
+    })
+
     it('rejects resuming foreign tasks for everyone', async () => {
       const bobs = store.create({ name: 'b', prompt: 'p', triggerType: 'user', ownerUserId: 3 })
       store.update(bobs.id, { status: 'paused' })
