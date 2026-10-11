@@ -119,3 +119,5 @@ All endpoints require a signed-in user and only touch that user's own devices.
 | `PUT`    | `/api/push/preferences`           | `{ "showPreview": true \| false }`. |
 
 Devices are stored in the `push_subscriptions` table of `/data/db/axiom.db`, one row per browser installation. Deleting a user deletes their devices.
+
+The server only accepts and sends to subscriptions of the browser vendors' push services (Google `fcm.googleapis.com`, Mozilla `*.push.services.mozilla.com`, Apple `*.push.apple.com`, Microsoft `*.notify.windows.com`). Other endpoints are rejected, so a user cannot make the server send requests to arbitrary hosts. Each delivery attempt times out after 10 seconds.
