@@ -25,7 +25,13 @@ export interface ContextCompactionInfo {
   status: ContextCompactionStatus
   reason: ContextCompactionReason
   tokensBefore: number
+  /**
+   * Context size right after the compaction: a heuristic estimate at first,
+   * replaced by the provider-reported size once the next response arrives.
+   */
   tokensAfter?: number
+  /** `tokensAfter` comes from the provider's usage report, not the estimate. */
+  tokensAfterMeasured?: boolean
   summary?: string
   /** Why the compaction was skipped or failed. */
   error?: string
@@ -37,6 +43,12 @@ export interface ContextCompactionInfo {
 
 /** `chat_messages.metadata.kind` marking a persisted compaction notice. */
 export const CONTEXT_COMPACTION_KIND = 'context_compaction'
+
+/** `tokensAfter` for display: estimates are marked with `~`. */
+export function formatTokensAfter(info: Pick<ContextCompactionInfo, 'tokensAfter' | 'tokensAfterMeasured'>): string {
+  const formatted = formatTokenCount(info.tokensAfter ?? 0)
+  return info.tokensAfterMeasured ? formatted : `~${formatted}`
+}
 
 /** `368000` → `368k`, `1250000` → `1.3M`. */
 export function formatTokenCount(tokens: number): string {
@@ -63,6 +75,7 @@ export function parseContextCompactionInfo(metadata: unknown, messageId?: number
     reason: oneOf(CONTEXT_COMPACTION_REASONS, value.reason, 'threshold'),
     tokensBefore: typeof value.tokensBefore === 'number' ? value.tokensBefore : 0,
     ...(typeof value.tokensAfter === 'number' ? { tokensAfter: value.tokensAfter } : {}),
+    ...(value.tokensAfterMeasured === true ? { tokensAfterMeasured: true } : {}),
     ...(typeof value.summary === 'string' ? { summary: value.summary } : {}),
     ...(typeof value.error === 'string' ? { error: value.error } : {}),
     ...(warnings.length > 0 ? { warnings } : {}),

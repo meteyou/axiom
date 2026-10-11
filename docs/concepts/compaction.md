@@ -79,13 +79,15 @@ At most one compaction runs per model response.
 
 ## What you see
 
-- **Web chat**: a divider *"Context compacted (368k → 41k tokens)"*. Click it to expand the summary. While the summary is written the divider shows *"Compacting context…"*. The divider is stored in the chat history and survives a reload.
-- **Telegram**: one short status line after a compaction (or a failed one).
+- **Web chat**: a divider *"Context compacted (368k → ~41k tokens)"*. Click it to expand the summary. While the summary is written the divider shows *"Compacting context…"*. The divider is stored in the chat history and survives a reload.
+- **Telegram**: one short status line after a compaction (or a failed one), with the estimated size.
 - **Task viewer**: the same divider in the task's event stream.
+
+The size before a compaction comes from the provider's usage report. The size after it is an estimate at first, marked with `~`. As soon as the next response arrives, the divider switches to the size the provider reported for that request (*368k → 43k*), and the stored record is updated. Providers that report no usage keep the estimate.
 
 ## Costs and records
 
-The summary is one extra LLM call with the current model. It is logged to token usage with the session id of the chat or task, so it shows up on the [Token Usage](../web-ui/token-usage) page like any other call, and it counts towards a task's token and cost totals. Every compaction is also stored in the `context_compactions` table (tokens before/after, summary, model, cost).
+The summary is one extra LLM call with the current model. It is logged to token usage with the session id of the chat or task, so it shows up on the [Token Usage](../web-ui/token-usage) page like any other call, and it counts towards a task's token and cost totals. Every compaction is also stored in the `context_compactions` table (tokens before/after, summary, model, cost); `tokens_after` holds the measured size once it is known.
 
 A compaction invalidates the provider's prompt cache once, so compacting much earlier than necessary costs more than it saves.
 

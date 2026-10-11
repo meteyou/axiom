@@ -76,6 +76,7 @@ export {
   CONTEXT_COMPACTION_STATUSES,
   CONTEXT_COMPACTION_WARNINGS,
   formatTokenCount,
+  formatTokensAfter,
   parseContextCompactionInfo,
 } from './compaction.js'
 

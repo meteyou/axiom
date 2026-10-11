@@ -208,7 +208,7 @@ export function estimateMessageTokens(message: AgentMessage): number {
   }
 }
 
-function estimateMessagesTokens(messages: readonly AgentMessage[]): number {
+export function estimateMessagesTokens(messages: readonly AgentMessage[]): number {
   return messages.reduce((sum, message) => sum + estimateMessageTokens(message), 0)
 }
 
@@ -228,6 +228,18 @@ function trustedUsage(message: AgentMessage): Usage | undefined {
   if (message.stopReason === 'aborted' || message.stopReason === 'error') return undefined
   if (!message.usage || usageContextTokens(message.usage) <= 0) return undefined
   return message.usage
+}
+
+/**
+ * Provider-reported size of the request that produced `message`: everything
+ * before it as the provider tokenized it. Null when the message carries no
+ * usable usage.
+ */
+export function requestContextTokens(message: AgentMessage): number | null {
+  const usage = trustedUsage(message)
+  if (!usage) return null
+  const tokens = usage.input + usage.cacheRead + usage.cacheWrite
+  return tokens > 0 ? tokens : null
 }
 
 export interface ContextTokenEstimate {

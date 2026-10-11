@@ -138,9 +138,10 @@ the next turn.
 `/compact` replaces the older part of the conversation with a summary and keeps
 the most recent messages — see [Context Compaction](../concepts/compaction).
 Optional instructions steer the summary (`/compact keep the PR numbers`). It
-waits for a running answer, shows a *Context compacted (368k → 41k tokens)*
+waits for a running answer, shows a *Context compacted (368k → ~41k tokens)*
 divider you can expand to read the summary, and can be stopped with `/stop`.
-Automatic compactions show the same divider.
+The `~` marks an estimate; with the next answer the divider switches to the
+size the provider reported. Automatic compactions show the same divider.
 
 `/thinking` accepts `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`. Levels the active model doesn't support are rounded to the nearest supported one.
 Like the brain-icon selector, it changes the global main-agent setting and
