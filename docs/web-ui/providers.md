@@ -40,7 +40,7 @@ Clicking anywhere on a header row opens the [Edit dialog](#add-edit-dialog).
 
 | Column      | Notes                                                                                                |
 |-------------|------------------------------------------------------------------------------------------------------|
-| **Model**   | Indented model id; small badges for `Active` (green), `Fallback` (outline) and `Disabled` (outline). Both `Active` and `Fallback` can appear on the same row in theory, but the active model is never also the fallback. Models of a disabled provider and disabled models are shown dimmed and struck through. |
+| **Model**   | Indented model id; small badges for `Active` (green), `Fallback` (outline) and `Disabled` (outline). Both `Active` and `Fallback` can appear on the same row in theory, but the active model is never also the fallback. Models of a disabled provider and disabled models are shown dimmed and struck through. A **Window too small** badge (amber) marks models whose context window cannot hold the system prompt plus a [compaction](../concepts/compaction#window-too-small) summary and kept messages with enough headroom; the tooltip names the affected agent kind (main chat, background tasks). |
 | **Cost**    | `$<input>` / `$<output>` per million tokens. Shown as `—` when no cost is configured for that model. |
 | **Status**  | One of `Untested`, `Connected`, `Error` — see [Statuses](#statuses).                                 |
 | **⋮**       | Test Connection, Set Active, Set Fallback, Remove Fallback, **Edit Model**, Disable / Enable, Remove Model — context-aware (see [Per-model actions](#per-model-actions)). |
@@ -364,6 +364,8 @@ Opened from a model sub-row's ⋮ menu → **Edit Model**. Sets per model:
 - **Description** — a free-form note describing what this model is suited for (e.g. *"Fast model for text processing like Twitter/Reddit Digest"*). The description is surfaced in the system prompt's [`<available_providers>` block](../concepts/system-prompt#_8-available_providers-configured-llm-providers) and doubles as the opt-in gate for agent model routing: a model without a description (and that isn't the active or default task model) is hidden from the agent's routing list. Clear the field to remove a model from the routing list.
 - **Cost** — per-million-token input and output costs in USD. **Cache read** and **cache write** fields are always shown for providers whose models are built from Axiom's own configuration (see below); for other providers they appear only when the resolved cost already carries cache values, or for Anthropic providers. Enter `0` for a free model. Cache prices apply to the cache tokens the provider reports (e.g. OpenAI-style `cached_tokens`) and flow into the cost shown on the [Token Usage page](./token-usage).
 
+- **Context compaction** — *Reserve tokens* and *Keep recent tokens* for this model, overriding [Settings → Agent → Context compaction](../settings/agent#context-compaction). Empty fields follow the global settings. Lower values help small local models; see [Context Compaction → Budgets](../concepts/compaction#budgets). If the model's window is too small for compaction, a warning is shown below the fields.
+
 For providers whose models are built from Axiom's own configuration (API-key presets such as Custom, OpenRouter, DeepSeek, …) the dialog additionally offers:
 
 - **Display name**.
@@ -375,7 +377,7 @@ For providers whose models are built from Axiom's own configuration (API-key pre
 
 Subscription/OAuth providers, OpenCode Zen/Go and Radius take these values from their upstream catalog, so the section is hidden for them.
 
-**Your values vs. catalog values.** A filled field is your own value and overrides the catalog. An empty field shows the current catalog value as placeholder and keeps following the catalog — including after [Refresh models](#refreshing-model-catalogs). Only the fields you change are stored; clearing a field removes your value again. **Reset to catalog values** (bottom left, shown when the model has own values) removes all own values except the description. Entries saved by older Axiom versions stored a full copy of the catalog values; reset them once to let them follow the catalog.
+**Your values vs. catalog values.** A filled field is your own value and overrides the catalog. An empty field shows the current catalog value as placeholder and keeps following the catalog — including after [Refresh models](#refreshing-model-catalogs). Only the fields you change are stored; clearing a field removes your value again. **Reset to catalog values** (bottom left, shown when the model has own values) removes all own values except the description, including the compaction override. Entries saved by older Axiom versions stored a full copy of the catalog values; reset them once to let them follow the catalog.
 
 ## Image models
 

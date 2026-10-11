@@ -20,6 +20,7 @@ const guideSidebar: DefaultTheme.SidebarItem[] = [
       { text: 'Built-in Tools', link: '/concepts/tools' },
       { text: 'Codemode', link: '/concepts/codemode' },
       { text: 'Image Generation', link: '/concepts/image-generation' },
+      { text: 'Context Compaction', link: '/concepts/compaction' },
       { text: 'Memory System', link: '/concepts/memory' },
       { text: 'Multi-User', link: '/concepts/multi-user' },
       { text: 'Skills', link: '/concepts/skills' },
