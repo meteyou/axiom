@@ -559,7 +559,7 @@ describe('database', () => {
         CREATE TABLE tasks (id TEXT PRIMARY KEY, name TEXT NOT NULL, prompt TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('running','paused','completed','failed')), trigger_type TEXT NOT NULL CHECK(trigger_type IN ('user','agent','cronjob','heartbeat','consolidation')), trigger_source_id TEXT, provider TEXT, model TEXT, max_duration_minutes INTEGER, prompt_tokens INTEGER NOT NULL DEFAULT 0, completion_tokens INTEGER NOT NULL DEFAULT 0, estimated_cost REAL NOT NULL DEFAULT 0.0, tool_call_count INTEGER NOT NULL DEFAULT 0, result_summary TEXT, result_status TEXT CHECK(result_status IS NULL OR result_status IN ('completed','failed','question','silent')), error_message TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), started_at TEXT, completed_at TEXT, session_id TEXT);
         CREATE TABLE memories (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, session_id TEXT, content TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'session', timestamp TEXT NOT NULL DEFAULT (datetime('now')));
       `)
-      seed.prepare('INSERT INTO users (username, password_hash) VALUES (?, ?)').run('alice', 'hash')
+      seed.prepare('INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)').run('alice', 'hash', 'admin')
       for (const row of rows) {
         seed.prepare(
           "INSERT INTO sessions (id, user_id, source, started_at, message_count, summary_written) VALUES (?, ?, ?, datetime('now'), 0, 0)"

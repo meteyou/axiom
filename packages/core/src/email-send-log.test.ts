@@ -37,8 +37,8 @@ describe('email send log', () => {
   })
 
   it('filters by owner and backfills legacy entries to the bootstrap admin', () => {
-    db.exec('CREATE TABLE users (id INTEGER PRIMARY KEY)')
-    db.exec('INSERT INTO users (id) VALUES (4), (7)')
+    db.exec('CREATE TABLE users (id INTEGER PRIMARY KEY, role TEXT)')
+    db.exec("INSERT INTO users (id, role) VALUES (4, 'admin'), (7, 'user')")
     createEmailSendLogEntry(db, makeInput({ ownerUserId: 7 }))
     const legacy = createEmailSendLogEntry(db, makeInput())
     expect(legacy.ownerUserId).toBeNull()

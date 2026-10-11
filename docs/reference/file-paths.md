@@ -89,7 +89,7 @@ Resolved by `getMemoryDir()` in `packages/core/src/memory.ts`. Structure created
 | `wiki/*.md` | `ensureWikiDir()` in `memory.ts`; managed by the `wiki` skill | Agent edits freely; cite source files in a `## Sources` / `## Quellen` section. |
 | `sources/**/*.md` | `ensureSourcesDir()` in `memory.ts`; conventions in `SOURCES_README_TEMPLATE` | **Immutable.** Add new files only — never rewrite. Filename: `<yyyy-mm-dd>-<slug>.md`. |
 
-The first account (bootstrap admin) keeps all locations above. Every other user gets a personal folder and workspace, resolved by `resolveUserScope()` in `packages/core/src/user-scope.ts`:
+The bootstrap admin (the oldest admin account, normally the first one) keeps all locations above. Every other user gets a personal folder and workspace, resolved by `resolveUserScope()` in `packages/core/src/user-scope.ts`:
 
 ```text
 /data/users/<username>/

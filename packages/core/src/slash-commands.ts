@@ -457,7 +457,7 @@ function settingsTarget(ctx: SlashCommandContext): SettingsTarget {
   if (!ctx.db) return { kind: 'global' }
   const scope = ctx.userId === null ? null : resolveUserScope(ctx.db, ctx.userId)
   if (!scope) return { kind: 'read_only' }
-  if (scope.role === 'admin' || scope.isBootstrapAdmin) return { kind: 'global' }
+  if (scope.role === 'admin') return { kind: 'global' }
   return { kind: 'personal', scope, db: ctx.db }
 }
 

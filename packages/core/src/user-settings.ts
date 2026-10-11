@@ -133,10 +133,10 @@ export function updateUserSettings(db: Database, userId: number, patch: UserSett
  */
 export function resolveEffectiveSettings(
   db: Database,
-  user: { id: number; role: string; isBootstrapAdmin: boolean },
+  user: { id: number; role: string },
 ): EffectiveUserSettings {
   const defaults = getGlobalChatDefaults()
-  if (user.role === 'admin' || user.isBootstrapAdmin) {
+  if (user.role === 'admin') {
     return { chatModel: null, thinkingLevel: defaults.thinkingLevel, language: defaults.language, timezone: defaults.timezone }
   }
   const overrides = getUserSettingsOverrides(db, user.id)
@@ -156,10 +156,8 @@ export function resolveEffectiveSettings(
 export function resolveOwnerTimezone(db: Database, ownerUserId: number | null | undefined): string {
   const globalTimezone = getGlobalChatDefaults().timezone
   if (ownerUserId == null) return globalTimezone
-  const row = db.prepare('SELECT id, role FROM users WHERE id = ? AND deleted_at IS NULL').get(ownerUserId) as { id: number; role: string } | undefined
+  const row = db.prepare('SELECT role FROM users WHERE id = ? AND deleted_at IS NULL').get(ownerUserId) as { role: string } | undefined
   if (!row || row.role === 'admin') return globalTimezone
-  const bootstrap = db.prepare('SELECT MIN(id) AS id FROM users').get() as { id: number | null }
-  if (row.id === bootstrap.id) return globalTimezone
   return getUserSettingsOverrides(db, ownerUserId).timezone ?? globalTimezone
 }
 

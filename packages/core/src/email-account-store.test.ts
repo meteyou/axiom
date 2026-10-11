@@ -60,8 +60,8 @@ describe('email-account-store', () => {
     saveEmailAccounts(file)
 
     const db = new BetterSqlite3(':memory:') as unknown as Database
-    db.exec('CREATE TABLE users (id INTEGER PRIMARY KEY)')
-    db.exec('INSERT INTO users (id) VALUES (1)')
+    db.exec('CREATE TABLE users (id INTEGER PRIMARY KEY, role TEXT)')
+    db.exec("INSERT INTO users (id, role) VALUES (1, 'admin')")
     migrateEmailAccountOwners(db)
 
     expect(loadEmailAccounts().accounts.map(a => a.ownerUserId)).toEqual([1, 3])

@@ -22,6 +22,15 @@ describe('user-scope', () => {
     expect(isMultiUser(db)).toBe(false)
   })
 
+  it('skips a demoted first account when picking the bootstrap admin', () => {
+    const demoted = addUser('first', 'user')
+    const admin = addUser('admin', 'admin')
+
+    expect(getBootstrapAdminId(db)).toBe(admin)
+    expect(resolveUserScope(db, demoted)?.isBootstrapAdmin).toBe(false)
+    expect(resolveUserScope(db, demoted)?.paths.userDir).not.toBeNull()
+  })
+
   it('treats the lowest user id as bootstrap admin', () => {
     const admin = addUser('admin', 'admin')
     const bob = addUser('bob', 'user')

@@ -217,6 +217,20 @@ describe('bootstrap admin', () => {
     expect(row.role).toBe('admin')
     expect((await call(admin.accessToken, 'GET', '/api/auth/me')).status).toBe(200)
   })
+
+  it('cannot be displaced by promoting an older account', async () => {
+    const admin = await adminLogin()
+    const bootstrapId = (db.prepare("SELECT MIN(id) AS id FROM users WHERE role = 'admin'").get() as { id: number }).id
+    db.prepare("INSERT INTO users (id, username, password_hash, role) VALUES (0, 'legacyfirst', 'h', 'user')").run()
+    try {
+      const res = await call(admin.accessToken, 'PUT', '/api/users/0', { role: 'admin' })
+      expect(res.status).toBe(400)
+      expect((db.prepare('SELECT role FROM users WHERE id = 0').get() as { role: string }).role).toBe('user')
+      expect((db.prepare("SELECT MIN(id) AS id FROM users WHERE role = 'admin'").get() as { id: number }).id).toBe(bootstrapId)
+    } finally {
+      db.prepare('DELETE FROM users WHERE id = 0').run()
+    }
+  })
 })
 
 describe('soft delete', () => {

@@ -255,8 +255,15 @@ export function createUsersRouter(options: UsersRouterOptions | Database): Route
     }
 
     const newRole = role === undefined ? undefined : role === 'admin' ? 'admin' : 'user'
-    if (newRole === 'user' && id === getBootstrapAdminId(db)) {
+    const bootstrapAdminId = getBootstrapAdminId(db)
+    if (newRole === 'user' && id === bootstrapAdminId) {
       res.status(400).json({ error: 'The bootstrap admin cannot be demoted' })
+      return
+    }
+    if (newRole === 'admin' && existing.role !== 'admin' && bootstrapAdminId !== null && id < bootstrapAdminId) {
+      res.status(400).json({
+        error: 'This account is older than the bootstrap admin; promoting it would make it the bootstrap admin and hand it the legacy data',
+      })
       return
     }
 
