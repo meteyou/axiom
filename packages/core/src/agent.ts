@@ -717,8 +717,6 @@ Do NOT add this section if everything discussed was resolved or if there is noth
   /**
    * Abort the current agent task.
    */
-  // Used by web/Telegram cancellation handlers.
-  // fallow-ignore-next-line unused-class-member
   abort(userId: string): void {
     this.runtimes.get(userId)?.runtime.abort()
   }
@@ -743,8 +741,6 @@ Do NOT add this section if everything discussed was resolved or if there is noth
    * the new session starts clean, without waiting for the (slow)
    * summary LLM call.
    */
-  // Used by the websocket chat /new command handler for instant session switch.
-  // fallow-ignore-next-line unused-class-member
   resetSessionAsync(userId: string, source: string = 'web'): SessionInfo {
     // Clear the in-memory agent messages immediately so the new session
     // is not contaminated by the previous session's context. The DB-side
@@ -762,6 +758,8 @@ Do NOT add this section if everything discussed was resolved or if there is noth
   /**
    * Aborts and drops a user's runtime and ends their session without summary or fact extraction.
    */
+  // Called via the injected getAgentCore() accessor in routes/users.ts, which fallow cannot trace.
+  // fallow-ignore-next-line unused-class-member
   discardUser(userId: string): void {
     const entry = this.runtimes.get(userId)
     const sessionId = this.sessionManager.getSession(userId)?.id
