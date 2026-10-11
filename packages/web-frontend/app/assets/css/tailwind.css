@@ -13,6 +13,8 @@
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
+  /* Matches the corner radius baked into the app logo SVGs (rx 116/512) so user avatars line up with the bot logo. */
+  --radius-avatar: 22.5%;
 
   /* Colors — mapped from CSS variables for shadcn compatibility */
   --color-border: hsl(var(--border));

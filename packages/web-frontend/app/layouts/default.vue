@@ -212,12 +212,12 @@
                   v-if="userAvatarUrl && !avatarFailed"
                   :src="userAvatarUrl"
                   :alt="user?.username"
-                  class="h-9 w-9 shrink-0 rounded-full object-cover ring-1 ring-primary/25"
+                  class="h-9 w-9 shrink-0 rounded-avatar object-cover ring-1 ring-primary/25"
                   @error="onAvatarError"
                 >
                 <span
                   v-else
-                  class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-semibold text-primary ring-1 ring-primary/25"
+                  class="flex h-9 w-9 shrink-0 items-center justify-center rounded-avatar bg-primary/15 text-sm font-semibold text-primary ring-1 ring-primary/25"
                 >
                   {{ userInitial }}
                 </span>

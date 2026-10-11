@@ -101,7 +101,7 @@
 
     <div ref="messagesContainer" class="relative flex flex-1 flex-col gap-4 overflow-y-auto p-4" @scroll="onMessagesScroll" @copy="handleCopyAsMarkdown" @click="handleMarkdownCodeCopy">
       <div v-if="loadingHistory" class="flex flex-col gap-3">
-        <div class="flex items-start gap-3 self-start"><Skeleton class="h-8 w-8 shrink-0 rounded-full" /><div class="space-y-2"><Skeleton class="h-4 w-48 rounded-xl" /><Skeleton class="h-4 w-64 rounded-xl" /></div></div>
+        <div class="flex items-start gap-3 self-start"><Skeleton class="h-8 w-8 shrink-0 rounded-avatar" /><div class="space-y-2"><Skeleton class="h-4 w-48 rounded-xl" /><Skeleton class="h-4 w-64 rounded-xl" /></div></div>
       </div>
       <div v-else-if="messages.length === 0" class="flex flex-1 flex-col items-center justify-center gap-3 text-muted-foreground">
         <AppIcon name="chat" class="h-10 w-10 opacity-40" />
@@ -456,10 +456,10 @@
           <template v-else>
             <div
               class="relative flex h-8 w-8 shrink-0 items-center justify-center"
-              :class="msg.role === 'assistant' ? '' : 'rounded-full border border-border bg-muted text-muted-foreground'"
+              :class="msg.role === 'assistant' ? '' : 'rounded-avatar border border-border bg-muted text-muted-foreground'"
             >
               <template v-if="msg.role === 'user'">
-                <img v-if="userAvatarUrl && !avatarFailed" :src="userAvatarUrl" :alt="user?.username" class="h-8 w-8 rounded-full object-cover" @error="onAvatarError">
+                <img v-if="userAvatarUrl && !avatarFailed" :src="userAvatarUrl" :alt="user?.username" class="h-8 w-8 rounded-avatar object-cover" @error="onAvatarError">
                 <span v-else-if="user?.username" class="text-xs font-semibold">{{ userInitial }}</span>
                 <AppIcon v-else name="user" class="h-4 w-4" />
               </template>

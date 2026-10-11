@@ -68,12 +68,12 @@
                       v-if="entry.telegramId"
                       :src="getUserAvatarUrl(entry.telegramId)"
                       :alt="entry.username"
-                      class="h-9 w-9 shrink-0 rounded-full object-cover"
+                      class="h-9 w-9 shrink-0 rounded-avatar object-cover"
                       @error="($event.target as HTMLImageElement).style.display = 'none'; ($event.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden')"
                     >
                     <span
                       :class="[
-                        'flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary',
+                        'flex h-9 w-9 shrink-0 items-center justify-center rounded-avatar bg-primary/10 text-sm font-bold text-primary',
                         entry.telegramId ? 'hidden' : '',
                       ]"
                     >

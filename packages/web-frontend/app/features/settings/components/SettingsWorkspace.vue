@@ -1279,12 +1279,12 @@
                       v-if="tgUser.hasAvatar"
                       :src="getTelegramAvatarUrl(tgUser.id)"
                       :alt="tgUser.telegramDisplayName || tgUser.telegramUsername || ''"
-                      class="h-9 w-9 shrink-0 rounded-full object-cover"
+                      class="h-9 w-9 shrink-0 rounded-avatar object-cover"
                       @error="($event.target as HTMLImageElement).style.display = 'none'; ($event.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden')"
                     >
                     <span
                       :class="[
-                        'flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold',
+                        'flex h-9 w-9 shrink-0 items-center justify-center rounded-avatar text-sm font-bold',
                         tgUser.hasAvatar ? 'hidden' : '',
                         tgUser.status === 'approved'
                           ? 'bg-success/10 text-success'
