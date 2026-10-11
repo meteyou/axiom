@@ -62,23 +62,11 @@ export function loadRetryPolicy(
  * `AssistantMessage`, which is what a turn's error chunk boils down to here.
  */
 export function isRetryableTurnError(errorMessage: string): boolean {
-  if (isContextOverflowError(errorMessage)) return false
-  return isRetryableAssistantError(asFailedAssistantMessage(errorMessage))
-}
-
-/**
- * Prefix of the error the runtime reports once its own compact-and-retry
- * could not get the context under the limit.
- */
-export const CONTEXT_OVERFLOW_ERROR_PREFIX = 'Context window exceeded ('
-
-/**
- * A context overflow is never fixed by sending the same request again; the
- * runtime already compacted and retried once before it surfaced the error.
- */
-export function isContextOverflowError(errorMessage: string): boolean {
-  return errorMessage.startsWith(CONTEXT_OVERFLOW_ERROR_PREFIX)
-    || isContextOverflow(asFailedAssistantMessage(errorMessage))
+  const message = asFailedAssistantMessage(errorMessage)
+  // pi-ai expects overflow to be handled before retry classification: resending
+  // the same context never fixes it.
+  if (isContextOverflow(message)) return false
+  return isRetryableAssistantError(message)
 }
 
 function asFailedAssistantMessage(errorMessage: string): AssistantMessage {

@@ -107,6 +107,8 @@ export interface ResponseChunk {
   retry?: RetryInfo
   /** Terminal-error details (for `type: 'error'`), when the turn persisted one. */
   errorInfo?: TurnErrorInfo
+  /** Why the turn failed, when the producer knows it (for `type: 'error'`). */
+  errorCause?: TurnErrorCause
   /** Context compaction details (for `type: 'compaction'`). */
   compaction?: ContextCompactionInfo
 }

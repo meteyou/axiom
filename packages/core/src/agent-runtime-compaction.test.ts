@@ -8,7 +8,6 @@ import type { ResponseChunk } from './agent-runtime-types.js'
 import { initDatabase } from './database.js'
 import { SUMMARIZATION_SYSTEM_PROMPT, findSummaryMessage } from './compaction.js'
 import { listContextCompactions } from './compaction-store.js'
-import { isContextOverflowError } from './turn-retry.js'
 
 const faux = vi.hoisted(() => ({
   core: null as ReturnType<typeof createFauxCore> | null,
@@ -140,7 +139,7 @@ describe('AgentRuntime context compaction', () => {
     expect(errors).toHaveLength(1)
     expect(errors[0].error).toContain('compacting once did not help')
     expect(errors[0].error).toContain(OVERFLOW_ERROR)
-    expect(isContextOverflowError(errors[0].error!)).toBe(true)
+    expect(errors[0].errorCause).toBe('context_overflow')
   })
 
   it('compacts on /compact and passes the instructions to the summary', async () => {

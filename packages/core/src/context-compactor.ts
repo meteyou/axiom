@@ -30,7 +30,6 @@ import { loadCompactionSettings } from './compaction-diagnostics.js'
 import { estimateCost } from './provider-config.js'
 import { logTokenUsage } from './token-logger.js'
 import type { TokenUsageRecord } from './token-logger.js'
-import { CONTEXT_OVERFLOW_ERROR_PREFIX } from './turn-retry.js'
 
 const DEFAULT_KEEPALIVE_MS = 10_000
 /**
@@ -89,10 +88,10 @@ export function withoutFailedAssistantTail(messages: readonly AgentMessage[]): A
   return messages.slice(0, end)
 }
 
-/** Error text for an overflow the runtime gave up on; classified as `context_overflow`. */
+/** Error text for an overflow the runtime gave up on. */
 export function describeContextOverflow(model: Model<Api>, message: AssistantMessage, cause: string): string {
   const original = message.errorMessage || `stopped (${message.stopReason}) before producing output`
-  return `${CONTEXT_OVERFLOW_ERROR_PREFIX}${model.id}, ${model.contextWindow} tokens) and ${cause}: ${original}`
+  return `Context window exceeded (${model.id}, ${model.contextWindow} tokens) and ${cause}: ${original}`
 }
 
 function linkSignals(signals: (AbortSignal | undefined)[]): AbortController {

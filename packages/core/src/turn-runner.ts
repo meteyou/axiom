@@ -5,6 +5,7 @@ import type {
   RetryInfo,
   StallInfo,
   StallOutcome,
+  TurnErrorCause,
   TurnErrorInfo,
 } from './agent-runtime-types.js'
 import { buildTurnErrorMetadata, formatTurnErrorContent } from './turn-error.js'
@@ -21,7 +22,6 @@ import {
 import type { StallThresholds } from './provider-stall.js'
 import {
   formatRetryScheduledContent,
-  isContextOverflowError,
   isRetryableTurnError,
   loadRetryPolicy,
   retryDelayMs,
@@ -195,7 +195,7 @@ interface TurnState {
 type AttemptResult =
   | { status: 'completed' }
   | { status: 'aborted' }
-  | { status: 'failed'; error: string; retryable: boolean; willRetry: boolean }
+  | { status: 'failed'; error: string; retryable: boolean; willRetry: boolean; cause?: TurnErrorCause }
 
 const DEFAULT_WATCHDOG_INTERVAL_MS = 5_000
 const DEFAULT_COMPLETED_TURN_RETENTION_MS = 60_000
@@ -544,9 +544,7 @@ export class TurnRunner {
 
       if (!result.willRetry) {
         this.failTurn(turn, {
-          cause: isContextOverflowError(result.error)
-            ? 'context_overflow'
-            : result.retryable ? 'retry_exhausted' : 'non_retryable',
+          cause: result.cause ?? (result.retryable ? 'retry_exhausted' : 'non_retryable'),
           error: result.error,
           attempts: attempt,
           retryable: result.retryable,
@@ -605,7 +603,7 @@ export class TurnRunner {
     const agentUserId = turn.key
     const stall: { error: string | null } = { error: null }
     const watchdog = this.startStallWatchdog(turn, agent, thresholds, (error) => { stall.error = error })
-    let failure: { error: string; retryable: boolean } | null = null
+    let failure: { error: string; retryable: boolean; cause?: TurnErrorCause } | null = null
 
     try {
       const continueTurn = attempt > 0 || input.continueFromTranscript === true
@@ -629,7 +627,9 @@ export class TurnRunner {
 
         if (chunk.type === 'error') {
           const error = chunk.error ?? 'Unknown provider error'
-          failure = { error, retryable: isRetryableTurnError(error) }
+          failure = chunk.errorCause === 'context_overflow'
+            ? { error, retryable: false, cause: chunk.errorCause }
+            : { error, retryable: isRetryableTurnError(error) }
           break
         }
 
@@ -679,7 +679,7 @@ export class TurnRunner {
     if (willRetry) transcript.discard()
     else this.commitTranscript(transcript)
 
-    return { status: 'failed', error: failure.error, retryable: failure.retryable, willRetry }
+    return { status: 'failed', error: failure.error, retryable: failure.retryable, willRetry, cause: failure.cause }
   }
 
   private openStream(
