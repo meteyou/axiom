@@ -285,7 +285,7 @@
         </button>
 
         <!-- Connection status (desktop only) -->
-        <div v-if="globalHealthMonitorEnabled" class="hidden items-center gap-2 md:flex">
+        <div v-if="showHealthStatus" class="hidden items-center gap-2 md:flex">
           <span
             class="h-2 w-2 shrink-0 rounded-full"
             :class="statusDotClass"
@@ -295,7 +295,7 @@
         </div>
 
         <!-- Fallback mode indicator (desktop only) -->
-        <Tooltip v-if="globalHealthMonitorEnabled && isInFallbackMode">
+        <Tooltip v-if="showHealthStatus && isInFallbackMode">
           <TooltipTrigger as-child>
             <div class="hidden items-center gap-1.5 rounded-md bg-warning/10 px-2.5 py-1 ring-1 ring-warning/30 md:flex">
               <span class="h-2 w-2 shrink-0 rounded-full bg-warning shadow-[0_0_6px_hsl(var(--warning))]" />
@@ -387,6 +387,7 @@ watch(isMobile, (mobile) => {
 }, { immediate: true })
 
 const isAdmin = computed(() => user.value?.role === 'admin')
+const showHealthStatus = computed(() => isAdmin.value && globalHealthMonitorEnabled.value)
 
 const emailApi = useEmailApi()
 const emailConfigured = ref(false)
@@ -429,12 +430,15 @@ const { quotaWindowParts } = useQuotaFormat()
 
 const quotaTopBarParts = computed(() => {
   const q = globalQuota.value
-  if (!q || q.error) return []
+  if (!isAdmin.value || !q || q.error) return []
   return quotaWindowParts(q)
 })
 
 onMounted(() => {
-  startStatusPolling()
+  watch(isAdmin, (admin) => {
+    if (admin) startStatusPolling()
+    else stopStatusPolling()
+  }, { immediate: true })
 })
 
 onUnmounted(() => {
