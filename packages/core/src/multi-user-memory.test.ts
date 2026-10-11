@@ -101,6 +101,22 @@ describe('multi-user memory and workspace', () => {
     expect(prompt).not.toContain('<shared_data_rules>')
   })
 
+  it('tells the bootstrap admin that MEMORY.md and the wiki are shared on multi-user instances', () => {
+    const scope = resolveUserScope(db, admin)!
+    const prompt = assembleSystemPrompt({
+      memoryDir: path.join(root, 'data', 'memory'),
+      configDir: path.join(root, 'data', 'config'),
+      currentUser: { username: scope.username, role: scope.role },
+      userScope: scope,
+      multiUser: true,
+    })
+
+    expect(prompt).toContain(path.join(root, 'data/memory/users/'))
+    expect(prompt).toContain('Shared memory (MEMORY.md)')
+    expect(prompt).toContain('<shared_data_rules>')
+    expect(prompt).not.toContain('managed by the admin. Refuse')
+  })
+
   it('keeps a regular user on their own layout in group chats without a profile', () => {
     const today = new Date().toISOString().split('T')[0]
     fs.mkdirSync(path.join(root, 'data/memory/daily'), { recursive: true })

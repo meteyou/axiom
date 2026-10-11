@@ -950,6 +950,8 @@ export function assembleSystemPrompt(options?: {
    * change the prompt: the bootstrap admin keeps the legacy single-user layout.
    */
   userScope?: { isBootstrapAdmin: boolean; role: string; paths: UserPaths }
+  /** Adds the shared-data rules for every user, the bootstrap admin included. */
+  multiUser?: boolean
   builtinTools?: BuiltinToolsPromptConfig
   agentSkillsDir?: string
   /**
@@ -967,6 +969,7 @@ export function assembleSystemPrompt(options?: {
   const memoryDir = options?.memoryDir
   const recentDays = options?.recentDays ?? 3
   const personal = options?.userScope && !options.userScope.isBootstrapAdmin ? options.userScope : null
+  const sharedDataScope = personal ?? (options?.multiUser ? options.userScope ?? null : null)
 
   // Ensure structure exists
   ensureMemoryStructure(memoryDir)
@@ -988,7 +991,7 @@ export function assembleSystemPrompt(options?: {
 
   // 4. Core memory from MEMORY.md
   const agents = readMemoryFile(memoryDir)
-  sections.push(personal
+  sections.push(sharedDataScope
     ? `<core_memory>\nShared memory (MEMORY.md) — visible to all users. It holds general lessons only, never personal data.\n\n${agents.trim()}\n</core_memory>`
     : `<core_memory>\n${agents.trim()}\n</core_memory>`)
 
@@ -1156,7 +1159,7 @@ ${pageLines}
     today,
     personal,
   }))
-  if (personal) sections.push(buildSharedDataRules(personal))
+  if (sharedDataScope) sections.push(buildSharedDataRules(sharedDataScope))
 
   // 9b. Axiom documentation (read-only, shipped with the image).
   // We deliberately do NOT enumerate topic→file routes here — they drift

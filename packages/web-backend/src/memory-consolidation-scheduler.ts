@@ -95,7 +95,7 @@ All file paths below are ABSOLUTE paths. You MUST use the full absolute paths wh
 
 ## What you may write to
 
-- \`${memoryDir}/MEMORY.md\` — long-term learned facts, lessons, patterns${userRun ? ' (shared by ALL users: general lessons only, never personal information)' : ''}
+- \`${memoryDir}/MEMORY.md\` — long-term learned facts, lessons, patterns${userRun || extraProfiles.length > 0 ? ' (shared by ALL users: general lessons only, never personal information)' : ''}
 - ${userRun && scope ? `\`${scope.paths.profile}\` — the profile of the user "${scope.username}" (preferences, context, personal details). This is the ONLY profile you may write` : `\`${memoryDir}/users/*.md\` — user-specific information (preferences, context, personal details)`}
 ${extraProfiles.length > 0 ? `- Profiles of the other users: ${extraProfileList} — move personal content found in the shared MEMORY.md into the affected user's profile\n` : ''}- \`${memoryDir}/wiki/*.md\` — wiki pages: project notes, concepts, architecture, references (shared by all users: no personal information)
 

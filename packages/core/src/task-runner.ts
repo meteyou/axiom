@@ -40,7 +40,7 @@ import {
 import type { LoopDetectionConfig, LoopDetectionResult } from './loop-detection.js'
 import type { TaskEventBus } from './task-event-bus.js'
 import { getWorkspaceDir } from './agent.js'
-import { getBootstrapAdminId, resolveUserScope } from './user-scope.js'
+import { getBootstrapAdminId, isMultiUser, resolveUserScope } from './user-scope.js'
 import type { UserScope } from './user-scope.js'
 
 const MAX_STATUS_UPDATE_INTERVAL_MINUTES = 120
@@ -228,7 +228,13 @@ const CLEANUP_INTERVAL_MS = 60 * 60 * 1000
 /** Max time a task can remain paused before being cleaned up (24 hours) */
 const MAX_PAUSE_DURATION_MS = 24 * 60 * 60 * 1000
 
-function buildTaskSystemPrompt(taskPrompt: string, memoryDir?: string, configDir?: string, scope?: UserScope | null): string {
+function buildTaskSystemPrompt(
+  taskPrompt: string,
+  memoryDir?: string,
+  configDir?: string,
+  scope?: UserScope | null,
+  multiUser = false,
+): string {
   const sections: string[] = []
 
   const workspaceDir = scope?.paths.workspace ?? getWorkspaceDir()
@@ -251,9 +257,12 @@ ${taskGuidelines}
   }
 
   if (scope) {
+    const sharedDataRule = multiUser
+      ? '\nMEMORY.md, the wiki and skills are shared by all users: never write personal information there; keep it in the owner\'s profile.'
+      : ''
     sections.push(`<task_owner>
 This task belongs to the user "${scope.username}" (role: ${scope.role}). Results are delivered only to this user.
-Memory tools and chat history only return this user's data. Never include or act on other users' personal data.
+Memory tools and chat history only return this user's data. Never include or act on other users' personal data.${sharedDataRule}
 </task_owner>`)
   }
 
@@ -493,7 +502,7 @@ export class TaskRunner {
       // Determine effective system prompt
       const baseSystemPrompt = overrides?.systemPromptOverride
         ? overrides.systemPromptOverride
-        : buildTaskSystemPrompt(task.prompt, this.options.memoryDir, undefined, scope)
+        : buildTaskSystemPrompt(task.prompt, this.options.memoryDir, undefined, scope, isMultiUser(this.db))
 
       // Codemode eligibility is decided once at start: memory consolidation never
       // gets it, a per-cronjob override wins when set, otherwise the global
