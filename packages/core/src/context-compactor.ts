@@ -40,6 +40,7 @@ const DEFAULT_KEEPALIVE_MS = 10_000
  * never prefix-cached and slow local models need a long prefill.
  */
 const DEFAULT_IDLE_TIMEOUT_MS = 5 * 60_000
+const FAILED_RETRY_RESERVE_SHARE = 0.5
 
 export type CompactionUsage = Pick<TokenUsageRecord, 'promptTokens' | 'completionTokens' | 'cacheRead' | 'cacheWrite' | 'estimatedCost'>
 
@@ -131,6 +132,12 @@ export class ContextCompactor {
    * the trigger, while automatic compaction is paused because of it.
    */
   private pausedSummaryTokens: number | null = null
+  /**
+   * Context size when the last compaction failed. Retrying on every turn would
+   * bill a full summary call per tool round when the failure is deterministic
+   * (e.g. the model spends its output limit on reasoning).
+   */
+  private failedAtTokens: number | null = null
   private warned = new Set<ContextCompactionWarning>()
   /** Last compaction whose estimated `tokensAfter` still waits for the provider's number. */
   private pendingMeasurement: PendingMeasurement | null = null
@@ -149,6 +156,7 @@ export class ContextCompactor {
   reset(): void {
     this.lastCompactionAnchor = undefined
     this.pausedSummaryTokens = null
+    this.failedAtTokens = null
     this.warned.clear()
     this.pendingMeasurement = null
   }
@@ -247,8 +255,18 @@ export class ContextCompactor {
     if (!settings.enabled) return null
     if (this.lastCompactionAnchor !== undefined && this.lastCompactionAnchor === lastAssistant(messages)) return null
     const tokens = estimateContextTokens(messages).tokens + pendingTokens
-    if (!shouldCompact(tokens, budget) || !this.isWorthCompacting(messages, pendingTokens, budget)) return null
+    if (!shouldCompact(tokens, budget) || this.isBackingOff(tokens, budget)) return null
+    if (!this.isWorthCompacting(messages, pendingTokens, budget)) return null
     return this.run(messages, { reason: 'threshold', signal })
+  }
+
+  /**
+   * After a failed compaction, automatic attempts wait until the context has
+   * grown by half the reserve. `/compact` and the overflow retry still run.
+   */
+  private isBackingOff(tokens: number, budget: EffectiveCompactionBudget): boolean {
+    if (this.failedAtTokens === null) return false
+    return tokens < this.failedAtTokens + Math.floor(FAILED_RETRY_RESERVE_SHARE * budget.reserveTokens)
   }
 
   /**
@@ -315,6 +333,7 @@ export class ContextCompactor {
 
       agent.state.messages = outcome.messages
       this.lastCompactionAnchor = lastAssistant(outcome.messages)
+      this.failedAtTokens = null
       const recordId = this.recordUsage(outcome, options.reason, model)
       const warnings = this.checkHeadroom(outcome, budget)
       const completed: ContextCompactionInfo = {
@@ -333,7 +352,10 @@ export class ContextCompactor {
       const message = timedOut
         ? `Compaction timed out: no response from the provider for ${Math.round(idleTimeoutMs / 1000)}s`
         : aborted ? 'Compaction aborted' : (err instanceof Error ? err.message : String(err))
-      if (timedOut || !aborted) console.warn(`[compaction] ${this.options.scope} compaction failed:`, message)
+      if (timedOut || !aborted) {
+        this.failedAtTokens = tokensBefore
+        console.warn(`[compaction] ${this.options.scope} compaction failed:`, message)
+      }
       emit({ status: 'failed', error: message })
       return null
     } finally {

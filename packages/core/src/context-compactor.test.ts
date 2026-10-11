@@ -46,6 +46,8 @@ function setup(options: Partial<ContextCompactorOptions> & {
   streamFn?: StreamFn
   /** Answers agent turns; without it every request must be a summary call. */
   answer?: () => ReturnType<typeof fauxAssistantMessage>
+  /** The first this many summary calls fail with a provider error. */
+  failSummaries?: number
 } = {}) {
   const core = createFauxCore({ models: [{ id: 'small-model', contextWindow: 40_000, maxTokens: 4_000 }] })
   let summaryCalls = 0
@@ -53,6 +55,9 @@ function setup(options: Partial<ContextCompactorOptions> & {
     if (options.answer && !isSummaryRequest(context)) return options.answer()
     expect(isSummaryRequest(context)).toBe(true)
     summaryCalls++
+    if (summaryCalls <= (options.failSummaries ?? 0)) {
+      return fauxAssistantMessage('', { stopReason: 'error', errorMessage: 'summary model unavailable' })
+    }
     return fauxAssistantMessage(SUMMARY_TEXT)
   }
   core.setResponses(Array.from({ length: 8 }, () => summarize))
@@ -157,6 +162,36 @@ describe('ContextCompactor', () => {
     expect(summaryCalls()).toBe(2)
     expect(finished().at(-1)).toMatchObject({ status: 'completed' })
     expect(finished().at(-1)!.warnings).toBeUndefined()
+  })
+
+  it('backs off after a failed summary call until the context has grown by half the reserve', async () => {
+    const { agent, compactor, finished, summaryCalls } = setup({ failSummaries: 1 })
+    agent.state.messages = [agent.state.messages[0], user(4_000), assistant(4_000)]
+    const append = (...messages: AgentMessage[]) => {
+      agent.state.messages = [...agent.state.messages, ...messages]
+      return compactor.prepareNextTurn(turnContext(agent.state.messages))
+    }
+
+    expect(await append(...toolTurn('t1', 23_000))).toBeUndefined()
+    expect(finished()).toEqual([expect.objectContaining({ status: 'failed', error: expect.stringMatching(/summary model unavailable/) })])
+
+    // ~4k of growth stays below the 5k back-off (half of the 10k reserve).
+    expect(await append(...toolTurn('t2', 4_000))).toBeUndefined()
+    expect(await compactor.compactBeforePrompt(500)).toBeNull()
+    expect(summaryCalls()).toBe(1)
+
+    expect(await append(...toolTurn('t3', 2_000))).toBeDefined()
+    expect(summaryCalls()).toBe(2)
+    expect(finished().at(-1)).toMatchObject({ status: 'completed' })
+  })
+
+  it('lets /compact run right after a failed automatic compaction', async () => {
+    const { agent, compactor, summaryCalls } = setup({ failSummaries: 1 })
+    agent.state.messages = [agent.state.messages[0], user(4_000), assistant(4_000), ...toolTurn('t1', 23_000)]
+
+    expect(await compactor.compactBeforePrompt()).toBeNull()
+    expect(await compactor.compactNow({ reason: 'manual' })).not.toBeNull()
+    expect(summaryCalls()).toBe(2)
   })
 
   it('does not announce skipped compactions it was not asked for', async () => {
