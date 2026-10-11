@@ -92,7 +92,7 @@ Additional actions under the `⋮` menu:
 - **Delete** — remove the Telegram user entry entirely. They re-appear as `pending` if they message the bot again.
 
 ::: warning Multi-user instances
-When more than one Axiom user exists, an approved account that is not linked to an Axiom user is refused with a hint to ask the administrator — assign a user here to let them in. In group chats the bot only answers accounts linked to an admin; everyone else is ignored. Single-user instances are unchanged.
+When more than one Axiom user exists, an approved account that is not linked to an Axiom user is refused with a hint to ask the administrator — assign a user here to let them in. In group chats the bot only answers accounts linked to an admin; everyone else is ignored. On a single-user instance, approved accounts without a link act as the admin account.
 :::
 
 ### Refresh

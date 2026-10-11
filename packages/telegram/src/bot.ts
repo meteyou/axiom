@@ -29,6 +29,7 @@ import {
   parseUploadsMetadata,
   loadSttSettings,
   resolveUserScope,
+  getBootstrapAdminId,
   isMultiUser,
   toSttLanguage,
   getGlobalChatDefaults,
@@ -759,20 +760,14 @@ export class TelegramBot {
   }
 
   private resolveUserId(ctx: Context): string {
-    if (!this.db || !ctx.from) return getUserId(ctx)
-
-    const telegramId = String(ctx.from.id)
-    const row = this.db.prepare(
-      'SELECT user_id FROM telegram_users WHERE telegram_id = ? AND status = ?'
-    ).get(telegramId, 'approved') as { user_id: number | null } | undefined
-
-    if (row?.user_id) {
-      return String(row.user_id)
-    }
-
-    return getUserId(ctx)
+    const userId = this.resolveNumericUserId(ctx)
+    return userId !== null ? String(userId) : getUserId(ctx)
   }
 
+  /**
+   * The Axiom user an approved account acts as: its linked user, or on a
+   * single-user instance the bootstrap admin, who owns everything there.
+   */
   private resolveNumericUserId(ctx: Context): number | null {
     if (!this.db || !ctx.from) return null
 
@@ -781,7 +776,9 @@ export class TelegramBot {
       'SELECT user_id FROM telegram_users WHERE telegram_id = ? AND status = ?'
     ).get(telegramId, 'approved') as { user_id: number | null } | undefined
 
-    return row?.user_id ?? null
+    if (!row) return null
+    if (row.user_id) return row.user_id
+    return isMultiUser(this.db) ? null : getBootstrapAdminId(this.db)
   }
 
   private getSenderName(ctx: Context): string {
@@ -1480,11 +1477,13 @@ export class TelegramBot {
     }
   }
 
+  /** Approved accounts acting as the owner (see `resolveNumericUserId`). */
   private approvedTelegramChatIds(ownerUserId: number | null): string[] {
     if (!this.db || ownerUserId === null) return []
+    const includeUnlinked = !isMultiUser(this.db) && ownerUserId === getBootstrapAdminId(this.db)
     const rows = this.db.prepare(
-      'SELECT telegram_id FROM telegram_users WHERE status = ? AND user_id = ?',
-    ).all('approved', ownerUserId) as { telegram_id: string }[]
+      'SELECT telegram_id FROM telegram_users WHERE status = ? AND (user_id = ? OR (? = 1 AND user_id IS NULL))',
+    ).all('approved', ownerUserId, includeUnlinked ? 1 : 0) as { telegram_id: string }[]
     return rows.map(row => row.telegram_id)
   }
 

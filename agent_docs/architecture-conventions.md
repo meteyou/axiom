@@ -53,8 +53,9 @@ route -> controller -> service -> schema/mapper
   WebSocket chat and the Telegram bot, so a turn started in one channel streams
   into the other and a manual retry cannot race a second, channel-local runner.
   Turns are keyed by `agentUserId` (the identity the agent sees); the numeric
-  `userId` is only used for persistence and may be `null` for an approved but
-  unlinked Telegram chat, which then streams without persisting.
+  `userId` is only used for persistence; a turn without one streams without
+  persisting. Telegram resolves it to the linked user, or on a single-user
+  instance to the bootstrap admin for unlinked approved accounts.
 - Provider stalls are channel-agnostic: the watchdog emits `stall_warning` /
   `stall_resolved` chunks and persists a single `provider_stall` chat row
   (`core/src/provider-stall.ts`) that is updated in place on resolution. Channels
