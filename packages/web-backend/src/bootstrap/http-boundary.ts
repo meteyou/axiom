@@ -3,12 +3,13 @@ import { createApp } from '../app.js'
 import { setupWebSocketChat } from '../ws-chat.js'
 import { setupWebSocketLogs } from '../ws-logs.js'
 import { setupWebSocketTask } from '../ws-task.js'
+import { createPushNotifier } from '../push/push-notifier.js'
 import type { RuntimeComposition } from './runtime-composition.js'
 
 export interface HttpBoundaryOptions {
   host: string
   port: number
-  logger?: Pick<typeof console, 'log'>
+  logger?: Pick<typeof console, 'log' | 'error'>
 }
 
 export interface StartedHttpBoundary {
@@ -23,6 +24,13 @@ export async function startHttpBoundary(
   options: HttpBoundaryOptions,
 ): Promise<StartedHttpBoundary> {
   const logger = options.logger ?? console
+
+  const pushNotifier = createPushNotifier({ db: runtimeComposition.db })
+  try {
+    pushNotifier.getPublicKey()
+  } catch (err) {
+    logger.error('[axiom] Push notifications disabled:', (err as Error).message)
+  }
 
   const app = createApp({
     db: runtimeComposition.db,
@@ -45,6 +53,7 @@ export async function startHttpBoundary(
     taskEventBus: runtimeComposition.taskEventBus,
     chatActions: runtimeComposition.chatActions,
     abortUserTurns: userId => { runtimeComposition.turnRunner.abortTurn(userId) },
+    pushNotifier,
   })
 
   const server = http.createServer(app)
@@ -57,6 +66,7 @@ export async function startHttpBoundary(
     runtimeComposition.chatEventBus,
     runtimeComposition.chatActions,
     runtimeComposition.turnRunner,
+    pushNotifier,
   )
   runtimeComposition.setWebSocketChatPresenceChecker(wsChat)
 
