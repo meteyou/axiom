@@ -477,10 +477,10 @@
               </span>
             </div>
             <div class="min-w-0 rounded-2xl px-4 py-2.5 text-sm leading-relaxed" :class="{
-              'rounded-br-sm border border-primary/[0.22] bg-primary/[0.12] text-foreground': msg.role === 'user' && msg.source !== 'telegram',
-              'rounded-br-sm border border-[#2AABEE]/30 bg-[#2AABEE]/10 text-foreground': msg.role === 'user' && msg.source === 'telegram',
-              'rounded-bl-sm border border-border bg-muted text-foreground': msg.role === 'assistant' && !msg.telegramDelivered,
-              'rounded-bl-sm border border-[#2AABEE]/30 bg-[#2AABEE]/10 text-foreground': msg.role === 'assistant' && msg.telegramDelivered,
+              'rounded-tr-bubble-tail border border-primary/[0.22] bg-primary/[0.12] text-foreground': msg.role === 'user' && msg.source !== 'telegram',
+              'rounded-tr-bubble-tail border border-[#2AABEE]/30 bg-[#2AABEE]/10 text-foreground': msg.role === 'user' && msg.source === 'telegram',
+              'rounded-tl-bubble-tail border border-border bg-muted text-foreground': msg.role === 'assistant' && !msg.telegramDelivered,
+              'rounded-tl-bubble-tail border border-[#2AABEE]/30 bg-[#2AABEE]/10 text-foreground': msg.role === 'assistant' && msg.telegramDelivered,
               'rounded-lg border border-border bg-muted/50 text-muted-foreground text-xs': msg.role === 'system',
             }">
               <!-- Telegram label (source or delivered) -->
