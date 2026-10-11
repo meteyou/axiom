@@ -1,10 +1,10 @@
 <template>
   <div class="w-full max-w-none px-2">
     <div class="relative flex items-center py-2">
-      <div class="grow border-t border-border" />
+      <div class="min-w-4 grow border-t border-border" />
       <button
         type="button"
-        class="mx-4 flex shrink-0 items-center gap-2 text-xs"
+        class="mx-4 flex min-w-0 items-center gap-2 text-xs"
         :class="[
           info.status === 'failed' ? 'text-destructive' : 'text-muted-foreground',
           canExpand ? 'cursor-pointer hover:text-foreground' : 'cursor-default',
@@ -13,16 +13,16 @@
         :aria-expanded="canExpand ? expanded : undefined"
         @click="expanded = !expanded"
       >
-        <AppIcon :name="info.status === 'failed' ? 'warning' : 'compress'" class="h-3 w-3" />
-        <span>{{ label }}</span>
-        <span v-if="info.status === 'running'" class="inline-flex items-center gap-1">
+        <AppIcon :name="info.status === 'failed' ? 'warning' : 'compress'" class="h-3 w-3 shrink-0" />
+        <span class="min-w-0 break-words">{{ label }}</span>
+        <span v-if="info.status === 'running'" class="inline-flex shrink-0 items-center gap-1">
           <span class="h-1 w-1 animate-pulse rounded-full bg-current opacity-60" />
           <span class="h-1 w-1 animate-pulse rounded-full bg-current opacity-60" />
           <span class="h-1 w-1 animate-pulse rounded-full bg-current opacity-60" />
         </span>
-        <AppIcon v-if="canExpand" :name="expanded ? 'chevronDown' : 'chevronRight'" class="h-3 w-3" />
+        <AppIcon v-if="canExpand" :name="expanded ? 'chevronDown' : 'chevronRight'" class="h-3 w-3 shrink-0" />
       </button>
-      <div class="grow border-t border-border" />
+      <div class="min-w-4 grow border-t border-border" />
     </div>
     <p
       v-for="warning in info.warnings ?? []"
