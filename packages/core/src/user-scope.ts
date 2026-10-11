@@ -44,11 +44,15 @@ export function getUsersDir(): string {
   return path.join(dataDir(), 'users')
 }
 
+function legacyProfilesDir(): string {
+  return path.join(dataDir(), 'memory', 'users')
+}
+
 export function resolveUserPaths(username: string, isBootstrapAdmin: boolean): UserPaths {
   if (isBootstrapAdmin) {
     return {
       userDir: null,
-      profile: path.join(dataDir(), 'memory', 'users', `${username}.md`),
+      profile: path.join(legacyProfilesDir(), `${username}.md`),
       dailyDir: path.join(dataDir(), 'memory', 'daily'),
       heartbeatFile: path.join(dataDir(), 'config', 'HEARTBEAT.md'),
       workspace: getWorkspaceDir(),
@@ -85,6 +89,33 @@ export function createUserFolders(paths: UserPaths, templates: UserFolderTemplat
   fs.mkdirSync(paths.workspace, { recursive: true })
   if (!fs.existsSync(paths.profile)) fs.writeFileSync(paths.profile, templates.profile, 'utf-8')
   if (!fs.existsSync(paths.heartbeatFile)) fs.writeFileSync(paths.heartbeatFile, templates.heartbeat, 'utf-8')
+}
+
+/**
+ * Moves the profiles of accounts from before multi-user support from the shared
+ * `/data/memory/users/<name>.md` into their personal folder. Idempotent; an
+ * existing personal profile is never overwritten. Returns the moved usernames.
+ */
+export function migrateLegacyUserProfiles(db: Database): string[] {
+  const bootstrapAdminId = getBootstrapAdminId(db)
+  if (bootstrapAdminId === null) return []
+
+  const legacyDir = legacyProfilesDir()
+  const rows = db.prepare('SELECT username FROM users WHERE deleted_at IS NULL AND id != ?').all(bootstrapAdminId) as Array<{ username: string }>
+  const moved: string[] = []
+  for (const { username } of rows) {
+    const legacyProfile = path.join(legacyDir, `${username}.md`)
+    const { userDir, profile } = resolveUserPaths(username, false)
+    // Legacy names were never validated; `..` or `a/b` would resolve outside both folders.
+    if (path.dirname(legacyProfile) !== legacyDir || !userDir || path.basename(userDir) !== username) continue
+    if (!fs.existsSync(legacyProfile) || fs.existsSync(profile)) continue
+
+    fs.mkdirSync(userDir, { recursive: true })
+    fs.copyFileSync(legacyProfile, profile, fs.constants.COPYFILE_EXCL)
+    fs.rmSync(legacyProfile)
+    moved.push(username)
+  }
+  return moved
 }
 
 /**
