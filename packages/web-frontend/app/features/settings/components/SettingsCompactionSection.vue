@@ -18,16 +18,6 @@
       </div>
       <Switch id="compaction-enabled" v-model:checked="compaction.enabled" />
     </div>
-
-    <div v-if="compaction.enabled" class="flex items-center justify-between rounded-lg border border-border px-4 py-3">
-      <div class="flex flex-col gap-0.5 pr-4">
-        <Label for="compaction-tasks-enabled" class="cursor-pointer">
-          {{ $t('settings.compaction.tasksEnabled') }}
-        </Label>
-        <p class="text-xs text-muted-foreground">{{ $t('settings.compaction.tasksEnabledHint') }}</p>
-      </div>
-      <Switch id="compaction-tasks-enabled" v-model:checked="compaction.tasks.enabled" />
-    </div>
   </div>
 </template>
 

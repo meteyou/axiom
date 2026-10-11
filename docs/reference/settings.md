@@ -150,7 +150,8 @@ Replaces the older part of a long conversation with an LLM-written summary
 when the context approaches the model's limit — for the main chat and for
 background tasks. Concept, triggers and summary format:
 [Context Compaction](../concepts/compaction). The switches are edited under
-[Agent → Context compaction](../settings/agent#context-compaction); read fresh
+[Agent → Context compaction](../settings/agent#context-compaction) and
+[Tasks → Context compaction](../settings/tasks#context-compaction); read fresh
 before every check, so a save applies without a restart.
 
 | Key                           | Type      | Default | Effect                                                                                      |

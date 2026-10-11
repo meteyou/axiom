@@ -2,7 +2,7 @@
 
 Every LLM call sends the whole conversation so far. Long chats and long-running background tasks (research, PR work, many tool calls) eventually grow past what the model can hold, or past what you want to pay for on every call. **Context compaction** replaces the older part of the conversation with a structured summary written by the same model, keeps the most recent messages verbatim, and lets the run continue.
 
-Compaction works for both the main chat agent and [background tasks](./tasks-and-cronjobs). It is on by default and switched in [Settings → Agent → Context compaction](../settings/agent#context-compaction).
+Compaction works for both the main chat agent and [background tasks](./tasks-and-cronjobs). It is on by default and switched in [Settings → Agent → Context compaction](../settings/agent#context-compaction); tasks can be excluded under [Settings → Tasks → Context compaction](../settings/tasks#context-compaction).
 
 ## When it runs
 
