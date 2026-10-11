@@ -12,6 +12,16 @@ export function taskStatusVariant(status: string): TaskStatusVariant {
   }
 }
 
+export function taskStatusIcon(status: string): { name: string, class: string } {
+  switch (status) {
+    case 'running': return { name: 'loader', class: 'animate-spin text-primary' }
+    case 'completed': return { name: 'success', class: 'text-success' }
+    case 'failed': return { name: 'warning', class: 'text-destructive' }
+    case 'paused': return { name: 'pause', class: 'text-warning' }
+    default: return { name: 'clock', class: 'text-muted-foreground' }
+  }
+}
+
 function parseSqliteTimestamp(value: string): number {
   return new Date(value.replace(' ', 'T') + 'Z').getTime()
 }
