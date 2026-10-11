@@ -30,6 +30,9 @@ export type SttOpenAiModel = (typeof SETTINGS_STT_OPENAI_MODELS)[number]
  * pi-ai clamps a level the model does not support to the nearest supported one
  * (see `clampThinkingLevel` in contracts/providers).
  */
+export const SETTINGS_APP_LOGOS = ['prism', 'raccoon', 'robot'] as const
+export type AppLogo = (typeof SETTINGS_APP_LOGOS)[number]
+
 export const SETTINGS_THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
 export type SettingsThinkingLevel = (typeof SETTINGS_THINKING_LEVELS)[number]
 
@@ -180,6 +183,11 @@ export interface CodemodeSettingsContract {
   tasks: boolean
 }
 
+export interface AppearanceSettingsContract {
+  /** Logo shown in the web UI (sidebar, login page, chat avatar, favicon). */
+  logo: AppLogo
+}
+
 export const IMAGE_GENERATION_MAX_VARIANTS_BOUNDS = { min: 1, max: 10 } as const
 
 export interface ImageGenerationSettingsContract {
@@ -289,6 +297,7 @@ export interface SettingsContract {
   imageGeneration: ImageGenerationSettingsContract
   tts: TtsSettingsContract
   stt: SttSettingsContract
+  appearance: AppearanceSettingsContract
 }
 
 export type SettingsUpdateContract = DeepPartial<SettingsContract>
@@ -319,6 +328,7 @@ export interface SettingsStorageContract {
   imageGeneration?: Partial<ImageGenerationSettingsContract>
   tts?: Partial<TtsSettingsContract>
   stt?: Partial<SttSettingsContract>
+  appearance?: Partial<AppearanceSettingsContract>
 }
 
 export interface TelegramSettingsStorageContract {
@@ -451,6 +461,9 @@ export const DEFAULT_SETTINGS_CONTRACT: SettingsContract = {
       providerId: '',
     },
   },
+  appearance: {
+    logo: 'prism',
+  },
 }
 
 function normalizeThinkingLevel(
@@ -521,6 +534,12 @@ export function normalizeCompactionSettings(
       enabled: source?.tasks?.enabled ?? fallback.tasks.enabled,
     },
   }
+}
+
+export function normalizeAppLogo(value: unknown): AppLogo {
+  return (SETTINGS_APP_LOGOS as readonly unknown[]).includes(value)
+    ? value as AppLogo
+    : DEFAULT_SETTINGS_CONTRACT.appearance.logo
 }
 
 export function normalizeSettingsContract(input: DeepPartial<SettingsContract> | null | undefined): SettingsContract {
@@ -659,6 +678,9 @@ export function normalizeSettingsContract(input: DeepPartial<SettingsContract> |
         enabled: source.stt?.rewrite?.enabled ?? DEFAULT_SETTINGS_CONTRACT.stt.rewrite.enabled,
         providerId: source.stt?.rewrite?.providerId ?? DEFAULT_SETTINGS_CONTRACT.stt.rewrite.providerId,
       },
+    },
+    appearance: {
+      logo: normalizeAppLogo(source.appearance?.logo),
     },
   }
 }

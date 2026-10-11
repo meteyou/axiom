@@ -56,6 +56,7 @@ The on-disk shape is a **superset** of [`SettingsContract`](https://github.com/)
 | `imageGeneration`                  | object                                                            | see below      | nested                                  | `generate_image` switch, default image model, limits, output folder.                                              |
 | `tts`                              | object                                                            | see below      | nested                                  | Voice output config.                                                                                              |
 | `stt`                              | object                                                            | see below      | nested                                  | Voice input config.                                                                                               |
+| `appearance`                       | object                                                            | see below      | nested                                  | Web UI branding (logo).                                                                                           |
 | `tokenPriceTable`                  | `Record<string, { input: number; output: number }>`               | seed prices    | not validated by API                    | Per-model USD/1M-token costs used by [Token Usage](../web-ui/token-usage). Merged on top of `DEFAULT_PRICE_TABLE`. |
 | `builtinTools`                     | object                                                            | see below      | not validated by API                    | Enable/disable built-in `web_search` and `web_fetch` tools, choose the search provider.                           |
 | `braveSearchApiKey`                | `string`                                                          | `""`           | not validated by API                    | **Legacy** — read at boot, migrated into `builtinTools.webSearch.braveSearchApiKey` if present.                   |
@@ -318,6 +319,20 @@ Hand-edited invalid values are ignored at runtime and the default is used instea
 | `stt.rewrite.enabled`        | `boolean`                                                        | `false`          | bool                                |
 | `stt.rewrite.providerId`     | `string` (`provider::model` composite)                           | `""`             | string                              |
 
+### `appearance`
+
+[Appearance UI](../settings/appearance).
+
+| Key               | Type                                  | Default   | Validation |
+|-------------------|---------------------------------------|-----------|------------|
+| `appearance.logo` | `"prism" \| "raccoon" \| "robot"`     | `"prism"` | enum. Hand-edited unknown values fall back to `"prism"`. |
+
+```json
+{ "appearance": { "logo": "prism" } }
+```
+
+The value is also served without authentication by `GET /api/settings/appearance` so the login page and favicon can use it; writing still goes through the admin-only `PUT /api/settings`.
+
 ### `tokenPriceTable`
 
 ```json
@@ -440,7 +455,7 @@ This is the literal file written by `ensureConfigTemplates()`:
 }
 ```
 
-Note: `tts`, `stt`, `healthMonitor`, `healthMonitorIntervalMinutes`, and `codemode` are **not** in the template — they are added the first time the user saves the relevant Settings panel. Until then, the runtime falls back to the defaults documented above (and surfaced by `mapSettingsResponse`).
+Note: `tts`, `stt`, `healthMonitor`, `healthMonitorIntervalMinutes`, `codemode`, and `appearance` are **not** in the template — they are added the first time the user saves the relevant Settings panel. Until then, the runtime falls back to the defaults documented above (and surfaced by `mapSettingsResponse`).
 
 ---
 
@@ -635,7 +650,7 @@ withLegacySettingsPayloadCompatibility   ← migrate old key shapes (heartbeat.i
         │
         ▼
 mergeHealthMonitor / mergeConsolidation / mergeFactExtraction /
-mergeAgentHeartbeat / mergeTasks / mergeTts / mergeStt / mergeUploads
+mergeAgentHeartbeat / mergeTasks / mergeTts / mergeStt / mergeUploads / mergeAppearance
         │   ← per-field validators (validatePositiveNumber, validateEnum, validateHour, …)
         ▼
 fs.writeFileSync(/data/config/settings.json, …)
@@ -683,7 +698,7 @@ After a successful write, the service fires whichever of these hooks the changed
 | `agentHeartbeat.*` changed               | `onAgentHeartbeatSettingsChanged()`                                         |
 | `telegram.enabled` or `telegram.botToken` changed | `onTelegramSettingsChanged()` — restart bot                        |
 
-No container restart is needed for any of the above. Changes to fields outside this list (e.g. `tasks.*`, `tts.*`, `stt.*`, `factExtraction.*`, `codemode.*`) are read on next use rather than via a hook.
+No container restart is needed for any of the above. Changes to fields outside this list (e.g. `tasks.*`, `tts.*`, `stt.*`, `factExtraction.*`, `codemode.*`, `appearance.*`) are read on next use rather than via a hook.
 
 ---
 

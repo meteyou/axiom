@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_SETTINGS_CONTRACT,
+  normalizeAppLogo,
   normalizeImageGenerationSettings,
   normalizeImageOutputDir,
   normalizeSettingsContract,
@@ -175,5 +176,18 @@ describe('settings contracts', () => {
     expect(normalizeImageOutputDir('C:\\images')).toBeNull()
     expect(normalizeImageOutputDir('.')).toBeNull()
     expect(normalizeImageOutputDir('')).toBeNull()
+  })
+
+  it('defaults the app logo to prism and keeps the other variants', () => {
+    expect(normalizeSettingsContract({}).appearance).toEqual({ logo: 'prism' })
+    expect(normalizeSettingsContract({ appearance: { logo: 'raccoon' } }).appearance.logo).toBe('raccoon')
+    expect(normalizeSettingsContract({ appearance: { logo: 'robot' } }).appearance.logo).toBe('robot')
+  })
+
+  it('falls back to prism for unknown app logo values', () => {
+    expect(normalizeAppLogo('unicorn')).toBe('prism')
+    expect(normalizeAppLogo('')).toBe('prism')
+    expect(normalizeAppLogo(undefined)).toBe('prism')
+    expect(normalizeAppLogo(42)).toBe('prism')
   })
 })

@@ -8,6 +8,7 @@ export {
   SETTINGS_STT_PROVIDERS,
   SETTINGS_STT_OPENAI_MODELS,
   SETTINGS_THINKING_LEVELS,
+  SETTINGS_APP_LOGOS,
   IMAGE_GENERATION_MAX_VARIANTS_BOUNDS,
   DEFAULT_HEALTH_MONITOR_NOTIFICATION_TOGGLES,
   DEFAULT_WATCHDOG_SETTINGS,
@@ -18,6 +19,7 @@ export {
   normalizeSettingsContract,
   normalizeImageGenerationSettings,
   normalizeImageOutputDir,
+  normalizeAppLogo,
   withLegacySettingsPayloadCompatibility,
 } from './settings.js'
 
@@ -31,6 +33,8 @@ export type {
   SttProvider,
   SttOpenAiModel,
   SettingsThinkingLevel,
+  AppLogo,
+  AppearanceSettingsContract,
   HealthMonitorNotificationTogglesContract,
   HealthMonitorSettingsContract,
   MemoryConsolidationSettingsContract,

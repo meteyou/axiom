@@ -71,6 +71,7 @@ import {
   Loader,
   Mail,
   Mic,
+  Palette,
 } from 'lucide-vue-next'
 
 const iconMap = {
@@ -136,6 +137,7 @@ const iconMap = {
   volume: Volume2,
   loader: Loader,
   mic: Mic,
+  palette: Palette,
 } as const
 
 const props = withDefaults(defineProps<{

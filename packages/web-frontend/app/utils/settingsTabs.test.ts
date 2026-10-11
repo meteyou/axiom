@@ -25,6 +25,7 @@ describe('filterSettingsTabsByRole', () => {
 describe('resolveSettingsTab', () => {
   it('keeps a tab the role may see', () => {
     expect(resolveSettingsTab('telegram', 'admin')).toBe('telegram')
+    expect(resolveSettingsTab('appearance', 'admin')).toBe('appearance')
     expect(resolveSettingsTab('agent', 'user')).toBe('agent')
     expect(resolveSettingsTab('email', 'user')).toBe('email')
     expect(resolveSettingsTab('agentHeartbeat', 'user')).toBe('agentHeartbeat')
@@ -33,6 +34,7 @@ describe('resolveSettingsTab', () => {
 
   it('falls back to Agent for hidden or unknown tabs', () => {
     expect(resolveSettingsTab('telegram', 'user')).toBe('agent')
+    expect(resolveSettingsTab('appearance', 'user')).toBe('agent')
     expect(resolveSettingsTab('bogus', 'admin')).toBe('agent')
     expect(resolveSettingsTab(undefined, 'admin')).toBe('agent')
   })

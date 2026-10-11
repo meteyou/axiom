@@ -1,28 +1,25 @@
 <template>
-  <span
-    class="inline-flex items-center justify-center bg-primary/[0.12] text-primary border border-primary/[0.22]"
+  <img
+    :src="asset.src"
+    alt=""
+    aria-hidden="true"
+    draggable="false"
+    class="shrink-0 select-none"
     :class="{
-      'w-[34px] h-[34px] rounded-[14px]': size === 'sm',
-      'w-10 h-10 rounded-[14px]': size === 'md',
-      'w-[52px] h-[52px] rounded-[18px]': size === 'lg',
+      'h-8 w-8': size === 'xs',
+      'h-[34px] w-[34px]': size === 'sm',
+      'h-10 w-10': size === 'md',
+      'h-[52px] w-[52px]': size === 'lg',
     }"
   >
-    <AppIcon name="bot" :size="iconSize" />
-  </span>
 </template>
 
 <script setup lang="ts">
-const props = withDefaults(defineProps<{
-  size?: 'sm' | 'md' | 'lg'
+withDefaults(defineProps<{
+  size?: 'xs' | 'sm' | 'md' | 'lg'
 }>(), {
   size: 'md',
 })
 
-const iconSize = computed(() => {
-  switch (props.size) {
-    case 'sm': return 16
-    case 'lg': return 28
-    default: return 18
-  }
-})
+const { asset } = useAppLogo()
 </script>

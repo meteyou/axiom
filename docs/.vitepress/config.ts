@@ -51,6 +51,7 @@ const guideSidebar: DefaultTheme.SidebarItem[] = [
       { text: 'Overview', link: '/settings/' },
       { text: 'Agent', link: '/settings/agent' },
       { text: 'Agent Heartbeat', link: '/settings/agent-heartbeat' },
+      { text: 'Appearance', link: '/settings/appearance' },
       { text: 'Email', link: '/settings/email' },
       { text: 'Health Monitor', link: '/settings/health-monitor' },
       { text: 'Image Generation', link: '/settings/image-generation' },
@@ -77,8 +78,8 @@ export default defineConfig({
   ignoreDeadLinks: [/^https?:\/\/localhost(:\d+)?(\/|$)/],
 
   head: [
-    ['link', { rel: 'icon', href: '/favicon.svg', type: 'image/svg+xml' }],
-    ['meta', { name: 'theme-color', content: '#3b82f6' }],
+    ['link', { rel: 'icon', href: '/logo.svg', type: 'image/svg+xml' }],
+    ['meta', { name: 'theme-color', content: '#0C8D62' }],
   ],
 
   // Exclude internal/contributor docs from the user-facing site build.

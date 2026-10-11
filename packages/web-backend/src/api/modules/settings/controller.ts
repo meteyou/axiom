@@ -6,6 +6,7 @@ import { createOwnSettingsService } from './own-settings.js'
 
 export interface SettingsController {
   getSettings: (req: AuthenticatedRequest, res: Response) => void
+  getAppearance: (req: AuthenticatedRequest, res: Response) => void
   putSettings: (req: AuthenticatedRequest, res: Response) => void
   getOwnSettings: (req: AuthenticatedRequest, res: Response) => void
   putOwnSettings: (req: AuthenticatedRequest, res: Response) => void
@@ -25,6 +26,14 @@ export function createSettingsController(options: SettingsRouterOptions = {}): S
         res.json(payload)
       } catch (err) {
         res.status(500).json({ error: `Failed to read settings: ${(err as Error).message}` })
+      }
+    },
+
+    getAppearance(_req, res) {
+      try {
+        res.json(service.readAppearance())
+      } catch (err) {
+        res.status(500).json({ error: `Failed to read appearance settings: ${(err as Error).message}` })
       }
     },
 

@@ -12,7 +12,7 @@ With the default Docker Compose setup, you open it at [http://localhost:3000](ht
 
 The app shell has three regions:
 
-- **Sidebar (left)** — version badge, navigation, and the user menu at the bottom. Collapses to an icon-only rail on narrow desktop windows and to a slide-over drawer on mobile.
+- **Sidebar (left)** — logo (see [Settings → Appearance](../settings/appearance)), version badge, navigation, and the user menu at the bottom. Collapses to an icon-only rail on narrow desktop windows and to a slide-over drawer on mobile.
 - **Page header** — title, subtitle, and per-page action buttons (refresh, save, create…). On mobile the buttons teleport into the global header bar to save vertical space.
 - **Page body** — whatever the current page renders.
 

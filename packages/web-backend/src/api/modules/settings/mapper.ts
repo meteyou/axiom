@@ -5,6 +5,7 @@ import {
   DEFAULT_WATCHDOG_SETTINGS,
   getDefaultTimezone,
   maskApiKey,
+  normalizeAppLogo,
   normalizeImageGenerationSettings,
 } from '@axiom/core'
 import type { HealthMonitorNotificationToggles, SettingsData, TelegramData } from './types.js'
@@ -192,6 +193,13 @@ function buildSttResponse(settingsRaw: Record<string, unknown>) {
   }
 }
 
+export function buildAppearanceResponse(settingsRaw: Record<string, unknown>) {
+  const appearance = (settingsRaw.appearance ?? {}) as Record<string, unknown>
+  return {
+    logo: normalizeAppLogo(appearance.logo),
+  }
+}
+
 export function mapSettingsResponse(context: SettingsResponseContext) {
   const settingsRaw = context.settings as unknown as Record<string, unknown>
 
@@ -219,6 +227,7 @@ export function mapSettingsResponse(context: SettingsResponseContext) {
     imageGeneration: buildImageGenerationResponse(settingsRaw),
     tts: buildTtsResponse(settingsRaw),
     stt: buildSttResponse(settingsRaw),
+    appearance: buildAppearanceResponse(settingsRaw),
   }
 }
 

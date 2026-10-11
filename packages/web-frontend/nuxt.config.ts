@@ -66,6 +66,10 @@ export default defineNuxtConfig({
         { name: 'description', content: 'Self-hosted AI Agent with Web Dashboard' },
       ],
       link: [
+        { rel: 'icon', href: '/favicon.ico', sizes: '48x48' },
+        { key: 'favicon-svg', rel: 'icon', type: 'image/svg+xml', href: '/logos/prism.svg' },
+        { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' },
+        { rel: 'manifest', href: '/site.webmanifest' },
         {
           rel: 'stylesheet',
           href: 'https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap',
