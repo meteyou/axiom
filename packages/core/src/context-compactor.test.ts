@@ -204,6 +204,26 @@ describe('ContextCompactor', () => {
     expect(finished()).toHaveLength(2)
   })
 
+  it('reports context usage from provider usage, and as an estimate right after a compaction', async () => {
+    const { agent, compactor } = setup({ answer: () => fauxAssistantMessage('next answer') })
+    expect(compactor.getContextUsage()).toMatchObject({
+      estimated: true,
+      contextWindow: 40_000,
+      compactionThreshold: 30_000,
+      modelId: 'small-model',
+      autoCompaction: true,
+      autoCompactionPaused: false,
+    })
+
+    await agent.prompt('hello')
+    const answer = agent.state.messages.at(-1) as AssistantMessage
+    expect(compactor.getContextUsage()).toMatchObject({ tokens: answer.usage.totalTokens, estimated: false })
+
+    agent.state.messages = [agent.state.messages[0], user(4_000), assistant(4_000), user(4_000), assistant(500)]
+    await compactor.compactNow({ reason: 'manual' })
+    expect(compactor.getContextUsage()?.estimated).toBe(true)
+  })
+
   it('stays out of the way below the trigger and when tasks have compaction disabled', async () => {
     const small = setup()
     const shortTranscript = [small.agent.state.messages[0], user(1_000), assistant(1_000)]

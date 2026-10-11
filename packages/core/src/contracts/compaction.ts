@@ -41,6 +41,42 @@ export interface ContextCompactionInfo {
   occurredAt: string
 }
 
+/** How full the main agent's context window is, for the chat header and `/context`. */
+export interface ContextUsageInfo {
+  tokens: number
+  /** No provider usage since the session started or the last compaction; `tokens` is a heuristic. */
+  estimated: boolean
+  contextWindow: number
+  /** Automatic compaction starts once the context grows beyond this. */
+  compactionThreshold: number
+  modelId: string
+  modelName: string
+  autoCompaction: boolean
+  /** Automatic compaction is paused because the last one could not get below the threshold. */
+  autoCompactionPaused: boolean
+}
+
+export function contextUsagePercent(tokens: number, contextWindow: number): number {
+  return contextWindow > 0 ? Math.min(100, Math.round((tokens / contextWindow) * 100)) : 0
+}
+
+/** Plain-text summary for `/context`. */
+export function formatContextUsage(info: ContextUsageInfo): string {
+  const tokens = `${info.estimated ? '~' : ''}${formatTokenCount(info.tokens)}`
+  const compaction = !info.autoCompaction
+    ? 'Automatic compaction: off'
+    : info.autoCompactionPaused
+      ? 'Automatic compaction: paused, the context is still above the threshold'
+      : `Automatic compaction at ${formatTokenCount(info.compactionThreshold)} `
+        + `(${contextUsagePercent(info.compactionThreshold, info.contextWindow)}%)`
+  return [
+    `\u{1F9E0} Context: ${tokens} / ${formatTokenCount(info.contextWindow)} tokens `
+      + `(${contextUsagePercent(info.tokens, info.contextWindow)}%)`,
+    compaction,
+    `Model: ${info.modelName}`,
+  ].join('\n')
+}
+
 /** `chat_messages.metadata.kind` marking a persisted compaction notice. */
 export const CONTEXT_COMPACTION_KIND = 'context_compaction'
 
