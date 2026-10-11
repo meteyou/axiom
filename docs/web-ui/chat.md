@@ -128,6 +128,7 @@ carries between surfaces.
 | `/model`    | Show or switch the provider and model — yours for regular users, the global one for admins. (alias `/provider`) |
 | `/thinking` | Show or set the thinking level — yours for regular users, the global one for admins. |
 | `/compact`  | Summarize older messages to free up context. (`/compact [instructions]`)    |
+| `/context`  | Show how full the context window is, the model and where compaction starts. |
 | `/skill`    | Load a skill into the current conversation. (`/skill:<name> [prompt]`)      |
 
 On the web chat, `/model` (and its alias `/provider`) responds as an

@@ -77,6 +77,7 @@ to the input field) is populated automatically on bot startup via
 | `/model`    | Show or switch the provider and model — yours for regular users, the global one for admins. (alias `/provider`) |
 | `/thinking` | Show or set the thinking level — yours for regular users, the global one for admins. |
 | `/compact`  | Summarize older messages to free up context. (`/compact [instructions]`)    |
+| `/context`  | Show how full the context window is, the model and where compaction starts. |
 | `/tts`      | Toggle automatic Telegram voice replies. (alias `/voice`)                   |
 | `/skill`    | Load a skill into the current conversation. (`/skill:<name> [prompt]`)      |
 
@@ -103,6 +104,15 @@ compaction, manual or automatic, the bot posts one short status line such as
 *Context compacted (368k → ~41k tokens)* (`~`: estimated; the web chat later
 shows the measured size). The main agent shares one
 conversation across channels, so this also compacts what the web chat sees.
+
+`/context` answers with the current fill level of that shared conversation,
+for example:
+
+```
+🧠 Context: 33k / 262k tokens (13%)
+Automatic compaction at 246k (94%)
+Model: Qwen3.8 27B
+```
 
 Everything else is treated as a normal message and forwarded to the agent.
 If the menu does not appear in your Telegram client, restart the chat or wait

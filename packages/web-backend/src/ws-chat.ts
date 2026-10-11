@@ -346,6 +346,7 @@ export function setupWebSocketChat(
           taskStore,
           scheduledTaskStore,
           onThinkingLevelChanged: (level) => resolveAgentCore()?.setThinkingLevel(level),
+          getContextUsage: () => resolveAgentCore()?.getContextUsage(String(currentUser.userId)) ?? null,
         })
         if (dispatch.kind === 'handled') {
           const reply = dispatch.reply

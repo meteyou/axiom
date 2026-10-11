@@ -600,6 +600,9 @@ export class TelegramBot {
     this.bot.command('compact', async (ctx) => {
       await this.handleRegistryCommand(ctx, 'compact')
     })
+    this.bot.command('context', async (ctx) => {
+      await this.handleRegistryCommand(ctx, 'context')
+    })
 
     // Inline-keyboard button taps from picker messages (e.g. /model).
     // The original message is edited in place to either show the next
@@ -1311,6 +1314,7 @@ export class TelegramBot {
       taskStore: this.taskStore ?? undefined,
       scheduledTaskStore: this.scheduledTaskStore ?? undefined,
       onThinkingLevelChanged: (level) => this.agentCore.setThinkingLevel(level),
+      getContextUsage: () => this.agentCore.getContextUsage(userId),
     })
     if (result.kind === 'handled') {
       if (isSlashCommandPicker(result.reply)) {
@@ -1456,6 +1460,7 @@ export class TelegramBot {
       taskStore: this.taskStore ?? undefined,
       scheduledTaskStore: this.scheduledTaskStore ?? undefined,
       onThinkingLevelChanged: (level) => this.agentCore.setThinkingLevel(level),
+      getContextUsage: () => this.agentCore.getContextUsage(userId),
     })
 
     if (result.kind !== 'handled') {
