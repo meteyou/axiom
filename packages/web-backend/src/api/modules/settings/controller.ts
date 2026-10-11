@@ -3,10 +3,12 @@ import type { AuthenticatedRequest } from '../../../auth.js'
 import type { SettingsRouterOptions } from './types.js'
 import { createSettingsService, SettingsValidationError } from './service.js'
 import { createOwnSettingsService } from './own-settings.js'
+import { buildWebManifest } from './web-manifest.js'
 
 export interface SettingsController {
   getSettings: (req: AuthenticatedRequest, res: Response) => void
   getAppearance: (req: AuthenticatedRequest, res: Response) => void
+  getWebManifest: (req: AuthenticatedRequest, res: Response) => void
   putSettings: (req: AuthenticatedRequest, res: Response) => void
   getOwnSettings: (req: AuthenticatedRequest, res: Response) => void
   putOwnSettings: (req: AuthenticatedRequest, res: Response) => void
@@ -34,6 +36,17 @@ export function createSettingsController(options: SettingsRouterOptions = {}): S
         res.json(service.readAppearance())
       } catch (err) {
         res.status(500).json({ error: `Failed to read appearance settings: ${(err as Error).message}` })
+      }
+    },
+
+    getWebManifest(_req, res) {
+      try {
+        const manifest = buildWebManifest(service.readAppearance().logo)
+        // The icons change with the logo setting, so browsers must revalidate.
+        res.set('Cache-Control', 'no-cache')
+        res.type('application/manifest+json').send(JSON.stringify(manifest))
+      } catch (err) {
+        res.status(500).json({ error: `Failed to build the web app manifest: ${(err as Error).message}` })
       }
     },
 

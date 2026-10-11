@@ -22,7 +22,10 @@ if (import.meta.client) {
 
 const { asset: appLogoAsset, loadAppLogo } = useAppLogo()
 useHead({
-  link: [{ key: 'favicon-svg', rel: 'icon', type: 'image/svg+xml', href: () => appLogoAsset.value.favicon }],
+  link: [
+    { key: 'favicon-svg', rel: 'icon', type: 'image/svg+xml', href: () => appLogoAsset.value.favicon },
+    { key: 'apple-touch-icon', rel: 'apple-touch-icon', href: () => appLogoAsset.value.appleTouchIcon },
+  ],
 })
 void loadAppLogo()
 </script>

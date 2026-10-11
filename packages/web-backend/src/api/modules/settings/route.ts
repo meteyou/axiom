@@ -3,6 +3,7 @@ import { jwtMiddleware } from '../../../auth.js'
 import type { AuthenticatedRequest } from '../../../auth.js'
 import { createSettingsController } from './controller.js'
 import type { SettingsRouterOptions } from './types.js'
+import { WEB_MANIFEST_PATH } from './web-manifest.js'
 
 export { type SettingsRouterOptions } from './types.js'
 
@@ -32,5 +33,12 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}): Route
   router.get('/', controller.getSettings)
   router.put('/', controller.putSettings)
 
+  return router
+}
+
+/** Public, unauthenticated: browsers fetch the manifest without credentials. */
+export function createWebManifestRouter(): Router {
+  const router = Router()
+  router.get(WEB_MANIFEST_PATH, createSettingsController().getWebManifest)
   return router
 }

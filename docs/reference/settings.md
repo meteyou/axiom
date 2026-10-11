@@ -331,7 +331,7 @@ Hand-edited invalid values are ignored at runtime and the default is used instea
 { "appearance": { "logo": "prism" } }
 ```
 
-The value is also served without authentication by `GET /api/settings/appearance` so the login page and favicon can use it; writing still goes through the admin-only `PUT /api/settings`.
+The value is also served without authentication by `GET /api/settings/appearance` so the login page and favicon can use it, and it selects the icons in the public web app manifest at `GET /site.webmanifest`. Writing still goes through the admin-only `PUT /api/settings`.
 
 ### `tokenPriceTable`
 
