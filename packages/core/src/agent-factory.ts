@@ -4,7 +4,6 @@ import { buildStreamFn } from './provider-config.js'
 import type { ProviderConfig } from './provider-config.js'
 import type { ContextCompactor } from './context-compactor.js'
 import { createToolResultImageHook, createTranscriptImageBudget } from './llm-image.js'
-import { withOrderedThinking } from './thinking-order.js'
 
 export interface AxiomAgentOptions {
   initialState: AgentInitialState
@@ -30,10 +29,10 @@ export function createAxiomAgent(options: AxiomAgentOptions): PiAgent {
   const transport = options.provider?.transport
   const agent: PiAgent = new PiAgent({
     initialState: options.initialState,
-    streamFn: withOrderedThinking(options.streamFn ?? buildStreamFn({
+    streamFn: options.streamFn ?? buildStreamFn({
       textVerbosity: options.provider?.textVerbosity,
       transport,
-    })),
+    }),
     ...(options.sessionId ? { sessionId: options.sessionId } : {}),
     ...(transport && transport !== 'sse' && { transport }),
     afterToolCall: options.afterToolCall ?? createToolResultImageHook(() => agent.state.model),

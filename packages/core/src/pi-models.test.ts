@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { Api } from '@earendil-works/pi-ai'
+import type { Api, Model } from '@earendil-works/pi-ai'
 import { registerSessionResourceCleanup } from '@earendil-works/pi-ai'
 import type { BuiltinProvider } from '@earendil-works/pi-ai/providers/all'
 import { getBuiltinModels } from '@earendil-works/pi-ai/providers/all'
-import { SUPPORTED_APIS, releaseProviderSession } from './pi-models.js'
+import { SUPPORTED_APIS, releaseProviderSession, streamSimple } from './pi-models.js'
 import { PROVIDER_TYPE_PRESETS } from './provider-config.js'
 
 describe('pi-models api coverage', () => {
@@ -68,5 +68,53 @@ describe('releaseProviderSession', () => {
       unregister()
       errSpy.mockRestore()
     }
+  })
+})
+
+describe('streamSimple over openai-completions', () => {
+  const model: Model<Api> = {
+    id: 'reasoner',
+    name: 'Reasoner',
+    api: 'openai-completions',
+    provider: 'test-openai-compatible',
+    baseUrl: 'http://openai-compatible.test/v1',
+    reasoning: true,
+    input: ['text'],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 32_000,
+    maxTokens: 1_000,
+  }
+
+  function sseResponse(deltas: Record<string, string>[]): Response {
+    const chunks = deltas.map((delta, index) => ({
+      id: 'chatcmpl-1',
+      object: 'chat.completion.chunk',
+      created: 0,
+      model: model.id,
+      choices: [{ index: 0, delta, finish_reason: index === deltas.length - 1 ? 'stop' : null }],
+    }))
+    const body = [...chunks.map(chunk => `data: ${JSON.stringify(chunk)}\n\n`), 'data: [DONE]\n\n'].join('')
+    return new Response(body, { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
+  }
+
+  it('streams a reasoning tail that shares a chunk with the first answer text before that text', async () => {
+    const fetch = vi.fn(async () => sseResponse([
+      { reasoning_content: 'answer in' },
+      { reasoning_content: ' German.\n', content: '\n\npong' },
+      { content: '!' },
+    ]))
+
+    const stream = streamSimple(model, { messages: [{ role: 'user', content: 'ping', timestamp: 0 }] }, { apiKey: 'test-key', fetch })
+    const deltas: string[] = []
+    for await (const event of stream) {
+      if (event.type === 'thinking_delta' || event.type === 'text_delta') deltas.push(`${event.type}:${event.delta}`)
+    }
+    const message = await stream.result()
+
+    expect(deltas).toEqual(['thinking_delta:answer in', 'thinking_delta: German.\n', 'text_delta:\n\npong', 'text_delta:!'])
+    expect(message.content).toMatchObject([
+      { type: 'thinking', thinking: 'answer in German.\n' },
+      { type: 'text', text: '\n\npong!' },
+    ])
   })
 })

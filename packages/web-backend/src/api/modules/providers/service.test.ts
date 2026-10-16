@@ -288,7 +288,7 @@ describe('refreshModelCatalogs', () => {
         baseUrl: 'https://api.anthropic.com', reasoning: true, input: ['text'], contextWindow: 1, maxTokens: 1,
         cost: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 },
       },
-    ]), { status: 200 }))
+    ]), { status: 200, headers: { 'Last-Modified': new Date().toUTCString() } }))
 
     const results = await createProvidersService().refreshModelCatalogs()
 
