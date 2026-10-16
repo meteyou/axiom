@@ -41,6 +41,66 @@ export interface ContextCompactionInfo {
   occurredAt: string
 }
 
+/**
+ * Blocks of the main agent's system prompt, keyed by their XML tag, with the
+ * label `/context` shows. `other` covers prompt text outside the known blocks.
+ */
+const SYSTEM_PROMPT_SECTION_LABELS = {
+  personality: 'Personality (SOUL.md)',
+  instructions: 'Base instructions',
+  agent_rules: 'Agent rules (AGENTS.md)',
+  core_memory: 'Core memory (MEMORY.md)',
+  recent_memory: 'Daily notes',
+  current_user: 'Current user',
+  user_profile: 'User profile',
+  user_profiles_path: 'User profiles path',
+  available_tools: 'Tool overview',
+  available_providers: 'Providers & models',
+  wiki_pages: 'Wiki pages',
+  memory_paths: 'Memory paths',
+  shared_data_rules: 'Shared data rules',
+  axiom_docs: 'Docs',
+  agent_skills: 'Skill creation',
+  available_skills: 'Skills',
+  task_system: 'Task system',
+  workspace: 'Workspace',
+  current_date: 'Current date',
+  language: 'Language',
+  channel_context: 'Channel context',
+  codemode: 'Codemode',
+  other: 'Other',
+} as const
+
+export type SystemPromptSectionKey = keyof typeof SYSTEM_PROMPT_SECTION_LABELS
+
+export interface ContextBreakdownSection {
+  key: SystemPromptSectionKey
+  tokens: number
+}
+
+/**
+ * Where the context comes from. Always a heuristic split: providers only
+ * report totals. The parts add up to `ContextUsageInfo.tokens`.
+ */
+export interface ContextUsageBreakdown {
+  systemPrompt: {
+    tokens: number
+    /** Largest first; sections without tokens are left out. */
+    sections: ContextBreakdownSection[]
+  }
+  /** JSON schemas of the tools declared to the model. */
+  toolDefinitions: { tokens: number; count: number }
+  chat: {
+    tokens: number
+    /** Summary of the last compaction. */
+    summary: number
+    user: number
+    /** Answers, thinking and tool calls. */
+    assistant: number
+    toolResults: number
+  }
+}
+
 /** How full the main agent's context window is, for the chat header and `/context`. */
 export interface ContextUsageInfo {
   tokens: number
@@ -54,6 +114,7 @@ export interface ContextUsageInfo {
   autoCompaction: boolean
   /** Automatic compaction is paused because the last one could not get below the threshold. */
   autoCompactionPaused: boolean
+  breakdown?: ContextUsageBreakdown
 }
 
 export function contextUsagePercent(tokens: number, contextWindow: number): number {
@@ -69,12 +130,48 @@ export function formatContextUsage(info: ContextUsageInfo): string {
       ? 'Automatic compaction: paused, the context is still above the threshold'
       : `Automatic compaction at ${formatTokenCount(info.compactionThreshold)} `
         + `(${contextUsagePercent(info.compactionThreshold, info.contextWindow)}%)`
-  return [
+  const lines = [
     `\u{1F9E0} Context: ${tokens} / ${formatTokenCount(info.contextWindow)} tokens `
       + `(${contextUsagePercent(info.tokens, info.contextWindow)}%)`,
     compaction,
     `Model: ${info.modelName}`,
-  ].join('\n')
+  ]
+  if (info.breakdown && info.tokens > 0) lines.push('', ...formatContextBreakdown(info.breakdown, info.tokens))
+  return lines.join('\n')
+}
+
+const BREAKDOWN_SECTION_LINES = 6
+
+const CHAT_PART_LABELS = {
+  summary: 'Compaction summary',
+  user: 'User messages',
+  assistant: 'Assistant messages',
+  toolResults: 'Tool results',
+} as const
+
+function breakdownLine(label: string, tokens: number, whole: number, indent = false): string {
+  return `${indent ? '  · ' : ''}${label}: ${formatTokenCount(tokens)} (${contextUsagePercent(tokens, whole)}%)`
+}
+
+/**
+ * No `~` per value: the web chat renders replies as Markdown, where several
+ * `~` in one paragraph can turn into strikethrough.
+ */
+function formatContextBreakdown(breakdown: ContextUsageBreakdown, total: number): string[] {
+  const { systemPrompt, toolDefinitions, chat } = breakdown
+  const shown = systemPrompt.sections.slice(0, BREAKDOWN_SECTION_LINES)
+  const rest = systemPrompt.sections.slice(BREAKDOWN_SECTION_LINES)
+  const restTokens = rest.reduce((sum, section) => sum + section.tokens, 0)
+  const chatParts = (Object.keys(CHAT_PART_LABELS) as (keyof typeof CHAT_PART_LABELS)[]).filter(part => chat[part] > 0)
+  return [
+    'Breakdown (estimated):',
+    breakdownLine('System prompt', systemPrompt.tokens, total),
+    ...shown.map(section => breakdownLine(SYSTEM_PROMPT_SECTION_LABELS[section.key], section.tokens, systemPrompt.tokens, true)),
+    ...(rest.length > 0 ? [breakdownLine(`${rest.length} more`, restTokens, systemPrompt.tokens, true)] : []),
+    `${breakdownLine('Tool definitions', toolDefinitions.tokens, total)}, ${toolDefinitions.count} tools`,
+    breakdownLine('Chat', chat.tokens, total),
+    ...chatParts.map(part => breakdownLine(CHAT_PART_LABELS[part], chat[part], chat.tokens, true)),
+  ]
 }
 
 /** `chat_messages.metadata.kind` marking a persisted compaction notice. */

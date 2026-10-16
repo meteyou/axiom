@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { getWorkspaceDir } from './workspace.js'
 import type { UserPaths } from './user-scope.js'
+import type { SystemPromptSectionKey } from './contracts/compaction.js'
 import { getConfigDir, getDefaultTimezone, getDocsPath, getReadmePath } from './config.js'
 
 const SOUL_TEMPLATE = `# Soul
@@ -934,7 +935,7 @@ function buildSharedDataRules(personal: PersonalScope): string {
   return `<shared_data_rules>\n${lines.join('\n')}\n</shared_data_rules>`
 }
 
-export function assembleSystemPrompt(options?: {
+export interface SystemPromptOptions {
   memoryDir?: string
   configDir?: string
   baseInstructions?: string
@@ -965,7 +966,19 @@ export function assembleSystemPrompt(options?: {
   availableImageModels?: AvailableImageModelPromptEntry[]
   /** Background thinking level tasks run with when `thinking_level` is omitted. */
   defaultTaskThinkingLevel?: string
-}): string {
+}
+
+export interface SystemPromptSection {
+  key: SystemPromptSectionKey
+  text: string
+}
+
+export function assembleSystemPrompt(options?: SystemPromptOptions): string {
+  return assembleSystemPromptWithSections(options).prompt
+}
+
+/** The system prompt plus the blocks it is made of, for the context breakdown. */
+export function assembleSystemPromptWithSections(options?: SystemPromptOptions): { prompt: string; sections: SystemPromptSection[] } {
   const memoryDir = options?.memoryDir
   const recentDays = options?.recentDays ?? 3
   const personal = options?.userScope && !options.userScope.isBootstrapAdmin ? options.userScope : null
@@ -974,31 +987,32 @@ export function assembleSystemPrompt(options?: {
   // Ensure structure exists
   ensureMemoryStructure(memoryDir)
 
-  const sections: string[] = []
+  const sections: SystemPromptSection[] = []
+  const addSection = (key: SystemPromptSectionKey, text: string) => { sections.push({ key, text }) }
 
   // 1. Personality from SOUL.md (separate block)
   const soul = readSoulFile(memoryDir)
-  sections.push(`<personality>\n${soul.trim()}\n</personality>`)
+  addSection('personality', `<personality>\n${soul.trim()}\n</personality>`)
 
   // 2. Base technical instructions (if any)
   if (options?.baseInstructions) {
-    sections.push(`<instructions>\n${options.baseInstructions.trim()}\n</instructions>`)
+    addSection('instructions', `<instructions>\n${options.baseInstructions.trim()}\n</instructions>`)
   }
 
   // 3. Agent rules from AGENTS.md (in config directory)
   const agentsRules = readAgentsRulesFile(options?.configDir)
-  sections.push(`<agent_rules>\n${agentsRules.trim()}\n</agent_rules>`)
+  addSection('agent_rules', `<agent_rules>\n${agentsRules.trim()}\n</agent_rules>`)
 
   // 4. Core memory from MEMORY.md
   const agents = readMemoryFile(memoryDir)
-  sections.push(sharedDataScope
+  addSection('core_memory', sharedDataScope
     ? `<core_memory>\nShared memory (MEMORY.md) — visible to all users. It holds general lessons only, never personal data.\n\n${agents.trim()}\n</core_memory>`
     : `<core_memory>\n${agents.trim()}\n</core_memory>`)
 
   // 5. Recent daily context
   const dailyContext = readRecentDailyFiles(recentDays, memoryDir, personal?.paths.dailyDir, options?.timezone)
   if (dailyContext) {
-    sections.push(`<recent_memory>
+    addSection('recent_memory', `<recent_memory>
 These are summarized session notes from recent days. They are condensed — for full conversation details, use the read_chat_history tool.
 
 ${dailyContext}
@@ -1008,14 +1022,14 @@ ${dailyContext}
   // 6. User profile injection
   if (options?.currentUser?.username) {
     const roleLine = options.currentUser.role ? `\nRole: ${options.currentUser.role}` : ''
-    sections.push(`<current_user>\nUsername: ${options.currentUser.username}${roleLine}\n</current_user>`)
+    addSection('current_user', `<current_user>\nUsername: ${options.currentUser.username}${roleLine}\n</current_user>`)
     const profileContent = personal
       ? readPersonalProfile(personal.paths.profile, options.currentUser.username)
       : readUserProfile(options.currentUser.username, memoryDir)
-    sections.push(`<user_profile>\n${profileContent.trim()}\n</user_profile>`)
+    addSection('user_profile', `<user_profile>\n${profileContent.trim()}\n</user_profile>`)
   } else if (!personal) {
     const usersPath = getUserProfileDir(memoryDir)
-    sections.push(`<user_profiles_path>${usersPath}</user_profiles_path>`)
+    addSection('user_profiles_path', `<user_profiles_path>${usersPath}</user_profiles_path>`)
   }
 
   // 7. Available tools overview
@@ -1071,7 +1085,7 @@ ${dailyContext}
       toolLines.push(`- **list_agent_skills**: Browse all ${options.agentSkillsOverflowCount} self-created agent skills (only the 10 most recent are shown in the available_skills block).`)
     }
 
-    sections.push(`<available_tools>\nYou have the following tools available. Use the right tool for the job.\n\n${toolLines.join('\n')}\n</available_tools>`)
+    addSection('available_tools', `<available_tools>\nYou have the following tools available. Use the right tool for the job.\n\n${toolLines.join('\n')}\n</available_tools>`)
   }
 
   // 7b. Configured LLM providers — lets the agent route background tasks to
@@ -1128,7 +1142,7 @@ ${imageModelLines.join('\n')}`)
   }
 
   if (providerBlocks.length > 0) {
-    sections.push(`<available_providers>\n${providerBlocks.join('\n\n')}\n</available_providers>`)
+    addSection('available_providers', `<available_providers>\n${providerBlocks.join('\n\n')}\n</available_providers>`)
   }
 
   // 8. Wiki pages (LLM-maintained knowledge base)
@@ -1138,7 +1152,7 @@ ${imageModelLines.join('\n')}`)
       const aliasStr = n.aliases.length > 0 ? ` (aliases: ${n.aliases.join(', ')})` : ''
       return `- ${n.filename}${aliasStr}`
     }).join('\n')
-    sections.push(`<wiki_pages>
+    addSection('wiki_pages', `<wiki_pages>
 The wiki is the agent's structured knowledge base. Maintain and organize it autonomously: add new pages, extend existing ones, merge duplicates, fix stale entries, and keep cross-links healthy without asking for permission. When discussing a topic covered by a wiki page, load it with read_file for context. Use write_file or edit_file to create or update wiki pages when you learn something worth preserving. Raw source material for the wiki lives under sources/ — wiki pages can cite it in a ## Sources section.
 
 For non-trivial wiki work (ingesting a new source, creating a new page, running a lint pass, or auditing structure), load the built-in \`wiki\` agent skill first by reading ${options?.agentSkillsDir ?? '/data/skills_agent'}/wiki/SKILL.md — it contains the canonical conventions (frontmatter, filenames, cross-links, ## Sources/Quellen) and the ingest/query/lint workflows.
@@ -1153,13 +1167,13 @@ ${pageLines}
   const dir = memoryDir ?? getMemoryDir()
   const cfgDir = options?.configDir ?? getConfigDir()
   const today = formatDateKey(new Date(), options?.timezone || undefined)
-  sections.push(buildMemoryPathsSection({
+  addSection('memory_paths', buildMemoryPathsSection({
     dir,
     cfgDir,
     today,
     personal,
   }))
-  if (sharedDataScope) sections.push(buildSharedDataRules(sharedDataScope))
+  if (sharedDataScope) addSection('shared_data_rules', buildSharedDataRules(sharedDataScope))
 
   // 9b. Axiom documentation (read-only, shipped with the image).
   // We deliberately do NOT enumerate topic→file routes here — they drift
@@ -1169,7 +1183,7 @@ ${pageLines}
   {
     const readmePath = getReadmePath()
     const docsPath = getDocsPath()
-    sections.push(`<axiom_docs>
+    addSection('axiom_docs', `<axiom_docs>
 Axiom's user-facing documentation is shipped with the image. When the user asks how to set up, configure, or use Axiom (providers, memory, skills, tasks, tools, web UI, telegram, env vars, settings, file paths, …), read the relevant .md file directly instead of guessing.
 
 - Main README (entry point with links): ${readmePath}
@@ -1186,7 +1200,7 @@ Discovery: use list_files on the directory and read the file whose name matches 
   // agent skill (data/skills_agent/skill-creator/SKILL.md) so it is loaded
   // on demand instead of paying its token cost on every turn.
   if (options?.agentSkillsDir) {
-    sections.push(`<agent_skills>
+    addSection('agent_skills', `<agent_skills>
 You can create new reusable agent skills under ${options.agentSkillsDir}/<skill-name>/SKILL.md. They are auto-discovered on the next message and appear in the available_skills block.
 
 For the format, naming rules, gating fields, and worked examples, load the built-in **skill-creator** skill (listed in the available_skills block) before writing a new SKILL.md.
@@ -1204,7 +1218,7 @@ For the format, naming rules, gating fields, and worked examples, load the built
       overflowNote = `\n\nYou have ${options.agentSkillsOverflowCount} self-created agent skills in total (only the 10 most recent are shown above). Use \`list_agent_skills\` to browse all of them.`
     }
 
-    sections.push(`<available_skills>
+    addSection('available_skills', `<available_skills>
 The following skills provide specialized capabilities you can load on demand.
 When the user's request materially matches a skill's description, load that skill before continuing.
 To load a skill, use the read_file tool to read <location>/SKILL.md, then follow that file's instructions.
@@ -1224,7 +1238,7 @@ ${skillEntries}${overflowNote}
   //      apply *before* the agent has a chance to load any skill.
   //   2. The `<task_injection>` trigger — so the agent knows to load the
   //      skill when one arrives instead of responding ad-hoc.
-  sections.push(`<task_system>
+  addSection('task_system', `<task_system>
 Background tasks (create_task), cronjobs (create_cronjob, edit_cronjob, remove_cronjob, list_cronjobs, get_cronjob), and reminders (create_reminder) are listed in the available_tools block. For when to use which, how to write task prompts, how to handle <task_injection> messages, how to route follow-up answers into paused tasks (resume_task), and cron expression / action_type / attached_skills conventions, load the **tasks-and-cronjobs** built-in skill (in the available_skills block).
 
 SAFETY: NEVER use OS-level schedulers (system crontab, launchd, at, or shell-spawned long-running processes via nohup / & / background loops). Always use the built-in cronjob and task tools instead.
@@ -1234,33 +1248,33 @@ When you receive a <task_injection> block (signalling a background-task result w
 
   // 13. Workspace directory
   const workspaceDir = personal?.paths.workspace ?? getWorkspaceDir()
-  sections.push(`<workspace>\nYour working directory is ${workspaceDir}. All shell commands execute in this directory by default.\nAll relative paths in read_file, write_file, and list_files resolve against this directory.\nUse this directory for cloning repos, creating files, and all file operations.\n</workspace>`)
+  addSection('workspace', `<workspace>\nYour working directory is ${workspaceDir}. All shell commands execute in this directory by default.\nAll relative paths in read_file, write_file, and list_files resolve against this directory.\nUse this directory for cloning repos, creating files, and all file operations.\n</workspace>`)
 
   // 14. Current date (date only — kept at day-granularity so the cached
   // system-prompt prefix stays stable across turns. The precise minute-level
   // time is appended to each user message instead via formatCurrentTimeContext(),
   // which avoids invalidating provider prompt caches every minute.)
   const { date, tz } = getCurrentDateTimeParts(options?.timezone)
-  sections.push(`<current_date>\nCurrent date: ${date} (${tz})\n</current_date>`)
+  addSection('current_date', `<current_date>\nCurrent date: ${date} (${tz})\n</current_date>`)
 
   // 15. Language setting (placed near the end for recency: "respond in X" hits
   // the model right before it processes the user message).
   if (options?.language) {
     const lang = options.language.trim()
     if (lang.toLowerCase() === 'match' || lang.toLowerCase() === "match user's language") {
-      sections.push(`<language>\nRespond in the same language that the user writes in. Match the user's language automatically.\n</language>`)
+      addSection('language', `<language>\nRespond in the same language that the user writes in. Match the user's language automatically.\n</language>`)
     } else {
-      sections.push(`<language>\nAlways respond in ${lang}.\n</language>`)
+      addSection('language', `<language>\nAlways respond in ${lang}.\n</language>`)
     }
   }
 
   // 16. Channel context
   if (options?.channel === 'telegram') {
-    sections.push(`<channel_context>
+    addSection('channel_context', `<channel_context>
 You are communicating with the user through Telegram. You ARE the Telegram bot — messages the user sends arrive directly to you, and your responses are sent back to the user automatically. Do not tell the user to use the Telegram Bot API, curl commands, or any external tools to communicate. Just respond naturally to their messages.
 Keep responses concise and well-formatted for Telegram (use Markdown sparingly, avoid very long messages).
 </channel_context>`)
   }
 
-  return sections.join('\n\n')
+  return { prompt: sections.map(section => section.text).join('\n\n'), sections }
 }

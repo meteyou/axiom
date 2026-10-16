@@ -15,6 +15,7 @@ import {
   appendToDailyFile,
   readRecentDailyFiles,
   assembleSystemPrompt,
+  assembleSystemPromptWithSections,
   getUserProfileDir,
   ensureUserProfile,
   readUserProfile,
@@ -347,6 +348,37 @@ describe('memory', () => {
   })
 
   describe('assembleSystemPrompt', () => {
+    it('is built from labeled blocks that join to exactly the prompt', () => {
+      const dir = makeTmpDir()
+      const configDir = path.join(dir, 'config')
+      ensureMemoryStructure(dir)
+      ensureConfigStructure(configDir)
+      appendToDailyFile('Discussed the context meter.', undefined, dir)
+      fs.writeFileSync(path.join(dir, 'wiki', 'axiom.md'), '# Axiom\n')
+      const options = {
+        memoryDir: dir,
+        configDir,
+        baseInstructions: 'base rules',
+        language: 'German',
+        channel: 'telegram',
+        currentUser: { username: 'alice', role: 'admin' },
+        agentSkillsDir: '/skills-agent',
+        skills: [{ name: 'wiki', description: 'Wiki upkeep', location: '/skills-agent/wiki' }],
+        availableProviders: [{ name: 'Local', models: [{ id: 'model-a', isDefaultAgentModel: true }] }],
+      }
+
+      const { prompt, sections } = assembleSystemPromptWithSections(options)
+
+      expect(prompt).toBe(assembleSystemPrompt(options))
+      expect(sections.map(section => section.text).join('\n\n')).toBe(prompt)
+      for (const section of sections) expect(section.text.startsWith(`<${section.key}>`)).toBe(true)
+      expect(sections.map(section => section.key)).toEqual([
+        'personality', 'instructions', 'agent_rules', 'core_memory', 'recent_memory', 'current_user', 'user_profile',
+        'available_tools', 'available_providers', 'wiki_pages', 'memory_paths', 'axiom_docs', 'agent_skills',
+        'available_skills', 'task_system', 'workspace', 'current_date', 'language', 'channel_context',
+      ])
+    })
+
     it('combines all memory tiers into a coherent prompt', () => {
       const dir = makeTmpDir()
       ensureMemoryStructure(dir)

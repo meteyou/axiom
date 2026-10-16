@@ -259,6 +259,18 @@ describe('ContextCompactor', () => {
     expect(compactor.getContextUsage()?.estimated).toBe(true)
   })
 
+  it('breaks the context usage down into parts that add up to the reported size', async () => {
+    const { agent, compactor } = setup({ answer: () => fauxAssistantMessage('next answer') })
+    await agent.prompt('hello')
+    agent.state.messages = [...agent.state.messages, user(1_000)]
+
+    const usage = compactor.getContextUsage([{ key: 'personality', text: 'You are a test agent.' }])!
+    const { systemPrompt, toolDefinitions, chat } = usage.breakdown!
+    expect(systemPrompt.tokens + toolDefinitions.tokens + chat.tokens).toBe(usage.tokens)
+    expect(systemPrompt.sections.map(section => section.key)).toEqual(['personality'])
+    expect(chat.user).toBeGreaterThanOrEqual(1_000)
+  })
+
   it('stays out of the way below the trigger and when tasks have compaction disabled', async () => {
     const small = setup()
     const shortTranscript = [small.agent.state.messages[0], user(1_000), assistant(1_000)]
