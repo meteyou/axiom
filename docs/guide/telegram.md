@@ -77,7 +77,7 @@ to the input field) is populated automatically on bot startup via
 | `/model`    | Show or switch the provider and model — yours for regular users, the global one for admins. (alias `/provider`) |
 | `/thinking` | Show or set the thinking level — yours for regular users, the global one for admins. |
 | `/compact`  | Summarize older messages to free up context. (`/compact [instructions]`)    |
-| `/context`  | Show how full the context window is, the model and where compaction starts. |
+| `/context`  | Show how full the context window is, the model, where compaction starts and what the context is made of. |
 | `/tts`      | Toggle automatic Telegram voice replies. (alias `/voice`)                   |
 | `/skill`    | Load a skill into the current conversation. (`/skill:<name> [prompt]`)      |
 
@@ -105,14 +105,36 @@ compaction, manual or automatic, the bot posts one short status line such as
 shows the measured size). The main agent shares one
 conversation across channels, so this also compacts what the web chat sees.
 
-`/context` answers with the current fill level of that shared conversation,
-for example:
+`/context` answers with the current fill level of that shared conversation
+and an estimated breakdown of where it comes from, for example:
 
 ```
 🧠 Context: 33k / 262k tokens (13%)
 Automatic compaction at 246k (94%)
 Model: Qwen3.8 27B
+
+Breakdown (estimated):
+System prompt: 12k (36%)
+  · Core memory (MEMORY.md): 4k (33%)
+  · Skills: 3k (25%)
+  · Agent rules (AGENTS.md): 2k (17%)
+  · Daily notes: 1k (8%)
+  · Personality (SOUL.md): 1k (8%)
+  · Tool overview: 600 (5%)
+  · 9 more: 500 (4%)
+Tool definitions: 9k (27%), 31 tools
+Chat: 12k (36%)
+  · User messages: 1k (8%)
+  · Assistant messages: 4k (33%)
+  · Tool results: 7k (58%)
 ```
+
+The breakdown splits the context into the system prompt (with its six
+largest blocks, each as a share of the system prompt), the tool definitions
+sent with every request and the chat (compaction summary, user messages,
+assistant messages incl. thinking and tool calls, tool results). Providers
+only report the total, so the parts are estimated from text length and scaled
+to the measured total.
 
 Everything else is treated as a normal message and forwarded to the agent.
 If the menu does not appear in your Telegram client, restart the chat or wait
