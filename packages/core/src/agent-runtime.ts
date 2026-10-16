@@ -13,8 +13,8 @@ import type { ProviderManager } from './provider-manager.js'
 import type { SettingsThinkingLevel } from './contracts/settings.js'
 import { normalizeThinkingLevel, readBackgroundThinkingLevelFromConfig } from './thinking-level.js'
 import { getSupportedThinkingLevels } from './contracts/providers.js'
-import { assembleSystemPrompt, ensureMemoryStructure, ensureConfigStructure, formatCurrentTimeContext } from './memory.js'
-import type { SkillPromptEntry, AvailableProviderModelPromptEntry, AvailableImageModelPromptEntry } from './memory.js'
+import { assembleSystemPromptWithSections, ensureMemoryStructure, ensureConfigStructure, formatCurrentTimeContext } from './memory.js'
+import type { SkillPromptEntry, AvailableProviderModelPromptEntry, AvailableImageModelPromptEntry, SystemPromptSection } from './memory.js'
 import { getWorkspaceDir, resolveWorkspacePath } from './workspace.js'
 import { loadConfig, ensureConfigTemplates } from './config.js'
 import { loadSkills } from './skill-config.js'
@@ -528,6 +528,8 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
   private compactionSink: ((chunk: ResponseChunk) => void) | null = null
   /** Aborts a prompt that is still waiting for its pre-prompt compaction. */
   private pendingStart: AbortController | null = null
+  /** Last system prompt built here, with its blocks for the context breakdown. */
+  private builtSystemPrompt: { prompt: string; sections: SystemPromptSection[] } | null = null
 
   constructor(options: AgentRuntimeOptions) {
     this.model = options.model
@@ -548,7 +550,8 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
     const { sttEnabled, thinkingLevel: storedThinkingLevel } = this.readRuntimeSettings()
     const effectiveThinkingLevel = normalizeThinkingLevel(options.thinkingLevel) ?? storedThinkingLevel ?? 'off'
 
-    const systemPrompt = options.systemPrompt ?? this.buildSystemPrompt()
+    this.builtSystemPrompt = options.systemPrompt === undefined ? this.buildSystemPrompt() : null
+    const systemPrompt = this.builtSystemPrompt?.prompt ?? options.systemPrompt
 
     // Shared by direct tool calls and the codemode tool's nested calls so both
     // normalize images the same way.
@@ -633,7 +636,10 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
   }
 
   getContextUsage(): ContextUsageInfo | null {
-    return this.compactor.getContextUsage()
+    const leading = this.agent.state.messages[0]
+    const built = this.builtSystemPrompt
+    const sectionsMatchPrompt = built !== null && leading?.role === 'system' && leading.content === built.prompt
+    return this.compactor.getContextUsage(sectionsMatchPrompt ? built.sections : undefined)
   }
 
   compact(instructions?: string, sessionId?: string): AsyncIterable<ResponseChunk> {
@@ -675,10 +681,14 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
   refreshSystemPrompt(channel?: string, currentUser?: { username: string; role?: string }): void {
     this.syncImageGenerationTool()
     const codemodeEnabled = this.syncCodemodeTool()
-    let systemPrompt = this.buildSystemPrompt(channel, currentUser)
+    const built = this.buildSystemPrompt(channel, currentUser)
     if (codemodeEnabled) {
-      systemPrompt = `${systemPrompt}\n\n${buildCodemodePromptGuideline()}`
+      const guideline = buildCodemodePromptGuideline()
+      built.prompt = `${built.prompt}\n\n${guideline}`
+      built.sections.push({ key: 'codemode', text: guideline })
     }
+    this.builtSystemPrompt = built
+    const systemPrompt = built.prompt
     const messages = this.agent.state.messages
     const leading = messages[0]
     if (leading?.role === 'system') {
@@ -848,7 +858,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
     return { language, timezone, builtinToolsConfig, sttEnabled, thinkingLevel }
   }
 
-  private buildSystemPrompt(channel?: string, currentUser?: { username: string; role?: string }): string {
+  private buildSystemPrompt(channel?: string, currentUser?: { username: string; role?: string }): { prompt: string; sections: SystemPromptSection[] } {
     const { language, timezone, builtinToolsConfig, sttEnabled } = this.readRuntimeSettings()
 
     const activeSkills = getActiveSkillEntries()
@@ -931,7 +941,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
 
     const userScope = this.user ? resolveUserScope(this.db, this.user.id) : null
 
-    return assembleSystemPrompt({
+    return assembleSystemPromptWithSections({
       memoryDir: this.memoryDir,
       userScope: userScope ?? undefined,
       multiUser: isMultiUser(this.db),

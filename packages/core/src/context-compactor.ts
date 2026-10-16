@@ -27,6 +27,8 @@ import type {
   EffectiveCompactionBudget,
   ResolvedCompactionSettings,
 } from './compaction.js'
+import { estimateContextBreakdown } from './context-breakdown.js'
+import type { SystemPromptSection } from './memory.js'
 import { saveContextCompaction, updateContextCompactionTokensAfter } from './compaction-store.js'
 import { loadCompactionSettings } from './compaction-diagnostics.js'
 import { estimateCost } from './provider-config.js'
@@ -165,8 +167,12 @@ export class ContextCompactor {
     this.activeAbort?.abort()
   }
 
-  /** How full the context window is right now; null while the model's window is unknown. */
-  getContextUsage(): ContextUsageInfo | null {
+  /**
+   * How full the context window is right now; null while the model's window
+   * is unknown. `systemPromptSections` are the blocks of the leading system
+   * message, for the breakdown.
+   */
+  getContextUsage(systemPromptSections?: readonly SystemPromptSection[]): ContextUsageInfo | null {
     const agent = this.requireAgent()
     const model = agent.state.model
     if (!model || !(model.contextWindow > 0)) return null
@@ -181,6 +187,7 @@ export class ContextCompactor {
       modelName: model.name || model.id,
       autoCompaction: settings.enabled,
       autoCompactionPaused: settings.enabled && this.pausedSummaryTokens !== null,
+      breakdown: estimateContextBreakdown(agent.state.messages, systemPromptSections),
     }
   }
 

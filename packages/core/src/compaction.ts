@@ -18,6 +18,7 @@ import type {
   ImageContent,
   Model,
   RetryPolicy,
+  SystemMessage,
   TextContent,
   ToolCall,
   Usage,
@@ -185,16 +186,27 @@ function assistantChars(message: AssistantMessage): number {
   return chars
 }
 
+/** Character count of the prompt text and of the tool declarations a system message carries. */
+export function systemMessageChars(message: SystemMessage): { prompt: number; tools: number } {
+  let prompt = contentChars(message.content).chars
+  for (const section of Object.values(message.sections ?? {})) {
+    if (section) prompt += section.length
+  }
+  const tools = message.toolsAdded ? JSON.stringify(message.toolsAdded).length : 0
+  return { prompt, tools }
+}
+
+/** Unrounded chars/4 estimate, for splitting a total into shares. */
+export function charsToTokens(chars: number): number {
+  return chars / CHARS_PER_TOKEN
+}
+
 /** chars/4 heuristic; deliberately on the high side. */
 export function estimateMessageTokens(message: AgentMessage): number {
   switch (message.role) {
     case 'system': {
-      let chars = contentChars(message.content).chars
-      for (const section of Object.values(message.sections ?? {})) {
-        if (section) chars += section.length
-      }
-      if (message.toolsAdded) chars += JSON.stringify(message.toolsAdded).length
-      return Math.ceil(chars / CHARS_PER_TOKEN)
+      const { prompt, tools } = systemMessageChars(message)
+      return Math.ceil(charsToTokens(prompt + tools))
     }
     case 'user':
     case 'toolResult': {

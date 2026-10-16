@@ -87,11 +87,14 @@ export {
 } from './compaction.js'
 
 export type {
+  ContextBreakdownSection,
   ContextCompactionInfo,
   ContextCompactionReason,
   ContextCompactionStatus,
   ContextCompactionWarning,
+  ContextUsageBreakdown,
   ContextUsageInfo,
+  SystemPromptSectionKey,
 } from './compaction.js'
 
 export type {
