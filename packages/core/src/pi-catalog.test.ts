@@ -2,12 +2,18 @@ import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
-import { getBuiltinModels } from '@earendil-works/pi-ai/providers/all'
+import { getBuiltinModelDataGeneratedAt, getBuiltinModels } from '@earendil-works/pi-ai/providers/all'
 import { __setPiCatalogForTests, getPiCatalogModels, refreshPiCatalogs } from './pi-catalog.js'
 import { buildModel, getAvailableModels } from './provider-config.js'
 
 const bundledIds = getBuiltinModels('anthropic').map(m => m.id)
 const bundledSample = getBuiltinModels('anthropic')[0]!
+const bundledAt = getBuiltinModelDataGeneratedAt()!
+const newerThanBundled = bundledAt + 60_000
+const olderThanBundled = bundledAt - 60_000
+const installedPiAiVersion = (JSON.parse(
+  fs.readFileSync(path.join(process.cwd(), 'node_modules/@earendil-works/pi-ai/package.json'), 'utf-8'),
+) as { version: string }).version
 
 const remoteNew = {
   ...bundledSample,
@@ -18,8 +24,12 @@ const remoteNew = {
   type: 'chat',
 }
 
-function jsonResponse(body: unknown, init: ResponseInit = {}) {
-  return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json', ...init.headers }, ...init })
+function jsonResponse(body: unknown, init: ResponseInit = {}, lastModified = newerThanBundled) {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    ...init,
+    headers: { 'Content-Type': 'application/json', 'Last-Modified': new Date(lastModified).toUTCString(), ...init.headers },
+  })
 }
 
 describe('pi catalog overlay', () => {
@@ -57,7 +67,7 @@ describe('pi catalog overlay', () => {
     const [result] = await refreshPiCatalogs(['anthropic', 'anthropic'])
 
     expect(fetchSpy).toHaveBeenCalledTimes(1)
-    expect(String(fetchSpy.mock.calls[0]![0])).toBe('https://pi.dev/api/models/providers/anthropic?types=chat')
+    expect(String(fetchSpy.mock.calls[0]![0])).toBe(`https://pi.dev/api/models/providers/anthropic?types=chat&pi-version=${installedPiAiVersion}`)
     expect(result).toEqual({ piProvider: 'anthropic', status: 'updated', addedModelIds: ['claude-future-9'] })
 
     const models = getPiCatalogModels('anthropic')
@@ -66,6 +76,38 @@ describe('pi catalog overlay', () => {
 
     const stored = JSON.parse(fs.readFileSync(path.join(tmpDir, 'config', 'pi-catalog.json'), 'utf-8'))
     expect(stored.providers.anthropic.etag).toBe('"v1"')
+    expect(stored.providers.anthropic.lastModified).toBe(Math.floor(newerThanBundled / 1000) * 1000)
+  })
+
+  it('asks pi.dev for the catalog of the installed pi-ai version', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse([]))
+
+    await refreshPiCatalogs(['anthropic'])
+
+    const url = new URL(String(fetchSpy.mock.calls[0]![0]))
+    expect(url.searchParams.get('pi-version'), 'bump PI_AI_VERSION in pi-catalog.ts together with @earendil-works/pi-ai').toBe(installedPiAiVersion)
+  })
+
+  it('ignores remote catalogs older than the bundled pi-ai data', async () => {
+    __setPiCatalogForTests({ anthropic: { checkedAt: 1, lastModified: olderThanBundled, models: [remoteNew as never] } })
+    expect(getPiCatalogModels('anthropic').map(m => m.id)).toEqual(bundledIds)
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse([remoteNew], {}, olderThanBundled))
+    const [result] = await refreshPiCatalogs(['anthropic'])
+
+    expect(result).toEqual({ piProvider: 'anthropic', status: 'unchanged', addedModelIds: [] })
+    expect(getPiCatalogModels('anthropic').map(m => m.id)).toEqual(bundledIds)
+  })
+
+  it('downloads a cache entry without lastModified again instead of revalidating it', async () => {
+    __setPiCatalogForTests({ anthropic: { checkedAt: 1, etag: '"v1"', models: [remoteNew as never] } })
+    expect(getPiCatalogModels('anthropic').map(m => m.id)).toEqual(bundledIds)
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse([remoteNew], { headers: { etag: '"v1"' } }))
+
+    const [result] = await refreshPiCatalogs(['anthropic'])
+
+    expect((fetchSpy.mock.calls[0]![1]!.headers as Record<string, string>)['If-None-Match']).toBeUndefined()
+    expect(result).toEqual({ piProvider: 'anthropic', status: 'updated', addedModelIds: ['claude-future-9'] })
   })
 
   it('makes refreshed models usable for catalog-resolved and api-key providers', async () => {
@@ -88,7 +130,7 @@ describe('pi catalog overlay', () => {
   })
 
   it('sends the etag and treats 304 as unchanged', async () => {
-    __setPiCatalogForTests({ anthropic: { checkedAt: 1, etag: '"v1"', models: [remoteNew as never] } })
+    __setPiCatalogForTests({ anthropic: { checkedAt: 1, lastModified: newerThanBundled, etag: '"v1"', models: [remoteNew as never] } })
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 304 }))
 
     const [result] = await refreshPiCatalogs(['anthropic'])
@@ -99,7 +141,7 @@ describe('pi catalog overlay', () => {
   })
 
   it('keeps the previous cache when a refresh fails', async () => {
-    __setPiCatalogForTests({ anthropic: { checkedAt: 1, models: [remoteNew as never] } })
+    __setPiCatalogForTests({ anthropic: { checkedAt: 1, lastModified: newerThanBundled, models: [remoteNew as never] } })
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('down', { status: 503 }))
 
     const [result] = await refreshPiCatalogs(['anthropic'])
