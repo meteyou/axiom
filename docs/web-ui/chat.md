@@ -20,6 +20,8 @@ The top of the page has a slim toolbar (`PageHeader`). On mobile its action butt
 
 Next to it, a **context meter** shows how full the agent's context window is, e.g. *33k / 262k* with a ring. Click it for details: model, used tokens with a bar, and where [automatic compaction](../concepts/compaction) starts (the marker on the bar). The ring turns amber at 80% of the compaction threshold (of the window when automatic compaction is off) and red while automatic compaction is paused. A `~` marks an estimate: right after a new session or a compaction there is no model response to measure yet. The meter updates after every answer and compaction, and appears once the agent has run since the server started. On mobile it shows as a ring next to the action buttons.
 
+Below the details, a **breakdown** shows where the context comes from: the **system prompt**, the **tool definitions** (the tool schemas sent with every request) and the **chat** itself, as a stacked bar with token counts and shares of the used context. The system prompt is split further into its blocks — e.g. personality (`SOUL.md`), agent rules (`AGENTS.md`), core memory (`MEMORY.md`), daily notes, user profile, tool overview, providers & models, skills, wiki pages, docs — largest first, each with its share of the system prompt (the five largest are shown, the rest behind *N more*). The chat is split into the compaction summary, user messages, assistant messages (answers, thinking and tool calls) and tool results. Providers only report the total, so the shares are estimated from text length (`~`); when a measured total exists, the estimates are scaled to add up to it.
+
 **Right side — actions:**
 
 - **Stop** — aborts whatever the agent is currently doing (only enabled while a response is streaming). Equivalent to typing `/stop` in chat or hitting the Kill button on the parent task.
@@ -130,7 +132,7 @@ carries between surfaces.
 | `/model`    | Show or switch the provider and model — yours for regular users, the global one for admins. (alias `/provider`) |
 | `/thinking` | Show or set the thinking level — yours for regular users, the global one for admins. |
 | `/compact`  | Summarize older messages to free up context. (`/compact [instructions]`)    |
-| `/context`  | Show how full the context window is, the model and where compaction starts. |
+| `/context`  | Show how full the context window is, the model, where compaction starts and what the context is made of. |
 | `/skill`    | Load a skill into the current conversation. (`/skill:<name> [prompt]`)      |
 
 On the web chat, `/model` (and its alias `/provider`) responds as an

@@ -82,7 +82,7 @@ At most one compaction runs per model response.
 - **Web chat**: a divider *"Context compacted (368k → ~41k tokens)"*. Click it to expand the summary. While the summary is written the divider shows *"Compacting context…"*. The divider is stored in the chat history and survives a reload.
 - **Telegram**: one short status line after a compaction (or a failed one), with the estimated size.
 - **Task viewer**: the same divider in the task's event stream.
-- **Context meter**: the [chat toolbar](../web-ui/chat#toolbar) shows how full the window is and where compaction starts; `/context` reports the same in the web chat and on Telegram.
+- **Context meter**: the [chat toolbar](../web-ui/chat#toolbar) shows how full the window is, where compaction starts and an estimated breakdown into system prompt, tool definitions and chat; `/context` reports the same in the web chat and on Telegram.
 
 The size before a compaction comes from the provider's usage report. The size after it is an estimate at first, marked with `~`. As soon as the next response arrives, the divider switches to the size the provider reported for that request (*368k → 43k*), and the stored record is updated. Providers that report no usage keep the estimate.
 
