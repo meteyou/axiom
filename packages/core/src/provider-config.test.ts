@@ -1461,7 +1461,7 @@ describe('OpenCode Zen/Go catalog presets (sourced from pi-ai)', () => {
     const model = buildModel(makeProvider('opencode-go', 'glm-5.3'))
     expect(model.id).toBe('glm-5.3')
     expect(model.api).toBe('openai-completions')
-    expect(model.baseUrl).toBe('https://opencode.ai/zen/go/v1')
+    expect(model.baseUrl).toBe('https://opencode.ai/inference/go/v1')
     expect(model.cost.input).toBeGreaterThan(0)
     expect(model.cost.output).toBeGreaterThan(0)
   })
@@ -1469,7 +1469,7 @@ describe('OpenCode Zen/Go catalog presets (sourced from pi-ai)', () => {
   it('buildModel resolves per-model api + baseUrl for OpenCode Zen models across wire APIs', () => {
     const claude = buildModel(makeProvider('opencode-zen', 'claude-opus-4-5'))
     expect(claude.api).toBe('anthropic-messages')
-    expect(claude.baseUrl).toContain('opencode.ai/zen')
+    expect(claude.baseUrl).toContain('opencode.ai/inference')
     expect(claude.cost.input).toBeGreaterThan(0)
 
     const gemini = buildModel(makeProvider('opencode-zen', 'gemini-3.5-flash'))

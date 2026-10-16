@@ -9,9 +9,14 @@ vi.mock('./pi-models.js', async (importOriginal) => {
   return { ...actual, completeSimple }
 })
 
+import {
+  AnthropicMessagesCompatSchema,
+  OpenAICompletionsCompatSchema,
+  OpenAIResponsesCompatSchema,
+} from '@earendil-works/pi-ai/providers/compat-schema'
 import { addProvider, buildModel, loadProviders, updateProvider } from './provider-config.js'
 import { performProviderHealthCheck } from './provider-health.js'
-import { validateModelCompat } from './contracts/providers.js'
+import { MODEL_COMPAT_FIELDS, validateModelCompat } from './contracts/providers.js'
 
 describe('validateModelCompat', () => {
   it('accepts known options and unwraps a pasted provider entry', () => {
@@ -32,6 +37,17 @@ describe('validateModelCompat', () => {
     expect(!badEnum.ok && badEnum.error).toContain('compat.thinkingFormat must be one of "openai"')
 
     expect(validateModelCompat('openai-completions', [1]).ok).toBe(false)
+  })
+
+  it.each([
+    ['openai-completions', OpenAICompletionsCompatSchema],
+    ['openai-responses', OpenAIResponsesCompatSchema],
+    ['anthropic-messages', AnthropicMessagesCompatSchema],
+  ] as const)('mirrors the pi-ai compat schema for %s', (apiType, schema) => {
+    const kindOf = (property: { const?: unknown; anyOf?: { const?: unknown }[]; type?: unknown }) =>
+      'const' in property ? [property.const] : property.anyOf ? property.anyOf.map(option => option.const) : property.type
+    const piAiFields = Object.fromEntries(Object.entries(schema.properties).map(([key, property]) => [key, kindOf(property)]))
+    expect(MODEL_COMPAT_FIELDS[apiType]).toEqual(piAiFields)
   })
 })
 

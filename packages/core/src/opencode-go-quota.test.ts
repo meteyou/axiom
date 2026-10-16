@@ -27,7 +27,7 @@ const provider: ProviderConfig = {
   type: 'openai-completions',
   providerType: 'opencode-go',
   provider: 'opencode-go',
-  baseUrl: 'https://opencode.ai/zen/go/v1',
+  baseUrl: 'https://opencode.ai/inference/go/v1',
   apiKey: 'oc-go-key',
   enabledModels: ['kimi-k2.7-code'],
   authMethod: 'api-key',
