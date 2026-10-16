@@ -5,7 +5,7 @@ import { createAgentRuntime } from './agent-runtime.js'
 import type { AgentRuntimePiAgentAccess } from './agent-runtime.js'
 import { initDatabase } from './database.js'
 import type { AgentTool } from '@earendil-works/pi-agent-core'
-import { assembleSystemPrompt } from './memory.js'
+import { assembleSystemPromptWithSections } from './memory.js'
 import { buildCodemodePromptGuideline } from './codemode-tool.js'
 import { logToolCall } from './token-logger.js'
 import { loadConfig } from './config.js'
@@ -88,7 +88,7 @@ vi.mock('./memory.js', () => ({
   ensureMemoryStructure: vi.fn(),
   ensureConfigStructure: vi.fn(),
   getMemoryDir: vi.fn(() => '/tmp/test-memory'),
-  assembleSystemPrompt: vi.fn(() => 'runtime system prompt'),
+  assembleSystemPromptWithSections: vi.fn(() => ({ prompt: 'runtime system prompt', sections: [] })),
 }))
 
 vi.mock('./config.js', () => ({
@@ -173,7 +173,7 @@ describe('AgentRuntime boundary', () => {
     runtimeHarness.promptSessionIds = []
     runtimeHarness.continueCalls = 0
     runtimeHarness.runToolCallCalls = []
-    vi.mocked(assembleSystemPrompt).mockClear()
+    vi.mocked(assembleSystemPromptWithSections).mockClear()
     vi.mocked(logToolCall).mockClear()
   })
 
@@ -216,7 +216,7 @@ describe('AgentRuntime boundary', () => {
 
     runtime.refreshSystemPrompt('telegram', { username: 'alice' })
 
-    const promptCalls = vi.mocked(assembleSystemPrompt).mock.calls
+    const promptCalls = vi.mocked(assembleSystemPromptWithSections).mock.calls
     const latestCall = promptCalls.at(-1)?.[0]
     expect(latestCall).toBeDefined()
     expect(latestCall?.language).toBe('de')
@@ -233,7 +233,7 @@ describe('AgentRuntime boundary', () => {
 
   it('omits daily notes from the prompt of callers without a user row', () => {
     createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db: initDatabase(':memory:'), tools: [], user: null, sessionUser: 'telegram-42' })
-    expect(vi.mocked(assembleSystemPrompt).mock.calls.at(-1)?.[0]?.recentDays).toBe(0)
+    expect(vi.mocked(assembleSystemPromptWithSections).mock.calls.at(-1)?.[0]?.recentDays).toBe(0)
   })
 
   it('replaces the leading system message on refresh and keeps it when clearing messages', () => {
@@ -250,7 +250,7 @@ describe('AgentRuntime boundary', () => {
       { role: 'user', content: 'hello', timestamp: 1 },
     ] as never
 
-    vi.mocked(assembleSystemPrompt).mockReturnValueOnce('new prompt')
+    vi.mocked(assembleSystemPromptWithSections).mockReturnValueOnce({ prompt: 'new prompt', sections: [] })
     runtime.refreshSystemPrompt()
 
     expect(piAgent.state.messages).toEqual([
@@ -644,7 +644,7 @@ describe('AgentRuntime boundary', () => {
     }
 
     function latestPromptOptions() {
-      return vi.mocked(assembleSystemPrompt).mock.calls.at(-1)?.[0]
+      return vi.mocked(assembleSystemPromptWithSections).mock.calls.at(-1)?.[0]
     }
 
     function latestActiveTools(): Set<string> | undefined {
@@ -837,6 +837,23 @@ describe('AgentRuntime boundary', () => {
       runtime.refreshSystemPrompt()
       expect(codemodeToolOf(runtime)).toBeUndefined()
       expect(leadingSystemMessage(runtime)).toBe('runtime system prompt')
+    })
+
+    it('breaks the context down by the prompt blocks it built, codemode included', () => {
+      const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db: initDatabase(':memory:'), tools: [] })
+      codemode.mainAgent = true
+      vi.mocked(assembleSystemPromptWithSections).mockReturnValueOnce({
+        prompt: 'runtime system prompt',
+        sections: [{ key: 'personality', text: 'runtime system prompt' }],
+      })
+      runtime.refreshSystemPrompt()
+
+      const sectionKeys = () => runtime.getContextUsage()?.breakdown?.systemPrompt.sections.map(section => section.key).sort()
+      expect(sectionKeys()).toEqual(['codemode', 'personality'])
+
+      const piAgent = (runtime as unknown as AgentRuntimePiAgentAccess).getAgent()
+      piAgent.state.messages = [{ ...piAgent.state.messages[0], content: 'replaced elsewhere' } as never]
+      expect(sectionKeys()).toEqual(['other'])
     })
 
     it('rebuilds the declaration when the main agent tool set changes', () => {

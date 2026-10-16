@@ -26,7 +26,7 @@ vi.mock('./provider-config.js', async (importOriginal) => {
 vi.mock('./memory.js', () => ({
   ensureMemoryStructure: vi.fn(),
   ensureConfigStructure: vi.fn(),
-  assembleSystemPrompt: vi.fn(() => 'runtime system prompt'),
+  assembleSystemPromptWithSections: vi.fn(() => ({ prompt: 'runtime system prompt', sections: [] })),
   formatCurrentTimeContext: vi.fn(() => ''),
 }))
 

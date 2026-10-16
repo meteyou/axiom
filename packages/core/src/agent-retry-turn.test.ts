@@ -12,7 +12,7 @@ const { streamPromptMock, retryLastTurnMock } = vi.hoisted(() => ({
 vi.mock('./memory.js', () => ({
   ensureMemoryStructure: vi.fn(),
   ensureConfigStructure: vi.fn(),
-  assembleSystemPrompt: vi.fn(() => 'test system prompt'),
+  assembleSystemPromptWithSections: vi.fn(() => ({ prompt: 'test system prompt', sections: [] })),
   appendToDailyFile: vi.fn(),
 }))
 

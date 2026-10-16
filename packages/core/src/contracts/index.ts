@@ -81,17 +81,21 @@ export {
   CONTEXT_COMPACTION_WARNINGS,
   contextUsagePercent,
   formatContextUsage,
+  SYSTEM_PROMPT_SECTION_KEYS,
   formatTokenCount,
   formatTokensAfter,
   parseContextCompactionInfo,
 } from './compaction.js'
 
 export type {
+  ContextBreakdownSection,
   ContextCompactionInfo,
   ContextCompactionReason,
   ContextCompactionStatus,
   ContextCompactionWarning,
+  ContextUsageBreakdown,
   ContextUsageInfo,
+  SystemPromptSectionKey,
 } from './compaction.js'
 
 export type {

@@ -87,7 +87,47 @@
       "thresholdValue": "{tokens} ({percent}%)",
       "autoOff": "Automatische Komprimierung aus",
       "paused": "Die automatische Komprimierung pausiert: Die letzte Komprimierung konnte den Kontext nicht unter die Schwelle bringen. /new startet eine neue Unterhaltung.",
-      "estimated": "Geschätzt: Seit Sitzungsbeginn oder der letzten Komprimierung gab es noch keine Modellantwort. Der genaue Wert folgt mit der nächsten Antwort."
+      "estimated": "Geschätzt: Seit Sitzungsbeginn oder der letzten Komprimierung gab es noch keine Modellantwort. Der genaue Wert folgt mit der nächsten Antwort.",
+      "breakdown": {
+        "title": "Zusammensetzung",
+        "systemPrompt": "System-Prompt",
+        "toolDefinitions": "Tool-Definitionen ({count})",
+        "chat": "Chat",
+        "showMore": "{count} weitere",
+        "showLess": "Weniger anzeigen",
+        "estimated": "Anteile sind anhand der Textlänge geschätzt; Provider melden nur die Gesamtzahl.",
+        "chatParts": {
+          "summary": "Komprimierungs-Zusammenfassung",
+          "user": "Benutzernachrichten",
+          "assistant": "Antworten des Assistenten",
+          "toolResults": "Tool-Ergebnisse"
+        },
+        "sections": {
+          "personality": "Persönlichkeit (SOUL.md)",
+          "instructions": "Basisanweisungen",
+          "agent_rules": "Agentenregeln (AGENTS.md)",
+          "core_memory": "Kerngedächtnis (MEMORY.md)",
+          "recent_memory": "Tagesnotizen",
+          "current_user": "Aktueller Benutzer",
+          "user_profile": "Benutzerprofil",
+          "user_profiles_path": "Pfad der Benutzerprofile",
+          "available_tools": "Tool-Übersicht",
+          "available_providers": "Provider & Modelle",
+          "wiki_pages": "Wiki-Seiten",
+          "memory_paths": "Speicherpfade",
+          "shared_data_rules": "Regeln für geteilte Daten",
+          "axiom_docs": "Dokumentation",
+          "agent_skills": "Skill-Erstellung",
+          "available_skills": "Skills",
+          "task_system": "Aufgabensystem",
+          "workspace": "Arbeitsverzeichnis",
+          "current_date": "Aktuelles Datum",
+          "language": "Sprache",
+          "channel_context": "Kanal-Kontext",
+          "codemode": "Codemode",
+          "other": "Sonstiges"
+        }
+      }
     },
     "statusConnected": "Chat verbunden",
     "statusConnecting": "Verbinde",
