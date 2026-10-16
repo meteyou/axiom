@@ -87,7 +87,47 @@
       "thresholdValue": "{tokens} ({percent}%)",
       "autoOff": "Automatic compaction off",
       "paused": "Automatic compaction is paused: the last compaction could not get the context below the threshold. /new starts a fresh conversation.",
-      "estimated": "Estimated: no model response since the session started or the last compaction. The exact size follows with the next answer."
+      "estimated": "Estimated: no model response since the session started or the last compaction. The exact size follows with the next answer.",
+      "breakdown": {
+        "title": "Breakdown",
+        "systemPrompt": "System prompt",
+        "toolDefinitions": "Tool definitions ({count})",
+        "chat": "Chat",
+        "showMore": "{count} more",
+        "showLess": "Show less",
+        "estimated": "Shares are estimated from text length; providers only report the total.",
+        "chatParts": {
+          "summary": "Compaction summary",
+          "user": "User messages",
+          "assistant": "Assistant messages",
+          "toolResults": "Tool results"
+        },
+        "sections": {
+          "personality": "Personality (SOUL.md)",
+          "instructions": "Base instructions",
+          "agent_rules": "Agent rules (AGENTS.md)",
+          "core_memory": "Core memory (MEMORY.md)",
+          "recent_memory": "Daily notes",
+          "current_user": "Current user",
+          "user_profile": "User profile",
+          "user_profiles_path": "User profiles path",
+          "available_tools": "Tool overview",
+          "available_providers": "Providers & models",
+          "wiki_pages": "Wiki pages",
+          "memory_paths": "Memory paths",
+          "shared_data_rules": "Shared data rules",
+          "axiom_docs": "Docs",
+          "agent_skills": "Skill creation",
+          "available_skills": "Skills",
+          "task_system": "Task system",
+          "workspace": "Workspace",
+          "current_date": "Current date",
+          "language": "Language",
+          "channel_context": "Channel context",
+          "codemode": "Codemode",
+          "other": "Other"
+        }
+      }
     },
     "statusConnected": "Chat connected",
     "statusConnecting": "Connecting",

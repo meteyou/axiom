@@ -25,7 +25,7 @@
         </span>
       </button>
     </PopoverTrigger>
-    <PopoverContent align="start" class="w-72">
+    <PopoverContent align="start" class="max-h-(--reka-popover-content-available-height) w-80 max-w-[calc(100vw-1rem)] overflow-y-auto">
       <div class="flex flex-col gap-3">
         <div class="flex items-baseline justify-between gap-2">
           <p class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{{ $t('chat.context.title') }}</p>
@@ -57,6 +57,8 @@
 
         <p v-if="usage.autoCompactionPaused" class="text-xs text-destructive">{{ $t('chat.context.paused') }}</p>
         <p v-if="usage.estimated" class="text-xs text-muted-foreground">{{ $t('chat.context.estimated') }}</p>
+
+        <ChatContextBreakdown v-if="usage.breakdown && usage.tokens > 0" :breakdown="usage.breakdown" />
       </div>
     </PopoverContent>
   </Popover>
