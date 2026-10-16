@@ -500,8 +500,9 @@ const SESSION_AFFINITY_FORMATS = ['openai', 'openai-nosession', 'openrouter'] as
 
 /**
  * pi-ai `compat` options per wire API, mirroring `OpenAICompletionsCompat`,
- * `OpenAIResponsesCompat` and `AnthropicMessagesCompat` from pi-ai 1.0.
- * Update together with the pi-ai dependency.
+ * `OpenAIResponsesCompat` and `AnthropicMessagesCompat`. Contracts are bundled
+ * into the frontend, so pi-ai's compat schemas are not imported here;
+ * `custom-provider.test.ts` locks this table to them.
  */
 export const MODEL_COMPAT_FIELDS: Record<CompatApiTypeContract, Record<string, CompatFieldKind>> = {
   'openai-completions': {
@@ -543,6 +544,7 @@ export const MODEL_COMPAT_FIELDS: Record<CompatApiTypeContract, Record<string, C
     supportsAdditionalTools: 'boolean',
     supportsToolSearch: 'boolean',
     supportsExplicitPromptCacheMode: 'boolean',
+    supportsMidConvoEffort: 'boolean',
     supportsMaxOutputTokens: 'boolean',
   },
   'anthropic-messages': {
