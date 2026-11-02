@@ -15,8 +15,6 @@
  *   - Response: raw audio bytes
  */
 
-import { encrypt, decrypt, isEncrypted } from './encryption.js'
-import type { DeepgramModelContract, DeepgramModelsListContract } from './contracts/deepgram.js'
 
 // ── Constants ─────────────────────────────────────────────────────────
 
@@ -28,29 +26,16 @@ export const DEEPGRAM_DEFAULT_STT_MODEL = 'nova-3'
 /** Default TTS model. `aura-2-thalia-en` is a clear English voice. */
 export const DEEPGRAM_DEFAULT_TTS_MODEL = 'aura-2-thalia-en'
 
-/** Curated list of common Deepgram TTS voices surfaced in the UI. */
-export const DEEPGRAM_TTS_PRESET_MODELS = [
-  'aura-2-thalia-en',
-  'aura-2-andromeda-en',
-  'aura-2-helena-en',
-  'aura-asteria-en',
-  'aura-luna-en',
-  'aura-stella-en',
-  'aura-zeus-en',
-  'aura-2-ophelia-de',
-] as const
-
-export type DeepgramTtsPresetModel = (typeof DEEPGRAM_TTS_PRESET_MODELS)[number]
-
 /** Audio container Deepgram should encode the synthesized speech in. */
-export const DEEPGRAM_TTS_ENCODINGS = ['mp3', 'linear16', 'opus', 'flac'] as const
-export type DeepgramTtsEncoding = (typeof DEEPGRAM_TTS_ENCODINGS)[number]
+export type DeepgramTtsEncoding = 'mp3' | 'linear16' | 'opus' | 'flac'
 
 // ── Types ─────────────────────────────────────────────────────────────
 
 export interface DeepgramTranscribeOptions {
   /** Override base URL (mainly for tests / proxies). */
   baseUrl?: string
+  fetchImpl?: typeof fetch
+  signal?: AbortSignal
   /** Model name, e.g. `nova-3`, `nova-2-general`, `enhanced`. */
   model?: string
   /** ISO-639-1 language code (`en`, `de`, ...) or `multi`. Omit for auto-detect. */
@@ -62,69 +47,45 @@ export interface DeepgramTranscribeOptions {
 export interface DeepgramSynthesizeOptions {
   /** Override base URL (mainly for tests / proxies). */
   baseUrl?: string
+  fetchImpl?: typeof fetch
+  signal?: AbortSignal
   /** Voice / model name, e.g. `aura-2-thalia-en`. */
   model?: string
   /** Audio container Deepgram should produce. Defaults to `mp3`. */
   encoding?: DeepgramTtsEncoding
 }
 
-/**
- * Runtime alias for the wire-format `DeepgramModelContract`. Kept under the
- * shorter name in the runtime layer so call sites read naturally; the
- * contract type is the source of truth that the frontend can import.
- */
-export type DeepgramModel = DeepgramModelContract
+/** One entry of Deepgram's `GET /v1/models` response (extra metadata keys are kept loose). */
+export interface DeepgramModel {
+  name: string
+  /** API identifier passed to `?model=`, e.g. `nova-3-general`, `aura-2-thalia-en`. */
+  canonical_name: string
+  architecture: string
+  languages: string[]
+  version: string
+  uuid: string
+  batch?: boolean
+  streaming?: boolean
+  metadata?: {
+    accent?: string
+    tags?: string[]
+    use_cases?: string[]
+    [key: string]: unknown
+  }
+}
 
-/** Response shape of `GET /v1/models`. */
-export type DeepgramModelsList = DeepgramModelsListContract
+export interface DeepgramModelsList {
+  stt: DeepgramModel[]
+  tts: DeepgramModel[]
+}
 
 export interface DeepgramListModelsOptions {
   /** Override base URL (mainly for tests / proxies). */
   baseUrl?: string
+  fetchImpl?: typeof fetch
+  signal?: AbortSignal
   /** When `true`, include outdated/deprecated models. Defaults to `false`. */
   includeOutdated?: boolean
-}
-
-// ── Encryption helpers ────────────────────────────────────────────────
-
-/**
- * Encrypt a Deepgram API key for storage in `settings.json`.
- *
- * Idempotent: an already-encrypted ciphertext is returned unchanged so
- * accidental double-PATCHes do not corrupt the stored value.
- */
-export function encryptDeepgramApiKey(apiKey: string): string {
-  if (!apiKey) return ''
-  return isEncrypted(apiKey) ? apiKey : encrypt(apiKey)
-}
-
-/**
- * Decrypt a Deepgram API key from `settings.json`.
- *
- * Plaintext keys (e.g. for a freshly-edited config file) pass through
- * unchanged so callers don't need to special-case them.
- *
- * Tolerant fallback: Deepgram's 40-char hex API keys coincidentally satisfy
- * the strict-base64 + length-divisible-by-4 + decodes-to-30-bytes shape
- * that `isEncrypted()` checks for, so a plaintext key sitting in storage
- * can be misclassified as ciphertext. When `decrypt()` then fails the
- * AES-GCM auth tag check ("Unsupported state or unable to authenticate
- * data"), we treat the value as plaintext rather than crashing the caller.
- * The next save through `mergeStt`/`mergeTts` re-encrypts properly, so the
- * config heals itself on first round-trip.
- */
-export function decryptDeepgramApiKey(encryptedKey: string): string {
-  if (!encryptedKey) return ''
-  if (!isEncrypted(encryptedKey)) return encryptedKey
-  try {
-    return decrypt(encryptedKey)
-  } catch (err) {
-    console.warn(
-      `[deepgram] decrypt failed (${(err as Error).message}); treating stored value as plaintext. `
-      + 'Re-save the key in Settings to re-encrypt it.',
-    )
-    return encryptedKey
-  }
 }
 
 // ── Error mapping ─────────────────────────────────────────────────────
@@ -178,7 +139,8 @@ export async function listDeepgramModels(
 
   let response: Response
   try {
-    response = await fetch(url, {
+    response = await (options.fetchImpl ?? fetch)(url, {
+      signal: options.signal,
       method: 'GET',
       headers: {
         Authorization: `Token ${apiKey}`,
@@ -228,7 +190,7 @@ export async function transcribeDeepgram(
   options: DeepgramTranscribeOptions = {},
 ): Promise<string> {
   if (!apiKey) {
-    throw new Error('Deepgram STT: API key is not configured. Set it in Settings → Skills → Voice.')
+    throw new Error('Deepgram STT: API key is not configured. Add it to the Deepgram provider.')
   }
   if (!buffer || buffer.length === 0) {
     throw new Error('Deepgram STT: audio buffer is empty.')
@@ -246,7 +208,8 @@ export async function transcribeDeepgram(
 
   let response: Response
   try {
-    response = await fetch(url, {
+    response = await (options.fetchImpl ?? fetch)(url, {
+      signal: options.signal,
       method: 'POST',
       headers: {
         Authorization: `Token ${apiKey}`,
@@ -316,7 +279,7 @@ export async function synthesizeDeepgram(
   options: DeepgramSynthesizeOptions = {},
 ): Promise<Buffer> {
   if (!apiKey) {
-    throw new Error('Deepgram TTS: API key is not configured. Set it in Settings → Skills → Voice.')
+    throw new Error('Deepgram TTS: API key is not configured. Add it to the Deepgram provider.')
   }
   const trimmed = text?.trim() ?? ''
   if (!trimmed) {
@@ -336,7 +299,8 @@ export async function synthesizeDeepgram(
 
   let response: Response
   try {
-    response = await fetch(url, {
+    response = await (options.fetchImpl ?? fetch)(url, {
+      signal: options.signal,
       method: 'POST',
       headers: {
         Authorization: `Token ${apiKey}`,

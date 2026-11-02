@@ -2,11 +2,7 @@ export {
   HEALTH_MONITOR_FALLBACK_TRIGGERS,
   TASK_TELEGRAM_DELIVERY_VALUES,
   TASK_LOOP_DETECTION_METHODS,
-  SETTINGS_TTS_PROVIDERS,
-  SETTINGS_TTS_OPENAI_MODELS,
   SETTINGS_TTS_RESPONSE_FORMATS,
-  SETTINGS_STT_PROVIDERS,
-  SETTINGS_STT_OPENAI_MODELS,
   SETTINGS_THINKING_LEVELS,
   SETTINGS_APP_LOGOS,
   IMAGE_GENERATION_MAX_VARIANTS_BOUNDS,
@@ -20,6 +16,8 @@ export {
   normalizeImageGenerationSettings,
   normalizeImageOutputDir,
   normalizeAppLogo,
+  normalizeTtsSettings,
+  normalizeSttSettings,
   withLegacySettingsPayloadCompatibility,
 } from './settings.js'
 
@@ -27,11 +25,7 @@ export type {
   HealthMonitorFallbackTrigger,
   TaskTelegramDelivery,
   TaskLoopDetectionMethod,
-  TtsProvider,
-  TtsOpenAiModel,
   TtsResponseFormat,
-  SttProvider,
-  SttOpenAiModel,
   SettingsThinkingLevel,
   AppLogo,
   AppearanceSettingsContract,
@@ -72,6 +66,9 @@ export {
   getSupportedThinkingLevels,
   MODEL_THINKING_LEVELS,
   COMPACTION_SCOPES,
+  PROVIDER_MODEL_TYPES,
+  isProviderModelType,
+  VOICE_MODEL_KINDS,
 } from './providers.js'
 
 export {
@@ -99,11 +96,6 @@ export type {
 } from './compaction.js'
 
 export type {
-  DeepgramModelContract,
-  DeepgramModelsListContract,
-} from './deepgram.js'
-
-export type {
   ProviderStatusContract,
   ProviderAuthMethodContract,
   ProviderQuotaKindContract,
@@ -114,6 +106,9 @@ export type {
   ProviderTypePresetContract,
   AvailableModelContract,
   AvailableImageModelContract,
+  AvailableVoiceModelContract,
+  VoiceModelKindContract,
+  VoiceOptionContract,
   ImageBillingContract,
   ImageModelAverageCostContract,
   ImageModelPricingContract,
@@ -127,6 +122,7 @@ export type {
   ProviderCatalogRefreshResponseContract,
   ProviderTestResultContract,
   ProviderImageTestResultContract,
+  ProviderTtsTestPayloadContract,
   ProviderActivationResponseContract,
   ProviderFallbackResponseContract,
   OAuthLoginResponseContract,

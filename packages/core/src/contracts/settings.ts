@@ -7,20 +7,8 @@ export type TaskTelegramDelivery = (typeof TASK_TELEGRAM_DELIVERY_VALUES)[number
 export const TASK_LOOP_DETECTION_METHODS = ['systematic', 'smart', 'auto'] as const
 export type TaskLoopDetectionMethod = (typeof TASK_LOOP_DETECTION_METHODS)[number]
 
-export const SETTINGS_TTS_PROVIDERS = ['openai', 'mistral', 'deepgram'] as const
-export type TtsProvider = (typeof SETTINGS_TTS_PROVIDERS)[number]
-
-export const SETTINGS_TTS_OPENAI_MODELS = ['gpt-4o-mini-tts', 'tts-1', 'tts-1-hd'] as const
-export type TtsOpenAiModel = (typeof SETTINGS_TTS_OPENAI_MODELS)[number]
-
 export const SETTINGS_TTS_RESPONSE_FORMATS = ['mp3', 'wav', 'opus', 'flac'] as const
 export type TtsResponseFormat = (typeof SETTINGS_TTS_RESPONSE_FORMATS)[number]
-
-export const SETTINGS_STT_PROVIDERS = ['whisper-url', 'openai', 'ollama', 'deepgram'] as const
-export type SttProvider = (typeof SETTINGS_STT_PROVIDERS)[number]
-
-export const SETTINGS_STT_OPENAI_MODELS = ['whisper-1', 'gpt-4o-transcribe', 'gpt-4o-mini-transcribe'] as const
-export type SttOpenAiModel = (typeof SETTINGS_STT_OPENAI_MODELS)[number]
 
 /**
  * Thinking / reasoning level for the agent.
@@ -224,15 +212,13 @@ export function normalizeImageOutputDir(value: string): string | null {
 
 export interface TtsSettingsContract {
   enabled: boolean
-  provider: TtsProvider
-  providerId: string
-  openaiModel: TtsOpenAiModel
-  openaiVoice: string
-  openaiInstructions: string
-  mistralVoice: string
+  /** `providerId:modelId` of a configured TTS model, empty when none is selected. */
+  model: string
+  /** Provider-specific voice id; empty uses the model's default voice. */
+  voice: string
+  /** Delivery instructions for models that accept them (e.g. gpt-4o-mini-tts). */
+  instructions: string
   responseFormat: TtsResponseFormat
-  deepgramModel: string
-  deepgramApiKey: string
 }
 
 export interface SttRewriteSettingsContract {
@@ -242,14 +228,10 @@ export interface SttRewriteSettingsContract {
 
 export interface SttSettingsContract {
   enabled: boolean
-  provider: SttProvider
-  whisperUrl: string
-  providerId: string
-  openaiModel: SttOpenAiModel
-  ollamaModel: string
-  deepgramModel: string
-  deepgramLanguage: string
-  deepgramApiKey: string
+  /** `providerId:modelId` of a configured STT model, empty when none is selected. */
+  model: string
+  /** ISO-639-1 language override; empty follows the user's chat language. */
+  language: string
   rewrite: SttRewriteSettingsContract
 }
 
@@ -438,26 +420,15 @@ export const DEFAULT_SETTINGS_CONTRACT: SettingsContract = {
   },
   tts: {
     enabled: false,
-    provider: 'openai',
-    providerId: '',
-    openaiModel: 'gpt-4o-mini-tts',
-    openaiVoice: 'nova',
-    openaiInstructions: '',
-    mistralVoice: '',
+    model: '',
+    voice: '',
+    instructions: '',
     responseFormat: 'mp3',
-    deepgramModel: 'aura-2-thalia-en',
-    deepgramApiKey: '',
   },
   stt: {
     enabled: false,
-    provider: 'whisper-url',
-    whisperUrl: '',
-    providerId: '',
-    openaiModel: 'whisper-1',
-    ollamaModel: '',
-    deepgramModel: 'nova-3',
-    deepgramLanguage: '',
-    deepgramApiKey: '',
+    model: '',
+    language: '',
     rewrite: {
       enabled: false,
       providerId: '',
@@ -656,35 +627,41 @@ export function normalizeSettingsContract(input: DeepPartial<SettingsContract> |
       tasks: source.codemode?.tasks === true,
     },
     imageGeneration: normalizeImageGenerationSettings(source.imageGeneration),
-    tts: {
-      enabled: source.tts?.enabled ?? DEFAULT_SETTINGS_CONTRACT.tts.enabled,
-      provider: source.tts?.provider ?? DEFAULT_SETTINGS_CONTRACT.tts.provider,
-      providerId: source.tts?.providerId ?? DEFAULT_SETTINGS_CONTRACT.tts.providerId,
-      openaiModel: source.tts?.openaiModel ?? DEFAULT_SETTINGS_CONTRACT.tts.openaiModel,
-      openaiVoice: source.tts?.openaiVoice ?? DEFAULT_SETTINGS_CONTRACT.tts.openaiVoice,
-      openaiInstructions: source.tts?.openaiInstructions ?? DEFAULT_SETTINGS_CONTRACT.tts.openaiInstructions,
-      mistralVoice: source.tts?.mistralVoice ?? DEFAULT_SETTINGS_CONTRACT.tts.mistralVoice,
-      responseFormat: source.tts?.responseFormat ?? DEFAULT_SETTINGS_CONTRACT.tts.responseFormat,
-      deepgramModel: source.tts?.deepgramModel ?? DEFAULT_SETTINGS_CONTRACT.tts.deepgramModel,
-      deepgramApiKey: source.tts?.deepgramApiKey ?? DEFAULT_SETTINGS_CONTRACT.tts.deepgramApiKey,
-    },
-    stt: {
-      enabled: source.stt?.enabled ?? DEFAULT_SETTINGS_CONTRACT.stt.enabled,
-      provider: source.stt?.provider ?? DEFAULT_SETTINGS_CONTRACT.stt.provider,
-      whisperUrl: source.stt?.whisperUrl ?? DEFAULT_SETTINGS_CONTRACT.stt.whisperUrl,
-      providerId: source.stt?.providerId ?? DEFAULT_SETTINGS_CONTRACT.stt.providerId,
-      openaiModel: source.stt?.openaiModel ?? DEFAULT_SETTINGS_CONTRACT.stt.openaiModel,
-      ollamaModel: source.stt?.ollamaModel ?? DEFAULT_SETTINGS_CONTRACT.stt.ollamaModel,
-      deepgramModel: source.stt?.deepgramModel ?? DEFAULT_SETTINGS_CONTRACT.stt.deepgramModel,
-      deepgramLanguage: source.stt?.deepgramLanguage ?? DEFAULT_SETTINGS_CONTRACT.stt.deepgramLanguage,
-      deepgramApiKey: source.stt?.deepgramApiKey ?? DEFAULT_SETTINGS_CONTRACT.stt.deepgramApiKey,
-      rewrite: {
-        enabled: source.stt?.rewrite?.enabled ?? DEFAULT_SETTINGS_CONTRACT.stt.rewrite.enabled,
-        providerId: source.stt?.rewrite?.providerId ?? DEFAULT_SETTINGS_CONTRACT.stt.rewrite.providerId,
-      },
-    },
+    tts: normalizeTtsSettings(source.tts),
+    stt: normalizeSttSettings(source.stt),
     appearance: {
       logo: normalizeAppLogo(source.appearance?.logo),
+    },
+  }
+}
+
+function stringOr(value: unknown, fallback: string): string {
+  return typeof value === 'string' ? value : fallback
+}
+
+export function normalizeTtsSettings(source: Partial<TtsSettingsContract> | undefined): TtsSettingsContract {
+  const defaults = DEFAULT_SETTINGS_CONTRACT.tts
+  const format = source?.responseFormat
+  return {
+    enabled: source?.enabled === true,
+    model: stringOr(source?.model, defaults.model),
+    voice: stringOr(source?.voice, defaults.voice),
+    instructions: stringOr(source?.instructions, defaults.instructions),
+    responseFormat: format && (SETTINGS_TTS_RESPONSE_FORMATS as readonly string[]).includes(format) ? format : defaults.responseFormat,
+  }
+}
+
+export function normalizeSttSettings(
+  source: (Partial<Omit<SttSettingsContract, 'rewrite'>> & { rewrite?: Partial<SttRewriteSettingsContract> }) | undefined,
+): SttSettingsContract {
+  const defaults = DEFAULT_SETTINGS_CONTRACT.stt
+  return {
+    enabled: source?.enabled === true,
+    model: stringOr(source?.model, defaults.model),
+    language: stringOr(source?.language, defaults.language),
+    rewrite: {
+      enabled: source?.rewrite?.enabled === true,
+      providerId: stringOr(source?.rewrite?.providerId, defaults.rewrite.providerId),
     },
   }
 }
