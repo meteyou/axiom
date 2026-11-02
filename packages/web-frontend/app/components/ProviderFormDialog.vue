@@ -57,7 +57,7 @@
             id="provider-url"
             v-model="form.baseUrl"
             type="url"
-            :placeholder="isCustomProvider ? customBaseUrlPlaceholder : 'https://...'"
+            :placeholder="baseUrlPlaceholder"
             :required="isCustomProvider"
           />
           <p v-if="selectedPreset?.type === 'ollama'" class="text-xs text-muted-foreground">
@@ -577,9 +577,11 @@ function translatedOr(key: string, fallback: string): string {
   return translated && translated !== key ? translated : fallback
 }
 
-const customBaseUrlPlaceholder = computed(() => customApiType.value === 'anthropic-messages'
-  ? 'https://api.example.com/anthropic'
-  : 'https://api.example.com/v1')
+// Kept out of the template: vue-tsc 3.3 mangles `//` inside template string literals into a comment and mistypes everything after it.
+const baseUrlPlaceholder = computed(() => {
+  if (!isCustomProvider.value) return 'https://...'
+  return customApiType.value === 'anthropic-messages' ? 'https://api.example.com/anthropic' : 'https://api.example.com/v1'
+})
 
 function extraFieldTranslation(field: ExtraFieldDef, part: 'label' | 'placeholder' | 'hint', fallback: string): string {
   return translatedOr(`providers.providerExtraFields.${form.providerType}.${field.key}.${part}`, fallback)
