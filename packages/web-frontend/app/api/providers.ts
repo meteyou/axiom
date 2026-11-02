@@ -1,6 +1,7 @@
 import type {
   AvailableImageModelContract,
   AvailableModelContract,
+  AvailableVoiceModelContract,
   OAuthLoginResponseContract,
   OAuthStatusResponseContract,
   OllamaModelContract,
@@ -19,6 +20,9 @@ import type {
   ProviderTypePresetContract,
   ProviderUpdatePayloadContract,
   ProvidersListResponseContract,
+  ProviderTtsTestPayloadContract,
+  VoiceModelKindContract,
+  VoiceOptionContract,
 } from '@axiom/core/contracts'
 
 export type Provider = ProviderContract
@@ -27,6 +31,9 @@ export type OAuthStatusResponse = OAuthStatusResponseContract
 export type ProviderTypePreset = ProviderTypePresetContract
 export type AvailableModel = AvailableModelContract
 export type AvailableImageModel = AvailableImageModelContract
+export type AvailableVoiceModel = AvailableVoiceModelContract
+export type VoiceModelKind = VoiceModelKindContract
+export type VoiceOption = VoiceOptionContract
 export type ProviderImageTestResult = ProviderImageTestResultContract
 export type OllamaModel = OllamaModelContract
 export type OllamaPullEvent = OllamaPullEventContract
@@ -109,6 +116,26 @@ export function useProvidersApi() {
 
   const getLiveImageModels = (providerId: string) =>
     apiFetch<{ models: AvailableImageModel[] }>(`/api/providers/${providerId}/live-image-models`)
+
+  const getLiveVoiceModels = (providerId: string, kind: VoiceModelKind) =>
+    apiFetch<{ models: AvailableVoiceModel[] }>(`/api/providers/${providerId}/voice-models/${kind}`)
+
+  /** `voices: null` means the model id already selects the voice. */
+  const getTtsVoices = (providerId: string, modelId: string) =>
+    apiFetch<{ voices: VoiceOption[] | null }>(`/api/providers/${providerId}/voices?modelId=${encodeURIComponent(modelId)}`)
+
+  async function generateTestSpeech(providerId: string, payload: ProviderTtsTestPayloadContract): Promise<Blob> {
+    const response = await fetch(`${config.public.apiBase || ''}/api/providers/${providerId}/tts-test`, {
+      method: 'POST',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ error: `HTTP ${response.status}` })) as { error?: string }
+      throw new Error(err.error || `HTTP ${response.status}`)
+    }
+    return response.blob()
+  }
 
   const getOllamaModels = (providerId: string) =>
     apiFetch<{ models: OllamaModel[] }>(`/api/providers/${providerId}/ollama-models`)
@@ -202,6 +229,9 @@ export function useProvidersApi() {
     getImageModels,
     getLiveModels,
     getLiveImageModels,
+    getLiveVoiceModels,
+    getTtsVoices,
+    generateTestSpeech,
     getOllamaModels,
     probeOllamaModels,
     deleteOllamaModel,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildImageModelOptions, buildProviderModelOptions, getImageModelDisplayName, getModelDisplayName, listImageModels, listUsableImageModels } from './providerModelOptions'
+import { buildImageModelOptions, buildProviderModelOptions, buildVoiceModelOptions, getImageModelDisplayName, getModelDisplayName, listImageModels, listUsableImageModels } from './providerModelOptions'
 
 const providers = [
   { id: 'a', name: 'A', enabledModels: ['a1', 'a2'], disabledModels: ['a2'] },
@@ -97,5 +97,24 @@ describe('image model options', () => {
     ])
     expect(listUsableImageModels([partlyDisabled]).map(e => e.modelId)).toEqual(['google/gemini-3.1-flash-image'])
     expect(buildImageModelOptions([partlyDisabled]).map(o => o.value)).toEqual(['or:google/gemini-3.1-flash-image'])
+  })
+})
+
+describe('buildVoiceModelOptions', () => {
+  const voiceProviders = [
+    {
+      id: 'dg',
+      name: 'Deepgram',
+      enabledSttModels: ['nova-3', 'nova-2'],
+      disabledSttModels: ['nova-2'],
+      enabledTtsModels: ['aura-2-thalia-en'],
+      models: [{ id: 'nova-3', name: 'Nova 3' }],
+    },
+    { id: 'off', name: 'Off', enabledSttModels: ['whisper-1'], disabled: true },
+  ]
+
+  it('lists usable models of the requested kind only', () => {
+    expect(buildVoiceModelOptions(voiceProviders, 'stt')).toEqual([{ value: 'dg:nova-3', label: 'Deepgram (Nova 3)' }])
+    expect(buildVoiceModelOptions(voiceProviders, 'tts').map(o => o.value)).toEqual(['dg:aura-2-thalia-en'])
   })
 })

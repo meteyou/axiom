@@ -12,10 +12,7 @@ interface ConsolidationStatus {
 
 interface TtsPreviewPayload {
   text: string
-  settings: Pick<
-    TtsSettingsContract,
-    'provider' | 'providerId' | 'openaiModel' | 'openaiVoice' | 'openaiInstructions' | 'mistralVoice' | 'responseFormat'
-  >
+  settings: Pick<TtsSettingsContract, 'model' | 'voice' | 'instructions' | 'responseFormat'>
 }
 
 export interface ChatModelRef {

@@ -4,6 +4,10 @@ export interface ProviderModelSource {
   enabledModels?: string[]
   enabledImageModels?: string[]
   disabledImageModels?: string[]
+  enabledSttModels?: string[]
+  disabledSttModels?: string[]
+  enabledTtsModels?: string[]
+  disabledTtsModels?: string[]
   disabled?: boolean
   disabledModels?: string[]
   models?: { id: string; name?: string; description?: string }[]
@@ -65,6 +69,30 @@ export function buildImageModelOptions(providers: ProviderModelSource[]): Provid
     value: `${entry.providerId}:${entry.modelId}`,
     label: `${entry.providerName} (${entry.displayName})`,
   }))
+}
+
+export type VoiceModelKind = 'stt' | 'tts'
+
+export function getVoiceModelIds(provider: ProviderModelSource, kind: VoiceModelKind): string[] {
+  return (kind === 'stt' ? provider.enabledSttModels : provider.enabledTtsModels) ?? []
+}
+
+export function isVoiceModelDisabled(provider: ProviderModelSource, kind: VoiceModelKind, modelId: string): boolean {
+  return ((kind === 'stt' ? provider.disabledSttModels : provider.disabledTtsModels) ?? []).includes(modelId)
+}
+
+/** `providerId:modelId` options of usable STT or TTS models (enabled providers, enabled models). */
+export function buildVoiceModelOptions(providers: ProviderModelSource[], kind: VoiceModelKind): ProviderModelOption[] {
+  return providers
+    .filter(provider => !provider.disabled)
+    .flatMap(provider =>
+      getVoiceModelIds(provider, kind)
+        .filter(modelId => !isVoiceModelDisabled(provider, kind, modelId))
+        .map(modelId => ({
+          value: `${provider.id}:${modelId}`,
+          label: `${provider.name} (${getModelDisplayName(provider, modelId)})`,
+        })),
+    )
 }
 
 /**

@@ -259,7 +259,7 @@
 
 
         <!-- Degraded Threshold -->
-        <div v-if="form.providerType" class="flex flex-col gap-1.5">
+        <div v-if="form.providerType && !selectedPreset?.voiceOnly" class="flex flex-col gap-1.5">
           <Label for="provider-degraded-threshold">{{ $t('providers.degradedThreshold') }}</Label>
           <div class="flex items-center gap-2">
             <Input

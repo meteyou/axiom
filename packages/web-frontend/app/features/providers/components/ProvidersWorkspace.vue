@@ -181,13 +181,21 @@
                           <AppIcon name="edit" class="h-4 w-4" />
                           {{ $t('users.edit') }}
                         </DropdownMenuItem>
-                        <DropdownMenuItem @click="openAddModel(provider)">
+                        <DropdownMenuItem v-if="!isVoiceOnly(provider)" @click="openAddModel(provider)">
                           <AppIcon name="add" class="h-4 w-4" />
                           {{ $t('providers.addModelMenu') }}
                         </DropdownMenuItem>
                         <DropdownMenuItem v-if="supportsImageModels(provider)" @click="openAddImageModel(provider)">
                           <AppIcon name="image" class="h-4 w-4" />
                           {{ $t('providers.imageModels.addMenu') }}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          v-for="kind in voiceKindsOf(provider)"
+                          :key="`add-${kind}`"
+                          @click="addVoiceModelTarget = { provider, kind }"
+                        >
+                          <AppIcon :name="VOICE_KIND_ICONS[kind]" class="h-4 w-4" />
+                          {{ $t(`providers.voiceModels.${kind}.addMenu`) }}
                         </DropdownMenuItem>
                         <DropdownMenuItem
                             v-if="providerSupportsQuota(provider)"
@@ -435,6 +443,82 @@
                     </TableCell>
                   </TableRow>
                 </template>
+
+                <template v-for="kind in VOICE_KINDS" :key="`${provider.id}-${kind}-section`">
+                  <template v-if="getVoiceModelIds(provider, kind).length > 0">
+                    <TableRow class="bg-muted/30 hover:bg-muted/30">
+                      <TableCell colspan="4" class="py-1.5">
+                        <div class="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                          <AppIcon :name="VOICE_KIND_ICONS[kind]" class="h-3.5 w-3.5" />
+                          {{ $t(`providers.voiceModels.${kind}.sectionTitle`) }}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                    <TableRow
+                      v-for="modelId in getVoiceModelIds(provider, kind)"
+                      :key="`${provider.id}-${kind}-${modelId}`"
+                      class="bg-muted/30 hover:bg-muted/50"
+                      :class="isVoiceModelUnavailable(provider, kind, modelId) ? 'opacity-60' : ''"
+                    >
+                      <TableCell class="py-1.5">
+                        <div class="flex items-center gap-2">
+                          <span class="text-xs text-muted-foreground">└</span>
+                          <span class="text-sm" :class="isVoiceModelUnavailable(provider, kind, modelId) ? 'text-muted-foreground line-through' : 'text-foreground'">{{ getModelDisplayName(provider, modelId) }}</span>
+                          <span
+                            v-if="getModelDisplayName(provider, modelId) !== modelId"
+                            class="font-mono text-[11px] text-muted-foreground"
+                          >{{ modelId }}</span>
+                          <Badge v-if="isVoiceModelDisabled(provider, kind, modelId)" variant="outline" class="px-1.5 py-0 text-[10px]">
+                            {{ $t('providers.disabled') }}
+                          </Badge>
+                        </div>
+                      </TableCell>
+                      <TableCell class="py-1.5">
+                        <span class="text-xs text-muted-foreground">{{ $t('providers.costNA') }}</span>
+                      </TableCell>
+                      <TableCell class="py-1.5 text-right">
+                        <div v-if="isTestingModel(provider.id, modelId) || speechTestKey === voiceKey(provider, modelId)" class="flex items-center justify-end gap-1.5">
+                          <span
+                            class="h-3.5 w-3.5 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent"
+                            aria-hidden="true"
+                          />
+                          <span class="text-xs text-muted-foreground">{{ $t('providers.testing') }}</span>
+                        </div>
+                        <Badge v-else :variant="getStatusVariant(provider.modelStatuses?.[modelId])">
+                          {{ getStatusLabel(provider.modelStatuses?.[modelId]) }}
+                        </Badge>
+                      </TableCell>
+                      <TableCell class="py-1.5 text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger as-child>
+                            <Button variant="ghost" size="icon-sm" :aria-label="$t('providers.columns.actions')">
+                              <AppIcon name="moreVertical" class="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem @click="handleCheckVoiceModel(provider.id, kind, modelId)">
+                              <AppIcon name="refresh" class="h-4 w-4" />
+                              {{ $t('providers.voiceModels.checkAvailability') }}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem v-if="kind === 'tts'" @click="handleSpeechTest(provider, modelId)">
+                              <AppIcon name="volume" class="h-4 w-4" />
+                              {{ $t('providers.voiceModels.tts.testMenu') }}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem @click="handleToggleVoiceModelDisabled(provider, kind, modelId)">
+                              <AppIcon :name="isVoiceModelDisabled(provider, kind, modelId) ? 'power' : 'powerOff'" class="h-4 w-4" />
+                              {{ isVoiceModelDisabled(provider, kind, modelId) ? $t('providers.enable') : $t('providers.disable') }}
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem destructive @click="removeVoiceModelTarget = { provider, kind, modelId }">
+                              <AppIcon name="trash" class="h-4 w-4" />
+                              {{ $t('providers.removeModel') }}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  </template>
+                </template>
               </template>
             </TableBody>
           </Table>
@@ -467,6 +551,25 @@
     :provider="addImageModelTarget"
     @close="addImageModelTarget = null"
     @added="showSuccess(t('providers.addModelSuccess'))"
+  />
+
+  <AddVoiceModelDialog
+    :open="!!addVoiceModelTarget"
+    :provider="addVoiceModelTarget?.provider ?? null"
+    :kind="addVoiceModelTarget?.kind ?? 'stt'"
+    @close="addVoiceModelTarget = null"
+    @added="showSuccess(t('providers.addModelSuccess'))"
+  />
+
+  <ConfirmDialog
+    :open="!!removeVoiceModelTarget"
+    :title="$t('providers.removeModel')"
+    :description="$t('providers.removeModelConfirm', { model: removeVoiceModelTarget?.modelId ?? '', provider: removeVoiceModelTarget?.provider.name ?? '' })"
+    :confirm-label="$t('providers.removeModelConfirmButton')"
+    :cancel-label="$t('providers.deleteCancel')"
+    destructive
+    @confirm="handleRemoveVoiceModel"
+    @cancel="removeVoiceModelTarget = null"
   />
 
   <EditImageModelDialog
@@ -534,13 +637,16 @@ import type { CompactionScopeContract, ImageBillingContract, ProviderCatalogRefr
 import type { Provider } from '~/features/providers/composables/useProviders'
 import type { ProviderFormPayload } from '~/components/ProviderFormDialog.vue'
 import { useProviders } from '~/features/providers/composables/useProviders'
+import { useProvidersApi } from '~/api/providers'
 import { formatModelCost as formatCost } from '~/utils/modelFormat'
-import { getImageModelDisplayName, getModelDisplayName } from '~/utils/providerModelOptions'
+import { getImageModelDisplayName, getModelDisplayName, getVoiceModelIds, isVoiceModelDisabled } from '~/utils/providerModelOptions'
+import type { VoiceModelKind } from '~/utils/providerModelOptions'
 import { formatImageCost, formatPerMillionPrice } from '~/utils/imageModelCatalog'
 import { providerTypeLabel } from '~/utils/providerTypeOptions'
 
 const { t } = useI18n()
 const { quotaWindowParts } = useQuotaFormat()
+const providersApi = useProvidersApi()
 
 const {
   providers,
@@ -611,6 +717,12 @@ const addImageModelTarget = ref<Provider | null>(null)
 const editImageModelTarget = ref<ProviderModelRef | null>(null)
 const imageTestTarget = ref<ProviderModelRef | null>(null)
 const removeImageModelTarget = ref<ProviderModelRef | null>(null)
+
+const VOICE_KINDS: readonly VoiceModelKind[] = ['stt', 'tts']
+const VOICE_KIND_ICONS: Record<VoiceModelKind, string> = { stt: 'mic', tts: 'volume' }
+const addVoiceModelTarget = ref<{ provider: Provider; kind: VoiceModelKind } | null>(null)
+const removeVoiceModelTarget = ref<{ provider: Provider; kind: VoiceModelKind; modelId: string } | null>(null)
+const speechTestKey = ref<string | null>(null)
 
 const sortedProviders = computed(() =>
   [...providers.value].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })),
@@ -850,6 +962,68 @@ async function handleRemoveImageModel() {
   const enabledImageModels = getImageModels(target.provider).filter(id => id !== target.modelId)
   const result = await updateProvider(target.provider.id, { enabledImageModels })
   if (result) removeImageModelTarget.value = null
+}
+
+/* ── Voice models ── */
+function isVoiceOnly(provider: Provider): boolean {
+  return presets.value[provider.providerType]?.voiceOnly === true
+}
+
+function voiceKindsOf(provider: Provider): VoiceModelKind[] {
+  const preset = presets.value[provider.providerType]
+  return VOICE_KINDS.filter(kind => (kind === 'stt' ? preset?.supportsSttModels : preset?.supportsTtsModels) === true)
+}
+
+function isVoiceModelUnavailable(provider: Provider, kind: VoiceModelKind, modelId: string): boolean {
+  return provider.disabled === true || isVoiceModelDisabled(provider, kind, modelId)
+}
+
+function voiceKey(provider: Provider, modelId: string): string {
+  return `${provider.id}:${modelId}`
+}
+
+async function handleCheckVoiceModel(providerId: string, kind: VoiceModelKind, modelId: string) {
+  const result = await testProvider(providerId, modelId, kind)
+  if (result.success) {
+    showSuccess(result.message ?? t('providers.testSuccess'))
+  } else {
+    error.value = result.error ?? t('providers.testFailed')
+  }
+}
+
+const { play: playSpeechTest } = useAudioPreview()
+
+async function handleSpeechTest(provider: Provider, modelId: string) {
+  if (speechTestKey.value) return
+  speechTestKey.value = voiceKey(provider, modelId)
+  try {
+    const blob = await providersApi.generateTestSpeech(provider.id, { modelId, text: t('providers.voiceModels.tts.testText') })
+    await fetchProviders()
+    await playSpeechTest(blob)
+  } catch (err) {
+    error.value = (err as Error).message
+    await fetchProviders()
+  } finally {
+    speechTestKey.value = null
+  }
+}
+
+async function handleToggleVoiceModelDisabled(provider: Provider, kind: VoiceModelKind, modelId: string) {
+  const disabled = !isVoiceModelDisabled(provider, kind, modelId)
+  const result = await updateProviderModel(provider.id, modelId, { disabled, modelType: kind })
+  if (!result) return
+  showSuccess(t(disabled ? 'providers.disableSuccess' : 'providers.enableSuccess', { name: getModelDisplayName(provider, modelId) }))
+}
+
+async function handleRemoveVoiceModel() {
+  const target = removeVoiceModelTarget.value
+  if (!target) return
+  const models = getVoiceModelIds(target.provider, target.kind).filter(id => id !== target.modelId)
+  const result = await updateProvider(
+    target.provider.id,
+    target.kind === 'stt' ? { enabledSttModels: models } : { enabledTtsModels: models },
+  )
+  if (result) removeVoiceModelTarget.value = null
 }
 
 /* ── Create / Edit ── */
