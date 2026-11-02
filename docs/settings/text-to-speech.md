@@ -1,120 +1,72 @@
 # Text-to-Speech
 
-Let the agent talk back in an actual human-sounding voice — used by the "play this message" speaker button in the web chat.
+Let the agent talk back in an actual human-sounding voice — used by the "play this message" speaker button in the web chat and by [Telegram voice replies](./telegram#send-voice-reply).
 
 **URL:** `/settings?tab=tts`
 
 ## Enabled
 
-Master toggle. When off, no speaker icons disappear from the UI.
+Master toggle. When off, the speaker icons disappear from the UI.
 
 ```json
 { "tts": { "enabled": false } }
 ```
 
-## Provider
+## TTS model
 
-Which backend generates the audio. Both options reference an entry you already configured on the [Providers](../web-ui/providers) page — the API key / base URL is read from there.
+Which model generates the audio. The dropdown lists every enabled **TTS model** of every enabled provider, e.g. `Deepgram (aura-2-thalia-en)` or `OpenRouter (ElevenLabs: Eleven v3)`.
 
-| Value      | Notes                                                                                                                                                                              |
-|------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `openai`   | Uses an OpenAI API-Key provider from `providers.json`. Calls its `/v1/audio/speech` endpoint with one of OpenAI's TTS models.                                                      |
-| `mistral`  | Uses a Mistral API-Key provider from `providers.json`. Synthesises with Mistral's Voxtral voices.                                                                                  |
-| `deepgram` | Hosted Deepgram Aura voices. Standalone — does **not** use a provider entry. Uses the API key configured directly in the **Deepgram** card below (stored in `tts.deepgramApiKey`). |
+TTS models are added on the [Providers](../web-ui/providers#voice-models) page via the provider's ⋮ menu → **Add TTS model** — this tab only selects one of them. If no TTS model is configured yet, the dropdown is disabled and links to the Providers page.
 
-The dropdown lists each matching provider as its own entry, e.g. `OpenAI (My OpenAI)` or `Mistral Voxtral (Mistral Main)`. If no matching provider is configured, the option appears `disabled`.
-
-The selected provider's id is stored in `tts.providerId`; `tts.provider` stores only the backend type:
+The selection is stored as `providerId:modelId`. It is empty until you pick a model, and it is reset to empty when the model or its provider is disabled or removed.
 
 ```json
-{ "tts": { "provider": "openai", "providerId": "openai-main" } }
+{ "tts": { "model": "deepgram-main:aura-2-thalia-en" } }
 ```
 
-## OpenAI model
+## Voice
 
-Shown when provider is `openai`. The model is sent to the selected provider's `/v1/audio/speech` endpoint.
+Shown once a model is selected. The options depend on the provider:
 
-| Value             | Notes                                                         |
-|-------------------|---------------------------------------------------------------|
-| `gpt-4o-mini-tts` | Newer, supports tone/style instructions. Recommended default. |
-| `tts-1`           | Classic, fast, cheap.                                         |
-| `tts-1-hd`        | Higher-fidelity version of `tts-1`.                           |
+| Provider | Voices |
+|---|---|
+| OpenAI | OpenAI's preset voices (`alloy`, `coral`, `nova`, …). `tts-1` / `tts-1-hd` only offer the classic subset. |
+| Mistral | Loaded live from Mistral's voice library (`/v1/audio/voices`). |
+| OpenRouter | The model's `supported_voices` from OpenRouter's model list. |
+| xAI | Loaded live from `/v1/tts/voices`. |
+| Deepgram | No voice picker — every Aura model id already *is* a voice (`aura-2-thalia-en`, `aura-2-julius-de`, …). Add another TTS model to change the voice. |
+| Custom (OpenAI-compatible) | Free-text voice id, because self-hosted servers name their voices freely. |
+
+Leave empty to use the model's default voice (OpenRouter: the model's first supported voice).
 
 ```json
-{ "tts": { "openaiModel": "gpt-4o-mini-tts" } }
+{ "tts": { "voice": "coral" } }
 ```
 
-## OpenAI voice
+## Voice instructions
 
-Shown when provider is `openai`. One of OpenAI's preset voices (`alloy`, `ash`, `ballad`, `coral`, `echo`, `fable`, `nova`, `onyx`, `sage`, `shimmer`, …). The list is loaded live from the OpenAI catalog so the options stay in sync if OpenAI ships new voices.
+Free-form tone/style guidance, e.g. `Speak calmly, medium pace.` Only models that support it use the field (OpenAI `gpt-4o-mini-tts`, and on OpenRouter e.g. Gemini TTS and Fish Audio); all others ignore it.
 
 ```json
-{ "tts": { "openaiVoice": "nova" } }
-```
-
-## OpenAI instructions
-
-_Only shown for `gpt-4o-mini-tts`._ Free-form tone/style guidance for the voice model, e.g.:
-
-```text
-Speak calmly, with a slight Viennese accent, medium pace.
-```
-
-Leave empty for the neutral default.
-
-```json
-{ "tts": { "openaiInstructions": "" } }
-```
-
-## Mistral voice
-
-Shown when provider is `mistral`. The UI splits the choice into two side-by-side dropdowns:
-
-- **Speaker** — one of the available Voxtral speakers, annotated with language (e.g. `Nadia (German)`, `Theo (English)`).
-- **Mood** — emotional color (`neutral`, `happy`, `serious`, …).
-
-The list is fetched live from the Voxtral catalog when you open the panel. The two selections are combined into a single voice id and stored in `tts.mistralVoice`:
-
-```json
-{ "tts": { "mistralVoice": "nadia-neutral" } }
-```
-
-## Deepgram API key
-
-Shown when provider is `deepgram`. The API key used to authenticate against Deepgram. Stored encrypted at rest in `tts.deepgramApiKey`. Get a free key at [console.deepgram.com](https://console.deepgram.com).
-
-The field is rendered as a password input. Once saved, it shows a masked preview (e.g. `dg_••••••abcd`) — leave the masked value untouched to keep the existing key.
-
-```json
-{ "tts": { "deepgramApiKey": "dg_..." } }
-```
-
-## Deepgram voice
-
-Shown when provider is `deepgram`. Deepgram bundles voice and language into a single Aura model id (e.g. `aura-2-thalia-en` for an English voice, `aura-2-ophelia-de` for German), so picking a voice and picking a language is one decision.
-
-The dropdown is pre-populated with a small list of common Aura voices. Click the **refresh** icon next to the dropdown to fetch the full, up-to-date voice catalog from your Deepgram account — useful when Deepgram releases new voices. Refreshing requires the API key to be saved first.
-
-Stored in `tts.deepgramModel`:
-
-```json
-{ "tts": { "deepgramModel": "aura-2-thalia-en" } }
+{ "tts": { "instructions": "" } }
 ```
 
 ## Voice preview
 
-A text field + play button at the bottom of each provider block. Enter any text, click the speaker icon, hear the current settings applied immediately — no need to save first. Stop playback by clicking the same button again.
+A text field + play button. Enter any text, click the speaker icon, and hear the current (unsaved) model, voice, instructions and audio format immediately. Stop playback by clicking the same button again.
 
 ## Audio format
 
-Output container format used for the synthesized audio in the web chat.
+Output container format of the synthesized audio.
 
-| Value  | Notes                                                                                                                                |
-|--------|--------------------------------------------------------------------------------------------------------------------------------------|
-| `mp3`  | Universal default. Supports long-text chunking with Deepgram (see below).                                                            |
-| `wav`  | Uncompressed, large. Supports long-text chunking with Deepgram (PCM is concatenated and wrapped in a single WAV header).             |
-| `opus` | Small. Deepgram only — limited to 2000 characters per request (see below).                                                           |
-| `flac` | Lossless. Deepgram only — limited to 2000 characters per request (see below).                                                        |
+| Value  | Notes |
+|--------|-------|
+| `mp3`  | Universal default. Supports long-text chunking with Deepgram (see below). |
+| `wav`  | Uncompressed, large. Supports long-text chunking with Deepgram (PCM is concatenated and wrapped in a single WAV header). |
+| `opus` | Small. Telegram renders it as a native voice message. With Deepgram limited to 2000 characters per request (see below). |
+| `flac` | Lossless. With Deepgram limited to 2000 characters per request (see below). |
+
+Some providers only deliver some formats: **OpenRouter** always returns MP3, **xAI** returns MP3 or WAV (Opus/FLAC fall back to MP3).
 
 ```json
 { "tts": { "responseFormat": "mp3" } }
@@ -122,22 +74,10 @@ Output container format used for the synthesized audio in the web chat.
 
 ### Deepgram long-text behavior
 
-Deepgram's `/v1/speak` endpoint rejects any single request longer than
-**2000 characters**. To make the “Read message aloud” button work for long
-assistant replies, Axiom transparently splits the input on sentence
-boundaries and synthesizes each chunk separately, then concatenates the
-result.
-
-Which formats this works for depends on whether the audio container can be
-safely concatenated byte-for-byte:
+Deepgram's `/v1/speak` endpoint rejects any single request longer than **2000 characters**. To make the “Read message aloud” button work for long assistant replies, Axiom splits the input on sentence boundaries, synthesizes each chunk separately and concatenates the result.
 
 - **`mp3`** — frame-aligned; chunked output is concatenated directly.
-- **`wav`** — Deepgram returns headerless PCM (`linear16`); chunks are
-  concatenated as raw samples and wrapped in a single WAV header.
-- **`opus`** and **`flac`** — use page/frame containers that **do not**
-  survive naive concatenation. Inputs **≤ 2000 characters** still work
-  normally; longer inputs are rejected with an actionable error asking you
-  to switch to `mp3` or `wav` in **Settings → Text-to-Speech**.
+- **`wav`** — Deepgram returns headerless PCM (`linear16`); chunks are concatenated as raw samples and wrapped in a single WAV header.
+- **`opus`** and **`flac`** — use page/frame containers that **do not** survive naive concatenation. Inputs **≤ 2000 characters** still work normally; longer inputs are rejected with an error asking you to switch to `mp3` or `wav`.
 
-The OpenAI and Mistral providers don't have this 2000-character limit and
-are unaffected.
+The other providers don't have this limit.

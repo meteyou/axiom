@@ -86,7 +86,7 @@ These tools are part of Axiom but *off* (or behind a config) by default — usua
 
 ### `audio_transcribe`
 
-Whisper-compatible speech-to-text. **Disabled by default**, since it needs either an OpenAI key, a self-hosted Whisper server, or an Ollama provider with a Whisper model.
+Speech-to-text with the STT model selected in Settings. **Disabled by default**, since it needs an STT model from a provider (Deepgram, OpenAI, Mistral, OpenRouter, xAI or a self-hosted OpenAI-compatible server).
 
 When enabled, the agent gets a `audio_transcribe` tool that takes an audio file path (relative to the workspace), an optional `language` hint, and an optional `cleanup` flag to strip filler words and fix punctuation via the configured rewrite provider.
 

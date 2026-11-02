@@ -22,6 +22,7 @@ The table renders providers in **two tiers**:
 - **Provider header rows** — one per configured provider. Show the display name and the underlying type (e.g. `Anthropic`, `OpenAI`, `Mistral`, `z.ai`). OAuth providers additionally show `OAuth` after the type label.
 - **Model sub-rows** — one per *enabled model* on that provider, indented with `└`. Each carries its own cost, status, and per-model actions.
 - **Image models section** — for providers with enabled [image generation models](#image-models), an *Image models* divider followed by one row per image model.
+- **Voice model sections** — for providers with enabled [STT or TTS models](#voice-models), a *Speech-to-text models* and/or *Text-to-speech models* divider, each followed by one row per model.
 
 Providers are sorted alphabetically by display name; sub-rows follow the order configured in the provider form.
 
@@ -32,7 +33,7 @@ Providers are sorted alphabetically by display name; sub-rows follow the order c
 | **Name**    | Bold display name plus a `Disabled` badge when the provider is [disabled](#disabling-providers-and-models); below it, the provider type label (e.g. *"Anthropic"*, *"Anthropic (Claude Pro/Max) · OAuth"*). |
 | **Cost**    | Empty — costs live on the model rows.                                                                |
 | **Status**  | Empty for most providers (status lives on the model rows). For **subscription (OAuth)** providers it shows the live [subscriber usage quota](#subscriber-usage-quota-oauth-plans). |
-| **⋮**       | **Add Model**, **Add image model** (only for providers with an image backend: OpenRouter, OpenAI, ChatGPT Plus/Pro), Edit, **Disable** / **Enable**, Delete, and — for quota-capable providers — **Refresh quota**. *Delete* and *Disable* are unavailable for the provider that owns the currently active model. |
+| **⋮**       | **Add Model** (not for voice-only providers such as Deepgram), **Add image model** (only for providers with an image backend: OpenRouter, OpenAI, ChatGPT Plus/Pro), **Add STT model** / **Add TTS model** (only for providers with a [voice backend](#voice-models)), Edit, **Disable** / **Enable**, Delete, and — for quota-capable providers — **Refresh quota**. *Delete* and *Disable* are unavailable for the provider that owns the currently active model. |
 
 Clicking anywhere on a header row opens the [Edit dialog](#add-edit-dialog).
 
@@ -92,7 +93,7 @@ While disabled, it is treated as if it were not configured for LLM work:
 - It is removed from the agent's [`<available_providers>`](../concepts/system-prompt#available-providers-configured-llm-providers) list, and the agent can no longer start tasks or cronjobs on it.
 - It can't be set as active or fallback.
 
-Disabling a whole provider affects all of its models. **TTS and STT are not affected:** a disabled provider's credentials can still be used for text-to-speech, speech-to-text and the STT rewrite model.
+Disabling a whole provider affects all of its models, including its image and [voice models](#voice-models). If the selected STT or TTS model belongs to a disabled provider (or is disabled itself), the selection in Settings is reset to empty. Only the STT rewrite model keeps working with a disabled provider.
 
 Guards and automatic adjustments:
 
@@ -414,6 +415,44 @@ The ⋮ menu of an image model row offers:
 | **Remove Model** | Removes the model from `enabledImageModels`. |
 
 Which image model the agent uses by default, and whether image generation is switched on at all, is set in [Settings → Image Generation](../settings/image-generation) — there is no default toggle on this page. That tab also lists all image models with an enable/disable switch and an edit button for name and description; new image models can only be added here.
+
+## Voice models
+
+Speech-to-text (STT) and text-to-speech (TTS) models are configured per provider, separately from text and image models. They are only used for transcription and speech output and never appear in chat, task, cronjob or other text-model selectors. Which STT/TTS model is used is selected in [Settings → Speech-to-Text](../settings/speech-to-text) and [Settings → Text-to-Speech](../settings/text-to-speech).
+
+| Provider type | STT | TTS | Model list |
+|---|---|---|---|
+| **Deepgram** | ✓ | ✓ | Live from `GET /v1/models` (e.g. `nova-3`, Aura voices such as `aura-2-thalia-en`). |
+| **OpenAI** | ✓ | ✓ | Live from `GET /v1/models`, filtered to transcription (`whisper-*`, `*-transcribe`) and speech (`*tts*`) models. |
+| **Mistral** | ✓ | ✓ | Live from `GET /v1/models`, filtered by the `audio_transcription` / `audio_speech` capabilities (Voxtral). |
+| **OpenRouter** | ✓ | ✓ | Live from `GET /models?output_modalities=transcription` / `speech` — e.g. Whisper, Deepgram Nova/Aura, ElevenLabs, Gemini TTS, Voxtral — with prices. |
+| **xAI** | ✓ | ✓ | STT: `grok-voice-transcribe-2.0` / `-1.0`. TTS: one *Grok Voice TTS* entry (xAI's TTS takes no model id; the voice is chosen in Settings). |
+| **Custom – OpenAI-compatible** | ✓ | ✓ | All models of the endpoint's `/models` (self-hosted servers such as `faster-whisper-server` or Speaches name their models freely). |
+
+### Deepgram provider
+
+Deepgram is a **voice-only** provider: create it with **Add Provider** → type *Deepgram* and your API key ([console.deepgram.com](https://console.deepgram.com)). It has no chat models, so **Add Model** is hidden and it can never become the active or fallback provider. Add its models with **Add STT model** / **Add TTS model**.
+
+### Add STT model / Add TTS model dialog
+
+Opened from the provider header row's ⋮ menu. Both dialogs work the same way:
+
+- **Live list** — loaded from the provider with its stored API key (see the table above). The refresh button next to the search field loads it again.
+- **Search** — filters by name, id, description and language.
+- **Model list** — multi-select. Entries show their languages (Deepgram) and price (OpenRouter, e.g. *$30.00 / 1M chars* for TTS or *$0.0043 / min* for STT). Models already added are greyed out.
+- **Custom model fallback** — when the search text matches no entry, the typed id can be added.
+- **Add** — stores the selection in the provider's `enabledSttModels` / `enabledTtsModels`; display names from the live list are stored with the model.
+
+### Voice model rows
+
+The ⋮ menu of an STT or TTS model row offers:
+
+| Item | What it does |
+|---|---|
+| **Check availability** | **Free.** Loads the provider's live model list with the stored key and checks that the model is still offered. Updates the status badge. |
+| **Play test audio** | TTS only. Synthesizes one short sentence with the model's default voice and plays it in the browser (costs a fraction of a cent). |
+| **Disable** / **Enable** | Hides the model from the Settings dropdown without removing it (stored in `disabledSttModels` / `disabledTtsModels`). If it was the selected STT/TTS model, the selection is reset. |
+| **Remove Model** | Removes the model from the provider. |
 
 ### Migration of image models added as text models
 
