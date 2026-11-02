@@ -9,6 +9,7 @@ import { useProvidersApi } from '~/api/providers'
 import type {
   AvailableImageModel,
   AvailableModel,
+  AvailableVoiceModel,
   OAuthLoginResponse,
   OAuthStatusResponse,
   OllamaModel,
@@ -16,11 +17,14 @@ import type {
   Provider,
   ProviderImageTestResult,
   ProviderTypePreset,
+  VoiceModelKind,
+  VoiceOption,
 } from '~/api/providers'
 
 export type {
   AvailableImageModel,
   AvailableModel,
+  AvailableVoiceModel,
   OAuthLoginResponse,
   OAuthStatusResponse,
   OllamaModel,
@@ -28,6 +32,8 @@ export type {
   Provider,
   ProviderImageTestResult,
   ProviderTypePreset,
+  VoiceModelKind,
+  VoiceOption,
 } from '~/api/providers'
 
 export function useProviders() {
@@ -210,6 +216,16 @@ export function useProviders() {
     return data.models
   }
 
+  async function fetchLiveVoiceModels(providerId: string, kind: VoiceModelKind): Promise<AvailableVoiceModel[]> {
+    const data = await providersApi.getLiveVoiceModels(providerId, kind)
+    return data.models
+  }
+
+  async function fetchTtsVoices(providerId: string, modelId: string): Promise<VoiceOption[] | null> {
+    const data = await providersApi.getTtsVoices(providerId, modelId)
+    return data.voices
+  }
+
   async function fetchOllamaModels(providerId: string): Promise<OllamaModel[]> {
     const data = await providersApi.getOllamaModels(providerId)
     return data.models
@@ -275,6 +291,8 @@ export function useProviders() {
     fetchImageModels,
     fetchLiveModels,
     fetchLiveImageModels,
+    fetchLiveVoiceModels,
+    fetchTtsVoices,
     fetchOllamaModels,
     probeOllamaModels,
     pullOllamaModel,

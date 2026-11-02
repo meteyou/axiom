@@ -1,12 +1,3 @@
-import type { TtsSettings } from './useSettings'
-
-export interface MistralVoice {
-  id: string
-  name: string
-  languages: string[]
-  isPreset: boolean
-}
-
 let audioElement: HTMLAudioElement | null = null
 let currentBlobUrl: string | null = null
 
@@ -19,42 +10,21 @@ export function useTts() {
   const playingIndex = useState<number | null>('tts_playing_index', () => null)
   /** Whether audio is currently loading (fetching from server) */
   const loading = useState<boolean>('tts_loading', () => false)
-  /** TTS settings (cached) */
-  const ttsSettings = useState<TtsSettings | null>('tts_settings', () => null)
-  /** Whether TTS is enabled */
-  const ttsEnabled = computed(() => ttsSettings.value?.enabled ?? false)
-  /** Mistral voices (fetched from API) */
-  const mistralVoices = useState<MistralVoice[]>('tts_mistral_voices', () => [])
-  /** Whether voices are loading */
-  const voicesLoading = useState<boolean>('tts_voices_loading', () => false)
+  /** Whether TTS is enabled (cached from server) */
+  const ttsEnabled = useState<boolean>('tts_enabled', () => false)
   /**
    * Last playback error (server message or network failure). Cleared on
-   * each new `play()` call. Surfaced inline in the chat so a failed
-   * “Read aloud” click doesn't look like a dead button — the most common
-   * Deepgram failure mode (text >2000 chars) used to disappear into the
-   * console.
+   * each new `play()` call and surfaced inline in the chat so a failed
+   * “Read aloud” click doesn't look like a dead button.
    */
   const error = useState<string | null>('tts_error', () => null)
 
-  /** Fetch TTS settings from the server */
+  /** Fetch whether TTS is enabled from the server */
   async function fetchTtsSettings(): Promise<void> {
     try {
-      ttsSettings.value = await apiFetch<TtsSettings>('/api/tts/settings')
+      ttsEnabled.value = (await apiFetch<{ enabled: boolean }>('/api/tts/settings')).enabled
     } catch {
-      ttsSettings.value = null
-    }
-  }
-
-  /** Fetch available Mistral voices */
-  async function fetchMistralVoices(): Promise<void> {
-    voicesLoading.value = true
-    try {
-      const data = await apiFetch<{ voices: MistralVoice[] }>('/api/tts/voices')
-      mistralVoices.value = data.voices
-    } catch {
-      mistralVoices.value = []
-    } finally {
-      voicesLoading.value = false
+      ttsEnabled.value = false
     }
   }
 
@@ -141,12 +111,8 @@ export function useTts() {
     playingIndex,
     loading,
     ttsEnabled,
-    ttsSettings,
-    mistralVoices,
-    voicesLoading,
     error,
     fetchTtsSettings,
-    fetchMistralVoices,
     play,
     stop,
     clearError,
