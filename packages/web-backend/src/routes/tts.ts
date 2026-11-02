@@ -1,17 +1,27 @@
 import { Router } from 'express'
 import {
-  getApiKeyForProvider,
-  loadProvidersDecrypted,
   loadTtsSettings,
+  SETTINGS_TTS_RESPONSE_FORMATS,
   synthesizeTts,
 } from '@axiom/core'
-import type { TtsSettings } from '@axiom/core'
+import type { SynthesizeOptions, TtsResponseFormat } from '@axiom/core'
 import { jwtMiddleware } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
 
 interface TtsRequestBody {
   text: string
-  voice?: string
+}
+
+function parsePreviewSettings(value: unknown): NonNullable<SynthesizeOptions['settings']> {
+  const source = value && typeof value === 'object' ? value as Record<string, unknown> : {}
+  const settings: NonNullable<SynthesizeOptions['settings']> = {}
+  for (const key of ['model', 'voice', 'instructions'] as const) {
+    if (typeof source[key] === 'string') settings[key] = source[key] as string
+  }
+  if ((SETTINGS_TTS_RESPONSE_FORMATS as readonly unknown[]).includes(source.responseFormat)) {
+    settings.responseFormat = source.responseFormat as TtsResponseFormat
+  }
+  return settings
 }
 
 /**
@@ -46,7 +56,7 @@ export function createTtsRouter(): Router {
   /**
    * POST /api/tts
    * Generate speech from text using the saved settings.
-   * Body: { text: string, voice?: string }
+   * Body: { text: string }
    */
   router.post('/', async (req: AuthenticatedRequest, res) => {
     const ttsSettings = loadTtsSettings()
@@ -74,7 +84,7 @@ export function createTtsRouter(): Router {
     }
 
     try {
-      const result = await synthesizeTts(cleanText, { voice: body.voice })
+      const result = await synthesizeTts(cleanText)
       res.setHeader('Content-Type', result.contentType)
       res.setHeader('Content-Length', result.audio.length)
       res.send(result.audio)
@@ -85,36 +95,29 @@ export function createTtsRouter(): Router {
 
   /**
    * POST /api/tts/preview
-   * Preview TTS so the user can test before saving. Works even when TTS is
-   * globally disabled.
-   *
-   * Body: { text: string, voice?: string, settings?: Partial<TtsSettings> }
-   *
-   * NOTE: `settings` overrides are accepted for forward compatibility but
-   * currently ignored — `synthesizeTts()` reads from disk. The frontend
-   * sends the same provider that's saved (just with different model/voice
-   * values), and those round-trip via the saved settings unchanged.
+   * Admin-only preview of unsaved TTS settings; works while TTS is disabled.
+   * Body: { text: string, settings?: { model?, voice?, instructions?, responseFormat? } }
    */
   router.post('/preview', async (req: AuthenticatedRequest, res) => {
-    const body = req.body as {
-      text?: string
-      voice?: string
-      settings?: Partial<TtsSettings>
+    if (req.user?.role !== 'admin') {
+      res.status(403).json({ error: 'Admin access required' })
+      return
     }
+    const body = req.body as { text?: unknown; settings?: unknown }
 
-    if (!body.text || typeof body.text !== 'string' || !body.text.trim()) {
+    if (typeof body.text !== 'string' || !body.text.trim()) {
       res.status(400).json({ error: 'text is required' })
       return
     }
 
-    const cleanText = stripMarkdown(body.text).slice(0, 1000) // 1K-char preview cap
+    const cleanText = stripMarkdown(body.text).slice(0, 1000)
     if (!cleanText) {
       res.status(400).json({ error: 'text is empty' })
       return
     }
 
     try {
-      const result = await synthesizeTts(cleanText, { voice: body.voice })
+      const result = await synthesizeTts(cleanText, { settings: parsePreviewSettings(body.settings), ignoreEnabled: true })
       res.setHeader('Content-Type', result.contentType)
       res.setHeader('Content-Length', result.audio.length)
       res.send(result.audio)
@@ -125,64 +128,13 @@ export function createTtsRouter(): Router {
 
   /**
    * GET /api/tts/settings
-   * Returns current TTS settings so the frontend can check if TTS is enabled.
+   * Lets the chat UI check whether the "Read aloud" action is available.
    */
   router.get('/settings', (_req: AuthenticatedRequest, res) => {
-    const ttsSettings = loadTtsSettings()
-    res.json(ttsSettings)
-  })
-
-  /**
-   * GET /api/tts/voices
-   * Fetch available Mistral voices via Mistral's /v1/audio/voices endpoint.
-   * Returns an empty list for any other provider (OpenAI/Deepgram have static
-   * voice catalogs; the UI lists them inline / fetches them via the Deepgram
-   * models endpoint).
-   */
-  router.get('/voices', async (_req: AuthenticatedRequest, res) => {
-    const ttsSettings = loadTtsSettings()
-    if (ttsSettings.provider !== 'mistral') {
-      res.json({ voices: [] })
-      return
-    }
-
     try {
-      const file = loadProvidersDecrypted()
-      const provider
-        = (ttsSettings.providerId && file.providers.find(p => p.id === ttsSettings.providerId))
-        || file.providers.find(p => p.providerType === 'mistral' || p.provider === 'mistral')
-        || file.providers.find(p => p.baseUrl?.includes('api.mistral.ai'))
-      if (!provider) {
-        res.json({ voices: [] })
-        return
-      }
-
-      const apiKey = await getApiKeyForProvider(provider)
-      const baseUrl = (provider.baseUrl || 'https://api.mistral.ai')
-        .replace(/\/+$/, '')
-        .replace(/\/v1$/, '')
-      const url = `${baseUrl}/v1/audio/voices?limit=100`
-
-      const response = await fetch(url, {
-        headers: { Authorization: `Bearer ${apiKey}` },
-      })
-      if (!response.ok) {
-        res.json({ voices: [] })
-        return
-      }
-
-      const data = await response.json() as {
-        items?: Array<{ id: string; name: string; languages?: string[]; user_id?: string | null }>
-      }
-      const voices = (data.items ?? []).map(v => ({
-        id: v.id,
-        name: v.name,
-        languages: v.languages ?? [],
-        isPreset: !v.user_id || v.user_id === 'preset',
-      }))
-      res.json({ voices })
+      res.json({ enabled: loadTtsSettings().enabled })
     } catch {
-      res.json({ voices: [] })
+      res.json({ enabled: false })
     }
   })
 

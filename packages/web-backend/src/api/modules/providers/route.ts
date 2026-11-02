@@ -37,6 +37,9 @@ export function createProvidersRouter(options: ProvidersRouterOptions = {}): Rou
 
   router.get('/:id/live-models', controller.getLiveModels)
   router.get('/:id/live-image-models', controller.getLiveImageModels)
+  router.get('/:id/voice-models/:kind', controller.getLiveVoiceModels)
+  router.get('/:id/voices', controller.getTtsVoices)
+  router.post('/:id/tts-test', controller.postTtsModelTest)
   router.get('/:id/ollama-models', controller.getOllamaModels)
   router.post('/:id/ollama-pull', controller.postOllamaPull)
   router.delete('/:id/ollama-models/:modelName', controller.deleteOllamaModel)

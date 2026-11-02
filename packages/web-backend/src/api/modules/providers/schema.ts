@@ -1,5 +1,5 @@
 import { URL } from 'node:url'
-import { MODEL_THINKING_LEVELS, PROVIDER_TYPE_PRESETS } from '@axiom/core'
+import { isProviderModelType, MODEL_THINKING_LEVELS, PROVIDER_MODEL_TYPES, PROVIDER_TYPE_PRESETS, VOICE_MODEL_KINDS } from '@axiom/core'
 import type {
   ModelInputModalityContract,
   ModelThinkingLevelMapContract,
@@ -9,8 +9,10 @@ import type {
   ProviderModelUpdatePayloadContract,
   ProviderOAuthCodePayloadContract,
   ProviderOAuthLoginStartPayloadContract,
+  ProviderTtsTestPayloadContract,
   ProviderTypePresetContract,
   ProviderUpdatePayloadContract,
+  VoiceModelKindContract,
 } from '@axiom/core/contracts'
 
 const VALID_PROVIDER_TYPES = Object.keys(PROVIDER_TYPE_PRESETS)
@@ -109,7 +111,7 @@ export function parseProviderModelSelectionPayload(payload: unknown): ProviderMo
   const body = toRecord(payload)
   return {
     modelId: body.modelId as string | undefined,
-    ...(body.modelType === 'image' && { modelType: 'image' as const }),
+    ...(isProviderModelType(body.modelType) && body.modelType !== 'text' && { modelType: body.modelType }),
   }
 }
 
@@ -230,8 +232,8 @@ export function parseProviderModelUpdatePayload(payload: unknown): ParseResult<P
   const disabled = parseOptionalBooleanField(body, 'disabled')
   if (!disabled.ok) return disabled
   const modelType = body.modelType
-  if (modelType !== undefined && modelType !== 'text' && modelType !== 'image') {
-    return { ok: false, error: 'modelType must be text or image' }
+  if (modelType !== undefined && !isProviderModelType(modelType)) {
+    return { ok: false, error: `modelType must be one of ${PROVIDER_MODEL_TYPES.join(', ')}` }
   }
 
   const name = parseOptionalStringField(body, 'name')
@@ -390,8 +392,8 @@ export function parseProviderUpdatePayload(payload: unknown): ParseResult<Provid
   const disabled = parseOptionalBooleanField(body, 'disabled')
   if (!disabled.ok) return disabled
   const modelType = body.modelType
-  if (modelType !== undefined && modelType !== 'text' && modelType !== 'image') {
-    return { ok: false, error: 'modelType must be text or image' }
+  if (modelType !== undefined && !isProviderModelType(modelType)) {
+    return { ok: false, error: `modelType must be one of ${PROVIDER_MODEL_TYPES.join(', ')}` }
   }
   const compat = parseCompatField(body)
   if (!compat.ok) return compat
@@ -412,6 +414,8 @@ export function parseProviderUpdatePayload(payload: unknown): ParseResult<Provid
       apiKey: asTrimmedString(body.apiKey),
       enabledModels: normalizeEnabledModels(body.enabledModels),
       enabledImageModels: normalizeEnabledModels(body.enabledImageModels),
+      enabledSttModels: normalizeEnabledModels(body.enabledSttModels),
+      enabledTtsModels: normalizeEnabledModels(body.enabledTtsModels),
       degradedThresholdMs: normalizeDegradedThresholdMs(body.degradedThresholdMs),
       textVerbosity: normalizeTextVerbosity(body.textVerbosity),
       transport: normalizeTransport(body.transport),
@@ -420,6 +424,26 @@ export function parseProviderUpdatePayload(payload: unknown): ParseResult<Provid
       compat: compat.value,
     },
   }
+}
+
+const TTS_TEST_MAX_CHARS = 300
+
+export function parseVoiceModelKindParam(kind: unknown): ParseResult<VoiceModelKindContract> {
+  return (VOICE_MODEL_KINDS as readonly unknown[]).includes(kind)
+    ? { ok: true, value: kind as VoiceModelKindContract }
+    : { ok: false, error: `kind must be one of ${VOICE_MODEL_KINDS.join(', ')}` }
+}
+
+export function parseTtsTestPayload(payload: unknown): ParseResult<ProviderTtsTestPayloadContract> {
+  const body = toRecord(payload)
+  const modelId = asTrimmedString(body.modelId)
+  if (!modelId) return { ok: false, error: 'modelId is required' }
+  const voice = asTrimmedString(body.voice)
+  const text = asTrimmedString(body.text)
+  if (text && text.length > TTS_TEST_MAX_CHARS) {
+    return { ok: false, error: `text must be at most ${TTS_TEST_MAX_CHARS} characters` }
+  }
+  return { ok: true, value: { modelId, ...(voice && { voice }), ...(text && { text }) } }
 }
 
 export function parseOllamaProbePayload(payload: unknown): ParseResult<{ baseUrl: string; providerType: string }> {

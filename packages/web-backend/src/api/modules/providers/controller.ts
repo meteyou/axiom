@@ -22,6 +22,8 @@ import {
   parseProviderModelUpdatePayload,
   parseProviderTypeParam,
   parseProviderUpdatePayload,
+  parseTtsTestPayload,
+  parseVoiceModelKindParam,
 } from './schema.js'
 import {
   createProvidersService,
@@ -39,6 +41,9 @@ export interface ProvidersController {
   getLiveModels: (req: AuthenticatedRequest, res: ExpressResponse) => Promise<void>
   getImageModelsByProviderType: (req: AuthenticatedRequest, res: ExpressResponse) => void
   getLiveImageModels: (req: AuthenticatedRequest, res: ExpressResponse) => Promise<void>
+  getLiveVoiceModels: (req: AuthenticatedRequest, res: ExpressResponse) => Promise<void>
+  getTtsVoices: (req: AuthenticatedRequest, res: ExpressResponse) => Promise<void>
+  postTtsModelTest: (req: AuthenticatedRequest, res: ExpressResponse) => Promise<void>
   postOAuthLogin: (req: AuthenticatedRequest, res: ExpressResponse) => Promise<void>
   getOAuthStatus: (req: AuthenticatedRequest, res: ExpressResponse) => Promise<void>
   postOAuthCode: (req: AuthenticatedRequest, res: ExpressResponse) => void
@@ -146,6 +151,48 @@ export function createProvidersController(options: ProvidersRouterOptions = {}):
         }
 
         res.status(502).json({ error: `Failed to load image models: ${(err as Error).message}` })
+      }
+    },
+
+    async getLiveVoiceModels(req, res) {
+      const kind = parseVoiceModelKindParam(req.params.kind)
+      if (!kind.ok) {
+        res.status(400).json({ error: kind.error })
+        return
+      }
+      try {
+        res.json({ models: await service.getLiveVoiceModels(String(req.params.id ?? ''), kind.value) })
+      } catch (err) {
+        sendVoiceError(res, err, 'Failed to load voice models')
+      }
+    },
+
+    async getTtsVoices(req, res) {
+      const modelId = typeof req.query.modelId === 'string' ? req.query.modelId.trim() : ''
+      if (!modelId) {
+        res.status(400).json({ error: 'modelId is required' })
+        return
+      }
+      try {
+        res.json({ voices: await service.getTtsVoices(String(req.params.id ?? ''), modelId) })
+      } catch (err) {
+        sendVoiceError(res, err, 'Failed to load voices')
+      }
+    },
+
+    async postTtsModelTest(req, res) {
+      const parsed = parseTtsTestPayload(req.body)
+      if (!parsed.ok) {
+        res.status(400).json({ error: parsed.error })
+        return
+      }
+      try {
+        const result = await service.testTtsModel(String(req.params.id ?? ''), parsed.value)
+        res.setHeader('Content-Type', result.contentType)
+        res.setHeader('Content-Length', result.audio.length)
+        res.send(result.audio)
+      } catch (err) {
+        sendVoiceError(res, err, 'TTS test failed')
       }
     },
 
@@ -625,4 +672,16 @@ async function streamOllamaPullResponse(options: StreamPullOptions): Promise<voi
     options.res.write(`data: ${JSON.stringify({ error: (err as Error).message })}\n\n`)
     options.res.end()
   }
+}
+
+function sendVoiceError(res: ExpressResponse, err: unknown, label: string): void {
+  if (err instanceof ProvidersNotFoundError) {
+    res.status(404).json({ error: err.message })
+    return
+  }
+  if (err instanceof ProvidersValidationError) {
+    res.status(400).json({ error: err.message })
+    return
+  }
+  res.status(502).json({ error: `${label}: ${(err as Error).message}` })
 }

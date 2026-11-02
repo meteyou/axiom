@@ -1,4 +1,4 @@
-import { buildModel, getAvailableImageModels, getCompactionWarningScopes, getImageProviderCapabilities, getPiCatalogModels, getProviderDefaultModel, isQuotaProvider, loadCompactionSettings, maskProviderExtraFields, PROVIDER_TYPE_MODEL_OVERRIDES, PROVIDER_TYPE_PRESETS, supportsModelSpecOverrides } from '@axiom/core'
+import { buildModel, getAvailableImageModels, getCompactionWarningScopes, getImageProviderCapabilities, getVoiceProviderCapabilities, getPiCatalogModels, getProviderDefaultModel, isQuotaProvider, loadCompactionSettings, maskProviderExtraFields, PROVIDER_TYPE_MODEL_OVERRIDES, PROVIDER_TYPE_PRESETS, supportsModelSpecOverrides } from '@axiom/core'
 import type {
   AverageImageCost,
   CompactionSettingsSource,
@@ -151,6 +151,7 @@ export function mapProvidersListResponse(
         const overrides = PROVIDER_TYPE_MODEL_OVERRIDES[key as ProviderType]
         const hasKnownModels = preset.piAiProvider != null || (overrides?.length ?? 0) > 0
         const imageCapabilities = getImageProviderCapabilities(key)
+        const voiceCapabilities = getVoiceProviderCapabilities(key)
         return [key, {
           ...preset,
           hasKnownModels,
@@ -161,6 +162,9 @@ export function mapProvidersListResponse(
             liveImageCatalog: imageCapabilities.liveCatalog,
             customImageModels: imageCapabilities.customModels,
           }),
+          supportsSttModels: voiceCapabilities?.kinds.includes('stt') ?? false,
+          supportsTtsModels: voiceCapabilities?.kinds.includes('tts') ?? false,
+          ...(voiceCapabilities && { customVoiceModels: voiceCapabilities.customModels }),
         }]
       }),
   )

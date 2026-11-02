@@ -4,6 +4,12 @@ import {
   addOAuthProvider,
   addProvider as addProviderConfig,
   checkImageModelAvailability,
+  checkVoiceModelAvailability,
+  getVoiceModels,
+  getVoiceProviderCapabilities,
+  listLiveVoiceModels,
+  listTtsModelVoices,
+  synthesizeWithProvider,
   clearFallbackProvider,
   createImageOnlyModelIdMatcher,
   deleteProvider as deleteProviderConfig,
@@ -41,7 +47,7 @@ import {
   updateProviderStatus,
   ProviderNotFoundError,
 } from '@axiom/core'
-import type { AvailableImageModel, AvailableModel, ProviderConfig, ProviderType, ProvidersFile } from '@axiom/core'
+import type { AvailableImageModel, AvailableModel, AvailableVoiceModel, ProviderConfig, ProviderType, ProvidersFile, SynthesizedAudio, VoiceModelKind, VoiceOption } from '@axiom/core'
 import type {
   OAuthLoginResponseContract,
   ProviderImageTestResultContract,
@@ -51,6 +57,7 @@ import type {
   ProviderModelSelectionPayloadContract,
   ProviderModelUpdatePayloadContract,
   ProviderOAuthLoginStartPayloadContract,
+  ProviderTtsTestPayloadContract,
   ProviderUpdatePayloadContract,
 } from '@axiom/core/contracts'
 import { getOAuthAuth, oauthLogin } from '@axiom/core'
@@ -66,6 +73,8 @@ import type {
   ProvidersRouterOptions,
 } from './types.js'
 
+const TTS_TEST_TEXT = 'Hello! This is a short test of the selected voice.'
+
 export class ProvidersValidationError extends Error {}
 export class ProvidersNotFoundError extends Error {}
 export class ProvidersRuntimeError extends Error {}
@@ -77,6 +86,8 @@ export interface ProvidersService {
   getLiveModels: (providerId: string) => Promise<AvailableModel[]>
   getImageModelsByProviderType: (providerType: string) => AvailableImageModel[]
   getLiveImageModels: (providerId: string) => Promise<AvailableImageModel[]>
+  getLiveVoiceModels: (providerId: string, kind: VoiceModelKind) => Promise<AvailableVoiceModel[]>
+  getTtsVoices: (providerId: string, modelId: string) => Promise<VoiceOption[] | null>
   refreshModelCatalogs: () => Promise<ProviderCatalogRefreshResultContract[]>
   setFallback: (payload: ProviderFallbackUpdatePayloadContract) => { fallbackProvider: string | null; fallbackModel: string | null }
   startOAuthLogin: (payload: ProviderOAuthLoginStartPayloadContract) => Promise<OAuthLoginResponseContract>
@@ -102,6 +113,7 @@ export interface ProvidersService {
     modelId: string
   }>
   testImageModel: (id: string, modelId: string) => Promise<ProviderImageTestResultContract>
+  testTtsModel: (id: string, payload: ProviderTtsTestPayloadContract) => Promise<SynthesizedAudio>
   activateProvider: (id: string, payload: ProviderModelSelectionPayloadContract) => { activeProvider: string; activeModel: string | null }
   probeOllamaModels: (baseUrl: string) => Promise<OllamaTagsResponse>
   listOllamaModels: (providerId: string) => Promise<OllamaTagsResponse>
@@ -223,6 +235,32 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
       if (err instanceof ImageProviderAuthError) throw err
       console.warn(`[axiom] Live image model fetch failed for provider "${provider.name}", using bundled catalog: ${(err as Error).message}`)
       return catalog
+    }
+  }
+
+  function requireVoiceCapableProvider(providerId: string, kind: VoiceModelKind): ProviderConfig {
+    const provider = requireProvider(providerId)
+    if (!getVoiceProviderCapabilities(provider.providerType)?.kinds.includes(kind)) {
+      throw new ProvidersValidationError(`Provider type does not support ${kind.toUpperCase()} models`)
+    }
+    return provider
+  }
+
+  async function getLiveVoiceModels(providerId: string, kind: VoiceModelKind): Promise<AvailableVoiceModel[]> {
+    const provider = requireVoiceCapableProvider(providerId, kind)
+    try {
+      return await listLiveVoiceModels(provider, kind)
+    } catch (err) {
+      throw new ProvidersExternalError((err as Error).message)
+    }
+  }
+
+  async function getTtsVoices(providerId: string, modelId: string): Promise<VoiceOption[] | null> {
+    const provider = requireVoiceCapableProvider(providerId, 'tts')
+    try {
+      return await listTtsModelVoices(provider, modelId)
+    } catch (err) {
+      throw new ProvidersExternalError((err as Error).message)
     }
   }
 
@@ -573,6 +611,8 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
         apiKey: configPayload.apiKey,
         enabledModels: configPayload.enabledModels,
         enabledImageModels: configPayload.enabledImageModels,
+        enabledSttModels: configPayload.enabledSttModels,
+        enabledTtsModels: configPayload.enabledTtsModels,
         degradedThresholdMs: configPayload.degradedThresholdMs,
         textVerbosity: configPayload.textVerbosity,
         transport: configPayload.transport,
@@ -650,6 +690,9 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
     if (payload.modelType === 'image') {
       return testImageModelAvailability(provider, modelId)
     }
+    if (payload.modelType === 'stt' || payload.modelType === 'tts') {
+      return testVoiceModelAvailability(provider, payload.modelType, modelId)
+    }
     const testProviderConfig = modelId ? { ...provider, enabledModels: [modelId] } : provider
     const testModelId = modelId ?? getProviderDefaultModel(provider)
 
@@ -706,6 +749,47 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
       latencyMs: result.latencyMs ?? undefined,
       status: result.status,
       modelId,
+    }
+  }
+
+  function requireEnabledVoiceModel(provider: ProviderConfig, kind: VoiceModelKind, modelId: string | undefined): string {
+    if (!modelId || !getVoiceModels(provider, kind).includes(modelId)) {
+      throw new ProvidersValidationError(`${kind.toUpperCase()} model "${modelId ?? ''}" is not enabled for provider "${provider.name}"`)
+    }
+    return modelId
+  }
+
+  async function testVoiceModelAvailability(provider: ProviderConfig, kind: VoiceModelKind, requestedModelId: string | undefined) {
+    const modelId = requireEnabledVoiceModel(provider, kind, requestedModelId)
+    const result = await checkVoiceModelAvailability(provider, kind, modelId)
+    updateProviderStatus(provider.id, result.status === 'down' ? 'error' : 'connected', modelId)
+    if (result.status === 'down') {
+      return { success: false, error: result.errorMessage ?? 'Availability check failed', modelId }
+    }
+    return {
+      success: true,
+      message: `Available. ${kind.toUpperCase()} model: ${modelId}`,
+      latencyMs: result.latencyMs ?? undefined,
+      status: result.status,
+      modelId,
+    }
+  }
+
+  async function testTtsModel(id: string, payload: ProviderTtsTestPayloadContract): Promise<SynthesizedAudio> {
+    const provider = requireProvider(id)
+    const modelId = requireEnabledVoiceModel(provider, 'tts', payload.modelId)
+    try {
+      const audio = await synthesizeWithProvider(provider, {
+        text: payload.text ?? TTS_TEST_TEXT,
+        modelId,
+        voice: payload.voice,
+        format: 'mp3',
+      })
+      updateProviderStatus(id, 'connected', modelId)
+      return audio
+    } catch (err) {
+      updateProviderStatus(id, 'error', modelId)
+      throw new ProvidersExternalError((err as Error).message)
     }
   }
 
@@ -848,6 +932,8 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
     getLiveModels,
     getImageModelsByProviderType,
     getLiveImageModels,
+    getLiveVoiceModels,
+    getTtsVoices,
     refreshModelCatalogs,
     setFallback,
     startOAuthLogin,
@@ -859,6 +945,7 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
     deleteProvider,
     testProvider,
     testImageModel,
+    testTtsModel,
     activateProvider,
     probeOllamaModels,
     listOllamaModels,

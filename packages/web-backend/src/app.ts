@@ -22,7 +22,6 @@ import { createCronjobsRouter } from './routes/cronjobs.js'
 import { createSecretsRouter } from './routes/secrets.js'
 import { createTtsRouter } from './routes/tts.js'
 import { createSttRouter } from './routes/stt.js'
-import { createDeepgramRouter } from './routes/deepgram.js'
 import type { ProviderConfig, TaskRuntimeBoundary, TaskEventBus, AgentHeartbeatService } from '@axiom/core'
 import type { ProviderQuotaContract } from '@axiom/core/contracts'
 import { ensureAdminUser } from './auth.js'
@@ -206,7 +205,6 @@ export function createApp(options?: AppOptions): express.Express {
     app.use('/api/secrets', createSecretsRouter({ db: options.db }))
     app.use('/api/tts', createTtsRouter())
     app.use('/api/stt', createSttRouter(options.db))
-    app.use('/api/deepgram', createDeepgramRouter())
     app.use('/api/push', createPushRouter({
       db: options.db,
       notifier: options.pushNotifier ?? createPushNotifier({ db: options.db }),
