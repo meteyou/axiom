@@ -209,13 +209,32 @@ describe('settings schema', () => {
       error: 'tasks.statusUpdateIntervalMinutes must be an integer 1-120',
     })
 
-    expect(mergeTts({ tts: { openaiVoice: '' } }, settingsRaw)).toEqual({
-      error: 'tts.openaiVoice must be a non-empty string',
+    expect(mergeTts({ tts: { voice: 42 } }, settingsRaw)).toEqual({
+      error: 'tts.voice must be a string',
+    })
+
+    expect(mergeTts({ tts: { responseFormat: 'ogg' } }, settingsRaw).error).toMatch(/^tts\.responseFormat must be/)
+
+    expect(mergeStt({ stt: { model: 7 } }, settingsRaw)).toEqual({
+      error: 'stt.model must be a string',
     })
 
     expect(mergeStt({ stt: { rewrite: { providerId: 42 } } }, settingsRaw)).toEqual({
       error: 'stt.rewrite.providerId must be a string',
     })
+  })
+
+  it('stores voice model references and drops pre-provider voice keys', () => {
+    const settingsRaw: Record<string, unknown> = {
+      tts: { enabled: true, provider: 'deepgram', deepgramApiKey: 'secret', openaiVoice: 'nova' },
+      stt: { provider: 'whisper-url', whisperUrl: 'http://w', rewrite: { enabled: true } },
+    }
+
+    expect(mergeTts({ tts: { model: ' p1:tts-1 ', voice: 'alloy', responseFormat: 'wav' } }, settingsRaw)).toEqual({ error: null })
+    expect(mergeStt({ stt: { model: 'p2:nova-3', language: 'de' } }, settingsRaw)).toEqual({ error: null })
+
+    expect(settingsRaw.tts).toEqual({ enabled: true, model: 'p1:tts-1', voice: 'alloy', responseFormat: 'wav' })
+    expect(settingsRaw.stt).toEqual({ model: 'p2:nova-3', language: 'de', rewrite: { enabled: true } })
   })
 
   it('validates tasks.backgroundThinkingLevel against the enum', () => {

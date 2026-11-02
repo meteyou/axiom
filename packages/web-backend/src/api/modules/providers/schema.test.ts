@@ -8,11 +8,29 @@ import {
   parseProviderCreatePayload,
   parseProviderModelUpdatePayload,
   parseProviderTypeParam,
+  parseProviderModelSelectionPayload,
   parseProviderUpdatePayload,
+  parseTtsTestPayload,
+  parseVoiceModelKindParam,
   validateOllamaUrl,
 } from './schema.js'
 
 describe('providers schema', () => {
+  it('parses voice model kinds, voice test payloads and voice model types', () => {
+    expect(parseVoiceModelKindParam('tts')).toEqual({ ok: true, value: 'tts' })
+    expect(parseVoiceModelKindParam('image').ok).toBe(false)
+    expect(parseTtsTestPayload({ modelId: ' tts-1 ', voice: 'nova' })).toEqual({ ok: true, value: { modelId: 'tts-1', voice: 'nova' } })
+    expect(parseTtsTestPayload({})).toEqual({ ok: false, error: 'modelId is required' })
+    expect(parseTtsTestPayload({ modelId: 'x', text: 'a'.repeat(301) }).ok).toBe(false)
+    expect(parseProviderModelSelectionPayload({ modelId: 'nova-3', modelType: 'stt' })).toEqual({ modelId: 'nova-3', modelType: 'stt' })
+    expect(parseProviderModelSelectionPayload({ modelId: 'gpt', modelType: 'text' })).toEqual({ modelId: 'gpt' })
+    expect(parseProviderModelUpdatePayload({ disabled: true, modelType: 'tts' })).toMatchObject({ ok: true, value: { disabled: true, modelType: 'tts' } })
+    expect(parseProviderUpdatePayload({ enabledSttModels: ['nova-3'], enabledTtsModels: [] })).toMatchObject({
+      ok: true,
+      value: { enabledSttModels: ['nova-3'], enabledTtsModels: [] },
+    })
+  })
+
   it('validates provider type params', () => {
     expect(parseProviderTypeParam('openai')).toEqual({ ok: true, value: 'openai' })
 

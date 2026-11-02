@@ -12,7 +12,7 @@ export function createSttRouter(db?: Database): Router {
   /**
    * POST /api/stt/transcribe
    * Accepts a multipart audio file upload and returns a transcript.
-   * Uses the configured STT provider (whisper-url, openai, ollama).
+   * Uses the STT model selected in the settings.
    */
   router.post(
     '/transcribe',

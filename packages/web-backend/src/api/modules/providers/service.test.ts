@@ -531,3 +531,58 @@ describe('image generation models', () => {
     })
   })
 })
+
+describe('voice models', () => {
+  function createDeepgramProvider() {
+    return addProvider({ name: 'Deepgram', providerType: 'deepgram', apiKey: 'dg-key', enabledModels: [] })
+  }
+
+  it('creates a voice-only provider without making it the active chat provider', () => {
+    createDeepgramProvider()
+    expect(loadProviders().activeProvider).toBeUndefined()
+    const presets = mapProvidersListResponse(loadProviders(), loadProviders()).presets
+    expect(presets.deepgram).toMatchObject({ voiceOnly: true, supportsSttModels: true, supportsTtsModels: true })
+    expect(presets.anthropic).toMatchObject({ supportsSttModels: false, supportsTtsModels: false })
+  })
+
+  it('lists live voice models and rejects provider types without voice support', async () => {
+    const deepgram = createDeepgramProvider()
+    const anthropic = addProvider({ name: 'Anthropic', providerType: 'anthropic', apiKey: 'sk', enabledModels: ['claude'] })
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
+      JSON.stringify({ stt: [{ canonical_name: 'nova-3', languages: ['en'] }], tts: [] }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ))
+
+    const service = createProvidersService()
+    expect(await service.getLiveVoiceModels(deepgram.id, 'stt')).toEqual([{ id: 'nova-3', name: 'nova-3', languages: ['en'] }])
+    await expect(service.getLiveVoiceModels(anthropic.id, 'tts')).rejects.toBeInstanceOf(ProvidersValidationError)
+    expect(await service.getTtsVoices(deepgram.id, 'aura-2-thalia-en')).toBeNull()
+  })
+
+  it('checks STT availability against the live list and records the model status', async () => {
+    const provider = createDeepgramProvider()
+    updateProvider(provider.id, { enabledSttModels: ['nova-3', 'nova-legacy'] })
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(
+      JSON.stringify({ stt: [{ canonical_name: 'nova-3', languages: ['en'] }], tts: [] }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ))
+
+    const service = createProvidersService()
+    expect(await service.testProvider(provider.id, { modelId: 'nova-3', modelType: 'stt' })).toMatchObject({ success: true })
+    expect(await service.testProvider(provider.id, { modelId: 'nova-legacy', modelType: 'stt' })).toMatchObject({ success: false })
+    await expect(service.testProvider(provider.id, { modelId: 'nova-3', modelType: 'tts' })).rejects.toBeInstanceOf(ProvidersValidationError)
+    expect(loadProviders().providers[0]!.modelStatuses).toEqual({ 'nova-3': 'connected', 'nova-legacy': 'error' })
+  })
+
+  it('synthesizes a TTS test clip for an enabled model only', async () => {
+    const provider = createDeepgramProvider()
+    updateProvider(provider.id, { enabledTtsModels: ['aura-2-thalia-en'] })
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(new Uint8Array([1, 2, 3])))
+
+    const service = createProvidersService()
+    const result = await service.testTtsModel(provider.id, { modelId: 'aura-2-thalia-en' })
+    expect(result).toMatchObject({ contentType: 'audio/mpeg', extension: 'mp3' })
+    expect(String(fetchSpy.mock.calls[0]![0])).toContain('/v1/speak?model=aura-2-thalia-en&encoding=mp3')
+    await expect(service.testTtsModel(provider.id, { modelId: 'aura-asteria-en' })).rejects.toBeInstanceOf(ProvidersValidationError)
+  })
+})

@@ -1,15 +1,10 @@
 import {
   DEFAULT_WATCHDOG_SETTINGS,
-  encrypt,
   HEALTH_MONITOR_FALLBACK_TRIGGERS,
   IMAGE_GENERATION_MAX_VARIANTS_BOUNDS,
   normalizeImageOutputDir,
   SETTINGS_APP_LOGOS,
-  SETTINGS_STT_OPENAI_MODELS,
-  SETTINGS_STT_PROVIDERS,
   SETTINGS_THINKING_LEVELS,
-  SETTINGS_TTS_OPENAI_MODELS,
-  SETTINGS_TTS_PROVIDERS,
   SETTINGS_TTS_RESPONSE_FORMATS,
   TASK_LOOP_DETECTION_METHODS,
   TASK_TELEGRAM_DELIVERY_VALUES,
@@ -396,6 +391,22 @@ export function mergeImageGeneration(
   return { error: null, changed: JSON.stringify(existing) !== before }
 }
 
+/** Keys of the pre-provider voice settings; dropped on save so stale values cannot linger. */
+const LEGACY_TTS_KEYS = ['provider', 'providerId', 'openaiModel', 'openaiVoice', 'openaiInstructions', 'mistralVoice', 'deepgramModel', 'deepgramApiKey']
+const LEGACY_STT_KEYS = ['provider', 'providerId', 'whisperUrl', 'openaiModel', 'ollamaModel', 'deepgramModel', 'deepgramLanguage', 'deepgramApiKey']
+
+function mergeStringField(
+  source: Record<string, unknown>,
+  target: Record<string, unknown>,
+  key: string,
+  label: string,
+): string | null {
+  if (source[key] === undefined) return null
+  if (typeof source[key] !== 'string') return `${label}.${key} must be a string`
+  target[key] = (source[key] as string).trim()
+  return null
+}
+
 export function mergeTts(
   body: Record<string, unknown>,
   settingsRaw: Record<string, unknown>,
@@ -404,70 +415,19 @@ export function mergeTts(
   if (!tts) return { error: null }
 
   const existing = (settingsRaw.tts ?? {}) as Record<string, unknown>
+  for (const key of LEGACY_TTS_KEYS) delete existing[key]
 
   if (tts.enabled !== undefined) existing.enabled = !!tts.enabled
 
-  if (tts.provider !== undefined) {
-    const err = validateEnum(tts.provider, SETTINGS_TTS_PROVIDERS, 'tts.provider')
-    if (err) return { error: err }
-    existing.provider = tts.provider
-  }
-
-  if (tts.providerId !== undefined) {
-    if (typeof tts.providerId !== 'string') {
-      return { error: 'tts.providerId must be a string' }
-    }
-    existing.providerId = tts.providerId
-  }
-
-  if (tts.openaiModel !== undefined) {
-    const err = validateEnum(tts.openaiModel, SETTINGS_TTS_OPENAI_MODELS, 'tts.openaiModel')
-    if (err) return { error: err }
-    existing.openaiModel = tts.openaiModel
-  }
-
-  if (tts.openaiVoice !== undefined) {
-    if (typeof tts.openaiVoice !== 'string' || !tts.openaiVoice) {
-      return { error: 'tts.openaiVoice must be a non-empty string' }
-    }
-    existing.openaiVoice = tts.openaiVoice
-  }
-
-  if (tts.openaiInstructions !== undefined) {
-    if (typeof tts.openaiInstructions !== 'string') {
-      return { error: 'tts.openaiInstructions must be a string' }
-    }
-    existing.openaiInstructions = tts.openaiInstructions
-  }
-
-  if (tts.mistralVoice !== undefined) {
-    if (typeof tts.mistralVoice !== 'string') {
-      return { error: 'tts.mistralVoice must be a string' }
-    }
-    existing.mistralVoice = tts.mistralVoice
+  for (const key of ['model', 'voice', 'instructions']) {
+    const error = mergeStringField(tts, existing, key, 'tts')
+    if (error) return { error }
   }
 
   if (tts.responseFormat !== undefined) {
     const err = validateEnum(tts.responseFormat, SETTINGS_TTS_RESPONSE_FORMATS, 'tts.responseFormat')
     if (err) return { error: err }
     existing.responseFormat = tts.responseFormat
-  }
-
-  if (tts.deepgramModel !== undefined) {
-    if (typeof tts.deepgramModel !== 'string' || !tts.deepgramModel.trim()) {
-      return { error: 'tts.deepgramModel must be a non-empty string' }
-    }
-    existing.deepgramModel = tts.deepgramModel.trim()
-  }
-
-  if (tts.deepgramApiKey !== undefined) {
-    if (typeof tts.deepgramApiKey !== 'string') {
-      return { error: 'tts.deepgramApiKey must be a string' }
-    }
-    const raw = tts.deepgramApiKey
-    if (!raw.includes('•')) {
-      existing.deepgramApiKey = raw ? encrypt(raw) : ''
-    }
   }
 
   settingsRaw.tts = existing
@@ -584,64 +544,13 @@ export function mergeStt(
   if (!stt) return { error: null }
 
   const existing = (settingsRaw.stt ?? {}) as Record<string, unknown>
+  for (const key of LEGACY_STT_KEYS) delete existing[key]
 
   if (stt.enabled !== undefined) existing.enabled = !!stt.enabled
 
-  if (stt.provider !== undefined) {
-    const err = validateEnum(stt.provider, SETTINGS_STT_PROVIDERS, 'stt.provider')
-    if (err) return { error: err }
-    existing.provider = stt.provider
-  }
-
-  if (stt.whisperUrl !== undefined) {
-    if (typeof stt.whisperUrl !== 'string') {
-      return { error: 'stt.whisperUrl must be a string' }
-    }
-    existing.whisperUrl = stt.whisperUrl
-  }
-
-  if (stt.providerId !== undefined) {
-    if (typeof stt.providerId !== 'string') {
-      return { error: 'stt.providerId must be a string' }
-    }
-    existing.providerId = stt.providerId
-  }
-
-  if (stt.openaiModel !== undefined) {
-    const err = validateEnum(stt.openaiModel, SETTINGS_STT_OPENAI_MODELS, 'stt.openaiModel')
-    if (err) return { error: err }
-    existing.openaiModel = stt.openaiModel
-  }
-
-  if (stt.ollamaModel !== undefined) {
-    if (typeof stt.ollamaModel !== 'string') {
-      return { error: 'stt.ollamaModel must be a string' }
-    }
-    existing.ollamaModel = stt.ollamaModel
-  }
-
-  if (stt.deepgramModel !== undefined) {
-    if (typeof stt.deepgramModel !== 'string' || !stt.deepgramModel.trim()) {
-      return { error: 'stt.deepgramModel must be a non-empty string' }
-    }
-    existing.deepgramModel = stt.deepgramModel.trim()
-  }
-
-  if (stt.deepgramLanguage !== undefined) {
-    if (typeof stt.deepgramLanguage !== 'string') {
-      return { error: 'stt.deepgramLanguage must be a string' }
-    }
-    existing.deepgramLanguage = stt.deepgramLanguage.trim()
-  }
-
-  if (stt.deepgramApiKey !== undefined) {
-    if (typeof stt.deepgramApiKey !== 'string') {
-      return { error: 'stt.deepgramApiKey must be a string' }
-    }
-    const raw = stt.deepgramApiKey
-    if (!raw.includes('•')) {
-      existing.deepgramApiKey = raw ? encrypt(raw) : ''
-    }
+  for (const key of ['model', 'language']) {
+    const error = mergeStringField(stt, existing, key, 'stt')
+    if (error) return { error }
   }
 
   if (stt.rewrite !== undefined) {
