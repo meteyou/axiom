@@ -289,36 +289,27 @@ Hand-edited invalid values are ignored at runtime and the default is used instea
 
 [Text-to-Speech UI](../settings/text-to-speech).
 
-| Key                      | Type                                         | Default              | Validation                             |
-|--------------------------|----------------------------------------------|----------------------|----------------------------------------|
-| `tts.enabled`            | `boolean`                                    | `false`              | bool                                   |
-| `tts.provider`           | `"openai" \| "mistral" \| "deepgram"`        | `"openai"`           | enum (`SETTINGS_TTS_PROVIDERS`)        |
-| `tts.providerId`         | `string` (provider entry id)                 | `""`                 | string                                 |
-| `tts.openaiModel`        | `"gpt-4o-mini-tts" \| "tts-1" \| "tts-1-hd"` | `"gpt-4o-mini-tts"`  | enum (`SETTINGS_TTS_OPENAI_MODELS`)    |
-| `tts.openaiVoice`        | `string` (e.g. `"nova"`, `"alloy"`)          | `"nova"`             | non-empty string                       |
-| `tts.openaiInstructions` | `string`                                     | `""`                 | string                                 |
-| `tts.mistralVoice`       | `string` (e.g. `"nadia-neutral"`)            | `""`                 | string                                 |
-| `tts.responseFormat`     | `"mp3" \| "wav" \| "opus" \| "flac"`         | `"mp3"`              | enum (`SETTINGS_TTS_RESPONSE_FORMATS`) |
-| `tts.deepgramModel`      | `string` (e.g. `"aura-2-thalia-en"`)         | `"aura-2-thalia-en"` | non-empty string                       |
-| `tts.deepgramApiKey`     | `string` (encrypted at rest)                 | `""`                 | string                                 |
+| Key                  | Type                                      | Default | Validation                             |
+|----------------------|-------------------------------------------|---------|----------------------------------------|
+| `tts.enabled`        | `boolean`                                 | `false` | bool                                   |
+| `tts.model`          | `string` (`providerId:modelId` TTS model) | `""`    | string (empty = none selected)         |
+| `tts.voice`          | `string` (provider-specific voice id)     | `""`    | string (empty = model default)         |
+| `tts.instructions`   | `string`                                  | `""`    | string                                 |
+| `tts.responseFormat` | `"mp3" \| "wav" \| "opus" \| "flac"`      | `"mp3"` | enum (`SETTINGS_TTS_RESPONSE_FORMATS`) |
 
 ### `stt`
 
 [Speech-to-Text UI](../settings/speech-to-text).
 
-| Key                          | Type                                                             | Default          | Validation                          |
-|------------------------------|------------------------------------------------------------------|------------------|-------------------------------------|
-| `stt.enabled`                | `boolean`                                                        | `false`          | bool                                |
-| `stt.provider`               | `"whisper-url" \| "openai" \| "ollama" \| "deepgram"`            | `"whisper-url"`  | enum (`SETTINGS_STT_PROVIDERS`)     |
-| `stt.whisperUrl`             | `string` (full URL)                                              | `""`             | string                              |
-| `stt.providerId`             | `string` (provider entry id)                                     | `""`             | string                              |
-| `stt.openaiModel`            | `"whisper-1" \| "gpt-4o-transcribe" \| "gpt-4o-mini-transcribe"` | `"whisper-1"`    | enum (`SETTINGS_STT_OPENAI_MODELS`) |
-| `stt.ollamaModel`            | `string`                                                         | `""`             | string                              |
-| `stt.deepgramModel`          | `string` (e.g. `"nova-3"`, `"nova-2-general"`)                   | `"nova-3"`       | non-empty string                    |
-| `stt.deepgramLanguage`       | `string` (`"en"`, `"de"`, `"multi"`, …)                          | `""`             | string (empty = auto-detect)        |
-| `stt.deepgramApiKey`         | `string` (encrypted at rest)                                     | `""`             | string                              |
-| `stt.rewrite.enabled`        | `boolean`                                                        | `false`          | bool                                |
-| `stt.rewrite.providerId`     | `string` (`provider::model` composite)                           | `""`             | string                              |
+| Key                      | Type                                      | Default | Validation                            |
+|--------------------------|-------------------------------------------|---------|---------------------------------------|
+| `stt.enabled`            | `boolean`                                 | `false` | bool                                  |
+| `stt.model`              | `string` (`providerId:modelId` STT model) | `""`    | string (empty = none selected)        |
+| `stt.language`           | `string` (`"en"`, `"de"`, `"multi"`, …)   | `""`    | string (empty = user's chat language) |
+| `stt.rewrite.enabled`    | `boolean`                                 | `false` | bool                                  |
+| `stt.rewrite.providerId` | `string` (`providerId:modelId` composite) | `""`    | string                                |
+
+`tts.model` and `stt.model` reference models added on the [Providers page](../web-ui/providers#voice-models) (`enabledTtsModels` / `enabledSttModels`). They are reset to `""` when the model or its provider is disabled.
 
 ### `appearance`
 
@@ -518,14 +509,17 @@ LLM provider catalog. UI-managed via the [Providers page](../web-ui/providers); 
 | `id`                     | `string`                                        | Stable, unique within the file. Used everywhere as `providerId`.                              |
 | `name`                   | `string`                                        | Display name in the UI.                                                                        |
 | `type`                   | `string`                                        | Wire protocol, e.g. `"openai-completions"`, `"anthropic-messages"`.                            |
-| `providerType`           | `string`                                        | Logical class — `"openai"`, `"anthropic"`, `"mistral"`, `"openrouter"`, `"deepseek"`, `"kimi"`, `"minimax"`, `"zai"`, `"zai-coding"`, `"xai"`, `"ollama"`, `"google"`, `"custom-openai-completions"`, `"custom-openai-responses"`, `"custom-anthropic-messages"`, `"openai-codex"`, `"github-copilot"`, `"anthropic-oauth"`, etc. |
+| `providerType`           | `string`                                        | Logical class — `"openai"`, `"anthropic"`, `"mistral"`, `"openrouter"`, `"deepseek"`, `"kimi"`, `"minimax"`, `"zai"`, `"zai-coding"`, `"xai"`, `"ollama"`, `"google"`, `"custom-openai-completions"`, `"custom-openai-responses"`, `"custom-anthropic-messages"`, `"deepgram"` (voice-only), `"openai-codex"`, `"github-copilot"`, `"anthropic-oauth"`, etc. |
 | `provider`               | `string`                                        | pi-ai provider key.                                                                            |
 | `baseUrl`                | `string`                                        | API base URL.                                                                                  |
 | `apiKey`                 | `string` (**encrypted**)                        | Encrypted with `ENCRYPTION_KEY` (`packages/core/src/encryption.ts`). Use the UI to write.      |
 | `enabledModels`          | `string[]?`                                     | Model ids the user has enabled for this provider. The first entry is the default/primary model used when `activeModel` is unset. |
 | `enabledImageModels`     | `string[]?`                                     | Image generation model ids enabled for this provider. Only used by `image_generate`; never part of `enabledModels` or any text-model picker. Only stored for provider types with an image backend (OpenRouter, OpenAI, ChatGPT Plus/Pro); dropped when the provider type changes to another image backend. See [Image Generation](../concepts/image-generation). |
-| `disabled`               | `boolean?`                                      | `true` hides the provider from all LLM model pickers and the agent; TTS/STT can still use it. See [Disabling providers and models](../web-ui/providers#disabling-providers-and-models). |
+| `enabledSttModels`       | `string[]?`                                     | Speech-to-text model ids enabled for this provider (Deepgram, OpenAI, Mistral, OpenRouter, xAI, custom OpenAI-compatible). Never part of `enabledModels`. See [Voice models](../web-ui/providers#voice-models). |
+| `enabledTtsModels`       | `string[]?`                                     | Text-to-speech model ids enabled for this provider. Never part of `enabledModels`. |
+| `disabled`               | `boolean?`                                      | `true` hides the provider and all of its text, image and voice models from every picker and the agent (the STT rewrite model still works). See [Disabling providers and models](../web-ui/providers#disabling-providers-and-models). |
 | `disabledModels`         | `string[]?`                                     | Subset of `enabledModels` that is disabled. The default model is the first enabled model that is not disabled. |
+| `disabledSttModels` / `disabledTtsModels` | `string[]?`                    | Subsets of `enabledSttModels` / `enabledTtsModels` hidden from the Settings model pickers. |
 | `degradedThresholdMs`    | `number?`                                       | Latency threshold for `healthy → degraded` transitions in [Health Monitor](../settings/health-monitor). |
 | `textVerbosity`          | `"low" \| "medium" \| "high"` (optional)          | Response verbosity for supported OpenAI Codex/Responses-style providers. Omit to use the provider default (pi-ai currently defaults Codex to `low`). Configure via [Providers UI](../web-ui/providers#add-edit-dialog). |
 | `transport`              | `"sse" \| "websocket" \| "websocket-cached" \| "auto"` (optional) | Wire-level streaming transport. **Only honoured by the OpenAI Codex / Responses apiType today** — silently ignored on every other provider type and dropped on persist. Omit (or set to `"sse"`) to use the default HTTP+SSE streaming. See [Transport modes](#transport-modes) below. |
@@ -669,7 +663,7 @@ Source files:
 - `packages/web-backend/src/api/modules/settings/service.ts` — `createSettingsService()` orchestrates read / merge / write.
 - `packages/web-backend/src/api/modules/settings/schema.ts` — every per-field validator + merge function.
 - `packages/web-backend/src/api/modules/settings/mapper.ts` — shapes the response with all defaults filled in.
-- `packages/core/src/contracts/settings.ts` — single source of truth for types, enums (`SETTINGS_THINKING_LEVELS`, `SETTINGS_TTS_PROVIDERS`, …), and `normalizeSettingsContract()`.
+- `packages/core/src/contracts/settings.ts` — single source of truth for types, enums (`SETTINGS_THINKING_LEVELS`, `SETTINGS_TTS_RESPONSE_FORMATS`, …), and `normalizeSettingsContract()`.
 - `packages/core/src/config.ts` — `ensureConfigTemplates()`, `loadConfig()`, `getConfigDir()`.
 
 ### Validators reference

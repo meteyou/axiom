@@ -40,9 +40,9 @@ Default: `2500` (2.5 s). Range: `0` – `10000`. Set to `0` to disable batching 
 
 ## Send voice reply
 
-When enabled, after the agent produces a text reply the Telegram gateway also synthesises that reply via the configured TTS provider and uploads the result to the Telegram chat in addition to the regular text message.
+When enabled, after the agent produces a text reply the Telegram gateway also synthesises that reply via the configured TTS model and uploads the result to the Telegram chat in addition to the regular text message.
 
-Requires a working Text-to-Speech configuration (see [Settings → Text-to-Speech](./text-to-speech)). The TTS provider, voice, and audio format set there control how the voice reply is generated; this toggle only controls *whether* it is sent to Telegram.
+Requires a working Text-to-Speech configuration (see [Settings → Text-to-Speech](./text-to-speech)). The TTS model, voice, and audio format set there control how the voice reply is generated; this toggle only controls *whether* it is sent to Telegram.
 
 Delivery mode is picked automatically based on the TTS [Audio format](./text-to-speech#audio-format):
 

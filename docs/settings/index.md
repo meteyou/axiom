@@ -21,10 +21,10 @@ The Settings page has one sidebar entry per concern. Each gets its own docs page
 | [Memory](./memory)                   | Session timeout, memory consolidation, fact extraction.                                 |
 | [Notifications](../guide/push-notifications#enable-notifications) | Push notifications for finished chat replies on your own devices (every user, not only admins). |
 | [Secrets](./secrets)                 | API keys and other sensitive values stored in `/data/config/secrets.json`.              |
-| [Speech-to-Text](./speech-to-text)   | Transcription provider (OpenAI, Whisper URL, Ollama) and optional LLM rewrite.          |
+| [Speech-to-Text](./speech-to-text)   | STT model (from the Providers page), language and optional LLM rewrite.                 |
 | [Tasks](./tasks)                     | Default task provider, max duration, loop detection, status updates, Telegram delivery, codemode (experimental). |
 | [Telegram](./telegram)               | Bot token, message batching, user approval + assignment.                                |
-| [Text-to-Speech](./text-to-speech)   | Voice output provider (OpenAI, Mistral/Voxtral), voice, audio format.                   |
+| [Text-to-Speech](./text-to-speech)   | TTS model (from the Providers page), voice, instructions, audio format.                 |
 
 ## Saving changes
 
