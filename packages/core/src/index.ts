@@ -121,6 +121,10 @@ export {
   supportsImageModels,
   createImageOnlyModelIdMatcher,
   getUsableImageModels,
+  getUsableVoiceModels,
+  getVoiceModels,
+  isProviderVoiceModelUsable,
+  isVoiceOnlyProviderType,
   isDynamicCatalogProvider,
   supportsModelSpecOverrides,
   isRadiusProviderType,
@@ -667,11 +671,7 @@ export type {
 } from './task-notification.js'
 export {
   loadSttSettings,
-  loadDeepgramApiKey,
   transcribeAudio,
-  transcribeWhisperUrl,
-  transcribeOpenAi,
-  transcribeOllama,
   rewriteTranscript,
 } from './stt.js'
 export type {
@@ -683,9 +683,6 @@ export type {
 export { createTranscribeAudioTool } from './stt-tool.js'
 export {
   loadTtsSettings,
-  loadTtsDeepgramApiKey,
-  synthesizeOpenAi,
-  synthesizeMistral,
   synthesizeTts,
 } from './tts.js'
 export type {
@@ -694,26 +691,31 @@ export type {
   SynthesizeResult,
 } from './tts.js'
 export {
+  getVoiceProviderCapabilities,
+  supportsVoiceModels,
+} from './voice-capabilities.js'
+export type { VoiceModelKind, VoiceProviderCapabilities } from './voice-capabilities.js'
+export {
+  checkVoiceModelAvailability,
+  listLiveVoiceModels,
+  listTtsModelVoices,
+  resolveVoiceModelRef,
+  synthesizeWithProvider,
+  transcribeWithProvider,
+} from './voice-models.js'
+export type { VoiceModelAvailabilityResult } from './voice-models.js'
+export { audioFormatFromFilename, clearVoiceModelListCache } from './voice-backends.js'
+export type { AvailableVoiceModel, SynthesizedAudio, VoiceOption } from './voice-backends.js'
+export {
   transcribeDeepgram,
   synthesizeDeepgram,
   listDeepgramModels,
-  encryptDeepgramApiKey,
-  decryptDeepgramApiKey,
   extractDeepgramTranscript,
   DEEPGRAM_DEFAULT_BASE_URL,
-  DEEPGRAM_DEFAULT_STT_MODEL,
-  DEEPGRAM_DEFAULT_TTS_MODEL,
-  DEEPGRAM_TTS_PRESET_MODELS,
-  DEEPGRAM_TTS_ENCODINGS,
 } from './deepgram.js'
 export type {
-  DeepgramTranscribeOptions,
-  DeepgramSynthesizeOptions,
-  DeepgramListModelsOptions,
   DeepgramModel,
   DeepgramModelsList,
-  DeepgramTtsEncoding,
-  DeepgramTtsPresetModel,
 } from './deepgram.js'
 export {
   parseSlashCommand,

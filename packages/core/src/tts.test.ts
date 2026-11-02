@@ -1,8 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-// Mock the config layer so loadTtsSettings / loadTtsDeepgramApiKey work
-// without touching the real on-disk settings.json. We override the return
-// values per test via `loadConfigMock.mockReturnValueOnce(...)` below.
 vi.mock('./config.js', () => ({
   ensureConfigTemplates: vi.fn(),
   loadConfig: vi.fn(),
@@ -13,49 +10,77 @@ vi.mock('./deepgram.js', async () => {
   const actual = await vi.importActual<typeof import('./deepgram.js')>('./deepgram.js')
   return {
     ...actual,
-    decryptDeepgramApiKey: vi.fn((s: string) => s),
     synthesizeDeepgram: vi.fn(async (text: string) => Buffer.from(`audio:${text.length}`)),
   }
 })
 
-// Provider config isn't exercised by the Deepgram path (it uses its own
-// `tts.deepgramApiKey`), but `synthesizeTts` imports the module eagerly so
-// we stub the loader to a no-op file.
+const PROVIDERS = [
+  {
+    id: 'dg',
+    name: 'Deepgram',
+    type: 'deepgram',
+    providerType: 'deepgram',
+    provider: 'deepgram',
+    baseUrl: 'https://api.deepgram.com',
+    apiKey: 'dg_test',
+    enabledModels: [],
+    enabledTtsModels: ['aura-2-thalia-en'],
+  },
+  {
+    id: 'oai',
+    name: 'OpenAI',
+    type: 'openai-completions',
+    providerType: 'openai',
+    provider: 'openai',
+    baseUrl: 'https://api.openai.com/v1',
+    apiKey: 'sk',
+    enabledModels: ['gpt-4o'],
+    enabledTtsModels: ['gpt-4o-mini-tts', 'tts-1'],
+  },
+  {
+    id: 'or',
+    name: 'OpenRouter',
+    type: 'openai-completions',
+    providerType: 'openrouter',
+    provider: 'openrouter',
+    baseUrl: 'https://openrouter.ai/api/v1',
+    apiKey: 'sk-or',
+    enabledModels: [],
+    enabledTtsModels: ['deepgram/aura-2'],
+  },
+]
+
 vi.mock('./provider-config.js', async () => {
   const actual = await vi.importActual<typeof import('./provider-config.js')>('./provider-config.js')
   return {
     ...actual,
-    loadProvidersDecrypted: vi.fn(() => ({ providers: [] })),
-    getApiKeyForProvider: vi.fn(async () => 'test-key'),
+    loadProvidersDecrypted: vi.fn(() => ({ providers: PROVIDERS })),
+    getApiKeyForProvider: vi.fn(async (provider: { apiKey: string }) => provider.apiKey),
   }
 })
 
 import { loadConfig } from './config.js'
 import { synthesizeDeepgram } from './deepgram.js'
 import { synthesizeTts } from './tts.js'
+import { clearVoiceModelListCache } from './voice-backends.js'
 import type { TtsResponseFormat } from './contracts/settings.js'
 
 const loadConfigMock = vi.mocked(loadConfig)
 const synthesizeDeepgramMock = vi.mocked(synthesizeDeepgram)
+const originalFetch = globalThis.fetch
 
-function settingsFor(responseFormat: TtsResponseFormat) {
-  return {
-    tts: {
-      enabled: true,
-      provider: 'deepgram',
-      providerId: '',
-      responseFormat,
-      deepgramModel: 'aura-2-thalia-en',
-      deepgramApiKey: 'dg_test',
-    },
-  }
+function mockTts(tts: Record<string, unknown>) {
+  loadConfigMock.mockImplementation(() => ({ tts }) as never)
 }
 
 function mockSettings(responseFormat: TtsResponseFormat) {
-  // `synthesizeTts` calls loadConfig twice: once via loadTtsSettings and
-  // once via loadTtsDeepgramApiKey. Return the same payload both times.
-  loadConfigMock.mockImplementation(() => settingsFor(responseFormat) as never)
+  mockTts({ enabled: true, model: 'dg:aura-2-thalia-en', responseFormat })
 }
+
+afterEach(() => {
+  globalThis.fetch = originalFetch
+  clearVoiceModelListCache()
+})
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -109,7 +134,7 @@ describe('synthesizeTts (Deepgram chunking)', () => {
   it('rejects flac input strictly longer than 2000 chars with an actionable message', async () => {
     mockSettings('flac')
     const text = 'a'.repeat(5000)
-    await expect(synthesizeTts(text)).rejects.toThrow(/`mp3` and `wav`/)
+    await expect(synthesizeTts(text)).rejects.toThrow(/MP3 or WAV response format/)
     expect(synthesizeDeepgramMock).not.toHaveBeenCalled()
   })
 
@@ -147,7 +172,64 @@ describe('synthesizeTts (Deepgram chunking)', () => {
   it('passes short opus input through unchanged (single Deepgram call, no rejection)', async () => {
     mockSettings('opus')
     const text = 'short hello'
-    await expect(synthesizeTts(text)).resolves.toMatchObject({ contentType: 'audio/opus' })
+    await expect(synthesizeTts(text)).resolves.toMatchObject({ contentType: 'audio/ogg' })
     expect(synthesizeDeepgramMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('synthesizeTts (settings and providers)', () => {
+  it('refuses while disabled unless the preview asks to ignore it', async () => {
+    mockTts({ enabled: false, model: 'dg:aura-2-thalia-en' })
+    await expect(synthesizeTts('hi')).rejects.toThrow('TTS is not enabled')
+    await expect(synthesizeTts('hi', { ignoreEnabled: true })).resolves.toMatchObject({ extension: 'mp3' })
+  })
+
+  it('asks for a model when none is selected', async () => {
+    mockTts({ enabled: true, model: '' })
+    await expect(synthesizeTts('hi')).rejects.toThrow('No TTS model selected')
+  })
+
+  it('sends voice, format and instructions to OpenAI gpt-4o TTS models only', async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => new Response(new Uint8Array([1, 2, 3])))
+    globalThis.fetch = fetchMock
+    mockTts({ enabled: true, model: 'oai:gpt-4o-mini-tts', voice: 'coral', instructions: 'Be calm', responseFormat: 'opus' })
+
+    const result = await synthesizeTts('Hello')
+    expect(result).toMatchObject({ contentType: 'audio/ogg', extension: 'ogg' })
+    const [url, init] = fetchMock.mock.calls[0]!
+    expect(url).toBe('https://api.openai.com/v1/audio/speech')
+    expect(JSON.parse(init.body as string)).toEqual({
+      model: 'gpt-4o-mini-tts',
+      input: 'Hello',
+      response_format: 'opus',
+      voice: 'coral',
+      instructions: 'Be calm',
+    })
+
+    await synthesizeTts('Hello', { settings: { model: 'oai:tts-1', voice: '' } })
+    expect(JSON.parse(fetchMock.mock.calls[1]![1].body as string)).toEqual({
+      model: 'tts-1',
+      input: 'Hello',
+      response_format: 'opus',
+      voice: 'alloy',
+    })
+  })
+
+  it('falls back to MP3 and the first supported voice on OpenRouter', async () => {
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => (url.includes('/models')
+      ? new Response(JSON.stringify({ data: [{ id: 'deepgram/aura-2', supported_voices: ['aura-2-thalia-en', 'aura-2-zeus-en'] }] }))
+      : new Response(new Uint8Array([1]))))
+    globalThis.fetch = fetchMock
+    mockTts({ enabled: true, model: 'or:deepgram/aura-2', responseFormat: 'wav' })
+
+    const result = await synthesizeTts('Hi')
+    expect(result).toMatchObject({ contentType: 'audio/mpeg', extension: 'mp3' })
+    const speech = fetchMock.mock.calls.find(([url]) => (url as string).endsWith('/audio/speech'))!
+    expect(JSON.parse(speech[1].body as string)).toEqual({
+      model: 'deepgram/aura-2',
+      input: 'Hi',
+      response_format: 'mp3',
+      voice: 'aura-2-thalia-en',
+    })
   })
 })

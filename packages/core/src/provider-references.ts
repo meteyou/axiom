@@ -1,22 +1,22 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { getConfigDir } from './config.js'
-import { isProviderImageModelUsable, isProviderModelUsable, loadProviders, parseProviderModelId } from './provider-config.js'
+import { isProviderImageModelUsable, isProviderModelUsable, isProviderVoiceModelUsable, loadProviders, parseProviderModelId } from './provider-config.js'
 import type { ProviderConfig } from './provider-config.js'
 import type { ScheduledTaskStore } from './scheduled-task-store.js'
 
-/**
- * `settings.json` fields holding a `providerId[:modelId]` reference for LLM
- * work. TTS/STT references are intentionally absent: disabled providers stay
- * usable there.
- */
-const SETTINGS_PROVIDER_REFERENCE_PATHS: ReadonlyArray<{ path: readonly string[]; image?: true }> = [
+type ReferenceKind = 'text' | 'image' | 'stt' | 'tts'
+
+/** `settings.json` fields holding a `providerId[:modelId]` model reference. */
+const SETTINGS_PROVIDER_REFERENCE_PATHS: ReadonlyArray<{ path: readonly string[]; kind?: ReferenceKind }> = [
   { path: ['sessionSummaryProviderId'] },
   { path: ['factExtraction', 'providerId'] },
   { path: ['memoryConsolidation', 'providerId'] },
   { path: ['tasks', 'defaultProvider'] },
   { path: ['tasks', 'loopDetection', 'smartProvider'] },
-  { path: ['imageGeneration', 'defaultModel'], image: true },
+  { path: ['imageGeneration', 'defaultModel'], kind: 'image' },
+  { path: ['stt', 'model'], kind: 'stt' },
+  { path: ['tts', 'model'], kind: 'tts' },
 ]
 
 export interface ResetDisabledProviderReferencesResult {
@@ -37,10 +37,12 @@ export function isDisabledProviderReference(value: string | null | undefined, pr
   return ref ? !isProviderModelUsable(ref.provider, ref.modelId) : false
 }
 
-function isDisabledImageModelReference(value: string, providers: ProviderConfig[]): boolean {
+function isDisabledModelReference(value: string, providers: ProviderConfig[], kind: ReferenceKind): boolean {
+  if (kind === 'text') return isDisabledProviderReference(value, providers)
   const ref = findReferencedProvider(value, providers)
   if (!ref?.modelId) return false
-  return !isProviderImageModelUsable(ref.provider, ref.modelId)
+  if (kind === 'image') return !isProviderImageModelUsable(ref.provider, ref.modelId)
+  return !isProviderVoiceModelUsable(ref.provider, kind, ref.modelId)
 }
 
 function resetSettingsReferences(providers: ProviderConfig[]): string[] {
@@ -50,15 +52,14 @@ function resetSettingsReferences(providers: ProviderConfig[]): string[] {
   const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as Record<string, unknown>
   const resetPaths: string[] = []
 
-  for (const { path: refPath, image } of SETTINGS_PROVIDER_REFERENCE_PATHS) {
+  for (const { path: refPath, kind = 'text' } of SETTINGS_PROVIDER_REFERENCE_PATHS) {
     const parent = refPath.slice(0, -1).reduce<unknown>(
       (node, key) => (node && typeof node === 'object' ? (node as Record<string, unknown>)[key] : undefined),
       settings,
     ) as Record<string, unknown> | undefined
     const leaf = refPath[refPath.length - 1]!
     const value = parent?.[leaf]
-    const isDisabled = image ? isDisabledImageModelReference : isDisabledProviderReference
-    if (typeof value === 'string' && isDisabled(value, providers)) {
+    if (typeof value === 'string' && isDisabledModelReference(value, providers, kind)) {
       parent![leaf] = ''
       resetPaths.push(refPath.join('.'))
     }

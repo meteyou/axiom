@@ -4,60 +4,10 @@ import {
   transcribeDeepgram,
   synthesizeDeepgram,
   listDeepgramModels,
-  encryptDeepgramApiKey,
-  decryptDeepgramApiKey,
   extractDeepgramTranscript,
   DEEPGRAM_DEFAULT_STT_MODEL,
   DEEPGRAM_DEFAULT_TTS_MODEL,
 } from './deepgram.js'
-import { isEncrypted } from './encryption.js'
-
-// ── Encryption round-trip ─────────────────────────────────────────────
-
-describe('encryptDeepgramApiKey / decryptDeepgramApiKey', () => {
-  it('round-trips a plaintext key', () => {
-    const plaintext = 'dg_test_key_abc123'
-    const encrypted = encryptDeepgramApiKey(plaintext)
-    expect(encrypted).not.toBe(plaintext)
-    expect(isEncrypted(encrypted)).toBe(true)
-    expect(decryptDeepgramApiKey(encrypted)).toBe(plaintext)
-  })
-
-  it('returns empty string for empty input', () => {
-    expect(encryptDeepgramApiKey('')).toBe('')
-    expect(decryptDeepgramApiKey('')).toBe('')
-  })
-
-  it('is idempotent: encrypting an already-encrypted value returns it unchanged', () => {
-    const plaintext = 'sk-deepgram-original'
-    const once = encryptDeepgramApiKey(plaintext)
-    const twice = encryptDeepgramApiKey(once)
-    expect(twice).toBe(once)
-    expect(decryptDeepgramApiKey(twice)).toBe(plaintext)
-  })
-
-  it('passes through a plaintext key when decrypting (legacy/freshly-edited config)', () => {
-    expect(decryptDeepgramApiKey('not-encrypted-yet')).toBe('not-encrypted-yet')
-  })
-
-  it('falls back to plaintext when isEncrypted false-positives on a hex key', () => {
-    // 40-char hex string — the exact shape of a Deepgram API key. This trips
-    // the strict-base64 + length-divisible-by-4 + decodes-to-30-bytes checks
-    // in `isEncrypted()`, but the AES-GCM auth tag check fails on decrypt.
-    // The decrypt helper must return the value as-is so callers don't crash
-    // on settings.json files corrupted by the old `isEncrypted ? raw : encrypt`
-    // store path.
-    const hexKey = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
-    expect(hexKey).toHaveLength(40)
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    try {
-      expect(decryptDeepgramApiKey(hexKey)).toBe(hexKey)
-      expect(warnSpy).toHaveBeenCalledOnce()
-    } finally {
-      warnSpy.mockRestore()
-    }
-  })
-})
 
 // ── extractDeepgramTranscript ─────────────────────────────────────────
 

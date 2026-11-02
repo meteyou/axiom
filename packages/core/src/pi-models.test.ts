@@ -7,8 +7,9 @@ import { SUPPORTED_APIS, releaseProviderSession, streamSimple } from './pi-model
 import { PROVIDER_TYPE_PRESETS } from './provider-config.js'
 
 describe('pi-models api coverage', () => {
-  it('implements every preset apiType', () => {
+  it('implements every chat preset apiType', () => {
     for (const preset of Object.values(PROVIDER_TYPE_PRESETS)) {
+      if (preset.voiceOnly) continue
       expect(
         SUPPORTED_APIS.has(preset.apiType as Api),
         `preset "${preset.type}" uses unimplemented api "${preset.apiType}"`,

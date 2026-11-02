@@ -12,6 +12,8 @@ import { getConfigDir, ensureConfigTemplates, loadConfig } from './config.js'
 import { encrypt, decrypt, isEncrypted, maskApiKey } from './encryption.js'
 import { RADIUS_BASE_URL, findRadiusCatalogModel, radiusCatalogToAvailableModels } from './radius-catalog.js'
 import { validateModelCompat } from './contracts/providers.js'
+import { supportsVoiceModels } from './voice-capabilities.js'
+import type { VoiceModelKind } from './voice-capabilities.js'
 import type { CompatApiTypeContract } from './contracts/providers.js'
 import type { ModelInputModalityContract, ModelThinkingLevelMapContract, ProviderModelTypeContract, ProviderModelUpdatePayloadContract } from './contracts/providers.js'
 
@@ -29,6 +31,7 @@ export const CLAUDE_CODE_VERSION = '2.1.287'
 export type ProviderType =
   | 'openai' | 'anthropic' | 'mistral' | 'ollama' | 'openrouter' | 'deepseek' | 'kimi' | 'minimax' | 'zai' | 'zai-coding' | 'xai' | 'opencode-go' | 'opencode-zen' | CustomProviderType | 'google'
   | 'radius' | 'radius-api-key'
+  | 'deepgram'
   // Legacy aliases kept for migration
   | 'ollama-local' | 'ollama-cloud'
   | 'openai-codex' | 'github-copilot' | 'anthropic-oauth'
@@ -88,6 +91,8 @@ export interface ProviderTypePreset {
    * changes frequently and is authoritative at the source (e.g. OpenRouter).
    */
   dynamicCatalog?: boolean
+  /** The provider serves no chat models and is only used for voice (STT/TTS) models. */
+  voiceOnly?: boolean
 }
 
 export interface AvailableModel {
@@ -349,6 +354,20 @@ export const PROVIDER_TYPE_PRESETS: Record<ProviderType, ProviderTypePreset> = {
     piAiProvider: null,
     authMethod: 'api-key',
     dynamicCatalog: true,
+  },
+
+  deepgram: {
+    type: 'deepgram',
+    label: 'Deepgram',
+    description: 'Speech-to-text and text-to-speech',
+    apiType: 'deepgram',
+    providerName: 'deepgram',
+    baseUrl: 'https://api.deepgram.com',
+    requiresApiKey: true,
+    urlEditable: false,
+    piAiProvider: null,
+    authMethod: 'api-key',
+    voiceOnly: true,
   },
 
   // ── OAuth / Subscription providers ──
@@ -754,15 +773,18 @@ export interface ProviderConfig {
    * active/fallback selection or the text-model routing list.
    */
   enabledImageModels?: string[]
-  /**
-   * Hides the provider from every LLM model picker and from the agent. Its
-   * credentials stay usable for TTS/STT.
-   */
+  /** Speech-to-text models; kept apart from `enabledModels` like image models. */
+  enabledSttModels?: string[]
+  /** Text-to-speech models; kept apart from `enabledModels` like image models. */
+  enabledTtsModels?: string[]
+  /** Hides the provider and all of its models from every picker and from the agent. */
   disabled?: boolean
   /** Subset of `enabledModels` hidden from model pickers and the agent. */
   disabledModels?: string[]
   /** Subset of `enabledImageModels` hidden from the agent and the default-image-model picker. */
   disabledImageModels?: string[]
+  disabledSttModels?: string[]
+  disabledTtsModels?: string[]
   degradedThresholdMs?: number
   textVerbosity?: TextVerbosity
   transport?: ProviderTransport
@@ -1248,7 +1270,7 @@ export function addProvider(input: {
   file.providers.push(provider)
 
   // If this is the first provider, make it active
-  if (file.providers.length === 1) {
+  if (file.providers.length === 1 && !preset.voiceOnly) {
     file.activeProvider = provider.id
     if (enabledModels[0]) file.activeModel = enabledModels[0]
   }
@@ -1326,6 +1348,8 @@ export function updateProvider(id: string, input: {
   apiKey?: string
   enabledModels?: string[]
   enabledImageModels?: string[]
+  enabledSttModels?: string[]
+  enabledTtsModels?: string[]
   degradedThresholdMs?: number
   textVerbosity?: TextVerbosity | null
   transport?: ProviderTransport | null
@@ -1357,6 +1381,9 @@ export function updateProvider(id: string, input: {
       delete existing.enabledImageModels
       delete existing.disabledImageModels
     }
+    for (const kind of VOICE_KINDS) {
+      if (!supportsVoiceModels(input.providerType, kind)) setVoiceModels(existing, kind, [])
+    }
     existing.providerType = input.providerType
     existing.type = preset.apiType
     existing.provider = preset.providerName
@@ -1386,6 +1413,15 @@ export function updateProvider(id: string, input: {
     if (imageModels.length > 0) existing.enabledImageModels = imageModels
     else delete existing.enabledImageModels
     pruneDisabledImageModels(existing)
+  }
+  for (const kind of VOICE_KINDS) {
+    const requested = kind === 'stt' ? input.enabledSttModels : input.enabledTtsModels
+    if (requested === undefined) continue
+    const models = Array.from(new Set(requested.map(id => id.trim()).filter(Boolean)))
+    if (models.length > 0 && !supportsVoiceModels(existing.providerType, kind)) {
+      throw new Error(`Provider type "${existing.providerType}" does not support ${kind.toUpperCase()} models`)
+    }
+    setVoiceModels(existing, kind, models)
   }
   if (input.degradedThresholdMs !== undefined) existing.degradedThresholdMs = input.degradedThresholdMs
   if (input.extraFields !== undefined) {
@@ -1627,6 +1663,14 @@ export function setProviderModelDisabled(
   const file = loadProviders()
   const provider = file.providers.find(p => p.id === providerId)
   if (!provider) throw new ProviderNotFoundError(providerId)
+  if (modelType === 'stt' || modelType === 'tts') {
+    if (!getVoiceModels(provider, modelType).includes(modelId)) {
+      throw new Error(`${modelType.toUpperCase()} model "${modelId}" is not configured for provider "${provider.name}"`)
+    }
+    setVoiceModelDisabled(provider, modelType, modelId, disabled)
+    saveProviders(file)
+    return provider
+  }
   const isTextModel = (provider.enabledModels ?? []).includes(modelId)
   const isImageModel = (provider.enabledImageModels ?? []).includes(modelId)
   const target = modelType ?? (isTextModel || !isImageModel ? 'text' : 'image')
@@ -1674,7 +1718,73 @@ function pruneDisabledImageModels(provider: ProviderConfig): void {
   if (provider.disabledImageModels.length === 0) delete provider.disabledImageModels
 }
 
+const VOICE_KINDS: readonly VoiceModelKind[] = ['stt', 'tts']
+
+type VoiceModelLists = Pick<ProviderConfig, 'enabledSttModels' | 'disabledSttModels' | 'enabledTtsModels' | 'disabledTtsModels'>
+
+/** Configured voice models of one kind, including individually disabled ones. */
+export function getVoiceModels(provider: VoiceModelLists, kind: VoiceModelKind): string[] {
+  return (kind === 'stt' ? provider.enabledSttModels : provider.enabledTtsModels) ?? []
+}
+
+function getDisabledVoiceModels(provider: VoiceModelLists, kind: VoiceModelKind): string[] {
+  return (kind === 'stt' ? provider.disabledSttModels : provider.disabledTtsModels) ?? []
+}
+
+function writeVoiceLists(provider: VoiceModelLists, kind: VoiceModelKind, enabled: string[], disabledIds: string[]): void {
+  const disabledList = enabled.filter(m => disabledIds.includes(m))
+  if (kind === 'stt') {
+    if (enabled.length > 0) provider.enabledSttModels = enabled
+    else delete provider.enabledSttModels
+    if (disabledList.length > 0) provider.disabledSttModels = disabledList
+    else delete provider.disabledSttModels
+  } else {
+    if (enabled.length > 0) provider.enabledTtsModels = enabled
+    else delete provider.enabledTtsModels
+    if (disabledList.length > 0) provider.disabledTtsModels = disabledList
+    else delete provider.disabledTtsModels
+  }
+}
+
+function setVoiceModels(provider: VoiceModelLists, kind: VoiceModelKind, models: string[]): void {
+  writeVoiceLists(provider, kind, models, getDisabledVoiceModels(provider, kind))
+}
+
+function setVoiceModelDisabled(provider: VoiceModelLists, kind: VoiceModelKind, modelId: string, disabled: boolean): void {
+  const current = new Set(getDisabledVoiceModels(provider, kind))
+  if (disabled) current.add(modelId)
+  else current.delete(modelId)
+  writeVoiceLists(provider, kind, getVoiceModels(provider, kind), [...current])
+}
+
+/** Voice models of a provider that may be offered in the STT/TTS model pickers. */
+export function getUsableVoiceModels(
+  provider: Pick<ProviderConfig, 'providerType' | 'disabled'> & VoiceModelLists,
+  kind: VoiceModelKind,
+): string[] {
+  if (isProviderDisabled(provider) || !supportsVoiceModels(provider.providerType, kind)) return []
+  const disabledIds = getDisabledVoiceModels(provider, kind)
+  return getVoiceModels(provider, kind).filter(m => !disabledIds.includes(m))
+}
+
+/** Whether `modelId` may be used as a voice model of this provider. */
+export function isProviderVoiceModelUsable(
+  provider: Pick<ProviderConfig, 'providerType' | 'disabled'> & VoiceModelLists,
+  kind: VoiceModelKind,
+  modelId: string,
+): boolean {
+  return getUsableVoiceModels(provider, kind).includes(modelId)
+}
+
+/** Whether the provider type only exists for voice models (no chat models, never active). */
+export function isVoiceOnlyProviderType(providerType: ProviderType | string): boolean {
+  return PROVIDER_TYPE_PRESETS[providerType as ProviderType]?.voiceOnly === true
+}
+
 function assertSelectable(provider: ProviderConfig, modelId: string | undefined): void {
+  if (isVoiceOnlyProviderType(provider.providerType)) {
+    throw new Error(`Provider "${provider.name}" only serves voice models`)
+  }
   if (isProviderDisabled(provider)) {
     throw new Error(`Provider "${provider.name}" is disabled`)
   }
@@ -1745,7 +1855,9 @@ export function updateProviderStatus(id: string, status: 'connected' | 'error' |
     provider.modelStatuses[modelId] = status
     // Image-model results (content refusals, no live endpoint) must not flag a working chat provider.
     const textModels = provider.enabledModels ?? []
-    const enabled = textModels.length > 0 ? textModels : (provider.enabledImageModels ?? [])
+    const enabled = textModels.length > 0
+      ? textModels
+      : [...(provider.enabledImageModels ?? []), ...getVoiceModels(provider, 'stt'), ...getVoiceModels(provider, 'tts')]
     const statuses = enabled.map(m => provider.modelStatuses?.[m] ?? 'untested')
     if (statuses.every(s => s === 'connected')) provider.status = 'connected'
     else if (statuses.some(s => s === 'error')) provider.status = 'error'

@@ -78,13 +78,8 @@ describe('audio_transcribe execute', () => {
   it('transcribes a valid mp3 file', async () => {
     mockLoadSttSettings.mockReturnValue({
       enabled: true,
-      provider: 'whisper-url',
-      whisperUrl: 'http://localhost:8000/v1/audio/transcriptions',
-      providerId: '',
-      openaiModel: 'whisper-1',
-      ollamaModel: '',
-      deepgramModel: 'nova-3',
-      deepgramLanguage: '',
+      model: 'p1:whisper-1',
+      language: '',
       rewrite: { enabled: false, providerId: '' },
     })
     mockExistsSync.mockReturnValue(true)
@@ -109,13 +104,8 @@ describe('audio_transcribe execute', () => {
   it('resolves relative paths against the given user workspace', async () => {
     mockLoadSttSettings.mockReturnValue({
       enabled: true,
-      provider: 'whisper-url',
-      whisperUrl: 'http://localhost:8000/v1/audio/transcriptions',
-      providerId: '',
-      openaiModel: 'whisper-1',
-      ollamaModel: '',
-      deepgramModel: 'nova-3',
-      deepgramLanguage: '',
+      model: 'p1:whisper-1',
+      language: '',
       rewrite: { enabled: false, providerId: '' },
     })
     mockExistsSync.mockReturnValue(true)
@@ -132,13 +122,8 @@ describe('audio_transcribe execute', () => {
   it('transcribes a wav file with language parameter', async () => {
     mockLoadSttSettings.mockReturnValue({
       enabled: true,
-      provider: 'whisper-url',
-      whisperUrl: 'http://localhost:8000/v1/audio/transcriptions',
-      providerId: '',
-      openaiModel: 'whisper-1',
-      ollamaModel: '',
-      deepgramModel: 'nova-3',
-      deepgramLanguage: '',
+      model: 'p1:whisper-1',
+      language: '',
       rewrite: { enabled: false, providerId: '' },
     })
     mockExistsSync.mockReturnValue(true)
@@ -159,13 +144,8 @@ describe('audio_transcribe execute', () => {
   it('passes rewrite flag in details when rewrite is requested and enabled', async () => {
     mockLoadSttSettings.mockReturnValue({
       enabled: true,
-      provider: 'whisper-url',
-      whisperUrl: 'http://localhost:8000/v1/audio/transcriptions',
-      providerId: '',
-      openaiModel: 'whisper-1',
-      ollamaModel: '',
-      deepgramModel: 'nova-3',
-      deepgramLanguage: '',
+      model: 'p1:whisper-1',
+      language: '',
       rewrite: { enabled: true, providerId: 'prov-1' },
     })
     mockExistsSync.mockReturnValue(true)
@@ -184,13 +164,8 @@ describe('audio_transcribe execute', () => {
   it('does not set rewrite details when rewrite=false', async () => {
     mockLoadSttSettings.mockReturnValue({
       enabled: true,
-      provider: 'whisper-url',
-      whisperUrl: 'http://localhost:8000/v1/audio/transcriptions',
-      providerId: '',
-      openaiModel: 'whisper-1',
-      ollamaModel: '',
-      deepgramModel: 'nova-3',
-      deepgramLanguage: '',
+      model: 'p1:whisper-1',
+      language: '',
       rewrite: { enabled: true, providerId: 'prov-1' },
     })
     mockExistsSync.mockReturnValue(true)
@@ -208,13 +183,8 @@ describe('audio_transcribe execute', () => {
   it('defaults rewrite to false when not specified', async () => {
     mockLoadSttSettings.mockReturnValue({
       enabled: true,
-      provider: 'whisper-url',
-      whisperUrl: 'http://localhost:8000/v1/audio/transcriptions',
-      providerId: '',
-      openaiModel: 'whisper-1',
-      ollamaModel: '',
-      deepgramModel: 'nova-3',
-      deepgramLanguage: '',
+      model: 'p1:whisper-1',
+      language: '',
       rewrite: { enabled: false, providerId: '' },
     })
     mockExistsSync.mockReturnValue(true)
@@ -236,13 +206,8 @@ describe('audio_transcribe execute', () => {
       vi.clearAllMocks()
       mockLoadSttSettings.mockReturnValue({
         enabled: true,
-        provider: 'whisper-url',
-        whisperUrl: 'http://localhost:8000/v1/audio/transcriptions',
-        providerId: '',
-        openaiModel: 'whisper-1',
-      ollamaModel: '',
-        deepgramModel: 'nova-3',
-      deepgramLanguage: '',
+        model: 'p1:whisper-1',
+        language: '',
       rewrite: { enabled: false, providerId: '' },
       })
       mockExistsSync.mockReturnValue(true)
@@ -269,13 +234,8 @@ describe('audio_transcribe error handling', () => {
   it('returns error when STT is not enabled', async () => {
     mockLoadSttSettings.mockReturnValue({
       enabled: false,
-      provider: 'whisper-url',
-      whisperUrl: '',
-      providerId: '',
-      openaiModel: 'whisper-1',
-      ollamaModel: '',
-      deepgramModel: 'nova-3',
-      deepgramLanguage: '',
+      model: 'p1:whisper-1',
+      language: '',
       rewrite: { enabled: false, providerId: '' },
     })
 
@@ -290,13 +250,8 @@ describe('audio_transcribe error handling', () => {
   it('returns error when file does not exist', async () => {
     mockLoadSttSettings.mockReturnValue({
       enabled: true,
-      provider: 'whisper-url',
-      whisperUrl: 'http://localhost:8000/v1/audio/transcriptions',
-      providerId: '',
-      openaiModel: 'whisper-1',
-      ollamaModel: '',
-      deepgramModel: 'nova-3',
-      deepgramLanguage: '',
+      model: 'p1:whisper-1',
+      language: '',
       rewrite: { enabled: false, providerId: '' },
     })
     mockExistsSync.mockReturnValue(false)
@@ -312,13 +267,8 @@ describe('audio_transcribe error handling', () => {
   it('returns error when file is not readable', async () => {
     mockLoadSttSettings.mockReturnValue({
       enabled: true,
-      provider: 'whisper-url',
-      whisperUrl: 'http://localhost:8000/v1/audio/transcriptions',
-      providerId: '',
-      openaiModel: 'whisper-1',
-      ollamaModel: '',
-      deepgramModel: 'nova-3',
-      deepgramLanguage: '',
+      model: 'p1:whisper-1',
+      language: '',
       rewrite: { enabled: false, providerId: '' },
     })
     mockExistsSync.mockReturnValue(true)
@@ -335,13 +285,8 @@ describe('audio_transcribe error handling', () => {
   it('returns error for unsupported audio format', async () => {
     mockLoadSttSettings.mockReturnValue({
       enabled: true,
-      provider: 'whisper-url',
-      whisperUrl: 'http://localhost:8000/v1/audio/transcriptions',
-      providerId: '',
-      openaiModel: 'whisper-1',
-      ollamaModel: '',
-      deepgramModel: 'nova-3',
-      deepgramLanguage: '',
+      model: 'p1:whisper-1',
+      language: '',
       rewrite: { enabled: false, providerId: '' },
     })
     mockExistsSync.mockReturnValue(true)
@@ -360,13 +305,8 @@ describe('audio_transcribe error handling', () => {
   it('returns error when transcription fails', async () => {
     mockLoadSttSettings.mockReturnValue({
       enabled: true,
-      provider: 'whisper-url',
-      whisperUrl: 'http://localhost:8000/v1/audio/transcriptions',
-      providerId: '',
-      openaiModel: 'whisper-1',
-      ollamaModel: '',
-      deepgramModel: 'nova-3',
-      deepgramLanguage: '',
+      model: 'p1:whisper-1',
+      language: '',
       rewrite: { enabled: false, providerId: '' },
     })
     mockExistsSync.mockReturnValue(true)
@@ -386,13 +326,8 @@ describe('audio_transcribe error handling', () => {
   it('handles absolute paths', async () => {
     mockLoadSttSettings.mockReturnValue({
       enabled: true,
-      provider: 'whisper-url',
-      whisperUrl: 'http://localhost:8000/v1/audio/transcriptions',
-      providerId: '',
-      openaiModel: 'whisper-1',
-      ollamaModel: '',
-      deepgramModel: 'nova-3',
-      deepgramLanguage: '',
+      model: 'p1:whisper-1',
+      language: '',
       rewrite: { enabled: false, providerId: '' },
     })
     mockExistsSync.mockReturnValue(true)
@@ -410,13 +345,8 @@ describe('audio_transcribe error handling', () => {
   it('handles rewrite requested but rewrite not enabled in settings', async () => {
     mockLoadSttSettings.mockReturnValue({
       enabled: true,
-      provider: 'whisper-url',
-      whisperUrl: 'http://localhost:8000/v1/audio/transcriptions',
-      providerId: '',
-      openaiModel: 'whisper-1',
-      ollamaModel: '',
-      deepgramModel: 'nova-3',
-      deepgramLanguage: '',
+      model: 'p1:whisper-1',
+      language: '',
       rewrite: { enabled: false, providerId: '' },
     })
     mockExistsSync.mockReturnValue(true)

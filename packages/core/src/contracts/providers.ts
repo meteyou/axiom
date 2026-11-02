@@ -68,6 +68,12 @@ export interface ProviderContract {
   disabled?: boolean
   disabledModels?: string[]
   disabledImageModels?: string[]
+  /** Speech-to-text models; never part of `enabledModels` or any text-model picker. */
+  enabledSttModels?: string[]
+  disabledSttModels?: string[]
+  /** Text-to-speech models; never part of `enabledModels` or any text-model picker. */
+  enabledTtsModels?: string[]
+  disabledTtsModels?: string[]
   degradedThresholdMs?: number
   textVerbosity?: ProviderTextVerbosityContract
   transport?: ProviderTransportContract
@@ -256,6 +262,12 @@ export interface ProviderTypePresetContract {
   liveImageCatalog?: boolean
   /** Image model ids outside the list can be added. */
   customImageModels?: boolean
+  /** The provider serves no chat models; it only exists for voice (STT/TTS) models. */
+  voiceOnly?: boolean
+  supportsSttModels?: boolean
+  supportsTtsModels?: boolean
+  /** Voice model ids outside the provider's list can be added. */
+  customVoiceModels?: boolean
 }
 
 export interface AvailableModelContract {
@@ -273,6 +285,31 @@ export interface AvailableImageModelContract {
   input: ModelInputModalityContract[]
   output: ModelInputModalityContract[]
   pricing?: ImageModelPricingContract
+}
+
+export const VOICE_MODEL_KINDS = ['stt', 'tts'] as const
+export type VoiceModelKindContract = (typeof VOICE_MODEL_KINDS)[number]
+
+export interface AvailableVoiceModelContract {
+  id: string
+  name: string
+  description?: string
+  /** Language codes the model supports, when the provider reports them. */
+  languages?: string[]
+  /** Human-readable price as reported by the provider (e.g. "$0.03 / 1K chars"). */
+  priceLabel?: string
+}
+
+export interface VoiceOptionContract {
+  id: string
+  name: string
+  language?: string
+}
+
+export interface ProviderTtsTestPayloadContract {
+  modelId: string
+  voice?: string
+  text?: string
 }
 
 export interface OllamaModelContract {
@@ -392,6 +429,8 @@ export interface ProviderUpdatePayloadContract {
   apiKey?: string
   enabledModels?: string[]
   enabledImageModels?: string[]
+  enabledSttModels?: string[]
+  enabledTtsModels?: string[]
   degradedThresholdMs?: number
   textVerbosity?: ProviderTextVerbosityContract | null
   transport?: ProviderTransportContract | null
@@ -419,11 +458,16 @@ export interface ProviderOAuthCodePayloadContract {
   code: string
 }
 
-export type ProviderModelTypeContract = 'text' | 'image'
+export const PROVIDER_MODEL_TYPES = ['text', 'image', 'stt', 'tts'] as const
+export type ProviderModelTypeContract = (typeof PROVIDER_MODEL_TYPES)[number]
+
+export function isProviderModelType(value: unknown): value is ProviderModelTypeContract {
+  return (PROVIDER_MODEL_TYPES as readonly unknown[]).includes(value)
+}
 
 export interface ProviderModelSelectionPayloadContract {
   modelId?: string
-  /** `image` runs the free image-model availability check instead of a chat request. */
+  /** Non-text types run a free availability check instead of a chat request. */
   modelType?: ProviderModelTypeContract
 }
 
@@ -434,7 +478,7 @@ export interface ProviderModelSelectionPayloadContract {
  */
 export interface ProviderModelUpdatePayloadContract {
   disabled?: boolean
-  /** List `disabled` applies to; needed when an id is both a text and an image model. */
+  /** List `disabled` applies to; needed when an id is in more than one model list. */
   modelType?: ProviderModelTypeContract
   name?: string
   description?: string

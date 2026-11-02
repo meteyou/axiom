@@ -6,6 +6,7 @@ import {
   getProviderDefaultModel,
   getUsableImageModels,
   getUsableModels,
+  getUsableVoiceModels,
   loadProviders,
   resolveProviderModelInput,
   setActiveModel,
@@ -48,8 +49,8 @@ interface StoredSettings {
   sessionSummaryProviderId: string
   factExtraction: { providerId: string }
   tasks: { defaultProvider: string }
-  stt: { rewrite: { providerId: string } }
-  tts: { providerId: string }
+  stt: { model?: string; rewrite: { providerId: string } }
+  tts: { model: string }
 }
 
 function readSettings(): StoredSettings {
@@ -202,6 +203,59 @@ describe('image model disabling', () => {
   })
 })
 
+describe('voice model disabling', () => {
+  beforeEach(() => {
+    writeProviders({
+      providers: [
+        provider('a', ['a1']),
+        provider('dg', [], {
+          type: 'deepgram',
+          providerType: 'deepgram',
+          provider: 'deepgram',
+          enabledSttModels: ['nova-3', 'nova-2'],
+          enabledTtsModels: ['aura-2-thalia-en'],
+        }),
+      ],
+      activeProvider: 'a',
+      activeModel: 'a1',
+    })
+  })
+
+  it('keeps the STT and TTS disable state per kind and resets the matching settings reference', () => {
+    writeSettings({ stt: { model: 'dg:nova-3' }, tts: { model: 'dg:aura-2-thalia-en' } })
+
+    setProviderModelDisabled('dg', 'nova-3', true, 'stt')
+    const stored = loadProviders().providers[1]!
+    expect(stored.disabledSttModels).toEqual(['nova-3'])
+    expect(getUsableVoiceModels(stored, 'stt')).toEqual(['nova-2'])
+    expect(getUsableVoiceModels(stored, 'tts')).toEqual(['aura-2-thalia-en'])
+    expect(resetDisabledProviderReferences().settingsPaths).toEqual(['stt.model'])
+
+    setProviderDisabled('dg', true)
+    expect(resetDisabledProviderReferences().settingsPaths).toEqual(['tts.model'])
+  })
+
+  it('drops the disabled marker when the voice model is removed and rejects unknown ids', () => {
+    setProviderModelDisabled('dg', 'nova-2', true, 'stt')
+    updateProvider('dg', { enabledSttModels: ['nova-3'] })
+    expect(loadProviders().providers[1]!.disabledSttModels).toBeUndefined()
+    expect(() => setProviderModelDisabled('dg', 'nova-3', true, 'tts')).toThrow(/TTS model "nova-3" is not configured/)
+  })
+
+  it('never selects a voice-only provider as the chat provider', () => {
+    expect(() => setActiveProvider('dg')).toThrow(/only serves voice models/)
+  })
+
+  it('rejects voice models for provider types without voice support', () => {
+    expect(() => updateProvider('a', { enabledTtsModels: ['x'] })).not.toThrow()
+    writeProviders({
+      providers: [{ ...provider('an', ['claude']), type: 'anthropic-messages', providerType: 'anthropic', provider: 'anthropic' }],
+      activeProvider: 'an',
+    })
+    expect(() => updateProvider('an', { enabledSttModels: ['whisper-1'] })).toThrow(/does not support STT models/)
+  })
+})
+
 describe('resolveProviderModelInput', () => {
   it('does not resolve disabled providers or models', () => {
     setProviderModelDisabled('b', 'b2', true)
@@ -227,14 +281,14 @@ describe('resetDisabledProviderReferences', () => {
     return { store, updates }
   }
 
-  it('resets LLM settings and cronjobs that point at disabled providers/models, leaving STT/TTS alone', () => {
+  it('resets LLM settings and cronjobs that point at disabled providers/models, leaving the STT rewrite model alone', () => {
     writeSettings({
       sessionSummaryProviderId: 'b:b2',
       factExtraction: { providerId: 'b:b1' },
       memoryConsolidation: { providerId: 'a:a1' },
       tasks: { defaultProvider: 'b', loopDetection: { smartProvider: 'b:b2' } },
       stt: { rewrite: { providerId: 'b:b2' } },
-      tts: { providerId: 'b' },
+      tts: { model: '' },
     })
     setProviderModelDisabled('b', 'b2', true)
     const { store, updates } = fakeStore([
@@ -253,7 +307,7 @@ describe('resetDisabledProviderReferences', () => {
     expect(settings.factExtraction.providerId).toBe('b:b1')
     expect(settings.tasks.defaultProvider).toBe('b')
     expect(settings.stt.rewrite.providerId).toBe('b:b2')
-    expect(settings.tts.providerId).toBe('b')
+    expect(settings.tts.model).toBe('')
   })
 
   it('resets the default image model once its provider is disabled', () => {
