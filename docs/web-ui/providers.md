@@ -450,7 +450,8 @@ The ⋮ menu of an STT or TTS model row offers:
 | Item | What it does |
 |---|---|
 | **Check availability** | **Free.** Loads the provider's live model list with the stored key and checks that the model is still offered. Updates the status badge. |
-| **Play test audio** | TTS only. Synthesizes one short sentence with the model's default voice and plays it in the browser (costs a fraction of a cent). |
+| **Play test audio** | TTS only. Synthesizes one short sentence with the model's default voice and plays it in the browser (costs a fraction of a cent, recorded in [Token Usage](./token-usage)). |
+| **Edit Model** | Display name and price. TTS prices are entered in USD per 1M characters, STT prices in USD per minute of audio; leave the field empty when unknown. The price is used for the speech costs on the [Token Usage](./token-usage) page. OpenRouter models get their price from the live list when they are added. |
 | **Disable** / **Enable** | Hides the model from the Settings dropdown without removing it (stored in `disabledSttModels` / `disabledTtsModels`). If it was the selected STT/TTS model, the selection is reset. |
 | **Remove Model** | Removes the model from the provider. |
 
