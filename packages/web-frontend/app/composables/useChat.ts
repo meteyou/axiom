@@ -114,6 +114,7 @@ export interface ChatAttachment {
   previewUrl?: string
   width?: number
   height?: number
+  voiceMessage?: boolean
 }
 
 export interface ChatMessage {

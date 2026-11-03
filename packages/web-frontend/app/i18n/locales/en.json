@@ -133,7 +133,8 @@
     "scrollToBottom": "Scroll to bottom",
     "attachments": {
       "openOriginal": "Open original",
-      "download": "Download"
+      "download": "Download",
+      "voiceMessage": "Voice message"
     },
     "ttsPlay": "Read aloud",
     "ttsStop": "Stop reading",

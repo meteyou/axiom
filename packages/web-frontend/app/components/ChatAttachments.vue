@@ -38,6 +38,25 @@
         </div>
       </template>
 
+      <template v-else-if="attachment.mimeType?.startsWith('audio/')">
+        <div class="flex max-w-sm flex-col gap-1.5 rounded-lg border border-border/50 bg-muted/30 px-3 py-2.5">
+          <div class="flex items-center justify-between gap-2">
+            <span class="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+              <AppIcon name="volume" :size="14" class="shrink-0" />
+              <span class="truncate">{{ attachment.voiceMessage ? $t('chat.attachments.voiceMessage') : attachment.originalName }}</span>
+            </span>
+            <a
+              :href="resolveUrl(attachment.urlPath, true)"
+              class="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+              :title="$t('chat.attachments.download')"
+            >
+              <AppIcon name="download" :size="14" />
+            </a>
+          </div>
+          <audio :src="resolveUrl(attachment.urlPath)" controls preload="metadata" class="h-9 w-full" />
+        </div>
+      </template>
+
       <!-- File attachment -->
       <template v-else>
         <a
