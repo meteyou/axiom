@@ -91,6 +91,7 @@ import { initDatabase } from './database.js'
 import type { Database } from './database.js'
 import { completeSimple, releaseProviderSession } from './pi-models.js'
 import { appendToDailyFile } from './memory.js'
+import { logTokenUsage } from './token-logger.js'
 import type { SessionManager } from './session-manager.js'
 
 const mockCompleteSimple = vi.mocked(completeSimple)
@@ -163,7 +164,7 @@ describe('generateSessionSummary — open threads prompt', () => {
 
     // Access private method via type cast
     const summary = await (agent as unknown as {
-      generateSessionSummary: (userId: string, history?: string) => Promise<string>
+      generateSessionSummary: (sessionId: string, history?: string) => Promise<string>
     }).generateSessionSummary('user1', 'User: How do I deploy with Docker?\nAssistant: Use docker compose up.')
 
     expect(mockCompleteSimple).toHaveBeenCalledOnce()
@@ -172,6 +173,22 @@ describe('generateSessionSummary — open threads prompt', () => {
     // claude-sonnet-5 answers a request carrying `temperature` with a 400.
     expect(requestOptions).not.toHaveProperty('temperature')
     expect(summary).toBe('Discussed Docker deployment options.')
+  })
+
+  it('books the summary call on the summarized session', async () => {
+    mockCompleteSimple.mockResolvedValueOnce(makeCompleteSimpleResponse('Short chat.'))
+    const agent = new AgentCore({ model: makeModel(), apiKey: 'sk-test', db, tools: [], memoryDir })
+
+    await (agent as unknown as {
+      generateSessionSummary: (sessionId: string, history?: string) => Promise<string>
+    }).generateSessionSummary('session-42', 'User: hi')
+
+    expect(vi.mocked(logTokenUsage)).toHaveBeenCalledWith(db, expect.objectContaining({
+      model: 'gpt-4o',
+      promptTokens: 100,
+      completionTokens: 50,
+      sessionId: 'session-42',
+    }))
   })
 
   it('returns no summary when the provider rejects the request', async () => {
@@ -191,7 +208,7 @@ describe('generateSessionSummary — open threads prompt', () => {
     })
 
     const summary = await (agent as unknown as {
-      generateSessionSummary: (userId: string, history?: string) => Promise<string>
+      generateSessionSummary: (sessionId: string, history?: string) => Promise<string>
     }).generateSessionSummary('user1', 'User: tell me a story\nAssistant: Once upon a time...')
 
     // Must not fabricate a summary — an "Empty session." placeholder would be
@@ -215,7 +232,7 @@ describe('generateSessionSummary — open threads prompt', () => {
 
     const [, callOptions] = await (async () => {
       await (agent as unknown as {
-        generateSessionSummary: (userId: string, history?: string) => Promise<string>
+        generateSessionSummary: (sessionId: string, history?: string) => Promise<string>
       }).generateSessionSummary('user1', 'User: Can you start the PR for PDF upload?\nAssistant: I started the PR.')
       return mockCompleteSimple.mock.calls[0]
     })()
@@ -246,7 +263,7 @@ describe('generateSessionSummary — open threads prompt', () => {
     })
 
     const summary = await (agent as unknown as {
-      generateSessionSummary: (userId: string, history?: string) => Promise<string>
+      generateSessionSummary: (sessionId: string, history?: string) => Promise<string>
     }).generateSessionSummary('user1', 'User: Lets work on two things...\nAssistant: Sure.')
 
     expect(summary).toBe(llmOutput)
@@ -267,7 +284,7 @@ describe('generateSessionSummary — open threads prompt', () => {
     })
 
     const summary = await (agent as unknown as {
-      generateSessionSummary: (userId: string, history?: string) => Promise<string>
+      generateSessionSummary: (sessionId: string, history?: string) => Promise<string>
     }).generateSessionSummary('user1', 'User: What does --build do?\nAssistant: It rebuilds images.')
 
     expect(summary).toBe(llmOutput)
@@ -284,7 +301,7 @@ describe('generateSessionSummary — open threads prompt', () => {
     })
 
     const summary = await (agent as unknown as {
-      generateSessionSummary: (userId: string, history?: string) => Promise<string>
+      generateSessionSummary: (sessionId: string, history?: string) => Promise<string>
     }).generateSessionSummary('user1', undefined)
 
     expect(summary).toBe('Empty session.')
@@ -303,7 +320,7 @@ describe('generateSessionSummary — open threads prompt', () => {
     })
 
     const summary = await (agent as unknown as {
-      generateSessionSummary: (userId: string, history?: string) => Promise<string>
+      generateSessionSummary: (sessionId: string, history?: string) => Promise<string>
     }).generateSessionSummary('user1', 'User: Hello\nAssistant: Hi')
 
     expect(summary).toBe('')
@@ -324,7 +341,7 @@ describe('generateSessionSummary — open threads prompt', () => {
     })
 
     await (agent as unknown as {
-      generateSessionSummary: (userId: string, history?: string) => Promise<string>
+      generateSessionSummary: (sessionId: string, history?: string) => Promise<string>
     }).generateSessionSummary('user1', 'User: Start a task\nAssistant: Task started.')
 
     // Must be exactly one LLM call — not two
@@ -346,7 +363,7 @@ describe('generateSessionSummary — open threads prompt', () => {
     })
 
     const summary = await (agent as unknown as {
-      generateSessionSummary: (userId: string, history?: string) => Promise<string>
+      generateSessionSummary: (sessionId: string, history?: string) => Promise<string>
     }).generateSessionSummary('user1', 'User: Lets discuss the feature\nAssistant: Sure, two parts...')
 
     // The summary is written verbatim inside the ## HH:MM block in session-manager.ts
