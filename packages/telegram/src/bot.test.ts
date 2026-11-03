@@ -275,6 +275,19 @@ describe('TelegramBot', () => {
       }
     })
 
+    it('skips the automatic voice reply when the turn already sent a voice message', async () => {
+      fs.writeFileSync(path.join(dataDir, 'uploads', 'voice-message.ogg'), 'bytes')
+      const voiceUpload = { kind: 'file', originalName: 'voice-message.ogg', relativePath: 'voice-message.ogg', urlPath: '/u', mimeType: 'audio/ogg', size: 5, voiceMessage: true }
+      for (const [uploads, expectedReplies] of [[[voiceUpload], 0], [[], 1]] as const) {
+        const bot = new TelegramBot({ agentCore, config: defaultConfig })
+        vi.spyOn(bot as any, 'consumeTurn').mockResolvedValue({ text: 'Done.', uploads, error: null })
+        const voiceReply = vi.spyOn(bot as any, 'maybeSendVoiceReply').mockResolvedValue(undefined)
+        ;(bot as any).getOrCreateChatState('67890')
+        await (bot as any).processQueuedMessage('67890', { ctx: createMockContext(), text: 'Answer as voice' })
+        expect(voiceReply).toHaveBeenCalledTimes(expectedReplies)
+      }
+    })
+
     it('sends WAV voice messages as audio files', async () => {
       const api = await sendUpload('voice-message.wav', 'audio/wav', { kind: 'file', voiceMessage: true })
       expect(api.sendAudio).toHaveBeenCalledTimes(1)
