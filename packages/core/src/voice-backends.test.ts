@@ -37,6 +37,13 @@ describe('voice model listing', () => {
     expect((await backend.listVoices!(context, 'gpt-4o-mini-tts')).map(v => v.id)).toContain('marin')
   })
 
+  it('offers every model of an OpenAI-compatible server and a free-text voice', async () => {
+    const { context } = ctx('http://kokoro:8880/v1', { data: [{ id: 'kokoro' }, { id: 'faster-whisper' }] })
+    const backend = getVoiceBackend('openai-compatible')
+    expect((await backend.listModels(context, 'tts')).map(m => m.id)).toEqual(['faster-whisper', 'kokoro'])
+    expect(await backend.listVoices!(context, 'kokoro')).toEqual([])
+  })
+
   it('filters Mistral models by their audio capabilities', async () => {
     const { context, fetchImpl } = ctx('https://api.mistral.ai', {
       data: [

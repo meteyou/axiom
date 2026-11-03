@@ -238,6 +238,8 @@ const openAiCompatibleBackend: VoiceBackend = {
     const ids = await listOpenAiModelIds(ctx, 'Models')
     return sortById(ids.map(id => ({ id, name: id })))
   },
+  // The OpenAI API has no voice listing, but these servers still need a voice, so the UI offers free text.
+  listVoices: async () => [],
   transcribe: (ctx, request) => transcribeOpenAiCompatible('STT', ctx, request),
   synthesize: (ctx, request) => synthesizeOpenAiCompatible('TTS', ctx, request, undefined),
 }
