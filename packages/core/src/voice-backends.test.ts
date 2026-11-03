@@ -99,3 +99,32 @@ describe('voice model listing', () => {
     expect((await backend.listModels(context, 'tts')).map(m => m.id)).toEqual(['grok-voice-tts-1.0'])
   })
 })
+
+describe('transcription usage', () => {
+  const request = { audio: Buffer.from('audio'), modelId: 'm', filename: 'a.ogg' }
+
+  it('returns the seconds and cost OpenRouter reports', async () => {
+    const { context } = ctx('https://openrouter.ai/api/v1', { text: ' Hi ', usage: { seconds: 9.2, cost: 0.0005 } })
+    expect(await getVoiceBackend('openrouter').transcribe(context, request)).toEqual({ text: 'Hi', durationSeconds: 9.2, costUsd: 0.0005 })
+  })
+
+  it('reads the Mistral audio seconds and verbose durations', async () => {
+    const mistral = ctx('https://api.mistral.ai', { text: 'Hi', usage: { prompt_audio_seconds: 4 } })
+    expect(await getVoiceBackend('mistral').transcribe(mistral.context, request)).toEqual({ text: 'Hi', durationSeconds: 4 })
+    const verbose = ctx('https://api.openai.com/v1', { text: 'Hi', duration: 12.5 })
+    expect(await getVoiceBackend('openai').transcribe(verbose.context, request)).toEqual({ text: 'Hi', durationSeconds: 12.5 })
+  })
+
+  it('returns only the text when the provider reports no usage', async () => {
+    const { context } = ctx('https://api.x.ai/v1', { text: 'Hi', usage: { type: 'tokens', input_tokens: 10 } })
+    expect(await getVoiceBackend('xai').transcribe(context, request)).toEqual({ text: 'Hi' })
+  })
+
+  it('returns the Deepgram metadata duration', async () => {
+    const { context } = ctx('https://api.deepgram.com', {
+      metadata: { duration: 3.5 },
+      results: { channels: [{ alternatives: [{ transcript: 'Hallo' }] }] },
+    })
+    expect(await getVoiceBackend('deepgram').transcribe(context, request)).toEqual({ text: 'Hallo', durationSeconds: 3.5 })
+  })
+})

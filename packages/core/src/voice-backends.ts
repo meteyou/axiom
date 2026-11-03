@@ -37,6 +37,14 @@ export interface VoiceSynthesizeRequest {
   format: TtsResponseFormat
 }
 
+export interface VoiceTranscription {
+  text: string
+  /** Audio length reported by the provider. */
+  durationSeconds?: number
+  /** Billed cost reported by the provider (OpenRouter). */
+  costUsd?: number
+}
+
 export interface SynthesizedAudio {
   audio: Buffer
   /** MIME type matching the encoded audio (e.g. `audio/mpeg`). */
@@ -49,7 +57,7 @@ interface VoiceBackend {
   listModels: (ctx: VoiceRequestContext, kind: VoiceModelKind) => Promise<AvailableVoiceModel[]>
   /** Omitted when the model id already is the voice (Deepgram Aura). */
   listVoices?: (ctx: VoiceRequestContext, modelId: string) => Promise<VoiceOption[]>
-  transcribe: (ctx: VoiceRequestContext, request: VoiceTranscribeRequest) => Promise<string>
+  transcribe: (ctx: VoiceRequestContext, request: VoiceTranscribeRequest) => Promise<VoiceTranscription>
   synthesize: (ctx: VoiceRequestContext, request: VoiceSynthesizeRequest) => Promise<SynthesizedAudio>
 }
 
@@ -86,12 +94,33 @@ async function requestOk(label: string, ctx: VoiceRequestContext, url: string, i
   return response
 }
 
-async function readTranscript(label: string, response: Response): Promise<string> {
+function positiveNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined
+}
+
+interface TranscriptPayload {
+  text?: unknown
+  duration?: unknown
+  usage?: { seconds?: unknown; prompt_audio_seconds?: unknown; cost?: unknown }
+}
+
+/**
+ * Transcript plus the usage the provider reports: OpenRouter sends
+ * `usage.seconds`/`usage.cost`, OpenAI `whisper-1` `usage.seconds`, Mistral
+ * `usage.prompt_audio_seconds`, verbose responses a top-level `duration`.
+ */
+async function readTranscript(label: string, response: Response): Promise<VoiceTranscription> {
   const contentType = response.headers.get('content-type') ?? ''
-  if (!contentType.includes('application/json')) return (await response.text()).trim()
-  const data = await response.json() as { text?: unknown }
+  if (!contentType.includes('application/json')) return { text: (await response.text()).trim() }
+  const data = await response.json() as TranscriptPayload
   if (typeof data.text !== 'string') throw new Error(`${label}: response did not contain a transcript.`)
-  return data.text.trim()
+  const durationSeconds = positiveNumber(data.usage?.seconds) ?? positiveNumber(data.usage?.prompt_audio_seconds) ?? positiveNumber(data.duration)
+  const costUsd = positiveNumber(data.usage?.cost)
+  return {
+    text: data.text.trim(),
+    ...(durationSeconds !== undefined && { durationSeconds }),
+    ...(costUsd !== undefined && { costUsd }),
+  }
 }
 
 const AUDIO_DESCRIPTIONS: Record<string, { contentType: string; extension: string }> = {
@@ -184,7 +213,7 @@ async function listOpenAiModelIds(ctx: VoiceRequestContext, label: string): Prom
   return (data.data ?? []).map(entry => entry.id).filter((id): id is string => typeof id === 'string')
 }
 
-async function transcribeOpenAiCompatible(label: string, ctx: VoiceRequestContext, request: VoiceTranscribeRequest): Promise<string> {
+async function transcribeOpenAiCompatible(label: string, ctx: VoiceRequestContext, request: VoiceTranscribeRequest): Promise<VoiceTranscription> {
   const form = new FormData()
   form.append('model', request.modelId)
   if (request.language) form.append('language', request.language)
@@ -538,8 +567,8 @@ const deepgramBackend: VoiceBackend = {
     const models = await listDeepgramModels(ctx.apiKey, { baseUrl: deepgramBase(ctx), fetchImpl: ctx.fetchImpl, signal: ctx.signal })
     return collapseDeepgramModels(kind === 'stt' ? models.stt : models.tts)
   },
-  transcribe(ctx, request) {
-    return transcribeDeepgram(request.audio, ctx.apiKey, {
+  async transcribe(ctx, request) {
+    const { transcript, durationSeconds } = await transcribeDeepgram(request.audio, ctx.apiKey, {
       baseUrl: deepgramBase(ctx),
       fetchImpl: ctx.fetchImpl,
       signal: ctx.signal,
@@ -547,6 +576,7 @@ const deepgramBackend: VoiceBackend = {
       language: request.language,
       mimeType: AUDIO_MIME_BY_FORMAT[audioFormatFromFilename(request.filename)],
     })
+    return { text: transcript, ...(durationSeconds !== undefined && { durationSeconds }) }
   },
   async synthesize(ctx, request) {
     const encoding = DEEPGRAM_FORMAT_MAP[request.format]

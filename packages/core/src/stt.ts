@@ -134,7 +134,7 @@ export async function transcribeAudio(
   // The STT language override wins over the chat language so multilingual
   // setups (Telegram in DE, agent in EN) keep working.
   const language = settings.language.trim() || resolveLanguageCode(options.language)
-  const transcript = await transcribeWithProvider(provider, {
+  const { text: transcript } = await transcribeWithProvider(provider, {
     audio: buffer,
     modelId,
     language,

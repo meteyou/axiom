@@ -71,7 +71,7 @@ describe('transcribeDeepgram', () => {
       language: 'en',
     })
 
-    expect(transcript).toBe('hello world')
+    expect(transcript).toEqual({ transcript: 'hello world' })
     expect(fetchMock).toHaveBeenCalledTimes(1)
 
     const [url, options] = fetchMock.mock.calls[0]
@@ -127,8 +127,8 @@ describe('transcribeDeepgram', () => {
     const fetchMock = mockOk('   hi   \n')
     globalThis.fetch = fetchMock
 
-    const transcript = await transcribeDeepgram(Buffer.from('a'), 'k')
-    expect(transcript).toBe('hi')
+    const result = await transcribeDeepgram(Buffer.from('a'), 'k')
+    expect(result.transcript).toBe('hi')
   })
 
   it('throws when the API key is empty', async () => {
