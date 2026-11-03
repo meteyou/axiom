@@ -683,6 +683,7 @@ export type {
 export { createTranscribeAudioTool } from './stt-tool.js'
 export {
   loadTtsSettings,
+  stripMarkdownForSpeech,
   synthesizeTts,
 } from './tts.js'
 export type {

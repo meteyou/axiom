@@ -2,6 +2,7 @@ import { Router } from 'express'
 import {
   loadTtsSettings,
   SETTINGS_TTS_RESPONSE_FORMATS,
+  stripMarkdownForSpeech,
   synthesizeTts,
 } from '@axiom/core'
 import type { SynthesizeOptions, TtsResponseFormat } from '@axiom/core'
@@ -22,31 +23,6 @@ function parsePreviewSettings(value: unknown): NonNullable<SynthesizeOptions['se
     settings.responseFormat = source.responseFormat as TtsResponseFormat
   }
   return settings
-}
-
-/**
- * Strip markdown so the synthesized speech doesn't read out backticks,
- * asterisks, list markers, etc. Kept here (not in core) because it's purely
- * a UX concern for the web/Telegram callers — the core synthesizer takes
- * the text it's given.
- */
-function stripMarkdown(text: string): string {
-  return text
-    .replace(/```[\s\S]*?```/g, '')
-    .replace(/`([^`]+)`/g, '$1')
-    .replace(/\*\*([^*]+)\*\*/g, '$1')
-    .replace(/\*([^*]+)\*/g, '$1')
-    .replace(/__([^_]+)__/g, '$1')
-    .replace(/_([^_]+)_/g, '$1')
-    .replace(/^#{1,6}\s+/gm, '')
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-    .replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1')
-    .replace(/^>\s+/gm, '')
-    .replace(/^[-*_]{3,}\s*$/gm, '')
-    .replace(/^[\s]*[-*+]\s+/gm, '')
-    .replace(/^[\s]*\d+\.\s+/gm, '')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
 }
 
 export function createTtsRouter(): Router {
@@ -71,7 +47,7 @@ export function createTtsRouter(): Router {
       return
     }
 
-    const cleanText = stripMarkdown(body.text)
+    const cleanText = stripMarkdownForSpeech(body.text)
     if (!cleanText) {
       res.status(400).json({ error: 'text is empty after stripping markdown' })
       return
@@ -110,7 +86,7 @@ export function createTtsRouter(): Router {
       return
     }
 
-    const cleanText = stripMarkdown(body.text).slice(0, 1000)
+    const cleanText = stripMarkdownForSpeech(body.text).slice(0, 1000)
     if (!cleanText) {
       res.status(400).json({ error: 'text is empty' })
       return
