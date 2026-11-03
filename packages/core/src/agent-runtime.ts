@@ -100,7 +100,10 @@ export function createBaseAgentTools(options: BaseAgentToolsOptions): AgentTool[
     }),
     ...createAgentSkillTools(),
     ...(options.user ? createEmailTools({ ownerUserId: options.user.id, workspaceDir: getUserWorkspace }) : []),
-    ...createTranscribeAudioTools({ getWorkspaceDir: getUserWorkspace }),
+    ...createTranscribeAudioTools({
+      getWorkspaceDir: getUserWorkspace,
+      usage: { db: options.db, getSessionId: options.getSessionId, getUserId: () => options.user?.id },
+    }),
     ...(options.quotaService
       ? [createProviderQuotaTool({
           quotaService: options.quotaService,
@@ -755,11 +758,15 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
   private buildVoiceTools(): AgentTool[] {
     const user = this.user
     return [
-      ...createTranscribeAudioTools({ getWorkspaceDir: user ? () => user.paths.workspace : undefined }),
+      ...createTranscribeAudioTools({
+        getWorkspaceDir: user ? () => user.paths.workspace : undefined,
+        usage: { db: this.db, getSessionId: () => this.agent.sessionId, getUserId: () => user?.id },
+      }),
       ...createSendVoiceMessageTools({
         getCurrentUserId: () => user?.id,
         getCurrentInteractiveSessionId: () => this.agent.sessionId,
         getChannel: () => this.pendingTurn?.channel ?? this.lastTurnChannel ?? undefined,
+        db: this.db,
       }),
     ]
   }

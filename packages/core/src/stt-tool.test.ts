@@ -142,6 +142,19 @@ describe('audio_transcribe execute', () => {
     })
   })
 
+  it('books the transcription on the current session and user', async () => {
+    fileExists()
+    mockTranscribeAudio.mockResolvedValue({ transcript: 'Hi' })
+    const db = {} as import('./database.js').Database
+    const tool = createTranscribeAudioTool({ usage: { db, getSessionId: () => 'sess-9', getUserId: () => 4 } })
+
+    await tool.execute('test-id', { path: 'a.mp3' })
+
+    expect(mockTranscribeAudio).toHaveBeenCalledWith(expect.any(Buffer), expect.objectContaining({
+      usage: { db, sessionId: 'sess-9', userId: 4 },
+    }))
+  })
+
   it('resolves relative paths against the given user workspace', async () => {
     fileExists()
     mockTranscribeAudio.mockResolvedValue({ transcript: 'Hi' })

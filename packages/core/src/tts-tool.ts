@@ -5,6 +5,7 @@ import type { TSchema } from 'typebox'
 import type { TtsResponseFormat } from './contracts/settings.js'
 import { getTtsModelResponseFormats, isTelegramVoiceFormat, loadTtsSettings, stripMarkdownForSpeech, synthesizeTts } from './tts.js'
 import type { TtsSettings } from './tts.js'
+import type { Database } from './database.js'
 import { saveUpload } from './uploads.js'
 import type { UploadDescriptor } from './uploads.js'
 
@@ -21,6 +22,8 @@ export interface SendVoiceMessageToolOptions {
   getChannel: () => string | undefined
   /** Settings the declaration is built from; defaults to the saved settings. */
   settings?: TtsSettings
+  /** Books the synthesized characters in the token usage; omitted in tests. */
+  db?: Database
 }
 
 export interface SendVoiceMessageToolDetails {
@@ -123,15 +126,20 @@ export function createSendVoiceMessageTool(options: SendVoiceMessageToolOptions)
           ? requestedFormat
           : defaultFormat(formats, settings, channel)
 
-        const audio = await synthesizeTts(speech, { settings: { responseFormat: format } })
+        const userId = options.getCurrentUserId() ?? null
+        const sessionId = options.getCurrentInteractiveSessionId() ?? null
+        const audio = await synthesizeTts(speech, {
+          settings: { responseFormat: format },
+          ...(options.db && { usage: { db: options.db, sessionId, userId } }),
+        })
         const uploaded: UploadDescriptor = {
           ...saveUpload({
             buffer: audio.audio,
             originalName: `voice-message.${audio.extension}`,
             mimeType: audio.contentType,
             source: channel === 'telegram' ? 'telegram' : 'web',
-            userId: options.getCurrentUserId() ?? null,
-            sessionId: options.getCurrentInteractiveSessionId() ?? null,
+            userId,
+            sessionId,
           }),
           voiceMessage: true,
         }
