@@ -14,6 +14,10 @@ interface UsageTotals {
   cacheRead: number
   cacheWrite: number
   estimatedCost: number
+  /** Input characters of text-to-speech requests. */
+  ttsCharacters: number
+  /** Audio seconds of speech-to-text requests. */
+  sttSeconds: number
 }
 
 interface UsageRow extends UsageTotals {
@@ -64,7 +68,7 @@ function formatDateParam(date: Date): string {
 }
 
 function emptyTotals(): UsageTotals {
-  return { requests: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, cacheRead: 0, cacheWrite: 0, estimatedCost: 0 }
+  return { requests: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, cacheRead: 0, cacheWrite: 0, estimatedCost: 0, ttsCharacters: 0, sttSeconds: 0 }
 }
 
 function emptyStallStats(): StallStatsResponse {
@@ -86,7 +90,7 @@ export function useUsageStats() {
   // ── State ──────────────────────────────────────────────────
   const loading = ref(false)
   const error = ref<string | null>(null)
-  const allTimeTokens = ref(0)
+  const allTimeRequests = ref(0)
 
   const filters = reactive({
     dateFrom: '',
@@ -142,10 +146,10 @@ export function useUsageStats() {
   const availableModels = ref<string[]>([])
 
   // ── Derived ────────────────────────────────────────────────
-  const hasAnyUsage = computed(() => allTimeTokens.value > 0)
+  const hasAnyUsage = computed(() => allTimeRequests.value > 0)
 
   const hasFilteredResults = computed(
-    () => breakdown.value.rows.length > 0 || daily.value.rows.some((r) => r.totalTokens > 0),
+    () => breakdown.value.rows.length > 0 || daily.value.rows.some((r) => r.requests > 0),
   )
 
   const totals = computed(() => breakdown.value.totals)
@@ -196,7 +200,7 @@ export function useUsageStats() {
         apiFetch<StallStatsResponse>(`/api/stats/stalls?${buildDateQuery().toString()}`),
       ])
 
-      allTimeTokens.value = summaryData.allTime.totalTokens
+      allTimeRequests.value = summaryData.allTime.requests
       daily.value = dailyData
       breakdown.value = breakdownData
       dailyMainAgent.value = mainAgentData

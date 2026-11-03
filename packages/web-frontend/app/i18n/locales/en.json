@@ -1164,7 +1164,9 @@
       "totalTokens": "Total Tokens",
       "tokenBreakdown": "{prompt} input · {completion} output",
       "estimatedCost": "Estimated Cost",
-      "costPerRequest": "~{cost} per request"
+      "costPerRequest": "~{cost} per request",
+      "voice": "Speech",
+      "voiceMeta": "STT audio (m:ss) · {characters} TTS characters"
     },
     "filters": {
       "allProviders": "All providers",
@@ -1205,6 +1207,10 @@
       "deleted": "deleted",
       "unknown": "Unknown"
     },
+    "voice": {
+      "audio": "{duration} audio",
+      "characters": "{count} chars"
+    },
     "table": {
       "title": "Provider & model breakdown",
       "description": "Detailed breakdown of usage and estimated cost per provider/model pair.",
@@ -1219,6 +1225,7 @@
         "cacheRead": "Cache read",
         "cacheWrite": "Cache write",
         "cacheHitRate": "Cache hit",
+        "voice": "Speech",
         "cost": "Est. cost"
       }
     }

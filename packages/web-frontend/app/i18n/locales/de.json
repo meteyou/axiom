@@ -1164,7 +1164,9 @@
       "totalTokens": "Gesamt-Tokens",
       "tokenBreakdown": "{prompt} Input · {completion} Output",
       "estimatedCost": "Geschätzte Kosten",
-      "costPerRequest": "~{cost} pro Anfrage"
+      "costPerRequest": "~{cost} pro Anfrage",
+      "voice": "Sprache",
+      "voiceMeta": "STT-Audio (m:ss) · {characters} TTS-Zeichen"
     },
     "filters": {
       "allProviders": "Alle Anbieter",
@@ -1205,6 +1207,10 @@
       "deleted": "gelöscht",
       "unknown": "Unbekannt"
     },
+    "voice": {
+      "audio": "{duration} Audio",
+      "characters": "{count} Zeichen"
+    },
     "table": {
       "title": "Anbieter- & Modell-Aufschlüsselung",
       "description": "Detaillierte Aufschlüsselung von Nutzung und geschätzten Kosten pro Anbieter/Modell.",
@@ -1219,6 +1225,7 @@
         "cacheRead": "Cache-Lesen",
         "cacheWrite": "Cache-Schreiben",
         "cacheHitRate": "Cache-Treffer",
+        "voice": "Sprache",
         "cost": "Gesch. Kosten"
       }
     }
