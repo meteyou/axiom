@@ -29,6 +29,7 @@ vi.mock('node:fs', async (importOriginal) => {
       existsSync: vi.fn(),
       accessSync: vi.fn(),
       readFileSync: vi.fn(),
+      statSync: vi.fn(),
       mkdirSync: vi.fn(),
       writeFileSync: vi.fn(),
     },
@@ -44,6 +45,7 @@ const mockTranscribeAudio = vi.mocked(transcribeAudio)
 const mockExistsSync = vi.mocked(fs.existsSync)
 const mockAccessSync = vi.mocked(fs.accessSync)
 const mockReadFileSync = vi.mocked(fs.readFileSync)
+const mockStatSync = vi.mocked(fs.statSync)
 const mockWriteFileSync = vi.mocked(fs.writeFileSync)
 
 function settings(overrides: Partial<SttSettings> = {}): SttSettings {
@@ -67,6 +69,7 @@ function fileExists(content = 'fake-audio') {
   mockExistsSync.mockReturnValue(true)
   mockAccessSync.mockReturnValue(undefined)
   mockReadFileSync.mockReturnValue(Buffer.from(content))
+  mockStatSync.mockReturnValue({ size: Buffer.byteLength(content) } as fs.Stats)
 }
 
 function textOf(result: { content: Array<{ type: string; text?: string }> }): string {
@@ -229,12 +232,13 @@ describe('audio_transcribe execute', () => {
 
   it('re-encodes audio files that exceed the upload limit', async () => {
     fileExists()
-    mockReadFileSync.mockReturnValue(Buffer.alloc(25 * 1024 * 1024))
+    mockStatSync.mockReturnValue({ size: 25 * 1024 * 1024 } as fs.Stats)
     const extractAudio = vi.fn(async () => Buffer.from('compressed'))
     mockTranscribeAudio.mockResolvedValue({ transcript: 'long talk' })
 
     await createTranscribeAudioTool({ extractAudio }).execute('test-id', { path: 'big.wav' })
 
+    expect(mockReadFileSync).not.toHaveBeenCalled()
     expect(mockTranscribeAudio).toHaveBeenCalledWith(Buffer.from('compressed'), expect.objectContaining({ filename: 'big.mp3' }))
   })
 

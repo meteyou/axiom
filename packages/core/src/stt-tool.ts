@@ -46,7 +46,8 @@ const FFMPEG_TIMEOUT_MS = 10 * 60_000
 export type ExtractAudio = (inputPath: string) => Promise<Buffer>
 
 const extractAudioWithFfmpeg: ExtractAudio = async (inputPath) => {
-  const outputPath = nodePath.join(os.tmpdir(), `axiom-stt-${process.pid}-${Date.now()}.mp3`)
+  const tempDir = fs.mkdtempSync(nodePath.join(os.tmpdir(), 'axiom-stt-'))
+  const outputPath = nodePath.join(tempDir, 'audio.mp3')
   try {
     await new Promise<void>((resolve, reject) => {
       execFile(
@@ -65,7 +66,7 @@ const extractAudioWithFfmpeg: ExtractAudio = async (inputPath) => {
     })
     return fs.readFileSync(outputPath)
   } finally {
-    fs.rmSync(outputPath, { force: true })
+    fs.rmSync(tempDir, { recursive: true, force: true })
   }
 }
 
@@ -124,9 +125,8 @@ function resolveMediaFile(filePath: string, workspaceDir: string): MediaFile | s
 
 /** Audio to upload: the file itself, or a compact MP3 of its audio track for videos and oversized audio. */
 async function loadUploadAudio(file: MediaFile, extractAudio: ExtractAudio): Promise<{ buffer: Buffer; uploadName: string; reencoded: boolean }> {
-  const direct = file.ext in VIDEO_EXTENSIONS ? null : fs.readFileSync(file.path)
-  if (direct !== null && direct.length <= MAX_DIRECT_UPLOAD_BYTES) {
-    return { buffer: direct, uploadName: file.filename, reencoded: false }
+  if (!(file.ext in VIDEO_EXTENSIONS) && fs.statSync(file.path).size <= MAX_DIRECT_UPLOAD_BYTES) {
+    return { buffer: fs.readFileSync(file.path), uploadName: file.filename, reencoded: false }
   }
   return { buffer: await extractAudio(file.path), uploadName: `${nodePath.basename(file.path, file.ext)}.mp3`, reencoded: true }
 }
