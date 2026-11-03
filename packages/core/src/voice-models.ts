@@ -5,6 +5,7 @@ import type {
   AvailableVoiceModel,
   SynthesizedAudio,
   VoiceOption,
+  VoiceTranscription,
   VoiceRequestContext,
   VoiceSynthesizeRequest,
   VoiceTranscribeRequest,
@@ -87,7 +88,7 @@ export async function transcribeWithProvider(
   provider: ProviderConfig,
   request: VoiceTranscribeRequest,
   options: VoiceCallOptions = {},
-): Promise<string> {
+): Promise<VoiceTranscription> {
   const backend = requireBackend(provider)
   return backend.transcribe(await requestContext(provider, options, TRANSCRIBE_TIMEOUT_MS), request)
 }

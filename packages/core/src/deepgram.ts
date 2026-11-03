@@ -184,11 +184,17 @@ export async function listDeepgramModels(
  * container automatically. We still set `Content-Type: audio/ogg` (or the
  * caller-provided hint) so misconfigured proxies don't strip the body.
  */
+export interface DeepgramTranscription {
+  transcript: string
+  /** `metadata.duration` of the response: the audio length Deepgram bills. */
+  durationSeconds?: number
+}
+
 export async function transcribeDeepgram(
   buffer: Buffer,
   apiKey: string,
   options: DeepgramTranscribeOptions = {},
-): Promise<string> {
+): Promise<DeepgramTranscription> {
   if (!apiKey) {
     throw new Error('Deepgram STT: API key is not configured. Add it to the Deepgram provider.')
   }
@@ -239,7 +245,11 @@ export async function transcribeDeepgram(
   if (transcript === null) {
     throw new Error('Deepgram STT: response did not contain a transcript.')
   }
-  return transcript.trim()
+  const duration = (data as { metadata?: { duration?: unknown } }).metadata?.duration
+  return {
+    transcript: transcript.trim(),
+    ...(typeof duration === 'number' && Number.isFinite(duration) && duration > 0 && { durationSeconds: duration }),
+  }
 }
 
 /**
