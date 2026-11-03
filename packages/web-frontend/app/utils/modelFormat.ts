@@ -11,3 +11,14 @@ export function formatContextWindow(tokens: number): string {
   if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}K`
   return String(tokens)
 }
+
+function formatUsd(value: number): string {
+  return value >= 1 ? value.toFixed(2) : String(Number(value.toPrecision(2)))
+}
+
+/** `costPerMillion` is USD per 1M input characters (TTS) or audio seconds (STT). */
+export function formatVoiceModelPrice(kind: 'stt' | 'tts', costPerMillion: number): string {
+  return kind === 'tts'
+    ? `$${formatUsd(costPerMillion)} / 1M chars`
+    : `$${formatUsd(costPerMillion * 60 / 1_000_000)} / min`
+}

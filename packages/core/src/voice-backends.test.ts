@@ -51,7 +51,7 @@ describe('voice model listing', () => {
     expect(fetchImpl.mock.calls[0]![0]).toBe('https://api.mistral.ai/v1/models')
   })
 
-  it('lists OpenRouter models per modality with price labels and per-model voices', async () => {
+  it('lists OpenRouter models per modality with prices and per-model voices', async () => {
     const { context, fetchImpl } = ctx('https://openrouter.ai/api/v1', {
       data: [
         { id: 'deepgram/aura-2', name: 'Deepgram: Aura-2', pricing: { prompt: '0.00003', completion: '0' }, supported_voices: ['aura-2-thalia-en'] },
@@ -60,7 +60,7 @@ describe('voice model listing', () => {
     })
     const backend = getVoiceBackend('openrouter')
     expect(await backend.listModels(context, 'tts')).toEqual([
-      { id: 'deepgram/aura-2', name: 'Deepgram: Aura-2', priceLabel: '$30.00 / 1M chars' },
+      { id: 'deepgram/aura-2', name: 'Deepgram: Aura-2', costPerMillion: 30 },
       { id: 'google/gemini-tts', name: 'Gemini TTS' },
     ])
     expect(await backend.listVoices!(context, 'deepgram/aura-2')).toEqual([{ id: 'aura-2-thalia-en', name: 'aura-2-thalia-en' }])

@@ -24,8 +24,8 @@
             {{ model.id }}<template v-if="model.languages?.length"> · {{ formatLanguages(model.languages) }}</template>
           </template>
           <template #meta="{ model }">
-            <span v-if="model.priceLabel" class="text-[10px] tabular-nums text-muted-foreground">
-              {{ model.priceLabel }}
+            <span v-if="model.costPerMillion !== undefined" class="text-[10px] tabular-nums text-muted-foreground">
+              {{ formatVoiceModelPrice(kind, model.costPerMillion) }}
             </span>
           </template>
         </ModelCatalogPicker>
@@ -52,6 +52,7 @@
 import type { AvailableVoiceModel, Provider, VoiceModelKind } from '~/features/providers/composables/useProviders'
 import { useProvidersApi } from '~/api/providers'
 import { getVoiceModelIds } from '~/utils/providerModelOptions'
+import { formatVoiceModelPrice } from '~/utils/modelFormat'
 
 const props = defineProps<{
   open: boolean
@@ -101,11 +102,20 @@ async function loadCatalog() {
   }
 }
 
-// Display names come only from the live list, so they are stored per model.
-async function persistDisplayNames(provider: Provider, modelIds: string[]) {
-  const named = catalog.value.filter(entry => modelIds.includes(entry.id) && entry.name && entry.name !== entry.id)
-  if (named.length === 0) return
-  await Promise.all(named.map(entry => providersApi.updateProviderModel(provider.id, entry.id, { name: entry.name })))
+// Display names and prices come only from the live list, so they are stored per model.
+async function persistCatalogDetails(provider: Provider, modelIds: string[]) {
+  const patches = catalog.value
+    .filter(entry => modelIds.includes(entry.id))
+    .map(entry => ({
+      id: entry.id,
+      patch: {
+        ...(entry.name && entry.name !== entry.id && { name: entry.name }),
+        ...(entry.costPerMillion !== undefined && { cost: { input: entry.costPerMillion } }),
+      },
+    }))
+    .filter(({ patch }) => Object.keys(patch).length > 0)
+  if (patches.length === 0) return
+  await Promise.all(patches.map(({ id, patch }) => providersApi.updateProviderModel(provider.id, id, patch)))
   await fetchProviders()
 }
 
@@ -123,7 +133,7 @@ async function handleAdd() {
     )
     if (!result) return
     try {
-      await persistDisplayNames(props.provider, added)
+      await persistCatalogDetails(props.provider, added)
     } catch (err) {
       saveError.value = (err as Error).message
       return
