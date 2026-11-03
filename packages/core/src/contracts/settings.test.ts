@@ -3,6 +3,8 @@ import {
   DEFAULT_SETTINGS_CONTRACT,
   getSupportedTtsResponseFormats,
   normalizeAppLogo,
+  normalizeSttSettings,
+  normalizeTtsSettings,
   resolveTtsResponseFormat,
   normalizeImageGenerationSettings,
   normalizeImageOutputDir,
@@ -191,6 +193,13 @@ describe('settings contracts', () => {
     expect(normalizeAppLogo('')).toBe('prism')
     expect(normalizeAppLogo(undefined)).toBe('prism')
     expect(normalizeAppLogo(42)).toBe('prism')
+  })
+
+  it('reads the agent tool switches as opt-in', () => {
+    expect(normalizeTtsSettings(undefined).agentTool).toBe(false)
+    expect(normalizeSttSettings(undefined).agentTool).toBe(false)
+    expect(normalizeTtsSettings({ agentTool: true }).agentTool).toBe(true)
+    expect(normalizeSttSettings({ agentTool: true }).agentTool).toBe(true)
   })
 
   it('limits TTS formats to what the provider type returns', () => {

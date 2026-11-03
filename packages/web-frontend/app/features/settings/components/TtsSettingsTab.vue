@@ -23,6 +23,18 @@
       </div>
 
       <template v-if="settings.enabled">
+        <div class="flex items-center justify-between rounded-lg border border-border px-4 py-3">
+          <div class="flex flex-col gap-0.5 pr-4">
+            <Label for="tts-agent-tool" class="cursor-pointer">
+              {{ $t('settings.ttsAgentTool') }}
+            </Label>
+            <p class="text-xs text-muted-foreground">
+              {{ $t('settings.ttsAgentToolHint') }}
+            </p>
+          </div>
+          <Switch id="tts-agent-tool" v-model:checked="settings.agentTool" />
+        </div>
+
         <div class="flex flex-col gap-2">
           <Label for="tts-model">{{ $t('settings.ttsModel') }}</Label>
           <Select v-model="settings.model" :disabled="modelOptions.length === 0">

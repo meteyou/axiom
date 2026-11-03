@@ -12,6 +12,14 @@ Master toggle. When off, the speaker icons disappear from the UI.
 { "tts": { "enabled": false } }
 ```
 
+## Provide as agent tool
+
+Gives the agent the [`send_voice_message`](../concepts/tools#send-voice-message) tool, so it can answer with a spoken voice message when you ask for one — e.g. "answer me as a voice message" on Telegram. Off by default; the speaker button and the automatic [Telegram voice replies](./telegram#send-voice-reply) work without it. Applies from the next chat turn.
+
+```json
+{ "tts": { "agentTool": false } }
+```
+
 ## TTS model
 
 Which model generates the audio. The dropdown lists every enabled **TTS model** of every enabled provider, e.g. `Deepgram (aura-2-thalia-en)` or `OpenRouter (ElevenLabs: Eleven v3)`.
