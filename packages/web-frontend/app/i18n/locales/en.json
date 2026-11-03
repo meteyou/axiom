@@ -422,17 +422,26 @@
     },
     "voiceModels": {
       "checkAvailability": "Check availability",
+      "editDialogDescription": "Display name and price of the model. The price is used to calculate the speech costs on the usage page.",
+      "pricePlaceholder": "Not set",
+      "priceInvalid": "Enter a price of 0 or more.",
       "stt": {
         "sectionTitle": "Speech-to-text models",
         "addMenu": "Add STT model",
         "addDialogTitle": "Add STT models",
-        "addDialogDescription": "Speech-to-text models offered by this provider. They are only used for transcription and never appear in chat, task or cronjob model selectors."
+        "addDialogDescription": "Speech-to-text models offered by this provider. They are only used for transcription and never appear in chat, task or cronjob model selectors.",
+        "editDialogTitle": "Edit STT model",
+        "priceLabel": "Price (USD per minute of audio)",
+        "priceHint": "Leave empty if unknown; transcriptions are then booked without costs. Providers that report the billed cost (OpenRouter) use that instead."
       },
       "tts": {
         "sectionTitle": "Text-to-speech models",
         "addMenu": "Add TTS model",
         "addDialogTitle": "Add TTS models",
         "addDialogDescription": "Text-to-speech models offered by this provider. They are only used for speech output and never appear in chat, task or cronjob model selectors.",
+        "editDialogTitle": "Edit TTS model",
+        "priceLabel": "Price (USD per 1M characters)",
+        "priceHint": "Leave empty if unknown; speech output is then booked without costs.",
         "testMenu": "Play test audio",
         "testText": "Hello! This is a short test of the selected voice."
       }

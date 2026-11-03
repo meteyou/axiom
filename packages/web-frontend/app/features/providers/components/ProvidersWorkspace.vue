@@ -505,6 +505,10 @@
                               <AppIcon name="volume" class="h-4 w-4" />
                               {{ $t('providers.voiceModels.tts.testMenu') }}
                             </DropdownMenuItem>
+                            <DropdownMenuItem @click="editVoiceModelTarget = { provider, kind, modelId }">
+                              <AppIcon name="edit" class="h-4 w-4" />
+                              {{ $t('providers.editModelMenu') }}
+                            </DropdownMenuItem>
                             <DropdownMenuItem @click="handleToggleVoiceModelDisabled(provider, kind, modelId)">
                               <AppIcon :name="isVoiceModelDisabled(provider, kind, modelId) ? 'power' : 'powerOff'" class="h-4 w-4" />
                               {{ isVoiceModelDisabled(provider, kind, modelId) ? $t('providers.enable') : $t('providers.disable') }}
@@ -571,6 +575,15 @@
     destructive
     @confirm="handleRemoveVoiceModel"
     @cancel="removeVoiceModelTarget = null"
+  />
+
+  <EditVoiceModelDialog
+    :open="!!editVoiceModelTarget"
+    :provider="editVoiceModelTarget?.provider ?? null"
+    :kind="editVoiceModelTarget?.kind ?? 'stt'"
+    :model-id="editVoiceModelTarget?.modelId ?? null"
+    @close="editVoiceModelTarget = null"
+    @saved="showSuccess(t('providers.editModelSuccess'))"
   />
 
   <EditImageModelDialog
@@ -723,6 +736,7 @@ const VOICE_KINDS: readonly VoiceModelKind[] = ['stt', 'tts']
 const VOICE_KIND_ICONS: Record<VoiceModelKind, string> = { stt: 'mic', tts: 'volume' }
 const addVoiceModelTarget = ref<{ provider: Provider; kind: VoiceModelKind } | null>(null)
 const removeVoiceModelTarget = ref<{ provider: Provider; kind: VoiceModelKind; modelId: string } | null>(null)
+const editVoiceModelTarget = ref<{ provider: Provider; kind: VoiceModelKind; modelId: string } | null>(null)
 const speechTestKey = ref<string | null>(null)
 
 const sortedProviders = computed(() =>

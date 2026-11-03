@@ -422,17 +422,26 @@
     },
     "voiceModels": {
       "checkAvailability": "Verfügbarkeit prüfen",
+      "editDialogDescription": "Anzeigename und Preis des Modells. Der Preis wird für die Sprachkosten auf der Usage-Seite verwendet.",
+      "pricePlaceholder": "Nicht gesetzt",
+      "priceInvalid": "Gib einen Preis von 0 oder mehr ein.",
       "stt": {
         "sectionTitle": "Speech-to-Text-Modelle",
         "addMenu": "STT-Modell hinzufügen",
         "addDialogTitle": "STT-Modelle hinzufügen",
-        "addDialogDescription": "Speech-to-Text-Modelle dieses Providers. Sie werden nur für Transkription verwendet und erscheinen nie in Modellauswahlen für Chat, Aufgaben oder Cronjobs."
+        "addDialogDescription": "Speech-to-Text-Modelle dieses Providers. Sie werden nur für Transkription verwendet und erscheinen nie in Modellauswahlen für Chat, Aufgaben oder Cronjobs.",
+        "editDialogTitle": "STT-Modell bearbeiten",
+        "priceLabel": "Preis (USD pro Minute Audio)",
+        "priceHint": "Leer lassen, wenn unbekannt; Transkriptionen werden dann ohne Kosten erfasst. Anbieter, die die abgerechneten Kosten melden (OpenRouter), nutzen stattdessen diese."
       },
       "tts": {
         "sectionTitle": "Text-to-Speech-Modelle",
         "addMenu": "TTS-Modell hinzufügen",
         "addDialogTitle": "TTS-Modelle hinzufügen",
         "addDialogDescription": "Text-to-Speech-Modelle dieses Providers. Sie werden nur für Sprachausgabe verwendet und erscheinen nie in Modellauswahlen für Chat, Aufgaben oder Cronjobs.",
+        "editDialogTitle": "TTS-Modell bearbeiten",
+        "priceLabel": "Preis (USD pro 1 Mio. Zeichen)",
+        "priceHint": "Leer lassen, wenn unbekannt; Sprachausgaben werden dann ohne Kosten erfasst.",
         "testMenu": "Testaudio abspielen",
         "testText": "Hallo! Das ist ein kurzer Test der gewählten Stimme."
       }
