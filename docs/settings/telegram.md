@@ -46,8 +46,8 @@ Requires a working Text-to-Speech configuration (see [Settings → Text-to-Speec
 
 Delivery mode is picked automatically based on the TTS [Audio format](./text-to-speech#audio-format):
 
-- `opus` — sent via `sendVoice`, renders as a native Telegram voice message.
-- Anything else (`mp3`, `wav`, `flac`) — sent via `sendAudio`, renders as a regular audio attachment.
+- `opus` and `mp3` — sent via `sendVoice`, renders as a native Telegram voice message.
+- `wav` and `flac` — sent via `sendAudio`, renders as a regular audio attachment.
 
 Failures are non-fatal: if synthesis or upload fails, the text reply is still delivered and a warning is logged server-side.
 

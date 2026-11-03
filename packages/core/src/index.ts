@@ -682,6 +682,7 @@ export type {
 } from './stt.js'
 export { createTranscribeAudioTool } from './stt-tool.js'
 export {
+  isTelegramVoiceFormat,
   loadTtsSettings,
   stripMarkdownForSpeech,
   synthesizeTts,
