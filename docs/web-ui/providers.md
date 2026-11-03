@@ -93,7 +93,7 @@ While disabled, it is treated as if it were not configured for LLM work:
 - It is removed from the agent's [`<available_providers>`](../concepts/system-prompt#available-providers-configured-llm-providers) list, and the agent can no longer start tasks or cronjobs on it.
 - It can't be set as active or fallback.
 
-Disabling a whole provider affects all of its models, including its image and [voice models](#voice-models). If the selected STT or TTS model belongs to a disabled provider (or is disabled itself), the selection in Settings is reset to empty. Only the STT rewrite model keeps working with a disabled provider.
+Disabling a whole provider affects all of its models, including its image and [voice models](#voice-models). If the selected STT or TTS model or the STT rewrite model belongs to a disabled provider (or is disabled itself), the selection in Settings is reset to empty.
 
 Guards and automatic adjustments:
 
