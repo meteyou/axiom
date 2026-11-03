@@ -45,7 +45,7 @@ import {
   TaskStore,
   ScheduledTaskStore,
 } from '@axiom/core'
-import type { TurnErrorInfo, TurnPreambleToolCall, UploadDescriptor } from '@axiom/core'
+import type { TurnErrorInfo, TurnPreambleToolCall, UploadDescriptor, VoiceUsageContext } from '@axiom/core'
 import {
   EMAIL_APPROVAL_CALLBACK_PREFIX,
   buildEmailApprovalCallbackData,
@@ -893,7 +893,14 @@ export class TelegramBot {
     }
   }
 
-  private async maybeSendVoiceReply(chatId: string | number, text: string): Promise<void> {
+  /** Books speech usage on the chat's Telegram session, like the turn it belongs to. */
+  private voiceUsageContext(ctx: Context): VoiceUsageContext | undefined {
+    if (!this.db) return undefined
+    const session = this.agentCore.getSessionManager().getOrCreateSession(this.resolveUserId(ctx), 'telegram')
+    return { db: this.db, sessionId: session.id, userId: this.resolveNumericUserId(ctx) }
+  }
+
+  private async maybeSendVoiceReply(chatId: string | number, text: string, usage?: VoiceUsageContext): Promise<void> {
     const telegramConfig = loadConfig<{ sendVoiceReply?: boolean }>('telegram.json')
     if (!telegramConfig.sendVoiceReply) return
 
@@ -910,7 +917,7 @@ export class TelegramBot {
 
     let result
     try {
-      result = await synthesizeTts(stripped)
+      result = await synthesizeTts(stripped, usage ? { usage } : {})
     } catch (err) {
       console.warn(`[telegram] Voice reply skipped: ${(err as Error).message}`)
       return
@@ -944,7 +951,12 @@ export class TelegramBot {
       const language = toSttLanguage(scope?.settings.language ?? getGlobalChatDefaults().language)
 
       // Transcribe via core STT module
-      const result = await transcribeAudio(buffer, { language, filename: 'audio.ogg' })
+      const result = await transcribeAudio(buffer, {
+        language,
+        filename: 'audio.ogg',
+        ...(voice.duration > 0 && { durationSeconds: voice.duration }),
+        ...(this.db && { usage: this.voiceUsageContext(ctx) }),
+      })
       const transcript = result.rewritten ?? result.transcript
 
       if (!transcript.trim()) {
@@ -1180,7 +1192,11 @@ export class TelegramBot {
         // A turn that already spoke through `send_voice_message` must not get a second voice note.
         if (outcome.text.trim() && !outcome.uploads.some(upload => upload.voiceMessage)) {
           try {
-            await this.maybeSendVoiceReply(chatId, outcome.text)
+            await this.maybeSendVoiceReply(
+              chatId,
+              outcome.text,
+              this.db ? { db: this.db, sessionId, userId: numericUserId } : undefined,
+            )
           } catch (ttsErr) {
             console.warn('[telegram] Voice reply failed (text already sent):', (ttsErr as Error).message)
           }
