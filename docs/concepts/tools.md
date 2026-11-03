@@ -86,9 +86,11 @@ These tools are part of Axiom but *off* (or behind a config) by default — usua
 
 ### `audio_transcribe`
 
-Speech-to-text with the STT model selected in Settings. **Disabled by default**, since it needs an STT model from a provider (Deepgram, OpenAI, Mistral, OpenRouter, xAI or a self-hosted OpenAI-compatible server).
+Speech-to-text with the STT model selected in Settings. **Disabled by default**: it needs Speech-to-Text enabled with an STT model from a provider (Deepgram, OpenAI, Mistral, OpenRouter, xAI or a self-hosted OpenAI-compatible server) **and** [Provide as agent tool](../settings/speech-to-text#provide-as-agent-tool) switched on. The chat agent and background tasks both get it.
 
-When enabled, the agent gets a `audio_transcribe` tool that takes an audio file path (relative to the workspace), an optional `language` hint, and an optional `cleanup` flag to strip filler words and fix punctuation via the configured rewrite provider.
+Parameters: `path` (audio or video file, relative to the workspace) and an optional `language` hint. Supported are audio files (mp3, wav, ogg, webm, m4a, flac) and videos (mp4, mov, mkv, avi, m4v, mpeg) — for videos, and for audio files above 24 MB, the audio track is re-encoded to a compact mono MP3 with `ffmpeg` first. ffmpeg is not part of the Docker image; without it the tool asks the agent to install it (`sudo apt-get install -y ffmpeg`). Transcripts longer than 20,000 characters are saved to `transcripts/` in the workspace and the tool returns the path plus a preview.
+
+An optional `rewrite` flag is only offered while the [transcript cleanup](../settings/speech-to-text#rewrite-enabled) is configured; it defaults to `false`, so the agent normally gets the raw transcript.
 
 **Where to configure:** [Settings → Speech-to-Text](../settings/speech-to-text) (`/settings?tab=stt`).
 

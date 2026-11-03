@@ -117,7 +117,9 @@ vi.mock('./stt.js', () => ({
 }))
 
 vi.mock('./stt-tool.js', () => ({
-  createTranscribeAudioTool: vi.fn(() => ({ name: 'audio_transcribe', parameters: {}, execute: vi.fn() })),
+  TRANSCRIBE_AUDIO_TOOL_NAME: 'audio_transcribe',
+  createTranscribeAudioTools: vi.fn(() => [{ name: 'audio_transcribe', description: '', parameters: {}, execute: vi.fn() }]),
+  isTranscribeAudioToolEnabled: vi.fn(() => true),
 }))
 
 vi.mock('./web-tools.js', () => ({

@@ -680,7 +680,7 @@ export type {
   TranscribeOptions,
   TranscribeResult,
 } from './stt.js'
-export { createTranscribeAudioTool } from './stt-tool.js'
+export { createTranscribeAudioTool, createTranscribeAudioTools, TRANSCRIBE_AUDIO_TOOL_NAME } from './stt-tool.js'
 export {
   getTtsModelResponseFormats,
   isTelegramVoiceFormat,

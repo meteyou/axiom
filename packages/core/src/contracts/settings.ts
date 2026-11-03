@@ -255,7 +255,7 @@ export interface SttSettingsContract {
   /** ISO-639-1 language override; empty follows the user's chat language. */
   language: string
   rewrite: SttRewriteSettingsContract
-  /** Offer the `transcribe_audio` tool to the chat and task agents. */
+  /** Offer the `audio_transcribe` tool to the chat and task agents. */
   agentTool: boolean
 }
 

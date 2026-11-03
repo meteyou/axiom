@@ -17,6 +17,7 @@ import type { ActionTool } from './action-tool.js'
 import { createSendFileTool } from './send-file-tool.js'
 import { createGenerateImageTool } from './image-tool.js'
 import { createConsolidationTools } from './consolidation-tools.js'
+import { createTranscribeAudioTool } from './stt-tool.js'
 import type { QuotaServiceLike } from './quota-tool.js'
 import { getToolReplayPolicy, hasExplicitToolReplayPolicy } from './tool-replay.js'
 
@@ -40,7 +41,6 @@ function buildEveryRegisteredTool(db: Database): AgentTool[] {
     ...createBaseAgentTools({
       db,
       builtinToolsConfig: { webSearch: { enabled: true }, webFetch: { enabled: true } },
-      sttEnabled: true,
       quotaService: {} as QuotaServiceLike,
     }),
     ...createEmailTools({
@@ -55,6 +55,7 @@ function buildEveryRegisteredTool(db: Database): AgentTool[] {
     createSendFileTool({ getCurrentToolUserId: () => undefined }),
     createGenerateImageTool(),
     ...createConsolidationTools({ db, scope: null }),
+    createTranscribeAudioTool(),
   ]
 }
 
