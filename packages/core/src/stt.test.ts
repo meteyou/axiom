@@ -222,4 +222,16 @@ describe('rewriteTranscript', () => {
     mockCompleteSimple.mockResolvedValue({ content: [] } as unknown as Awaited<ReturnType<typeof completeSimple>>)
     await expect(rewriteTranscript('text', 'oai')).rejects.toThrow('Rewrite returned no content.')
   })
+
+  it('refuses disabled providers and models', async () => {
+    mockLoadProvidersDecrypted.mockReturnValue({
+      providers: [
+        { ...openai, disabledModels: ['gpt-4o'] },
+        voiceProvider('off', 'openai', 'https://api.openai.com/v1', { enabledModels: ['gpt-4o'], disabled: true }),
+      ],
+    } as ReturnType<typeof loadProvidersDecrypted>)
+    await expect(rewriteTranscript('text', 'oai:gpt-4o')).rejects.toThrow('Rewrite model is disabled: oai:gpt-4o')
+    await expect(rewriteTranscript('text', 'off:gpt-4o')).rejects.toThrow('Rewrite model is disabled: off:gpt-4o')
+    expect(mockCompleteSimple).not.toHaveBeenCalled()
+  })
 })
