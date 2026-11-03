@@ -32,6 +32,8 @@ The selection is stored as `providerId:modelId`. It is empty until you pick a mo
 { "tts": { "model": "deepgram-main:aura-2-thalia-en" } }
 ```
 
+Every synthesis is recorded with its character count on the [Token Usage](../web-ui/token-usage) page. The cost comes from the model's price, set via [Edit Model](../web-ui/providers#voice-model-rows) on the Providers page.
+
 ## Voice
 
 Shown once a model is selected. The options depend on the provider:

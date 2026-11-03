@@ -6,6 +6,14 @@ Token Usage is the consumption analytics page — how many requests went out, ho
 
 > **Where do the numbers come from?** The agent records input and output token counts (plus cache read/write tokens, where the provider reports them) on every model response. Cost is *estimated* when the response arrives, by multiplying input, output, cache-read and cache-write tokens with the model's per-million-token prices. Prices resolve per field: your own value from [Edit Model](./providers#edit-model-dialog) → an entry in the `tokenPriceTable` of your [`settings.json`](../reference/settings) (input/output only) → the model catalog (refreshable via [Refresh models](./providers#refreshing-model-catalogs)). If none of them has a price, the cost shows as `$0.00` even though tokens were used. Changing a price later does not re-price requests that were already recorded.
 
+> **Background LLM calls** count too: the transcript cleanup of speech-to-text, fact extraction and session summaries are booked on the session they belong to. Provider health checks are not recorded.
+
+> **Speech (STT/TTS)** is recorded per request as well, in audio seconds (speech-to-text) or input characters (text-to-speech) instead of tokens:
+>
+> - **Covered:** the chat's mic button and read-aloud button, Telegram voice messages and voice replies, the `transcribe_audio` and `send_voice_message` tools, the TTS preview in the settings and *Play test audio* on the Providers page.
+> - **Cost:** the cost the provider reports (OpenRouter transcriptions), otherwise the units times the model's price from [Edit voice model](./providers#voice-model-rows). Without a price the request is recorded at `$0.00`.
+> - **Audio length:** taken from the provider response when it reports it (OpenRouter, OpenAI `whisper-1`, Mistral, Deepgram), otherwise from the recording (Telegram, browser) or the audio file header.
+
 ![Screenshot of the Token Usage page](../assets/screenshot-token-usage.png)
 
 ## Refresh
@@ -26,13 +34,14 @@ The KPI cards, both charts, and the breakdown table all reflect the same filter 
 
 ## KPI row
 
-Three cards across the top, each summarizing the *currently filtered range*:
+Three cards across the top (four when the range contains speech requests), each summarizing the *currently filtered range*:
 
 | Card               | Number                                              | Sub-line                                                  |
 |--------------------|-----------------------------------------------------|-----------------------------------------------------------|
 | **Requests**       | Total model requests in the range.                 | Average per day across the range (`~N per day`).          |
 | **Total Tokens**   | Input + output tokens combined.                    | Split as `<input> input · <output> output`.               |
 | **Estimated Cost** | Sum of estimated cost over the range, formatted as currency. | Average cost per request (`~$X per request`), or `—` if the range had zero requests. |
+| **Speech**         | Transcribed audio as `m:ss` (or `h:mm:ss`). Only shown when there are speech requests. | Characters spoken by text-to-speech. |
 
 Numbers respect the filter — if you've narrowed to a single provider/model, all three cards reflect just that subset.
 
@@ -81,6 +90,7 @@ Below the charts, a flat table — one row per `(provider, model)` pair that had
 | **Cache read**     | Total tokens served from the provider's prompt cache.                              |
 | **Cache write**    | Total tokens written to the prompt cache. Always `0` for providers whose API doesn't report cache writes (e.g. OpenAI-compatible endpoints — only Anthropic-style APIs report them). |
 | **Cache hit**      | Cache read as a share of all input-side tokens (`read / (input + read + write)`). Shows `—` when the pair has no cache activity at all. |
+| **Speech**         | Only shown when the range contains speech requests: transcribed audio (`4:12 audio`) and/or spoken characters (`1,234 chars`) of STT/TTS models. Speech rows have no tokens. |
 | **Est. cost**      | Currency. When more than one row is present, a small percentage in parentheses (`(53%)`) indicates this row's share of the total cost across the table. |
 
 Requests recorded before cache tracking was introduced count as zero cache tokens, so long-lived deployments may see lower hit rates for wide date ranges.
@@ -95,13 +105,13 @@ If a model isn't in the `tokenPriceTable`, its row shows real token counts but a
 
 ## Usage per user
 
-Above the provider & model table, a second table shows one row per user for the current filters: requests, input tokens, output tokens and estimated cost. Every session — chat, task, heartbeat, consolidation and loop-detection — belongs to a user, and background sessions are attributed to the owner of the task. Sessions from before multi-user support are attributed to the first (bootstrap) admin account. Usage of users that no longer exist is kept and shown as *deleted*. The same data is returned as `perUser` by the admin usage API (`GET /api/stats/usage`) next to the totals.
+Above the provider & model table, a second table shows one row per user for the current filters: requests, input tokens, output tokens, speech (when present) and estimated cost. Speech requests without a session (the chat's mic and read-aloud buttons, the settings preview) are attributed to the user who made them. Every session — chat, task, heartbeat, consolidation and loop-detection — belongs to a user, and background sessions are attributed to the owner of the task. Sessions from before multi-user support are attributed to the first (bootstrap) admin account. Usage of users that no longer exist is kept and shown as *deleted*. The same data is returned as `perUser` by the admin usage API (`GET /api/stats/usage`) next to the totals.
 
 ## Empty states
 
 Three distinct messages, depending on what's missing:
 
-- **No usage at all** — *"No token usage yet."* Renders when the database has zero recorded requests across all time. The KPI row, charts, and table are all hidden.
+- **No usage at all** — *"No token usage yet."* Renders when the database has zero recorded requests (text, image or speech) across all time. The KPI row, charts, and table are all hidden.
 - **No usage in current filters** — *"No usage matches these filters."* The KPI row stays visible (showing zeros), but the charts and table are replaced by this card. Suggests widening the date range or clearing provider/model filters.
 - **No daily data to chart** — *"No daily usage to chart for the current filters."* Shown inside an otherwise visible chart card when the chart specifically has nothing to draw (e.g. all rows are missing day timestamps).
 

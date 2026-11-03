@@ -32,6 +32,8 @@ The selection is stored as `providerId:modelId`. It is empty until you pick a mo
 { "stt": { "model": "deepgram-main:nova-3" } }
 ```
 
+Every transcription is recorded with its audio length (and the rewrite with its tokens) on the [Token Usage](../web-ui/token-usage) page. The cost comes from the model's price, set via [Edit Model](../web-ui/providers#voice-model-rows) on the Providers page.
+
 ::: tip Self-hosted Whisper
 A self-hosted, OpenAI-compatible transcription server (e.g. `faster-whisper-server`, Speaches) is added as a **Custom – OpenAI Chat Completions** provider with its base URL. Its models then appear under **Add STT model**.
 :::
