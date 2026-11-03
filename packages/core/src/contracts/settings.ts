@@ -11,6 +11,26 @@ export const SETTINGS_TTS_RESPONSE_FORMATS = ['mp3', 'wav', 'opus', 'flac'] as c
 export type TtsResponseFormat = (typeof SETTINGS_TTS_RESPONSE_FORMATS)[number]
 
 /**
+ * TTS formats a provider type can actually return. OpenRouter's `/audio/speech`
+ * only produces MP3 (or headerless PCM) for every model it routes to; xAI only
+ * MP3 and WAV. Unlisted provider types accept every format.
+ */
+const TTS_RESPONSE_FORMATS_BY_PROVIDER_TYPE: Record<string, readonly TtsResponseFormat[]> = {
+  openrouter: ['mp3'],
+  xai: ['mp3', 'wav'],
+}
+
+export function getSupportedTtsResponseFormats(providerType: string | undefined): readonly TtsResponseFormat[] {
+  return (providerType && TTS_RESPONSE_FORMATS_BY_PROVIDER_TYPE[providerType]) || SETTINGS_TTS_RESPONSE_FORMATS
+}
+
+/** `requested` when the provider type supports it, otherwise its first supported format. */
+export function resolveTtsResponseFormat(providerType: string | undefined, requested: TtsResponseFormat): TtsResponseFormat {
+  const supported = getSupportedTtsResponseFormats(providerType)
+  return supported.includes(requested) ? requested : supported[0]!
+}
+
+/**
  * Thinking / reasoning level for the agent.
  * - `off`: no reasoning (fastest, cheapest, default)
  * - `minimal` → `max`: progressively more reasoning effort

@@ -57,16 +57,16 @@ A text field + play button. Enter any text, click the speaker icon, and hear the
 
 ## Audio format
 
-Output container format of the synthesized audio.
+Output container format of the synthesized audio. Only the formats the provider of the selected model can return are offered; when there is only one (OpenRouter), the picker is replaced by a note. Saving replaces an unsupported format with the provider's first supported one.
 
 | Value  | Notes |
 |--------|-------|
 | `mp3`  | Universal default. Supports long-text chunking with Deepgram (see below). |
 | `wav`  | Uncompressed, large. Supports long-text chunking with Deepgram (PCM is concatenated and wrapped in a single WAV header). |
-| `opus` | Small. Telegram renders it as a native voice message. With Deepgram limited to 2000 characters per request (see below). |
+| `opus` | Small, OGG container. Telegram renders it as a native voice message. With Deepgram limited to 2000 characters per request (see below). |
 | `flac` | Lossless. With Deepgram limited to 2000 characters per request (see below). |
 
-Some providers only deliver some formats: **OpenRouter** always returns MP3, **xAI** returns MP3 or WAV (Opus/FLAC fall back to MP3).
+Some providers only deliver some formats: **OpenRouter** always returns MP3 (for every model it routes to), **xAI** returns MP3 or WAV. OpenAI, Mistral, Deepgram and custom OpenAI-compatible servers offer all four.
 
 ```json
 { "tts": { "responseFormat": "mp3" } }

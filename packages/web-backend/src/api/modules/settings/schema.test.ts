@@ -237,6 +237,17 @@ describe('settings schema', () => {
     expect(settingsRaw.stt).toEqual({ model: 'p2:nova-3', language: 'de', rewrite: { enabled: true } })
   })
 
+  it('replaces a response format the TTS provider cannot return', () => {
+    const mp3Only = () => ['mp3'] as const
+    const settingsRaw: Record<string, unknown> = { tts: { model: 'p1:tts-1', responseFormat: 'opus' } }
+
+    expect(mergeTts({ tts: { model: 'or:voxtral' } }, settingsRaw, mp3Only)).toEqual({ error: null })
+    expect(settingsRaw.tts).toEqual({ model: 'or:voxtral', responseFormat: 'mp3' })
+
+    expect(mergeTts({ tts: { responseFormat: 'wav' } }, settingsRaw, mp3Only)).toEqual({ error: null })
+    expect((settingsRaw.tts as Record<string, unknown>).responseFormat).toBe('mp3')
+  })
+
   it('validates tasks.backgroundThinkingLevel against the enum', () => {
     const settingsRaw: Record<string, unknown> = {}
 

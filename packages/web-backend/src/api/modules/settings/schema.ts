@@ -1,5 +1,6 @@
 import {
   DEFAULT_WATCHDOG_SETTINGS,
+  getTtsModelResponseFormats,
   HEALTH_MONITOR_FALLBACK_TRIGGERS,
   IMAGE_GENERATION_MAX_VARIANTS_BOUNDS,
   normalizeImageOutputDir,
@@ -10,6 +11,7 @@ import {
   TASK_TELEGRAM_DELIVERY_VALUES,
   withLegacySettingsPayloadCompatibility,
 } from '@axiom/core'
+import type { TtsResponseFormat } from '@axiom/core'
 
 export interface MergeGroupResult {
   error: string | null
@@ -410,6 +412,7 @@ function mergeStringField(
 export function mergeTts(
   body: Record<string, unknown>,
   settingsRaw: Record<string, unknown>,
+  getModelFormats: (modelRef: string) => readonly TtsResponseFormat[] = getTtsModelResponseFormats,
 ): { error: string | null } {
   const tts = body.tts as Record<string, unknown> | undefined
   if (!tts) return { error: null }
@@ -428,6 +431,11 @@ export function mergeTts(
     const err = validateEnum(tts.responseFormat, SETTINGS_TTS_RESPONSE_FORMATS, 'tts.responseFormat')
     if (err) return { error: err }
     existing.responseFormat = tts.responseFormat
+  }
+
+  if (typeof existing.responseFormat === 'string' && typeof existing.model === 'string') {
+    const formats = getModelFormats(existing.model)
+    if (!formats.includes(existing.responseFormat as TtsResponseFormat)) existing.responseFormat = formats[0]
   }
 
   settingsRaw.tts = existing

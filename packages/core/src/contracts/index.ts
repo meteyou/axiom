@@ -18,6 +18,8 @@ export {
   normalizeAppLogo,
   normalizeTtsSettings,
   normalizeSttSettings,
+  getSupportedTtsResponseFormats,
+  resolveTtsResponseFormat,
   withLegacySettingsPayloadCompatibility,
 } from './settings.js'
 

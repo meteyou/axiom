@@ -5,8 +5,9 @@
  */
 
 import { ensureConfigTemplates, loadConfig } from './config.js'
-import { normalizeTtsSettings } from './contracts/settings.js'
-import type { TtsSettingsContract } from './contracts/settings.js'
+import { getSupportedTtsResponseFormats, normalizeTtsSettings, resolveTtsResponseFormat } from './contracts/settings.js'
+import type { TtsResponseFormat, TtsSettingsContract } from './contracts/settings.js'
+import { loadProvidersDecrypted, parseProviderModelId } from './provider-config.js'
 import type { SynthesizedAudio } from './voice-backends.js'
 import { resolveVoiceModelRef, synthesizeWithProvider } from './voice-models.js'
 
@@ -27,9 +28,25 @@ export function loadTtsSettings(): TtsSettings {
 }
 
 /**
+ * Response formats the provider of `modelRef` can return. Falls back to every
+ * format when the reference does not resolve (the synthesis call reports that).
+ */
+export function getTtsModelResponseFormats(modelRef: string): readonly TtsResponseFormat[] {
+  const { providerId } = parseProviderModelId(modelRef || undefined)
+  let providerType: string | undefined
+  try {
+    providerType = loadProvidersDecrypted().providers.find(p => p.id === providerId)?.providerType
+  } catch {
+    providerType = undefined
+  }
+  return getSupportedTtsResponseFormats(providerType)
+}
+
+/**
  * Synthesize `text` with the configured TTS model. Throws when TTS is
  * disabled or no usable model is configured — callers decide how loud the
- * failure surfaces.
+ * failure surfaces. A format the provider cannot produce falls back to its
+ * first supported one.
  */
 export async function synthesizeTts(
   text: string,
@@ -51,7 +68,7 @@ export async function synthesizeTts(
     modelId,
     voice: settings.voice || undefined,
     instructions: settings.instructions || undefined,
-    format: settings.responseFormat,
+    format: resolveTtsResponseFormat(provider.providerType, settings.responseFormat),
   })
 }
 
