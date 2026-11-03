@@ -5,6 +5,10 @@ vi.mock('./config.js', () => ({
   loadConfig: vi.fn(),
 }))
 
+vi.mock('./token-logger.js', () => ({
+  logTokenUsage: vi.fn(),
+}))
+
 // Mock Deepgram so we can assert chunk count and avoid real HTTP.
 vi.mock('./deepgram.js', async () => {
   const actual = await vi.importActual<typeof import('./deepgram.js')>('./deepgram.js')
@@ -36,6 +40,7 @@ const PROVIDERS = [
     apiKey: 'sk',
     enabledModels: ['gpt-4o'],
     enabledTtsModels: ['gpt-4o-mini-tts', 'tts-1'],
+    models: [{ id: 'tts-1', cost: { input: 15 } }],
   },
   {
     id: 'or',
@@ -62,6 +67,8 @@ vi.mock('./provider-config.js', async () => {
 import { loadConfig } from './config.js'
 import { synthesizeDeepgram } from './deepgram.js'
 import { synthesizeTts } from './tts.js'
+import { logTokenUsage } from './token-logger.js'
+import type { Database } from './database.js'
 import { clearVoiceModelListCache, getVoiceBackend } from './voice-backends.js'
 import type { TtsResponseFormat } from './contracts/settings.js'
 
@@ -235,5 +242,31 @@ describe('synthesizeTts (settings and providers)', () => {
       response_format: 'mp3',
       voice: 'aura-2-thalia-en',
     })
+  })
+})
+
+describe('synthesizeTts usage booking', () => {
+  it('books the spoken characters priced per 1M characters', async () => {
+    globalThis.fetch = vi.fn().mockImplementation(async () => new Response(new Uint8Array([1])))
+    mockTts({ enabled: true, model: 'oai:tts-1', responseFormat: 'mp3' })
+    const db = {} as Database
+
+    await synthesizeTts('  Hello world  ', { usage: { db, userId: 3 } })
+
+    expect(vi.mocked(logTokenUsage)).toHaveBeenCalledWith(db, expect.objectContaining({
+      provider: 'openai',
+      model: 'tts-1',
+      kind: 'tts',
+      units: 11,
+      estimatedCost: (11 * 15) / 1_000_000,
+      userId: 3,
+    }))
+  })
+
+  it('books nothing without a usage context or when synthesis fails', async () => {
+    globalThis.fetch = vi.fn().mockImplementation(async () => new Response('nope', { status: 500 }))
+    mockTts({ enabled: true, model: 'oai:tts-1' })
+    await expect(synthesizeTts('Hi', { usage: { db: {} as Database } })).rejects.toThrow('HTTP 500')
+    expect(vi.mocked(logTokenUsage)).not.toHaveBeenCalled()
   })
 })

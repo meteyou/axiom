@@ -20,17 +20,25 @@ vi.mock('./pi-models.js', () => ({
   streamSimple: vi.fn(),
 }))
 
+vi.mock('./token-logger.js', () => ({
+  logTokenUsage: vi.fn(),
+}))
+
 import { loadSttSettings, transcribeAudio, rewriteTranscript } from './stt.js'
 import { loadConfig } from './config.js'
 import { loadProvidersDecrypted, getApiKeyForProvider, buildModel } from './provider-config.js'
 import type { ProviderConfig } from './provider-config.js'
 import { completeSimple } from './pi-models.js'
+import { logTokenUsage } from './token-logger.js'
+import type { Database } from './database.js'
 
 const mockLoadConfig = vi.mocked(loadConfig)
 const mockLoadProvidersDecrypted = vi.mocked(loadProvidersDecrypted)
 const mockGetApiKeyForProvider = vi.mocked(getApiKeyForProvider)
 const mockBuildModel = vi.mocked(buildModel)
 const mockCompleteSimple = vi.mocked(completeSimple)
+const mockLogTokenUsage = vi.mocked(logTokenUsage)
+const usageDb = {} as Database
 
 const originalFetch = globalThis.fetch
 
@@ -49,7 +57,10 @@ function voiceProvider(id: string, providerType: string, baseUrl: string, extra:
 }
 
 const openai = voiceProvider('oai', 'openai', 'https://api.openai.com/v1', { enabledModels: ['gpt-4o'], enabledSttModels: ['whisper-1'] })
-const openrouter = voiceProvider('or', 'openrouter', 'https://openrouter.ai/api/v1', { enabledSttModels: ['openai/whisper-1'] })
+const openrouter = voiceProvider('or', 'openrouter', 'https://openrouter.ai/api/v1', {
+  enabledSttModels: ['openai/whisper-1'],
+  models: [{ id: 'openai/whisper-1', cost: { input: 100 } }],
+})
 const xai = voiceProvider('x', 'xai', 'https://api.x.ai/v1', { enabledSttModels: ['grok-voice-transcribe-2.0'] })
 const deepgram = voiceProvider('dg', 'deepgram', 'https://api.deepgram.com', {
   type: 'deepgram',
@@ -261,5 +272,74 @@ describe('rewriteTranscript', () => {
     await expect(rewriteTranscript('text', 'oai:gpt-4o')).rejects.toThrow('Rewrite model is disabled: oai:gpt-4o')
     await expect(rewriteTranscript('text', 'off:gpt-4o')).rejects.toThrow('Rewrite model is disabled: off:gpt-4o')
     expect(mockCompleteSimple).not.toHaveBeenCalled()
+  })
+})
+
+describe('transcribeAudio usage booking', () => {
+  const usage = { db: usageDb, sessionId: 'sess-1', userId: 7 }
+
+  it('books the provider-reported seconds and cost', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(jsonResponse({ text: 'Hi', usage: { seconds: 9.2, cost: 0.0005 } }))
+    mockStt({ enabled: true, model: 'or:openai/whisper-1' })
+
+    await transcribeAudio(Buffer.from('audio'), { usage })
+
+    expect(mockLogTokenUsage).toHaveBeenCalledWith(usageDb, expect.objectContaining({
+      provider: 'openrouter',
+      model: 'openai/whisper-1',
+      kind: 'stt',
+      units: 9.2,
+      estimatedCost: 0.0005,
+      sessionId: 'sess-1',
+      userId: 7,
+      promptTokens: 0,
+    }))
+  })
+
+  it('prices the caller-known duration with the model price when the provider reports none', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(jsonResponse({ text: 'Hi' }))
+    mockStt({ enabled: true, model: 'or:openai/whisper-1' })
+
+    await transcribeAudio(Buffer.from('audio'), { usage, durationSeconds: 30 })
+
+    expect(mockLogTokenUsage).toHaveBeenCalledWith(usageDb, expect.objectContaining({ units: 30, estimatedCost: 0.003 }))
+  })
+
+  it('books without cost when the model has no price', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(jsonResponse({ text: 'Hi', duration: 12 }))
+    mockStt({ enabled: true, model: 'oai:whisper-1' })
+
+    await transcribeAudio(Buffer.from('audio'), { usage })
+
+    expect(mockLogTokenUsage).toHaveBeenCalledWith(usageDb, expect.objectContaining({ provider: 'openai', units: 12, estimatedCost: 0 }))
+  })
+
+  it('books the rewrite LLM call as text usage', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(jsonResponse({ text: 'um hi' }))
+    mockBuildModel.mockReturnValue({ id: 'gpt-4o', provider: 'openai', cost: { input: 2, output: 8, cacheRead: 0, cacheWrite: 0 } } as unknown as ReturnType<typeof buildModel>)
+    mockCompleteSimple.mockResolvedValue({
+      content: [{ type: 'text', text: 'hi' }],
+      provider: 'openai',
+      model: 'gpt-4o',
+      usage: { input: 1000, output: 500, cacheRead: 0, cacheWrite: 0, cost: { total: 0 } },
+    } as unknown as Awaited<ReturnType<typeof completeSimple>>)
+    mockStt({ enabled: true, model: 'oai:whisper-1', rewrite: { enabled: true, providerId: 'oai:gpt-4o' } })
+
+    await transcribeAudio(Buffer.from('audio'), { usage, durationSeconds: 3 })
+
+    expect(mockLogTokenUsage).toHaveBeenCalledWith(usageDb, expect.objectContaining({
+      model: 'gpt-4o',
+      promptTokens: 1000,
+      completionTokens: 500,
+      estimatedCost: 0.006,
+      sessionId: 'sess-1',
+    }))
+  })
+
+  it('books nothing without a usage context', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(jsonResponse({ text: 'Hi', usage: { seconds: 2 } }))
+    mockStt({ enabled: true, model: 'oai:whisper-1' })
+    await transcribeAudio(Buffer.from('audio'))
+    expect(mockLogTokenUsage).not.toHaveBeenCalled()
   })
 })

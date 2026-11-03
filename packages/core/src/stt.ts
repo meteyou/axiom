@@ -4,6 +4,10 @@ import { normalizeSttSettings } from './contracts/settings.js'
 import type { SttSettingsContract } from './contracts/settings.js'
 import { completeSimple } from './pi-models.js'
 import { resolveVoiceModelRef, transcribeWithProvider } from './voice-models.js'
+import { estimateAudioDurationSeconds } from './audio-duration.js'
+import { logCompletionUsage } from './completion-usage.js'
+import { logVoiceUsage } from './voice-usage.js'
+import type { VoiceUsageContext } from './voice-usage.js'
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -26,6 +30,10 @@ export interface TranscribeOptions {
    * `stt.rewrite.enabled`; `true` still needs a configured rewrite model.
    */
   rewrite?: boolean
+  /** Books the transcription (and the rewrite) in the token usage. */
+  usage?: VoiceUsageContext
+  /** Audio length known to the caller (e.g. Telegram voice notes, browser recordings). */
+  durationSeconds?: number
 }
 
 // ── Load settings ─────────────────────────────────────────────────────
@@ -51,6 +59,7 @@ const REWRITE_SYSTEM_PROMPT = [
 export async function rewriteTranscript(
   transcript: string,
   rawProviderId: string,
+  usage?: VoiceUsageContext,
 ): Promise<string> {
   const { providerId, modelId } = parseProviderModelId(rawProviderId)
   const provider = loadProvidersDecrypted().providers.find(p => p.id === providerId)
@@ -70,6 +79,7 @@ export async function rewriteTranscript(
       { role: 'user' as const, content: transcript, timestamp: Date.now() },
     ],
   }, { apiKey })
+  logCompletionUsage(usage, model, response)
 
   const text = response.content
     .filter(c => c.type === 'text')
@@ -134,11 +144,19 @@ export async function transcribeAudio(
   // The STT language override wins over the chat language so multilingual
   // setups (Telegram in DE, agent in EN) keep working.
   const language = settings.language.trim() || resolveLanguageCode(options.language)
-  const { text: transcript } = await transcribeWithProvider(provider, {
+  const transcription = await transcribeWithProvider(provider, {
     audio: buffer,
     modelId,
     language,
     filename: options.filename,
+  })
+  const transcript = transcription.text
+  logVoiceUsage(options.usage, {
+    kind: 'stt',
+    provider,
+    modelId,
+    units: transcription.durationSeconds ?? options.durationSeconds ?? estimateAudioDurationSeconds(buffer) ?? 0,
+    costUsd: transcription.costUsd,
   })
 
   if (!(options.rewrite ?? settings.rewrite.enabled)) return { transcript }
@@ -148,7 +166,7 @@ export async function transcribeAudio(
       : { transcript }
   }
   try {
-    const rewritten = await rewriteTranscript(transcript, settings.rewrite.providerId)
+    const rewritten = await rewriteTranscript(transcript, settings.rewrite.providerId, options.usage)
     return { transcript, rewritten }
   } catch (err) {
     const message = (err as Error).message

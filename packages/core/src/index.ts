@@ -689,6 +689,11 @@ export {
   synthesizeTts,
 } from './tts.js'
 export { createSendVoiceMessageTool, createSendVoiceMessageTools, SEND_VOICE_MESSAGE_TOOL_NAME } from './tts-tool.js'
+export { getVoiceModelUnitPrice, logVoiceUsage } from './voice-usage.js'
+export type { VoiceUsageContext, VoiceUsageEntry } from './voice-usage.js'
+export { logCompletionUsage } from './completion-usage.js'
+export type { CompletionUsageContext } from './completion-usage.js'
+export { estimateAudioDurationSeconds } from './audio-duration.js'
 export type { SendVoiceMessageToolDetails, SendVoiceMessageToolOptions } from './tts-tool.js'
 export type {
   TtsSettings,

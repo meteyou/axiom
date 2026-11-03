@@ -10,6 +10,8 @@ import type { TtsResponseFormat, TtsSettingsContract } from './contracts/setting
 import { loadProvidersDecrypted, parseProviderModelId } from './provider-config.js'
 import type { SynthesizedAudio } from './voice-backends.js'
 import { resolveVoiceModelRef, synthesizeWithProvider } from './voice-models.js'
+import { logVoiceUsage } from './voice-usage.js'
+import type { VoiceUsageContext } from './voice-usage.js'
 
 export type TtsSettings = TtsSettingsContract
 export type SynthesizeResult = SynthesizedAudio
@@ -19,6 +21,8 @@ export interface SynthesizeOptions {
   settings?: Partial<Pick<TtsSettings, 'model' | 'voice' | 'instructions' | 'responseFormat'>>
   /** Synthesize even when TTS is disabled (settings preview). */
   ignoreEnabled?: boolean
+  /** Books the synthesized characters in the token usage. */
+  usage?: VoiceUsageContext
 }
 
 export function loadTtsSettings(): TtsSettings {
@@ -64,13 +68,15 @@ export async function synthesizeTts(
   }
 
   const { provider, modelId } = resolveVoiceModelRef(settings.model, 'tts')
-  return synthesizeWithProvider(provider, {
+  const audio = await synthesizeWithProvider(provider, {
     text: trimmed,
     modelId,
     voice: settings.voice || undefined,
     instructions: settings.instructions || undefined,
     format: resolveTtsResponseFormat(provider.providerType, settings.responseFormat, trimmed.length),
   })
+  logVoiceUsage(options.usage, { kind: 'tts', provider, modelId, units: trimmed.length })
+  return audio
 }
 
 /** Strip markdown so the synthesized speech doesn't read out backticks, asterisks, list markers, etc. */
