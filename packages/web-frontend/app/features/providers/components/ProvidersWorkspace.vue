@@ -474,7 +474,8 @@
                         </div>
                       </TableCell>
                       <TableCell class="py-1.5">
-                        <span class="text-xs text-muted-foreground">{{ $t('providers.costNA') }}</span>
+                        <span v-if="getVoiceModelPrice(provider, kind, modelId)" class="text-xs text-foreground">{{ getVoiceModelPrice(provider, kind, modelId) }}</span>
+                        <span v-else class="text-xs text-muted-foreground">{{ $t('providers.costNA') }}</span>
                       </TableCell>
                       <TableCell class="py-1.5 text-right">
                         <div v-if="isTestingModel(provider.id, modelId) || speechTestKey === voiceKey(provider, modelId)" class="flex items-center justify-end gap-1.5">
@@ -638,7 +639,7 @@ import type { Provider } from '~/features/providers/composables/useProviders'
 import type { ProviderFormPayload } from '~/components/ProviderFormDialog.vue'
 import { useProviders } from '~/features/providers/composables/useProviders'
 import { useProvidersApi } from '~/api/providers'
-import { formatModelCost as formatCost } from '~/utils/modelFormat'
+import { formatModelCost as formatCost, formatVoiceModelPrice } from '~/utils/modelFormat'
 import { getImageModelDisplayName, getModelDisplayName, getVoiceModelIds, isVoiceModelDisabled } from '~/utils/providerModelOptions'
 import type { VoiceModelKind } from '~/utils/providerModelOptions'
 import { formatImageCost, formatPerMillionPrice } from '~/utils/imageModelCatalog'
@@ -965,6 +966,11 @@ async function handleRemoveImageModel() {
 }
 
 /* ── Voice models ── */
+function getVoiceModelPrice(provider: Provider, kind: VoiceModelKind, modelId: string): string | null {
+  const cost = provider.models?.find(m => m.id === modelId)?.cost?.input
+  return cost !== undefined ? formatVoiceModelPrice(kind, cost) : null
+}
+
 function isVoiceOnly(provider: Provider): boolean {
   return presets.value[provider.providerType]?.voiceOnly === true
 }

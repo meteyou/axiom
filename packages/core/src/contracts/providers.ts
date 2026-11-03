@@ -296,8 +296,8 @@ export interface AvailableVoiceModelContract {
   description?: string
   /** Language codes the model supports, when the provider reports them. */
   languages?: string[]
-  /** Human-readable price as reported by the provider (e.g. "$0.03 / 1K chars"). */
-  priceLabel?: string
+  /** USD per 1M input characters (TTS) or per 1M audio seconds (STT). */
+  costPerMillion?: number
 }
 
 export interface VoiceOptionContract {

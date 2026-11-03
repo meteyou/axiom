@@ -327,16 +327,12 @@ async function listOpenRouterVoiceModels(ctx: VoiceRequestContext, kind: VoiceMo
   return models
 }
 
-function formatUsd(value: number): string {
-  return value >= 1 ? value.toFixed(2) : value.toPrecision(2)
-}
-
 /** OpenRouter prices TTS per input character and STT per audio second. */
-function openRouterPriceLabel(entry: OpenRouterVoiceModelEntry, kind: VoiceModelKind): string | undefined {
+function openRouterCostPerMillion(entry: OpenRouterVoiceModelEntry): number | undefined {
   const prompt = Number(entry.pricing?.prompt)
   const completion = Number(entry.pricing?.completion)
   if (!Number.isFinite(prompt) || prompt <= 0 || (Number.isFinite(completion) && completion > 0)) return undefined
-  return kind === 'tts' ? `$${formatUsd(prompt * 1_000_000)} / 1M chars` : `$${formatUsd(prompt * 60)} / min`
+  return Math.round(prompt * 1_000_000 * 1e6) / 1e6
 }
 
 async function openRouterVoices(ctx: VoiceRequestContext, modelId: string): Promise<string[]> {
@@ -348,11 +344,11 @@ const openRouterBackend: VoiceBackend = {
   async listModels(ctx, kind) {
     const models = await listOpenRouterVoiceModels(ctx, kind)
     return sortById(models.map((entry) => {
-      const priceLabel = openRouterPriceLabel(entry, kind)
+      const costPerMillion = openRouterCostPerMillion(entry)
       return {
         id: entry.id,
         name: entry.name || entry.id,
-        ...(priceLabel && { priceLabel }),
+        ...(costPerMillion !== undefined && { costPerMillion }),
       }
     }))
   },
