@@ -121,6 +121,7 @@ const TOOL_SUMMARY: Readonly<Record<string, SummaryPart[]>> = {
   file_list: PATH_ONLY,
   file_send: PATH_ONLY,
   audio_transcribe: PATH_ONLY,
+  send_voice_message: [{ key: 'text' }],
 
   task_read: [{ key: 'status', label: 'status' }, { key: 'trigger_type', label: 'trigger' }, { key: 'limit', label: 'limit' }],
   'task_write:create': [{ key: 'name' }],

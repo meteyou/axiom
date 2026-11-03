@@ -49,6 +49,8 @@ Delivery mode is picked automatically based on the TTS [Audio format](./text-to-
 - `opus` and `mp3` — sent via `sendVoice`, renders as a native Telegram voice message.
 - `wav` and `flac` — sent via `sendAudio`, renders as a regular audio attachment.
 
+To get a voice message only when you ask for one, use the agent's [`send_voice_message`](../concepts/tools#send-voice-message) tool instead (Settings → Text-to-Speech → [Provide as agent tool](./text-to-speech#provide-as-agent-tool)).
+
 Failures are non-fatal: if synthesis or upload fails, the text reply is still delivered and a warning is logged server-side.
 
 ```json [/data/config/telegram.json]
