@@ -124,6 +124,15 @@ describe('send_voice_message execute', () => {
     expect(textOf(result)).toContain('as an audio player in the chat')
   })
 
+  it('books the speech on the current session when a database is given', async () => {
+    const db = {} as import('./database.js').Database
+    await createSendVoiceMessageTool({ ...options('web'), db }).execute('id', { text: 'Hallo' })
+    expect(mockSynthesize).toHaveBeenCalledWith('Hallo', {
+      settings: { responseFormat: 'mp3' },
+      usage: { db, sessionId: 'session-1', userId: 7 },
+    })
+  })
+
   it('defaults to opus on Telegram when the provider supports it', async () => {
     const result = await createSendVoiceMessageTool(options('telegram')).execute('id', { text: 'Hallo' })
     expect(mockSynthesize).toHaveBeenCalledWith('Hallo', { settings: { responseFormat: 'opus' } })

@@ -8,6 +8,8 @@ import type { TSchema } from 'typebox'
 import { getWorkspaceDir } from './workspace.js'
 import { loadSttSettings, transcribeAudio } from './stt.js'
 import type { SttSettings } from './stt.js'
+import type { Database } from './database.js'
+import type { VoiceUsageContext } from './voice-usage.js'
 
 export const TRANSCRIBE_AUDIO_TOOL_NAME = 'audio_transcribe'
 
@@ -76,6 +78,20 @@ export interface TranscribeAudioToolOptions {
   /** Settings the declaration is built from; defaults to the saved settings. */
   settings?: SttSettings
   extractAudio?: ExtractAudio
+  /** Books transcriptions in the token usage; omitted in tests. */
+  usage?: ToolUsageOptions
+}
+
+/** Where a tool books its speech usage; the getters are read per call. */
+export interface ToolUsageOptions {
+  db: Database
+  getSessionId?: () => string | null | undefined
+  getUserId?: () => number | undefined
+}
+
+function resolveToolUsage(options: ToolUsageOptions | undefined): VoiceUsageContext | undefined {
+  if (!options) return undefined
+  return { db: options.db, sessionId: options.getSessionId?.() ?? null, userId: options.getUserId?.() ?? null }
 }
 
 export function isTranscribeAudioToolEnabled(settings: SttSettings): boolean {
@@ -213,6 +229,7 @@ export function createTranscribeAudioTool(options: TranscribeAudioToolOptions = 
           language,
           filename: uploadName,
           rewrite: rewrite === true && isRewriteOffered(settings),
+          usage: resolveToolUsage(options.usage),
         })
         const output = formatTranscript(
           result.rewritten ?? result.transcript,
