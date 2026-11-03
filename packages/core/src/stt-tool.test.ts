@@ -81,6 +81,7 @@ describe('audio_transcribe execute', () => {
       model: 'p1:whisper-1',
       language: '',
       rewrite: { enabled: false, providerId: '' },
+      agentTool: true,
     })
     mockExistsSync.mockReturnValue(true)
     mockAccessSync.mockReturnValue(undefined)
@@ -107,6 +108,7 @@ describe('audio_transcribe execute', () => {
       model: 'p1:whisper-1',
       language: '',
       rewrite: { enabled: false, providerId: '' },
+      agentTool: true,
     })
     mockExistsSync.mockReturnValue(true)
     mockAccessSync.mockReturnValue(undefined)
@@ -125,6 +127,7 @@ describe('audio_transcribe execute', () => {
       model: 'p1:whisper-1',
       language: '',
       rewrite: { enabled: false, providerId: '' },
+      agentTool: true,
     })
     mockExistsSync.mockReturnValue(true)
     mockAccessSync.mockReturnValue(undefined)
@@ -147,6 +150,7 @@ describe('audio_transcribe execute', () => {
       model: 'p1:whisper-1',
       language: '',
       rewrite: { enabled: true, providerId: 'prov-1' },
+      agentTool: true,
     })
     mockExistsSync.mockReturnValue(true)
     mockAccessSync.mockReturnValue(undefined)
@@ -167,6 +171,7 @@ describe('audio_transcribe execute', () => {
       model: 'p1:whisper-1',
       language: '',
       rewrite: { enabled: true, providerId: 'prov-1' },
+      agentTool: true,
     })
     mockExistsSync.mockReturnValue(true)
     mockAccessSync.mockReturnValue(undefined)
@@ -186,6 +191,7 @@ describe('audio_transcribe execute', () => {
       model: 'p1:whisper-1',
       language: '',
       rewrite: { enabled: false, providerId: '' },
+      agentTool: true,
     })
     mockExistsSync.mockReturnValue(true)
     mockAccessSync.mockReturnValue(undefined)
@@ -209,6 +215,7 @@ describe('audio_transcribe execute', () => {
         model: 'p1:whisper-1',
         language: '',
       rewrite: { enabled: false, providerId: '' },
+      agentTool: true,
       })
       mockExistsSync.mockReturnValue(true)
       mockAccessSync.mockReturnValue(undefined)
@@ -237,6 +244,7 @@ describe('audio_transcribe error handling', () => {
       model: 'p1:whisper-1',
       language: '',
       rewrite: { enabled: false, providerId: '' },
+      agentTool: true,
     })
 
     const tool = createTranscribeAudioTool()
@@ -253,6 +261,7 @@ describe('audio_transcribe error handling', () => {
       model: 'p1:whisper-1',
       language: '',
       rewrite: { enabled: false, providerId: '' },
+      agentTool: true,
     })
     mockExistsSync.mockReturnValue(false)
 
@@ -270,6 +279,7 @@ describe('audio_transcribe error handling', () => {
       model: 'p1:whisper-1',
       language: '',
       rewrite: { enabled: false, providerId: '' },
+      agentTool: true,
     })
     mockExistsSync.mockReturnValue(true)
     mockAccessSync.mockImplementation(() => { throw new Error('EACCES') })
@@ -288,6 +298,7 @@ describe('audio_transcribe error handling', () => {
       model: 'p1:whisper-1',
       language: '',
       rewrite: { enabled: false, providerId: '' },
+      agentTool: true,
     })
     mockExistsSync.mockReturnValue(true)
     mockAccessSync.mockReturnValue(undefined)
@@ -308,6 +319,7 @@ describe('audio_transcribe error handling', () => {
       model: 'p1:whisper-1',
       language: '',
       rewrite: { enabled: false, providerId: '' },
+      agentTool: true,
     })
     mockExistsSync.mockReturnValue(true)
     mockAccessSync.mockReturnValue(undefined)
@@ -329,6 +341,7 @@ describe('audio_transcribe error handling', () => {
       model: 'p1:whisper-1',
       language: '',
       rewrite: { enabled: false, providerId: '' },
+      agentTool: true,
     })
     mockExistsSync.mockReturnValue(true)
     mockAccessSync.mockReturnValue(undefined)
@@ -348,6 +361,7 @@ describe('audio_transcribe error handling', () => {
       model: 'p1:whisper-1',
       language: '',
       rewrite: { enabled: false, providerId: '' },
+      agentTool: true,
     })
     mockExistsSync.mockReturnValue(true)
     mockAccessSync.mockReturnValue(undefined)

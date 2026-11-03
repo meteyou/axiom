@@ -421,6 +421,7 @@ export function mergeTts(
   for (const key of LEGACY_TTS_KEYS) delete existing[key]
 
   if (tts.enabled !== undefined) existing.enabled = !!tts.enabled
+  if (tts.agentTool !== undefined) existing.agentTool = !!tts.agentTool
 
   for (const key of ['model', 'voice', 'instructions']) {
     const error = mergeStringField(tts, existing, key, 'tts')
@@ -555,6 +556,7 @@ export function mergeStt(
   for (const key of LEGACY_STT_KEYS) delete existing[key]
 
   if (stt.enabled !== undefined) existing.enabled = !!stt.enabled
+  if (stt.agentTool !== undefined) existing.agentTool = !!stt.agentTool
 
   for (const key of ['model', 'language']) {
     const error = mergeStringField(stt, existing, key, 'stt')

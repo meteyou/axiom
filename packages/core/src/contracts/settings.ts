@@ -239,6 +239,8 @@ export interface TtsSettingsContract {
   /** Delivery instructions for models that accept them (e.g. gpt-4o-mini-tts). */
   instructions: string
   responseFormat: TtsResponseFormat
+  /** Offer the `send_voice_message` tool to the chat agent. */
+  agentTool: boolean
 }
 
 export interface SttRewriteSettingsContract {
@@ -253,6 +255,8 @@ export interface SttSettingsContract {
   /** ISO-639-1 language override; empty follows the user's chat language. */
   language: string
   rewrite: SttRewriteSettingsContract
+  /** Offer the `transcribe_audio` tool to the chat and task agents. */
+  agentTool: boolean
 }
 
 /**
@@ -444,6 +448,7 @@ export const DEFAULT_SETTINGS_CONTRACT: SettingsContract = {
     voice: '',
     instructions: '',
     responseFormat: 'mp3',
+    agentTool: false,
   },
   stt: {
     enabled: false,
@@ -453,6 +458,7 @@ export const DEFAULT_SETTINGS_CONTRACT: SettingsContract = {
       enabled: false,
       providerId: '',
     },
+    agentTool: false,
   },
   appearance: {
     logo: 'prism',
@@ -668,6 +674,7 @@ export function normalizeTtsSettings(source: Partial<TtsSettingsContract> | unde
     voice: stringOr(source?.voice, defaults.voice),
     instructions: stringOr(source?.instructions, defaults.instructions),
     responseFormat: format && (SETTINGS_TTS_RESPONSE_FORMATS as readonly string[]).includes(format) ? format : defaults.responseFormat,
+    agentTool: source?.agentTool === true,
   }
 }
 
@@ -683,6 +690,7 @@ export function normalizeSttSettings(
       enabled: source?.rewrite?.enabled === true,
       providerId: stringOr(source?.rewrite?.providerId, defaults.rewrite.providerId),
     },
+    agentTool: source?.agentTool === true,
   }
 }
 

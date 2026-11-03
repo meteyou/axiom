@@ -237,6 +237,14 @@ describe('settings schema', () => {
     expect(settingsRaw.stt).toEqual({ model: 'p2:nova-3', language: 'de', rewrite: { enabled: true } })
   })
 
+  it('stores the agent tool switches', () => {
+    const settingsRaw: Record<string, unknown> = {}
+    expect(mergeTts({ tts: { agentTool: true } }, settingsRaw)).toEqual({ error: null })
+    expect(mergeStt({ stt: { agentTool: 1 } }, settingsRaw)).toEqual({ error: null })
+    expect(settingsRaw.tts).toEqual({ agentTool: true })
+    expect(settingsRaw.stt).toEqual({ agentTool: true })
+  })
+
   it('replaces a response format the TTS provider cannot return', () => {
     const mp3Only = () => ['mp3'] as const
     const settingsRaw: Record<string, unknown> = { tts: { model: 'p1:tts-1', responseFormat: 'opus' } }

@@ -12,6 +12,14 @@ Master toggle. When off, the mic button is hidden in the UI, Telegram voice mess
 { "stt": { "enabled": false } }
 ```
 
+## Provide as agent tool
+
+Gives the agent the [`transcribe_audio`](../concepts/tools#transcribe-audio) tool, so it can transcribe audio and video files from the workspace — e.g. "download this video and transcribe it". Off by default; the mic button and Telegram voice messages work without it. Applies from the next chat turn and to tasks started afterwards.
+
+```json
+{ "stt": { "agentTool": false } }
+```
+
 ## STT model
 
 Which model transcribes the audio. The dropdown lists every enabled **STT model** of every enabled provider, e.g. `Deepgram (nova-3)`, `OpenAI (gpt-4o-transcribe)` or `OpenRouter (ElevenLabs: Scribe v2)`.
