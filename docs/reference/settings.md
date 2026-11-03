@@ -295,7 +295,7 @@ Hand-edited invalid values are ignored at runtime and the default is used instea
 | `tts.model`          | `string` (`providerId:modelId` TTS model) | `""`    | string (empty = none selected)         |
 | `tts.voice`          | `string` (provider-specific voice id)     | `""`    | string (empty = model default)         |
 | `tts.instructions`   | `string`                                  | `""`    | string                                 |
-| `tts.responseFormat` | `"mp3" \| "wav" \| "opus" \| "flac"`      | `"mp3"` | enum (`SETTINGS_TTS_RESPONSE_FORMATS`) |
+| `tts.responseFormat` | `"mp3" \| "wav" \| "opus" \| "flac"`      | `"mp3"` | enum (`SETTINGS_TTS_RESPONSE_FORMATS`); replaced by the provider's first supported format on save |
 
 ### `stt`
 

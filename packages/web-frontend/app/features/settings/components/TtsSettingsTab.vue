@@ -114,18 +114,20 @@
 
         <div class="flex flex-col gap-2">
           <Label for="tts-format">{{ $t('settings.ttsResponseFormat') }}</Label>
-          <Select v-model="settings.responseFormat">
+          <Select v-if="formatOptions.length > 1" v-model="settings.responseFormat">
             <SelectTrigger id="tts-format">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="mp3">MP3</SelectItem>
-              <SelectItem value="wav">WAV</SelectItem>
-              <SelectItem value="opus">Opus</SelectItem>
-              <SelectItem value="flac">FLAC</SelectItem>
+              <SelectItem v-for="format in formatOptions" :key="format" :value="format">
+                {{ FORMAT_LABELS[format] }}
+              </SelectItem>
             </SelectContent>
           </Select>
-          <p class="text-xs text-muted-foreground">{{ $t('settings.ttsResponseFormatHint') }}</p>
+          <p v-else class="text-sm text-foreground">{{ FORMAT_LABELS[settings.responseFormat] }}</p>
+          <p class="text-xs text-muted-foreground">
+            {{ formatOptions.length > 1 ? $t('settings.ttsResponseFormatHint') : $t('settings.ttsResponseFormatSingle') }}
+          </p>
         </div>
       </template>
     </div>
@@ -133,6 +135,7 @@
 </template>
 
 <script setup lang="ts">
+import { getSupportedTtsResponseFormats, type TtsResponseFormat } from '@axiom/core/contracts'
 import type { TtsSettings } from '~/composables/useSettings'
 import type { Provider, VoiceOption } from '~/features/providers/composables/useProviders'
 import { useSettingsApi } from '~/api/settings'
@@ -150,6 +153,22 @@ const settingsApi = useSettingsApi()
 const { playing, play, stop } = useAudioPreview()
 
 const modelOptions = computed(() => buildVoiceModelOptions(props.providers, 'tts'))
+
+const FORMAT_LABELS: Record<TtsResponseFormat, string> = {
+  mp3: 'MP3',
+  wav: 'WAV',
+  opus: 'Opus (OGG)',
+  flac: 'FLAC',
+}
+
+const formatOptions = computed(() => {
+  const providerId = splitModelRef(settings.value.model)?.providerId
+  return getSupportedTtsResponseFormats(props.providers.find(provider => provider.id === providerId)?.providerType)
+})
+
+watch(formatOptions, (formats) => {
+  if (!formats.includes(settings.value.responseFormat)) settings.value.responseFormat = formats[0]!
+}, { immediate: true })
 
 const voices = ref<VoiceOption[] | null>([])
 const voicesLoading = ref(false)

@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_SETTINGS_CONTRACT,
+  getSupportedTtsResponseFormats,
   normalizeAppLogo,
+  resolveTtsResponseFormat,
   normalizeImageGenerationSettings,
   normalizeImageOutputDir,
   normalizeSettingsContract,
@@ -189,5 +191,16 @@ describe('settings contracts', () => {
     expect(normalizeAppLogo('')).toBe('prism')
     expect(normalizeAppLogo(undefined)).toBe('prism')
     expect(normalizeAppLogo(42)).toBe('prism')
+  })
+
+  it('limits TTS formats to what the provider type returns', () => {
+    expect(getSupportedTtsResponseFormats('openrouter')).toEqual(['mp3'])
+    expect(getSupportedTtsResponseFormats('xai')).toEqual(['mp3', 'wav'])
+    expect(getSupportedTtsResponseFormats('openai')).toEqual(['mp3', 'wav', 'opus', 'flac'])
+    expect(getSupportedTtsResponseFormats(undefined)).toEqual(['mp3', 'wav', 'opus', 'flac'])
+
+    expect(resolveTtsResponseFormat('openrouter', 'opus')).toBe('mp3')
+    expect(resolveTtsResponseFormat('xai', 'wav')).toBe('wav')
+    expect(resolveTtsResponseFormat('mistral', 'opus')).toBe('opus')
   })
 })
