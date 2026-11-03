@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { Agent as PiAgent } from '@earendil-works/pi-agent-core'
 import type { Api, Model } from '@earendil-works/pi-ai'
 import { completeSimple, releaseProviderSession } from './pi-models.js'
+import { logCompletionUsage } from './completion-usage.js'
 import type { Database } from './database.js'
 import { getApiKeyForProvider, buildModel, isProviderModelUsable, loadProvidersDecrypted } from './provider-config.js'
 import { assertLlmResponseOk } from './llm-response.js'
@@ -117,8 +118,8 @@ export class AgentCore {
       db: this.db,
       timeoutMinutes: options.sessionTimeoutMinutes ?? 30,
       memoryDir: options.memoryDir,
-      onSummarize: async (_sessionId: string, userId: string, conversationHistory?: string) => {
-        return this.generateSessionSummary(userId, conversationHistory)
+      onSummarize: async (sessionId: string, userId: string, conversationHistory?: string) => {
+        return this.generateSessionSummary(sessionId, conversationHistory)
       },
       onSessionEnd: (session: SessionInfo, summary: string | null, opts) => {
         // For background ends (resetSessionAsync), runtime state was already
@@ -626,7 +627,7 @@ export class AgentCore {
    * Returns a combined activity log entry that may include an optional
    * "### Open Threads" section when unresolved items exist.
    */
-  private async generateSessionSummary(_userId: string, conversationHistory?: string): Promise<string> {
+  private async generateSessionSummary(sessionId: string, conversationHistory?: string): Promise<string> {
     // Always use DB conversation history (single source of truth).
     // In-memory agent messages can disappear on provider change or restart,
     // but chat_messages in the DB are always reliable.
@@ -706,6 +707,7 @@ Do NOT add this section if everything discussed was resolved or if there is noth
         apiKey: summaryApiKey,
         reasoning: resolveBackgroundReasoning(),
       })
+      logCompletionUsage({ db: this.db, sessionId }, summaryModel, response)
 
       assertLlmResponseOk(response, '[session-summary] Provider rejected the summary request')
 

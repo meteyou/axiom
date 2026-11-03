@@ -1,5 +1,6 @@
 import type { Api, Model } from '@earendil-works/pi-ai'
 import { completeSimple } from './pi-models.js'
+import { logCompletionUsage } from './completion-usage.js'
 import type { Database } from './database.js'
 import { createMemory, supersedeMemories } from './memories-store.js'
 import { assertLlmResponseOk } from './llm-response.js'
@@ -234,6 +235,7 @@ async function completeText(model: Model<Api>, apiKey: string, systemPrompt: str
     apiKey,
     reasoning: resolveBackgroundReasoning(),
   })
+  logCompletionUsage({ db, sessionId, userId }, model, response)
 
   assertLlmResponseOk(response, context)
 

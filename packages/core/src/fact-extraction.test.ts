@@ -237,6 +237,23 @@ describe('fact-extraction', () => {
     expect(listMemories(db, { userId: 1 }).total).toBe(1)
   })
 
+  it('books the extraction call in the token usage of the session', async () => {
+    mockCompleteSimple.mockResolvedValueOnce(makeResponse('NO_FACTS'))
+
+    await extractAndStoreFacts(db, 1, 'session-usage', 'User: hi', makeModel(), 'test-key')
+
+    const row = db.prepare('SELECT provider, model, prompt_tokens, completion_tokens, estimated_cost, session_id, user_id FROM token_usage').get()
+    expect(row).toEqual({
+      provider: 'openai',
+      model: 'gpt-4o-mini',
+      prompt_tokens: 100,
+      completion_tokens: 40,
+      estimated_cost: (100 * 0.15 + 40 * 0.6) / 1_000_000,
+      session_id: 'session-usage',
+      user_id: 1,
+    })
+  })
+
   it('returns zero counts when the LLM says NO_FACTS', async () => {
     mockCompleteSimple.mockResolvedValueOnce(makeResponse('NO_FACTS'))
 
