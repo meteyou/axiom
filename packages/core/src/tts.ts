@@ -28,10 +28,11 @@ export function loadTtsSettings(): TtsSettings {
 }
 
 /**
- * Response formats the provider of `modelRef` can return. Falls back to every
- * format when the reference does not resolve (the synthesis call reports that).
+ * Response formats the provider of `modelRef` can return (for text of
+ * `textLength` characters). Falls back to every format when the reference
+ * does not resolve (the synthesis call reports that).
  */
-export function getTtsModelResponseFormats(modelRef: string): readonly TtsResponseFormat[] {
+export function getTtsModelResponseFormats(modelRef: string, textLength?: number): readonly TtsResponseFormat[] {
   const { providerId } = parseProviderModelId(modelRef || undefined)
   let providerType: string | undefined
   try {
@@ -39,14 +40,14 @@ export function getTtsModelResponseFormats(modelRef: string): readonly TtsRespon
   } catch {
     providerType = undefined
   }
-  return getSupportedTtsResponseFormats(providerType)
+  return getSupportedTtsResponseFormats(providerType, textLength)
 }
 
 /**
  * Synthesize `text` with the configured TTS model. Throws when TTS is
  * disabled or no usable model is configured — callers decide how loud the
- * failure surfaces. A format the provider cannot produce falls back to its
- * first supported one.
+ * failure surfaces. A format the provider cannot produce (for this text
+ * length) falls back to its first supported one.
  */
 export async function synthesizeTts(
   text: string,
@@ -68,7 +69,7 @@ export async function synthesizeTts(
     modelId,
     voice: settings.voice || undefined,
     instructions: settings.instructions || undefined,
-    format: resolveTtsResponseFormat(provider.providerType, settings.responseFormat),
+    format: resolveTtsResponseFormat(provider.providerType, settings.responseFormat, trimmed.length),
   })
 }
 

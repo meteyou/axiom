@@ -212,4 +212,15 @@ describe('settings contracts', () => {
     expect(resolveTtsResponseFormat('xai', 'wav')).toBe('wav')
     expect(resolveTtsResponseFormat('mistral', 'opus')).toBe('opus')
   })
+
+  it('drops formats that cannot be chunked for text above the provider input cap', () => {
+    expect(getSupportedTtsResponseFormats('deepgram')).toEqual(['mp3', 'wav', 'opus', 'flac'])
+    expect(getSupportedTtsResponseFormats('deepgram', 2000)).toEqual(['mp3', 'wav', 'opus', 'flac'])
+    expect(getSupportedTtsResponseFormats('deepgram', 2001)).toEqual(['mp3', 'wav'])
+    expect(getSupportedTtsResponseFormats('openai', 4000)).toEqual(['mp3', 'wav', 'opus', 'flac'])
+
+    expect(resolveTtsResponseFormat('deepgram', 'opus', 3000)).toBe('mp3')
+    expect(resolveTtsResponseFormat('deepgram', 'wav', 3000)).toBe('wav')
+    expect(resolveTtsResponseFormat('deepgram', 'opus', 500)).toBe('opus')
+  })
 })

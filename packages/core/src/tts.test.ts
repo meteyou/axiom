@@ -62,7 +62,7 @@ vi.mock('./provider-config.js', async () => {
 import { loadConfig } from './config.js'
 import { synthesizeDeepgram } from './deepgram.js'
 import { synthesizeTts } from './tts.js'
-import { clearVoiceModelListCache } from './voice-backends.js'
+import { clearVoiceModelListCache, getVoiceBackend } from './voice-backends.js'
 import type { TtsResponseFormat } from './contracts/settings.js'
 
 const loadConfigMock = vi.mocked(loadConfig)
@@ -124,17 +124,21 @@ describe('synthesizeTts (Deepgram chunking)', () => {
     expect(synthesizeDeepgramMock).toHaveBeenCalledTimes(1)
   })
 
-  it('rejects opus input strictly longer than 2000 chars', async () => {
+  it('falls back to MP3 for opus/flac input strictly longer than 2000 chars', async () => {
     mockSettings('opus')
-    const text = 'a'.repeat(2001)
-    await expect(synthesizeTts(text)).rejects.toThrow(/2001 chars \(>2000\)/)
-    expect(synthesizeDeepgramMock).not.toHaveBeenCalled()
+    await expect(synthesizeTts('a'.repeat(2001))).resolves.toMatchObject({ extension: 'mp3' })
+    expect(synthesizeDeepgramMock.mock.calls.every(call => call[2]?.encoding === 'mp3')).toBe(true)
+
+    synthesizeDeepgramMock.mockClear()
+    mockSettings('flac')
+    await expect(synthesizeTts('a'.repeat(5000))).resolves.toMatchObject({ extension: 'mp3' })
+    expect(synthesizeDeepgramMock.mock.calls.every(call => call[2]?.encoding === 'mp3')).toBe(true)
   })
 
-  it('rejects flac input strictly longer than 2000 chars with an actionable message', async () => {
-    mockSettings('flac')
-    const text = 'a'.repeat(5000)
-    await expect(synthesizeTts(text)).rejects.toThrow(/MP3 or WAV response format/)
+  it('backend still rejects opus input strictly longer than 2000 chars', async () => {
+    const backend = getVoiceBackend('deepgram')
+    await expect(backend.synthesize({ baseUrl: '', apiKey: 'key' }, { text: 'a'.repeat(2001), modelId: 'aura-2-thalia-en', format: 'opus' }))
+      .rejects.toThrow(/2001 chars \(>2000\).*MP3 or WAV response format/)
     expect(synthesizeDeepgramMock).not.toHaveBeenCalled()
   })
 
