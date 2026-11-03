@@ -1,5 +1,5 @@
 import { loadConfig, ensureConfigTemplates } from './config.js'
-import { loadProvidersDecrypted, getApiKeyForProvider, buildModel, parseProviderModelId, getProviderDefaultModel } from './provider-config.js'
+import { loadProvidersDecrypted, getApiKeyForProvider, buildModel, parseProviderModelId, getProviderDefaultModel, isProviderModelUsable } from './provider-config.js'
 import { normalizeSttSettings } from './contracts/settings.js'
 import type { SttSettingsContract } from './contracts/settings.js'
 import { completeSimple } from './pi-models.js'
@@ -49,6 +49,9 @@ export async function rewriteTranscript(
   const provider = loadProvidersDecrypted().providers.find(p => p.id === providerId)
   if (!provider) {
     throw new Error(`Rewrite provider not found: ${providerId}. Check Settings → Speech-to-Text.`)
+  }
+  if (!isProviderModelUsable(provider, modelId)) {
+    throw new Error(`Rewrite model is disabled: ${rawProviderId}. Check Settings → Speech-to-Text.`)
   }
 
   const apiKey = await getApiKeyForProvider(provider)

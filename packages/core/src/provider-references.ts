@@ -14,6 +14,7 @@ const SETTINGS_PROVIDER_REFERENCE_PATHS: ReadonlyArray<{ path: readonly string[]
   { path: ['memoryConsolidation', 'providerId'] },
   { path: ['tasks', 'defaultProvider'] },
   { path: ['tasks', 'loopDetection', 'smartProvider'] },
+  { path: ['stt', 'rewrite', 'providerId'] },
   { path: ['imageGeneration', 'defaultModel'], kind: 'image' },
   { path: ['stt', 'model'], kind: 'stt' },
   { path: ['tts', 'model'], kind: 'tts' },

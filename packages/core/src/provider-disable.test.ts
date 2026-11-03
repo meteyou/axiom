@@ -281,7 +281,7 @@ describe('resetDisabledProviderReferences', () => {
     return { store, updates }
   }
 
-  it('resets LLM settings and cronjobs that point at disabled providers/models, leaving the STT rewrite model alone', () => {
+  it('resets LLM settings and cronjobs that point at disabled providers/models', () => {
     writeSettings({
       sessionSummaryProviderId: 'b:b2',
       factExtraction: { providerId: 'b:b1' },
@@ -299,14 +299,14 @@ describe('resetDisabledProviderReferences', () => {
 
     const result = resetDisabledProviderReferences({ scheduledTaskStore: store })
 
-    expect(result.settingsPaths).toEqual(['sessionSummaryProviderId', 'tasks.loopDetection.smartProvider'])
+    expect(result.settingsPaths).toEqual(['sessionSummaryProviderId', 'tasks.loopDetection.smartProvider', 'stt.rewrite.providerId'])
     expect(result.cronjobIds).toEqual(['job-disabled'])
     expect(updates).toEqual([{ id: 'job-disabled', input: { provider: '' } }])
     const settings = readSettings()
     expect(settings.sessionSummaryProviderId).toBe('')
     expect(settings.factExtraction.providerId).toBe('b:b1')
     expect(settings.tasks.defaultProvider).toBe('b')
-    expect(settings.stt.rewrite.providerId).toBe('b:b2')
+    expect(settings.stt.rewrite.providerId).toBe('')
     expect(settings.tts.model).toBe('')
   })
 
