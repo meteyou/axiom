@@ -36,6 +36,7 @@ import {
   transcribeAudio,
   synthesizeTts,
   stripMarkdownForSpeech,
+  isTelegramVoiceFormat,
   SlashCommandRegistry as SlashCommandRegistryCtor,
   registerBuiltInSlashCommands,
   isSlashCommandPicker,
@@ -918,9 +919,7 @@ export class TelegramBot {
     const filename = `voice.${result.extension}`
     const inputFile = new InputFile(result.audio, filename)
 
-    // Only OGG/Opus renders as the native Telegram voice bubble; everything
-    // else (mp3/wav/etc) goes via sendAudio.
-    if (result.extension === 'ogg') {
+    if (isTelegramVoiceFormat(result.extension)) {
       await this.bot.api.sendVoice(chatId, inputFile)
     } else {
       await this.bot.api.sendAudio(chatId, inputFile)

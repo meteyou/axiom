@@ -74,3 +74,8 @@ export function stripMarkdownForSpeech(text: string): string {
     .replace(/\n{3,}/g, '\n\n')
     .trim()
 }
+
+/** Telegram renders OGG/Opus, MP3 and M4A uploads sent via `sendVoice` as a native voice message. */
+export function isTelegramVoiceFormat(extension: string): boolean {
+  return extension === 'ogg' || extension === 'mp3' || extension === 'm4a'
+}
