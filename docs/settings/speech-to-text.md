@@ -14,7 +14,7 @@ Master toggle. When off, the mic button is hidden in the UI, Telegram voice mess
 
 ## Provide as agent tool
 
-Gives the agent the [`audio_transcribe`](../concepts/tools#audio-transcribe) tool, so it can transcribe audio and video files from the workspace — e.g. "download this video and transcribe it". Off by default; the mic button and Telegram voice messages work without it. Applies from the next chat turn and to tasks started afterwards.
+Gives the agent the [`audio_transcribe`](../concepts/tools#audio-transcribe) tool, so it can transcribe audio and video files from the workspace — e.g. "download this video and transcribe it". Off by default; the mic button and Telegram voice messages work without it. Applies to new chat sessions and to tasks started afterwards.
 
 ```json
 { "stt": { "agentTool": false } }

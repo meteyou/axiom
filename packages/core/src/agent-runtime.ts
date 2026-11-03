@@ -25,6 +25,7 @@ import type { BuiltinToolsConfig, BuiltinToolsConfigSource } from './web-tools.j
 import { createReadFileTool } from './read-file-tool.js'
 import { createToolResultImageHook, omitToolResultStructuredContent, redactToolResultImages } from './llm-image.js'
 import { createTranscribeAudioTools, TRANSCRIBE_AUDIO_TOOL_NAME } from './stt-tool.js'
+import { createSendVoiceMessageTools, SEND_VOICE_MESSAGE_TOOL_NAME } from './tts-tool.js'
 import { createAgentSkillTools, getAgentSkillsForPrompt, getAgentSkillsCount, getAgentSkillsDir, currentPlatform } from './agent-skills.js'
 import { createSearchMemoriesTool } from './memories-tool.js'
 import { createReadChatHistoryTool } from './chat-history-tools.js'
@@ -543,6 +544,8 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
   private canUseProviderFallback: () => boolean
   private user: UserScope | null
   private sessionUser?: string
+  /** Channel of the latest interactive turn; `send_voice_message` picks its default format from it. */
+  private channel: string | undefined
   private compactor: ContextCompactor
   /** Receives compaction chunks while a prompt or manual compaction is streaming. */
   private compactionSink: ((chunk: ResponseChunk) => void) | null = null
@@ -593,7 +596,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
         getSessionId: () => this.agent.sessionId,
         memoryDir: options.memoryDir,
       }),
-    ].filter(tool => tool.name !== GENERATE_IMAGE_TOOL_NAME && tool.name !== TRANSCRIBE_AUDIO_TOOL_NAME)
+    ].filter(tool => tool.name !== GENERATE_IMAGE_TOOL_NAME && tool.name !== TRANSCRIBE_AUDIO_TOOL_NAME && tool.name !== SEND_VOICE_MESSAGE_TOOL_NAME)
 
     this.compactor = new ContextCompactor({
       scope: 'interactive',
@@ -668,7 +671,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
    */
   private rebuildSnapshot(): AgentMessage {
     const { currentUser } = this.sessionPromptContext
-    const tools = [...this.baseTools, ...this.buildImageGenerationTools(), ...this.buildTranscribeAudioTools()]
+    const tools = [...this.baseTools, ...this.buildImageGenerationTools(), ...this.buildVoiceTools()]
     if (readCodemodeMainAgentEnabled()) tools.push(this.buildCodemodeTool(tools))
     const built = this.fixedSystemPrompt === undefined
       ? this.buildSystemPrompt(currentUser, new Set(tools.map(tool => tool.name)))
@@ -749,9 +752,16 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
     })
   }
 
-  private buildTranscribeAudioTools(): AgentTool[] {
+  private buildVoiceTools(): AgentTool[] {
     const user = this.user
-    return createTranscribeAudioTools({ getWorkspaceDir: user ? () => user.paths.workspace : undefined })
+    return [
+      ...createTranscribeAudioTools({ getWorkspaceDir: user ? () => user.paths.workspace : undefined }),
+      ...createSendVoiceMessageTools({
+        getCurrentUserId: () => user?.id,
+        getCurrentInteractiveSessionId: () => this.agent.sessionId,
+        getChannel: () => this.pendingTurn?.channel ?? this.lastTurnChannel ?? undefined,
+      }),
+    ]
   }
 
   /**

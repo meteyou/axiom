@@ -688,6 +688,8 @@ export {
   stripMarkdownForSpeech,
   synthesizeTts,
 } from './tts.js'
+export { createSendVoiceMessageTool, createSendVoiceMessageTools, SEND_VOICE_MESSAGE_TOOL_NAME } from './tts-tool.js'
+export type { SendVoiceMessageToolDetails, SendVoiceMessageToolOptions } from './tts-tool.js'
 export type {
   TtsSettings,
   SynthesizeOptions,
