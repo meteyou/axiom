@@ -200,7 +200,35 @@ describe('transcribeAudio', () => {
     it('returns the raw transcript when the rewrite fails', async () => {
       mockStt({ enabled: true, model: 'oai:whisper-1', rewrite: { enabled: true, providerId: 'oai:gpt-4o' } })
       mockCompleteSimple.mockRejectedValue(new Error('Internal Server Error'))
-      expect(await transcribeAudio(Buffer.from('audio'))).toEqual({ transcript: 'um like raw transcript' })
+      expect(await transcribeAudio(Buffer.from('audio'))).toEqual({
+        transcript: 'um like raw transcript',
+        rewriteError: 'Internal Server Error',
+      })
+    })
+
+    it('lets the caller skip an enabled rewrite', async () => {
+      mockStt({ enabled: true, model: 'oai:whisper-1', rewrite: { enabled: true, providerId: 'oai:gpt-4o' } })
+      expect(await transcribeAudio(Buffer.from('audio'), { rewrite: false })).toEqual({ transcript: 'um like raw transcript' })
+      expect(mockCompleteSimple).not.toHaveBeenCalled()
+    })
+
+    it('lets the caller request a rewrite that is switched off in the settings', async () => {
+      mockStt({ enabled: true, model: 'oai:whisper-1', rewrite: { enabled: false, providerId: 'oai:gpt-4o' } })
+      mockCompleteSimple.mockResolvedValue({
+        content: [{ type: 'text', text: 'cleaned transcript' }],
+      } as unknown as Awaited<ReturnType<typeof completeSimple>>)
+      expect(await transcribeAudio(Buffer.from('audio'), { rewrite: true })).toEqual({
+        transcript: 'um like raw transcript',
+        rewritten: 'cleaned transcript',
+      })
+    })
+
+    it('reports a requested rewrite without a rewrite model', async () => {
+      mockStt({ enabled: true, model: 'oai:whisper-1', rewrite: { enabled: true, providerId: '' } })
+      expect(await transcribeAudio(Buffer.from('audio'), { rewrite: true })).toEqual({
+        transcript: 'um like raw transcript',
+        rewriteError: 'No rewrite model is selected in Settings → Speech-to-Text.',
+      })
     })
   })
 })

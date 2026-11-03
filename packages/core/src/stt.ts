@@ -13,12 +13,19 @@ export type SttRewriteSettings = SttSettingsContract['rewrite']
 export interface TranscribeResult {
   transcript: string
   rewritten?: string
+  /** Set when a requested rewrite was skipped or failed; the raw transcript is returned. */
+  rewriteError?: string
 }
 
 export interface TranscribeOptions {
   language?: string
   /** Original filename hint (e.g. 'audio.ogg'). Helps APIs detect the format. */
   filename?: string
+  /**
+   * Override the rewrite setting for this call. Omitted follows
+   * `stt.rewrite.enabled`; `true` still needs a configured rewrite model.
+   */
+  rewrite?: boolean
 }
 
 // ── Load settings ─────────────────────────────────────────────────────
@@ -134,16 +141,18 @@ export async function transcribeAudio(
     filename: options.filename,
   })
 
-  if (settings.rewrite.enabled && settings.rewrite.providerId) {
-    try {
-      const rewritten = await rewriteTranscript(transcript, settings.rewrite.providerId)
-      return { transcript, rewritten }
-    } catch (err) {
-      // Rewrite failure is non-fatal — return raw transcript
-      console.warn(`[stt] Rewrite failed, returning raw transcript: ${(err as Error).message}`)
-      return { transcript }
-    }
+  if (!(options.rewrite ?? settings.rewrite.enabled)) return { transcript }
+  if (!settings.rewrite.providerId) {
+    return options.rewrite
+      ? { transcript, rewriteError: 'No rewrite model is selected in Settings → Speech-to-Text.' }
+      : { transcript }
   }
-
-  return { transcript }
+  try {
+    const rewritten = await rewriteTranscript(transcript, settings.rewrite.providerId)
+    return { transcript, rewritten }
+  } catch (err) {
+    const message = (err as Error).message
+    console.warn(`[stt] Rewrite failed, returning raw transcript: ${message}`)
+    return { transcript, rewriteError: message }
+  }
 }
