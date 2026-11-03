@@ -71,8 +71,8 @@ Output container format of the synthesized audio. Only the formats the provider 
 |--------|-------|
 | `mp3`  | Universal default. Supports long-text chunking with Deepgram (see below). |
 | `wav`  | Uncompressed, large. Supports long-text chunking with Deepgram (PCM is concatenated and wrapped in a single WAV header). |
-| `opus` | Small, OGG container. Telegram renders it as a native voice message. With Deepgram limited to 2000 characters per request (see below). |
-| `flac` | Lossless. With Deepgram limited to 2000 characters per request (see below). |
+| `opus` | Small, OGG container. Telegram renders it as a native voice message. With Deepgram, longer texts than 2000 characters come back as MP3 (see below). |
+| `flac` | Lossless. With Deepgram, longer texts than 2000 characters come back as MP3 (see below). |
 
 Some providers only deliver some formats: **OpenRouter** always returns MP3 (for every model it routes to), **xAI** returns MP3 or WAV. OpenAI, Mistral, Deepgram and custom OpenAI-compatible servers offer all four.
 
@@ -86,6 +86,6 @@ Deepgram's `/v1/speak` endpoint rejects any single request longer than **2000 ch
 
 - **`mp3`** — frame-aligned; chunked output is concatenated directly.
 - **`wav`** — Deepgram returns headerless PCM (`linear16`); chunks are concatenated as raw samples and wrapped in a single WAV header.
-- **`opus`** and **`flac`** — use page/frame containers that **do not** survive naive concatenation. Inputs **≤ 2000 characters** still work normally; longer inputs are rejected with an error asking you to switch to `mp3` or `wav`.
+- **`opus`** and **`flac`** — use page/frame containers that **do not** survive naive concatenation. Inputs **≤ 2000 characters** still work normally; longer inputs are synthesized as `mp3` instead (Telegram still shows MP3 as a voice message).
 
 The other providers don't have this limit.

@@ -20,13 +20,25 @@ const TTS_RESPONSE_FORMATS_BY_PROVIDER_TYPE: Record<string, readonly TtsResponse
   xai: ['mp3', 'wav'],
 }
 
-export function getSupportedTtsResponseFormats(providerType: string | undefined): readonly TtsResponseFormat[] {
-  return (providerType && TTS_RESPONSE_FORMATS_BY_PROVIDER_TYPE[providerType]) || SETTINGS_TTS_RESPONSE_FORMATS
+/**
+ * Providers with a per-request input cap synthesize longer text in chunks and
+ * concatenate the audio, which only MP3 frames and raw PCM (WAV) survive.
+ */
+const CHUNKED_TTS_LIMITS: Record<string, { maxChars: number; formats: readonly TtsResponseFormat[] }> = {
+  deepgram: { maxChars: 2000, formats: ['mp3', 'wav'] },
 }
 
-/** `requested` when the provider type supports it, otherwise its first supported format. */
-export function resolveTtsResponseFormat(providerType: string | undefined, requested: TtsResponseFormat): TtsResponseFormat {
-  const supported = getSupportedTtsResponseFormats(providerType)
+/** Formats the provider type can return; `textLength` drops formats that cannot hold text of that length. */
+export function getSupportedTtsResponseFormats(providerType: string | undefined, textLength?: number): readonly TtsResponseFormat[] {
+  const formats = (providerType && TTS_RESPONSE_FORMATS_BY_PROVIDER_TYPE[providerType]) || SETTINGS_TTS_RESPONSE_FORMATS
+  const chunked = providerType ? CHUNKED_TTS_LIMITS[providerType] : undefined
+  if (!chunked || textLength === undefined || textLength <= chunked.maxChars) return formats
+  return formats.filter(format => chunked.formats.includes(format))
+}
+
+/** `requested` when the provider type supports it (for `textLength`), otherwise its first supported format. */
+export function resolveTtsResponseFormat(providerType: string | undefined, requested: TtsResponseFormat, textLength?: number): TtsResponseFormat {
+  const supported = getSupportedTtsResponseFormats(providerType, textLength)
   return supported.includes(requested) ? requested : supported[0]!
 }
 

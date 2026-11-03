@@ -118,7 +118,7 @@ export function createSendVoiceMessageTool(options: SendVoiceMessageToolOptions)
         }
 
         const channel = options.getChannel()
-        const formats = getTtsModelResponseFormats(settings.model)
+        const formats = getTtsModelResponseFormats(settings.model, speech.length)
         const format = requestedFormat && formats.includes(requestedFormat)
           ? requestedFormat
           : defaultFormat(formats, settings, channel)

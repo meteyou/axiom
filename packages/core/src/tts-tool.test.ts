@@ -137,6 +137,14 @@ describe('send_voice_message execute', () => {
     expect(mockSynthesize).toHaveBeenCalledWith('Hallo', { settings: { responseFormat: 'mp3' } })
   })
 
+  it('picks the formats for the length of the spoken text', async () => {
+    mockFormats.mockImplementation((_model, length) => (length !== undefined && length > 2000 ? ['mp3', 'wav'] : ALL_FORMATS))
+    const text = 'Satz. '.repeat(500).trim()
+    await createSendVoiceMessageTool(options('telegram')).execute('id', { text })
+    expect(mockFormats).toHaveBeenLastCalledWith('oai:gpt-4o-mini-tts', text.length)
+    expect(mockSynthesize).toHaveBeenCalledWith(text, { settings: { responseFormat: 'mp3' } })
+  })
+
   it('honours a supported requested format and ignores an unsupported one', async () => {
     const tool = createSendVoiceMessageTool(options('telegram'))
     const wav = await tool.execute('id', { text: 'Hi', format: 'wav' })
