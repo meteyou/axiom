@@ -100,7 +100,7 @@ const props = defineProps<{
 const settings = defineModel<SttSettings>({ required: true })
 
 const modelOptions = computed(() => buildVoiceModelOptions(props.providers, 'stt'))
-const rewriteOptions = computed(() => buildProviderModelOptions(props.providers, { includeDisabled: true }))
+const rewriteOptions = computed(() => buildProviderModelOptions(props.providers))
 
 watch(modelOptions, (options) => {
   const current = settings.value.model
