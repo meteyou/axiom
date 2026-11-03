@@ -28,7 +28,13 @@ export function createSttRouter(db?: Database): Router {
         const scope = db && req.user ? resolveUserScope(db, req.user.userId) : null
         const language = toSttLanguage(scope?.settings.language ?? getGlobalChatDefaults().language)
 
-        const result = await transcribeAudio(file.buffer, { language, filename: file.originalname })
+        const duration = Number((req.body as { duration?: unknown } | undefined)?.duration)
+        const result = await transcribeAudio(file.buffer, {
+          language,
+          filename: file.originalname,
+          ...(Number.isFinite(duration) && duration > 0 && { durationSeconds: duration }),
+          ...(db && { usage: { db, userId: req.user?.userId ?? null } }),
+        })
         const body: { transcript: string; rewritten?: string } = { transcript: result.transcript }
         if (result.rewritten !== undefined) {
           body.rewritten = result.rewritten

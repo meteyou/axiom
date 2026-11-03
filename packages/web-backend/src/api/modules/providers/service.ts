@@ -22,6 +22,7 @@ import {
   ImageProviderAuthError,
   listLiveImageModels,
   logTokenUsage,
+  logVoiceUsage,
   isDynamicCatalogProvider,
   isRadiusProviderType,
   refreshPiCatalogs,
@@ -778,13 +779,15 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
   async function testTtsModel(id: string, payload: ProviderTtsTestPayloadContract): Promise<SynthesizedAudio> {
     const provider = requireProvider(id)
     const modelId = requireEnabledVoiceModel(provider, 'tts', payload.modelId)
+    const text = payload.text ?? TTS_TEST_TEXT
     try {
       const audio = await synthesizeWithProvider(provider, {
-        text: payload.text ?? TTS_TEST_TEXT,
+        text,
         modelId,
         voice: payload.voice,
         format: 'mp3',
       })
+      if (options.db) logVoiceUsage({ db: options.db }, { kind: 'tts', provider, modelId, units: text.length })
       updateProviderStatus(id, 'connected', modelId)
       return audio
     } catch (err) {
