@@ -7,13 +7,8 @@ const providers = [
 ]
 
 describe('buildProviderModelOptions', () => {
-  it('omits disabled providers and models by default', () => {
+  it('omits disabled providers and models', () => {
     expect(buildProviderModelOptions(providers).map(o => o.value)).toEqual(['a:a1'])
-  })
-
-  it('includes disabled providers and models when requested', () => {
-    expect(buildProviderModelOptions(providers, { includeDisabled: true }).map(o => o.value))
-      .toEqual(['a:a1', 'a:a2', 'b:b1'])
   })
 })
 
@@ -53,7 +48,6 @@ describe('image model options', () => {
 
   it('keeps image models out of text model options', () => {
     expect(buildProviderModelOptions([openRouter]).map(o => o.value)).toEqual(['or:qwen/qwen3.8-flash'])
-    expect(buildProviderModelOptions([openRouter], { includeDisabled: true }).map(o => o.value)).toEqual(['or:qwen/qwen3.8-flash'])
   })
 
   it('lists enabled image models of enabled providers with display names', () => {

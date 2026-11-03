@@ -95,20 +95,13 @@ export function buildVoiceModelOptions(providers: ProviderModelSource[], kind: V
     )
 }
 
-/**
- * Flattened `providerId:modelId` options for provider/model select dropdowns.
- * Disabled providers/models are skipped unless `includeDisabled` is set (STT
- * rewrite may still use them).
- */
-export function buildProviderModelOptions(
-  providers: ProviderModelSource[],
-  { includeDisabled = false }: { includeDisabled?: boolean } = {},
-): ProviderModelOption[] {
+/** Flattened `providerId:modelId` options of enabled providers and models for provider/model select dropdowns. */
+export function buildProviderModelOptions(providers: ProviderModelSource[]): ProviderModelOption[] {
   return providers
-    .filter(provider => includeDisabled || !provider.disabled)
+    .filter(provider => !provider.disabled)
     .flatMap(provider =>
       (provider.enabledModels ?? [])
-        .filter(modelId => includeDisabled || !provider.disabledModels?.includes(modelId))
+        .filter(modelId => !provider.disabledModels?.includes(modelId))
         .map(modelId => ({
           value: `${provider.id}:${modelId}`,
           label: `${provider.name} (${getModelDisplayName(provider, modelId)})`,
