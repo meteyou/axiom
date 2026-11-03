@@ -35,6 +35,7 @@ import {
   getGlobalChatDefaults,
   transcribeAudio,
   synthesizeTts,
+  stripMarkdownForSpeech,
   SlashCommandRegistry as SlashCommandRegistryCtor,
   registerBuiltInSlashCommands,
   isSlashCommandPicker,
@@ -895,22 +896,7 @@ export class TelegramBot {
     const telegramConfig = loadConfig<{ sendVoiceReply?: boolean }>('telegram.json')
     if (!telegramConfig.sendVoiceReply) return
 
-    // Strip Markdown-y tokens so the synthesized speech is clean. Same set
-    // as the web TTS route applies; kept inline here so we don't need to
-    // pull a markdown helper into the telegram package just for this.
-    const stripped = text
-      .replace(/```[\s\S]*?```/g, '')
-      .replace(/`([^`]+)`/g, '$1')
-      .replace(/\*\*([^*]+)\*\*/g, '$1')
-      .replace(/\*([^*]+)\*/g, '$1')
-      .replace(/__([^_]+)__/g, '$1')
-      .replace(/_([^_]+)_/g, '$1')
-      .replace(/^#{1,6}\s+/gm, '')
-      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-      .replace(/^>\s+/gm, '')
-      .replace(/^[-*+]\s+/gm, '')
-      .replace(/\n{3,}/g, '\n\n')
-      .trim()
+    const stripped = stripMarkdownForSpeech(text)
     if (!stripped) return
 
     // 2000-char cap matches Deepgram's /v1/speak ceiling; OpenAI and Mistral
