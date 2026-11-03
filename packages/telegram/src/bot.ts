@@ -1034,6 +1034,15 @@ export class TelegramBot {
     }
 
     const inputFile = new InputFile(absolutePath, file.originalName)
+    if (file.voiceMessage) {
+      const extension = path.extname(file.originalName).slice(1).toLowerCase()
+      if (isTelegramVoiceFormat(extension)) {
+        await this.bot.api.sendVoice(chatId, inputFile)
+      } else {
+        await this.bot.api.sendAudio(chatId, inputFile)
+      }
+      return
+    }
     // Telegram's sendPhoto rejects SVG, so vector images go out as documents.
     if (file.kind === 'image' && file.mimeType !== 'image/svg+xml') {
       await this.bot.api.sendPhoto(chatId, inputFile)

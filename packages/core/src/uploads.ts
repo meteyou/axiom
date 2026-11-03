@@ -28,6 +28,8 @@ export interface UploadDescriptor {
   previewUrl?: string
   width?: number
   height?: number
+  /** Spoken reply from `send_voice_message`; Telegram delivers it as a voice message. */
+  voiceMessage?: boolean
 }
 
 export interface SaveUploadInput {

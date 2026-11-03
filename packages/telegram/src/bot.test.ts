@@ -23,6 +23,8 @@ vi.mock('grammy', () => {
     setMyCommands: vi.fn().mockResolvedValue(true),
     sendPhoto: vi.fn().mockResolvedValue({ message_id: 2 }),
     sendDocument: vi.fn().mockResolvedValue({ message_id: 3 }),
+    sendVoice: vi.fn().mockResolvedValue({ message_id: 4 }),
+    sendAudio: vi.fn().mockResolvedValue({ message_id: 5 }),
   }
 
   const MockBot = vi.fn().mockImplementation(() => ({
@@ -257,12 +259,33 @@ describe('TelegramBot', () => {
       else delete process.env.DATA_DIR
     })
 
-    async function sendUpload(originalName: string, mimeType: string) {
+    async function sendUpload(originalName: string, mimeType: string, extra: Record<string, unknown> = {}) {
       fs.writeFileSync(path.join(dataDir, 'uploads', originalName), 'bytes')
       const bot = new TelegramBot({ agentCore, config: defaultConfig })
-      await (bot as any).sendUploadToTelegram(42, { kind: 'image', originalName, relativePath: originalName, mimeType })
+      await (bot as any).sendUploadToTelegram(42, { kind: 'image', originalName, relativePath: originalName, mimeType, ...extra })
       return (bot.getBot() as any).api
     }
+
+    it('sends OGG and MP3 voice messages as Telegram voice messages', async () => {
+      for (const [name, mime] of [['voice-message.ogg', 'audio/ogg'], ['voice-message.mp3', 'audio/mpeg']] as const) {
+        const api = await sendUpload(name, mime, { kind: 'file', voiceMessage: true })
+        expect(api.sendVoice).toHaveBeenCalledTimes(1)
+        expect(api.sendDocument).not.toHaveBeenCalled()
+        vi.clearAllMocks()
+      }
+    })
+
+    it('sends WAV voice messages as audio files', async () => {
+      const api = await sendUpload('voice-message.wav', 'audio/wav', { kind: 'file', voiceMessage: true })
+      expect(api.sendAudio).toHaveBeenCalledTimes(1)
+      expect(api.sendVoice).not.toHaveBeenCalled()
+    })
+
+    it('keeps sending other audio uploads as documents', async () => {
+      const api = await sendUpload('song.mp3', 'audio/mpeg', { kind: 'file' })
+      expect(api.sendDocument).toHaveBeenCalledTimes(1)
+      expect(api.sendVoice).not.toHaveBeenCalled()
+    })
 
     it('sends raster images as photos', async () => {
       const api = await sendUpload('logo.png', 'image/png')
