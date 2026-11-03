@@ -112,6 +112,8 @@ export function useStt() {
 
         try {
           const formData = new FormData()
+          // Browser recordings carry no duration header; the backend books STT usage with it.
+          formData.append('duration', String(durationMs / 1000))
           formData.append('file', blob, `recording.${ext}`)
 
           const token = getAccessToken()

@@ -5,7 +5,7 @@ import {
   stripMarkdownForSpeech,
   synthesizeTts,
 } from '@axiom/core'
-import type { SynthesizeOptions, TtsResponseFormat } from '@axiom/core'
+import type { Database, SynthesizeOptions, TtsResponseFormat } from '@axiom/core'
 import { jwtMiddleware } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
 
@@ -25,7 +25,7 @@ function parsePreviewSettings(value: unknown): NonNullable<SynthesizeOptions['se
   return settings
 }
 
-export function createTtsRouter(): Router {
+export function createTtsRouter(db?: Database): Router {
   const router = Router()
   router.use(jwtMiddleware)
 
@@ -60,7 +60,7 @@ export function createTtsRouter(): Router {
     }
 
     try {
-      const result = await synthesizeTts(cleanText)
+      const result = await synthesizeTts(cleanText, db ? { usage: { db, userId: req.user?.userId ?? null } } : {})
       res.setHeader('Content-Type', result.contentType)
       res.setHeader('Content-Length', result.audio.length)
       res.send(result.audio)
@@ -93,7 +93,11 @@ export function createTtsRouter(): Router {
     }
 
     try {
-      const result = await synthesizeTts(cleanText, { settings: parsePreviewSettings(body.settings), ignoreEnabled: true })
+      const result = await synthesizeTts(cleanText, {
+        settings: parsePreviewSettings(body.settings),
+        ignoreEnabled: true,
+        ...(db && { usage: { db, userId: req.user?.userId ?? null } }),
+      })
       res.setHeader('Content-Type', result.contentType)
       res.setHeader('Content-Length', result.audio.length)
       res.send(result.audio)

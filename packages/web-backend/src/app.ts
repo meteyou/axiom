@@ -203,7 +203,7 @@ export function createApp(options?: AppOptions): express.Express {
       onAccountsChanged: () => options.onActiveProviderChanged?.(),
     }))
     app.use('/api/secrets', createSecretsRouter({ db: options.db }))
-    app.use('/api/tts', createTtsRouter())
+    app.use('/api/tts', createTtsRouter(options.db))
     app.use('/api/stt', createSttRouter(options.db))
     app.use('/api/push', createPushRouter({
       db: options.db,
