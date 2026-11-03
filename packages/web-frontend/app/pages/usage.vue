@@ -88,7 +88,7 @@
 
         <template v-else>
           <!-- KPI row (3 cards) — filtered-range totals -->
-          <section class="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <section class="mb-4 grid grid-cols-1 gap-3" :class="kpiCards.length > 3 ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-3'">
             <Card v-for="card in kpiCards" :key="card.label">
               <CardContent class="p-5">
                 <span class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
@@ -380,6 +380,7 @@
                         <TableHead class="text-right">{{ $t('usage.table.columns.requests') }}</TableHead>
                         <TableHead class="text-right">{{ $t('usage.table.columns.promptTokens') }}</TableHead>
                         <TableHead class="text-right">{{ $t('usage.table.columns.completionTokens') }}</TableHead>
+                        <TableHead v-if="hasVoiceUsage" class="text-right">{{ $t('usage.table.columns.voice') }}</TableHead>
                         <TableHead class="text-right">{{ $t('usage.table.columns.cost') }}</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -394,6 +395,7 @@
                         <TableCell class="text-right tabular-nums">{{ formatNumber(row.requests) }}</TableCell>
                         <TableCell class="text-right tabular-nums">{{ formatNumber(row.promptTokens) }}</TableCell>
                         <TableCell class="text-right tabular-nums">{{ formatNumber(row.completionTokens) }}</TableCell>
+                        <TableCell v-if="hasVoiceUsage" class="text-right tabular-nums">{{ voiceUsageLabel(row) }}</TableCell>
                         <TableCell class="text-right tabular-nums">{{ formatCurrency(row.estimatedCost) }}</TableCell>
                       </TableRow>
                     </TableBody>
@@ -422,12 +424,13 @@
                         <TableHead class="text-right">{{ $t('usage.table.columns.cacheRead') }}</TableHead>
                         <TableHead class="text-right">{{ $t('usage.table.columns.cacheWrite') }}</TableHead>
                         <TableHead class="text-right">{{ $t('usage.table.columns.cacheHitRate') }}</TableHead>
+                        <TableHead v-if="hasVoiceUsage" class="text-right">{{ $t('usage.table.columns.voice') }}</TableHead>
                         <TableHead class="text-right">{{ $t('usage.table.columns.cost') }}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       <TableRow v-if="breakdown.rows.length === 0">
-                        <TableCell colspan="9" class="py-8 text-center text-muted-foreground">
+                        <TableCell :colspan="hasVoiceUsage ? 10 : 9" class="py-8 text-center text-muted-foreground">
                           {{ $t('usage.table.empty') }}
                         </TableCell>
                       </TableRow>
@@ -444,6 +447,7 @@
                           <TableCell class="text-right tabular-nums">{{ formatNumber(row.cacheRead) }}</TableCell>
                           <TableCell class="text-right tabular-nums">{{ formatNumber(row.cacheWrite) }}</TableCell>
                           <TableCell class="text-right tabular-nums">{{ cacheHitLabel(row) }}</TableCell>
+                          <TableCell v-if="hasVoiceUsage" class="text-right tabular-nums">{{ voiceUsageLabel(row) }}</TableCell>
                           <TableCell class="text-right tabular-nums">
                             {{ formatCurrency(row.estimatedCost) }}
                             <span v-if="breakdown.rows.length > 1" class="ml-1 text-[11px] text-muted-foreground">
@@ -474,6 +478,9 @@
                           </TableCell>
                           <TableCell class="text-right font-semibold tabular-nums">
                             {{ cacheHitLabel(totals) }}
+                          </TableCell>
+                          <TableCell v-if="hasVoiceUsage" class="text-right font-semibold tabular-nums">
+                            {{ voiceUsageLabel(totals) }}
                           </TableCell>
                           <TableCell class="text-right font-semibold tabular-nums">
                             {{ formatCurrency(totals.estimatedCost) }}
@@ -526,6 +533,24 @@ const daysInRange = computed(() => {
   return Math.max(1, Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1)
 })
 
+// ── Speech usage (STT audio seconds, TTS characters) ────────
+const hasVoiceUsage = computed(() => totals.value.sttSeconds > 0 || totals.value.ttsCharacters > 0)
+
+function formatAudioDuration(seconds: number): string {
+  const total = Math.round(seconds)
+  const hours = Math.floor(total / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+  const secs = `${total % 60}`.padStart(2, '0')
+  return hours > 0 ? `${hours}:${`${minutes}`.padStart(2, '0')}:${secs}` : `${minutes}:${secs}`
+}
+
+function voiceUsageLabel(row: { sttSeconds: number; ttsCharacters: number }): string {
+  const parts: string[] = []
+  if (row.sttSeconds > 0) parts.push(t('usage.voice.audio', { duration: formatAudioDuration(row.sttSeconds) }))
+  if (row.ttsCharacters > 0) parts.push(t('usage.voice.characters', { count: formatNumber(Math.round(row.ttsCharacters)) }))
+  return parts.length > 0 ? parts.join(' · ') : '—'
+}
+
 // ── KPI cards — derived from filtered-range totals ──────────
 const kpiCards = computed(() => [
   {
@@ -552,6 +577,13 @@ const kpiCards = computed(() => [
         })
       : '—',
   },
+  ...(hasVoiceUsage.value
+    ? [{
+        label: t('usage.kpi.voice'),
+        value: formatAudioDuration(totals.value.sttSeconds),
+        meta: t('usage.kpi.voiceMeta', { characters: formatNumber(Math.round(totals.value.ttsCharacters)) }),
+      }]
+    : []),
 ])
 
 // ── Provider stall cards ────────────────────────────────────
