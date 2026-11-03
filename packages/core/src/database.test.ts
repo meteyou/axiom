@@ -230,6 +230,38 @@ describe('database', () => {
     db2.close()
   })
 
+  it('widens token_usage for speech rows and keeps existing rows, idempotently', () => {
+    const dbPath = tmpDbPath()
+    const legacyDb = new BetterSqlite3(dbPath)
+    legacyDb.exec(`
+      CREATE TABLE token_usage (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+        provider TEXT NOT NULL,
+        model TEXT NOT NULL,
+        prompt_tokens INTEGER NOT NULL DEFAULT 0,
+        completion_tokens INTEGER NOT NULL DEFAULT 0,
+        estimated_cost REAL NOT NULL DEFAULT 0.0,
+        session_id TEXT
+      );
+    `)
+    legacyDb.prepare("INSERT INTO token_usage (provider, model, prompt_tokens, completion_tokens, estimated_cost, session_id) VALUES ('openai', 'gpt-4o', 10, 5, 0.1, 's')").run()
+    legacyDb.close()
+
+    const db = initDatabase(dbPath)
+    expect(db.prepare('SELECT provider, prompt_tokens, kind, units, user_id FROM token_usage').all()).toEqual([
+      { provider: 'openai', prompt_tokens: 10, kind: 'text', units: 0, user_id: null },
+    ])
+    db.prepare("INSERT INTO token_usage (provider, model, kind, units, user_id) VALUES ('deepgram', 'aura-2', 'tts', 120, 1)").run()
+    const indexes = (db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'token_usage'").all() as { name: string }[]).map(row => row.name)
+    expect(indexes).toEqual(expect.arrayContaining(['idx_token_usage_timestamp', 'idx_token_usage_provider']))
+    db.close()
+
+    const db2 = initDatabase(dbPath)
+    expect((db2.prepare('SELECT COUNT(*) AS n FROM token_usage').get() as { n: number }).n).toBe(2)
+    db2.close()
+  })
+
   it('rebuilds FTS indexes only when the virtual tables are first created', () => {
     const execSpy = vi.spyOn(BetterSqlite3.prototype, 'exec')
     const dbPath = tmpDbPath()

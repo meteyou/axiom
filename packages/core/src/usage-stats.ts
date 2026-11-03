@@ -35,6 +35,10 @@ export interface UsageTotals {
   cacheRead: number
   cacheWrite: number
   estimatedCost: number
+  /** Input characters of text-to-speech requests. */
+  ttsCharacters: number
+  /** Audio seconds of speech-to-text requests. */
+  sttSeconds: number
 }
 
 export interface UsageStatsRow extends UsageTotals {
@@ -111,8 +115,23 @@ function buildCostExpression(priceTable: TokenPriceTable): string {
 
   return `COALESCE(SUM(CASE
     WHEN estimated_cost > 0 THEN estimated_cost
+    WHEN kind IN ('stt', 'tts') THEN (units * (${inputCase})) / 1000000.0
     ELSE ((prompt_tokens * (${inputCase})) + (completion_tokens * (${outputCase}))) / 1000000.0
   END), 0)`
+}
+
+const VOICE_UNIT_SELECTS = `COALESCE(SUM(CASE WHEN kind = 'tts' THEN units ELSE 0 END), 0) AS ttsCharacters,
+      COALESCE(SUM(CASE WHEN kind = 'stt' THEN units ELSE 0 END), 0) AS sttSeconds`
+
+interface TotalsRow {
+  requests?: number | null
+  promptTokens?: number | null
+  completionTokens?: number | null
+  cacheRead?: number | null
+  cacheWrite?: number | null
+  estimatedCost?: number | null
+  ttsCharacters?: number | null
+  sttSeconds?: number | null
 }
 
 function buildWhereClause(options: UsageStatsQueryOptions, whereOptions: WhereOptions = {}): {
@@ -164,14 +183,7 @@ function buildWhereClause(options: UsageStatsQueryOptions, whereOptions: WhereOp
   }
 }
 
-function normalizeTotals(row?: {
-  requests?: number | null
-  promptTokens?: number | null
-  completionTokens?: number | null
-  cacheRead?: number | null
-  cacheWrite?: number | null
-  estimatedCost?: number | null
-}): UsageTotals {
+function normalizeTotals(row?: TotalsRow): UsageTotals {
   const requests = row?.requests ?? 0
   const promptTokens = row?.promptTokens ?? 0
   const completionTokens = row?.completionTokens ?? 0
@@ -185,6 +197,8 @@ function normalizeTotals(row?: {
     cacheRead: row?.cacheRead ?? 0,
     cacheWrite: row?.cacheWrite ?? 0,
     estimatedCost,
+    ttsCharacters: row?.ttsCharacters ?? 0,
+    sttSeconds: row?.sttSeconds ?? 0,
   }
 }
 
@@ -200,17 +214,11 @@ function getUsageTotalsInternal(db: Database, options: UsageStatsQueryOptions): 
       COALESCE(SUM(completion_tokens), 0) AS completionTokens,
       COALESCE(SUM(cache_read), 0) AS cacheRead,
       COALESCE(SUM(cache_write), 0) AS cacheWrite,
-      ${costExpression} AS estimatedCost
+      ${costExpression} AS estimatedCost,
+      ${VOICE_UNIT_SELECTS}
     FROM token_usage
     WHERE ${clause}
-  `).get(...params) as {
-    requests?: number | null
-    promptTokens?: number | null
-    completionTokens?: number | null
-    cacheRead?: number | null
-    cacheWrite?: number | null
-    estimatedCost?: number | null
-  } | undefined
+  `).get(...params) as TotalsRow | undefined
 
   return normalizeTotals(row)
 }
@@ -220,7 +228,7 @@ function queryUsagePerUser(db: Database, options: UsageStatsQueryOptions, priceT
   const { clause, params } = buildWhereClause(options)
   const rows = db.prepare(`
     SELECT
-      owner.user_id AS userId,
+      owner.owner_user_id AS userId,
       owner.username AS username,
       owner.deleted_at AS deletedAt,
       COUNT(*) AS requests,
@@ -228,26 +236,21 @@ function queryUsagePerUser(db: Database, options: UsageStatsQueryOptions, priceT
       COALESCE(SUM(completion_tokens), 0) AS completionTokens,
       COALESCE(SUM(cache_read), 0) AS cacheRead,
       COALESCE(SUM(cache_write), 0) AS cacheWrite,
-      ${costExpression} AS estimatedCost
+      ${costExpression} AS estimatedCost,
+      ${VOICE_UNIT_SELECTS}
     FROM (
-      SELECT token_usage.*, s.user_id AS user_id, u.username AS username, u.deleted_at AS deleted_at
+      SELECT token_usage.*, COALESCE(s.user_id, token_usage.user_id) AS owner_user_id, u.username AS username, u.deleted_at AS deleted_at
       FROM token_usage
       LEFT JOIN sessions s ON s.id = token_usage.session_id
-      LEFT JOIN users u ON u.id = s.user_id
+      LEFT JOIN users u ON u.id = COALESCE(s.user_id, token_usage.user_id)
     ) AS owner
     WHERE ${clause.replace(/token_usage\.session_id/g, 'owner.session_id')}
-    GROUP BY owner.user_id
+    GROUP BY owner.owner_user_id
     ORDER BY estimatedCost DESC, requests DESC
-  `).all(...params) as Array<{
+  `).all(...params) as Array<TotalsRow & {
     userId: number | null
     username: string | null
     deletedAt?: string | null
-    requests?: number | null
-    promptTokens?: number | null
-    completionTokens?: number | null
-    cacheRead?: number | null
-    cacheWrite?: number | null
-    estimatedCost?: number | null
   }>
 
   return rows.map((row) => ({
@@ -276,24 +279,19 @@ export function queryUsageStats(db: Database, options: UsageStatsQueryOptions = 
       COALESCE(SUM(completion_tokens), 0) AS completionTokens,
       COALESCE(SUM(cache_read), 0) AS cacheRead,
       COALESCE(SUM(cache_write), 0) AS cacheWrite,
-      ${costExpression} AS estimatedCost
+      ${costExpression} AS estimatedCost,
+      ${VOICE_UNIT_SELECTS}
     FROM token_usage
     WHERE ${clause}
     ${groupExpressions.length > 0 ? `GROUP BY ${groupExpressions.join(', ')}` : ''}
     ${groupBy.includes('day') || groupBy.includes('hour')
       ? `ORDER BY ${groupExpressions.join(', ')}`
       : `ORDER BY estimatedCost DESC, requests DESC${groupExpressions.length > 0 ? `, ${groupExpressions.join(', ')}` : ''}`}
-  `).all(...params) as Array<{
+  `).all(...params) as Array<TotalsRow & {
     provider?: string
     model?: string
     day?: string
     hour?: string
-    requests?: number | null
-    promptTokens?: number | null
-    completionTokens?: number | null
-    cacheRead?: number | null
-    cacheWrite?: number | null
-    estimatedCost?: number | null
   }>
 
   const providerWhere = buildWhereClause(options, { includeProvider: false })
