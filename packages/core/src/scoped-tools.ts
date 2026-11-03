@@ -14,7 +14,6 @@ import { resolveOwnerTimezone } from './user-settings.js'
 export interface ScopedToolsDeps {
   db: Database
   builtinToolsConfig?: BaseAgentToolsOptions['builtinToolsConfig']
-  sttEnabled?: boolean
   quotaService?: BaseAgentToolsOptions['quotaService']
   getSessionId?: BaseAgentToolsOptions['getSessionId']
   /** Shared task tool settings; the scope supplies owner and actor. */
@@ -68,7 +67,6 @@ export function createScopedTools(scope: UserScope, deps: ScopedToolsDeps): Agen
       : createBaseAgentTools({
           db: deps.db,
           builtinToolsConfig: deps.builtinToolsConfig,
-          sttEnabled: deps.sttEnabled,
           user: scope,
           quotaService: deps.quotaService,
           getSessionId: deps.getSessionId,

@@ -10,7 +10,6 @@ import {
   resolveUserScope,
   createSendFileTool,
   createTaskRuntime,
-  loadSttSettings,
   deliverTaskNotification,
   deliverTaskStatusUpdate,
   resolveDeliveryChannel,
@@ -765,8 +764,6 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
 
   const quotaMonitorService = new QuotaMonitorService()
 
-  const backgroundSttEnabled = (() => { try { return loadSttSettings().enabled } catch { return false } })()
-
   const taskRuntime = createTaskRuntime({
     db,
     runner: {
@@ -971,7 +968,6 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
   const taskScopedToolsDeps: ScopedToolsDeps = {
     db,
     builtinToolsConfig: () => loadRuntimeSettings().builtinToolsConfig,
-    sttEnabled: backgroundSttEnabled,
     quotaService: quotaMonitorService,
     taskTools: taskToolsOptions,
   }

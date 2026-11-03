@@ -309,7 +309,7 @@ Hand-edited invalid values are ignored at runtime and the default is used instea
 | `stt.language`           | `string` (`"en"`, `"de"`, `"multi"`, …)   | `""`    | string (empty = user's chat language) |
 | `stt.rewrite.enabled`    | `boolean`                                 | `false` | bool                                  |
 | `stt.rewrite.providerId` | `string` (`providerId:modelId` composite) | `""`    | string                                |
-| `stt.agentTool`          | `boolean`                                 | `false` | bool (offer `transcribe_audio`)       |
+| `stt.agentTool`          | `boolean`                                 | `false` | bool (offer `audio_transcribe`)       |
 
 `tts.model` and `stt.model` reference models added on the [Providers page](../web-ui/providers#voice-models) (`enabledTtsModels` / `enabledSttModels`). They are reset to `""` when the model or its provider is disabled.
 

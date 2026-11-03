@@ -14,7 +14,7 @@ Master toggle. When off, the mic button is hidden in the UI, Telegram voice mess
 
 ## Provide as agent tool
 
-Gives the agent the [`transcribe_audio`](../concepts/tools#transcribe-audio) tool, so it can transcribe audio and video files from the workspace — e.g. "download this video and transcribe it". Off by default; the mic button and Telegram voice messages work without it. Applies from the next chat turn and to tasks started afterwards.
+Gives the agent the [`audio_transcribe`](../concepts/tools#audio-transcribe) tool, so it can transcribe audio and video files from the workspace — e.g. "download this video and transcribe it". Off by default; the mic button and Telegram voice messages work without it. Applies from the next chat turn and to tasks started afterwards.
 
 ```json
 { "stt": { "agentTool": false } }
@@ -56,13 +56,15 @@ After transcription, run the raw text through an LLM to:
 
 Useful for messy dictations. Adds latency and token cost — leave off if your transcriber is already clean.
 
+The agent's `audio_transcribe` tool does not rewrite by default. While a rewrite provider is configured here, the tool offers an optional `rewrite` flag the agent can set for a cleaned-up transcript.
+
 ```json
 { "stt": { "rewrite": { "enabled": false } } }
 ```
 
 ## Rewrite provider
 
-When rewrite is on, picks which provider+model does the cleanup. Any chat provider from the [Providers](../web-ui/providers) page can be selected. If left empty, rewriting is silently skipped and the raw transcript is returned.
+When rewrite is on, picks which provider+model does the cleanup. Any chat provider from the [Providers](../web-ui/providers) page can be selected. If left empty, rewriting is skipped and the raw transcript is returned.
 
 The stored value is a composite `providerId:modelId` string:
 

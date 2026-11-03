@@ -1,11 +1,15 @@
+import { execFile } from 'node:child_process'
 import fs from 'node:fs'
+import os from 'node:os'
 import nodePath from 'node:path'
 import type { AgentTool } from '@earendil-works/pi-agent-core'
 import { Type } from 'typebox'
+import type { TSchema } from 'typebox'
 import { getWorkspaceDir } from './workspace.js'
 import { loadSttSettings, transcribeAudio } from './stt.js'
+import type { SttSettings } from './stt.js'
 
-// ── MIME type mapping ─────────────────────────────────────────────────
+export const TRANSCRIBE_AUDIO_TOOL_NAME = 'audio_transcribe'
 
 const AUDIO_EXTENSIONS: Record<string, string> = {
   '.mp3': 'audio/mpeg',
@@ -16,149 +20,222 @@ const AUDIO_EXTENSIONS: Record<string, string> = {
   '.flac': 'audio/flac',
 }
 
-const SUPPORTED_EXTENSIONS = Object.keys(AUDIO_EXTENSIONS)
+const VIDEO_EXTENSIONS: Record<string, string> = {
+  '.mp4': 'video/mp4',
+  '.mov': 'video/quicktime',
+  '.mkv': 'video/x-matroska',
+  '.avi': 'video/x-msvideo',
+  '.m4v': 'video/x-m4v',
+  '.mpeg': 'video/mpeg',
+  '.mpg': 'video/mpeg',
+}
+
+const SUPPORTED_EXTENSIONS = [...Object.keys(AUDIO_EXTENSIONS), ...Object.keys(VIDEO_EXTENSIONS)]
+
+/** OpenAI-compatible STT endpoints reject uploads above 25 MB; larger audio is re-encoded first. */
+const MAX_DIRECT_UPLOAD_BYTES = 24 * 1024 * 1024
+/** Longer transcripts go to a workspace file so they do not flood the context. */
+const INLINE_TRANSCRIPT_MAX_CHARS = 20_000
+const TRANSCRIPT_PREVIEW_CHARS = 2_000
+const FFMPEG_TIMEOUT_MS = 10 * 60_000
 
 /**
- * Resolve a path relative to the workspace directory.
+ * Re-encode the audio track of `inputPath` to a compact mono MP3 and return
+ * it. Rejects with an actionable message when ffmpeg is not installed.
  */
-function resolveWorkspacePath(filePath: string, workspaceDir: string): string {
-  if (nodePath.isAbsolute(filePath)) return filePath
-  return nodePath.resolve(workspaceDir, filePath)
+export type ExtractAudio = (inputPath: string) => Promise<Buffer>
+
+const extractAudioWithFfmpeg: ExtractAudio = async (inputPath) => {
+  const outputPath = nodePath.join(os.tmpdir(), `axiom-stt-${process.pid}-${Date.now()}.mp3`)
+  try {
+    await new Promise<void>((resolve, reject) => {
+      execFile(
+        'ffmpeg',
+        ['-nostdin', '-y', '-i', inputPath, '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'libmp3lame', '-b:a', '32k', outputPath],
+        { timeout: FFMPEG_TIMEOUT_MS, maxBuffer: 10 * 1024 * 1024 },
+        (err, _stdout, stderr) => {
+          if (!err) return resolve()
+          if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+            return reject(new Error('ffmpeg is not installed. Install it via shell (e.g. `sudo apt-get install -y ffmpeg`) and retry.'))
+          }
+          const detail = String(stderr).trim().split('\n').slice(-3).join(' ')
+          reject(new Error(`ffmpeg could not extract the audio track: ${detail || err.message}`))
+        },
+      )
+    })
+    return fs.readFileSync(outputPath)
+  } finally {
+    fs.rmSync(outputPath, { force: true })
+  }
+}
+
+export interface TranscribeAudioToolOptions {
+  /** Directory relative paths resolve against; defaults to the global workspace. */
+  getWorkspaceDir?: () => string
+  /** Settings the declaration is built from; defaults to the saved settings. */
+  settings?: SttSettings
+  extractAudio?: ExtractAudio
+}
+
+export function isTranscribeAudioToolEnabled(settings: SttSettings): boolean {
+  return settings.enabled && settings.agentTool && settings.model !== ''
+}
+
+function isRewriteOffered(settings: SttSettings): boolean {
+  return settings.rewrite.enabled && settings.rewrite.providerId !== ''
+}
+
+/** `audio_transcribe` when STT is enabled and offered to the agent in the settings, otherwise nothing. */
+export function createTranscribeAudioTools(options: Omit<TranscribeAudioToolOptions, 'settings'> = {}): AgentTool[] {
+  let settings: SttSettings
+  try {
+    settings = loadSttSettings()
+  } catch {
+    return []
+  }
+  return isTranscribeAudioToolEnabled(settings) ? [createTranscribeAudioTool({ ...options, settings })] : []
+}
+
+function errorResult(text: string) {
+  return { content: [{ type: 'text' as const, text }], details: { error: true } }
+}
+
+interface MediaFile {
+  path: string
+  filename: string
+  ext: string
+  mimeType: string
+}
+
+/** Resolve and validate the requested file; returns an error message when it cannot be transcribed. */
+function resolveMediaFile(filePath: string, workspaceDir: string): MediaFile | string {
+  const resolved = nodePath.isAbsolute(filePath) ? filePath : nodePath.resolve(workspaceDir, filePath)
+  if (!fs.existsSync(resolved)) return `Error: File not found: ${resolved}`
+  try {
+    fs.accessSync(resolved, fs.constants.R_OK)
+  } catch {
+    return `Error: File is not readable: ${resolved}`
+  }
+  const ext = nodePath.extname(resolved).toLowerCase()
+  const mimeType = AUDIO_EXTENSIONS[ext] ?? VIDEO_EXTENSIONS[ext]
+  if (!mimeType) return `Error: Unsupported file format "${ext}". Supported formats: ${SUPPORTED_EXTENSIONS.join(', ')}`
+  return { path: resolved, filename: nodePath.basename(resolved), ext, mimeType }
+}
+
+/** Audio to upload: the file itself, or a compact MP3 of its audio track for videos and oversized audio. */
+async function loadUploadAudio(file: MediaFile, extractAudio: ExtractAudio): Promise<{ buffer: Buffer; uploadName: string; reencoded: boolean }> {
+  const direct = file.ext in VIDEO_EXTENSIONS ? null : fs.readFileSync(file.path)
+  if (direct !== null && direct.length <= MAX_DIRECT_UPLOAD_BYTES) {
+    return { buffer: direct, uploadName: file.filename, reencoded: false }
+  }
+  return { buffer: await extractAudio(file.path), uploadName: `${nodePath.basename(file.path, file.ext)}.mp3`, reencoded: true }
+}
+
+function writeTranscriptFile(workspaceDir: string, sourcePath: string, transcript: string): string {
+  const base = nodePath.basename(sourcePath, nodePath.extname(sourcePath))
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+  const target = nodePath.join(workspaceDir, 'transcripts', `${base}-${stamp}.txt`)
+  fs.mkdirSync(nodePath.dirname(target), { recursive: true })
+  fs.writeFileSync(target, transcript, 'utf-8')
+  return target
+}
+
+/** Inline transcript, or a preview plus the path of the file it was saved to when it is too long for the context. */
+function formatTranscript(text: string, rewriteError: string | undefined, saveTranscript: () => string): { text: string; transcriptPath?: string } {
+  const note = rewriteError ? `Note: the rewrite failed (${rewriteError}); this is the raw transcript.` : null
+  if (text.length <= INLINE_TRANSCRIPT_MAX_CHARS) {
+    return { text: note ? `${text}\n\n${note}` : text }
+  }
+  const transcriptPath = saveTranscript()
+  const summary = `Transcript (${text.length} characters) saved to ${transcriptPath}. Read it with read_file. Preview:\n\n`
+    + `${text.slice(0, TRANSCRIPT_PREVIEW_CHARS)}…`
+  return { text: note ? `${summary}\n\n${note}` : summary, transcriptPath }
 }
 
 /**
- * Create the `audio_transcribe` agent tool.
- *
- * Transcribes audio files from the workspace using the configured STT provider.
- * Supports common formats: mp3, wav, ogg, webm, m4a, flac.
- *
- * Primary use case: user asks the agent to transcribe a downloaded audio file
- * (e.g. from yt-dlp). The agent downloads the audio via shell, then uses this
- * tool to transcribe it.
+ * Create the `audio_transcribe` agent tool: transcribes audio or video files
+ * from the workspace with the configured STT model. The `rewrite` parameter
+ * is only declared when a rewrite model is configured.
  */
-export function createTranscribeAudioTool(getWorkspace: () => string = getWorkspaceDir): AgentTool {
+export function createTranscribeAudioTool(options: TranscribeAudioToolOptions = {}): AgentTool {
+  const getWorkspace = options.getWorkspaceDir ?? getWorkspaceDir
+  const extractAudio = options.extractAudio ?? extractAudioWithFfmpeg
+  const declaredSettings = options.settings ?? loadSttSettings()
+  const rewriteDeclared = isRewriteOffered(declaredSettings)
+
+  const properties: Record<string, TSchema> = {
+    path: Type.String({
+      description: 'Path to the audio or video file, relative to workspace root.',
+    }),
+    language: Type.Optional(
+      Type.String({
+        description: 'Language code (e.g., "en", "de") for improved accuracy. Default: auto-detect.',
+      }),
+    ),
+  }
+  if (rewriteDeclared) {
+    properties.rewrite = Type.Optional(
+      Type.Boolean({
+        description: 'Clean up the transcript (filler words, false starts, grammar) with the configured rewrite model. '
+          + 'Default: false — the raw transcript is usually what you need.',
+      }),
+    )
+  }
+
   return {
-    name: 'audio_transcribe',
+    name: TRANSCRIBE_AUDIO_TOOL_NAME,
     label: 'Transcribe Audio',
     description:
-      'Transcribe an audio file to text using the configured speech-to-text provider. ' +
-      'Supports common audio formats (mp3, wav, ogg, webm, m4a, flac). ' +
-      'The file must exist in the workspace.',
-    parameters: Type.Object({
-      path: Type.String({
-        description: 'Path to the audio file, relative to workspace root.',
-      }),
-      language: Type.Optional(
-        Type.String({
-          description: 'Language code (e.g., "en", "de") for improved accuracy. Default: auto-detect.',
-        }),
-      ),
-      rewrite: Type.Optional(
-        Type.Boolean({
-          description: 'Clean up the transcript by removing filler words and repetitions. Default: false.',
-        }),
-      ),
-    }),
+      'Transcribe an audio or video file to text using the configured speech-to-text provider. ' +
+      'Supports audio (mp3, wav, ogg, webm, m4a, flac) and video (mp4, mov, mkv, avi, m4v, mpeg); ' +
+      'the audio track of videos is extracted with ffmpeg. The file must exist in the workspace. ' +
+      `Transcripts longer than ${INLINE_TRANSCRIPT_MAX_CHARS} characters are saved to a file in the workspace and only a preview is returned.`,
+    parameters: Type.Object(properties),
     execute: async (_toolCallId, params) => {
-      const { path: filePath, language, rewrite = false } = params as {
+      const { path: filePath, language, rewrite } = params as {
         path: string
         language?: string
         rewrite?: boolean
       }
 
       try {
-        // Check STT is enabled
         const settings = loadSttSettings()
         if (!settings.enabled) {
-          return {
-            content: [{ type: 'text' as const, text: 'Error: Speech-to-text is not enabled. Enable it in Settings → Speech-to-Text.' }],
-            details: { error: true },
-          }
+          return errorResult('Error: Speech-to-text is not enabled. Enable it in Settings → Speech-to-Text.')
         }
 
-        // Resolve path
-        const resolved = resolveWorkspacePath(filePath, getWorkspace())
+        const workspaceDir = getWorkspace()
+        const file = resolveMediaFile(filePath, workspaceDir)
+        if (typeof file === 'string') return errorResult(file)
 
-        // Check file exists
-        if (!fs.existsSync(resolved)) {
-          return {
-            content: [{ type: 'text' as const, text: `Error: File not found: ${resolved}` }],
-            details: { error: true },
-          }
-        }
-
-        // Check file is readable
-        try {
-          fs.accessSync(resolved, fs.constants.R_OK)
-        } catch {
-          return {
-            content: [{ type: 'text' as const, text: `Error: File is not readable: ${resolved}` }],
-            details: { error: true },
-          }
-        }
-
-        // Validate extension
-        const ext = nodePath.extname(resolved).toLowerCase()
-        if (!AUDIO_EXTENSIONS[ext]) {
-          return {
-            content: [{
-              type: 'text' as const,
-              text: `Error: Unsupported audio format "${ext}". Supported formats: ${SUPPORTED_EXTENSIONS.join(', ')}`,
-            }],
-            details: { error: true },
-          }
-        }
-
-        const mimeType = AUDIO_EXTENSIONS[ext]
-        const filename = nodePath.basename(resolved)
-
-        // Read file
-        const buffer = fs.readFileSync(resolved)
-
-        // Transcribe
-        const result = await transcribeAudio(buffer, { language, filename })
-
-        // If rewrite requested and rewrite is enabled in settings, apply rewrite
-        if (rewrite && settings.rewrite.enabled && settings.rewrite.providerId) {
-          // Rewrite is handled by the caller (the agent itself can clean up the text)
-          // For now, return the raw transcript with a note about rewriting
-          return {
-            content: [{
-              type: 'text' as const,
-              text: result.rewritten ?? result.transcript,
-            }],
-            details: {
-              path: resolved,
-              filename,
-              mimeType,
-              language: language ?? 'auto',
-              rewrite: true,
-              rewriteNote: result.rewritten
-                ? undefined
-                : 'Rewrite was requested. Please clean up the transcript by removing filler words, false starts, and repetitions while preserving the meaning.',
-            },
-          }
-        }
+        const { buffer, uploadName, reencoded } = await loadUploadAudio(file, extractAudio)
+        const result = await transcribeAudio(buffer, {
+          language,
+          filename: uploadName,
+          rewrite: rewrite === true && isRewriteOffered(settings),
+        })
+        const output = formatTranscript(
+          result.rewritten ?? result.transcript,
+          result.rewriteError,
+          () => writeTranscriptFile(workspaceDir, file.path, result.rewritten ?? result.transcript),
+        )
 
         return {
-          content: [{
-            type: 'text' as const,
-            text: result.transcript,
-          }],
+          content: [{ type: 'text' as const, text: output.text }],
           details: {
-            path: resolved,
-            filename,
-            mimeType,
+            path: file.path,
+            filename: file.filename,
+            mimeType: file.mimeType,
             language: language ?? 'auto',
-            rewrite: false,
+            rewrite: result.rewritten !== undefined,
+            ...(reencoded && { audioExtracted: true }),
+            ...(result.rewriteError && { rewriteError: result.rewriteError }),
+            ...(output.transcriptPath && { transcriptPath: output.transcriptPath }),
           },
         }
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : String(err)
-        return {
-          content: [{ type: 'text' as const, text: `Error transcribing audio: ${errorMsg}` }],
-          details: { error: true },
-        }
+        return errorResult(`Error transcribing audio: ${errorMsg}`)
       }
     },
   }

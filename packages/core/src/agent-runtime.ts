@@ -24,8 +24,7 @@ import { createBuiltinWebTools } from './web-tools.js'
 import type { BuiltinToolsConfig, BuiltinToolsConfigSource } from './web-tools.js'
 import { createReadFileTool } from './read-file-tool.js'
 import { createToolResultImageHook, omitToolResultStructuredContent, redactToolResultImages } from './llm-image.js'
-import { createTranscribeAudioTool } from './stt-tool.js'
-import { loadSttSettings } from './stt.js'
+import { createTranscribeAudioTools, TRANSCRIBE_AUDIO_TOOL_NAME } from './stt-tool.js'
 import { createAgentSkillTools, getAgentSkillsForPrompt, getAgentSkillsCount, getAgentSkillsDir, currentPlatform } from './agent-skills.js'
 import { createSearchMemoriesTool } from './memories-tool.js'
 import { createReadChatHistoryTool } from './chat-history-tools.js'
@@ -60,7 +59,6 @@ import { loadRetryPolicy } from './turn-retry.js'
 export interface BaseAgentToolsOptions {
   db: Database
   builtinToolsConfig?: BuiltinToolsConfigSource
-  sttEnabled?: boolean
   /** User the tools act for; scopes memory_search and gates provider_quota. Omitted for background agents. */
   user?: UserScope | null
   /** Session identity of an interactive caller without a user row (e.g. `telegram-<id>`); scopes chat_history_read and memory_search. */
@@ -101,7 +99,7 @@ export function createBaseAgentTools(options: BaseAgentToolsOptions): AgentTool[
     }),
     ...createAgentSkillTools(),
     ...(options.user ? createEmailTools({ ownerUserId: options.user.id, workspaceDir: getUserWorkspace }) : []),
-    ...(options.sttEnabled ? [createTranscribeAudioTool(getUserWorkspace)] : []),
+    ...createTranscribeAudioTools({ getWorkspaceDir: getUserWorkspace }),
     ...(options.quotaService
       ? [createProviderQuotaTool({
           quotaService: options.quotaService,
@@ -575,7 +573,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
     ensureMemoryStructure(options.memoryDir)
     ensureConfigStructure()
 
-    const { sttEnabled, thinkingLevel: storedThinkingLevel } = this.readRuntimeSettings()
+    const { thinkingLevel: storedThinkingLevel } = this.readRuntimeSettings()
     const effectiveThinkingLevel = normalizeThinkingLevel(options.thinkingLevel) ?? storedThinkingLevel ?? 'off'
 
     this.fixedSystemPrompt = options.systemPrompt
@@ -589,14 +587,13 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
       ...createBaseAgentTools({
         db: this.db,
         builtinToolsConfig: () => this.readRuntimeSettings().builtinToolsConfig,
-        sttEnabled,
         user: this.user,
         sessionUser: this.sessionUser,
         quotaService: options.quotaService,
         getSessionId: () => this.agent.sessionId,
         memoryDir: options.memoryDir,
       }),
-    ].filter(tool => tool.name !== GENERATE_IMAGE_TOOL_NAME)
+    ].filter(tool => tool.name !== GENERATE_IMAGE_TOOL_NAME && tool.name !== TRANSCRIBE_AUDIO_TOOL_NAME)
 
     this.compactor = new ContextCompactor({
       scope: 'interactive',
@@ -665,13 +662,13 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
 
   /**
    * Build a fresh snapshot, make its tools executable and return the system
-   * message that declares its prompt and tools. Image generation and codemode
-   * are only synced here, so toggling them mid-session never changes the
-   * running session's tool list.
+   * message that declares its prompt and tools. Image generation, transcription
+   * and codemode are only synced here, so toggling them mid-session never
+   * changes the running session's tool list.
    */
   private rebuildSnapshot(): AgentMessage {
     const { currentUser } = this.sessionPromptContext
-    const tools = [...this.baseTools, ...this.buildImageGenerationTools()]
+    const tools = [...this.baseTools, ...this.buildImageGenerationTools(), ...this.buildTranscribeAudioTools()]
     if (readCodemodeMainAgentEnabled()) tools.push(this.buildCodemodeTool(tools))
     const built = this.fixedSystemPrompt === undefined
       ? this.buildSystemPrompt(currentUser, new Set(tools.map(tool => tool.name)))
@@ -750,6 +747,11 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
       getSessionId: () => this.agent.sessionId,
       getWorkspaceDir: user ? () => user.paths.workspace : undefined,
     })
+  }
+
+  private buildTranscribeAudioTools(): AgentTool[] {
+    const user = this.user
+    return createTranscribeAudioTools({ getWorkspaceDir: user ? () => user.paths.workspace : undefined })
   }
 
   /**
@@ -860,7 +862,6 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
     language: string | undefined
     timezone: string | undefined
     builtinToolsConfig: BuiltinToolsConfig | undefined
-    sttEnabled: boolean
     thinkingLevel: SettingsThinkingLevel | undefined
   } {
     let language: string | undefined
@@ -883,20 +884,13 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
       // Config not available yet, use defaults
     }
 
-    let sttEnabled = false
-    try {
-      sttEnabled = loadSttSettings().enabled
-    } catch {
-      // STT settings not available
-    }
-
     if (this.user) {
       const personal = resolveUserScope(this.db, this.user.id)?.settings
       language = personal?.language ?? language
       timezone = personal?.timezone ?? timezone
     }
 
-    return { language, timezone, builtinToolsConfig, sttEnabled, thinkingLevel }
+    return { language, timezone, builtinToolsConfig, thinkingLevel }
   }
 
   /** `activeTools` are the tools of the snapshot being built; skills that require a missing one are not listed. */
