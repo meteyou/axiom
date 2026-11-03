@@ -10,9 +10,18 @@ export interface TokenUsageRecord {
   cacheWrite: number
   estimatedCost: number
   sessionId?: string
-  /** `image` for image generation requests, which `getAverageImageCost` averages. */
-  kind?: 'text' | 'image'
+  /**
+   * `image` for image generation requests, which `getAverageImageCost` averages;
+   * `stt`/`tts` for speech requests, which book `units` instead of tokens.
+   */
+  kind?: TokenUsageKind
+  /** Audio seconds (`stt`) or input characters (`tts`). */
+  units?: number
+  /** Owner of a request that has no session (e.g. the chat's read-aloud button). */
+  userId?: number | null
 }
+
+export type TokenUsageKind = 'text' | 'image' | 'stt' | 'tts'
 
 export interface ToolCallRecord {
   id?: number
@@ -38,8 +47,8 @@ export interface ToolCallRecord {
  */
 export function logTokenUsage(db: Database, record: TokenUsageRecord): void {
   db.prepare(
-    `INSERT INTO token_usage (provider, model, prompt_tokens, completion_tokens, cache_read, cache_write, estimated_cost, session_id, kind)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO token_usage (provider, model, prompt_tokens, completion_tokens, cache_read, cache_write, estimated_cost, session_id, kind, units, user_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     record.provider,
     record.model,
@@ -50,6 +59,8 @@ export function logTokenUsage(db: Database, record: TokenUsageRecord): void {
     record.estimatedCost,
     record.sessionId ?? null,
     record.kind ?? 'text',
+    record.units ?? 0,
+    record.userId ?? null,
   )
 
   if (record.sessionId) {

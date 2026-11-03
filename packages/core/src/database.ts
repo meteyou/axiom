@@ -29,7 +29,9 @@ CREATE TABLE IF NOT EXISTS token_usage (
   cache_write INTEGER NOT NULL DEFAULT 0,
   estimated_cost REAL NOT NULL DEFAULT 0.0,
   session_id TEXT,
-  kind TEXT NOT NULL DEFAULT 'text' CHECK(kind IN ('text', 'image'))
+  kind TEXT NOT NULL DEFAULT 'text' CHECK(kind IN ('text', 'image', 'stt', 'tts')),
+  units REAL NOT NULL DEFAULT 0,
+  user_id INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS tool_calls (
@@ -147,6 +149,39 @@ function tableExists(db: Database, tableName: string): boolean {
   return !!row
 }
 
+/**
+ * Voice usage rows (`stt`/`tts`) book audio seconds or characters in `units`
+ * and may belong to a user without a session. SQLite cannot widen the `kind`
+ * CHECK in place, so older tables are rebuilt once.
+ */
+function migrateTokenUsageVoiceColumns(db: Database): void {
+  const row = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'token_usage'").get() as { sql: string } | undefined
+  if (!row || row.sql.includes("'tts'")) return
+  db.exec(`
+    ALTER TABLE token_usage RENAME TO token_usage_old;
+    CREATE TABLE token_usage (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+      provider TEXT NOT NULL,
+      model TEXT NOT NULL,
+      prompt_tokens INTEGER NOT NULL DEFAULT 0,
+      completion_tokens INTEGER NOT NULL DEFAULT 0,
+      cache_read INTEGER NOT NULL DEFAULT 0,
+      cache_write INTEGER NOT NULL DEFAULT 0,
+      estimated_cost REAL NOT NULL DEFAULT 0.0,
+      session_id TEXT,
+      kind TEXT NOT NULL DEFAULT 'text' CHECK(kind IN ('text', 'image', 'stt', 'tts')),
+      units REAL NOT NULL DEFAULT 0,
+      user_id INTEGER
+    );
+    INSERT INTO token_usage (id, timestamp, provider, model, prompt_tokens, completion_tokens, cache_read, cache_write, estimated_cost, session_id, kind)
+      SELECT id, timestamp, provider, model, prompt_tokens, completion_tokens, cache_read, cache_write, estimated_cost, session_id, kind FROM token_usage_old;
+    DROP TABLE token_usage_old;
+    CREATE INDEX IF NOT EXISTS idx_token_usage_timestamp ON token_usage(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_token_usage_provider ON token_usage(provider);
+  `)
+}
+
 export function initDatabase(dbPath?: string): Database {
   const resolvedPath = dbPath ?? path.join(
     process.env.DATA_DIR ?? '/data',
@@ -208,6 +243,7 @@ export function initDatabase(dbPath?: string): Database {
   if (!tokenUsageCols.find(c => c.name === 'kind')) {
     db.exec("ALTER TABLE token_usage ADD COLUMN kind TEXT NOT NULL DEFAULT 'text' CHECK(kind IN ('text', 'image'))")
   }
+  migrateTokenUsageVoiceColumns(db)
 
   // Migration: add metadata column and tool role to chat_messages if missing
   const chatCols = db.prepare("PRAGMA table_info(chat_messages)").all() as { name: string }[]

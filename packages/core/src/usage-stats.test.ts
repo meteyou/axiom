@@ -169,6 +169,29 @@ describe('usage-stats', () => {
     expect(main.totals.totalTokens + task.totals.totalTokens + hb.totals.totalTokens).toBe(all.totals.totalTokens)
   })
 
+  it('sums speech units apart from tokens and prices unbooked speech rows with the price table', () => {
+    const testDb = setup()
+    testDb.prepare("INSERT INTO users (id, username, password_hash, role) VALUES (5, 'bob', 'h', 'user')").run()
+    const ts = createTimestamp(new Date('2026-03-22T10:00:00Z'))
+    const insert = testDb.prepare(
+      'INSERT INTO token_usage (timestamp, provider, model, prompt_tokens, completion_tokens, estimated_cost, kind, units, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    )
+    insert.run(ts, 'openai', 'gpt-4o', 1000, 500, 0.5, 'text', 0, null)
+    insert.run(ts, 'openrouter', 'openai/whisper-1', 0, 0, 0.002, 'stt', 90, 5)
+    insert.run(ts, 'openai', 'custom-model', 0, 0, 0, 'tts', 4000, 5)
+
+    const result = queryUsageStats(testDb, { groupBy: ['provider', 'model'] })
+
+    expect(result.totals).toMatchObject({ requests: 3, totalTokens: 1500, sttSeconds: 90, ttsCharacters: 4000 })
+    // custom-model costs 1.25 per 1M units: 4000 characters => 0.005
+    expect(result.totals.estimatedCost).toBeCloseTo(0.5 + 0.002 + 0.005, 6)
+    const tts = result.rows.find(row => row.model === 'custom-model')!
+    expect(tts).toMatchObject({ totalTokens: 0, ttsCharacters: 4000, sttSeconds: 0 })
+
+    const bob = result.perUser.find(row => row.userId === 5)!
+    expect(bob).toMatchObject({ username: 'bob', requests: 2, sttSeconds: 90, ttsCharacters: 4000 })
+  })
+
   it('returns today/week/month/all-time totals', () => {
     const testDb = setup()
     const now = new Date('2026-03-27T15:30:00Z')

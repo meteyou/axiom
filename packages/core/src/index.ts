@@ -231,7 +231,7 @@ export {
   getMemoryUsageStats,
   getAverageImageCost,
 } from './token-logger.js'
-export type { AverageImageCost, TokenUsageRecord, ToolCallRecord, ToolCallQueryOptions, ToolCallQueryResult, MemoryFileReadStat, MemorySearchStat, MemoryUsageStats } from './token-logger.js'
+export type { AverageImageCost, TokenUsageKind, TokenUsageRecord, ToolCallRecord, ToolCallQueryOptions, ToolCallQueryResult, MemoryFileReadStat, MemorySearchStat, MemoryUsageStats } from './token-logger.js'
 export { queryUsageStats, getUsageSummary } from './usage-stats.js'
 export type { UsageGroupBy, UsageStatsQueryOptions, UsageTotals, UsageStatsRow, UsageUserRow, UsageStatsResult, UsageSummary } from './usage-stats.js'
 export {
