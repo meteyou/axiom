@@ -91,3 +91,10 @@ Deepgram's `/v1/speak` endpoint rejects any single request longer than **2000 ch
 - **`opus`** and **`flac`** — use page/frame containers that **do not** survive naive concatenation. Inputs **≤ 2000 characters** still work normally; longer inputs are synthesized as `mp3` instead (Telegram still shows MP3 as a voice message).
 
 The other providers don't have this limit.
+
+## Upgrading from the old TTS settings
+
+Older versions configured the backend directly on this tab. On the first start after the upgrade, Axiom moves that setup to the new TTS model:
+
+- **OpenAI** and **Mistral** — the selected model (e.g. `gpt-4o-mini-tts`, `voxtral-mini-tts-2603`) is added as a TTS model to the selected provider and becomes the TTS model. The voice and the instructions are kept.
+- **Deepgram** — a **Deepgram** provider is created from the API key stored in the settings (or an existing Deepgram provider with the same key is reused). The model is kept.

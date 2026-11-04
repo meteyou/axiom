@@ -6,6 +6,7 @@ import {
   createScopedTools,
   getBootstrapAdminId,
   migrateLegacyUserProfiles,
+  migrateLegacyVoiceSettings,
   resolveUserPaths,
   resolveUserScope,
   createSendFileTool,
@@ -395,6 +396,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
   if (movedProfiles.length > 0) {
     logger.log(`[axiom] Moved legacy profiles into personal folders: ${movedProfiles.join(', ')}`)
   }
+  migrateLegacyVoiceSettings(logger)
 
   logger.log('[axiom] Injecting global secrets into environment...')
   injectSecretsIntoEnv()
