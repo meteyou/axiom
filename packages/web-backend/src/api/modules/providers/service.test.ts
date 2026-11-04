@@ -585,4 +585,16 @@ describe('voice models', () => {
     expect(String(fetchSpy.mock.calls[0]![0])).toContain('/v1/speak?model=aura-2-thalia-en&encoding=mp3')
     await expect(service.testTtsModel(provider.id, { modelId: 'aura-asteria-en' })).rejects.toBeInstanceOf(ProvidersValidationError)
   })
+
+  it('books the TTS test clip on the requesting user', async () => {
+    const provider = createDeepgramProvider()
+    updateProvider(provider.id, { enabledTtsModels: ['aura-2-thalia-en'] })
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(new Uint8Array([1, 2, 3])))
+    const db = initDatabase(path.join(tempDataDir, 'test.db'))
+
+    await createProvidersService({ db }).testTtsModel(provider.id, { modelId: 'aura-2-thalia-en', text: 'Hello' }, 7)
+
+    expect(db.prepare('SELECT kind, units, user_id, session_id FROM token_usage').get()).toEqual({ kind: 'tts', units: 5, user_id: 7, session_id: null })
+    db.close()
+  })
 })

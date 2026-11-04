@@ -187,7 +187,7 @@ export function createProvidersController(options: ProvidersRouterOptions = {}):
         return
       }
       try {
-        const result = await service.testTtsModel(String(req.params.id ?? ''), parsed.value)
+        const result = await service.testTtsModel(String(req.params.id ?? ''), parsed.value, req.user?.userId ?? null)
         res.setHeader('Content-Type', result.contentType)
         res.setHeader('Content-Length', result.audio.length)
         res.send(result.audio)
