@@ -20,6 +20,10 @@ vi.mock('./stt.js', async (importOriginal) => {
   }
 })
 
+vi.mock('node:child_process', () => ({
+  execFile: vi.fn(),
+}))
+
 vi.mock('./provider-config.js', async (importOriginal) => {
   const original = await importOriginal() as Record<string, unknown>
   return {
@@ -49,6 +53,7 @@ vi.mock('node:fs', async (importOriginal) => {
   }
 })
 
+import { execFile } from 'node:child_process'
 import { createTranscribeAudioTool, createTranscribeAudioTools } from './stt-tool.js'
 import { loadSttSettings, transcribeAudio } from './stt.js'
 import type { SttSettings } from './stt.js'
@@ -259,6 +264,22 @@ describe('audio_transcribe execute', () => {
     expect(mockReadFileSync).not.toHaveBeenCalled()
     expect(mockTranscribeAudio).toHaveBeenCalledWith(Buffer.from('extracted'), expect.objectContaining({ filename: 'talk.mp3' }))
     expect(result.details).toMatchObject({ mimeType: 'video/mp4', audioExtracted: true })
+  })
+
+  it('lets ffmpeg open only local files', async () => {
+    fileExists()
+    vi.mocked(execFile).mockImplementation(((_cmd: string, _args: string[], _opts: object, callback: (err: Error | null) => void) => {
+      callback(null)
+    }) as unknown as typeof execFile)
+    mockTranscribeAudio.mockResolvedValue({ transcript: 'from the video' })
+
+    await createTranscribeAudioTool().execute('test-id', { path: 'clips/talk.mp4' })
+
+    const args = vi.mocked(execFile).mock.calls[0]?.[1] as string[]
+    expect(args.slice(0, args.indexOf('-i') + 2)).toEqual([
+      '-nostdin', '-y', '-protocol_whitelist', 'file', '-i', nodePath.resolve('/workspace', 'clips/talk.mp4'),
+    ])
+    expect(mockTranscribeAudio).toHaveBeenCalled()
   })
 
   it('re-encodes audio files that exceed the upload limit', async () => {

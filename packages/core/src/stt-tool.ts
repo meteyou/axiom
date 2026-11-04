@@ -60,7 +60,7 @@ const extractAudioWithFfmpeg: ExtractAudio = async (inputPath) => {
     await new Promise<void>((resolve, reject) => {
       execFile(
         'ffmpeg',
-        ['-nostdin', '-y', '-i', inputPath, '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'libmp3lame', '-b:a', `${REENCODE_BITRATE_KBPS}k`, outputPath],
+        ['-nostdin', '-y', '-protocol_whitelist', 'file', '-i', inputPath, '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'libmp3lame', '-b:a', `${REENCODE_BITRATE_KBPS}k`, outputPath],
         { timeout: FFMPEG_TIMEOUT_MS, maxBuffer: 10 * 1024 * 1024 },
         (err, _stdout, stderr) => {
           if (!err) return resolve()
