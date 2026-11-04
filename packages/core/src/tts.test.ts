@@ -59,6 +59,7 @@ vi.mock('./provider-config.js', async () => {
   const actual = await vi.importActual<typeof import('./provider-config.js')>('./provider-config.js')
   return {
     ...actual,
+    loadProviders: vi.fn(() => ({ providers: PROVIDERS })),
     loadProvidersDecrypted: vi.fn(() => ({ providers: PROVIDERS })),
     getApiKeyForProvider: vi.fn(async (provider: { apiKey: string }) => provider.apiKey),
   }
@@ -66,7 +67,8 @@ vi.mock('./provider-config.js', async () => {
 
 import { loadConfig } from './config.js'
 import { synthesizeDeepgram } from './deepgram.js'
-import { synthesizeTts } from './tts.js'
+import { getTtsModelResponseFormats, synthesizeTts } from './tts.js'
+import { loadProvidersDecrypted } from './provider-config.js'
 import { logTokenUsage } from './token-logger.js'
 import type { Database } from './database.js'
 import { clearVoiceModelListCache, getVoiceBackend } from './voice-backends.js'
@@ -242,6 +244,17 @@ describe('synthesizeTts (settings and providers)', () => {
       response_format: 'mp3',
       voice: 'aura-2-thalia-en',
     })
+  })
+})
+
+describe('getTtsModelResponseFormats', () => {
+  it('reads the formats of the provider type without decrypting credentials', () => {
+    vi.mocked(loadProvidersDecrypted).mockClear()
+
+    expect(getTtsModelResponseFormats('or:deepgram/aura-2')).toEqual(['mp3'])
+    expect(getTtsModelResponseFormats('oai:tts-1')).toEqual(['mp3', 'wav', 'opus', 'flac'])
+    expect(getTtsModelResponseFormats('dg:aura-2-thalia-en', 2001)).toEqual(['mp3', 'wav'])
+    expect(loadProvidersDecrypted).not.toHaveBeenCalled()
   })
 })
 
