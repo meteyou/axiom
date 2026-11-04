@@ -161,19 +161,19 @@ export async function listDeepgramModels(
 
 // ── STT ────────────────────────────────────────────────────────────
 
-/**
- * Transcribe pre-recorded audio via Deepgram's `/v1/listen` endpoint.
- *
- * The Telegram voice handler hands us OGG Opus bytes; Deepgram detects the
- * container automatically. We still set `Content-Type: audio/ogg` (or the
- * caller-provided hint) so misconfigured proxies don't strip the body.
- */
 export interface DeepgramTranscription {
   transcript: string
   /** `metadata.duration` of the response: the audio length Deepgram bills. */
   durationSeconds?: number
 }
 
+/**
+ * Transcribe pre-recorded audio via Deepgram's `/v1/listen` endpoint.
+ *
+ * Deepgram detects the container automatically. We still send the caller's
+ * MIME hint (default `audio/ogg`) as `Content-Type` so misconfigured proxies
+ * don't strip the body.
+ */
 export async function transcribeDeepgram(
   buffer: Buffer,
   apiKey: string,
