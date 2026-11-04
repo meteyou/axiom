@@ -98,7 +98,7 @@ function resolveVoiceProvider(kind: VoiceModelKind, legacyProvider: string, prov
     logger.warn(`[axiom] ${label} migration: provider "${providerId || legacyProvider}" not found, select a model in Settings`)
     return null
   }
-  if (!supportsVoiceModels(provider.providerType, kind)) {
+  if (!supportsVoiceModels(provider.providerType)) {
     logger.warn(`[axiom] ${label} migration: provider "${provider.name}" (${provider.providerType}) has no ${label} models, select a model in Settings`)
     return null
   }

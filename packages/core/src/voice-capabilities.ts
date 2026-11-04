@@ -4,30 +4,22 @@ export type VoiceModelKind = VoiceModelKindContract
 
 export type VoiceBackendId = 'openai' | 'openai-compatible' | 'mistral' | 'openrouter' | 'xai' | 'deepgram'
 
-export interface VoiceProviderCapabilities {
-  backend: VoiceBackendId
-  kinds: readonly VoiceModelKind[]
-  /** Model ids outside the provider's list can be added. */
-  customModels: boolean
+/** Every voice provider serves STT and TTS models and accepts model ids outside its list. */
+const VOICE_BACKEND_BY_PROVIDER_TYPE: Record<string, VoiceBackendId> = {
+  openai: 'openai',
+  'custom-openai-completions': 'openai-compatible',
+  'custom-openai-responses': 'openai-compatible',
+  mistral: 'mistral',
+  openrouter: 'openrouter',
+  xai: 'xai',
+  deepgram: 'deepgram',
 }
 
-const BOTH: readonly VoiceModelKind[] = ['stt', 'tts']
-
-const VOICE_CAPABILITIES: Record<string, VoiceProviderCapabilities> = {
-  openai: { backend: 'openai', kinds: BOTH, customModels: true },
-  'custom-openai-completions': { backend: 'openai-compatible', kinds: BOTH, customModels: true },
-  'custom-openai-responses': { backend: 'openai-compatible', kinds: BOTH, customModels: true },
-  mistral: { backend: 'mistral', kinds: BOTH, customModels: true },
-  openrouter: { backend: 'openrouter', kinds: BOTH, customModels: true },
-  xai: { backend: 'xai', kinds: BOTH, customModels: true },
-  deepgram: { backend: 'deepgram', kinds: BOTH, customModels: true },
+/** Voice backend of a provider type, `null` when it serves no STT/TTS models. */
+export function getVoiceBackendId(providerType: string): VoiceBackendId | null {
+  return VOICE_BACKEND_BY_PROVIDER_TYPE[providerType] ?? null
 }
 
-/** Voice model traits of a provider type, `null` when it serves no STT/TTS models. */
-export function getVoiceProviderCapabilities(providerType: string): VoiceProviderCapabilities | null {
-  return VOICE_CAPABILITIES[providerType] ?? null
-}
-
-export function supportsVoiceModels(providerType: string, kind: VoiceModelKind): boolean {
-  return getVoiceProviderCapabilities(providerType)?.kinds.includes(kind) ?? false
+export function supportsVoiceModels(providerType: string): boolean {
+  return getVoiceBackendId(providerType) !== null
 }

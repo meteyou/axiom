@@ -6,7 +6,7 @@ import {
   checkImageModelAvailability,
   checkVoiceModelAvailability,
   getVoiceModels,
-  getVoiceProviderCapabilities,
+  supportsVoiceModels,
   listLiveVoiceModels,
   listTtsModelVoices,
   synthesizeWithProvider,
@@ -241,7 +241,7 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
 
   function requireVoiceCapableProvider(providerId: string, kind: VoiceModelKind): ProviderConfig {
     const provider = requireProvider(providerId)
-    if (!getVoiceProviderCapabilities(provider.providerType)?.kinds.includes(kind)) {
+    if (!supportsVoiceModels(provider.providerType)) {
       throw new ProvidersValidationError(`Provider type does not support ${kind.toUpperCase()} models`)
     }
     return provider

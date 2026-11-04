@@ -16,7 +16,7 @@
           :loading="loading"
           :error="loadError"
           refreshable
-          :allow-custom="provider ? presets[provider.providerType]?.customVoiceModels !== false : false"
+          :allow-custom="provider !== null"
           :search-text="searchText"
           @refresh="loadCatalog"
         >
@@ -65,7 +65,7 @@ const emit = defineEmits<{
   added: []
 }>()
 
-const { fetchLiveVoiceModels, fetchProviders, updateProvider, presets } = useProviders()
+const { fetchLiveVoiceModels, fetchProviders, updateProvider } = useProviders()
 const providersApi = useProvidersApi()
 
 const catalog = ref<AvailableVoiceModel[]>([])

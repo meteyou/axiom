@@ -1381,8 +1381,8 @@ export function updateProvider(id: string, input: {
       delete existing.enabledImageModels
       delete existing.disabledImageModels
     }
-    for (const kind of VOICE_KINDS) {
-      if (!supportsVoiceModels(input.providerType, kind)) setVoiceModels(existing, kind, [])
+    if (!supportsVoiceModels(input.providerType)) {
+      for (const kind of VOICE_KINDS) setVoiceModels(existing, kind, [])
     }
     existing.providerType = input.providerType
     existing.type = preset.apiType
@@ -1418,7 +1418,7 @@ export function updateProvider(id: string, input: {
     const requested = kind === 'stt' ? input.enabledSttModels : input.enabledTtsModels
     if (requested === undefined) continue
     const models = Array.from(new Set(requested.map(id => id.trim()).filter(Boolean)))
-    if (models.length > 0 && !supportsVoiceModels(existing.providerType, kind)) {
+    if (models.length > 0 && !supportsVoiceModels(existing.providerType)) {
       throw new Error(`Provider type "${existing.providerType}" does not support ${kind.toUpperCase()} models`)
     }
     setVoiceModels(existing, kind, models)
@@ -1762,7 +1762,7 @@ export function getUsableVoiceModels(
   provider: Pick<ProviderConfig, 'providerType' | 'disabled'> & VoiceModelLists,
   kind: VoiceModelKind,
 ): string[] {
-  if (isProviderDisabled(provider) || !supportsVoiceModels(provider.providerType, kind)) return []
+  if (isProviderDisabled(provider) || !supportsVoiceModels(provider.providerType)) return []
   const disabledIds = getDisabledVoiceModels(provider, kind)
   return getVoiceModels(provider, kind).filter(m => !disabledIds.includes(m))
 }

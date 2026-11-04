@@ -264,10 +264,8 @@ export interface ProviderTypePresetContract {
   customImageModels?: boolean
   /** The provider serves no chat models; it only exists for voice (STT/TTS) models. */
   voiceOnly?: boolean
-  supportsSttModels?: boolean
-  supportsTtsModels?: boolean
-  /** Voice model ids outside the provider's list can be added. */
-  customVoiceModels?: boolean
+  /** True when the provider can serve STT and TTS models (any model id can be added). */
+  supportsVoiceModels?: boolean
 }
 
 export interface AvailableModelContract {
