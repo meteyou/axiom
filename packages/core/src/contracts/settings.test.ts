@@ -195,11 +195,11 @@ describe('settings contracts', () => {
     expect(normalizeAppLogo(42)).toBe('prism')
   })
 
-  it('reads the agent tool switches as opt-in', () => {
-    expect(normalizeTtsSettings(undefined).agentTool).toBe(false)
-    expect(normalizeSttSettings(undefined).agentTool).toBe(false)
-    expect(normalizeTtsSettings({ agentTool: true }).agentTool).toBe(true)
-    expect(normalizeSttSettings({ agentTool: true }).agentTool).toBe(true)
+  it('offers the agent tools unless switched off', () => {
+    expect(normalizeTtsSettings(undefined).agentTool).toBe(true)
+    expect(normalizeSttSettings(undefined).agentTool).toBe(true)
+    expect(normalizeTtsSettings({ agentTool: false }).agentTool).toBe(false)
+    expect(normalizeSttSettings({ agentTool: false }).agentTool).toBe(false)
   })
 
   it('limits TTS formats to what the provider type returns', () => {

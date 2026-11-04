@@ -296,7 +296,7 @@ Hand-edited invalid values are ignored at runtime and the default is used instea
 | `tts.voice`          | `string` (provider-specific voice id)     | `""`    | string (empty = model default)         |
 | `tts.instructions`   | `string`                                  | `""`    | string                                 |
 | `tts.responseFormat` | `"mp3" \| "wav" \| "opus" \| "flac"`      | `"mp3"` | enum (`SETTINGS_TTS_RESPONSE_FORMATS`); replaced by the provider's first supported format on save |
-| `tts.agentTool`      | `boolean`                                 | `false` | bool (offer `send_voice_message`)      |
+| `tts.agentTool`      | `boolean`                                 | `true`  | bool (offer `send_voice_message`)      |
 
 ### `stt`
 
@@ -309,7 +309,7 @@ Hand-edited invalid values are ignored at runtime and the default is used instea
 | `stt.language`           | `string` (`"en"`, `"de"`, `"multi"`, …)   | `""`    | string (empty = user's chat language) |
 | `stt.rewrite.enabled`    | `boolean`                                 | `false` | bool                                  |
 | `stt.rewrite.providerId` | `string` (`providerId:modelId` composite) | `""`    | string                                |
-| `stt.agentTool`          | `boolean`                                 | `false` | bool (offer `audio_transcribe`)       |
+| `stt.agentTool`          | `boolean`                                 | `true`  | bool (offer `audio_transcribe`)       |
 
 `tts.model` and `stt.model` reference models added on the [Providers page](../web-ui/providers#voice-models) (`enabledTtsModels` / `enabledSttModels`). They are reset to `""` when the model or its provider is disabled.
 
