@@ -1187,7 +1187,7 @@ export class TelegramBot {
 
       if (outcome.text.trim() || outcome.uploads.length > 0) {
         await this.sendAssistantResponseToTelegram(chatId, outcome.text, outcome.uploads)
-        // Optional Deepgram voice reply. Best-effort: a TTS failure must never
+        // Optional voice reply. Best-effort: a TTS failure must never
         // suppress the text response or abort the turn.
         // A turn that already spoke through `send_voice_message` must not get a second voice note.
         if (outcome.text.trim() && !outcome.uploads.some(upload => upload.voiceMessage)) {
