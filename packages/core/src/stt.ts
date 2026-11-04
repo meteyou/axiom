@@ -32,7 +32,7 @@ export interface TranscribeOptions {
   rewrite?: boolean
   /** Books the transcription (and the rewrite) in the token usage. */
   usage?: VoiceUsageContext
-  /** Audio length known to the caller (e.g. Telegram voice notes, browser recordings). */
+  /** Audio length reported by the caller; only booked when neither the provider nor the audio header has one (browser WebM). */
   durationSeconds?: number
 }
 
@@ -155,7 +155,7 @@ export async function transcribeAudio(
     kind: 'stt',
     provider,
     modelId,
-    units: transcription.durationSeconds ?? options.durationSeconds ?? estimateAudioDurationSeconds(buffer) ?? 0,
+    units: transcription.durationSeconds ?? estimateAudioDurationSeconds(buffer) ?? options.durationSeconds ?? 0,
     costUsd: transcription.costUsd,
   })
 

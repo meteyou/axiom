@@ -275,6 +275,17 @@ describe('rewriteTranscript', () => {
   })
 })
 
+function fiveSecondWav(): Buffer {
+  const byteRate = 1000
+  const audio = Buffer.alloc(44 + 5 * byteRate)
+  audio.write('RIFFxxxxWAVEfmt ', 0, 'latin1')
+  audio.writeUInt32LE(16, 16)
+  audio.writeUInt32LE(byteRate, 28)
+  audio.write('data', 36, 'latin1')
+  audio.writeUInt32LE(5 * byteRate, 40)
+  return audio
+}
+
 describe('transcribeAudio usage booking', () => {
   const usage = { db: usageDb, sessionId: 'sess-1', userId: 7 }
 
@@ -303,6 +314,15 @@ describe('transcribeAudio usage booking', () => {
     await transcribeAudio(Buffer.from('audio'), { usage, durationSeconds: 30 })
 
     expect(mockLogTokenUsage).toHaveBeenCalledWith(usageDb, expect.objectContaining({ units: 30, estimatedCost: 0.003 }))
+  })
+
+  it('prefers the length from the audio header over the caller-reported one', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(jsonResponse({ text: 'Hi' }))
+    mockStt({ enabled: true, model: 'or:openai/whisper-1' })
+
+    await transcribeAudio(fiveSecondWav(), { usage, durationSeconds: 3600 })
+
+    expect(mockLogTokenUsage).toHaveBeenCalledWith(usageDb, expect.objectContaining({ units: 5, estimatedCost: 0.0005 }))
   })
 
   it('books without cost when the model has no price', async () => {
