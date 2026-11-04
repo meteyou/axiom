@@ -87,7 +87,7 @@ Some providers only deliver some formats: **OpenRouter** always returns MP3 (for
 Deepgram's `/v1/speak` endpoint rejects any single request longer than **2000 characters**. To make the “Read message aloud” button work for long assistant replies, Axiom splits the input on sentence boundaries, synthesizes each chunk separately and concatenates the result.
 
 - **`mp3`** — frame-aligned; chunked output is concatenated directly.
-- **`wav`** — Deepgram returns headerless PCM (`linear16`); chunks are concatenated as raw samples and wrapped in a single WAV header.
+- **`wav`** — Axiom requests headerless PCM (`linear16` with `container=none`); chunks are concatenated as raw samples and wrapped in a single WAV header.
 - **`opus`** and **`flac`** — use page/frame containers that **do not** survive naive concatenation. Inputs **≤ 2000 characters** still work normally; longer inputs are synthesized as `mp3` instead (Telegram still shows MP3 as a voice message).
 
 The other providers don't have this limit.

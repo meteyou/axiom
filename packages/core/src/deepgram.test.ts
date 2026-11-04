@@ -230,11 +230,23 @@ describe('synthesizeDeepgram', () => {
     expect(parsed.pathname).toBe('/v1/speak')
     expect(parsed.searchParams.get('model')).toBe('aura-2-thalia-en')
     expect(parsed.searchParams.get('encoding')).toBe('mp3')
+    expect(parsed.searchParams.has('container')).toBe(false)
 
     expect(options.method).toBe('POST')
     expect(options.headers.Authorization).toBe('Token dg-key')
     expect(options.headers['Content-Type']).toBe('application/json')
     expect(JSON.parse(options.body)).toEqual({ text: 'Hello world' })
+  })
+
+  it('requests headerless PCM for linear16', async () => {
+    const fetchMock = mockAudio(new Uint8Array([0]))
+    globalThis.fetch = fetchMock
+
+    await synthesizeDeepgram('hi', 'k', { encoding: 'linear16' })
+
+    const parsed = new URL(fetchMock.mock.calls[0][0] as string)
+    expect(parsed.searchParams.get('encoding')).toBe('linear16')
+    expect(parsed.searchParams.get('container')).toBe('none')
   })
 
   it('falls back to default model and mp3 encoding', async () => {
