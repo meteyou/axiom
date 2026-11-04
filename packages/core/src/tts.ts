@@ -7,7 +7,7 @@
 import { ensureConfigTemplates, loadConfig } from './config.js'
 import { getSupportedTtsResponseFormats, normalizeTtsSettings, resolveTtsResponseFormat } from './contracts/settings.js'
 import type { TtsResponseFormat, TtsSettingsContract } from './contracts/settings.js'
-import { loadProvidersDecrypted, parseProviderModelId } from './provider-config.js'
+import { loadProviders, parseProviderModelId } from './provider-config.js'
 import type { SynthesizedAudio } from './voice-backends.js'
 import { resolveVoiceModelRef, synthesizeWithProvider } from './voice-models.js'
 import { logVoiceUsage } from './voice-usage.js'
@@ -40,7 +40,7 @@ export function getTtsModelResponseFormats(modelRef: string, textLength?: number
   const { providerId } = parseProviderModelId(modelRef || undefined)
   let providerType: string | undefined
   try {
-    providerType = loadProvidersDecrypted().providers.find(p => p.id === providerId)?.providerType
+    providerType = loadProviders().providers.find(p => p.id === providerId)?.providerType
   } catch {
     providerType = undefined
   }
