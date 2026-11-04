@@ -541,8 +541,8 @@ describe('voice models', () => {
     createDeepgramProvider()
     expect(loadProviders().activeProvider).toBeUndefined()
     const presets = mapProvidersListResponse(loadProviders(), loadProviders()).presets
-    expect(presets.deepgram).toMatchObject({ voiceOnly: true, supportsSttModels: true, supportsTtsModels: true })
-    expect(presets.anthropic).toMatchObject({ supportsSttModels: false, supportsTtsModels: false })
+    expect(presets.deepgram).toMatchObject({ voiceOnly: true, supportsVoiceModels: true })
+    expect(presets.anthropic).toMatchObject({ supportsVoiceModels: false })
   })
 
   it('lists live voice models and rejects provider types without voice support', async () => {

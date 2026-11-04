@@ -990,8 +990,7 @@ function isVoiceOnly(provider: Provider): boolean {
 }
 
 function voiceKindsOf(provider: Provider): VoiceModelKind[] {
-  const preset = presets.value[provider.providerType]
-  return VOICE_KINDS.filter(kind => (kind === 'stt' ? preset?.supportsSttModels : preset?.supportsTtsModels) === true)
+  return presets.value[provider.providerType]?.supportsVoiceModels === true ? [...VOICE_KINDS] : []
 }
 
 function isVoiceModelUnavailable(provider: Provider, kind: VoiceModelKind, modelId: string): boolean {

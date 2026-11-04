@@ -10,7 +10,7 @@ import type {
   VoiceSynthesizeRequest,
   VoiceTranscribeRequest,
 } from './voice-backends.js'
-import { getVoiceProviderCapabilities } from './voice-capabilities.js'
+import { getVoiceBackendId } from './voice-capabilities.js'
 import type { VoiceModelKind } from './voice-capabilities.js'
 
 const MODEL_LIST_TIMEOUT_MS = 15_000
@@ -23,9 +23,9 @@ interface VoiceCallOptions {
 }
 
 function requireBackend(provider: ProviderConfig) {
-  const capabilities = getVoiceProviderCapabilities(provider.providerType)
-  if (!capabilities) throw new Error(`Provider "${provider.name}" does not support voice models`)
-  return getVoiceBackend(capabilities.backend)
+  const backendId = getVoiceBackendId(provider.providerType)
+  if (!backendId) throw new Error(`Provider "${provider.name}" does not support voice models`)
+  return getVoiceBackend(backendId)
 }
 
 async function requestContext(provider: ProviderConfig, options: VoiceCallOptions, defaultTimeoutMs: number): Promise<VoiceRequestContext> {

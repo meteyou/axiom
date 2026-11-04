@@ -700,11 +700,8 @@ export type {
   SynthesizeOptions,
   SynthesizeResult,
 } from './tts.js'
-export {
-  getVoiceProviderCapabilities,
-  supportsVoiceModels,
-} from './voice-capabilities.js'
-export type { VoiceModelKind, VoiceProviderCapabilities } from './voice-capabilities.js'
+export { supportsVoiceModels } from './voice-capabilities.js'
+export type { VoiceModelKind } from './voice-capabilities.js'
 export {
   checkVoiceModelAvailability,
   listLiveVoiceModels,

@@ -7,7 +7,7 @@ import { Type } from 'typebox'
 import type { TSchema } from 'typebox'
 import { getWorkspaceDir } from './workspace.js'
 import { loadProviders, parseProviderModelId } from './provider-config.js'
-import { getVoiceProviderCapabilities } from './voice-capabilities.js'
+import { getVoiceBackendId } from './voice-capabilities.js'
 import { loadSttSettings, transcribeAudio } from './stt.js'
 import type { SttSettings } from './stt.js'
 import type { Database } from './database.js'
@@ -150,7 +150,7 @@ function uploadLimitBytes(modelRef: string): number | null {
   try {
     const { providerId } = parseProviderModelId(modelRef || undefined)
     const providerType = loadProviders().providers.find(p => p.id === providerId)?.providerType
-    return providerType && getVoiceProviderCapabilities(providerType)?.backend === 'deepgram' ? null : MAX_DIRECT_UPLOAD_BYTES
+    return providerType && getVoiceBackendId(providerType) === 'deepgram' ? null : MAX_DIRECT_UPLOAD_BYTES
   } catch {
     return MAX_DIRECT_UPLOAD_BYTES
   }
