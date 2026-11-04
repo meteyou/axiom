@@ -714,6 +714,7 @@ export {
   transcribeWithProvider,
 } from './voice-models.js'
 export type { VoiceModelAvailabilityResult } from './voice-models.js'
+export { migrateLegacyVoiceSettings } from './voice-settings-migration.js'
 export { audioFormatFromFilename, clearVoiceModelListCache } from './voice-backends.js'
 export type { AvailableVoiceModel, SynthesizedAudio, VoiceOption } from './voice-backends.js'
 export {
