@@ -6,6 +6,8 @@ import type { AgentTool } from '@earendil-works/pi-agent-core'
 import { Type } from 'typebox'
 import type { TSchema } from 'typebox'
 import { getWorkspaceDir } from './workspace.js'
+import { loadProviders, parseProviderModelId } from './provider-config.js'
+import { getVoiceProviderCapabilities } from './voice-capabilities.js'
 import { loadSttSettings, transcribeAudio } from './stt.js'
 import type { SttSettings } from './stt.js'
 import type { Database } from './database.js'
@@ -40,6 +42,10 @@ const MAX_DIRECT_UPLOAD_BYTES = 24 * 1024 * 1024
 const INLINE_TRANSCRIPT_MAX_CHARS = 20_000
 const TRANSCRIPT_PREVIEW_CHARS = 2_000
 const FFMPEG_TIMEOUT_MS = 10 * 60_000
+const REENCODE_BITRATE_KBPS = 32
+const REENCODE_BYTES_PER_SECOND = (REENCODE_BITRATE_KBPS * 1000) / 8
+/** Fits the re-encoded upload limit with headroom; used in the split instructions. */
+const SPLIT_SEGMENT_SECONDS = 90 * 60
 
 /**
  * Re-encode the audio track of `inputPath` to a compact mono MP3 and return
@@ -54,7 +60,7 @@ const extractAudioWithFfmpeg: ExtractAudio = async (inputPath) => {
     await new Promise<void>((resolve, reject) => {
       execFile(
         'ffmpeg',
-        ['-nostdin', '-y', '-i', inputPath, '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'libmp3lame', '-b:a', '32k', outputPath],
+        ['-nostdin', '-y', '-i', inputPath, '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'libmp3lame', '-b:a', `${REENCODE_BITRATE_KBPS}k`, outputPath],
         { timeout: FFMPEG_TIMEOUT_MS, maxBuffer: 10 * 1024 * 1024 },
         (err, _stdout, stderr) => {
           if (!err) return resolve()
@@ -139,12 +145,45 @@ function resolveMediaFile(filePath: string, workspaceDir: string): MediaFile | s
   return { path: resolved, filename: nodePath.basename(resolved), ext, mimeType }
 }
 
-/** Audio to upload: the file itself, or a compact MP3 of its audio track for videos and oversized audio. */
-async function loadUploadAudio(file: MediaFile, extractAudio: ExtractAudio): Promise<{ buffer: Buffer; uploadName: string; reencoded: boolean }> {
+/** Deepgram accepts files far beyond any practical length; the other STT backends stop at about 25 MB. */
+function uploadLimitBytes(modelRef: string): number | null {
+  try {
+    const { providerId } = parseProviderModelId(modelRef || undefined)
+    const providerType = loadProviders().providers.find(p => p.id === providerId)?.providerType
+    return providerType && getVoiceProviderCapabilities(providerType)?.backend === 'deepgram' ? null : MAX_DIRECT_UPLOAD_BYTES
+  } catch {
+    return MAX_DIRECT_UPLOAD_BYTES
+  }
+}
+
+function oversizedAudioError(sizeBytes: number, limitBytes: number): string {
+  const minutes = Math.round(sizeBytes / REENCODE_BYTES_PER_SECOND / 60)
+  const maxMinutes = Math.floor(limitBytes / REENCODE_BYTES_PER_SECOND / 60)
+  return `Error: The audio track is about ${minutes} minutes long, too long for the STT provider (about ${maxMinutes} minutes per file at most). `
+    + 'Split it into parts with ffmpeg via shell, e.g. '
+    + `\`ffmpeg -i <file> -vn -ac 1 -ar 16000 -c:a libmp3lame -b:a ${REENCODE_BITRATE_KBPS}k -f segment -segment_time ${SPLIT_SEGMENT_SECONDS} <name>_part%03d.mp3\`, `
+    + 'then transcribe each part.'
+}
+
+interface UploadAudio {
+  buffer: Buffer
+  uploadName: string
+  reencoded: boolean
+}
+
+/**
+ * Audio to upload: the file itself, or a compact MP3 of its audio track for
+ * videos and oversized audio. Returns an error message when even the MP3 is
+ * too large for the provider of `modelRef`.
+ */
+async function loadUploadAudio(file: MediaFile, extractAudio: ExtractAudio, modelRef: string): Promise<UploadAudio | string> {
   if (!(file.ext in VIDEO_EXTENSIONS) && fs.statSync(file.path).size <= MAX_DIRECT_UPLOAD_BYTES) {
     return { buffer: fs.readFileSync(file.path), uploadName: file.filename, reencoded: false }
   }
-  return { buffer: await extractAudio(file.path), uploadName: `${nodePath.basename(file.path, file.ext)}.mp3`, reencoded: true }
+  const buffer = await extractAudio(file.path)
+  const limit = uploadLimitBytes(modelRef)
+  if (limit !== null && buffer.length > limit) return oversizedAudioError(buffer.length, limit)
+  return { buffer, uploadName: `${nodePath.basename(file.path, file.ext)}.mp3`, reencoded: true }
 }
 
 function writeTranscriptFile(workspaceDir: string, sourcePath: string, transcript: string): string {
@@ -224,7 +263,9 @@ export function createTranscribeAudioTool(options: TranscribeAudioToolOptions = 
         const file = resolveMediaFile(filePath, workspaceDir)
         if (typeof file === 'string') return errorResult(file)
 
-        const { buffer, uploadName, reencoded } = await loadUploadAudio(file, extractAudio)
+        const upload = await loadUploadAudio(file, extractAudio, settings.model)
+        if (typeof upload === 'string') return errorResult(upload)
+        const { buffer, uploadName, reencoded } = upload
         const result = await transcribeAudio(buffer, {
           language,
           filename: uploadName,

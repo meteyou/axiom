@@ -20,6 +20,19 @@ vi.mock('./stt.js', async (importOriginal) => {
   }
 })
 
+vi.mock('./provider-config.js', async (importOriginal) => {
+  const original = await importOriginal() as Record<string, unknown>
+  return {
+    ...original,
+    loadProviders: vi.fn(() => ({
+      providers: [
+        { id: 'p1', providerType: 'openai' },
+        { id: 'dg', providerType: 'deepgram' },
+      ],
+    })),
+  }
+})
+
 vi.mock('node:fs', async (importOriginal) => {
   const original = await importOriginal() as Record<string, unknown>
   return {
@@ -70,6 +83,11 @@ function fileExists(content = 'fake-audio') {
   mockAccessSync.mockReturnValue(undefined)
   mockReadFileSync.mockReturnValue(Buffer.from(content))
   mockStatSync.mockReturnValue({ size: Buffer.byteLength(content) } as fs.Stats)
+}
+
+/** Stands in for a 30 MB MP3; a real buffer that size overwhelms the mock call recording. */
+function oversizedAudio(): Buffer {
+  return { length: 30 * 1024 * 1024 } as Buffer
 }
 
 function textOf(result: { content: Array<{ type: string; text?: string }> }): string {
@@ -253,6 +271,30 @@ describe('audio_transcribe execute', () => {
 
     expect(mockReadFileSync).not.toHaveBeenCalled()
     expect(mockTranscribeAudio).toHaveBeenCalledWith(Buffer.from('compressed'), expect.objectContaining({ filename: 'big.mp3' }))
+  })
+
+  it('refuses re-encoded audio above the upload limit with split instructions', async () => {
+    fileExists()
+    const extractAudio = vi.fn(async () => oversizedAudio())
+
+    const result = await createTranscribeAudioTool({ extractAudio }).execute('test-id', { path: 'podcast.mp4' })
+
+    expect(result.details).toEqual({ error: true })
+    expect(textOf(result)).toMatch(/about 131 minutes long.*about 104 minutes per file/)
+    expect(textOf(result)).toContain('-f segment -segment_time 5400')
+    expect(mockTranscribeAudio).not.toHaveBeenCalled()
+  })
+
+  it('uploads long re-encoded audio to Deepgram without the size limit', async () => {
+    useSettings({ model: 'dg:nova-3' })
+    fileExists()
+    const audio = oversizedAudio()
+    mockTranscribeAudio.mockResolvedValue({ transcript: 'long podcast' })
+
+    const result = await createTranscribeAudioTool({ extractAudio: vi.fn(async () => audio) }).execute('test-id', { path: 'podcast.mp4' })
+
+    expect(textOf(result)).toBe('long podcast')
+    expect(mockTranscribeAudio.mock.calls[0]?.[0]).toBe(audio)
   })
 
   it('saves long transcripts to a workspace file and returns a preview', async () => {
