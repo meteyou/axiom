@@ -511,7 +511,7 @@ export function createProvidersController(options: ProvidersRouterOptions = {}):
       }
 
       try {
-        res.json(await service.testImageModel(String(req.params.id ?? ''), modelId))
+        res.json(await service.testImageModel(String(req.params.id ?? ''), modelId, req.user?.userId ?? null))
       } catch (err) {
         if (err instanceof ProvidersNotFoundError) {
           res.status(404).json({ error: err.message })

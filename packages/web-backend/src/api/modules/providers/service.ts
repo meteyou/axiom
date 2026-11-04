@@ -113,7 +113,7 @@ export interface ProvidersService {
     status?: string
     modelId: string
   }>
-  testImageModel: (id: string, modelId: string) => Promise<ProviderImageTestResultContract>
+  testImageModel: (id: string, modelId: string, userId?: number | null) => Promise<ProviderImageTestResultContract>
   testTtsModel: (id: string, payload: ProviderTtsTestPayloadContract, userId?: number | null) => Promise<SynthesizedAudio>
   activateProvider: (id: string, payload: ProviderModelSelectionPayloadContract) => { activeProvider: string; activeModel: string | null }
   probeOllamaModels: (baseUrl: string) => Promise<OllamaTagsResponse>
@@ -796,7 +796,7 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
     }
   }
 
-  async function testImageModel(id: string, requestedModelId: string): Promise<ProviderImageTestResultContract> {
+  async function testImageModel(id: string, requestedModelId: string, userId: number | null = null): Promise<ProviderImageTestResultContract> {
     const provider = requireProvider(id)
     const modelId = requireEnabledImageModel(provider, requestedModelId)
     const result = await generateImagesWithProvider({ provider, modelId, prompt: IMAGE_TEST_PROMPT, count: 1 })
@@ -811,6 +811,7 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
         cacheWrite: result.usage.cacheWrite,
         estimatedCost: result.costUsd ?? 0,
         kind: 'image',
+        userId,
       })
     }
 
