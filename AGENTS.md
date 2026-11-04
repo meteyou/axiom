@@ -7,6 +7,20 @@
 - `packages/web-frontend` — Nuxt 3 frontend (see `packages/web-frontend/AGENTS.md` for frontend-specific guidelines)
 - `packages/telegram` — Telegram bot integration
 
+## Node.js Version (asdf)
+
+Use the Node.js version pinned in `.tool-versions` (managed by [asdf](https://asdf-vm.com/)). Native modules such as `better-sqlite3` are compiled for that version; running with a different Node fails with a `NODE_MODULE_VERSION` mismatch.
+
+The agent shell may have another Node version ahead of the asdf shims in `PATH`. Prefix every command that runs `node`, `npm` or `npx` with the shims:
+
+```bash
+export PATH="$HOME/.asdf/shims:$PATH" && node -v   # must match .tool-versions
+```
+
+- Check the resolved version: `asdf current nodejs`
+- Install a missing version: `asdf install nodejs`
+- After a `NODE_MODULE_VERSION` error (native module built with another Node): `npm rebuild better-sqlite3` with the asdf Node
+
 ## Architecture Guardrails
 
 - For package boundaries, backend/frontend layering rules, and verification commands, read:
