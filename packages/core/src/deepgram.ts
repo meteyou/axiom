@@ -10,7 +10,7 @@
  * TTS API:  POST https://api.deepgram.com/v1/speak
  *   - Auth: `Authorization: Token <key>`
  *   - Content-Type: application/json
- *   - Query: `model`, `encoding`
+ *   - Query: `model`, `encoding`, `container`
  *   - Body: { "text": "..." }
  *   - Response: raw audio bytes
  */
@@ -19,12 +19,6 @@
 // ── Constants ─────────────────────────────────────────────────────────
 
 export const DEEPGRAM_DEFAULT_BASE_URL = 'https://api.deepgram.com'
-
-/** Default STT model. `nova-3` is Deepgram's current production transcription model. */
-export const DEEPGRAM_DEFAULT_STT_MODEL = 'nova-3'
-
-/** Default TTS model. `aura-2-thalia-en` is a clear English voice. */
-export const DEEPGRAM_DEFAULT_TTS_MODEL = 'aura-2-thalia-en'
 
 /** Audio container Deepgram should encode the synthesized speech in. */
 export type DeepgramTtsEncoding = 'mp3' | 'linear16' | 'opus' | 'flac'
@@ -37,7 +31,7 @@ export interface DeepgramTranscribeOptions {
   fetchImpl?: typeof fetch
   signal?: AbortSignal
   /** Model name, e.g. `nova-3`, `nova-2-general`, `enhanced`. */
-  model?: string
+  model: string
   /** ISO-639-1 language code (`en`, `de`, ...) or `multi`. Omit for auto-detect. */
   language?: string
   /** Hint used to set Content-Type when the format is not auto-detected. */
@@ -50,9 +44,8 @@ export interface DeepgramSynthesizeOptions {
   fetchImpl?: typeof fetch
   signal?: AbortSignal
   /** Voice / model name, e.g. `aura-2-thalia-en`. */
-  model?: string
-  /** Audio container Deepgram should produce. Defaults to `mp3`. */
-  encoding?: DeepgramTtsEncoding
+  model: string
+  encoding: DeepgramTtsEncoding
 }
 
 /** One entry of Deepgram's `GET /v1/models` response (extra metadata keys are kept loose). */
@@ -84,8 +77,6 @@ export interface DeepgramListModelsOptions {
   baseUrl?: string
   fetchImpl?: typeof fetch
   signal?: AbortSignal
-  /** When `true`, include outdated/deprecated models. Defaults to `false`. */
-  includeOutdated?: boolean
 }
 
 // ── Error mapping ─────────────────────────────────────────────────────
@@ -128,14 +119,7 @@ export async function listDeepgramModels(
   }
 
   const base = (options.baseUrl ?? DEEPGRAM_DEFAULT_BASE_URL).replace(/\/+$/, '')
-  const params = new URLSearchParams()
-  // Only add the query param when explicitly opting in — Deepgram defaults to
-  // `include_outdated=false`, which is what we want for the picker UI.
-  if (options.includeOutdated) {
-    params.set('include_outdated', 'true')
-  }
-  const qs = params.toString()
-  const url = `${base}/v1/models${qs ? `?${qs}` : ''}`
+  const url = `${base}/v1/models`
 
   let response: Response
   try {
@@ -193,7 +177,7 @@ export interface DeepgramTranscription {
 export async function transcribeDeepgram(
   buffer: Buffer,
   apiKey: string,
-  options: DeepgramTranscribeOptions = {},
+  options: DeepgramTranscribeOptions,
 ): Promise<DeepgramTranscription> {
   if (!apiKey) {
     throw new Error('Deepgram STT: API key is not configured. Add it to the Deepgram provider.')
@@ -204,7 +188,7 @@ export async function transcribeDeepgram(
 
   const base = (options.baseUrl ?? DEEPGRAM_DEFAULT_BASE_URL).replace(/\/+$/, '')
   const params = new URLSearchParams()
-  params.set('model', options.model || DEEPGRAM_DEFAULT_STT_MODEL)
+  params.set('model', options.model)
   params.set('punctuate', 'true')
   params.set('smart_format', 'true')
   if (options.language) {
@@ -259,7 +243,7 @@ export async function transcribeDeepgram(
  * callers can distinguish "API responded with empty transcript" from "API
  * returned an unexpected shape" — only the latter is an error.
  */
-export function extractDeepgramTranscript(payload: unknown): string | null {
+function extractDeepgramTranscript(payload: unknown): string | null {
   if (!payload || typeof payload !== 'object') return null
   const results = (payload as { results?: unknown }).results
   if (!results || typeof results !== 'object') return null
@@ -286,7 +270,7 @@ export function extractDeepgramTranscript(payload: unknown): string | null {
 export async function synthesizeDeepgram(
   text: string,
   apiKey: string,
-  options: DeepgramSynthesizeOptions = {},
+  options: DeepgramSynthesizeOptions,
 ): Promise<Buffer> {
   if (!apiKey) {
     throw new Error('Deepgram TTS: API key is not configured. Add it to the Deepgram provider.')
@@ -295,16 +279,10 @@ export async function synthesizeDeepgram(
   if (!trimmed) {
     throw new Error('Deepgram TTS: input text is empty.')
   }
-  // Deepgram's /v1/speak rejects payloads larger than 2000 chars per request.
-  // We surface a clean error rather than letting the API 400 on us.
-  if (trimmed.length > 2000) {
-    throw new Error(`Deepgram TTS: input text is ${trimmed.length} chars, max is 2000. Split before synthesizing.`)
-  }
-
   const base = (options.baseUrl ?? DEEPGRAM_DEFAULT_BASE_URL).replace(/\/+$/, '')
   const params = new URLSearchParams()
-  params.set('model', options.model || DEEPGRAM_DEFAULT_TTS_MODEL)
-  params.set('encoding', options.encoding || 'mp3')
+  params.set('model', options.model)
+  params.set('encoding', options.encoding)
   // REST linear16 defaults to a WAV container; callers concatenate chunks and add a single header.
   if (options.encoding === 'linear16') params.set('container', 'none')
   const url = `${base}/v1/speak?${params.toString()}`

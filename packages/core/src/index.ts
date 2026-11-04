@@ -718,17 +718,6 @@ export { migrateLegacyVoiceSettings } from './voice-settings-migration.js'
 export { audioFormatFromFilename, clearVoiceModelListCache } from './voice-backends.js'
 export type { AvailableVoiceModel, SynthesizedAudio, VoiceOption } from './voice-backends.js'
 export {
-  transcribeDeepgram,
-  synthesizeDeepgram,
-  listDeepgramModels,
-  extractDeepgramTranscript,
-  DEEPGRAM_DEFAULT_BASE_URL,
-} from './deepgram.js'
-export type {
-  DeepgramModel,
-  DeepgramModelsList,
-} from './deepgram.js'
-export {
   parseSlashCommand,
   SlashCommandRegistry,
   registerBuiltInSlashCommands,
