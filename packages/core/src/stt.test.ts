@@ -89,12 +89,12 @@ afterEach(() => {
 describe('loadSttSettings', () => {
   it('returns defaults when the stt section is missing', () => {
     mockLoadConfig.mockReturnValue({})
-    expect(loadSttSettings()).toEqual({ enabled: false, model: '', language: '', rewrite: { enabled: false, providerId: '' }, agentTool: false })
+    expect(loadSttSettings()).toEqual({ enabled: false, model: '', language: '', rewrite: { enabled: false, providerId: '' }, agentTool: true })
   })
 
   it('ignores pre-provider keys and reads the model reference', () => {
     mockStt({ enabled: true, provider: 'whisper-url', whisperUrl: 'http://w', model: 'dg:nova-3', language: 'de' })
-    expect(loadSttSettings()).toEqual({ enabled: true, model: 'dg:nova-3', language: 'de', rewrite: { enabled: false, providerId: '' }, agentTool: false })
+    expect(loadSttSettings()).toEqual({ enabled: true, model: 'dg:nova-3', language: 'de', rewrite: { enabled: false, providerId: '' }, agentTool: true })
   })
 })
 

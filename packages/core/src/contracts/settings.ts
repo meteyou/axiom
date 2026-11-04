@@ -460,7 +460,7 @@ export const DEFAULT_SETTINGS_CONTRACT: SettingsContract = {
     voice: '',
     instructions: '',
     responseFormat: 'mp3',
-    agentTool: false,
+    agentTool: true,
   },
   stt: {
     enabled: false,
@@ -470,7 +470,7 @@ export const DEFAULT_SETTINGS_CONTRACT: SettingsContract = {
       enabled: false,
       providerId: '',
     },
-    agentTool: false,
+    agentTool: true,
   },
   appearance: {
     logo: 'prism',
@@ -686,7 +686,7 @@ export function normalizeTtsSettings(source: Partial<TtsSettingsContract> | unde
     voice: stringOr(source?.voice, defaults.voice),
     instructions: stringOr(source?.instructions, defaults.instructions),
     responseFormat: format && (SETTINGS_TTS_RESPONSE_FORMATS as readonly string[]).includes(format) ? format : defaults.responseFormat,
-    agentTool: source?.agentTool === true,
+    agentTool: source?.agentTool !== false,
   }
 }
 
@@ -702,7 +702,7 @@ export function normalizeSttSettings(
       enabled: source?.rewrite?.enabled === true,
       providerId: stringOr(source?.rewrite?.providerId, defaults.rewrite.providerId),
     },
-    agentTool: source?.agentTool === true,
+    agentTool: source?.agentTool !== false,
   }
 }
 
