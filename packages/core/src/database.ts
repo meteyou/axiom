@@ -157,7 +157,8 @@ function tableExists(db: Database, tableName: string): boolean {
 function migrateTokenUsageVoiceColumns(db: Database): void {
   const row = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'token_usage'").get() as { sql: string } | undefined
   if (!row || row.sql.includes("'tts'")) return
-  db.exec(`
+  // A partial rebuild would leave the history in token_usage_old while the guard above skips every later run.
+  const rebuild = db.transaction(() => db.exec(`
     ALTER TABLE token_usage RENAME TO token_usage_old;
     CREATE TABLE token_usage (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -179,7 +180,8 @@ function migrateTokenUsageVoiceColumns(db: Database): void {
     DROP TABLE token_usage_old;
     CREATE INDEX IF NOT EXISTS idx_token_usage_timestamp ON token_usage(timestamp);
     CREATE INDEX IF NOT EXISTS idx_token_usage_provider ON token_usage(provider);
-  `)
+  `))
+  rebuild()
 }
 
 export function initDatabase(dbPath?: string): Database {
