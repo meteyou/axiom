@@ -262,6 +262,33 @@ describe('database', () => {
     db2.close()
   })
 
+  it('keeps the token_usage history when the speech rebuild fails', () => {
+    const dbPath = tmpDbPath()
+    const legacyDb = new BetterSqlite3(dbPath)
+    legacyDb.exec(`
+      CREATE TABLE token_usage (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+        provider TEXT NOT NULL,
+        model TEXT NOT NULL,
+        prompt_tokens INTEGER,
+        completion_tokens INTEGER NOT NULL DEFAULT 0,
+        estimated_cost REAL NOT NULL DEFAULT 0.0,
+        session_id TEXT
+      );
+    `)
+    legacyDb.prepare("INSERT INTO token_usage (provider, model, prompt_tokens) VALUES ('openai', 'gpt-4o', NULL)").run()
+    legacyDb.close()
+
+    expect(() => initDatabase(dbPath)).toThrow(/NOT NULL/)
+
+    const db = new BetterSqlite3(dbPath)
+    const tables = (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'token_usage%'").all() as { name: string }[]).map(row => row.name)
+    expect(tables).toEqual(['token_usage'])
+    expect(db.prepare('SELECT provider, prompt_tokens FROM token_usage').all()).toEqual([{ provider: 'openai', prompt_tokens: null }])
+    db.close()
+  })
+
   it('rebuilds FTS indexes only when the virtual tables are first created', () => {
     const execSpy = vi.spyOn(BetterSqlite3.prototype, 'exec')
     const dbPath = tmpDbPath()
