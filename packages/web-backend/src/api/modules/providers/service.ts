@@ -114,7 +114,7 @@ export interface ProvidersService {
     modelId: string
   }>
   testImageModel: (id: string, modelId: string) => Promise<ProviderImageTestResultContract>
-  testTtsModel: (id: string, payload: ProviderTtsTestPayloadContract) => Promise<SynthesizedAudio>
+  testTtsModel: (id: string, payload: ProviderTtsTestPayloadContract, userId?: number | null) => Promise<SynthesizedAudio>
   activateProvider: (id: string, payload: ProviderModelSelectionPayloadContract) => { activeProvider: string; activeModel: string | null }
   probeOllamaModels: (baseUrl: string) => Promise<OllamaTagsResponse>
   listOllamaModels: (providerId: string) => Promise<OllamaTagsResponse>
@@ -776,7 +776,7 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
     }
   }
 
-  async function testTtsModel(id: string, payload: ProviderTtsTestPayloadContract): Promise<SynthesizedAudio> {
+  async function testTtsModel(id: string, payload: ProviderTtsTestPayloadContract, userId: number | null = null): Promise<SynthesizedAudio> {
     const provider = requireProvider(id)
     const modelId = requireEnabledVoiceModel(provider, 'tts', payload.modelId)
     const text = payload.text ?? TTS_TEST_TEXT
@@ -787,7 +787,7 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
         voice: payload.voice,
         format: 'mp3',
       })
-      if (options.db) logVoiceUsage({ db: options.db }, { kind: 'tts', provider, modelId, units: text.length })
+      if (options.db) logVoiceUsage({ db: options.db, userId }, { kind: 'tts', provider, modelId, units: text.length })
       updateProviderStatus(id, 'connected', modelId)
       return audio
     } catch (err) {
