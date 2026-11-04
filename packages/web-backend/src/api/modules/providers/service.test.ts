@@ -412,7 +412,7 @@ describe('image generation models', () => {
       .rejects.toBeInstanceOf(ProvidersValidationError)
   })
 
-  it('generates a paid test image, returns a preview with the billed cost and books it', async () => {
+  it('generates a paid test image, returns a preview with the billed cost and books it on the user', async () => {
     const provider = createOpenRouterProvider(['recraft/recraft-v4.1'])
     const db = initDatabase(path.join(tempDataDir, 'test.db'))
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
@@ -421,7 +421,7 @@ describe('image generation models', () => {
       usage: { prompt_tokens: 10, completion_tokens: 100, total_tokens: 110, cost: 0.035 },
     }))
 
-    const result = await createProvidersService({ db }).testImageModel(provider.id, 'recraft/recraft-v4.1')
+    const result = await createProvidersService({ db }).testImageModel(provider.id, 'recraft/recraft-v4.1', 7)
 
     expect(result).toMatchObject({
       success: true,
@@ -430,7 +430,7 @@ describe('image generation models', () => {
       dataUrl: `data:image/webp;base64,${PNG_BASE64}`,
       costUsd: 0.035,
     })
-    expect(db.prepare('SELECT model, estimated_cost, kind FROM token_usage').get()).toEqual({ model: 'recraft/recraft-v4.1', estimated_cost: 0.035, kind: 'image' })
+    expect(db.prepare('SELECT model, estimated_cost, kind, user_id FROM token_usage').get()).toEqual({ model: 'recraft/recraft-v4.1', estimated_cost: 0.035, kind: 'image', user_id: 7 })
     db.close()
   })
 

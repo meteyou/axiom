@@ -105,7 +105,7 @@ If a model isn't in the `tokenPriceTable`, its row shows real token counts but a
 
 ## Usage per user
 
-Above the provider & model table, a second table shows one row per user for the current filters: requests, input tokens, output tokens, speech (when present) and estimated cost. Speech requests without a session (the chat's mic and read-aloud buttons, the settings preview) are attributed to the user who made them. Every session — chat, task, heartbeat, consolidation and loop-detection — belongs to a user, and background sessions are attributed to the owner of the task. Sessions from before multi-user support are attributed to the first (bootstrap) admin account. Usage of users that no longer exist is kept and shown as *deleted*. The same data is returned as `perUser` by the admin usage API (`GET /api/stats/usage`) next to the totals.
+Above the provider & model table, a second table shows one row per user for the current filters: requests, input tokens, output tokens, speech (when present) and estimated cost. Speech requests without a session (the chat's mic and read-aloud buttons, the settings preview) and the test clips and test images on the Providers page are attributed to the user who made them. Every session — chat, task, heartbeat, consolidation and loop-detection — belongs to a user, and background sessions are attributed to the owner of the task. Sessions from before multi-user support are attributed to the first (bootstrap) admin account. Usage of users that no longer exist is kept and shown as *deleted*. The same data is returned as `perUser` by the admin usage API (`GET /api/stats/usage`) next to the totals.
 
 ## Empty states
 
