@@ -305,6 +305,8 @@ export async function synthesizeDeepgram(
   const params = new URLSearchParams()
   params.set('model', options.model || DEEPGRAM_DEFAULT_TTS_MODEL)
   params.set('encoding', options.encoding || 'mp3')
+  // REST linear16 defaults to a WAV container; callers concatenate chunks and add a single header.
+  if (options.encoding === 'linear16') params.set('container', 'none')
   const url = `${base}/v1/speak?${params.toString()}`
 
   let response: Response
