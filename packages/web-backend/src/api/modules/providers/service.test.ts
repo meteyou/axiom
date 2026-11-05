@@ -452,7 +452,7 @@ describe('image generation models', () => {
     expect(response.providers[0]!.modelSpecs).not.toHaveProperty('recraft/recraft-v4.1-vector')
     expect(response.presets.openrouter).toMatchObject({ supportsImageModels: true, imageBilling: 'reported', liveImageCatalog: true, customImageModels: true })
     expect(response.presets.openai).toMatchObject({ supportsImageModels: true, imageBilling: 'estimated', liveImageCatalog: true })
-    expect(response.presets['openai-codex']).toMatchObject({ supportsImageModels: true, imageBilling: 'subscription', liveImageCatalog: false, customImageModels: false })
+    expect(response.presets['openai-codex']).toMatchObject({ supportsImageModels: true, imageBilling: 'subscription', liveImageCatalog: false, customImageModels: true })
     expect(response.presets.anthropic!.supportsImageModels).toBe(false)
     expect(response.presets.anthropic).not.toHaveProperty('imageBilling')
   })
@@ -474,6 +474,40 @@ describe('image generation models', () => {
     expect(openRouterSpecs['recraft/recraft-v4.1']).not.toHaveProperty('outputCostPerMillion')
     expect(response.providers.find(p => p.id === openai.id)!.imageModelSpecs?.['gpt-image-1'])
       .toMatchObject({ name: 'GPT Image 1', outputCostPerMillion: 40 })
+  })
+
+  it('stores custom ChatGPT image model ids and sends them as the request model', async () => {
+    const accessToken = `h.${Buffer.from(JSON.stringify({ 'https://api.openai.com/auth': { chatgpt_account_id: 'acc-1' } })).toString('base64url')}.s`
+    const codex = addOAuthProvider({
+      name: 'ChatGPT',
+      providerType: 'openai-codex',
+      enabledModels: [],
+      oauthCredentials: { access: accessToken, refresh: 'refresh', expires: Date.now() + 3_600_000 },
+    })
+    const service = createProvidersService()
+    service.updateProvider(codex.id, { enabledImageModels: ['gpt-image-2', 'gpt-image-2.6-flare', 'gpt-image-2.6-sunburst'] })
+    updateProviderModel(codex.id, 'gpt-image-2.6-flare', { name: 'GPT Image 2.6 Flare' })
+
+    const stored = loadProviders().providers.find(p => p.id === codex.id)!
+    expect(stored.enabledImageModels).toEqual(['gpt-image-2', 'gpt-image-2.6-flare', 'gpt-image-2.6-sunburst'])
+    expect(stored.enabledModels).toEqual([])
+    const { masked, decrypted } = service.listProviders()
+    const specs = mapProvidersListResponse(masked, decrypted).providers.find(p => p.id === codex.id)!.imageModelSpecs!
+    expect(specs['gpt-image-2.6-flare']).toEqual({ name: 'GPT Image 2.6 Flare', input: ['text', 'image'], output: ['image'] })
+    expect(specs['gpt-image-2.6-sunburst']).toEqual({ name: 'gpt-image-2.6-sunburst', input: ['text', 'image'], output: ['image'] })
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      data: [{ b64_json: PNG_BASE64 }],
+      output_format: 'png',
+      usage: { input_tokens: 20, output_tokens: 500 },
+    }), { status: 200, headers: { 'content-type': 'application/json' } }))
+
+    const result = await service.testImageModel(codex.id, 'gpt-image-2.6-flare')
+
+    expect(result).toMatchObject({ success: true, billing: 'subscription', costUsd: 0 })
+    const [url, init] = fetchSpy.mock.calls[0]!
+    expect(String(url)).toBe('https://chatgpt.com/backend-api/codex/images/generations')
+    expect(JSON.parse(String(init!.body))).toMatchObject({ model: 'gpt-image-2.6-flare' })
   })
 
   it('returns billing, notes and the usage summary of a ChatGPT test image', async () => {

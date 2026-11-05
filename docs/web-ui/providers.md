@@ -383,7 +383,7 @@ Image generation models are configured separately from text models. They come fr
 
 - **OpenRouter** — billed per image; OpenRouter reports the amount.
 - **OpenAI** (API key) — GPT Image models, billed per token; Axiom estimates the cost from OpenAI's list prices.
-- **ChatGPT Plus/Pro** (Codex login) — one model, *GPT Image (ChatGPT subscription)*; no API costs, but it counts toward the Codex usage limits, and ChatGPT picks model, size and quality itself. See [Image Generation → ChatGPT subscription](../concepts/image-generation#chatgpt-subscription).
+- **ChatGPT Plus/Pro** (Codex login) — the bundled model *GPT Image (ChatGPT subscription)*, plus custom model ids such as `gpt-image-2.6-flare`; no API costs, but it counts toward the Codex usage limits, and ChatGPT picks size and quality itself. See [Image Generation → ChatGPT subscription](../concepts/image-generation#chatgpt-subscription).
 
 ### Add image model dialog
 
@@ -391,9 +391,9 @@ Opened from the provider header row's ⋮ menu → **Add image model**.
 
 - **Billing hint** — for OpenAI and ChatGPT providers a line above the list explains how generations are paid for.
 - **Search** — filters the image models by name or id, e.g. `vector` finds `recraft/recraft-v4.1-vector`.
-- **Live list** — OpenRouter and OpenAI list their image models **live**, with the provider's stored API key (OpenRouter: `GET /models?output_modalities=image`, OpenAI: `GET /v1/models` filtered to `gpt-image-*` and `chatgpt-image-*`). New models and dated snapshots appear without an Axiom release. The refresh button next to the search field loads the list again. If the request fails, the bundled catalog is shown instead. ChatGPT has no live list; it always offers its one model.
+- **Live list** — OpenRouter and OpenAI list their image models **live**, with the provider's stored API key (OpenRouter: `GET /models?output_modalities=image`, OpenAI: `GET /v1/models` filtered to `gpt-image-*` and `chatgpt-image-*`). New models and dated snapshots appear without an Axiom release. The refresh button next to the search field loads the list again. If the request fails, the bundled catalog is shown instead. ChatGPT has no live list; it offers its one bundled model, other ids are added as custom models.
 - **Model list** — multi-select. Each model shows its list price per 1M output tokens when the provider publishes one (OpenRouter's `pricing.image_output`, OpenAI's list prices), e.g. *$8.38 / 1M tokens*. Models that accept no input images — and can therefore not edit or vary existing images — carry a *no image input* badge. Models already enabled are greyed out.
-- **Custom model fallback** — when the search text matches no entry, you can add the typed id (e.g. a model published after the list was loaded). Such models are sent as image-only requests. Not available for ChatGPT, which ignores the model id.
+- **Custom model fallback** — when the search text matches no entry, you can add the typed id (e.g. a model published after the list was loaded). Such models are sent as image-only requests. For an OpenAI id without a bundled list price the row shows *per image (estimated)*, the `generate_image` result reports the cost as unknown and Token Usage books it at $0; aspect ratios are mapped to the fixed sizes 1024x1024 / 1536x1024 / 1024x1536, which every GPT Image model accepts. For ChatGPT (Codex login) this is how newer models are requested, e.g. `gpt-image-2.6-flare`; the ChatGPT backend accepts any id without an error, so a successful generation does not prove that the id was honoured.
 - **Add** — stores the selection in the provider's `enabledImageModels`. For models taken from a live list, the display name, the input/output modalities and the output price are stored with the model, so models newer than the bundled catalog are called correctly (e.g. models that return text and image, or accept no input images) and the price shows up in the model row.
 
 ### Image model rows

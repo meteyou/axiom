@@ -287,7 +287,7 @@ describe('image provider capabilities and live model lists', () => {
   it('describes billing, live list and custom ids per provider type', () => {
     expect(getImageProviderCapabilities('openrouter')).toEqual({ billing: 'reported', liveCatalog: true, customModels: true })
     expect(getImageProviderCapabilities('openai')).toEqual({ billing: 'estimated', liveCatalog: true, customModels: true })
-    expect(getImageProviderCapabilities('openai-codex')).toEqual({ billing: 'subscription', liveCatalog: false, customModels: false })
+    expect(getImageProviderCapabilities('openai-codex')).toEqual({ billing: 'subscription', liveCatalog: false, customModels: true })
     expect(getImageProviderCapabilities('anthropic')).toBeNull()
   })
 
