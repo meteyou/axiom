@@ -107,13 +107,32 @@ describe('migrateLegacyVoiceSettings', () => {
     expect(loadProviders().activeProvider).toBe('oa')
   })
 
-  it('drops Whisper URL and Ollama STT without a model', () => {
-    writeSettings({ stt: { enabled: true, provider: 'whisper-url', whisperUrl: 'http://whisper', ollamaModel: 'x' } })
+  it('drops Ollama STT and a Whisper URL that is no OpenAI-compatible endpoint without a model', () => {
+    writeSettings({ stt: { enabled: true, provider: 'whisper-url', whisperUrl: 'http://whisper/asr', ollamaModel: 'x' } })
 
     migrateLegacyVoiceSettings(silent)
 
     expect(readSettings().stt).toEqual({ enabled: true })
+    expect(loadProviders().providers).toHaveLength(1)
     expect(findProvider('oa')?.enabledSttModels).toBeUndefined()
+
+    writeSettings({ stt: { enabled: true, provider: 'ollama', ollamaModel: 'x' } })
+    migrateLegacyVoiceSettings(silent)
+    expect(readSettings().stt).toEqual({ enabled: true })
+  })
+
+  it('adds an OpenAI-compatible Whisper server as a custom provider without guessing a model', () => {
+    writeSettings({ stt: { enabled: true, provider: 'whisper-url', whisperUrl: 'http://whisper:8000/v1/audio/transcriptions' } })
+
+    migrateLegacyVoiceSettings(silent)
+    writeSettings({ stt: { enabled: true, provider: 'whisper-url', whisperUrl: 'http://whisper:8000/v1/audio/transcriptions/' } })
+    migrateLegacyVoiceSettings(silent)
+
+    const whisper = loadProviders().providers.filter(p => p.providerType === 'custom-openai-completions')
+    expect(whisper).toHaveLength(1)
+    expect(whisper[0]).toMatchObject({ name: 'Whisper', baseUrl: 'http://whisper:8000/v1', enabledModels: [] })
+    expect(whisper[0].enabledSttModels).toBeUndefined()
+    expect(readSettings().stt).toEqual({ enabled: true })
   })
 
   it('leaves untouched legacy defaults without adding voice models', () => {
