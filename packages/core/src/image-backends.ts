@@ -262,7 +262,7 @@ const openAIImageBackend: ImageBackend = {
     if (params.quality) payload.quality = params.quality
     if (params.background) {
       if (params.background === 'transparent' && findOpenAIImageModelInfo(model.id)?.transparentBackground === false) {
-        return { ok: false, error: `${model.id} cannot render transparent backgrounds. Use a GPT Image 2.5 or 1.x model for transparency.` }
+        return { ok: false, error: `${model.id} cannot render transparent backgrounds. Use a GPT Image 2.5, 2.6 or 1.x model for transparency.` }
       }
       payload.background = params.background
     }
@@ -346,7 +346,7 @@ function formatSeconds(totalSeconds: number): string {
 
 const codexImageBackend: ImageBackend = {
   billing: 'subscription',
-  customModels: false,
+  customModels: true,
   // One at a time: the ChatGPT backend rate-limits image (and input-image) requests per minute.
   maxParallel: 1,
   maxInputImages: 5,

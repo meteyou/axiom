@@ -50,6 +50,8 @@ describe('openAIImageSize', () => {
     expect(openAIImageSize('gpt-image-2.5-flare', '16:9')).toEqual({ ok: true, size: '1360x768' })
     expect(openAIImageSize('gpt-image-2-2026-04-21', '9:16')).toEqual({ ok: true, size: '768x1360' })
     expect(openAIImageSize('gpt-image-2', '3:1')).toEqual({ ok: true, size: '1776x592' })
+    expect(openAIImageSize('gpt-image-2.6-flare', '16:9')).toEqual({ ok: true, size: '1360x768' })
+    expect(openAIImageSize('gpt-image-2.6-sunburst', '1:2')).toEqual({ ok: true, size: '720x1456' })
   })
 
   it('rejects ratios outside 1:3 to 3:1 and invalid ratios', () => {
@@ -61,6 +63,7 @@ describe('openAIImageSize', () => {
     expect(openAIImageSize('gpt-image-1', '3:2')).toEqual({ ok: true, size: '1536x1024' })
     expect(openAIImageSize('gpt-image-1.5', '16:9')).toMatchObject({ ok: true, size: '1536x1024', note: expect.stringMatching(/sent as 1536x1024/) })
     expect(openAIImageSize('chatgpt-image-latest', '9:16')).toMatchObject({ ok: true, size: '1024x1536' })
+    expect(openAIImageSize('gpt-image-9-custom', '16:9')).toMatchObject({ ok: true, size: '1536x1024', note: expect.stringMatching(/sent as 1536x1024/) })
   })
 })
 
@@ -75,6 +78,10 @@ describe('OpenAI image backend', () => {
     expect(openAI.prepare(gptImage2, { background: 'transparent' })).toMatchObject({ ok: false, error: expect.stringMatching(/transparent/) })
     expect(openAI.prepare(model('openai-images', 'gpt-image-1.5', ''), { background: 'transparent' }))
       .toMatchObject({ ok: true, payload: { background: 'transparent' } })
+    expect(openAI.prepare(model('openai-images', 'gpt-image-2.6-flare', ''), { background: 'transparent' }))
+      .toMatchObject({ ok: true, payload: { background: 'transparent' } })
+    expect(openAI.prepare(model('openai-images', 'gpt-image-9-custom', ''), { background: 'transparent' }))
+      .toMatchObject({ ok: true, payload: { background: 'transparent' } })
   })
 
   it('estimates the cost from text, image input and image output tokens', () => {
@@ -87,6 +94,8 @@ describe('OpenAI image backend', () => {
       },
     }, gptImage2)
     expect(cost).toBeCloseTo((21 * 5 + 1470 * 8 + 1000 * 30) / 1_000_000, 10)
+    expect(openAI.extractCost({ usage: { input_tokens: 100, output_tokens: 1000 } }, model('openai-images', 'gpt-image-2.6-sunburst', '')))
+      .toBeCloseTo((100 * 5 + 1000 * 30) / 1_000_000, 10)
     expect(openAI.extractCost({ usage: { input_tokens: 10, output_tokens: 10 } }, model('openai-images', 'gpt-image-9', ''))).toBeUndefined()
     expect(openAI.extractCost({}, gptImage2)).toBeUndefined()
   })
@@ -134,7 +143,7 @@ describe('ChatGPT subscription image backend', () => {
     expect(codex.extractCost({}, codexImage)).toBe(0)
     expect(codex.maxParallel).toBe(1)
     expect(codex.maxInputImages).toBe(5)
-    expect(codex.customModels).toBe(false)
+    expect(codex.customModels).toBe(true)
   })
 
   it('summarises the image limit from the response headers', () => {

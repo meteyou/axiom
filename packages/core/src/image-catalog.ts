@@ -40,9 +40,11 @@ export interface OpenAIImageModelInfo {
   transparentBackground: boolean
 }
 
-// OpenAI list prices (developers.openai.com/api/docs/pricing, October 2026).
+// OpenAI list prices (developers.openai.com/api/docs/pricing, October 2026; GPT Image 2.6: November 2026).
 // The API reports tokens only, so generation costs are estimated from these.
 const OPENAI_IMAGE_MODELS: OpenAIImageModelInfo[] = [
+  { id: 'gpt-image-2.6-flare', name: 'GPT Image 2.6 Flare', pricing: { textInput: 5, imageInput: 8, imageOutput: 30 }, sizes: 'flexible', transparentBackground: true },
+  { id: 'gpt-image-2.6-sunburst', name: 'GPT Image 2.6 Sunburst', pricing: { textInput: 5, imageInput: 8, imageOutput: 30 }, sizes: 'flexible', transparentBackground: true },
   { id: 'gpt-image-2.5-flare', name: 'GPT Image 2.5 Flare', pricing: { textInput: 5, imageInput: 8, imageOutput: 30 }, sizes: 'flexible', transparentBackground: true },
   { id: 'gpt-image-2.5-sunburst', name: 'GPT Image 2.5 Sunburst', pricing: { textInput: 5, imageInput: 8, imageOutput: 30 }, sizes: 'flexible', transparentBackground: true },
   { id: 'gpt-image-2', name: 'GPT Image 2', pricing: { textInput: 5, imageInput: 8, imageOutput: 30 }, sizes: 'flexible', transparentBackground: false },
@@ -90,9 +92,8 @@ function openAIImageModel(info: OpenAIImageModelInfo): ImageModel<ImageApi> {
 }
 
 /**
- * The ChatGPT backend ignores the requested model and picks the renderer
- * itself (any id, even an invalid one, is accepted), so a Codex login offers
- * exactly one image model. The id is the one the Codex CLI sends.
+ * The id the Codex CLI sends. The ChatGPT backend accepts any model id, so
+ * newer renderer ids are added as custom image models instead of being listed.
  */
 const CODEX_IMAGE_MODEL: ImageModel<ImageApi> = {
   type: 'image',

@@ -7,8 +7,8 @@ Three provider types offer image models:
 | Provider type | How it is paid | Models |
 |---|---|---|
 | **OpenRouter** (API key) | per image, OpenRouter reports the billed amount | pi-ai image catalog, or OpenRouter's live list |
-| **OpenAI** (API key) | per token, Axiom estimates the cost from OpenAI's list prices | GPT Image models (`gpt-image-2.5-flare`, `gpt-image-2.5-sunburst`, `gpt-image-2`, `gpt-image-1.5`, `gpt-image-1`, `gpt-image-1-mini`), or the key's live list |
-| **ChatGPT Plus/Pro (Codex)** (OAuth login) | included in the ChatGPT subscription, counts toward its Codex usage limits | one model: *GPT Image (ChatGPT subscription)* |
+| **OpenAI** (API key) | per token, Axiom estimates the cost from OpenAI's list prices | GPT Image models (`gpt-image-2.6-flare`, `gpt-image-2.6-sunburst`, `gpt-image-2.5-flare`, `gpt-image-2.5-sunburst`, `gpt-image-2`, `gpt-image-1.5`, `gpt-image-1`, `gpt-image-1-mini`), or the key's live list |
+| **ChatGPT Plus/Pro (Codex)** (OAuth login) | included in the ChatGPT subscription, counts toward its Codex usage limits | *GPT Image (ChatGPT subscription)*, plus custom model ids such as `gpt-image-2.6-flare` |
 
 See [Image backends](#image-backends) for the differences in parameters, limits and availability checks.
 
@@ -32,7 +32,7 @@ Each provider type talks to its own image API. OpenRouter uses its dedicated Ima
 | | OpenRouter | OpenAI (API key) | ChatGPT subscription (Codex login) |
 |---|---|---|---|
 | Endpoint | `https://openrouter.ai/api/v1/images` | `https://api.openai.com/v1/images/…` | `https://chatgpt.com/backend-api/codex/images/…` |
-| Model choice | any OpenRouter image model | any GPT Image model the key can use | none — ChatGPT picks the renderer (currently GPT Image 2) |
+| Model choice | any OpenRouter image model | any GPT Image model the key can use | *GPT Image (ChatGPT subscription)* (`gpt-image-2`) or a custom model id (accepted without validation) |
 | `aspect_ratio` | sent as `aspect_ratio`; the provider clamps it to its supported ratios | converted to `size`: exact (multiples of 16, 1:3 to 3:1) for GPT Image 2 and newer, the closest of 1024x1024 / 1536x1024 / 1024x1536 for older models | ignored |
 | `quality` | ignored | `low`, `medium`, `high`, `auto` | ignored |
 | `background` | ignored | `transparent`, `opaque`, `auto`; `gpt-image-2` cannot render transparency | `transparent`, `opaque`, `auto` |
@@ -40,7 +40,7 @@ Each provider type talks to its own image API. OpenRouter uses its dedicated Ima
 | Input images | up to 8 | up to 8 | up to 5 |
 | Cost | billed amount from the response (`usage.cost`) | estimated: reported tokens × OpenAI list price | none; counts toward the Codex usage limits |
 | [Free availability check](../web-ui/providers#image-model-rows) | `GET /models/<id>/endpoints` and `GET /key` | `GET /v1/models/<id>` with the key | `GET /backend-api/wham/usage`: login valid, plan is not *Free*, usage limit not reached |
-| Live model list | `GET /models?output_modalities=image` | `GET /v1/models`, filtered to `gpt-image-*` / `chatgpt-image-*` | no (one fixed model) |
+| Live model list | `GET /models?output_modalities=image` | `GET /v1/models`, filtered to `gpt-image-*` / `chatgpt-image-*` | no (one bundled model; other ids as custom models) |
 
 Ignored or adjusted parameters are never silent: the tool result and the Providers test image list them as notes (e.g. *"aspect_ratio 16:9 was sent as 1536x1024"*). Parameters a model cannot honour at all (a transparent background on `gpt-image-2`, an aspect ratio beyond 3:1) are refused before anything is sent or billed.
 
@@ -48,11 +48,12 @@ Ignored or adjusted parameters are never silent: the tool result and the Provide
 
 A ChatGPT Plus/Pro provider (the same OAuth login used for Codex chat models) generates images the way the Codex CLI does. Things to know:
 
-- **The model cannot be chosen.** The ChatGPT backend accepts any model id — even an invalid one — and generates with the model it picks. Size and quality are chosen by the backend as well (tested October 2026: every request came back as `low` quality at sizes like 1254x1254, whatever was requested). Axiom therefore offers exactly one image model for this provider type and sends the same request the Codex CLI sends. Describe the format in the prompt if it matters.
+- **Model choice.** The bundled model *GPT Image (ChatGPT subscription)* sends `gpt-image-2`, the id the Codex CLI sends. Newer image model ids (e.g. `gpt-image-2.6-flare` or `gpt-image-2.6-sunburst`) can be added as [custom image models](../web-ui/providers#add-image-model-dialog); Axiom sends the id as the request's `model`. The backend accepts any id — even an invalid one — without an error, so a successful generation does not prove that the id was honoured.
+- **Size and quality** are chosen by the backend (tested October 2026: every request came back as `low` quality at sizes like 1254x1254, whatever was requested). Axiom sends the same request the Codex CLI sends. Describe the format in the prompt if it matters.
 - **Usage limits.** No API costs, but image generations count toward the plan's Codex usage limits (OpenAI: 3–5× faster than comparable chat turns). The backend also reports a separate daily image limit in its response headers; the tool result shows it, e.g. *"ChatGPT image limit: 2% used of the 24 h window"*. The *Free* plan cannot generate images.
 - **Unofficial endpoint.** The endpoint is the one the Codex CLI uses with a ChatGPT login, not a documented public API, so OpenAI may change it without notice.
 
-To pick the image model, size and quality yourself, use an **OpenAI** API key provider instead (billed per token).
+To pick size and quality yourself, or to be sure which image model renders, use an **OpenAI** API key provider instead (billed per token).
 
 ## Settings → Image Generation
 

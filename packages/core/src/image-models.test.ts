@@ -43,7 +43,7 @@ describe('image model catalog', () => {
 
   it('offers Axiom-maintained catalogs for OpenAI (API key) and ChatGPT (Codex login)', () => {
     expect(getAvailableImageModels('openai').map(m => m.id)).toEqual([
-      'gpt-image-2.5-flare', 'gpt-image-2.5-sunburst', 'gpt-image-2', 'gpt-image-1.5', 'gpt-image-1', 'gpt-image-1-mini',
+      'gpt-image-2.6-flare', 'gpt-image-2.6-sunburst', 'gpt-image-2.5-flare', 'gpt-image-2.5-sunburst', 'gpt-image-2', 'gpt-image-1.5', 'gpt-image-1', 'gpt-image-1-mini',
     ])
     expect(getAvailableImageModels('openai')[0]).toMatchObject({
       input: ['text', 'image'],
@@ -131,6 +131,28 @@ describe('buildImageModel', () => {
       provider: 'openai-codex',
       baseUrl: 'https://chatgpt.com/backend-api/codex',
     })
+  })
+
+  it('builds custom ChatGPT image model ids on the Codex backend without a cost', () => {
+    const codexProvider = openRouterProvider({
+      providerType: 'openai-codex',
+      provider: 'openai-codex',
+      type: 'openai-codex-responses',
+      baseUrl: '',
+      authMethod: 'oauth',
+      models: [{ id: 'gpt-image-2.6-flare', name: 'GPT Image 2.6 Flare' }],
+    })
+    expect(buildImageModel(codexProvider, 'gpt-image-2.6-flare')).toMatchObject({
+      id: 'gpt-image-2.6-flare',
+      name: 'GPT Image 2.6 Flare',
+      api: 'openai-codex-images',
+      provider: 'openai-codex',
+      baseUrl: 'https://chatgpt.com/backend-api/codex',
+      input: ['text', 'image'],
+      output: ['image'],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    })
+    expect(buildImageModel(codexProvider, 'gpt-image-2.6-sunburst')).toMatchObject({ id: 'gpt-image-2.6-sunburst', name: 'gpt-image-2.6-sunburst' })
   })
 
   it('rejects providers without image support', () => {

@@ -374,7 +374,7 @@
       "testImageDuration": "Dauer: {seconds} s",
       "costNotReported": "nicht gemeldet",
       "billingEstimatedHint": "OpenAI rechnet diese Modelle pro Token ab. Axiom schätzt die Kosten jedes Bildes aus den gemeldeten Tokens und den OpenAI-Listenpreisen.",
-      "billingSubscriptionHint": "Nutzt dein ChatGPT-Abo: keine API-Kosten, aber Bildgenerierungen zählen zu den Codex-Nutzungslimits. ChatGPT wählt Bildmodell, Größe und Qualität selbst.",
+      "billingSubscriptionHint": "Nutzt dein ChatGPT-Abo: keine API-Kosten, aber Bildgenerierungen zählen zu den Codex-Nutzungslimits. ChatGPT wählt Größe und Qualität selbst. Für ein neueres Bildmodell gib dessen ID ein (z. B. gpt-image-2.6-flare) und füge es als eigenes Modell hinzu.",
       "priceHint": "Listenpreis pro 1 Mio. Output-Tokens",
       "pricePerMillion": "{price} Tokens",
       "costEstimated": "pro Bild (geschätzt)",
