@@ -55,6 +55,8 @@ export interface SynthesizedAudio {
 
 interface VoiceBackend {
   listModels: (ctx: VoiceRequestContext, kind: VoiceModelKind) => Promise<AvailableVoiceModel[]>
+  /** Authenticated request for backends whose `listModels` can answer from a static catalog without one. */
+  verifyAccess?: (ctx: VoiceRequestContext, kind: VoiceModelKind) => Promise<void>
   /** Omitted when the model id already is the voice (Deepgram Aura). */
   listVoices?: (ctx: VoiceRequestContext, modelId: string) => Promise<VoiceOption[]>
   transcribe: (ctx: VoiceRequestContext, request: VoiceTranscribeRequest) => Promise<VoiceTranscription>
@@ -427,6 +429,10 @@ const xaiBackend: VoiceBackend = {
     const ids = await listOpenAiModelIds(ctx, 'xAI models').catch(() => [] as string[])
     const live = ids.filter(id => /transcribe|stt/.test(id))
     return (live.length > 0 ? live : XAI_STT_FALLBACK_MODELS).map(id => ({ id, name: id }))
+  },
+  async verifyAccess(ctx, kind) {
+    if (kind === 'tts') await requestOk('xAI voices', ctx, `${voiceApiRoot(ctx.baseUrl)}/tts/voices`, { headers: bearer(ctx) })
+    else await listOpenAiModelIds(ctx, 'xAI models')
   },
   async listVoices(ctx) {
     const response = await requestOk('xAI voices', ctx, `${voiceApiRoot(ctx.baseUrl)}/tts/voices`, { headers: bearer(ctx) })

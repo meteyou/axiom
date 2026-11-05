@@ -73,7 +73,10 @@ export async function checkVoiceModelAvailability(
 ): Promise<VoiceModelAvailabilityResult> {
   const startedAt = Date.now()
   try {
-    const models = await listLiveVoiceModels(provider, kind, options)
+    const backend = requireBackend(provider)
+    const ctx = await requestContext(provider, options, MODEL_LIST_TIMEOUT_MS)
+    await backend.verifyAccess?.(ctx, kind)
+    const models = await backend.listModels(ctx, kind)
     const latencyMs = Date.now() - startedAt
     if (!models.some(model => model.id === modelId)) {
       return { status: 'down', latencyMs, errorMessage: `"${modelId}" is not offered by "${provider.name}"` }
