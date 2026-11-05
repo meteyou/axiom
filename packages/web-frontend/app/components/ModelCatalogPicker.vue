@@ -28,7 +28,7 @@
       {{ $t('providers.loadingModels') }}
     </div>
 
-    <div v-else-if="error" class="flex flex-col gap-1">
+    <div v-if="view.showError" class="flex flex-col gap-1">
       <span class="text-xs text-destructive">{{ $t('providers.modelsLoadError') }}</span>
       <span class="break-words text-xs text-muted-foreground">{{ error }}</span>
       <button
@@ -38,9 +38,12 @@
       >
         {{ $t('providers.modelsRetry') }}
       </button>
+      <span v-if="view.showCustomHint" class="text-xs text-muted-foreground">
+        {{ $t('providers.addModelCustomHint') }}
+      </span>
     </div>
 
-    <div v-else class="flex max-h-72 flex-col gap-0 divide-y divide-border overflow-hidden overflow-y-auto rounded-md border border-border">
+    <div v-if="view.showList" class="flex max-h-72 flex-col gap-0 divide-y divide-border overflow-hidden overflow-y-auto rounded-md border border-border">
       <label
         v-for="model in filteredModels"
         :key="model.id"
@@ -71,12 +74,12 @@
         </span>
       </label>
 
-      <div v-if="filteredModels.length === 0 && !canAddCustom" class="px-3 py-4 text-xs text-muted-foreground">
+      <div v-if="view.showEmpty" class="px-3 py-4 text-xs text-muted-foreground">
         {{ $t('providers.addModelEmpty') }}
       </div>
 
       <button
-        v-if="canAddCustom"
+        v-if="view.customId"
         type="button"
         :class="[
           'flex items-center gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-accent/50',
@@ -102,6 +105,8 @@
 </template>
 
 <script setup lang="ts" generic="T extends { id: string; name: string }">
+import { getModelCatalogPickerView } from '~/utils/modelCatalogPicker'
+
 const props = withDefaults(defineProps<{
   models: T[]
   /** Ids already configured on the provider; shown greyed out and not selectable. */
@@ -138,13 +143,15 @@ const filteredModels = computed(() => {
   })
 })
 
-const customId = computed(() => search.value.trim())
-
-const canAddCustom = computed(() => {
-  const query = customId.value
-  if (!props.allowCustom || !query || /\s/.test(query)) return false
-  return !props.models.some(model => model.id.toLowerCase() === query.toLowerCase())
-})
+const view = computed(() => getModelCatalogPickerView({
+  models: props.models,
+  filteredCount: filteredModels.value.length,
+  query: search.value,
+  loading: props.loading,
+  error: props.error,
+  allowCustom: props.allowCustom,
+}))
+const customId = computed(() => view.value.customId)
 
 function isEnabled(modelId: string): boolean {
   return props.enabledIds.includes(modelId)
