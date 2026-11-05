@@ -4,7 +4,7 @@ import { getConfigDir } from './config.js'
 import { decrypt, isEncrypted } from './encryption.js'
 import { addProvider, loadProviders, loadProvidersDecrypted, saveProviders } from './provider-config.js'
 import type { ProviderConfig } from './provider-config.js'
-import { supportsVoiceModels } from './voice-capabilities.js'
+import { getVoiceBackendId, supportsVoiceModels } from './voice-capabilities.js'
 import type { VoiceModelKind } from './voice-capabilities.js'
 
 type Logger = Pick<Console, 'log' | 'warn'>
@@ -91,6 +91,31 @@ function migrateDeepgram(kind: VoiceModelKind, block: VoiceBlock, logger: Logger
   return true
 }
 
+function whisperBaseUrl(url: string): string | null {
+  const match = /^(https?:\/\/.+\/v\d+)\/audio\/transcriptions\/?$/i.exec(url)
+  return match ? match[1] : null
+}
+
+/**
+ * The old backend posted to a full endpoint URL without a model id, so the
+ * server is kept as a provider but no model is guessed.
+ */
+function migrateWhisperUrl(block: VoiceBlock, logger: Logger): void {
+  const url = str(block.whisperUrl)
+  if (!url) {
+    if (block.enabled === true) logger.warn('[axiom] STT migration: no Whisper URL configured, select an STT model in Settings')
+    return
+  }
+  const baseUrl = whisperBaseUrl(url)
+  if (!baseUrl) {
+    logger.warn(`[axiom] STT migration: Whisper URL "${url}" is not an OpenAI-compatible /v1/audio/transcriptions endpoint, add the server as a custom provider and select an STT model in Settings`)
+    return
+  }
+  const existing = loadProviders().providers.find(p => getVoiceBackendId(p.providerType) === 'openai-compatible' && p.baseUrl.replace(/\/+$/, '') === baseUrl)
+  const provider = existing ?? addProvider({ name: uniqueProviderName('Whisper'), providerType: 'custom-openai-completions', baseUrl, enabledModels: [] })
+  logger.warn(`[axiom] STT migration: Whisper server added as provider "${provider.name}", add an STT model to it and select it in Settings`)
+}
+
 function resolveVoiceProvider(kind: VoiceModelKind, legacyProvider: string, providerId: string, logger: Logger): ProviderConfig | null {
   const label = kind.toUpperCase()
   const provider = findLegacyProvider(kind, legacyProvider, providerId)
@@ -134,6 +159,7 @@ function migrateBlock(kind: VoiceModelKind, block: VoiceBlock, logger: Logger): 
   let migrated = false
   if (legacyProvider === 'deepgram') migrated = migrateDeepgram(kind, block, logger)
   else if (legacyProvider === 'openai' || legacyProvider === 'mistral') migrated = migrateProviderBacked(kind, legacyProvider, block, logger)
+  else if (kind === 'stt' && legacyProvider === 'whisper-url') migrateWhisperUrl(block, logger)
   else if (block.enabled === true) {
     logger.warn(`[axiom] STT backend "${legacyProvider}" is no longer supported, select an STT model in Settings`)
   }
