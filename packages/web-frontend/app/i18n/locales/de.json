@@ -335,6 +335,7 @@
     "addModelSearch": "Modelle suchen…",
     "addModelRefresh": "Modelle vom Anbieter neu laden",
     "addModelCustom": "Modell „{name}“ hinzufügen",
+    "addModelCustomHint": "Du kannst trotzdem oben eine Modell-ID eingeben, um sie manuell hinzuzufügen.",
     "addModelEmpty": "Keine Modelle gefunden.",
     "addModelContext": "{size} Kontext",
     "addModelSelected": "{count} ausgewählt",
