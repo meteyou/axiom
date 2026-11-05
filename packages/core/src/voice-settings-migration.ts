@@ -114,7 +114,8 @@ function migrateWhisperUrl(block: VoiceBlock, logger: Logger): void {
   }
   const existing = loadProviders().providers.find(p => getVoiceBackendId(p.providerType) === 'openai-compatible' && p.baseUrl.replace(/\/+$/, '') === baseUrl)
   const provider = existing ?? addProvider({ name: uniqueProviderName('Whisper'), providerType: 'custom-openai-completions', baseUrl, enabledModels: [] })
-  logger.warn(`[axiom] STT migration: Whisper server added as provider "${provider.name}", add an STT model to it and select it in Settings`)
+  const action = existing ? 'matches the existing provider' : 'added as provider'
+  logger.warn(`[axiom] STT migration: Whisper server ${action} "${provider.name}", add an STT model to it and select it in Settings`)
 }
 
 function resolveVoiceProvider(kind: VoiceModelKind, legacyProvider: string, providerId: string, logger: Logger): ProviderConfig | null {
