@@ -147,6 +147,16 @@ describe('migrateLegacyVoiceSettings', () => {
     expect(findProvider('oa')).toEqual(openai('oa'))
   })
 
+  it('skips the migration instead of failing the startup on a corrupt settings.json', () => {
+    fs.writeFileSync(path.join(tmpDir, 'config', 'settings.json'), '{ "language": "de", ', 'utf-8')
+
+    expect(() => migrateLegacyVoiceSettings(silent)).not.toThrow()
+    expect(fs.readFileSync(path.join(tmpDir, 'config', 'settings.json'), 'utf-8')).toBe('{ "language": "de", ')
+
+    fs.writeFileSync(path.join(tmpDir, 'config', 'settings.json'), 'null', 'utf-8')
+    expect(() => migrateLegacyVoiceSettings(silent)).not.toThrow()
+  })
+
   it('keeps an already selected model and does not touch migrated settings', () => {
     writeSettings({ tts: { model: 'oa:tts-1', provider: 'deepgram', deepgramApiKey: 'dg-secret' } })
 

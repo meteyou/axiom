@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { getConfigDir } from './config.js'
+import { getConfigDir, warnConfigReadFailed } from './config.js'
 import { decrypt, isEncrypted } from './encryption.js'
 import { addProvider, loadProviders, loadProvidersDecrypted, saveProviders } from './provider-config.js'
 import type { ProviderConfig } from './provider-config.js'
@@ -176,7 +176,15 @@ export function migrateLegacyVoiceSettings(logger: Logger = console): void {
   const settingsPath = path.join(getConfigDir(), 'settings.json')
   if (!fs.existsSync(settingsPath)) return
 
-  const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as Record<string, unknown>
+  let settings: Record<string, unknown>
+  try {
+    settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as Record<string, unknown>
+  } catch (err) {
+    // A throw here aborts the startup; the legacy keys stay on disk, so the migration runs once the file is fixed.
+    warnConfigReadFailed('settings.json', err, 'skipping the voice settings migration')
+    return
+  }
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return
   let changed = false
   for (const kind of ['stt', 'tts'] as const) {
     const block = settings[kind]
