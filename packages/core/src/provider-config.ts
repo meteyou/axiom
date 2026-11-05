@@ -1027,6 +1027,7 @@ export function loadProviders(): ProvidersFile {
 
     if (moveImageOnlyIdsToImageModels(p, data)) migrated = true
   }
+  if (clearVoiceOnlyChatSelection(data)) migrated = true
   if (migrated) {
     // Persist the migration so it only runs once
     const outPath = path.join(configDir, 'providers.json')
@@ -1034,6 +1035,56 @@ export function loadProviders(): ProvidersFile {
   }
 
   return data
+}
+
+function clearVoiceOnlyChatSelection(file: ProvidersFile): boolean {
+  const isVoiceOnly = (id: string | undefined) => {
+    const provider = id ? file.providers.find(p => p.id === id) : undefined
+    return provider ? isVoiceOnlyProviderType(provider.providerType) : false
+  }
+  let changed = false
+  if (isVoiceOnly(file.activeProvider)) {
+    delete file.activeProvider
+    delete file.activeModel
+    changed = true
+  }
+  if (isVoiceOnly(file.fallbackProvider)) {
+    delete file.fallbackProvider
+    delete file.fallbackModel
+    changed = true
+  }
+  return changed
+}
+
+function getChatModel(file: ProvidersFile, provider: ProviderConfig): string {
+  if (isVoiceOnlyProviderType(provider.providerType)) return ''
+  if (provider.id === file.activeProvider && file.activeModel) return file.activeModel
+  return getProviderDefaultModel(provider)
+}
+
+/**
+ * The provider chat requests go to: the stored active provider when it can
+ * serve chat, otherwise the first enabled provider with a chat model.
+ */
+function resolveActiveChatProvider(file: ProvidersFile): ProviderConfig | null {
+  const active = file.providers.find(p => p.id === file.activeProvider)
+  if (active && getChatModel(file, active)) return active
+  const chat = file.providers.filter(p => getChatModel(file, p))
+  return chat.find(p => !isProviderDisabled(p))
+    ?? chat[0]
+    ?? (active && !isVoiceOnlyProviderType(active.providerType) ? active : null)
+    ?? file.providers.find(p => !isVoiceOnlyProviderType(p.providerType))
+    ?? null
+}
+
+/** A new provider with a chat model becomes active while no stored active provider can serve chat. */
+function activateNewProvider(file: ProvidersFile, provider: ProviderConfig): void {
+  const model = getChatModel(file, provider)
+  if (!model) return
+  const active = file.providers.find(p => p.id === file.activeProvider)
+  if (active && getChatModel(file, active)) return
+  file.activeProvider = provider.id
+  file.activeModel = model
 }
 
 /**
@@ -1268,13 +1319,7 @@ export function addProvider(input: {
   }
 
   file.providers.push(provider)
-
-  // If this is the first provider, make it active
-  if (file.providers.length === 1 && !preset.voiceOnly) {
-    file.activeProvider = provider.id
-    if (enabledModels[0]) file.activeModel = enabledModels[0]
-  }
-
+  activateNewProvider(file, provider)
   saveProviders(file)
   return provider
 }
@@ -1328,12 +1373,7 @@ export function addOAuthProvider(input: {
   }
 
   file.providers.push(provider)
-
-  if (file.providers.length === 1) {
-    file.activeProvider = provider.id
-    if (enabledModels[0]) file.activeModel = enabledModels[0]
-  }
-
+  activateNewProvider(file, provider)
   saveProviders(file)
   return provider
 }
@@ -1835,10 +1875,8 @@ export function setActiveModel(modelId: string): void {
  */
 export function getActiveModelId(): string | null {
   const file = loadProviders()
-  if (!file.activeProvider) return null
-  const provider = file.providers.find(p => p.id === file.activeProvider)
-  if (!provider) return null
-  return file.activeModel ?? (getProviderDefaultModel(provider) || null)
+  const provider = resolveActiveChatProvider(file)
+  return provider ? getChatModel(file, provider) || null : null
 }
 
 /**
@@ -1933,15 +1971,7 @@ export function getFallbackModelId(): string | null {
  * Get the active provider configuration
  */
 export function getActiveProvider(): ProviderConfig | null {
-  const file = loadProvidersDecrypted()
-  if (file.providers.length === 0) return null
-
-  if (file.activeProvider) {
-    const found = file.providers.find(p => p.id === file.activeProvider)
-    if (found) return found
-  }
-
-  return file.providers.find(p => !isProviderDisabled(p)) ?? file.providers[0]
+  return resolveActiveChatProvider(loadProvidersDecrypted())
 }
 
 /**
