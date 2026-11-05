@@ -37,9 +37,10 @@ function decryptLegacyKey(raw: string, logger: Logger): string {
   if (!raw || !isEncrypted(raw)) return raw
   try {
     return decrypt(raw)
-  } catch (err) {
-    logger.warn(`[axiom] Could not decrypt the legacy Deepgram API key: ${(err as Error).message}`)
-    return ''
+  } catch {
+    // Plaintext Deepgram keys (40 hex chars) pass the isEncrypted() heuristic.
+    logger.warn('[axiom] Legacy Deepgram API key is not decryptable, treating it as plaintext')
+    return raw
   }
 }
 
@@ -152,8 +153,9 @@ function migrateProviderBacked(kind: VoiceModelKind, legacyProvider: 'openai' | 
   return true
 }
 
-function migrateBlock(kind: VoiceModelKind, block: VoiceBlock, logger: Logger): void {
-  if (str(block.model)) return
+/** Returns false when the legacy keys must be kept because they hold data that could not be migrated. */
+function migrateBlock(kind: VoiceModelKind, block: VoiceBlock, logger: Logger): boolean {
+  if (str(block.model)) return true
   const legacyProvider = str(block.provider) || (kind === 'stt' ? 'whisper-url' : 'openai')
 
   let migrated = false
@@ -165,6 +167,11 @@ function migrateBlock(kind: VoiceModelKind, block: VoiceBlock, logger: Logger): 
   }
 
   if (migrated) logger.log(`[axiom] Migrated ${kind.toUpperCase()} settings to model "${String(block.model)}"`)
+  if (legacyProvider === 'deepgram' && !migrated && str(block.deepgramApiKey)) {
+    logger.warn(`[axiom] ${kind.toUpperCase()} migration: the legacy Deepgram API key could not be migrated, keeping the legacy settings`)
+    return false
+  }
+  return true
 }
 
 /**
@@ -191,7 +198,7 @@ export function migrateLegacyVoiceSettings(logger: Logger = console): void {
     if (!block || typeof block !== 'object' || !hasLegacyKeys(kind, block as VoiceBlock)) continue
     const voiceBlock = block as VoiceBlock
     try {
-      migrateBlock(kind, voiceBlock, logger)
+      if (!migrateBlock(kind, voiceBlock, logger)) continue
     } catch (err) {
       logger.warn(`[axiom] ${kind.toUpperCase()} settings migration failed: ${(err as Error).message}`)
       continue

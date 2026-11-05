@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { encrypt } from './encryption.js'
+import { encrypt, isEncrypted } from './encryption.js'
 import { getActiveProvider, loadProviders, loadProvidersDecrypted } from './provider-config.js'
 import type { ProviderConfig, ProvidersFile } from './provider-config.js'
 import { migrateLegacyVoiceSettings } from './voice-settings-migration.js'
@@ -105,6 +105,38 @@ describe('migrateLegacyVoiceSettings', () => {
     expect(settings.stt).toEqual({ enabled: true, model: `${deepgram[0].id}:nova-2`, language: 'de' })
     expect(settings.tts).toEqual({ enabled: false, model: `${deepgram[0].id}:aura-2-julius-en` })
     expect(loadProviders().activeProvider).toBe('oa')
+  })
+
+  it('keeps a plaintext 40-char hex Deepgram key that isEncrypted() misclassifies', () => {
+    const hexKey = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
+    expect(hexKey).toHaveLength(40)
+    expect(isEncrypted(hexKey)).toBe(true)
+    writeSettings({
+      stt: { enabled: true, provider: 'deepgram', deepgramModel: 'nova-2', deepgramLanguage: 'de', deepgramApiKey: hexKey },
+      tts: { enabled: true, provider: 'deepgram', deepgramModel: 'aura-2-julius-en', deepgramApiKey: hexKey },
+    })
+
+    migrateLegacyVoiceSettings(silent)
+
+    const deepgram = loadProvidersDecrypted().providers.filter(p => p.providerType === 'deepgram')
+    expect(deepgram).toHaveLength(1)
+    expect(deepgram[0]).toMatchObject({ apiKey: hexKey, enabledSttModels: ['nova-2'], enabledTtsModels: ['aura-2-julius-en'] })
+    expect(readSettings().stt).toEqual({ enabled: true, model: `${deepgram[0].id}:nova-2`, language: 'de' })
+    expect(readSettings().tts).toEqual({ enabled: true, model: `${deepgram[0].id}:aura-2-julius-en` })
+  })
+
+  it('decrypts a genuinely encrypted Deepgram key', () => {
+    const plaintext = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
+    const encrypted = encrypt(plaintext)
+    expect(encrypted).not.toBe(plaintext)
+    writeSettings({ tts: { enabled: true, provider: 'deepgram', deepgramApiKey: encrypted } })
+
+    migrateLegacyVoiceSettings(silent)
+
+    const deepgram = loadProvidersDecrypted().providers.filter(p => p.providerType === 'deepgram')
+    expect(deepgram).toHaveLength(1)
+    expect(deepgram[0].apiKey).toBe(plaintext)
+    expect(readSettings().tts).toEqual({ enabled: true, model: `${deepgram[0].id}:aura-2-thalia-en` })
   })
 
   it('drops Ollama STT and a Whisper URL that is no OpenAI-compatible endpoint without a model', () => {
