@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { encrypt } from './encryption.js'
-import { loadProviders, loadProvidersDecrypted } from './provider-config.js'
+import { getActiveProvider, loadProviders, loadProvidersDecrypted } from './provider-config.js'
 import type { ProviderConfig, ProvidersFile } from './provider-config.js'
 import { migrateLegacyVoiceSettings } from './voice-settings-migration.js'
 
@@ -133,6 +133,20 @@ describe('migrateLegacyVoiceSettings', () => {
     expect(whisper[0]).toMatchObject({ name: 'Whisper', baseUrl: 'http://whisper:8000/v1', enabledModels: [] })
     expect(whisper[0].enabledSttModels).toBeUndefined()
     expect(readSettings().stt).toEqual({ enabled: true })
+  })
+
+  it('does not make a migrated voice provider the chat provider of an empty setup', () => {
+    writeProviders({ providers: [] })
+    writeSettings({
+      stt: { enabled: true, provider: 'whisper-url', whisperUrl: 'http://whisper:8000/v1/audio/transcriptions' },
+      tts: { enabled: true, provider: 'deepgram', deepgramApiKey: 'dg-secret' },
+    })
+
+    migrateLegacyVoiceSettings(silent)
+
+    expect(loadProviders().providers).toHaveLength(2)
+    expect(loadProviders().activeProvider).toBeUndefined()
+    expect(getActiveProvider()?.providerType).not.toBe('deepgram')
   })
 
   it('leaves untouched legacy defaults without adding voice models', () => {

@@ -4,6 +4,7 @@ import {
   loadProvidersDecrypted,
   loadProvidersMasked,
   getActiveProvider,
+  getActiveModelId,
   getFallbackProvider,
   setFallbackProvider,
   clearFallbackProvider,
@@ -966,6 +967,57 @@ describe('provider CRUD', () => {
     setupEmpty()
     const p1 = addProvider({ name: 'first', providerType: 'openai', apiKey: 'sk-1', enabledModels: ['gpt-4o'] })
     expect(() => deleteProvider(p1.id)).toThrow('Cannot delete the active provider')
+  })
+
+  function writeProvidersFile(content: object): void {
+    fs.writeFileSync(path.join(tmpDir, 'config', 'providers.json'), JSON.stringify(content), 'utf-8')
+  }
+
+  it('a voice-only provider never resolves as the chat provider', () => {
+    setupEmpty()
+    const deepgram = addProvider({ name: 'Deepgram', providerType: 'deepgram', apiKey: 'dg-key', enabledModels: [] })
+    expect(getActiveProvider()).toBeNull()
+    expect(getActiveModelId()).toBeNull()
+
+    const openai = addProvider({ name: 'OpenAI', providerType: 'openai', apiKey: 'sk-1', enabledModels: ['gpt-4o'] })
+
+    expect(getActiveProvider()?.id).toBe(openai.id)
+    expect(getActiveModelId()).toBe('gpt-4o')
+    expect(loadProviders().activeProvider).toBe(openai.id)
+    expect(getActiveProvider()?.id).not.toBe(deepgram.id)
+  })
+
+  it('resets a stored voice-only active provider and resolves the first chat provider', () => {
+    setupEmpty()
+    writeProvidersFile({
+      providers: [
+        { id: 'dg', name: 'Deepgram', type: 'deepgram', providerType: 'deepgram', provider: 'deepgram', baseUrl: 'https://api.deepgram.com', apiKey: '', enabledModels: [] },
+        { id: 'oa', name: 'OpenAI', type: 'openai-completions', providerType: 'openai', provider: 'openai', baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-1', enabledModels: ['gpt-4o'] },
+      ],
+      activeProvider: 'dg',
+      activeModel: '',
+      fallbackProvider: 'dg',
+    })
+
+    expect(getActiveProvider()?.id).toBe('oa')
+    expect(getActiveModelId()).toBe('gpt-4o')
+    const file = loadProviders()
+    expect(file.activeProvider).toBeUndefined()
+    expect(file.activeModel).toBeUndefined()
+    expect(file.fallbackProvider).toBeUndefined()
+  })
+
+  it('activates a chat provider added after a provider without chat models', () => {
+    setupEmpty()
+    const whisper = addProvider({ name: 'Whisper', providerType: 'custom-openai-completions', baseUrl: 'http://whisper:8000/v1', apiKey: '', enabledModels: [] })
+    expect(loadProviders().activeProvider).toBeUndefined()
+    expect(getActiveProvider()?.id).toBe(whisper.id)
+
+    const openai = addProvider({ name: 'OpenAI', providerType: 'openai', apiKey: 'sk-1', enabledModels: ['gpt-4o'] })
+
+    expect(loadProviders().activeProvider).toBe(openai.id)
+    expect(getActiveProvider()?.id).toBe(openai.id)
+    expect(getActiveModelId()).toBe('gpt-4o')
   })
 
   it('setActiveProvider changes active provider', () => {
