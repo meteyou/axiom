@@ -207,6 +207,7 @@ The PUT endpoint also accepts `healthMonitor.intervalMinutes` and migrates it to
 | `memoryConsolidation.runAtHour`  | `number`  | `3`     | `0–23` (local time, see `timezone`) |
 | `memoryConsolidation.lookbackDays` | `number` | `3`     | integer `1–30` |
 | `memoryConsolidation.providerId` | `string`  | `""`    | string (`""` = active provider) |
+| `memoryConsolidation.snapshotRetention` | `number` | `7` | integer `1–90`; snapshots kept in `/data/memory-snapshots/` |
 
 Companion file: `/data/config/CONSOLIDATION.md` — the prompt for the consolidator. See [Instructions → CONSOLIDATION.md](../concepts/instructions#consolidation-md).
 
@@ -418,7 +419,7 @@ This is the literal file written by `ensureConfigTemplates()`:
     "claude-3-5-sonnet-20241022": { "input": 3,    "output": 15 },
     "claude-sonnet-4-20250514":   { "input": 3,    "output": 15 }
   },
-  "memoryConsolidation": { "enabled": true, "runAtHour": 3, "lookbackDays": 3, "providerId": "" },
+  "memoryConsolidation": { "enabled": true, "runAtHour": 3, "lookbackDays": 3, "providerId": "", "snapshotRetention": 7 },
   "factExtraction":      { "enabled": true, "providerId": "", "minSessionMessages": 3 },
   "agentHeartbeat": {
     "enabled": false,

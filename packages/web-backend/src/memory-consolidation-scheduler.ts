@@ -22,6 +22,8 @@ import {
   getBootstrapAdminId,
   getMemoryDir,
   getAgentSkillsDir,
+  createMemorySnapshot,
+  DEFAULT_MEMORY_SNAPSHOT_RETENTION,
 } from '@axiom/core'
 
 export interface ConsolidationSettings {
@@ -32,6 +34,8 @@ export interface ConsolidationSettings {
   lookbackDays: number
   /** Provider ID to use. Empty string or 'default' = use active provider */
   providerId: string
+  /** Number of pre-consolidation memory snapshots to keep. Default: 7 */
+  snapshotRetention: number
 }
 
 export const DEFAULT_CONSOLIDATION_SETTINGS: ConsolidationSettings = {
@@ -39,6 +43,7 @@ export const DEFAULT_CONSOLIDATION_SETTINGS: ConsolidationSettings = {
   runAtHour: 3,
   lookbackDays: 3,
   providerId: '',
+  snapshotRetention: DEFAULT_MEMORY_SNAPSHOT_RETENTION,
 }
 
 /**
@@ -385,6 +390,17 @@ export class MemoryConsolidationScheduler {
       // ponytail: weekly compaction pinned to Sunday; make it configurable if that ever matters
       const compactionRun = !scheduled || new Date().getDay() === 0
       const { runs, otherUserProfiles } = this.planRuns()
+
+      let snapshotDir: string
+      try {
+        snapshotDir = createMemorySnapshot({
+          retention: this.settings.snapshotRetention,
+          extraFiles: otherUserProfiles,
+        }).dir
+      } catch (err) {
+        return this.abortWithoutSnapshot(sessionId, startTime, err as Error)
+      }
+      console.log(`[axiom] Memory snapshot written to ${snapshotDir}`)
       const results: Array<{ label: string | null; result: ConsolidationResult }> = []
       const taskIds: string[] = []
       const failedRuns: string[] = []
@@ -450,6 +466,7 @@ export class MemoryConsolidationScheduler {
           provider: provider.provider,
           model: getProviderDefaultModel(provider),
           taskId: task.id,
+          snapshotDir,
         }),
         output: JSON.stringify({
           updated: result.updated,
@@ -495,6 +512,25 @@ export class MemoryConsolidationScheduler {
       console.error('[axiom] Memory consolidation failed:', err)
       return result
     }
+  }
+
+  private abortWithoutSnapshot(sessionId: string, startTime: number, err: Error): ConsolidationResult {
+    const reason = `Memory snapshot failed, consolidation aborted: ${err.message}`
+    const result: ConsolidationResult = { updated: false, dailyFilesReviewed: 0, reason }
+    this.lastRun = new Date().toISOString()
+    this.lastResult = result
+
+    logToolCall(this.db, {
+      sessionId,
+      toolName: 'memory_consolidation',
+      input: JSON.stringify({ lookbackDays: this.settings.lookbackDays }),
+      output: JSON.stringify({ error: reason }),
+      durationMs: Date.now() - startTime,
+      status: 'error',
+    })
+
+    console.error('[axiom] Memory consolidation aborted: snapshot failed:', err)
+    return result
   }
 
   private createRunSession(scope: UserScope | null): string {

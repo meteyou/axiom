@@ -778,6 +778,19 @@
                     </div>
 
                     <div class="flex flex-col gap-2">
+                      <Label for="consolidation-snapshots">{{ $t('settings.consolidationSnapshotRetention') }}</Label>
+                      <Input
+                        id="consolidation-snapshots"
+                        v-model.number="form.memoryConsolidation.snapshotRetention"
+                        type="number"
+                        min="1"
+                        max="90"
+                        class="w-full"
+                      />
+                      <p class="text-xs text-muted-foreground">{{ $t('settings.consolidationSnapshotRetentionHint') }}</p>
+                    </div>
+
+                    <div class="flex flex-col gap-2">
                       <Label for="consolidation-provider">{{ $t('settings.consolidationProvider') }}</Label>
                       <Select v-model="form.memoryConsolidation.providerId">
                         <SelectTrigger id="consolidation-provider">

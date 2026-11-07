@@ -42,6 +42,7 @@ function buildConsolidationResponse(settingsRaw: Record<string, unknown>) {
     runAtHour: memoryConsolidation.runAtHour ?? 3,
     lookbackDays: memoryConsolidation.lookbackDays ?? 3,
     providerId: memoryConsolidation.providerId ?? '',
+    snapshotRetention: memoryConsolidation.snapshotRetention ?? 7,
   }
 }
 

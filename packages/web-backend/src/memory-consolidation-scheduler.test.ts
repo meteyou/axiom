@@ -302,6 +302,77 @@ describe('MemoryConsolidationScheduler', () => {
     })
   })
 
+  describe('pre-consolidation memory snapshot', () => {
+    function completeSilently(taskStore: TaskStore, taskRuntime: ReturnType<typeof createMockTaskRuntime>) {
+      taskRuntime.setTaskCompletionCallback((taskId: string) => {
+        taskStore.update(taskId, { status: 'completed', resultStatus: 'silent' })
+      })
+    }
+
+    function snapshotDirs(): string[] {
+      const dir = path.join(tempDataDir, 'memory-snapshots')
+      return fs.existsSync(dir) ? fs.readdirSync(dir).sort() : []
+    }
+
+    it('snapshots memory before the consolidation task starts', async () => {
+      fs.mkdirSync(path.join(tempDataDir, 'memory', 'wiki'), { recursive: true })
+      fs.writeFileSync(path.join(tempDataDir, 'memory', 'MEMORY.md'), 'before consolidation', 'utf-8')
+      fs.writeFileSync(path.join(tempDataDir, 'memory', 'wiki', 'index.md'), 'wiki before', 'utf-8')
+      const taskStore = new TaskStore(db)
+      const taskRuntime = createMockTaskRuntime(taskStore)
+      let snapshotsAtStart: string[] = []
+      taskRuntime.start.mockImplementation(async (task: Task) => {
+        snapshotsAtStart = snapshotDirs()
+        fs.writeFileSync(path.join(tempDataDir, 'memory', 'MEMORY.md'), 'after consolidation', 'utf-8')
+        taskStore.update(task.id, { status: 'completed', resultStatus: 'completed' })
+        return task.id
+      })
+      const scheduler = new MemoryConsolidationScheduler({ db, taskRuntime, getDefaultProvider: () => makeProvider() })
+
+      await scheduler.runNow()
+
+      expect(snapshotsAtStart).toHaveLength(1)
+      const snapshotDir = path.join(tempDataDir, 'memory-snapshots', snapshotsAtStart[0])
+      expect(fs.readFileSync(path.join(snapshotDir, 'memory', 'MEMORY.md'), 'utf-8')).toBe('before consolidation')
+      expect(fs.readFileSync(path.join(snapshotDir, 'memory', 'wiki', 'index.md'), 'utf-8')).toBe('wiki before')
+      const logRow = db.prepare("SELECT input FROM tool_calls WHERE tool_name = 'memory_consolidation'").get() as { input: string }
+      expect(JSON.parse(logRow.input).snapshotDir).toBe(snapshotDir)
+    }, 15000)
+
+    it('aborts the run without starting a task when the snapshot fails', async () => {
+      fs.writeFileSync(path.join(tempDataDir, 'memory-snapshots'), 'blocks the snapshot directory', 'utf-8')
+      const taskStore = new TaskStore(db)
+      const taskRuntime = createMockTaskRuntime(taskStore)
+      completeSilently(taskStore, taskRuntime)
+      const scheduler = new MemoryConsolidationScheduler({ db, taskRuntime, getDefaultProvider: () => makeProvider() })
+
+      const result = await scheduler.runNow()
+
+      expect(result.updated).toBe(false)
+      expect(result.reason).toContain('Memory snapshot failed, consolidation aborted')
+      expect(taskRuntime.create).not.toHaveBeenCalled()
+      expect(taskRuntime.start).not.toHaveBeenCalled()
+      expect(scheduler.getSnapshot().lastResult?.reason).toContain('Memory snapshot failed')
+      const logRow = db.prepare("SELECT status, output FROM tool_calls WHERE tool_name = 'memory_consolidation'").get() as { status: string; output: string }
+      expect(logRow.status).toBe('error')
+      expect(JSON.parse(logRow.output).error).toContain('Memory snapshot failed')
+    })
+
+    it('prunes snapshots to the configured retention', async () => {
+      writeConfig('settings.json', { memoryConsolidation: { enabled: false, snapshotRetention: 2 } })
+      const taskStore = new TaskStore(db)
+      const taskRuntime = createMockTaskRuntime(taskStore)
+      completeSilently(taskStore, taskRuntime)
+      const scheduler = new MemoryConsolidationScheduler({ db, taskRuntime, getDefaultProvider: () => makeProvider() })
+      scheduler.start()
+
+      for (let run = 0; run < 3; run++) await scheduler.runNow()
+      scheduler.stop()
+
+      expect(snapshotDirs()).toHaveLength(2)
+    }, 30000)
+  })
+
   describe('setters', () => {
     it('setTaskRuntime updates the taskRuntime reference', () => {
       const scheduler = new MemoryConsolidationScheduler({ db })
@@ -327,6 +398,7 @@ describe('MemoryConsolidationScheduler multi-user', () => {
     const bobId = addUser('bob')
     addUser('carol')
     writeDaily(path.join(tempDataDir, 'users', 'bob', 'daily'), 'Bob likes tea')
+    fs.writeFileSync(path.join(tempDataDir, 'users', 'bob', 'PROFILE.md'), 'Bob profile', 'utf-8')
 
     const taskStore = new TaskStore(db)
     const taskRuntime = createMockTaskRuntime(taskStore)
@@ -337,6 +409,8 @@ describe('MemoryConsolidationScheduler multi-user', () => {
 
     await scheduler.runNow()
 
+    const [snapshotName] = fs.readdirSync(path.join(tempDataDir, 'memory-snapshots'))
+    expect(fs.readFileSync(path.join(tempDataDir, 'memory-snapshots', snapshotName, 'users', 'bob', 'PROFILE.md'), 'utf-8')).toBe('Bob profile')
     expect(taskRuntime.startedTasks).toHaveLength(2)
     const [userRun, adminRun] = taskRuntime.startedTasks.map(s => s.task)
     expect(userRun.ownerUserId).toBe(bobId)

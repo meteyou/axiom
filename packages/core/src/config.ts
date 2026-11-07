@@ -78,6 +78,7 @@ const TEMPLATES: Record<string, object> = {
       runAtHour: 3,
       lookbackDays: 3,
       providerId: '',
+      snapshotRetention: 7,
     },
     factExtraction: {
       enabled: true,

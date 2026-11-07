@@ -59,6 +59,7 @@ export interface MemoryConsolidationSettingsContract {
   runAtHour: number
   lookbackDays: number
   providerId: string
+  snapshotRetention: number
 }
 
 export interface FactExtractionSettingsContract {
@@ -392,6 +393,7 @@ export const DEFAULT_SETTINGS_CONTRACT: SettingsContract = {
     runAtHour: 3,
     lookbackDays: 3,
     providerId: '',
+    snapshotRetention: 7,
   },
   factExtraction: {
     enabled: true,
@@ -608,6 +610,8 @@ export function normalizeSettingsContract(input: DeepPartial<SettingsContract> |
       runAtHour: source.memoryConsolidation?.runAtHour ?? DEFAULT_SETTINGS_CONTRACT.memoryConsolidation.runAtHour,
       lookbackDays: source.memoryConsolidation?.lookbackDays ?? DEFAULT_SETTINGS_CONTRACT.memoryConsolidation.lookbackDays,
       providerId: source.memoryConsolidation?.providerId ?? DEFAULT_SETTINGS_CONTRACT.memoryConsolidation.providerId,
+      snapshotRetention:
+        source.memoryConsolidation?.snapshotRetention ?? DEFAULT_SETTINGS_CONTRACT.memoryConsolidation.snapshotRetention,
     },
     factExtraction: {
       enabled: source.factExtraction?.enabled ?? DEFAULT_SETTINGS_CONTRACT.factExtraction.enabled,

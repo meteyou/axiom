@@ -73,6 +73,7 @@ export { getUserProfileTemplate } from './memory.js'
 export { getUserProfileDir, ensureUserProfile, readUserProfile, ensureWikiDir, ensureProjectsDir, parseProjectAliases, listWikiPages, listProjectNotes } from './memory.js'
 export type { SkillPromptEntry } from './memory.js'
 export type { ConsolidationResult } from './memory-consolidation.js'
+export { createMemorySnapshot, DEFAULT_MEMORY_SNAPSHOT_RETENTION } from './memory-snapshot.js'
 export { resolveUserScope, resolveUserPaths, getBootstrapAdminId, isMultiUser, checkUsernameAvailable, createUserFolders, markWorkspaceProvisioned, migrateLegacyUserProfiles } from './user-scope.js'
 export type { UserScope, UserRole, UserPaths } from './user-scope.js'
 export {

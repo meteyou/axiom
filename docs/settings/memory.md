@@ -87,6 +87,14 @@ How many days of daily notes the job reads and condenses on each run. Default: `
 { "memoryConsolidation": { "lookbackDays": 3 } }
 ```
 
+### Snapshots to keep
+
+Before every run, `MEMORY.md`, user profiles, and the wiki are copied to `/data/memory-snapshots/<timestamp>/`, so a bad consolidation can be undone by hand. This setting is the number of snapshots kept; older ones are deleted after each new snapshot. Default: `7`. Range: 1 – 90. If the snapshot fails, the run is aborted. See [Memory → Snapshots before each run](../concepts/memory#snapshots-before-each-run).
+
+```json
+{ "memoryConsolidation": { "snapshotRetention": 7 } }
+```
+
 ### Consolidation provider
 
 Dedicated provider for consolidation. Defaults to the active chat provider; set something cheaper if consolidation runs often.
