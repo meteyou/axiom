@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { PI_AI_VERSION } from '@earendil-works/pi-ai'
 import type { Api, Model } from '@earendil-works/pi-ai'
 import { getBuiltinModelDataGeneratedAt, getBuiltinModels } from '@earendil-works/pi-ai/providers/all'
 import type { BuiltinProvider } from '@earendil-works/pi-ai/providers/all'
@@ -15,14 +16,6 @@ import { SUPPORTED_APIS } from './pi-models.js'
  */
 
 const PI_CATALOG_BASE_URL = 'https://pi.dev'
-
-/**
- * pi.dev keeps one catalog per minimum pi version and answers requests without
- * `pi-version` with the newest one, which may need a newer pi-ai than Axiom
- * ships. Must match the installed `@earendil-works/pi-ai` (locked by
- * `pi-catalog.test.ts`).
- */
-const PI_AI_VERSION = '1.5.0'
 
 const CATALOG_FILE = 'pi-catalog.json'
 const FETCH_TIMEOUT_MS = 15_000
@@ -164,6 +157,7 @@ async function fetchProviderCatalog(
 ): Promise<{ notModified: true } | { notModified: false; models: Model<Api>[]; etag?: string; lastModified?: number }> {
   const url = new URL(`/api/models/providers/${encodeURIComponent(piProvider)}`, PI_CATALOG_BASE_URL)
   url.searchParams.set('types', 'chat')
+  // Without pi-version, pi.dev serves the newest catalog, which may need a newer pi-ai than the installed one.
   url.searchParams.set('pi-version', PI_AI_VERSION)
   const response = await fetch(url, {
     headers: {
