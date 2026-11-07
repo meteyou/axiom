@@ -58,7 +58,6 @@ const SYSTEM_PROMPT_SECTION_LABELS = {
   available_skills: 'Skills',
   paths: 'Paths',
   language: 'Language',
-  channel_context: 'Channel context',
   other: 'Other',
 } as const
 

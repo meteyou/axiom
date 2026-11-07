@@ -164,6 +164,37 @@ describe('AgentRuntime context compaction', () => {
     expect(findSummaryMessage(agent.state.messages)).not.toBeNull()
   })
 
+  it('announces the current channel again after compaction rebuilt the snapshot', async () => {
+    const { runtime } = setup([summary])
+    expect(runtime.getTurnContext('telegram').prefix).toContain('through Telegram')
+    expect(runtime.getTurnContext('telegram').prefix).toBeNull()
+
+    await drain(runtime.compact(undefined, 'session-3b'))
+
+    expect(runtime.getTurnContext('telegram').prefix).toContain('through Telegram')
+  })
+
+  it('still announces the switch back to web after compaction during a Telegram conversation', async () => {
+    const { runtime } = setup([summary])
+    runtime.getTurnContext('telegram')
+
+    await drain(runtime.compact(undefined, 'session-3c'))
+
+    expect(runtime.getTurnContext('web').prefix).toContain('switched from Telegram')
+    expect(runtime.getTurnContext('web').prefix).toBeNull()
+  })
+
+  it('does not repeat the channel prefix when the announcing prompt itself triggered compaction', async () => {
+    const { runtime, agent } = setup([summary, () => fauxAssistantMessage('answer')])
+    agent.state.model = { ...agent.state.model, contextWindow: 10_000 }
+    const context = runtime.getTurnContext('telegram')
+
+    await drain(runtime.streamPrompt(`${context.prefix}\n\nshort question`, 'session-3d'))
+
+    expect(findSummaryMessage(agent.state.messages)).not.toBeNull()
+    expect(runtime.getTurnContext('telegram').prefix).toBeNull()
+  })
+
   it('leaves the transcript untouched when the summary call is aborted', async () => {
     let runtimeRef: ReturnType<typeof setup>['runtime'] | null = null
     const { runtime, agent } = setup([async () => {

@@ -91,7 +91,7 @@ describe('background task tools rebuild on email account change', () => {
     composition.db.prepare("INSERT INTO users (id, username, password_hash, role) VALUES (1, 'admin', 'x', 'admin')").run()
     const ownerId = 1
 
-    expect(composition.getBackgroundTaskToolNames()).not.toContain('email_list')
+    expect(composition.getBackgroundTaskToolNames()).not.toContain('email_read')
 
     createEmailAccount({
       name: 'Test',
@@ -107,9 +107,9 @@ describe('background task tools rebuild on email account change', () => {
     composition.onActiveProviderChanged()
 
     const toolNames = composition.getBackgroundTaskToolNames()
-    expect(toolNames).toContain('email_list')
+    expect(toolNames).toContain('email_read')
     expect(toolNames).toContain('email_send')
-    expect(toolNames).toContain('create_task')
+    expect(toolNames).toContain('task_write')
   })
 
   it('never lists codemode among the background task tools, even when the task switch is on', async () => {

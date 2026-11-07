@@ -1,5 +1,6 @@
 import { currentToolName } from '@axiom/core/contracts'
 import type { LogEntry } from '~/composables/useLogs'
+import { parseInputParams } from '~/utils/logDataParsing'
 
 /**
  * Visual mapping helpers for log entries.
@@ -10,15 +11,23 @@ import type { LogEntry } from '~/composables/useLogs'
 export function useLogDisplay() {
   const { t } = useI18n()
   const { isSkillLoad, getSkillName, extractSkillContent } = useSkillDetection()
+  const { formatToolName } = useToolLabels()
 
   /** Whether this entry represents a SKILL.md load */
   function isEntrySkillLoad(entry: LogEntry): boolean {
     return isSkillLoad(entry.toolName, entry.input)
   }
 
-  /** User-facing tool name: "Load Skill" for skill loads, otherwise the current name of renamed tools */
-  function entryDisplayName(entry: LogEntry): string {
+  /** Normalized name that drives badge colour and icon: "Load Skill" for skill loads, otherwise the current tool name */
+  function entryBadgeName(entry: LogEntry): string {
     return isEntrySkillLoad(entry) ? 'Load Skill' : currentToolName(entry.toolName)
+  }
+
+  /** User-facing, translated label of the entry's tool call */
+  function entryDisplayName(entry: LogEntry): string {
+    if (isEntrySkillLoad(entry)) return 'Load Skill'
+    // The stored input may be truncated JSON; the parsed params still carry `action`/`type` for grouped tools.
+    return formatToolName(entry.toolName, parseInputParams(entry.input))
   }
 
   /**
@@ -78,6 +87,7 @@ export function useLogDisplay() {
 
   return {
     isEntrySkillLoad,
+    entryBadgeName,
     entryDisplayName,
     isTaskSession,
     getSourceLabel,

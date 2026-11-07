@@ -74,9 +74,10 @@ const props = withDefaults(defineProps<{
 })
 
 const { t } = useI18n()
+const { translate } = useToolLabels()
 const { isDark } = useTheme()
 
-const rows = computed(() => toCodemodeCallRows(props.nestedCalls))
+const rows = computed(() => toCodemodeCallRows(props.nestedCalls, translate))
 
 const scriptHtml = ref('')
 let highlightSeq = 0

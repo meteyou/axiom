@@ -46,7 +46,11 @@ Each tier has a clear role; the next sections walk through them.
 
 The agent's long-term scratchpad: learned lessons, recurring patterns, technical decisions, corrections. Included in every prompt, so keep it short and curated.
 
-The agent edits it directly with `edit_file` / `write_file` whenever it learns something durable. The nightly consolidation job also promotes content here from daily notes.
+::: tip Edits apply from the next session
+Memory files are read when the [system prompt](./system-prompt#built-once-per-session) is built — once per session, and again after compaction. When you (or the agent) edit `SOUL.md`, `MEMORY.md` or a profile, the running session keeps its prompt; run `/new` to load the new content.
+:::
+
+The agent edits it directly with `file_edit` / `file_write` whenever it learns something durable. The nightly consolidation job also promotes content here from daily notes.
 
 ### Daily notes - `daily/<date>.md`
 
@@ -62,7 +66,7 @@ The agent maintains the file as it learns about the user.
 
 ### Wiki - `wiki/*.md`
 
-The agent's own structured knowledge base: project notes, architecture decisions, key dependencies, evergreen concepts. Pages have an optional YAML frontmatter (`aliases: [Foo, foo-thing]`). They are **not** listed in the system prompt. Instead, a full-text index (path, title, aliases, body) is kept in SQLite and refreshed automatically before every search: `memory_search` returns matching facts and wiki pages with path, title, aliases and a snippet, and the agent opens relevant pages with `file_read`.
+The agent's own structured knowledge base: project notes, architecture decisions, key dependencies, evergreen concepts. Pages have an optional YAML frontmatter (`aliases: [Foo, foo-thing]`). They are **not** listed in the system prompt. Instead, a full-text index (path, title, aliases, body) is kept in SQLite and refreshed automatically before every search — new, changed and deleted pages are detected by their modification time, so a page the agent or consolidation just wrote is findable right away. `memory_search` returns matching facts and wiki pages with path, title, aliases and a snippet, and the agent opens relevant pages with `file_read`.
 
 The wiki is shared across all users, so sensitive personal data (health, finances, relationships) belongs in the user profile, not in a wiki page.
 
@@ -80,7 +84,7 @@ Each file follows `<yyyy-mm-dd>-<slug>.md` with YAML frontmatter (`source_type`,
 
 Not a file — a small SQLite-backed store of atomic, sentence-sized facts ("User prefers `npm` over `yarn`", "The project's PostgreSQL runs on port 5433").
 
-The agent doesn't see this table in its prompt. Instead, it queries it on demand via the **`search_memories`** tool, which supports FTS5 syntax (word matching, `prefix*`, phrase queries, boolean operators). This lets long-term memory grow far beyond what fits in a single prompt while keeping the prompt small.
+The agent doesn't see this table in its prompt. Instead, it queries it on demand via the **`memory_search`** tool, which supports FTS5 syntax (word matching, `prefix*`, phrase queries, boolean operators). The same call also searches the [wiki](#wiki-wiki-md), so the agent has one place to look for past knowledge and gets two result groups back: facts and wiki pages. This lets long-term memory grow far beyond what fits in a single prompt while keeping the prompt small.
 
 Facts are written automatically by the [session-end fact-extraction job](#session-end). They're per-user and timestamped, so the agent can answer "what did we decide about X?" even months later.
 
@@ -91,7 +95,7 @@ When several people share one instance, memory is split by privacy:
 - **Private per user:** profile, daily notes (session summaries), facts, chat history and workspace. The first account keeps the paths above; every other user gets `/data/users/<username>/` (`PROFILE.md`, `HEARTBEAT.md`, `daily/`) and `/workspace/<username>/`.
 - **Shared:** `MEMORY.md`, the wiki, sources and skills. They hold general knowledge only. The agent keeps personal information out of them and writes it to the user's profile.
 
-A session summary always lands in the daily folder of the session's owner and never appears in another user's prompt. `read_chat_history` and `search_memories` only return the caller's own conversations and facts.
+A session summary always lands in the daily folder of the session's owner and never appears in another user's prompt. `chat_history_read` and `memory_search` only return the caller's own conversations and facts.
 
 ## Session end
 
@@ -107,7 +111,7 @@ The summary provider defaults to the active chat provider; most setups override 
 
 In parallel, the transcript is fed to an extraction model that pulls out atomic, sentence-sized facts and writes them into the `memories` table. Sessions shorter than `minSessionMessages` are skipped — there's nothing worth extracting from a two-line exchange.
 
-Facts are deduplicated against existing entries (token-overlap heuristic) and capped at 10 per session. The agent retrieves them later via [`search_memories`](./tools).
+Facts are deduplicated against existing entries (token-overlap heuristic) and capped at 10 per session. The agent retrieves them later via [`memory_search`](./tools).
 
 Tune under [Settings → Memory → Fact extraction](./../settings/memory#fact-extraction).
 
@@ -124,6 +128,6 @@ Schedule, lookback window, and provider are configured under [Settings → Memor
 ## See also
 
 - [Agent Instructions](./instructions) — the user-editable `AGENTS.md`, `CONSOLIDATION.md`, and `HEARTBEAT.md` config files. They shape *behavior*, not memory.
-- [System Prompt](./system-prompt) — how the memory tiers above are composed into the live prompt the model sees on every turn.
+- [System Prompt](./system-prompt) — how the memory tiers above are composed into the prompt, built once per session.
 - [Settings → Memory](./../settings/memory) — session timeout, fact extraction, and consolidation schedule.
-- [Built-in Tools → `search_memories`](./tools) — the tool the agent uses to query the fact store.
+- [Built-in Tools → `memory_search`](./tools) — the tool the agent uses to query the fact store and the wiki.

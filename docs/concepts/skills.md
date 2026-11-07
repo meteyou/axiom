@@ -12,10 +12,10 @@ It's worth nailing this down up front because it confuses people:
 |---|---|---|
 | Form | TypeScript functions registered in code | Markdown files on disk |
 | Invocation | The model emits a tool call | The agent reads `SKILL.md` and follows the instructions inside |
-| Purpose | Atomic operations (`read_file`, `web_fetch`, `shell`, …) | Workflows, conventions, recipes that *use* tools |
+| Purpose | Atomic operations (`file_read`, `web_fetch`, `shell`, …) | Workflows, conventions, recipes that *use* tools |
 | Update | Ship a new image | Drop in a new SKILL.md; effective on the next message |
 
-Tools are what the agent *can do*. Skills are what the agent *knows how to do well*. A skill like `wiki` doesn't add new operations — it ties together `list_files`, `read_file`, `edit_file`, and `web_fetch` into the canonical "ingest a source, distill it, cross-link it" workflow with all the project-specific conventions baked in.
+Tools are what the agent *can do*. Skills are what the agent *knows how to do well*. A skill like `wiki` doesn't add new operations — it ties together `file_list`, `file_read`, `file_edit`, and `web_fetch` into the canonical "ingest a source, distill it, cross-link it" workflow with all the project-specific conventions baked in.
 
 See [Built-in Tools](./tools) for the tool side of the house.
 
@@ -23,7 +23,7 @@ See [Built-in Tools](./tools) for the tool side of the house.
 
 Two reasons.
 
-**Progressive disclosure.** Stuffing every workflow the agent might ever need into the system prompt would be wasteful — most of it is dead weight on most turns. Skills let the agent carry only a one-line *signpost* per capability and load the full instructions on demand. The trade-off is one extra `read_file` call when a skill is actually needed; the upside is that adding capabilities doesn't grow per-turn token cost.
+**Progressive disclosure.** Stuffing every workflow the agent might ever need into the system prompt would be wasteful — most of it is dead weight on most turns. Skills let the agent carry only a one-line *signpost* per capability and load the full instructions on demand. The trade-off is one extra `file_read` call when a skill is actually needed; the upside is that adding capabilities doesn't grow per-turn token cost.
 
 **Extensibility without a code change.** Anyone — the user, the community, the agent itself — can add a new skill by writing a Markdown file. No build step, no restart, no fork of Axiom. The next message picks it up.
 
@@ -73,7 +73,7 @@ The wiki lives at `/data/memory/wiki/`. …
 - **`version`** — semver string (`1.2.0`). Used by the entrypoint to decide whether to update a built-in skill on container start. Missing/empty is treated as `0.0.0`. See [Built-in skill versioning](https://github.com/meteyou/axiom/blob/main/agent_docs/skill-versioning.md).
 - **`managed: false`** — opt-out flag. When present on a built-in skill, the entrypoint never overwrites it on startup, regardless of versions. Use this if you've forked the shipped wiki skill and want to keep your fork.
 - **`required_env_vars`** — array of env-var names. Missing vars don't hide the skill — they annotate it with `⚠ requires: VAR_NAME` so the agent can surface a clear error to you instead of failing silently.
-- **`requires_toolsets`** — array of tool names. If any required tool is disabled (e.g. you turned off `web_fetch`), the skill is hidden from the prompt to avoid noise.
+- **`requires_toolsets`** — array of tool names. If any required tool is disabled (e.g. you turned off `web_fetch`), the skill is hidden from the prompt to avoid noise. Old tool names from before the [tool rename](./tools#renamed-tools) (e.g. `generate_image`, `read_file`) are mapped to the new names here and in `allowed-tools`, so existing skills keep working.
 - **`platforms`** — array of `linux` / `macos` / `windows`. Inherited from the broader skill standard but rarely relevant in Axiom: the production runtime is always Linux (the Docker image), so this only matters when you run the backend directly on macOS or Windows in dev mode. If set and the current platform doesn't match, the skill is hidden.
 
 The full parser lives in [`packages/core/src/skill-parser.ts`](https://github.com/meteyou/axiom/blob/main/packages/core/src/skill-parser.ts).
@@ -84,7 +84,7 @@ Anything goes — but the agent treats the body as *instructions*, not prose. Th
 
 - Open with a one-line statement of what the skill does and what `/data` paths it operates on.
 - Break the workflow into named *operations* (`Ingest`, `Query`, `Lint`, …) with explicit step lists.
-- Show the exact tool sequence (`web_fetch → write_file → list_files → edit_file`), so the agent doesn't have to invent a workflow.
+- Show the exact tool sequence (`web_fetch → file_write → file_list → file_edit`), so the agent doesn't have to invent a workflow.
 - Use absolute paths (`/data/memory/wiki/`) — never relative.
 - End with conventions, edge cases, and "when *not* to use this skill".
 
@@ -94,15 +94,15 @@ If your skill ships its own scripts, reference them as `{baseDir}/scripts/run.sh
 
 The lifecycle of a skill on a given turn is:
 
-1. **Index injection.** When the system prompt is built, [`getAgentSkillsForPrompt`](https://github.com/meteyou/axiom/blob/main/packages/core/src/agent-skills.ts) scans the skills directory, reads every `SKILL.md`'s frontmatter, applies platform/toolset gating, sorts by `lastUsed` (most recent first), and emits the top 10 as `<available_skills>` entries — name, description, location, optional warning. See [System Prompt → layer 13](./system-prompt#_13-available-skills-installed-skills-listing).
+1. **Index injection.** When the system prompt is built — once per session, see [System Prompt → Built once per session](./system-prompt#built-once-per-session) — [`getAgentSkillsForPrompt`](https://github.com/meteyou/axiom/blob/main/packages/core/src/agent-skills.ts) scans the skills directory, reads every `SKILL.md`'s frontmatter, applies platform/toolset gating, sorts by `lastUsed` (most recent first), and emits the top 10 as `<available_skills>` entries — name, description, location, optional warning. See [System Prompt → `<available_skills>`](./system-prompt#available-skills-installed-skills-listing).
 
 2. **Routing.** The agent reads the user's request, scans the descriptions, and decides whether any skill materially matches. The system prompt explicitly tells it *"Treat this as a strong routing rule: do not answer from memory when a matching skill should be used first."*
 
-3. **Activation.** If a skill matches, the agent calls `read_file` on the `<location>/SKILL.md` path. The `read_file` tool has special handling for `SKILL.md` paths under `/data/skills/` and `/data/skills_agent/` — it auto-injects the `{baseDir}` placeholder and writes the activation timestamp into `/data/skills_agent/.usage.json`.
+3. **Activation.** If a skill matches, the agent calls `file_read` on the `<location>/SKILL.md` path. The `file_read` tool has special handling for `SKILL.md` paths under `/data/skills/` and `/data/skills_agent/` — it auto-injects the `{baseDir}` placeholder and writes the activation timestamp into `/data/skills_agent/.usage.json`.
 
 4. **Execution.** The agent follows the instructions in the body, calling whatever tools the skill prescribes.
 
-5. **Overflow.** If you have more than 10 skills installed, only the 10 most recently used appear in the prompt index. The agent gets a `list_agent_skills` tool to browse the rest on demand. See [Built-in Tools → `list_agent_skills`](./tools#memory-history).
+5. **Overflow.** If you have more than 10 skills installed, only the 10 most recently used appear in the prompt index. The agent gets a `skill_list` tool to browse the rest on demand. See [Built-in Tools → `skill_list`](./tools#memory-history).
 
 The "most recent first" ordering matters: skills you actually use stay top-of-mind in the prompt, while one-offs you installed and forgot about get demoted automatically.
 
@@ -152,11 +152,11 @@ Remove the flag later to opt back into auto-updates — the next startup will ba
 
 | Skill | Purpose |
 |---|---|
-| `wiki` | Ingest, query, and lint the personal wiki under `/data/memory/wiki/` — file naming, frontmatter aliases, the `## Sources` convention, and the full Karpathy-style ingest/query/lint operations. The system prompt explicitly tells the agent to load this skill before non-trivial wiki work. |
-| `skill-creator` | Create or update an agent skill under `/data/skills_agent/<name>/`. Carries the full format guide — frontmatter rules, naming regex, gating fields (`required_env_vars`, `requires_toolsets`, `platforms`), `{baseDir}` substitution, worked examples, common mistakes. The system prompt's `<agent_skills>` block is a thin pointer to this skill so the full guide is only paid for in tokens when the agent actually needs to create a skill. |
-| `tasks-and-cronjobs` | Use the background-execution system — background tasks (`create_task`, `resume_task`), cronjobs (`create_cronjob` & friends), and static reminders (`create_reminder`). Carries the decision flow (task vs. cronjob vs. reminder), prompt-writing conventions, `<task_injection>` handling, cron-expression cheat sheet, `attached_skills` for tasks and cronjobs, and the reminder anti-misuse contract. The system prompt's `<task_system>` block is a thin pointer to this skill plus the hard "no OS-level scheduler" safety rule and a trigger note for incoming `<task_injection>` blocks. |
-| `image-generation` | Generate and edit images with `generate_image` — briefing, writing detailed prompts, variants within the configured limit, optional self-checks, delivery via `send_file_to_user`, iterating with `input_images` instead of re-rolling, model choice from the descriptions you give each image model, quality and transparent backgrounds where supported, and cost control (estimated OpenAI costs, ChatGPT subscription limits, `provider_quota` before batch runs, spending limits on the provider's API key, never base64 in chat). Gated via `requires_toolsets: [generate_image]`, so it only appears while image generation is switched on and an image model is enabled. See [Image Generation](./image-generation). |
-| `email` | Work a mailbox well — the triage loop (`email_list` metadata first, bodies only when needed), bulk-marking newsletters read instead of reading them one by one, leaving important mail unread for the human, archiving instead of deleting, read-only account behaviour ("report, don't act"), heartbeat mail checks with notification only for important mail, and the allowlist/approval semantics of `email_send`. Gated via `requires_toolsets`, so it only appears once an email account is configured. |
+| `wiki` | Ingest, query, and lint the personal wiki under `/data/memory/wiki/` — file naming, frontmatter aliases, the `## Sources` convention, and the full Karpathy-style ingest/query/lint operations. The default `AGENTS.md` tells the agent to load this skill before non-trivial wiki work. |
+| `skill-creator` | Create or update an agent skill under `/data/skills_agent/<name>/`. Carries the full format guide — frontmatter rules, naming regex, gating fields (`required_env_vars`, `requires_toolsets`, `platforms`), `{baseDir}` substitution, worked examples, common mistakes. The skill appears in `<available_skills>` like any other, so the full guide is only paid for in tokens when the agent actually needs to create a skill. |
+| `tasks-and-cronjobs` | Use the background-execution system — background tasks (`task_read`, `task_write`), cronjobs and static reminders (`schedule_read`, `schedule_write` with `type: "task"` or `"reminder"`). Carries the decision flow (task vs. cronjob vs. reminder), prompt-writing conventions, `<task_injection>` handling, cron-expression cheat sheet, `attached_skills` for tasks and cronjobs, and the reminder anti-misuse contract. The hard-coded `<system_rules>` carry the "no OS-level scheduler" safety rule and tell the agent to load this skill when a `<task_injection>` block arrives. |
+| `image-generation` | Generate and edit images with `image_generate` — briefing, writing detailed prompts, variants within the configured limit, optional self-checks, delivery via `file_send`, iterating with `input_images` instead of re-rolling, model choice from the descriptions you give each image model, quality and transparent backgrounds where supported, and cost control (estimated OpenAI costs, ChatGPT subscription limits, `provider_quota` before batch runs, spending limits on the provider's API key, never base64 in chat). Gated via `requires_toolsets: [image_generate]`, so it only appears while image generation is switched on and an image model is enabled. See [Image Generation](./image-generation). |
+| `email` | Work a mailbox well — the triage loop (`email_read` with `action: "list"` for metadata first, bodies only when needed), bulk-marking newsletters read instead of reading them one by one, leaving important mail unread for the human, archiving instead of deleting, read-only account behaviour ("report, don't act"), heartbeat mail checks with notification only for important mail, and the allowlist/approval semantics of `email_send`. Gated via `requires_toolsets`, so it only appears once an email account is configured. |
 
 The list will grow. Anything that's a *project-defined convention for how the agent uses Axiom's own filesystem* is a candidate.
 
@@ -186,17 +186,17 @@ Skills are Markdown — they don't execute on their own. But a skill *can* tell 
 
 ## Agent-created skills
 
-The system prompt explicitly invites the agent to write its own skills:
+The default `AGENTS.md` invites the agent to write its own skills:
 
-> *"You can create your own reusable skills to extend your capabilities. … When you notice a reusable pattern across conversations, suggest creating a skill for it — but ask the user first."*
+> *"When you notice a reusable pattern across conversations, suggest creating a skill for it — but ask the user first."*
 
-When the agent agrees on a new skill with you, it calls `write_file` on `/data/skills_agent/<name>/SKILL.md` with the same frontmatter format described above. From the next message on, the new skill appears in `<available_skills>` like any other.
+When the agent agrees on a new skill with you, it loads the built-in `skill-creator` skill and calls `file_write` on `/data/skills_agent/<name>/SKILL.md` with the same frontmatter format described above. From the next session on (`/new`), the new skill appears in `<available_skills>` like any other — in the current session the agent can already read it with `file_read`.
 
 The Skills UI shows agent-created skills under a dedicated **Agent** tab — read-only, with usage timestamps and any "missing env var" warnings the runtime detected. You can't edit them through the UI; if you want to tweak one, edit the file directly via the Memory page or `/data/skills_agent/<name>/SKILL.md` on the host.
 
 ## Gating: when a skill is hidden
 
-The frontmatter gating fields are evaluated every time the system prompt is built:
+The frontmatter gating fields are evaluated every time the system prompt is built (once per session):
 
 | Field | Behavior when condition not met | Practical relevance |
 |---|---|---|
@@ -210,19 +210,14 @@ The gating logic is in [`filterAndAnnotateAgentSkills`](https://github.com/metey
 
 ## Where skills appear in the system prompt
 
-Two layers:
+One layer: **`<available_skills>`** — the *index* of currently installed skills, with agent-created skills capped at the 10 most recent. The agent reads `SKILL.md` from `<location>` on demand. The skills directory where new skills are written is listed in the `<paths>` block. See [System Prompt → `<available_skills>`](./system-prompt#available-skills-installed-skills-listing).
 
-- **`<agent_skills>`** (layer 12) — a thin pointer to where new skills live and to the built-in `skill-creator` skill that carries the full format guide. Always present as long as a skills directory is configured.
-- **`<available_skills>`** (layer 13) — the *index* of currently installed skills, capped at the 10 most recent. The agent reads `SKILL.md` from `<location>` on demand.
-
-Both are documented in [System Prompt → layer 12](./system-prompt#_12-agent-skills-skill-creation-pointer) and [layer 13](./system-prompt#_13-available-skills-installed-skills-listing).
-
-If you have more than 10 skills, the prompt also enables the `list_agent_skills` tool so the agent can browse the rest. See [Built-in Tools → `list_agent_skills`](./tools#memory-history).
+If you have more than 10 skills, the prompt also enables the `skill_list` tool so the agent can browse the rest. See [Built-in Tools → `skill_list`](./tools#memory-history).
 
 ## See also
 
 - [System Prompt](./system-prompt) — where the skill listing and creation guide sit in the prompt layout.
 - [Built-in Tools](./tools) — the operations skills compose into workflows.
 - [Memory System](./memory) — the wiki layer that the built-in `wiki` skill operates on.
-- [Tasks & Cronjobs](./tasks-and-cronjobs) — cronjobs can pin specific agent skills into their prompt deterministically via the `agent_skills` parameter.
+- [Tasks & Cronjobs](./tasks-and-cronjobs) — cronjobs can pin specific agent skills into their prompt deterministically via the `attached_skills` parameter.
 - [`agent_docs/skill-versioning.md`](https://github.com/meteyou/axiom/blob/main/agent_docs/skill-versioning.md) — the seed/update contract for built-in skills, for project maintainers.

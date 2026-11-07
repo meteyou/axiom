@@ -2133,8 +2133,7 @@ export function resolveProviderModelId(value?: string): {
 
 /**
  * Resolve a user-friendly `(provider, model)` pair into a concrete provider
- * and model id. Used by agent tools like `create_cronjob`, `edit_cronjob`,
- * and `create_task` where the user may specify any combination of:
+ * and model id. Used by agent tools like `schedule_write` and `task_write` where the user may specify any combination of:
  *
  *   - both provider + model   → validate the model is enabled for that provider
  *   - provider only           → use the provider's default model

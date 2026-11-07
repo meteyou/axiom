@@ -2,15 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { initDatabase } from './database.js'
 import type { Database } from './database.js'
 import { ScheduledTaskStore, migrateScheduledTaskOwners } from './scheduled-task-store.js'
-import {
-  createCronjobTool,
-  createReminderTool,
-  editCronjobTool,
-  getCronjobTool,
-  listCronjobsTool,
-  removeCronjobTool,
-} from './cronjob-tools.js'
-import type { CronjobToolsOptions } from './cronjob-tools.js'
+import { createScheduleReadTool, createScheduleWriteTool } from './schedule-tools.js'
+import type { ScheduleToolsOptions } from './schedule-tools.js'
 import type { TaskRuntimeScheduleBoundary } from './task-runtime.js'
 
 function buildBoundary(db: Database): TaskRuntimeScheduleBoundary {
@@ -33,12 +26,12 @@ function buildBoundary(db: Database): TaskRuntimeScheduleBoundary {
   }
 }
 
-async function run(tool: ReturnType<typeof createCronjobTool>, params: Record<string, unknown>): Promise<string> {
+async function run(tool: ReturnType<typeof createScheduleWriteTool>, params: Record<string, unknown>): Promise<string> {
   const result = await tool.execute('call', params as never)
   return (result.content[0] as { text: string }).text
 }
 
-describe('cronjob ownership', () => {
+describe('schedule ownership', () => {
   let db: Database
   let store: ScheduledTaskStore
   let boundary: TaskRuntimeScheduleBoundary
@@ -52,7 +45,7 @@ describe('cronjob ownership', () => {
 
   afterEach(() => db.close())
 
-  const optionsFor = (id: number, role: 'admin' | 'user'): CronjobToolsOptions => ({
+  const optionsFor = (id: number, role: 'admin' | 'user'): ScheduleToolsOptions => ({
     taskRuntime: boundary,
     actor: { id, role },
     getUsername: (userId) => (db.prepare('SELECT username FROM users WHERE id = ?').get(userId) as { username: string } | undefined)?.username ?? null,
@@ -76,9 +69,10 @@ describe('cronjob ownership', () => {
   })
 
   it('creates cronjobs and reminders for the acting user', async () => {
-    const created = await run(createCronjobTool(optionsFor(2, 'user')), { name: 'mine', prompt: 'p', schedule: '0 9 * * *' })
+    const write = createScheduleWriteTool(optionsFor(2, 'user'))
+    const created = await run(write, { action: 'create', name: 'mine', prompt: 'p', schedule: '0 9 * * *' })
     expect(created).toContain('created successfully')
-    await run(createReminderTool(optionsFor(2, 'user')), { name: 'ping', message: 'Stand up', schedule: '0 9 * * *' })
+    await run(write, { action: 'create', type: 'reminder', name: 'ping', prompt: 'Stand up', schedule: '0 9 * * *' })
     expect(store.list().map(j => j.ownerUserId)).toEqual([2, 2])
   })
 
@@ -92,41 +86,45 @@ describe('cronjob ownership', () => {
 
     it('hides them from regular users in every tool', async () => {
       const options = optionsFor(2, 'user')
-      const list = await run(listCronjobsTool(options), {})
+      const read = createScheduleReadTool(options)
+      const write = createScheduleWriteTool(options)
+      const list = await run(read, { action: 'list' })
       expect(list).toContain('Alice job')
       expect(list).not.toContain('Bob secret')
-      expect(await run(getCronjobTool(options), { id: bobJob })).toContain('No cronjob found')
-      expect(await run(editCronjobTool(options), { id: bobJob, enabled: false })).toContain('not found')
-      expect(await run(removeCronjobTool(options), { id: bobJob })).toContain('not found')
+      expect(await run(read, { action: 'get', id: bobJob })).toContain('No schedule found')
+      expect(await run(write, { action: 'edit', id: bobJob, enabled: false })).toContain('not found')
+      expect(await run(write, { action: 'remove', id: bobJob })).toContain('not found')
       expect(store.getById(bobJob)).not.toBeNull()
       expect(store.getById(bobJob)!.enabled).toBe(true)
     })
 
     it('shows the admin only name, owner and status', async () => {
       const options = optionsFor(1, 'admin')
-      const list = await run(listCronjobsTool(options), {})
+      const read = createScheduleReadTool(options)
+      const list = await run(read, { action: 'list' })
       expect(list).toContain('Bob secret')
       expect(list).toContain('Owner: bob')
       expect(list).not.toContain('private prompt')
-      const detail = await run(getCronjobTool(options), { id: bobJob })
+      const detail = await run(read, { action: 'get', id: bobJob })
       expect(detail).toContain('Owner: bob')
       expect(detail).not.toContain('private prompt')
-      expect(detail).not.toContain('Schedule')
+      expect(detail).not.toContain('Schedule:')
     })
 
     it('lets the admin disable and delete but not edit', async () => {
       const options = optionsFor(1, 'admin')
-      expect(await run(editCronjobTool(options), { id: bobJob, prompt: 'hijack' })).toContain('belongs to another user')
+      const write = createScheduleWriteTool(options)
+      expect(await run(write, { action: 'edit', id: bobJob, prompt: 'hijack' })).toContain('belongs to another user')
       expect(store.getById(bobJob)!.prompt).toBe('private prompt')
-      const toggled = await run(editCronjobTool(options), { id: bobJob, enabled: false })
+      const toggled = await run(write, { action: 'edit', id: bobJob, enabled: false })
       expect(toggled).toContain('updated successfully')
       expect(toggled).toContain('Owner: bob')
       expect(toggled).toContain('DISABLED')
-      expect(toggled).not.toContain('Schedule')
-      expect(toggled).not.toContain('Action')
+      expect(toggled).not.toContain('Schedule:')
+      expect(toggled).not.toContain('Type:')
       expect(toggled).not.toContain('Provider')
       expect(store.getById(bobJob)!.enabled).toBe(false)
-      expect(await run(removeCronjobTool(options), { id: bobJob })).toContain('has been deleted')
+      expect(await run(write, { action: 'remove', id: bobJob })).toContain('has been deleted')
       expect(store.getById(bobJob)).toBeNull()
     })
   })

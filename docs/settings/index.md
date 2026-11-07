@@ -17,7 +17,7 @@ The Settings page has one sidebar entry per concern. Each gets its own docs page
 | [Appearance](./appearance)           | Logo of the web UI (sidebar, login page, chat avatar, favicon).                         |
 | [Email](./email)                     | Your own IMAP/SMTP accounts for the agent, send rules, approvals and the sent log.      |
 | [Health Monitor](./health-monitor)   | Provider health checks, automatic fallback, notification toggles.                       |
-| [Image Generation](./image-generation) | Switch for `generate_image`, default image model, variant limit, output folder. |
+| [Image Generation](./image-generation) | Switch for `image_generate`, default image model, variant limit, output folder. |
 | [Memory](./memory)                   | Session timeout, memory consolidation, fact extraction.                                 |
 | [Notifications](../guide/push-notifications#enable-notifications) | Push notifications for finished chat replies on your own devices (every user, not only admins). |
 | [Secrets](./secrets)                 | API keys and other sensitive values stored in `/data/config/secrets.json`.              |

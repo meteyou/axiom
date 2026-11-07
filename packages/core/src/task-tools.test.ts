@@ -8,7 +8,7 @@ import type { Database } from './database.js'
 import { TaskRunner } from './task-runner.js'
 import type { TaskRunnerOptions } from './task-runner.js'
 import { SessionManager } from './session-manager.js'
-import { createTaskTool } from './task-tools.js'
+import { createTaskReadTool, createTaskWriteTool } from './task-tools.js'
 import type { ProviderConfig } from './provider-config.js'
 import type { Task, CreateTaskInput, UpdateTaskInput, TaskListFilters } from './task-store.js'
 import type { TaskRuntimeTaskBoundary } from './task-runtime.js'
@@ -46,7 +46,7 @@ const mockProvider: ProviderConfig = {
   authMethod: 'api-key',
 }
 
-describe('createTaskTool', () => {
+describe('task_write create', () => {
   const tmpFiles: string[] = []
   let db: Database
   let runner: TaskRunner
@@ -106,7 +106,7 @@ describe('createTaskTool', () => {
   })
 
   it('persists max_duration_minutes from the tool input onto the Task row', async () => {
-    const tool = createTaskTool({
+    const tool = createTaskWriteTool({
       taskRuntime: buildBoundary(),
       getDefaultProvider: () => mockProvider,
       resolveProvider: () => mockProvider,
@@ -115,6 +115,7 @@ describe('createTaskTool', () => {
     })
 
     const result = await tool.execute('call-1', {
+      action: 'create',
       prompt: 'do work',
       name: 'Test',
       max_duration_minutes: 5,
@@ -131,7 +132,7 @@ describe('createTaskTool', () => {
   })
 
   it('falls back to defaultMaxDurationMinutes when the caller omits max_duration_minutes', async () => {
-    const tool = createTaskTool({
+    const tool = createTaskWriteTool({
       taskRuntime: buildBoundary(),
       getDefaultProvider: () => mockProvider,
       resolveProvider: () => mockProvider,
@@ -140,6 +141,7 @@ describe('createTaskTool', () => {
     })
 
     const result = await tool.execute('call-2', {
+      action: 'create',
       prompt: 'do work',
       name: 'Default',
     })
@@ -152,7 +154,7 @@ describe('createTaskTool', () => {
   })
 
   it('caps max_duration_minutes at maxDurationMinutesCap', async () => {
-    const tool = createTaskTool({
+    const tool = createTaskWriteTool({
       taskRuntime: buildBoundary(),
       getDefaultProvider: () => mockProvider,
       resolveProvider: () => mockProvider,
@@ -161,6 +163,7 @@ describe('createTaskTool', () => {
     })
 
     const result = await tool.execute('call-3', {
+      action: 'create',
       prompt: 'do work',
       name: 'Capped',
       max_duration_minutes: 9999,
@@ -174,7 +177,7 @@ describe('createTaskTool', () => {
   })
 
   it('the TaskRunner timeout uses the tool-supplied max_duration_minutes', async () => {
-    const tool = createTaskTool({
+    const tool = createTaskWriteTool({
       taskRuntime: buildBoundary(),
       getDefaultProvider: () => mockProvider,
       resolveProvider: () => mockProvider,
@@ -183,6 +186,7 @@ describe('createTaskTool', () => {
     })
 
     const result = await tool.execute('call-4', {
+      action: 'create',
       prompt: 'do work',
       name: 'BudgetCheck',
       max_duration_minutes: 1,
@@ -207,7 +211,7 @@ describe('createTaskTool', () => {
   })
 
   it('returns a tool error instead of creating a task when no default provider is configured', async () => {
-    const tool = createTaskTool({
+    const tool = createTaskWriteTool({
       taskRuntime: buildBoundary(),
       getDefaultProvider: () => null,
       resolveProvider: () => mockProvider,
@@ -215,7 +219,7 @@ describe('createTaskTool', () => {
       maxDurationMinutesCap: 120,
     })
 
-    const result = await tool.execute('call-5', { prompt: 'do work', name: 'NoProvider' })
+    const result = await tool.execute('call-5', { action: 'create', prompt: 'do work', name: 'NoProvider' })
 
     expect(result.details).toMatchObject({ error: true })
     expect((result.content[0] as { type: 'text'; text: string }).text).toContain('No default task provider is configured')
@@ -275,7 +279,7 @@ describe('createTaskTool', () => {
         }
       })
 
-      const tool = createTaskTool({
+      const tool = createTaskWriteTool({
         taskRuntime: buildBoundary(),
         getDefaultProvider: () => mockProvider,
         resolveProvider: () => mockProvider,
@@ -283,7 +287,7 @@ describe('createTaskTool', () => {
         maxDurationMinutesCap: 120,
       })
 
-      const result = await tool.execute('call-skills', params)
+      const result = await tool.execute('call-skills', { action: 'create', ...params })
       await new Promise(resolve => setTimeout(resolve, 50))
 
       if (!captured.value) throw new Error('Agent was not instantiated')
@@ -345,5 +349,74 @@ describe('createTaskTool', () => {
       expect(systemPrompt).not.toContain('<attached_skills>')
       expect(details.attachedSkills).toBeNull()
     })
+  })
+})
+
+describe('task_write validation', () => {
+  function emptyRuntime(): TaskRuntimeTaskBoundary {
+    return {
+      create: vi.fn(),
+      getById: vi.fn(() => null),
+      list: vi.fn(() => []),
+      update: vi.fn(),
+      start: vi.fn(),
+      resume: vi.fn(),
+      abort: vi.fn(),
+      isRunning: vi.fn(() => false),
+      getRunningIds: vi.fn(() => []),
+      isPaused: vi.fn(() => false),
+      getPausedIds: vi.fn(() => []),
+      cleanupStalePaused: vi.fn(),
+      recover: vi.fn(),
+    } as unknown as TaskRuntimeTaskBoundary
+  }
+
+  function tool(runtime = emptyRuntime()) {
+    return createTaskWriteTool({
+      taskRuntime: runtime,
+      getDefaultProvider: () => mockProvider,
+      resolveProvider: () => mockProvider,
+      defaultMaxDurationMinutes: 30,
+      maxDurationMinutesCap: 120,
+    })
+  }
+
+  async function errorText(params: Record<string, unknown>, runtime = emptyRuntime()): Promise<string> {
+    const result = await tool(runtime).execute('call', params)
+    expect(result.details).toMatchObject({ error: true })
+    return (result.content[0] as { type: 'text'; text: string }).text
+  }
+
+  it('exposes the create, resume and stop actions', () => {
+    expect(tool().actions).toEqual(['create', 'resume', 'stop'])
+  })
+
+  it('reports missing fields per action', async () => {
+    const runtime = emptyRuntime()
+    expect(await errorText({ action: 'create', name: 'x' }, runtime)).toBe('Error: prompt is required for action=create.')
+    expect(await errorText({ action: 'create' }, runtime)).toBe('Error: name, prompt are required for action=create.')
+    expect(await errorText({ action: 'resume', task_id: 't1' }, runtime)).toBe('Error: message is required for action=resume.')
+    expect(await errorText({ action: 'stop' }, runtime)).toBe('Error: task_id is required for action=stop.')
+    expect(runtime.create).not.toHaveBeenCalled()
+    expect(runtime.abort).not.toHaveBeenCalled()
+  })
+
+  it('rejects a missing or unknown action', async () => {
+    expect(await errorText({ name: 'x', prompt: 'y' })).toContain('action is required for task_write. Valid actions: create, resume, stop.')
+    expect(await errorText({ action: 'delete', task_id: 't1' })).toContain('Unknown action "delete"')
+  })
+
+  it('reports unknown task ids for resume and stop', async () => {
+    expect(await errorText({ action: 'resume', task_id: 'nope', message: 'hi' })).toBe('Error: Task "nope" not found.')
+    expect(await errorText({ action: 'stop', task_id: 'nope' })).toBe('Error: Task "nope" not found.')
+  })
+})
+
+describe('task_read', () => {
+  it('reports when there are no tasks', async () => {
+    const taskRuntime = { list: vi.fn(() => []) } as unknown as TaskRuntimeTaskBoundary
+    const result = await createTaskReadTool({ taskRuntime }).execute('call', { status: 'running' })
+    expect((result.content[0] as { type: 'text'; text: string }).text).toBe('No tasks found matching filters: running.')
+    expect(taskRuntime.list).toHaveBeenCalledWith(expect.objectContaining({ status: 'running', limit: 20 }))
   })
 })

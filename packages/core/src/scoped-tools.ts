@@ -3,17 +3,10 @@ import type { AccessActor } from './access-policy.js'
 import type { Database } from './database.js'
 import { createBaseAgentTools } from './agent-runtime.js'
 import type { BaseAgentToolsOptions } from './agent-runtime.js'
-import {
-  createCronjobTool,
-  createReminderTool,
-  editCronjobTool,
-  getCronjobTool,
-  listCronjobsTool,
-  removeCronjobTool,
-} from './cronjob-tools.js'
-import type { CronjobToolsOptions } from './cronjob-tools.js'
+import { createScheduleReadTool, createScheduleWriteTool } from './schedule-tools.js'
+import type { ScheduleToolsOptions } from './schedule-tools.js'
 import { createSendFileTool } from './send-file-tool.js'
-import { createResumeTaskTool, createStopTaskTool, createTaskTool, listTasksTool } from './task-tools.js'
+import { createTaskReadTool, createTaskWriteTool } from './task-tools.js'
 import type { TaskToolsOptions } from './task-tools.js'
 import type { UserScope } from './user-scope.js'
 import { resolveOwnerTimezone } from './user-settings.js'
@@ -27,7 +20,7 @@ export interface ScopedToolsDeps {
   /** Shared task tool settings; the scope supplies owner and actor. */
   taskTools: Omit<TaskToolsOptions, 'actor' | 'getUsername' | 'getParentSessionId'>
   /** Cronjob and reminder tools; only the interactive chat gets them. */
-  cronjobTools?: Omit<CronjobToolsOptions, 'actor' | 'getUsername' | 'getTimezone'>
+  scheduleTools?: Omit<ScheduleToolsOptions, 'actor' | 'getUsername' | 'getTimezone'>
   /**
    * Interactive session of the calling turn; omitted for background task agents,
    * which then get no `file_send` (nothing would deliver the file).
@@ -65,8 +58,8 @@ export function createScopedTools(scope: UserScope, deps: ScopedToolsDeps): Agen
     getParentSessionId,
   }
 
-  const cronjobOptions: CronjobToolsOptions | null = deps.cronjobTools
-    ? { ...deps.cronjobTools, actor, getUsername: taskOptions.getUsername, getTimezone: (ownerUserId) => resolveOwnerTimezone(deps.db, ownerUserId) }
+  const scheduleOptions: ScheduleToolsOptions | null = deps.scheduleTools
+    ? { ...deps.scheduleTools, actor, getUsername: taskOptions.getUsername, getTimezone: (ownerUserId) => resolveOwnerTimezone(deps.db, ownerUserId) }
     : null
 
   return [
@@ -80,19 +73,10 @@ export function createScopedTools(scope: UserScope, deps: ScopedToolsDeps): Agen
           quotaService: deps.quotaService,
           getSessionId: deps.getSessionId,
         })),
-    createTaskTool(taskOptions),
-    createResumeTaskTool(taskOptions),
-    listTasksTool(taskOptions),
-    createStopTaskTool(taskOptions),
-    ...(cronjobOptions
-      ? [
-          createCronjobTool(cronjobOptions),
-          editCronjobTool(cronjobOptions),
-          removeCronjobTool(cronjobOptions),
-          listCronjobsTool(cronjobOptions),
-          getCronjobTool(cronjobOptions),
-          createReminderTool(cronjobOptions),
-        ]
+    createTaskReadTool(taskOptions),
+    createTaskWriteTool(taskOptions),
+    ...(scheduleOptions
+      ? [createScheduleReadTool(scheduleOptions), createScheduleWriteTool(scheduleOptions)]
       : []),
     ...(deps.getInteractiveSessionId
       ? [createSendFileTool({

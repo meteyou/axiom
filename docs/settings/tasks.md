@@ -89,7 +89,7 @@ Master toggle. Default: `true`. Leave it on unless you're debugging an agent tha
 
 | Value | How it works |
 |---|---|
-| `systematic` | Pure rule-based. Fires when the same tool is called with the same arguments and returns the same error `maxConsecutiveFailures` times in a row. A call counts as failed when the tool reports an error, for example `edit_file` not finding the text it should replace. Fast, zero extra tokens. |
+| `systematic` | Pure rule-based. Fires when the same tool is called with the same arguments and returns the same error `maxConsecutiveFailures` times in a row. A call counts as failed when the tool reports an error, for example `file_edit` not finding the text it should replace. Fast, zero extra tokens. |
 | `smart` | Periodically asks a small LLM "is this agent making progress?". Slower, costs tokens, catches subtle loops. |
 | `auto` | Start with `systematic`; escalate to `smart` if the rule-based signal is ambiguous. A good all-round choice, though the built-in default is `systematic`. |
 

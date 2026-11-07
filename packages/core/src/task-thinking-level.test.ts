@@ -8,8 +8,8 @@ import type { Database } from './database.js'
 import { TaskRunner } from './task-runner.js'
 import type { TaskRunnerOptions } from './task-runner.js'
 import { SessionManager } from './session-manager.js'
-import { createTaskTool, formatThinkingLine, listTasksTool } from './task-tools.js'
-import { createCronjobTool, editCronjobTool, getCronjobTool } from './cronjob-tools.js'
+import { createTaskReadTool, createTaskWriteTool, formatThinkingLine } from './task-tools.js'
+import { createScheduleReadTool, createScheduleWriteTool } from './schedule-tools.js'
 import { ScheduledTaskStore } from './scheduled-task-store.js'
 import { TaskScheduler } from './task-scheduler.js'
 import { assembleSystemPrompt } from './memory.js'
@@ -94,7 +94,7 @@ describe('task thinking level', () => {
   }
 
   function createTool() {
-    return createTaskTool({
+    return createTaskWriteTool({
       taskRuntime: taskBoundary(),
       getDefaultProvider: () => provider,
       resolveProvider: () => provider,
@@ -128,8 +128,8 @@ describe('task thinking level', () => {
     tmpFiles.length = 0
   })
 
-  it('create_task runs with the requested level, clamped to the model', async () => {
-    const result = await createTool().execute('call-1', { prompt: 'p', name: 'Hard', thinking_level: 'medium' })
+  it('task_write create runs with the requested level, clamped to the model', async () => {
+    const result = await createTool().execute('call-1', { action: 'create', prompt: 'p', name: 'Hard', thinking_level: 'medium' })
 
     const taskId = (result.details as { taskId: string }).taskId
     const task = runner.getStore().getById(taskId)!
@@ -139,8 +139,8 @@ describe('task thinking level', () => {
     expect(textOf(result)).toContain('Thinking: medium → high (clamped to model)')
   })
 
-  it('create_task without thinking_level uses the background default', async () => {
-    const result = await createTool().execute('call-2', { prompt: 'p', name: 'Simple' })
+  it('task_write create without thinking_level uses the background default', async () => {
+    const result = await createTool().execute('call-2', { action: 'create', prompt: 'p', name: 'Simple' })
 
     const task = runner.getStore().getById((result.details as { taskId: string }).taskId)!
     expect(task.thinkingLevel).toBeNull()
@@ -149,18 +149,18 @@ describe('task thinking level', () => {
     expect(textOf(result)).toContain('Thinking: low (default)')
   })
 
-  it('create_task rejects an unknown thinking_level without creating a task', async () => {
-    const result = await createTool().execute('call-3', { prompt: 'p', name: 'Bad', thinking_level: 'ultra' })
+  it('task_write create rejects an unknown thinking_level without creating a task', async () => {
+    const result = await createTool().execute('call-3', { action: 'create', prompt: 'p', name: 'Bad', thinking_level: 'ultra' })
 
     expect(result.details).toMatchObject({ error: true })
     expect(textOf(result)).toContain('Invalid thinking_level "ultra"')
     expect(runner.getStore().list()).toHaveLength(0)
   })
 
-  it('list_tasks shows the thinking level', async () => {
-    await createTool().execute('call-4', { prompt: 'p', name: 'Max', thinking_level: 'MAX' })
+  it('task_read shows the thinking level', async () => {
+    await createTool().execute('call-4', { action: 'create', prompt: 'p', name: 'Max', thinking_level: 'MAX' })
 
-    const result = await listTasksTool({ taskRuntime: taskBoundary() }).execute('call-5', {})
+    const result = await createTaskReadTool({ taskRuntime: taskBoundary() }).execute('call-5', {})
     expect(textOf(result)).toContain('Thinking: max')
   })
 
@@ -193,7 +193,7 @@ describe('task thinking level', () => {
   })
 })
 
-describe('cronjob tools thinking level', () => {
+describe('schedule tools thinking level', () => {
   let db: Database
   let dbPath: string
   let boundary: TaskRuntimeScheduleBoundary
@@ -226,33 +226,33 @@ describe('cronjob tools thinking level', () => {
   })
 
   it('create, edit and reset the cronjob thinking level', async () => {
-    const created = await createCronjobTool({ taskRuntime: boundary }).execute('c1', {
-      name: 'Digest', prompt: 'p', schedule: '0 9 * * *', thinking_level: 'high',
+    const created = await createScheduleWriteTool({ taskRuntime: boundary }).execute('c1', {
+      action: 'create', name: 'Digest', prompt: 'p', schedule: '0 9 * * *', thinking_level: 'high',
     })
     const id = (created.details as { cronjobId: string }).cronjobId
     expect(boundary.getById(id)?.thinkingLevel).toBe('high')
     expect(textOf(created)).toContain('Thinking: high')
 
-    const edit = editCronjobTool({ taskRuntime: boundary })
-    await edit.execute('c2', { id, name: 'Digest 2' })
+    const edit = createScheduleWriteTool({ taskRuntime: boundary })
+    await edit.execute('c2', { action: 'edit', id, name: 'Digest 2' })
     expect(boundary.getById(id)?.thinkingLevel).toBe('high')
 
-    await edit.execute('c3', { id, thinking_level: 'default' })
+    await edit.execute('c3', { action: 'edit', id, thinking_level: 'default' })
     expect(boundary.getById(id)?.thinkingLevel).toBeNull()
 
-    const shown = await getCronjobTool({ taskRuntime: boundary }).execute('c4', { id })
+    const shown = await createScheduleReadTool({ taskRuntime: boundary }).execute('c4', { action: 'get', id })
     expect(textOf(shown)).toContain('Thinking: default')
   })
 
-  it('rejects an unknown level and ignores the level for injections', async () => {
-    const tool = createCronjobTool({ taskRuntime: boundary })
-    const bad = await tool.execute('c5', { name: 'X', prompt: 'p', schedule: '0 9 * * *', thinking_level: 'turbo' })
+  it('rejects an unknown level and stores no level for reminders', async () => {
+    const tool = createScheduleWriteTool({ taskRuntime: boundary })
+    const bad = await tool.execute('c5', { action: 'create', name: 'X', prompt: 'p', schedule: '0 9 * * *', thinking_level: 'turbo' })
     expect(bad.details).toMatchObject({ error: true })
 
-    const injection = await tool.execute('c6', {
-      name: 'Ping', prompt: 'Hello', schedule: '0 9 * * *', action_type: 'injection', thinking_level: 'high',
+    const reminder = await tool.execute('c6', {
+      action: 'create', type: 'reminder', name: 'Ping', prompt: 'Hello', schedule: '0 9 * * *',
     })
-    expect(boundary.getById((injection.details as { cronjobId: string }).cronjobId)?.thinkingLevel).toBeNull()
+    expect(boundary.getById((reminder.details as { cronjobId: string }).cronjobId)?.thinkingLevel).toBeNull()
   })
 })
 

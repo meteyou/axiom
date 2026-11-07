@@ -21,7 +21,84 @@ describe('legacy tool names', () => {
       list_agent_skills: 'skill_list',
       generate_image: 'image_generate',
       transcribe_audio: 'audio_transcribe',
+      list_tasks: 'task_read',
+      create_task: 'task_write',
+      resume_task: 'task_write',
+      stop_task: 'task_write',
+      list_cronjobs: 'schedule_read',
+      get_cronjob: 'schedule_read',
+      create_cronjob: 'schedule_write',
+      edit_cronjob: 'schedule_write',
+      remove_cronjob: 'schedule_write',
+      create_reminder: 'schedule_write',
+      email_list: 'email_read',
+      email_folders: 'email_read',
+      email_read: 'email_read',
+      email_mark_read: 'email_read',
+      email_mark_unread: 'email_read',
     })
+  })
+
+  it('maps the email read and flag tools to the email_read actions', () => {
+    expect(resolveToolName('email_list')).toEqual({ name: 'email_read', action: 'list', legacyName: 'email_list' })
+    expect(resolveToolName('email_folders')).toEqual({ name: 'email_read', action: 'folders', legacyName: 'email_folders' })
+    expect(resolveToolName('email_mark_read')).toEqual({ name: 'email_read', action: 'mark_read', legacyName: 'email_mark_read' })
+    expect(resolveToolName('email_mark_unread')).toEqual({ name: 'email_read', action: 'mark_unread', legacyName: 'email_mark_unread' })
+    expect(resolveToolName('email_read', { action: 'list' })).toEqual({ name: 'email_read', action: 'list' })
+    expect(resolveToolName('email_read', { uid: 42 })).toEqual({ name: 'email_read', action: 'read' })
+    expect(currentToolName('email_read')).toBe('email_read')
+    expect(currentToolName('email_list')).toBe('email_read')
+    expect(toolNameWithLegacyAliases('email_read'))
+      .toEqual(['email_read', 'email_list', 'email_folders', 'email_mark_read', 'email_mark_unread'])
+  })
+
+  it('disables email_read only when every folded email tool was disabled', () => {
+    const all = ['email_list', 'email_folders', 'email_read', 'email_mark_read', 'email_mark_unread']
+    expect(migrateDisabledToolNames([...all, 'email_send'])).toEqual({ names: ['email_read', 'email_send'], keptEnabled: [], changed: true })
+    expect(migrateDisabledToolNames(['email_list', 'email_folders', 'email_mark_read', 'email_mark_unread'])).toEqual({
+      names: [],
+      keptEnabled: [{ name: 'email_read', disabledLegacyNames: ['email_list', 'email_folders', 'email_mark_read', 'email_mark_unread'] }],
+      changed: true,
+    })
+    expect(migrateDisabledToolNames(['email_read', 'email_list']).keptEnabled)
+      .toEqual([{ name: 'email_read', disabledLegacyNames: ['email_list', 'email_read'] }])
+  })
+
+  it('treats email_read without other legacy names as the current grouped tool', () => {
+    expect(migrateDisabledToolNames(['email_read', 'shell'])).toEqual({ names: ['email_read', 'shell'], keptEnabled: [], changed: false })
+  })
+
+  it('maps the task tools to task_read and the task_write actions', () => {
+    expect(resolveToolName('list_tasks')).toEqual({ name: 'task_read', legacyName: 'list_tasks' })
+    expect(resolveToolName('create_task')).toEqual({ name: 'task_write', action: 'create', legacyName: 'create_task' })
+    expect(resolveToolName('resume_task')).toEqual({ name: 'task_write', action: 'resume', legacyName: 'resume_task' })
+    expect(resolveToolName('stop_task')).toEqual({ name: 'task_write', action: 'stop', legacyName: 'stop_task' })
+    expect(resolveToolName('task_write', { action: 'stop', task_id: 't1' })).toEqual({ name: 'task_write', action: 'stop' })
+  })
+
+  it('disables task_write only when create, resume and stop were all disabled', () => {
+    expect(migrateDisabledToolNames(['list_tasks', 'create_task']))
+      .toEqual({ names: ['task_read'], keptEnabled: [{ name: 'task_write', disabledLegacyNames: ['create_task'] }], changed: true })
+    expect(migrateDisabledToolNames(['create_task', 'resume_task', 'stop_task']).names).toEqual(['task_write'])
+  })
+
+  it('maps the cronjob and reminder tools to their schedule action and type', () => {
+    expect(resolveToolName('list_cronjobs')).toEqual({ name: 'schedule_read', action: 'list', legacyName: 'list_cronjobs' })
+    expect(resolveToolName('get_cronjob')).toEqual({ name: 'schedule_read', action: 'get', legacyName: 'get_cronjob' })
+    expect(resolveToolName('create_cronjob', { action_type: 'injection' }))
+      .toEqual({ name: 'schedule_write', action: 'create', scheduleType: 'task', legacyName: 'create_cronjob' })
+    expect(resolveToolName('create_reminder'))
+      .toEqual({ name: 'schedule_write', action: 'create', scheduleType: 'reminder', legacyName: 'create_reminder' })
+    expect(resolveToolName('edit_cronjob')).toEqual({ name: 'schedule_write', action: 'edit', legacyName: 'edit_cronjob' })
+    expect(resolveToolName('remove_cronjob')).toEqual({ name: 'schedule_write', action: 'remove', legacyName: 'remove_cronjob' })
+  })
+
+  it('disables the grouped schedule tools only when all legacy members were disabled', () => {
+    expect(migrateDisabledToolNames(['list_cronjobs', 'get_cronjob', 'create_cronjob']).names).toEqual(['schedule_read'])
+    expect(migrateDisabledToolNames(['create_cronjob']).keptEnabled)
+      .toEqual([{ name: 'schedule_write', disabledLegacyNames: ['create_cronjob'] }])
+    const all = ['create_cronjob', 'edit_cronjob', 'remove_cronjob', 'create_reminder']
+    expect(migrateDisabledToolNames(all)).toEqual({ names: ['schedule_write'], keptEnabled: [], changed: true })
   })
 
   it('passes current and unknown names through unchanged', () => {

@@ -1,5 +1,7 @@
 import type { Database } from './database.js'
 import type { Task } from './task-store.js'
+import { resolveDeliveryChannel } from './delivery-channel.js'
+import type { TelegramDeliveryMode } from './delivery-channel.js'
 
 /**
  * Status emoji for task result formatting
@@ -141,7 +143,7 @@ export function persistTaskResultMessage(
   ).run(resolvedSessionId, userId, 'system', content, metadata)
 }
 
-export type TelegramDeliveryMode = 'auto' | 'always'
+export type { TelegramDeliveryMode }
 
 /**
  * Live metrics for a periodic task heartbeat. Produced by the task runner
@@ -340,9 +342,12 @@ export async function deliverTaskStatusUpdate(options: TaskStatusUpdateOptions):
   // log every failure so operators notice sustained problems.
   let telegramSent = false
   if (sendTelegram) {
-    const shouldSendTelegram =
-      telegramDeliveryMode === 'always' ||
-      (telegramDeliveryMode === 'auto' && !hasActiveWebSocket(userId))
+    const shouldSendTelegram = resolveDeliveryChannel({
+      userId,
+      telegramDeliveryMode,
+      hasActiveWebSocket,
+      isTelegramLinked: () => true,
+    }) === 'telegram'
     if (shouldSendTelegram) {
       const html = formatTaskStatusUpdateTelegramHtml(task, details)
       try {
@@ -452,9 +457,12 @@ export async function deliverTaskNotification(options: TaskNotificationOptions):
   // 3. Conditionally send Telegram
   let telegramSent = false
   if (sendTelegram) {
-    const shouldSendTelegram =
-      telegramDeliveryMode === 'always' ||
-      (telegramDeliveryMode === 'auto' && !hasActiveWebSocket(userId))
+    const shouldSendTelegram = resolveDeliveryChannel({
+      userId,
+      telegramDeliveryMode,
+      hasActiveWebSocket,
+      isTelegramLinked: () => true,
+    }) === 'telegram'
 
     if (shouldSendTelegram) {
       try {

@@ -386,7 +386,6 @@ describe('memory', () => {
         configDir,
         baseInstructions: 'base rules',
         language: 'German',
-        channel: 'telegram',
         currentUser: { username: 'alice', role: 'admin' },
         agentSkillsDir: '/skills-agent',
         skills: [{ name: 'wiki', description: 'Wiki upkeep', location: '/skills-agent/wiki' }],
@@ -401,7 +400,7 @@ describe('memory', () => {
       expect(sections.map(section => section.key)).toEqual([
         'personality', 'instructions', 'agent_rules', 'system_rules', 'core_memory', 'recent_memory', 'current_user',
         'user_profile', 'available_providers',
-        'available_skills', 'paths', 'language', 'channel_context',
+        'available_skills', 'paths', 'language',
       ])
     })
 

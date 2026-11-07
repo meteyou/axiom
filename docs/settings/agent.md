@@ -1,6 +1,6 @@
 # Agent
 
-Language preferences, active provider + model, reasoning level, the experimental codemode switch, and the user-editable rules the agent follows on every turn.
+Language preferences, active provider + model, reasoning level, the experimental codemode switch, and the user-editable rules the agent follows in every session.
 
 **URL:** `/settings?tab=agent`
 
@@ -13,7 +13,7 @@ Regular users open **Settings** and see the personal **Agent**, **Heartbeat**, *
 - **Language** — the agent's reply language and the language speech-to-text transcribes in.
 - **Timezone** — the timezone of the agent's "now", your daily notes and your cronjobs and reminders (see [Timezone](#timezone)).
 
-Each field offers **Use default (admin: …)**. On default, the user follows the admin's global settings below, including later changes by the admin. An override applies from that user's next message and affects nobody else.
+Each field offers **Use default (admin: …)**. On default, the user follows the admin's global settings below, including later changes by the admin. An override affects nobody else. Model, thinking level and timezone apply from that user's next message; the language applies from that user's next session (`/new`).
 
 The thinking-level button next to the chat input is available to everyone: it changes the user's own level, and the global level for admins. The same applies to `/model` and `/thinking` in the web chat and Telegram — see [Chat → Slash commands](../web-ui/chat#slash-commands). Regular users can also run `/model default` and `/thinking default` to go back to the default.
 
@@ -36,7 +36,7 @@ Forces the agent's reply language. Mapped to the `<language>` block in the syste
 | `match`                                                                                                                | Mirror the user's language on each turn.               |
 | `English`, `German`, `French`, `Spanish`, `Italian`, `Portuguese`, `Dutch`, `Russian`, `Chinese`, `Japanese`, `Korean` | Reply in this language regardless of the user's input. |
 
-Applies immediately on the next turn.
+Applies from the next session — the system prompt is built once per session, so run `/new` to switch the language of a running chat. See [System Prompt → Built once per session](../concepts/system-prompt#built-once-per-session).
 
 ```json
 { "language": "German" }
@@ -44,7 +44,7 @@ Applies immediately on the next turn.
 
 ## Timezone
 
-The current date in this timezone is injected into the system prompt, and the minute-level time is appended to each user message, so the agent always knows "now" (the time is kept out of the system prompt to avoid invalidating provider prompt caches every minute — see [System Prompt → layer 16](../concepts/system-prompt#_16-current-date-current-date)). Also used for cron evaluation (Tasks & Heartbeat) and the naming of `memory/daily/<date>.md` files.
+The current date, time and timezone are appended to each user message as `<current_time>`, so the agent always knows "now" — even in a session that spans midnight (they are kept out of the system prompt so the provider prompt cache stays valid — see [System Prompt → Per-message context](../concepts/system-prompt#per-message-context)). Also used for cron evaluation (Tasks & Heartbeat) and the naming of `memory/daily/<date>.md` files.
 
 Default: `UTC`. Mirrors the container's `TZ` env var if set.
 
@@ -101,7 +101,7 @@ This only applies to the **interactive chat agent**. Background jobs (tasks, hea
 
 ## Codemode (experimental)
 
-Adds the [codemode](../concepts/codemode) tool to the interactive chat agent on every channel (web UI and Telegram) — a JavaScript script that batches, chains and filters tool calls, so only the script's output reaches the model. **Off by default**, and the section is marked *Experimental* in the UI: the feature may change between releases, and script quality depends on the model. Applies from the next turn — no restart needed.
+Adds the [codemode](../concepts/codemode) tool to the interactive chat agent on every channel (web UI and Telegram) — a JavaScript script that batches, chains and filters tool calls, so only the script's output reaches the model. **Off by default**, and the section is marked *Experimental* in the UI: the feature may change between releases, and script quality depends on the model. Applies from the next session (`/new`) — the tool list is fixed per session. No restart needed.
 
 Background task agents have their own switch in [Tasks → Codemode](./tasks#codemode-experimental).
 

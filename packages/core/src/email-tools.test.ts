@@ -9,10 +9,6 @@ import type { CreateEmailSendLogInput, EmailSendLogEntry } from './email-send-lo
 import {
   createEmailDeleteTool,
   createEmailDownloadAttachmentTool,
-  createEmailFoldersTool,
-  createEmailListTool,
-  createEmailMarkReadTool,
-  createEmailMarkUnreadTool,
   createEmailMoveTool,
   createEmailReadTool,
   createEmailSendTool,
@@ -117,6 +113,14 @@ function details(result: Awaited<ReturnType<AgentTool['execute']>>): Record<stri
   return (result as { details: Record<string, unknown> }).details
 }
 
+function emailRead(deps: Parameters<typeof createEmailReadTool>[0], action: string) {
+  const tool = createEmailReadTool(deps)
+  return {
+    name: action,
+    execute: (id: string, params: Record<string, unknown> = {}) => tool.execute(id, { action, ...params } as never),
+  }
+}
+
 describe('isFolderAllowed', () => {
   it('allows everything in "all" mode', () => {
     expect(isFolderAllowed(makeAccount(), 'Whatever')).toBe(true)
@@ -143,7 +147,7 @@ describe('createEmailTools', () => {
   it('refuses to load a foreign account even by id', async () => {
     const accounts = [makeAccount({ id: 'a', name: 'Mine', ownerUserId: 1 })]
     const deps = { ...makeDeps(accounts, mockClient()), ownerUserId: 2, listAccounts: () => [{ id: 'a', name: 'Mine' }] }
-    const result = await createEmailListTool(deps).execute('t', { account: 'a' } as never)
+    const result = await emailRead(deps, 'list').execute('t', { account: 'a' } as never)
     expect(details(result).error).toBe(true)
   })
 
@@ -151,15 +155,22 @@ describe('createEmailTools', () => {
     expect(createEmailTools(makeDeps([], mockClient()))).toEqual([])
   })
 
-  it('registers the read and flag tools for a readonly account', () => {
+  it('registers only email_read for a readonly account', () => {
     const tools = createEmailTools(makeDeps([makeAccount()], mockClient()))
-    expect(tools.map(tool => tool.name)).toEqual([
-      'email_list',
-      'email_folders',
-      'email_read',
-      'email_mark_read',
-      'email_mark_unread',
-    ])
+    expect(tools.map(tool => tool.name)).toEqual(['email_read'])
+  })
+
+  it('maps each permission 1:1 to its tool', () => {
+    const cases: [Partial<EmailAccount>, string][] = [
+      [{ canManage: true }, 'email_move'],
+      [{ canDelete: true }, 'email_delete'],
+      [{ canSend: true }, 'email_send'],
+      [{ canDownloadAttachments: true }, 'email_download_attachment'],
+    ]
+    for (const [permission, tool] of cases) {
+      const names = createEmailTools(makeDeps([makeAccount(permission)], mockClient())).map(entry => entry.name)
+      expect(names, tool).toEqual(['email_read', tool])
+    }
   })
 
   it('registers management tools only when an account grants the capability', () => {
@@ -175,10 +186,27 @@ describe('createEmailTools', () => {
   })
 })
 
-describe('email_list tool', () => {
+describe('email_read tool schema', () => {
+  it('groups list, folders, read and flag changes behind a flat action enum, all replay-safe', () => {
+    const tool = createEmailReadTool(makeDeps([makeAccount()], mockClient()))
+    expect(tool.actions).toEqual(['list', 'folders', 'read', 'mark_read', 'mark_unread'])
+    expect(Object.values(tool.actionReplayPolicies).every(policy => policy === 'safe')).toBe(true)
+    const schema = JSON.stringify(tool.parameters)
+    expect(schema).not.toContain('oneOf')
+    expect(schema).not.toContain('anyOf')
+  })
+
+  it('rejects an unknown or missing action', async () => {
+    const tool = createEmailReadTool(makeDeps([makeAccount()], mockClient()))
+    expect(text(await tool.execute('c1', { action: 'delete' } as never))).toContain('Unknown action "delete"')
+    expect(text(await tool.execute('c2', {} as never))).toContain('action is required')
+  })
+})
+
+describe('email_read action=list', () => {
   it('defaults to unread messages in INBOX with a limit of 50', async () => {
     const client = mockClient({ listMessages: vi.fn().mockResolvedValue([makeSummary()]) })
-    const tool = createEmailListTool(makeDeps([makeAccount()], client))
+    const tool = emailRead(makeDeps([makeAccount()], client), 'list')
 
     const result = await tool.execute('call-1', {})
 
@@ -194,7 +222,7 @@ describe('email_list tool', () => {
 
   it('returns metadata only, never the message body', async () => {
     const client = mockClient({ listMessages: vi.fn().mockResolvedValue([makeSummary()]) })
-    const tool = createEmailListTool(makeDeps([makeAccount()], client))
+    const tool = emailRead(makeDeps([makeAccount()], client), 'list')
 
     const result = await tool.execute('call-1', {})
 
@@ -203,7 +231,7 @@ describe('email_list tool', () => {
 
   it('caps the limit and honours explicit folder / unread_only', async () => {
     const client = mockClient({ listMessages: vi.fn().mockResolvedValue([]) })
-    const tool = createEmailListTool(makeDeps([makeAccount()], client))
+    const tool = emailRead(makeDeps([makeAccount()], client), 'list')
 
     await tool.execute('call-1', { folder: 'Archive', unread_only: false, limit: 5000 })
 
@@ -216,7 +244,7 @@ describe('email_list tool', () => {
   it('blocks folders outside the account restriction', async () => {
     const client = mockClient()
     const account = makeAccount({ folderMode: 'selected', allowedFolders: ['INBOX'] })
-    const tool = createEmailListTool(makeDeps([account], client))
+    const tool = emailRead(makeDeps([account], client), 'list')
 
     const result = await tool.execute('call-1', { folder: 'Secret' })
 
@@ -227,7 +255,7 @@ describe('email_list tool', () => {
 
   it('requires an account parameter when several accounts exist', async () => {
     const accounts = [makeAccount(), makeAccount({ id: 'acc-2', name: 'Private' })]
-    const tool = createEmailListTool(makeDeps(accounts, mockClient()))
+    const tool = emailRead(makeDeps(accounts, mockClient()), 'list')
 
     const result = await tool.execute('call-1', {})
 
@@ -239,7 +267,7 @@ describe('email_list tool', () => {
   it('selects the account by name', async () => {
     const accounts = [makeAccount(), makeAccount({ id: 'acc-2', name: 'Private', imapHost: 'imap.private.test' })]
     const client = mockClient({ listMessages: vi.fn().mockResolvedValue([]) })
-    const tool = createEmailListTool(makeDeps(accounts, client))
+    const tool = emailRead(makeDeps(accounts, client), 'list')
 
     await tool.execute('call-1', { account: 'private' })
 
@@ -250,7 +278,7 @@ describe('email_list tool', () => {
   })
 
   it('reports unknown accounts with the available ones', async () => {
-    const tool = createEmailListTool(makeDeps([makeAccount()], mockClient()))
+    const tool = emailRead(makeDeps([makeAccount()], mockClient()), 'list')
 
     const result = await tool.execute('call-1', { account: 'nope' })
 
@@ -260,7 +288,7 @@ describe('email_list tool', () => {
 
   it('surfaces client errors as tool errors', async () => {
     const client = mockClient({ listMessages: vi.fn().mockRejectedValue(new Error('IMAP: authentication failed')) })
-    const tool = createEmailListTool(makeDeps([makeAccount()], client))
+    const tool = emailRead(makeDeps([makeAccount()], client), 'list')
 
     const result = await tool.execute('call-1', {})
 
@@ -269,7 +297,7 @@ describe('email_list tool', () => {
   })
 })
 
-describe('email_folders tool', () => {
+describe('email_read action=folders', () => {
   const folders = [
     { path: 'INBOX', name: 'INBOX', delimiter: '/', subscribed: true },
     { path: 'Archive', name: 'Archive', delimiter: '/', subscribed: true },
@@ -277,7 +305,7 @@ describe('email_folders tool', () => {
 
   it('lists all folders when the account is unrestricted', async () => {
     const client = mockClient({ listFolders: vi.fn().mockResolvedValue(folders) })
-    const tool = createEmailFoldersTool(makeDeps([makeAccount()], client))
+    const tool = emailRead(makeDeps([makeAccount()], client), 'folders')
 
     const result = await tool.execute('call-1', {})
 
@@ -287,7 +315,7 @@ describe('email_folders tool', () => {
   it('hides folders outside the account restriction', async () => {
     const client = mockClient({ listFolders: vi.fn().mockResolvedValue(folders) })
     const account = makeAccount({ folderMode: 'selected', allowedFolders: ['INBOX'] })
-    const tool = createEmailFoldersTool(makeDeps([account], client))
+    const tool = emailRead(makeDeps([account], client), 'folders')
 
     const result = await tool.execute('call-1', {})
 
@@ -296,11 +324,11 @@ describe('email_folders tool', () => {
   })
 })
 
-describe('email_read tool', () => {
+describe('email_read action=read', () => {
   it('reads the message body and marks it as read', async () => {
     const message = makeMessage({ text: 'Converted body text', attachments: [] })
     const client = mockClient({ readMessage: vi.fn().mockResolvedValue(message) })
-    const tool = createEmailReadTool(makeDeps([makeAccount()], client))
+    const tool = emailRead(makeDeps([makeAccount()], client), 'read')
 
     const result = await tool.execute('call-1', { uid: 42 })
 
@@ -318,7 +346,7 @@ describe('email_read tool', () => {
   it('marks as read even for readonly accounts', async () => {
     const client = mockClient({ readMessage: vi.fn().mockResolvedValue(makeMessage()) })
     const readonly = makeAccount({ canSend: false, canManage: false, canDelete: false })
-    const tool = createEmailReadTool(makeDeps([readonly], client))
+    const tool = emailRead(makeDeps([readonly], client), 'read')
 
     const result = await tool.execute('call-1', { uid: 42 })
 
@@ -329,7 +357,7 @@ describe('email_read tool', () => {
   it('blocks folders outside the account restriction', async () => {
     const client = mockClient()
     const account = makeAccount({ folderMode: 'selected', allowedFolders: ['INBOX'] })
-    const tool = createEmailReadTool(makeDeps([account], client))
+    const tool = emailRead(makeDeps([account], client), 'read')
 
     const result = await tool.execute('call-1', { uid: 1, folder: 'Secret' })
 
@@ -338,11 +366,12 @@ describe('email_read tool', () => {
   })
 
   it('rejects a missing uid', async () => {
-    const tool = createEmailReadTool(makeDeps([makeAccount()], mockClient()))
+    const tool = emailRead(makeDeps([makeAccount()], mockClient()), 'read')
 
     const result = await tool.execute('call-1', {})
 
-    expect(text(result)).toContain('"uid" must be a number')
+    expect(text(result)).toContain('uid is required for action=read')
+    expect(text(await tool.execute('call-2', { uid: 'x' }))).toContain('"uid" must be a number')
   })
 
   it('lists attachment metadata', async () => {
@@ -350,7 +379,7 @@ describe('email_read tool', () => {
       attachments: [{ partId: '2', filename: 'invoice.pdf', contentType: 'application/pdf', size: 2048 }],
     })
     const client = mockClient({ readMessage: vi.fn().mockResolvedValue(message) })
-    const tool = createEmailReadTool(makeDeps([makeAccount()], client))
+    const tool = emailRead(makeDeps([makeAccount()], client), 'read')
 
     const result = await tool.execute('call-1', { uid: 42 })
 
@@ -358,10 +387,10 @@ describe('email_read tool', () => {
   })
 })
 
-describe('email_mark_read / email_mark_unread tools', () => {
+describe('email_read action=mark_read / mark_unread', () => {
   it('marks several UIDs in a single call', async () => {
     const client = mockClient({ setSeen: vi.fn().mockResolvedValue(3) })
-    const tool = createEmailMarkReadTool(makeDeps([makeAccount()], client))
+    const tool = emailRead(makeDeps([makeAccount()], client), 'mark_read')
 
     const result = await tool.execute('call-1', { uids: [1, 2, 3] })
 
@@ -377,7 +406,7 @@ describe('email_mark_read / email_mark_unread tools', () => {
 
   it('deduplicates UIDs and never loads message bodies', async () => {
     const client = mockClient({ setSeen: vi.fn().mockResolvedValue(2) })
-    const tool = createEmailMarkReadTool(makeDeps([makeAccount()], client))
+    const tool = emailRead(makeDeps([makeAccount()], client), 'mark_read')
 
     await tool.execute('call-1', { uids: [7, 7, 8] })
 
@@ -389,8 +418,8 @@ describe('email_mark_read / email_mark_unread tools', () => {
     const client = mockClient({ setSeen: vi.fn().mockResolvedValue(1) })
     const readonly = makeAccount({ canManage: false, canDelete: false, canDownloadAttachments: false })
 
-    const read = await createEmailMarkReadTool(makeDeps([readonly], client)).execute('c1', { uids: [1] })
-    const unread = await createEmailMarkUnreadTool(makeDeps([readonly], client)).execute('c2', { uids: [1] })
+    const read = await emailRead(makeDeps([readonly], client), 'mark_read').execute('c1', { uids: [1] })
+    const unread = await emailRead(makeDeps([readonly], client), 'mark_unread').execute('c2', { uids: [1] })
 
     expect(details(read).error).toBeUndefined()
     expect(details(unread).error).toBeUndefined()
@@ -399,8 +428,9 @@ describe('email_mark_read / email_mark_unread tools', () => {
 
   it('rejects an empty or invalid uid list', async () => {
     const client = mockClient({ setSeen: vi.fn() })
-    const tool = createEmailMarkReadTool(makeDeps([makeAccount()], client))
+    const tool = emailRead(makeDeps([makeAccount()], client), 'mark_read')
 
+    expect(text(await tool.execute('c0', {}))).toContain('uids is required for action=mark_read')
     expect(text(await tool.execute('c1', { uids: [] }))).toContain('"uids" must be a non-empty array')
     expect(text(await tool.execute('c2', { uids: ['nope'] }))).toContain('"uids" must be a non-empty array')
     expect(client.setSeen).not.toHaveBeenCalled()
@@ -409,7 +439,7 @@ describe('email_mark_read / email_mark_unread tools', () => {
   it('blocks folders outside the account restriction', async () => {
     const client = mockClient({ setSeen: vi.fn() })
     const account = makeAccount({ folderMode: 'selected', allowedFolders: ['INBOX'] })
-    const tool = createEmailMarkReadTool(makeDeps([account], client))
+    const tool = emailRead(makeDeps([account], client), 'mark_read')
 
     const result = await tool.execute('c1', { uids: [1], folder: 'Secret' })
 
@@ -566,28 +596,28 @@ describe('email_download_attachment tool', () => {
 
 describe('capability matrix', () => {
   const cases = [
-    { name: 'readonly', account: {}, allowed: ['email_mark_read', 'email_mark_unread'] },
-    { name: 'manage', account: { canManage: true }, allowed: ['email_mark_read', 'email_mark_unread', 'email_move'] },
+    { name: 'readonly', account: {}, allowed: ['mark_read', 'mark_unread'] },
+    { name: 'manage', account: { canManage: true }, allowed: ['mark_read', 'mark_unread', 'email_move'] },
     {
       name: 'delete',
       account: { canDelete: true },
-      allowed: ['email_mark_read', 'email_mark_unread', 'email_delete'],
+      allowed: ['mark_read', 'mark_unread', 'email_delete'],
     },
     {
       name: 'attachments',
       account: { canDownloadAttachments: true },
-      allowed: ['email_mark_read', 'email_mark_unread', 'email_download_attachment'],
+      allowed: ['mark_read', 'mark_unread', 'email_download_attachment'],
     },
     {
       name: 'full',
       account: { canManage: true, canDelete: true, canDownloadAttachments: true },
-      allowed: ['email_mark_read', 'email_mark_unread', 'email_move', 'email_delete', 'email_download_attachment'],
+      allowed: ['mark_read', 'mark_unread', 'email_move', 'email_delete', 'email_download_attachment'],
     },
   ]
 
   const params: Record<string, Record<string, unknown>> = {
-    email_mark_read: { uids: [1] },
-    email_mark_unread: { uids: [1] },
+    mark_read: { uids: [1] },
+    mark_unread: { uids: [1] },
     email_move: { uids: [1], target_folder: 'Archive' },
     email_delete: { uids: [1] },
     email_download_attachment: { uid: 1, part_id: '2' },
@@ -610,8 +640,8 @@ describe('capability matrix', () => {
         })
         const deps = makeDeps([account], client, workspace)
         const tools = [
-          createEmailMarkReadTool(deps),
-          createEmailMarkUnreadTool(deps),
+          emailRead(deps, 'mark_read'),
+          emailRead(deps, 'mark_unread'),
           createEmailMoveTool(deps),
           createEmailDeleteTool(deps),
           createEmailDownloadAttachmentTool(deps),

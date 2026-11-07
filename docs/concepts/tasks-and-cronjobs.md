@@ -1,11 +1,12 @@
 # Tasks & Cronjobs
 
-Axiom has three related but distinct ways to run work *outside the current chat turn*: **tasks** (one-shot background runs), **cronjobs** (recurring scheduled runs), and **reminders** (one-shot scheduled text). They share the same underlying machinery — a SQLite-backed scheduler, a `TaskRunner` that spawns isolated agents, and a notification layer that funnels results back into the right chat session — but they're meant for different kinds of work.
+Axiom has three related but distinct ways to run work *outside the current chat turn*: **tasks** (one-shot background runs), **cronjobs** (recurring scheduled runs), and **reminders** (scheduled static text, usually one-shot). They share the same underlying machinery — a SQLite-backed scheduler, a `TaskRunner` that spawns isolated agents, and a notification layer that funnels results back into the right chat session — but they're meant for different kinds of work.
 
 | | **Tasks** | **Cronjobs** | **Reminders** |
 |---|---|---|---|
-| Trigger | Fire-and-forget, on demand | Recurring on a 5-field cron schedule | One-shot at a future time |
-| Spawns an agent? | Always | Only when `action_type: "task"` | Never — static text |
+| Trigger | Fire-and-forget, on demand | Recurring on a 5-field cron schedule | At a future time (5-field cron), usually once |
+| Agent tools | `task_read`, `task_write` | `schedule_read`, `schedule_write` with `type: "task"` | `schedule_read`, `schedule_write` with `type: "reminder"` |
+| Spawns an agent? | Always | Always | Never — static text |
 | Tools / skills available? | Full registry, plus optional `attached_skills` | Full registry (task type only), plus optional `attached_skills` | None |
 | Typical use | "Build this app." "Refactor X across the repo." | "Every weekday at 9, summarize my GitHub notifications." | "Remind me at 17:30 to leave for the train." |
 
@@ -32,15 +33,15 @@ running ──┬──▶ completed
 - **`completed`** — final status was `completed` or `silent`. `silent` means the task chose not to emit a chat message (e.g. a periodic cronjob that found nothing to report).
 - **`failed`** — the agent threw, hit the duration cap, or got terminated by [loop detection](./../settings/tasks#loop-detection).
 
-Paused agents that nobody resumes are garbage-collected after a stale-cleanup interval; their database row stays as `paused` but the in-memory agent is gone, so calling `resume_task` on them returns *"agent is no longer in memory"*.
+Paused agents that nobody resumes are garbage-collected after a stale-cleanup interval; their database row stays as `paused` but the in-memory agent is gone, so calling `task_write` with `action: "resume"` on them returns *"agent is no longer in memory"*.
 
 ### Isolation
 
 Every task runs in its own agent instance with its own session ID — separate from the parent chat. A task agent has:
 
 - **No chat history.** It cannot read what was said in the conversation that triggered it. Anything it needs has to be in the `prompt` field.
-- **A different system prompt.** Built by [`buildTaskSystemPrompt`](https://github.com/meteyou/axiom/blob/main/packages/core/src/task-runner.ts) — it tells the agent *"You are a background task agent. You are NOT a chatbot — you are an autonomous worker"*, points at `/workspace`, injects the user-editable `<task_guidelines>` block from [`TASKS.md`](./instructions#tasks-md), and enforces the `STATUS: … / SUMMARY: …` final-message format described below.
-- **The full toolset and skill index.** Same `<available_tools>` and `<available_skills>` as a chat agent. Both `create_task` and `create_cronjob` can additionally pin specific skills via [`attached_skills`](#attached-skills).
+- **A different system prompt.** Built by [`buildTaskSystemPrompt`](https://github.com/meteyou/axiom/blob/main/packages/core/src/task-system-prompt.ts) — it tells the agent *"You are a background task agent. You are NOT a chatbot — you are an autonomous worker"*, injects the user-editable `<task_guidelines>` block from [`TASKS.md`](./instructions#tasks-md) and the task owner, and enforces the `STATUS: … / SUMMARY: …` final-message format described below. It reuses the same `<paths>` block and hard-coded `<system_rules>` as the [chat agent's prompt](./system-prompt), plus one task rule: work inside the workspace, never in `/tmp` or elsewhere.
+- **The full toolset and skill index.** The same tools and `<available_skills>` as a chat agent, except `file_send`. `task_write` (`action: "create"`) and `schedule_write` (`type: "task"`) can additionally pin specific skills via [`attached_skills`](#attached-skills).
 - **A fresh provider/model session.** The task either uses the configured task default provider (Settings → Tasks) or whatever was explicitly pinned at creation time.
 
 ### Ownership and privacy
@@ -49,20 +50,20 @@ Every task belongs to one user. A task started in chat belongs to the user who c
 
 The task agent is built for its owner and runs with the owner's context only:
 
-- **Workspace.** Shell commands, `read_file`/`write_file` and generated images use the owner's workspace (`/workspace` for the bootstrap admin, `/workspace/<username>/` for everyone else). The task prompt points at it.
-- **Memory.** `search_memories` and `read_chat_history` return only the owner's facts and conversations. The prompt references the owner's profile and daily notes next to the shared `MEMORY.md` and wiki.
+- **Workspace.** Shell commands, `file_read`/`file_write` and generated images use the owner's workspace (`/workspace` for the bootstrap admin, `/workspace/<username>/` for everyone else). The task prompt points at it.
+- **Memory.** `memory_search` and `chat_history_read` return only the owner's facts and conversations. The prompt references the owner's profile and daily notes next to the shared `MEMORY.md` and wiki.
 - **Delivery.** Results, questions and periodic status updates go only to the owner, in the web chat and on the owner's linked Telegram account.
 
 Access follows one policy for the web UI, the agent tools and the slash commands:
 
 | | Owner | Another regular user | Admin on a foreign task |
 |---|---|---|---|
-| See in lists (`/tasks`, `list_tasks`, Tasks page) | yes | no | Tasks page: everything. Agent and `/tasks`: only title, owner and status — never prompt or result |
+| See in lists (`/tasks`, `task_read`, Tasks page) | yes | no | Tasks page: everything. Agent and `/tasks`: only title, owner and status — never prompt or result |
 | Open and stream details | yes | no | web UI only |
 | Stop / kill | yes | no | yes |
 | Restart, resume | yes | no | no |
 
-The agent has a `stop_task` tool for stopping a running task: regular users can stop their own tasks, an admin can stop any task. `resume_task` only works on your own tasks, for everyone. A task you may not see is reported as not found.
+The agent stops a running task with `task_write` (`action: "stop"`): regular users can stop their own tasks, an admin can stop any task. `action: "resume"` only works on your own tasks, for everyone. A task you may not see is reported as not found.
 
 ### Triggers
 
@@ -71,8 +72,8 @@ The `tasks.trigger_type` column records *who created the task*. There are five t
 | Trigger | Meaning |
 |---|---|
 | `user` | Manually started from the **Tasks** page in the web UI. |
-| `agent` | The chat agent called `create_task` mid-conversation. |
-| `cronjob` | A scheduled `action_type: "task"` cronjob fired and spawned this run. |
+| `agent` | The chat agent called `task_write` (`action: "create"`) mid-conversation. |
+| `cronjob` | A scheduled cronjob (`type: "task"`) fired and spawned this run. |
 | `heartbeat` | The [agent heartbeat](./../settings/agent-heartbeat) ticked and produced an actionable item. |
 | `consolidation` | The memory-consolidation job spawned a task to act on a candidate entry. |
 
@@ -118,13 +119,15 @@ Concretely, the parent agent's *next* turn starts with a system-role message lik
 </task_injection>
 ```
 
-The parent agent's job is to *translate* this into a natural reply — the system prompt's `<task_system>` block (see [System Prompt → layer 14](./system-prompt#_14-task-system-task-and-cronjob-pointer)) tells it to load the `tasks-and-cronjobs` skill before responding, which carries the conventions (don't echo the raw block, route follow-ups via `resume_task`, …).
+The parent agent's job is to *translate* this into a natural reply — the hard-coded [`<system_rules>`](./system-prompt#system-rules-hard-coded-rules) tell it to load the `tasks-and-cronjobs` skill before responding, which carries the conventions (don't echo the raw block, route follow-ups via `task_write` with `action: "resume"`, …).
+
+If the injection is the first turn of a chat session, it builds the session's [system prompt and tool list](./system-prompt#built-once-per-session). Before the result is injected, Axiom resolves where the answer will be delivered — web chat or Telegram, following the [Telegram delivery](./../settings/tasks) setting (with `always`, Telegram wins) — and adds the matching [channel note](./system-prompt#per-message-context), so a result you read on Telegram is written for Telegram.
 
 ### Resuming a paused task
 
-When the user replies after a `status="question"` injection, the agent calls [`resume_task(task_id, message)`](https://github.com/meteyou/axiom/blob/main/packages/core/src/task-tools.ts) with the user's answer plus enough context for the task to continue (the original question, any conversation snippets that clarify, file paths that came up — the paused task has no chat history of its own).
+When the user replies after a `status="question"` injection, the agent calls [`task_write`](https://github.com/meteyou/axiom/blob/main/packages/core/src/task-tools.ts) with `action: "resume"`, the `task_id` and a `message` containing the user's answer plus enough context for the task to continue (the original question, any conversation snippets that clarify, file paths that came up — the paused task has no chat history of its own).
 
-`resume_task` validates that:
+The resume action validates that:
 
 1. The task exists and is in status `paused`.
 2. The agent is still in memory (`pausedTasks` map). If it's been garbage-collected, the call fails with *"agent is no longer in memory. The task may have timed out."*
@@ -142,24 +145,24 @@ The resumed prompt carries a `<recovery_context>` block built from the task tool
 
 - **Finished calls** in order, with arguments and a result preview. The 25 most recent calls are shown in full; older ones as a name + status line.
 - **Interrupted calls** — started but never finished because the process died mid-call. Each tool is classified as replay-safe or not:
-  - **Safe** (reads like `read_file`, `web_fetch`, `email_list`, `list_tasks`, plus the idempotent `email_read` / `email_mark_read` / `email_mark_unread`): *"Interrupted; safe to re-run."*
-  - **Unsafe** (everything else, e.g. `shell`, `write_file`, `email_send`, `create_task`): *"Interrupted; outcome UNKNOWN."* The agent has to check the current state (git remote, sent folder, file contents) before deciding whether to repeat the call.
+  - **Safe** (reads like `file_read`, `web_fetch`, `task_read`, `schedule_read`, plus every `email_read` action — listing, reading and the idempotent read/unread flags): *"Interrupted; safe to re-run."*
+  - **Unsafe** (everything else, e.g. `shell`, `file_write`, `email_send`, every `task_write` and `schedule_write` action): *"Interrupted; outcome UNKNOWN."* The agent has to check the current state (git remote, sent folder, file contents) before deciding whether to repeat the call.
 
-Unknown tools default to unsafe. Tasks that crashed before the journal existed fall back to a short summary of their last ten `tool_calls` rows. Journal rows are deleted once a task is no longer running or paused.
+Grouped tools are classified per action, and journal entries recorded under an old tool name are classified by its new name. Unknown tools default to unsafe. Tasks that crashed before the journal existed fall back to a short summary of their last ten `tool_calls` rows. Journal rows are deleted once a task is no longer running or paused.
 
 ### Provider, model, and duration
 
-`create_task` accepts optional `provider`, `model`, and `max_duration_minutes`:
+`task_write` with `action: "create"` accepts optional `provider`, `model`, `thinking_level` and `max_duration_minutes`:
 
-- **`provider` + `model`** flow through the same resolver used for chat (`resolveProviderModelInput`). A bare `model: "kimi-k2.6"` auto-detects the provider when there's a unique match. When neither is set, the configured task default applies. The tool descriptions for `create_task` and `create_cronjob` instruct the agent to **autonomously choose** an appropriate model based on the descriptions in the system prompt's [`<available_providers>` block](./system-prompt#_8-available_providers-configured-llm-providers) — preferring cost-effective models for simple work and stronger models for complex coding or research. The agent only needs to pass these parameters when it has a specific reason to deviate from the default task model.
+- **`provider` + `model`** flow through the same resolver used for chat (`resolveProviderModelInput`). A bare `model: "kimi-k2.6"` auto-detects the provider when there's a unique match. When neither is set, the configured task default applies. The parameter descriptions of `task_write` and `schedule_write` instruct the agent to **autonomously choose** an appropriate model based on the descriptions in the system prompt's [`<available_providers>` block](./system-prompt#available-providers-configured-llm-providers) — preferring cost-effective models for simple work and stronger models for complex coding or research. The agent only needs to pass these parameters when it has a specific reason to deviate from the default task model.
 - **`max_duration_minutes`** is hard-capped at the system maximum from Settings → Tasks → [Max duration](./../settings/tasks#max-duration). Hitting the cap aborts the task as `failed`, not `paused`.
 - **`thinking_level`** (`off` … `max`) sets the task agent's reasoning effort. Omitted, the task uses the [background thinking level](./../settings/tasks#background-thinking-level). The `<available_providers>` block lists which levels each model supports and the current background level, so the agent can raise the effort for hard work or lower it for mechanical work. An unsupported level is rounded to the nearest supported one when the task starts.
 
-Each task row stores the requested level (`thinking_level`, `NULL` = background default) and the level it actually ran with (`effective_thinking_level`). The tool result, `list_tasks`, and the Tasks page show both. A task keeps its level when it is resumed, recovered after a restart, or restarted from the Tasks page. Cronjobs store their own `thinking_level` (set via `create_cronjob` / `edit_cronjob` or the cronjob form); `edit_cronjob` with `thinking_level: "default"` resets it.
+Each task row stores the requested level (`thinking_level`, `NULL` = background default) and the level it actually ran with (`effective_thinking_level`). The tool result, `task_read`, and the Tasks page show both. A task keeps its level when it is resumed, recovered after a restart, or restarted from the Tasks page. Cronjobs store their own `thinking_level` (set via `schedule_write` or the cronjob form); `schedule_write` with `action: "edit"` and `thinking_level: "default"` resets it.
 
 The flag `is_default_model` records whether the resulting `(provider, model)` pair came from the system default or was explicitly pinned — useful when you change the default later and want to know which historical tasks were on the old default.
 
-`create_task` also accepts [`attached_skills`](#attached-skills) — the same mechanism cronjobs use, applied once at spawn time. Because a one-off task has no schedule row to persist the selection in, the resolved `SKILL.md` contents are injected when the task starts and are not stored on the `tasks` row; restarting a task from the Tasks page therefore starts it without attached skills.
+Task creation also accepts [`attached_skills`](#attached-skills) — the same mechanism cronjobs use, applied once at spawn time. Because a one-off task has no schedule row to persist the selection in, the resolved `SKILL.md` contents are injected when the task starts and are not stored on the `tasks` row; restarting a task from the Tasks page therefore starts it without attached skills.
 
 ### Long-running tasks and context compaction
 
@@ -175,12 +178,10 @@ These are operational safeguards documented in detail under [Settings → Tasks]
 
 ## Cronjobs
 
-A **cronjob** is a recurring scheduled entry in the `scheduled_tasks` table. Two flavors, distinguished by `action_type`:
+A **cronjob** is a recurring scheduled entry in the `scheduled_tasks` table. The agent manages cronjobs and reminders with the same two tools — `schedule_read` and `schedule_write` — and picks the flavor with `type`:
 
-- **`action_type: "task"`** *(default)* — on each tick, spawns a full task agent with the configured prompt. Use this whenever the action needs to think, fetch fresh data, use tools/skills, or produce a fresh result.
-- **`action_type: "injection"`** — on each tick, delivers the configured prompt verbatim into the parent chat as a system message. No agent runs. Use this only for genuinely static periodic notifications.
-
-Internally, a `create_reminder` is just a cronjob with `action_type: "injection"` (see [Reminders](#reminders) below).
+- **`type: "task"`** *(default, stored as `action_type: "task"`)* — on each tick, spawns a full task agent with the configured prompt. Use this whenever the action needs to think, fetch fresh data, use tools/skills, or produce a fresh result.
+- **`type: "reminder"`** *(stored as `action_type: "injection"`)* — on each tick, delivers the configured prompt verbatim into the parent chat as a system message. No agent runs. Use this only for genuinely static notifications (see [Reminders](#reminders) below).
 
 ### The scheduler
 
@@ -190,7 +191,7 @@ The [`TaskScheduler`](https://github.com/meteyou/axiom/blob/main/packages/core/s
 - **55-second deduplication cooldown.** If the scheduler fires a job whose `last_run_at` is less than 55 seconds ago — typically because the server restarted within the same cron minute — the firing is skipped. Without this, `nodemon`-style watch reloads or container restarts would double-fire jobs that had just run.
 - **5-second past-due grace.** If the calculated next-run time is more than 5 seconds in the past at startup (e.g. the host was offline through a scheduled tick), that tick is *skipped*, not fired retroactively. Cronjobs are best-effort; missed runs do not stack up.
 
-When a `task`-type cronjob fires, the scheduler creates a `tasks` row with `trigger_type: 'cronjob'` and `trigger_source_id: <cronjob id>`, then hands it to the same `TaskRunner` that handles user/agent-initiated tasks. `last_run_at`, `last_run_task_id`, and `last_run_status` on the `scheduled_tasks` row are updated as the task progresses, so the UI and `list_cronjobs` always show the most recent run.
+When a `task`-type cronjob fires, the scheduler creates a `tasks` row with `trigger_type: 'cronjob'` and `trigger_source_id: <cronjob id>`, then hands it to the same `TaskRunner` that handles user/agent-initiated tasks. `last_run_at`, `last_run_task_id`, and `last_run_status` on the `scheduled_tasks` row are updated as the task progresses, so the UI and `schedule_read` always show the most recent run.
 
 ### Cron expressions
 
@@ -215,16 +216,16 @@ A specific date/time cron like `30 11 30 3 *` ("March 30 at 11:30") fires every 
 
 ### `attached_skills`
 
-`create_task`, `create_cronjob`, and `edit_cronjob` accept an optional `attached_skills` array — names of agent skills under `/data/skills_agent/<name>/` (or installed user skills as `owner/name`). Before the task agent starts, the runner reads each `SKILL.md` and concatenates them into the task's system prompt under an `<attached_skills>` block. For cronjobs this happens on every firing; for a one-off task it happens once, at `create_task` time.
+`task_write` (`action: "create"`) and `schedule_write` (`type: "task"`, `action: "create"` or `"edit"`) accept an optional `attached_skills` array — names of agent skills under `/data/skills_agent/<name>/` (or installed user skills as `owner/name`). Before the task agent starts, the runner reads each `SKILL.md` and concatenates them into the task's system prompt under an `<attached_skills>` block. For cronjobs this happens on every firing; for a one-off task it happens once, at creation time.
 
-All three tools go through the same helpers in [`packages/core/src/attached-skills.ts`](https://github.com/meteyou/axiom/blob/main/packages/core/src/attached-skills.ts), so resolution, normalization (trim, de-duplicate, drop empties), and error handling are identical.
+Both tools go through the same helpers in [`packages/core/src/attached-skills.ts`](https://github.com/meteyou/axiom/blob/main/packages/core/src/attached-skills.ts), so resolution, normalization (trim, de-duplicate, drop empties), and error handling are identical.
 
 This is the deterministic alternative to relying on the agent's routing decision. Use it when:
 
 - The run's reliability depends on a skill (e.g. a daily Nitter scrape that needs the `nitter` skill's URL conventions). Without `attached_skills`, the task agent might or might not route to the skill on a given run; with it, the skill rules are guaranteed to be in the prompt.
 - You want skill rules baked in at *authoring time*, so future edits to the cronjob don't drift from what the user originally agreed to.
 
-Missing `SKILL.md` files are skipped with a console warning — the task still runs. Pass `attached_skills: []` to `edit_cronjob` to clear a cronjob's list.
+Missing `SKILL.md` files are skipped with a console warning — the task still runs. Pass `attached_skills: []` to `schedule_write` with `action: "edit"` to clear a cronjob's list.
 
 One difference between the two: a cronjob stores its list in `scheduled_tasks.attached_skills`, so every firing re-reads the current `SKILL.md`. A one-off task resolves the list at spawn time only and does not persist it.
 
@@ -243,42 +244,40 @@ This approach needs no code, follows the same file conventions as the rest of th
 
 #### Keeping the brain file bounded
 
-A state file that a cronjob writes to on every run grows unnoticed, and that growth has a sharp failure mode. Loading an oversized file can silently exhaust the run's token budget and terminate it. In one real incident a hub page grew to 756 KB and killed the run on a low token budget at high cost. `read_file` now returns at most 2000 lines or 50 KB per call, but an agent that pages through the whole file with `offset` still pays for every chunk. Three habits keep this safe:
+A state file that a cronjob writes to on every run grows unnoticed, and that growth has a sharp failure mode. Loading an oversized file can silently exhaust the run's token budget and terminate it. In one real incident a hub page grew to 756 KB and killed the run on a low token budget at high cost. `file_read` now returns at most 2000 lines or 50 KB per call, but an agent that pages through the whole file with `offset` still pays for every chunk. Three habits keep this safe:
 
 1. **Set a size budget** for the file, on the order of 60 KB. When it outgrows the budget, move raw material into monthly archives or sub-pages and keep only a compact summary or the current state in the main file.
-2. **Do not blindly load a large state file.** Instead of `read_file` on the whole file, `grep` for the specific marker you need and append new entries with a shell redirect (`>>`).
+2. **Do not blindly load a large state file.** Instead of `file_read` on the whole file, `grep` for the specific marker you need and append new entries with a shell redirect (`>>`).
 3. **Keep the split clean.** Compact machine state belongs in `/data/memory/state/`; curated knowledge belongs in the wiki.
 
 ### Editing, listing, removing
 
-The agent (or the user) operates on cronjobs through five tools, all in [`packages/core/src/cronjob-tools.ts`](https://github.com/meteyou/axiom/blob/main/packages/core/src/cronjob-tools.ts):
+The agent operates on cronjobs and reminders through two tools, both in [`packages/core/src/schedule-tools.ts`](https://github.com/meteyou/axiom/blob/main/packages/core/src/schedule-tools.ts):
 
-- **`list_cronjobs`** — overview with id, name, schedule, status, last run, and the next N upcoming run times.
-- **`get_cronjob`** — full configuration of one cronjob *including the complete prompt*. The agent is required to call this before editing — never edit a prompt blind.
-- **`edit_cronjob`** — partial update. Only the fields you pass are changed. Re-registers the timer with the scheduler.
-- **`remove_cronjob`** — deletes the row and cancels the timer.
-- **`create_cronjob`** — the constructor.
+- **`schedule_read`**
+  - `action: "list"` — overview with id, name, type, schedule, status, last run, and the next N upcoming run times.
+  - `action: "get"` — full configuration of one schedule *including the complete prompt*. The agent is told to call this before editing — never edit a prompt blind.
+- **`schedule_write`**
+  - `action: "create"` — the constructor (`name`, `prompt`, `schedule`, optional `type`).
+  - `action: "edit"` — partial update. Only the fields you pass are changed. Re-registers the timer with the scheduler.
+  - `action: "remove"` — deletes the row and cancels the timer.
 
 The web UI (Cronjobs page) is a thin wrapper around the same operations on the `scheduled_tasks` table, so an agent edit and a UI edit are interchangeable.
 
 ## Reminders
 
-A **reminder** is the friendly shortcut for *"deliver this static text at this time"*. Internally it's a `scheduled_tasks` row with `action_type: "injection"` — the same machinery as a cronjob — but exposed as a separate tool (`create_reminder`) with a tighter contract.
+A **reminder** is *"deliver this static text at this time"*. Internally it's a `scheduled_tasks` row with `action_type: "injection"` — the same machinery as a cronjob. The agent creates one with `schedule_write` (`action: "create"`, `type: "reminder"`), and the `prompt` is the exact message you receive. Two rules keep reminders honest:
 
-### Why a separate tool?
-
-Two reasons:
-
-- **Vocabulary.** When the user says *"remind me at 17:30 to leave for the train"*, calling `create_cronjob` with a buried `action_type: "injection"` would be the wrong shape. A dedicated tool makes the intent explicit and the parameters smaller (`message` instead of `prompt`, no `provider` / `model` / `attached_skills`).
-- **Anti-misuse enforcement.** `create_reminder` rejects requests that look dynamic.
+- **No agent parameters.** `provider`, `model`, `thinking_level` and `attached_skills` are rejected for `type: "reminder"`, because a reminder runs no agent.
+- **Anti-misuse enforcement.** Requests that look dynamic are rejected (see below).
 
 ### The anti-misuse heuristic
 
-A reminder delivers static text *verbatim*. No agent runs, no tools execute, no skills load, no fresh data is fetched. So `create_reminder` runs every request through `looksLikeDynamicTaskRequest` (in `cronjob-tools.ts`), which scans the `name` and `message` for patterns like *"current"*, *"latest"*, *"check"*, *"verify"*, *"weather"*, *"forecast"*, *"summarize"*, *"use skill"*, etc. — both English and German. If any pattern matches, the call returns:
+A reminder delivers static text *verbatim*. No agent runs, no tools execute, no skills load, no fresh data is fetched. So `schedule_write` runs every reminder — on create, and on edit when the type becomes `reminder` or the prompt changes — through `looksLikeDynamicTaskRequest` (in `schedule-tools.ts`), which scans the `name` and `prompt` for patterns like *"current"*, *"latest"*, *"check"*, *"verify"*, *"weather"*, *"forecast"*, *"summarize"*, *"use skill"*, etc. — both English and German. If any pattern matches, the call returns:
 
-> Error: `create_reminder` only supports static reminder text delivered verbatim. This request looks dynamic (for example checking current data, using a skill/tool, or doing work at run time). Use `create_cronjob` with `action_type: "task"` instead.
+> Error: type "reminder" only supports static text delivered verbatim. This request looks dynamic (for example checking current data, using a skill/tool, or doing work at run time). Use schedule_write with type "task" instead.
 
-The heuristic is deliberately blunt — false positives are fine because the alternative (a `task`-type cronjob) is strictly more capable. The contract is: *if you genuinely just want a string delivered later, use `create_reminder`; otherwise use `create_cronjob`*.
+The heuristic is deliberately blunt — false positives are fine because the alternative (a `task`-type cronjob) is strictly more capable. The contract is: *if you genuinely just want a string delivered later, use `type: "reminder"`; otherwise use `type: "task"`*.
 
 ### One-shot semantics
 
@@ -293,11 +292,11 @@ For exact-once delivery on a non-recurring date, the standard pattern is `<minut
 
 ### Delivery
 
-When a reminder fires, the `onInjection` callback (wired up by the runtime composer) inserts the `message` into the parent session as a system message and broadcasts to all connected channels — web chat and Telegram. The reminder row's `last_run_at` and `last_run_status` are updated to `completed`. Unlike a `task`-type firing, no `tasks` row is created and no agent is invoked.
+When a reminder fires, the `onInjection` callback (wired up by the runtime composer) inserts the message into the parent session as a system message and broadcasts to all connected channels — web chat and Telegram. The reminder row's `last_run_at` and `last_run_status` are updated to `completed`. Unlike a `task`-type firing, no `tasks` row is created and no agent is invoked.
 
 ## Safety: never use OS-level schedulers
 
-A hard rule, also enforced inline in the system prompt's `<task_system>` block:
+A hard rule, also part of the hard-coded [`<system_rules>`](./system-prompt#system-rules-hard-coded-rules) of every chat and task prompt:
 
 > **Never use OS-level schedulers.** No `crontab`, no `launchd`, no `at`, no shell-spawned long-running processes (`nohup`, `&`, background loops). Always use the built-in tools.
 
@@ -305,7 +304,7 @@ OS-level schedulers don't survive container restarts, can't be inspected from th
 
 ## See also
 
-- [System Prompt → `<task_system>`](./system-prompt#_14-task-system-task-and-cronjob-pointer) — where the task/cronjob pointer and the OS-scheduler safety rule are injected.
+- [System Prompt → `<system_rules>`](./system-prompt#system-rules-hard-coded-rules) — where the task-injection trigger and the OS-scheduler safety rule are injected.
 - [Skills](./skills) — the skill registry, including the `tasks-and-cronjobs` built-in skill that carries the agent-facing usage guide.
 - [Settings → Tasks](./../settings/tasks) — defaults for provider, max duration, telegram delivery, loop detection, status updates, and background thinking level.
 - [Built-in Tools → Tasks, cronjobs & reminders](./tools#tasks-cronjobs-reminders) — short description of every task/cronjob/reminder tool.

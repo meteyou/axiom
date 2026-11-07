@@ -13,6 +13,7 @@ import {
   loadSttSettings,
   deliverTaskNotification,
   deliverTaskStatusUpdate,
+  resolveDeliveryChannel,
   resolveTaskNotificationSessionId,
   ensureConfigStructure,
   ensureConfigTemplates,
@@ -49,6 +50,8 @@ import type {
   TaskRuntimeBoundary,
   ScopedToolsDeps,
   TaskRuntimeTaskBoundary,
+  TelegramDeliveryMode,
+  TurnChannel,
   UserScope,
 } from '@axiom/core'
 import type { AgentTool } from '@earendil-works/pi-agent-core'
@@ -87,6 +90,8 @@ interface PendingTaskInjectionMeta {
    * tagged onto every emitted chunk as `chunk.injectionId`.
    */
   injectionId: string
+  /** Resolved before injecting so the response is formatted for, and sent to, the same channel. */
+  deliveryChannel: TurnChannel
 }
 
 interface TaskSettings {
@@ -454,6 +459,23 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
 
   let wsChatPresenceChecker: ((userId: number) => boolean) | null = null
 
+  function telegramDeliveryMode(): TelegramDeliveryMode {
+    return (taskSettings.telegramDelivery as TelegramDeliveryMode) ?? 'auto'
+  }
+
+  function hasActiveWebSocket(userId: number): boolean {
+    return wsChatPresenceChecker?.(userId) ?? false
+  }
+
+  function resolveUserDeliveryChannel(userId: number): TurnChannel {
+    return resolveDeliveryChannel({
+      userId,
+      telegramDeliveryMode: telegramDeliveryMode(),
+      hasActiveWebSocket,
+      isTelegramLinked: uid => telegramBot?.getTelegramChatIdForUser(uid) != null,
+    })
+  }
+
   let agentCore: AgentCore | null = null
   let providerManager: ProviderManager | null = null
   let telegramBot: TelegramBot | null = null
@@ -612,14 +634,16 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
     if (agentCore) {
       injectionSessionId = agentCore.resolveInjectionSessionId(String(userId), lineageSessionId)
       const injectionId = randomUUID()
+      const deliveryChannel = resolveUserDeliveryChannel(userId)
       pendingInjections.set(injectionId, {
         taskId: task.id,
         userId,
         sessionId: injectionSessionId,
         injectionId,
+        deliveryChannel,
       })
       const forcedSessionId = injectionSessionId
-      agentCore.injectTaskResult(injection, String(userId), forcedSessionId, injectionId).catch(err => {
+      agentCore.injectTaskResult(injection, String(userId), forcedSessionId, injectionId, deliveryChannel).catch(err => {
         logger.error(`[axiom] Failed to inject task result for ${taskId}:`, err)
         pendingInjections.delete(injectionId)
       })
@@ -638,8 +662,8 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
       task,
       durationMinutes,
       targetSessionId,
-      telegramDeliveryMode: (taskSettings.telegramDelivery as 'auto' | 'always') ?? 'auto',
-      hasActiveWebSocket: (uid: number) => wsChatPresenceChecker?.(uid) ?? false,
+      telegramDeliveryMode: telegramDeliveryMode(),
+      hasActiveWebSocket,
       broadcastEvent: (event) => {
         chatEventBus.broadcast({
           type: event.type,
@@ -712,8 +736,8 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
       task,
       details,
       targetSessionId,
-      telegramDeliveryMode: (taskSettings.telegramDelivery as 'auto' | 'always') ?? 'auto',
-      hasActiveWebSocket: (uid: number) => wsChatPresenceChecker?.(uid) ?? false,
+      telegramDeliveryMode: telegramDeliveryMode(),
+      hasActiveWebSocket,
       sendTelegram,
       broadcastEvent: (event) => {
         chatEventBus.broadcast({
@@ -980,7 +1004,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
     },
   })
 
-  const cronjobToolsOptions = {
+  const scheduleToolsOptions = {
     taskRuntime: cronjobSchedulesForTools,
   }
 
@@ -991,7 +1015,7 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
     if (scope) {
       return createScopedTools(scope, {
         ...taskScopedToolsDeps,
-        cronjobTools: cronjobToolsOptions,
+        scheduleTools: scheduleToolsOptions,
         getInteractiveSessionId,
         excludeBaseTools: true,
       })
@@ -1164,19 +1188,13 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
         if (chunk.type === 'done') {
           const responseText = streamState.responseBuffer
 
-          if (telegramBot && responseText) {
-            const shouldSend =
-              taskSettings.telegramDelivery === 'always' ||
-              (taskSettings.telegramDelivery === 'auto' && !(wsChatPresenceChecker?.(pendingMeta.userId) ?? false))
-
-            if (shouldSend) {
-              const chatId = telegramBot.getTelegramChatIdForUser(pendingMeta.userId)
-              if (chatId) {
-                streamState.telegramDelivered = true
-                telegramBot.sendFormattedMessage(chatId, responseText).catch(err => {
-                  logger.error(`[axiom] Failed to send Telegram for task ${pendingMeta.taskId}:`, err)
-                })
-              }
+          if (telegramBot && responseText && pendingMeta.deliveryChannel === 'telegram') {
+            const chatId = telegramBot.getTelegramChatIdForUser(pendingMeta.userId)
+            if (chatId) {
+              streamState.telegramDelivered = true
+              telegramBot.sendFormattedMessage(chatId, responseText).catch(err => {
+                logger.error(`[axiom] Failed to send Telegram for task ${pendingMeta.taskId}:`, err)
+              })
             }
           }
 

@@ -83,8 +83,8 @@ The result returned by the tool. By default it's a structured display of the JSO
 
 For three specific cases the output is replaced by a richer view:
 
-- **`edit_file` / `Edit` on a memory file** — the panel renders an inline before/after diff of every edit instead of the raw JSON. Same renderer used in [Chat](./chat) tool cards.
-- **`write_file` / `Write` on a memory file** — the panel renders the new content as an "all added" diff (since `write_file` doesn't carry a before-state).
+- **`file_edit` / `Edit` on a memory file** — the panel renders an inline before/after diff of every edit instead of the raw JSON. Same renderer used in [Chat](./chat) tool cards.
+- **`file_write` / `Write` on a memory file** — the panel renders the new content as an "all added" diff (since `file_write` doesn't carry a before-state).
 - **Memory consolidation output** — the special diff produced by the nightly consolidation job is rendered inline so you can see exactly what was promoted from daily notes into `MEMORY.md`, user profiles, or the wiki.
 
 In all three cases, the raw `Input` block is hidden because the diff already conveys the information.

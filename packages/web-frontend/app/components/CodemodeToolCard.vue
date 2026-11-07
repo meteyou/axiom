@@ -67,8 +67,9 @@ defineEmits<{
 }>()
 
 const { t } = useI18n()
+const { translate } = useToolLabels()
 
-const collapsed = computed(() => codemodeCollapsedSummary(props.nestedCalls))
+const collapsed = computed(() => codemodeCollapsedSummary(props.nestedCalls, translate))
 const collapsedLabel = computed(() =>
   collapsed.value.count === 0 ? null : t('codemode.callsSummary', { count: collapsed.value.count, names: collapsed.value.toolNames.join(', ') }),
 )

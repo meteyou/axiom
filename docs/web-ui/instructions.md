@@ -1,6 +1,6 @@
 # Instructions
 
-The Instructions page is the dedicated editor for the Markdown files that shape the agent's behavior — what the chat agent reads on every turn, what background tasks read on every spawn, when memory is consolidated, and what runs on each heartbeat tick. These are the same files you can edit on disk under `/data/config/`; this page just gives them more screen real estate than the [Memory](./memory) page and adds a *Restore default* affordance for when you want to start over.
+The Instructions page is the dedicated editor for the Markdown files that shape the agent's behavior — what the chat agent reads at the start of every session, what background tasks read on every spawn, when memory is consolidated, and what runs on each heartbeat tick. These are the same files you can edit on disk under `/data/config/`; this page just gives them more screen real estate than the [Memory](./memory) page and adds a *Restore default* affordance for when you want to start over.
 
 > **Admin only.** Regular users don't see this page.
 
@@ -17,7 +17,7 @@ A single tab bar with four tabs, each one a full-file Markdown editor backed by 
 | **Agent Rules**         | `/data/config/AGENTS.md`          | Every chat turn (interactive agent system prompt).                                       |
 | **Consolidation Rules** | `/data/config/CONSOLIDATION.md`   | Only the [memory-consolidation job](../settings/memory#memory-consolidation).            |
 | **Heartbeat Tasks**     | `/data/config/HEARTBEAT.md`       | Only the [agent heartbeat](../settings/agent-heartbeat) on each scheduled tick.          |
-| **Task Guidelines**     | `/data/config/TASKS.md`           | Every background task spawn (`create_task`, `task`-type cronjobs, heartbeat-/consolidation-spawned tasks). |
+| **Task Guidelines**     | `/data/config/TASKS.md`           | Every background task spawn (`task_write`, `task`-type cronjobs, heartbeat-/consolidation-spawned tasks). |
 
 The screenshot at the top shows the **Agent Rules** tab.
 
@@ -51,15 +51,16 @@ A confirmation dialog explains what's about to happen:
 
 > **Restore default content?** This replaces the current editor content with the built-in template. Nothing is saved until you click Save changes.
 
-Two important properties:
+Three important properties:
 
+- **It is only enabled when the editor content differs from the default.** If the file already matches the shipped template, there is nothing to restore and the button stays disabled.
 - **It only loads the template into the editor — it does not save.** Your current `/data/config/<file>.md` is untouched until you click *Save changes* afterward. Cancel without saving and the disk file stays exactly as it was.
 - **The confirm dialog is not styled destructive.** That's deliberate — *Restore default* is reversible up to the moment you save. The destructive moment is the subsequent Save click.
 
 Use this when:
 
 - You've edited something into a corner and want a clean slate to compare against.
-- A new Axiom version updated the shipped template (mentioned in the release notes) and you want to adopt the new defaults — diff against your current content side-by-side, then merge by hand.
+- A new Axiom version updated the shipped template (mentioned in the release notes) and you want to adopt the new defaults — diff against your current content side-by-side, then merge by hand. Existing files are never migrated automatically; for example, the **Wiki Rules** and **Docs Rules** sections of the current `AGENTS.md` template only reach older installations this way. See [Agent Instructions → What is not in `AGENTS.md`](../concepts/instructions#what-is-not-in-agents-md).
 
 ## Save behavior
 
@@ -69,10 +70,10 @@ Effects of a save vary by file — see [Agent Instructions concept](../concepts/
 
 | File                    | When the next read picks up your changes                                              |
 |-------------------------|---------------------------------------------------------------------------------------|
-| `AGENTS.md`             | Next chat turn — read fresh every time.                                              |
+| `AGENTS.md`             | Next chat session (`/new`) — the system prompt is built once per session.             |
 | `CONSOLIDATION.md`      | Next consolidation run (manual *Run now* or scheduled).                               |
 | `HEARTBEAT.md`          | Next heartbeat tick.                                                                  |
-| `TASKS.md`              | Next background task spawn — read fresh on every `create_task` / cronjob run.        |
+| `TASKS.md`              | Next background task spawn — read fresh on every `task_write` / cronjob run.         |
 
 There is no restart needed for any of them.
 
@@ -82,9 +83,9 @@ Just enough to point you at the right tab; the [Agent Instructions concept](../c
 
 ### Agent Rules: `AGENTS.md`
 
-The agent contract. Concrete *do this / don't do this* rules — communication style, when to ask vs. act, anti-hallucination guardrails, memory hygiene, hard "never do this" red lines.
+The agent contract. Concrete *do this / don't do this* rules — communication style, when to ask vs. act, anti-hallucination guardrails, memory hygiene, wiki maintenance, when to read the docs, hard "never do this" red lines. Safety-critical rules (no OS schedulers, multi-user data separation, admin-only config) are hard-coded as system rules and don't belong here.
 
-Loaded into **every** prompt verbatim. Token-expensive — keep it tight, imperative, observable, and specific to your setup. Generic advice the model already knows is wasted space.
+Loaded into **every** chat prompt verbatim, once per session — edits apply from the next session (`/new`). Token-expensive — keep it tight, imperative, observable, and specific to your setup. Generic advice the model already knows is wasted space.
 
 > **Voice and character go in `SOUL.md`, not here.** The Memory page → Soul tab is for *who* the agent is; Agent Rules is for *how it acts*. See [Memory → Soul](./memory#soul) and the [System Prompt layering](../concepts/system-prompt).
 
@@ -96,7 +97,7 @@ Only the consolidation job ever reads this; it never appears in the chat system 
 
 ### Task Guidelines: `TASKS.md`
 
-The background-task contract. Generic guidelines injected into every background task's system prompt as the `<task_guidelines>` block — applies to `create_task`, to cronjobs with `action_type: "task"`, and to heartbeat-/consolidation-spawned tasks. The hardcoded identity ("you are a background task agent"), the concrete `Your task: …` block, the `<workspace>` block, and the final `STATUS: … / SUMMARY: …` output contract stay in code and are not editable here.
+The background-task contract. Generic guidelines injected into every background task's system prompt as the `<task_guidelines>` block — applies to `task_write`, to cronjobs with `type: "task"`, and to heartbeat-/consolidation-spawned tasks. The hardcoded identity ("you are a background task agent"), the concrete `Your task: …` block, the `<paths>` and `<system_rules>` blocks, and the final `STATUS: … / SUMMARY: …` output contract stay in code and are not editable here.
 
 Reads on every background task start. An empty file is valid: the `<task_guidelines>` block is then skipped and tasks rely on whatever rules the per-task prompt or attached skills carry. See [Agent Instructions → `TASKS.md`](../concepts/instructions#tasks-md) for the full distinction from `attached_skills` and per-task prompts.
 
@@ -116,7 +117,7 @@ What doesn't:
 ## See also
 
 - [Agent Instructions concept](../concepts/instructions) — what each file controls, the shipped templates, tuning tips.
-- [System Prompt](../concepts/system-prompt) — exactly how `AGENTS.md` is layered into the live prompt on every turn.
+- [System Prompt](../concepts/system-prompt) — exactly how `AGENTS.md` is layered into the prompt, once per session.
 - [Memory System](../concepts/memory) — the file layout `CONSOLIDATION.md` operates on.
 - [Memory page](./memory) — edit `SOUL.md`, `MEMORY.md`, daily notes, user profiles, and the wiki (different files, same editor experience).
 - [Settings → Memory](../settings/memory#memory-consolidation) — consolidation schedule, provider, manual *Run now*.

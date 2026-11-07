@@ -27,6 +27,22 @@ export const LEGACY_TOOL_NAMES: Readonly<Record<string, LegacyToolTarget>> = Obj
   list_agent_skills: { name: 'skill_list' },
   generate_image: { name: 'image_generate' },
   transcribe_audio: { name: 'audio_transcribe' },
+  list_tasks: { name: 'task_read' },
+  create_task: { name: 'task_write', action: 'create' },
+  resume_task: { name: 'task_write', action: 'resume' },
+  stop_task: { name: 'task_write', action: 'stop' },
+  list_cronjobs: { name: 'schedule_read', action: 'list' },
+  get_cronjob: { name: 'schedule_read', action: 'get' },
+  create_cronjob: { name: 'schedule_write', action: 'create', scheduleType: 'task' },
+  edit_cronjob: { name: 'schedule_write', action: 'edit' },
+  remove_cronjob: { name: 'schedule_write', action: 'remove' },
+  create_reminder: { name: 'schedule_write', action: 'create', scheduleType: 'reminder' },
+  email_list: { name: 'email_read', action: 'list' },
+  email_folders: { name: 'email_read', action: 'folders' },
+  // Kept its name as the grouped tool; old calls carry no action and were reads.
+  email_read: { name: 'email_read', action: 'read' },
+  email_mark_read: { name: 'email_read', action: 'mark_read' },
+  email_mark_unread: { name: 'email_read', action: 'mark_unread' },
 })
 
 type LegacyToolNameMap = Readonly<Record<string, LegacyToolTarget>>
@@ -40,6 +56,11 @@ function legacyTarget(name: string, mapping: LegacyToolNameMap = LEGACY_TOOL_NAM
 
 function legacyMembers(name: string, mapping: LegacyToolNameMap): string[] {
   return Object.keys(mapping).filter(legacy => legacyTarget(legacy, mapping)?.name === name)
+}
+
+/** Every old tool folded into `name`, including an old tool that kept the name. */
+function foldedTools(name: string, mapping: LegacyToolNameMap): string[] {
+  return Object.keys(mapping).filter(legacy => mapping[legacy]!.name === name)
 }
 
 /** Current tool name for a possibly legacy one; current and unknown names pass through. */
@@ -69,6 +90,10 @@ export function resolveToolName(name: string, args?: unknown): ResolvedToolName 
   const resolved: ResolvedToolName = { name }
   const record = args && typeof args === 'object' ? args as Record<string, unknown> : undefined
   if (typeof record?.action === 'string' && record.action !== '') resolved.action = record.action
+  else if (Object.prototype.hasOwnProperty.call(LEGACY_TOOL_NAMES, name)) {
+    const action = LEGACY_TOOL_NAMES[name]!.action
+    if (action !== undefined) resolved.action = action
+  }
   if (name.startsWith('schedule_') && (record?.type === 'task' || record?.type === 'reminder')) {
     resolved.scheduleType = record.type
   }
@@ -83,6 +108,17 @@ export interface MigratedToolOverride {
 }
 
 /**
+ * A tool that kept its name while absorbing others (email_read) is ambiguous:
+ * in a list that still holds other legacy names it means the old single tool;
+ * otherwise it is the current grouped tool.
+ */
+function migrationTarget(name: string, predatesMigration: boolean, mapping: LegacyToolNameMap): string | undefined {
+  const target = legacyTarget(name, mapping)?.name
+  if (target !== undefined) return target
+  return predatesMigration && foldedTools(name, mapping).includes(name) ? name : undefined
+}
+
+/**
  * Rewrites a list of disabled tool names to current names. A grouped tool is
  * only disabled when every legacy member that maps onto it was disabled;
  * otherwise disabling it would remove actions the user wanted to keep.
@@ -94,18 +130,20 @@ export function migrateDisabledToolNames(
   const disabled = new Set(names)
   const result = new Set<string>()
   const keptEnabled: MigratedToolOverride['keptEnabled'] = []
+  const predatesMigration = names.some(name => legacyTarget(name, mapping) !== undefined)
 
   for (const name of names) {
-    const target = legacyTarget(name, mapping)?.name
+    const target = migrationTarget(name, predatesMigration, mapping)
     if (target === undefined) {
       result.add(name)
       continue
     }
     if (result.has(target) || keptEnabled.some(kept => kept.name === target)) continue
 
-    const members = legacyMembers(target, mapping)
+    const members = foldedTools(target, mapping)
     const disabledMembers = members.filter(member => disabled.has(member))
-    if (disabled.has(target) || disabledMembers.length === members.length) result.add(target)
+    const targetAlreadyDisabled = !members.includes(target) && disabled.has(target)
+    if (targetAlreadyDisabled || disabledMembers.length === members.length) result.add(target)
     else keptEnabled.push({ name: target, disabledLegacyNames: disabledMembers })
   }
 

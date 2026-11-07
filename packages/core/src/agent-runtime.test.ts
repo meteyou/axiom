@@ -88,6 +88,7 @@ vi.mock('./memory.js', () => ({
   ensureConfigStructure: vi.fn(),
   getMemoryDir: vi.fn(() => '/tmp/test-memory'),
   assembleSystemPromptWithSections: vi.fn(() => ({ prompt: 'runtime system prompt', sections: [] })),
+  formatCurrentTimeContext: vi.fn((timezone?: string) => `<current_time>${timezone}</current_time>`),
 }))
 
 vi.mock('./config.js', () => ({
@@ -239,14 +240,13 @@ describe('AgentRuntime boundary', () => {
     })
 
     expect(assembleSystemPromptWithSections).not.toHaveBeenCalled()
-    await runTurn(runtime, { channel: 'telegram', currentUser: { username: 'alice' } })
+    await runTurn(runtime, { currentUser: { username: 'alice' } })
 
     const promptCalls = vi.mocked(assembleSystemPromptWithSections).mock.calls
     const latestCall = promptCalls.at(-1)?.[0]
     expect(latestCall).toBeDefined()
     expect(latestCall?.language).toBe('de')
     expect(latestCall?.timezone).toBe('Europe/Berlin')
-    expect(latestCall?.channel).toBe('telegram')
     expect(latestCall?.currentUser).toEqual({ username: 'alice' })
     expect(latestCall?.skills).toEqual(expect.arrayContaining([
       { name: 'Enabled skill', description: 'desc', location: '/skills/enabled' },
@@ -259,6 +259,45 @@ describe('AgentRuntime boundary', () => {
     const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db: initDatabase(':memory:'), tools: [], user: null, sessionUser: 'telegram-42' })
     await runTurn(runtime)
     expect(vi.mocked(assembleSystemPromptWithSections).mock.calls.at(-1)?.[0]?.recentDays).toBe(0)
+  })
+
+  describe('turn context', () => {
+    const prefixOf = (runtime: ReturnType<typeof createAgentRuntime>, channel: 'web' | 'telegram') =>
+      runtime.getTurnContext(channel).prefix
+
+    it('announces Telegram on the first turn but stays silent for web', () => {
+      const db = initDatabase(':memory:')
+      const telegram = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db, tools: [] })
+      const web = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db, tools: [] })
+
+      expect(prefixOf(telegram, 'telegram')).toContain('through Telegram')
+      expect(prefixOf(web, 'web')).toBeNull()
+    })
+
+    it('announces each channel switch exactly once and nothing while the channel is unchanged', () => {
+      const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db: initDatabase(':memory:'), tools: [] })
+
+      expect(prefixOf(runtime, 'web')).toBeNull()
+      expect(prefixOf(runtime, 'telegram')).toContain('through Telegram')
+      expect(prefixOf(runtime, 'telegram')).toBeNull()
+      expect(prefixOf(runtime, 'web')).toContain('web interface')
+      expect(prefixOf(runtime, 'web')).toBeNull()
+    })
+
+    it('appends the current time in the configured timezone', () => {
+      const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db: initDatabase(':memory:'), tools: [] })
+      expect(runtime.getTurnContext('web').suffix).toBe('<current_time>Europe/Berlin</current_time>')
+    })
+
+    it('treats the first turn after session end as a first turn again', () => {
+      const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db: initDatabase(':memory:'), tools: [] })
+      expect(prefixOf(runtime, 'telegram')).not.toBeNull()
+
+      runtime.clearMessages()
+      expect(prefixOf(runtime, 'telegram')).not.toBeNull()
+      runtime.clearMessages()
+      expect(prefixOf(runtime, 'web')).toBeNull()
+    })
   })
 
   describe('session snapshot', () => {
@@ -285,7 +324,7 @@ describe('AgentRuntime boundary', () => {
       // Memory, skills or settings changing mid-session must not leak into it.
       vi.mocked(assembleSystemPromptWithSections).mockReturnValue({ prompt: 'changed prompt', sections: [] })
       try {
-        await runTurn(runtime, { channel: 'telegram', currentUser: { username: 'alice' } })
+        await runTurn(runtime, { currentUser: { username: 'alice' } })
         await runTurn(runtime)
 
         expect(assembleSystemPromptWithSections).toHaveBeenCalledTimes(1)

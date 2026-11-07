@@ -12,7 +12,7 @@ export interface Task {
   /**
    * `true` when the task ran on the configured Task Default provider/model,
    * `false` when an explicit (provider, model) was passed through
-   * `create_task`, a cronjob, etc. `null` for legacy rows that predate this
+   * `task_write`, a cronjob, etc. `null` for legacy rows that predate this
    * column.
    */
   isDefaultModel: boolean | null

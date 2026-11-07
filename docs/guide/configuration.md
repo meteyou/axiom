@@ -67,7 +67,7 @@ Once the container is running, open `http://localhost:3000`, log in as admin, an
 | Add or remove user accounts                          | [Users](../web-ui/users)                                |
 | Install or remove skills                             | [Skills](../web-ui/skills)                              |
 
-Changes take effect **immediately** — no container restart, no reload. The `Save` button in the page header writes the change to `/data/config/...` and the backend re-reads it on the next agent turn.
+Changes take effect without a container restart. The `Save` button in the page header writes the change to `/data/config/...`. Anything that feeds the agent's system prompt or tool list — instruction files, memory files, skills, the reply language, codemode — applies from the **next session**: run `/new` in the chat to pick it up right away. See [System Prompt → Built once per session](../concepts/system-prompt#built-once-per-session).
 
 For a tour of the whole interface, see [Web Interface](../web-ui/).
 
@@ -97,7 +97,7 @@ The entrypoint creates these on first startup with safe defaults:
 | `AGENTS.md`        | User-editable agent rules (loaded into every chat system prompt)                                                                                           | [Instructions](../web-ui/instructions)                     |
 | `HEARTBEAT.md`     | Recurring agent self-check tasks                                                                                                                           | [Instructions](../web-ui/instructions)                     |
 | `CONSOLIDATION.md` | Memory-consolidation rules                                                                                                                                 | [Instructions](../web-ui/instructions)                     |
-| `TASKS.md`         | Background-task guidelines (injected into every `create_task` / cronjob `task` run)                                                                        | [Instructions](../web-ui/instructions)                     |
+| `TASKS.md`         | Background-task guidelines (injected into every `task_write` / cronjob `task` run)                                                                            | [Instructions](../web-ui/instructions)                     |
 
 > ⚠️ **`secrets.json` is the exception.** It contains AES-256-GCM ciphertext keyed by `ENCRYPTION_KEY`. Always edit secrets through the UI — manual edits will not decrypt. If the UI is unreachable, you can stage values via `.env` / Compose `environment:` instead; runtime env vars take precedence.
 
@@ -117,7 +117,7 @@ The Compose file mounts two named volumes:
 | Volume | Container path | Purpose |
 |---|---|---|
 | `axiom-data` | `/data` | Database, config, memory, skills, npm cache. **Back this up.** |
-| `axiom-workspace` | `/workspace` | The agent's home directory. Anything the agent writes via the `shell` tool, downloads with `wget`/`yt-dlp`, or saves via `write_file` outside `/data` ends up here. |
+| `axiom-workspace` | `/workspace` | The agent's home directory. Anything the agent writes via the `shell` tool, downloads with `wget`/`yt-dlp`, or saves via `file_write` outside `/data` ends up here. |
 
 If you lose `axiom-data` you lose the database, all memory, all configured providers, and all installed skills. If you lose `axiom-workspace` you lose whatever the agent has been working on — but the agent itself can rebuild that.
 
@@ -128,10 +128,10 @@ For the full directory layout inside both volumes, see [File Paths](../reference
 | Change                                            | Takes effect                                                                                |
 |---------------------------------------------------|---------------------------------------------------------------------------------------------|
 | `.env` / Compose env vars                         | After `docker compose up -d` (container restart)                                            |
-| Anything in **Settings → …** in the UI            | Immediately (no restart)                                                                    |
+| Anything in **Settings → …** in the UI            | Without restart; settings that feed the system prompt or tool list (language, codemode, image generation) from the next session |
 | Manual edit of `/data/config/*.json`              | Immediately for most settings; restart to be safe                                           |
-| Editing `AGENTS.md` / `SOUL.md` / `MEMORY.md`     | Picked up on the **next** message (system prompt is rebuilt per turn)                       |
-| Adding/removing skills                            | Immediately for new skills; the agent sees the updated `<available_skills>` list next turn  |
+| Editing `AGENTS.md` / `SOUL.md` / `MEMORY.md`     | Picked up in the **next session** (`/new`) — the system prompt is built once per session and rebuilt on compaction |
+| Adding/removing skills                            | The updated `<available_skills>` list appears in the **next session** (`/new`)              |
 
 ## Next steps
 

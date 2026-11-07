@@ -84,7 +84,7 @@ Resolved by `getMemoryDir()` in `packages/core/src/memory.ts`. Structure created
 | Path | Helper / generator | Mutability rule |
 |---|---|---|
 | `SOUL.md` | `SOUL_TEMPLATE` in `memory.ts` | User-owned. Agent should not rewrite without confirmation. |
-| `MEMORY.md` | `MEMORY_TEMPLATE` in `memory.ts`; legacy `AGENTS.md` migrated here on first start | Agent writes via `edit_file` / `write_file` for durable lessons. Nightly consolidation may rewrite. |
+| `MEMORY.md` | `MEMORY_TEMPLATE` in `memory.ts`; legacy `AGENTS.md` migrated here on first start | Agent writes via `file_edit` / `file_write` for durable lessons. Nightly consolidation may rewrite. |
 | `daily/<date>.md` | `appendToDailyFile()` in `memory.ts` (called from `session-manager.ts:306`) | **Append-only.** Never edit existing daily files. |
 | `users/<username>.md` | `ensureUserProfile()` / `readUserProfile()` in `memory.ts`, template `USER_PROFILE_TEMPLATE` | Agent updates per user. Do **not** duplicate language/timezone here — those live in `settings.json`. |
 | `wiki/*.md` | `ensureWikiDir()` in `memory.ts`; managed by the `wiki` skill | Agent edits freely; cite source files in a `## Sources` / `## Quellen` section. |
@@ -141,14 +141,14 @@ npm global prefix configured in the image so `npm install -g …` survives conta
 
 ## `/workspace/` — agent home
 
-Resolved by `getWorkspaceDir()` in `packages/core/src/workspace.ts`. This is the agent's home directory and the cwd for `shell` invocations. Anything written via `write_file` / `edit_file` outside of `/data/...` lands here.
+Resolved by `getWorkspaceDir()` in `packages/core/src/workspace.ts`. This is the agent's home directory and the cwd for `shell` invocations. Anything written via `file_write` / `file_edit` outside of `/data/...` lands here.
 
 Resolution order:
 1. `WORKSPACE_DIR` env var (explicit override)
 2. `<DATA_DIR>/workspace` (auto-created if missing)
 3. `/workspace` (Docker default)
 
-`send_file_tool` and `stt_tool` resolve relative paths against this directory. `generate_image` saves its results under `/workspace/images/YYYY-MM-DD/` (one JSON sidecar per image); the `images` folder is configurable under [Settings → Image Generation](../settings/image-generation#output-folder).
+`send_file_tool` and `stt_tool` resolve relative paths against this directory. `image_generate` saves its results under `/workspace/images/YYYY-MM-DD/` (one JSON sidecar per image); the `images` folder is configurable under [Settings → Image Generation](../settings/image-generation#output-folder).
 
 ## `/app/` — read-only image
 
@@ -157,8 +157,8 @@ Source tree shipped in the Docker image. Mostly relevant when surfacing docs int
 | Path | Helper | Purpose |
 |---|---|---|
 | `/app/` | `getProjectRootDir()` (`config.ts`) | Monorepo root inside the image (also resolved correctly in dev via workspaces walk-up). |
-| `/app/README.md` | `getReadmePath()` | Main project README. Surfaced to the agent in `<axiom_docs>`. |
-| `/app/docs/` | `getDocsPath()` | User-facing documentation (this site). Surfaced to the agent in `<axiom_docs>`. Authoritative for runtime behavior. |
+| `/app/README.md` | `getReadmePath()` | Main project README. Surfaced to the agent in the `<paths>` block. |
+| `/app/docs/` | `getDocsPath()` | User-facing documentation (this site). Surfaced to the agent in the `<paths>` block. Authoritative for runtime behavior. |
 | `/app/agent_docs/` | `getAgentDocsPath()` | Contributor / internals docs (architecture conventions, session-id design, skill versioning). **Not** surfaced in the runtime prompt. |
 | `/app/skills_agent_defaults/` | _(no helper — only used in `entrypoint.sh`)_ | Source of truth for built-in skills. Copied into `/data/skills_agent/` on container start. |
 

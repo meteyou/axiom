@@ -70,7 +70,7 @@ to the input field) is populated automatically on bot startup via
 |-------------|-----------------------------------------------------------------------------|
 | `/start`    | Welcome message. Registers you as `pending` on first use.                   |
 | `/help`     | List all available slash commands.                                          |
-| `/new`      | Summarize the current session, persist it, and start a fresh conversation.  |
+| `/new`      | Summarize the current session, persist it, and start a fresh conversation with a freshly built system prompt (picks up changes to memory files, skills and settings). |
 | `/stop`     | Abort the current agent turn and clear queued messages. (alias `/kill`)     |
 | `/tasks`    | Show running and recent background tasks (read-only).                       |
 | `/cronjobs` | Show configured cronjobs and their next run time. (alias `/cron`)           |
