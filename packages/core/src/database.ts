@@ -10,6 +10,7 @@ import { migrateEmailAccountOwners } from './email-account-store.js'
 import { migrateTaskOwners } from './task-store.js'
 import { migrateScheduledTaskOwners, migrateScheduledTaskToolOverrides } from './scheduled-task-store.js'
 import { migrateSessionOwners } from './session-owners.js'
+import { migrateMemoryLifecycleColumns } from './memories-store.js'
 
 export type Database = BetterSqlite3.Database
 
@@ -316,6 +317,8 @@ export function initDatabase(dbPath?: string): Database {
   if (!chatMessagesFtsExists) {
     db.exec("INSERT INTO chat_messages_fts(chat_messages_fts) VALUES('rebuild')")
   }
+
+  migrateMemoryLifecycleColumns(db)
 
   // Create tasks table
   db.exec(`

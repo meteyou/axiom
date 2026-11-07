@@ -7,6 +7,7 @@ import {
   getMemoryById,
   listMemories,
   searchMemories,
+  supersedeMemories,
   updateMemory,
 } from './memories-store.js'
 
@@ -202,5 +203,61 @@ describe('memories-store', () => {
     expect(ftsRow).toBeUndefined()
     expect(getMemoryById(db, id)).toBeNull()
     expect(searchMemories(db, 'postgres', { userId: 1 })).toHaveLength(0)
+  })
+
+  describe('superseding facts', () => {
+    it('hides superseded facts from search and listings but keeps them addressable by id', () => {
+      const oldId = createMemory(db, 1, 'session-a', 'User prefers dark mode', 'extracted_fact')
+      const newId = createMemory(db, 1, 'session-b', 'User prefers light mode', 'extracted_fact')
+
+      expect(supersedeMemories(db, 1, [oldId], newId)).toEqual([oldId])
+
+      expect(searchMemories(db, 'prefers', { userId: 1 }).map(fact => fact.id)).toEqual([newId])
+      expect(listMemories(db, { userId: 1 })).toMatchObject({ total: 1, facts: [{ id: newId }] })
+      expect(listMemories(db, { userId: 1, query: 'prefers' })).toMatchObject({ total: 1, facts: [{ id: newId }] })
+      expect(getMemoryById(db, oldId)).toMatchObject({
+        id: oldId,
+        content: 'User prefers dark mode',
+        supersededBy: newId,
+        deletedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2} /),
+      })
+      expect(getMemoryById(db, newId)).toMatchObject({ supersededBy: null, deletedAt: null })
+    })
+
+    it('keeps the FTS index consistent when facts are superseded', () => {
+      const oldId = createMemory(db, 1, 'session-a', 'User prefers dark mode', 'extracted_fact')
+      const newId = createMemory(db, 1, 'session-b', 'User prefers light mode', 'extracted_fact')
+
+      supersedeMemories(db, 1, [oldId], newId)
+
+      expect(() => db.exec("INSERT INTO memories_fts(memories_fts) VALUES('integrity-check')")).not.toThrow()
+      const ftsRow = db.prepare('SELECT rowid, content FROM memories_fts WHERE rowid = ?').get(oldId)
+      expect(ftsRow).toEqual({ rowid: oldId, content: 'User prefers dark mode' })
+    })
+
+    it('only supersedes active facts of the same user and never the replacement itself', () => {
+      const ownFactId = createMemory(db, 1, 'session-a', 'Alice uses vim', 'extracted_fact')
+      const foreignFactId = createMemory(db, 2, 'session-b', 'Bob uses vim', 'extracted_fact')
+      const replacementId = createMemory(db, 1, 'session-c', 'Alice uses helix', 'extracted_fact')
+      const laterReplacementId = createMemory(db, 1, 'session-d', 'Alice uses zed', 'extracted_fact')
+
+      expect(supersedeMemories(db, 1, [ownFactId, ownFactId, foreignFactId, replacementId], replacementId)).toEqual([ownFactId])
+      expect(supersedeMemories(db, 1, [ownFactId], laterReplacementId)).toEqual([])
+
+      expect(getMemoryById(db, ownFactId)?.supersededBy).toBe(replacementId)
+      expect(getMemoryById(db, foreignFactId)?.deletedAt).toBeNull()
+      expect(getMemoryById(db, replacementId)?.deletedAt).toBeNull()
+    })
+
+    it('keeps a superseded fact retired when its replacement is deleted', () => {
+      const oldId = createMemory(db, 1, 'session-a', 'User prefers dark mode', 'extracted_fact')
+      const newId = createMemory(db, 1, 'session-b', 'User prefers light mode', 'extracted_fact')
+      supersedeMemories(db, 1, [oldId], newId)
+
+      deleteMemory(db, newId)
+
+      expect(getMemoryById(db, oldId)).toMatchObject({ supersededBy: null, deletedAt: expect.any(String) })
+      expect(listMemories(db, { userId: 1 }).total).toBe(0)
+    })
   })
 })

@@ -485,14 +485,17 @@ export {
   createMemory,
   updateMemory,
   deleteMemory,
+  supersedeMemories,
 } from './memories-store.js'
 export type { MemoryFact, SearchMemoriesOptions, ListMemoriesOptions } from './memories-store.js'
 export {
   parseFactLines,
-  isDuplicateFact,
+  parseFactDecisions,
+  findRelatedFacts,
   storeFact,
   extractAndStoreFacts,
 } from './fact-extraction.js'
+export type { FactDecision, FactExtractionResult, RelatedFact } from './fact-extraction.js'
 export { createSearchMemoriesTool } from './memories-tool.js'
 export type { SearchMemoriesToolOptions } from './memories-tool.js'
 export { normalizeFtsQuery, normalizePlainFtsQuery } from './fts-utils.js'
