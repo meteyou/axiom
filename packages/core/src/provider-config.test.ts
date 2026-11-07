@@ -1461,7 +1461,7 @@ describe('OpenCode Zen/Go catalog presets (sourced from pi-ai)', () => {
     const model = buildModel(makeProvider('opencode-go', 'glm-5.3'))
     expect(model.id).toBe('glm-5.3')
     expect(model.api).toBe('openai-completions')
-    expect(model.baseUrl).toBe('https://opencode.ai/inference/go/v1')
+    expect(model.baseUrl).toBe('https://opencode.ai/inference/go/openai/v1')
     expect(model.cost.input).toBeGreaterThan(0)
     expect(model.cost.output).toBeGreaterThan(0)
   })
