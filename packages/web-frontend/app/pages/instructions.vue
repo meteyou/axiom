@@ -58,7 +58,7 @@
               @save="handleSaveCurrent"
             >
               <template #footerActions>
-                <Button variant="outline" :disabled="restoringDefault" @click="restoreDialogOpen = true">
+                <Button variant="outline" :disabled="restoringDefault || matchesDefault(item.id)" @click="restoreDialogOpen = true">
                   <span
                     v-if="restoringDefault"
                     class="h-4 w-4 animate-spin rounded-full border-2 border-foreground/30 border-t-foreground"
@@ -182,17 +182,26 @@ const contents = reactive<Record<InstructionFileId, string>>({
   heartbeat: '',
   tasks: '',
 })
+const defaults = reactive<Partial<Record<InstructionFileId, string>>>({})
 const loadedFiles = ref<Set<InstructionFileId>>(new Set())
 const restoreDialogOpen = ref(false)
 const restoringDefault = ref(false)
+
+function matchesDefault(fileId: InstructionFileId): boolean {
+  const defaultContent = defaults[fileId]
+  return defaultContent === undefined || contents[fileId].trimEnd() === defaultContent.trimEnd()
+}
 
 async function ensureCurrentFileLoaded() {
   const fileId = activeFile.value
   if (loadedFiles.value.has(fileId)) return
 
   clearMessages()
-  const content = await currentInstruction.value.load()
+  const instruction = currentInstruction.value
+  const content = await instruction.load()
   if (error.value) return
+  const defaultContent = await instruction.loadDefault()
+  if (!error.value) defaults[fileId] = defaultContent
 
   contents[fileId] = content
   loadedFiles.value = new Set([...loadedFiles.value, fileId])
@@ -211,10 +220,11 @@ async function handleRestoreDefault() {
   restoringDefault.value = true
   try {
     clearMessages()
-    const content = await currentInstruction.value.loadDefault()
+    const fileId = activeFile.value
+    const content = defaults[fileId] ?? await currentInstruction.value.loadDefault()
     if (error.value) return
 
-    contents[activeFile.value] = content
+    contents[fileId] = content
     restoreDialogOpen.value = false
   } finally {
     restoringDefault.value = false
