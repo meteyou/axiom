@@ -170,8 +170,14 @@ export function trackAgentSkillUsage(skillName: string): void {
   }
 }
 
+// The system prompt has no dedicated task-system or skill-creation blocks;
+// system rules and user requests route to these skills via available_skills,
+// so they must never fall out of the recent list.
+const PINNED_AGENT_SKILLS = new Set(['tasks-and-cronjobs', 'skill-creator'])
+
 /**
  * Get the N most recently used agent skills, sorted by lastUsed descending.
+ * Pinned built-in skills are always part of the result.
  */
 export function getRecentAgentSkills(limit: number = 10): AgentSkillEntry[] {
   const allSkills = listAgentSkills()
@@ -189,7 +195,9 @@ export function getRecentAgentSkills(limit: number = 10): AgentSkillEntry[] {
 
   // Combine: recently used first, then unused
   const combined = [...withUsage, ...withoutUsage]
-  return combined.slice(0, limit)
+  const pinnedCount = Math.min(combined.filter(s => PINNED_AGENT_SKILLS.has(s.name)).length, limit)
+  let unpinnedSlots = limit - pinnedCount
+  return combined.filter(s => PINNED_AGENT_SKILLS.has(s.name) || unpinnedSlots-- > 0).slice(0, limit)
 }
 
 /**

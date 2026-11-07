@@ -34,7 +34,6 @@ import { createImageGenerationTools, GENERATE_IMAGE_TOOL_NAME } from './image-to
 import { loadActiveImageGeneration, resolveDefaultImageModel } from './image-generation.js'
 import {
   CODEMODE_TOOL_NAME,
-  buildCodemodePromptGuideline,
   createCodemodeTool,
   createNestedCallLogObserver,
   readCodemodeMainAgentEnabled,
@@ -309,7 +308,7 @@ export function createYoloTools(
   const writeFileTool: AgentTool = {
     name: 'write_file',
     label: 'Write File',
-    description: 'Write content to a file. Creates parent directories if needed.',
+    description: 'Write content to a file, replacing it entirely. Creates parent directories if needed. For partial changes to an existing file, prefer edit_file.',
     parameters: Type.Object({
       path: Type.String({ description: 'Path to the file to write' }),
       content: Type.String({ description: 'Content to write to the file' }),
@@ -340,7 +339,7 @@ export function createYoloTools(
   const editFileTool: AgentTool = {
     name: 'edit_file',
     label: 'Edit File',
-    description: 'Edit a file using exact text replacements. Each edit specifies an oldText to find and a newText to replace it with. The oldText must match exactly and be unique in the file. Use this instead of write_file when you only need to change specific parts of a file.',
+    description: 'Edit a file using exact text replacements. Each edit specifies an oldText to find and a newText to replace it with. The oldText must match exactly and be unique in the file. Prefer this over write_file whenever you only need to change specific parts of a file — it saves tokens and reduces errors.',
     parameters: Type.Object({
       path: Type.String({ description: 'Path to the file to edit' }),
       edits: Type.Array(
@@ -681,13 +680,8 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
 
   refreshSystemPrompt(channel?: string, currentUser?: { username: string; role?: string }): void {
     this.syncImageGenerationTool()
-    const codemodeEnabled = this.syncCodemodeTool()
+    this.syncCodemodeTool()
     const built = this.buildSystemPrompt(channel, currentUser)
-    if (codemodeEnabled) {
-      const guideline = buildCodemodePromptGuideline()
-      built.prompt = `${built.prompt}\n\n${guideline}`
-      built.sections.push({ key: 'codemode', text: guideline })
-    }
     this.builtSystemPrompt = built
     const systemPrompt = built.prompt
     const messages = this.agent.state.messages
@@ -724,19 +718,18 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
    * Codemode can be switched for the main agent while a chat runtime lives, so
    * `codemode` is added or dropped before each turn; pi-agent-core declares
    * the change to the model. An unchanged declaration is kept so the tool
-   * list stays stable. Returns whether codemode is active for the prompt.
+   * list stays stable.
    */
-  private syncCodemodeTool(): boolean {
+  private syncCodemodeTool(): void {
     const enabled = readCodemodeMainAgentEnabled()
     const tools = this.agent.state.tools
     const registered = tools.find(tool => tool.name === CODEMODE_TOOL_NAME)
-    if (!registered && !enabled) return false
-    if (registered && enabled && hasSameDeclaration(registered, this.buildCodemodeTool())) return true
+    if (!registered && !enabled) return
+    if (registered && enabled && hasSameDeclaration(registered, this.buildCodemodeTool())) return
     this.agent.state.tools = [
       ...tools.filter(tool => tool.name !== CODEMODE_TOOL_NAME),
       ...(enabled ? [this.buildCodemodeTool()] : []),
     ]
-    return enabled
   }
 
   /**
@@ -886,11 +879,6 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
     const totalAgentSkills = getAgentSkillsCount()
     const allSkills = [...activeSkills, ...agentSkillEntries]
 
-    const builtinToolsPromptConfig = {
-      ...builtinToolsConfig,
-      stt: { enabled: sttEnabled },
-    }
-
     // Provider/model inventory — lets the agent translate user-facing
     // model names (e.g. "kimi-k2.6") into the right `provider`/`model`
     // arguments for create_task / create_cronjob / edit_cronjob, and route
@@ -955,7 +943,6 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
       skills: allSkills,
       agentSkillsOverflowCount: totalAgentSkills > 10 ? totalAgentSkills : undefined,
       currentUser,
-      builtinTools: builtinToolsPromptConfig,
       agentSkillsDir: getAgentSkillsDir(),
       availableProviders,
       availableImageModels,

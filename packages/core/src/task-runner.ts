@@ -24,7 +24,6 @@ import {
   CODEMODE_TOOL_NAME,
   createCodemodeTool,
   createNestedCallLogObserver,
-  buildCodemodePromptGuideline,
   pruneCodemodeSpillFolder,
 } from './codemode-tool.js'
 import type { CodemodeNestedCallEnd, CodemodeNestedCallSnapshot } from './codemode-tool.js'
@@ -531,19 +530,15 @@ export class TaskRunner {
 
       // Codemode eligibility is decided once at start: memory consolidation never
       // gets it, a per-cronjob override wins when set, otherwise the global
-      // switch. Resolved before the prompt/tools so the guideline and the tool
-      // stay in sync.
+      // switch.
       const codemodeEnabled = this.resolveCodemodeEnabledForTask(task, overrides)
 
       // Inject attached-skills block (before the base prompt) so skill rules are
       // anchored at the top and apply regardless of the rest of the prompt.
       const attachedSkillsBlock = renderAttachedSkillsBlock(overrides?.attachedSkills ?? null)
-      const withAttached = attachedSkillsBlock
+      const systemPrompt = attachedSkillsBlock
         ? `${attachedSkillsBlock}\n\n${baseSystemPrompt}`
         : baseSystemPrompt
-      const systemPrompt = codemodeEnabled
-        ? `${withAttached}\n\n${buildCodemodePromptGuideline()}`
-        : withAttached
 
       // Determine effective tools (filter out disabled tools)
       let effectiveTools = scope && this.options.createTools

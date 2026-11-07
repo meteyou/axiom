@@ -1649,13 +1649,14 @@ describe('TaskRunner', () => {
       expect(toolNames(captured)).not.toContain('codemode')
     })
 
-    it('adds the codemode guideline to the system prompt only when enabled', async () => {
+    it('carries the codemode guideline in the tool description, not in the system prompt', async () => {
       const on = await startAndCapture('user', true)
-      expect(on.initialState.systemPrompt).toContain('<codemode>')
-      expect(on.initialState.systemPrompt).toContain('Promise.allSettled')
+      expect(on.initialState.systemPrompt).not.toContain('<codemode>')
+      const codemodeTool = (on.initialState.tools as AgentTool[]).find(tool => tool.name === 'codemode')
+      expect(codemodeTool?.description).toContain('Promise.allSettled')
 
       const off = await startAndCapture('user', false)
-      expect(off.initialState.systemPrompt).not.toContain('<codemode>')
+      expect(off.initialState.systemPrompt).not.toContain('Promise.allSettled')
     })
 
     it('enables codemode via a cronjob override "on" even when the global switch is off', async () => {

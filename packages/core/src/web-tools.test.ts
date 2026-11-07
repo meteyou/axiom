@@ -1310,7 +1310,7 @@ describe('createWebFetchTool', () => {
     const tool = createWebFetchTool()
     expect(tool.name).toBe('web_fetch')
     expect(tool.label).toBe('Web Fetch')
-    expect(tool.description).toBeTruthy()
+    expect(tool.description).toContain('after web_search')
     expect(tool.execute).toBeInstanceOf(Function)
   })
 

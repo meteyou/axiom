@@ -10,6 +10,7 @@ import {
   readTasksGuidelinesFile,
   writeTasksGuidelinesFile,
   getDefaultTasksGuidelinesContent,
+  getDefaultAgentsRulesContent,
   ensureDailyFile,
   readDailyFile,
   appendToDailyFile,
@@ -278,6 +279,20 @@ describe('memory', () => {
       const content = readAgentsRulesFile(dir)
       expect(content).toContain('# Agent Contract')
     })
+
+    it('ships the wiki and docs policies but no multi-user rules in the template', () => {
+      const template = getDefaultAgentsRulesContent()
+      expect(template).toContain('## Wiki Rules')
+      expect(template).toContain('Maintain and organize the wiki autonomously')
+      expect(template).toContain('genuinely contradicts')
+      expect(template).toContain('load the wiki skill')
+      expect(template).toContain('## Docs Rules')
+      expect(template).toContain('instead of guessing')
+      expect(template).toContain('Never write to the docs')
+      expect(template).toContain('## Red Lines')
+      expect(template).not.toContain('shared by all users')
+      expect(template).not.toContain('managed by the admin')
+    })
   })
 
   describe('readHeartbeatFile', () => {
@@ -373,9 +388,9 @@ describe('memory', () => {
       expect(sections.map(section => section.text).join('\n\n')).toBe(prompt)
       for (const section of sections) expect(section.text.startsWith(`<${section.key}>`)).toBe(true)
       expect(sections.map(section => section.key)).toEqual([
-        'personality', 'instructions', 'agent_rules', 'core_memory', 'recent_memory', 'current_user', 'user_profile',
-        'available_tools', 'available_providers', 'wiki_pages', 'memory_paths', 'axiom_docs', 'agent_skills',
-        'available_skills', 'task_system', 'workspace', 'current_date', 'language', 'channel_context',
+        'personality', 'instructions', 'agent_rules', 'system_rules', 'core_memory', 'recent_memory', 'current_user',
+        'user_profile', 'available_providers', 'wiki_pages',
+        'available_skills', 'paths', 'current_date', 'language', 'channel_context',
       ])
     })
 
@@ -455,61 +470,86 @@ describe('memory', () => {
       expect(prompt).toContain('</agent_rules>')
     })
 
-    it('includes search_memories in the available tools section', () => {
+    it('has no tool overview, task system, skill creation or codemode blocks', () => {
       const dir = makeTmpDir()
       ensureMemoryStructure(dir)
 
-      const prompt = assembleSystemPrompt({ memoryDir: dir })
+      const prompt = assembleSystemPrompt({
+        memoryDir: dir,
+        agentSkillsDir: '/skills-agent',
+        availableImageModels: [{ provider: 'OpenRouter', id: 'img' }],
+      })
 
-      expect(prompt).toContain('<available_tools>')
-      expect(prompt).toContain('search_memories')
-      expect(prompt).toContain('fact memory')
+      for (const tag of ['available_tools', 'task_system', 'agent_skills', 'codemode']) {
+        expect(prompt).not.toContain(`<${tag}>`)
+      }
     })
 
-    it('includes memory_paths section with all file paths including wiki/', () => {
+    it('keeps skill-creator and tasks-and-cronjobs discoverable via available_skills', () => {
       const dir = makeTmpDir()
       ensureMemoryStructure(dir)
 
-      const prompt = assembleSystemPrompt({ memoryDir: dir })
+      const prompt = assembleSystemPrompt({
+        memoryDir: dir,
+        skills: [
+          { name: 'tasks-and-cronjobs', description: 'Tasks', location: '/skills-agent/tasks-and-cronjobs' },
+          { name: 'skill-creator', description: 'Skill creation', location: '/skills-agent/skill-creator' },
+        ],
+      })
 
-      expect(prompt).toContain('<memory_paths>')
-      expect(prompt).toContain('SOUL.md')
-      expect(prompt).toContain('MEMORY.md')
-      expect(prompt).toContain('AGENTS.md')
-      expect(prompt).toContain('HEARTBEAT.md')
-      expect(prompt).toContain('daily/')
-      expect(prompt).toContain('wiki/')
-      expect(prompt).toContain('read_file, write_file, and edit_file')
-      expect(prompt).toContain('</memory_paths>')
+      const block = prompt.slice(prompt.indexOf('<available_skills>'), prompt.indexOf('</available_skills>'))
+      expect(block).toContain('<name>tasks-and-cronjobs</name>')
+      expect(block).toContain('<name>skill-creator</name>')
+      expect(prompt.slice(prompt.indexOf('<system_rules>'), prompt.indexOf('</system_rules>'))).toContain('tasks-and-cronjobs')
     })
 
-    it('includes Sources directory reference in memory_paths', () => {
+    it('includes a paths block with memory, wiki, sources, skills, config and docs paths', () => {
       const dir = makeTmpDir()
       ensureMemoryStructure(dir)
 
-      const prompt = assembleSystemPrompt({ memoryDir: dir })
+      const prompt = assembleSystemPrompt({ memoryDir: dir, configDir: path.join(dir, 'cfg'), agentSkillsDir: '/skills-agent' })
 
-      expect(prompt).toContain('<memory_paths>')
-      expect(prompt).toContain('Sources directory')
-      expect(prompt).toContain(path.join(dir, 'sources'))
-    })
-
-    it('includes axiom_docs section pointing at README and the three docs subdirectories', () => {
-      const dir = makeTmpDir()
-      ensureMemoryStructure(dir)
-
-      const prompt = assembleSystemPrompt({ memoryDir: dir })
-
-      // Block markers + the three top-level docs dirs the agent can list_files on.
-      // We deliberately do NOT assert on individual topic→file routes — the block
-      // no longer carries them; the agent discovers files via list_files instead.
-      expect(prompt).toContain('<axiom_docs>')
+      expect(prompt).toContain('<paths>')
+      expect(prompt).toContain(path.join(dir, 'SOUL.md'))
+      expect(prompt).toContain(path.join(dir, 'MEMORY.md'))
+      expect(prompt).toContain(path.join(dir, 'daily/'))
+      expect(prompt).toContain(path.join(dir, 'wiki/'))
+      expect(prompt).toContain(path.join(dir, 'sources/'))
+      expect(prompt).toContain(path.join(dir, 'users/'))
+      expect(prompt).toContain('/skills-agent/')
+      expect(prompt).toContain(path.join(dir, 'cfg', 'AGENTS.md'))
+      expect(prompt).toContain(path.join(dir, 'cfg', 'HEARTBEAT.md'))
       expect(prompt).toContain('README.md')
       expect(prompt).toContain('docs/concepts/')
       expect(prompt).toContain('docs/guide/')
       expect(prompt).toContain('docs/reference/')
-      expect(prompt).toContain('Do not write to these files')
-      expect(prompt).toContain('</axiom_docs>')
+      expect(prompt).toContain('</paths>')
+    })
+
+    it('no longer emits the removed path and docs sections', () => {
+      const dir = makeTmpDir()
+      ensureMemoryStructure(dir)
+
+      const { sections } = assembleSystemPromptWithSections({ memoryDir: dir })
+      const keys = sections.map(section => section.key as string)
+
+      for (const removed of ['memory_paths', 'workspace', 'user_profiles_path', 'shared_data_rules', 'axiom_docs']) {
+        expect(keys).not.toContain(removed)
+      }
+    })
+
+    it('puts the hard-coded system rules right after the agent rules', () => {
+      const dir = makeTmpDir()
+      ensureMemoryStructure(dir)
+
+      const { sections } = assembleSystemPromptWithSections({ memoryDir: dir })
+      const keys = sections.map(section => section.key)
+      const rules = sections.find(section => section.key === 'system_rules')!.text
+
+      expect(keys.indexOf('system_rules')).toBe(keys.indexOf('agent_rules') + 1)
+      expect(rules).toContain('OS-level schedulers')
+      expect(rules).toContain('<task_injection>')
+      expect(rules).not.toContain('several users')
     })
 
     it('includes wiki_pages section when wiki pages exist', () => {
@@ -526,10 +566,8 @@ describe('memory', () => {
       expect(prompt).toContain('axiom.md')
       expect(prompt).toContain('Axiom')
       expect(prompt).toContain('the-axiom')
-      expect(prompt).toContain('load it with read_file')
-      expect(prompt).toContain('Maintain and organize it autonomously')
-      expect(prompt).toContain('wiki/SKILL.md')
-      expect(prompt).toContain('genuine contradiction')
+      const wiki = assembleSystemPromptWithSections({ memoryDir: dir }).sections.find(section => section.key === 'wiki_pages')!.text
+      expect(wiki).toBe('<wiki_pages>\n- axiom.md (aliases: Axiom, the-axiom)\n</wiki_pages>')
       expect(prompt).toContain('</wiki_pages>')
     })
 
@@ -570,16 +608,23 @@ describe('memory', () => {
       expect(prompt).not.toContain('<user_profiles_path>')
     })
 
-    it('includes path reference when no currentUser', () => {
+    it('lists the profiles directory in paths when no currentUser', () => {
       const dir = makeTmpDir()
       ensureMemoryStructure(dir)
 
       const prompt = assembleSystemPrompt({ memoryDir: dir })
 
-      expect(prompt).toContain('<user_profiles_path>')
-      expect(prompt).toContain(path.join(dir, 'users'))
-      expect(prompt).toContain('</user_profiles_path>')
+      expect(prompt).toContain(`User profiles directory: ${path.join(dir, 'users/')}`)
       expect(prompt).not.toContain('<user_profile>')
+    })
+
+    it('lists the current user profile file in paths', () => {
+      const dir = makeTmpDir()
+      ensureMemoryStructure(dir)
+
+      const prompt = assembleSystemPrompt({ memoryDir: dir, currentUser: { username: 'stefan' } })
+
+      expect(prompt).toContain(`User profile: ${path.join(dir, 'users', 'stefan.md')}`)
     })
 
     it('renders only annotated + default models in available_providers', () => {
@@ -669,7 +714,6 @@ describe('memory', () => {
       expect(block).toContain('- OpenRouter — recraft/recraft-v4.1-vector: default image model. Logos and icons as SVG.')
       expect(block).toContain('- OpenRouter — google/gemini-3.1-flash-image')
       expect(block.indexOf('- Anthropic — opus')).toBeLessThan(block.indexOf('Image generation models'))
-      expect(prompt).toContain('- **generate_image**:')
     })
 
     it('renders the image block even when no text model qualifies', () => {

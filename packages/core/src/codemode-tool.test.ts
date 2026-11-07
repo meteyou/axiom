@@ -705,6 +705,13 @@ describe('codemode description', () => {
     expect(description).toContain('non-zero exit code does NOT reject')
   })
 
+  it('carries the guideline on when to use codemode and when not to', () => {
+    const description = buildCodemodeDescription([])
+    expect(description).toContain('Promise.allSettled')
+    expect(description).toContain('Chain calls so one result feeds the next.')
+    expect(description).toContain('Do NOT wrap a single tool call in a script')
+  })
+
   it('maps non-identifier tool names to identifiers in the description', () => {
     const tools = [makeTool({ name: 'my tool' })]
     const description = buildCodemodeDescription(tools)

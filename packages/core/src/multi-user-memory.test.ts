@@ -89,16 +89,37 @@ describe('multi-user memory and workspace', () => {
     expect(prompt).not.toContain(path.join(root, 'data/config/AGENTS.md'))
     expect(prompt).not.toContain(path.join(root, 'data/memory/users/'))
     expect(prompt).not.toContain('HEARTBEAT.md')
-    expect(prompt).toContain('managed by the admin')
+    expect(prompt).toContain('managed by the admin. Refuse')
     expect(prompt).toContain('shared with everyone')
+    expect(prompt).toContain(path.join(root, 'data/users/ann/PROFILE.md'))
+    expect(prompt).toContain(`SOUL.md (admin-managed): ${path.join(root, 'data/memory/SOUL.md')}`)
+    expect(prompt).toContain(path.join(root, 'data/memory/wiki/'))
+    expect(prompt).toContain(path.join(root, 'data/memory/sources/'))
+    expect(prompt).toContain('docs/reference/')
   })
 
   it('keeps the bootstrap admin prompt on the legacy layout', () => {
     const prompt = promptFor(admin)
     expect(prompt).toContain(path.join(root, 'data/config/AGENTS.md'))
     expect(prompt).toContain(path.join(root, 'data/memory/users/'))
+    expect(prompt).toContain(`Workspace (default directory for shell and relative file paths): ${path.join(root, 'workspace')}\n`)
+    expect(prompt).toContain(path.join(root, 'data/memory/daily/'))
     expect(prompt).not.toContain('Shared memory (MEMORY.md)')
-    expect(prompt).not.toContain('<shared_data_rules>')
+    expect(prompt).toContain('<system_rules>')
+    expect(prompt).toContain('OS-level schedulers')
+    expect(prompt).not.toContain('several users')
+    expect(prompt).not.toContain('managed by the admin. Refuse')
+  })
+
+  it('keeps multi-user rules out of a single-user prompt without a scope', () => {
+    const prompt = assembleSystemPrompt({
+      memoryDir: path.join(root, 'data', 'memory'),
+      configDir: path.join(root, 'data', 'config'),
+    })
+    expect(prompt).toContain('<task_injection>')
+    expect(prompt).not.toContain('several users')
+    expect(prompt).not.toContain('managed by the admin. Refuse')
+    expect(prompt).toContain(path.join(root, 'data/config/AGENTS.md'))
   })
 
   it('tells the bootstrap admin that MEMORY.md and the wiki are shared on multi-user instances', () => {
@@ -113,8 +134,9 @@ describe('multi-user memory and workspace', () => {
 
     expect(prompt).toContain(path.join(root, 'data/memory/users/'))
     expect(prompt).toContain('Shared memory (MEMORY.md)')
-    expect(prompt).toContain('<shared_data_rules>')
+    expect(prompt).toContain('several users')
     expect(prompt).not.toContain('managed by the admin. Refuse')
+    expect(prompt).toContain(path.join(root, 'data/config/AGENTS.md'))
   })
 
   it('keeps a regular user on their own layout in group chats without a profile', () => {
@@ -134,7 +156,8 @@ describe('multi-user memory and workspace', () => {
     expect(prompt).not.toContain('Likes cake')
     expect(prompt).not.toContain(path.join(root, 'data/memory/users/'))
     expect(prompt).not.toContain(path.join(root, 'data/config/AGENTS.md'))
-    expect(prompt).toContain(`Your working directory is ${path.join(root, 'workspace/bob')}.`)
+    expect(prompt).toContain(`Workspace (default directory for shell and relative file paths): ${path.join(root, 'workspace/bob')}`)
+    expect(prompt).toContain('managed by the admin. Refuse')
   })
 
   it('lists global config files for non-bootstrap admins', () => {
@@ -144,6 +167,8 @@ describe('multi-user memory and workspace', () => {
     expect(prompt).toContain(path.join(root, 'data/config/HEARTBEAT.md'))
     expect(prompt).not.toContain(path.join(root, 'data/users/ann/HEARTBEAT.md'))
     expect(prompt).not.toContain('managed by the admin. Refuse')
+    expect(prompt).toContain('several users')
+    expect(prompt).not.toContain('SOUL.md (admin-managed)')
   })
 
   describe('tools', () => {

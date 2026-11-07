@@ -226,6 +226,7 @@ describe('generate_image tool', () => {
   it('saves images in the configured output folder', async () => {
     const tool = createTool(async () => resultWith(), 'recraft/recraft-v4.1', { outputDir: 'assets/generated' })
     expect(tool.description).toContain('assets/generated/YYYY-MM-DD/')
+    expect(tool.description).toContain('Load the image-generation skill before the first use')
 
     const output = await run(tool, { prompt: 'Logo' })
     const relativePath = path.join('assets', 'generated', '2026-10-05', 'logo.webp')

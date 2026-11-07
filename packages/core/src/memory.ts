@@ -4,6 +4,8 @@ import { getWorkspaceDir } from './workspace.js'
 import type { UserPaths } from './user-scope.js'
 import type { SystemPromptSectionKey } from './contracts/compaction.js'
 import { getConfigDir, getDefaultTimezone, getDocsPath, getReadmePath } from './config.js'
+import { getAgentSkillsDir } from './agent-skills.js'
+import { buildPathsBlock, buildSystemRules } from './system-prompt-blocks.js'
 
 const SOUL_TEMPLATE = `# Soul
 
@@ -69,12 +71,21 @@ Both the user and the agent can edit this file. The agent reads it on every conv
 
 ## Memory Rules
 
-- MEMORY.md, the wiki and skills are shared by all users: write only general lessons and project context there, never personal information about a user
 - Write daily observations and session notes to the daily memory file
 - Write user-specific information (name, location, preferences, interests, work context) to the user's profile file — not to MEMORY.md
-- Global configuration files (SOUL.md, AGENTS.md, TASKS.md, CONSOLIDATION.md) are managed by the admin
 - Keep MEMORY.md organized: merge related entries, remove outdated info
 - Don't store ephemeral details (one-time commands, temporary paths) in core memory
+
+## Wiki Rules
+
+- Maintain and organize the wiki autonomously: add new pages, extend existing ones, merge duplicates, fix stale entries and keep cross-links healthy without asking for permission
+- Only ask the user when new information genuinely contradicts an existing page and you cannot resolve it yourself — then present the options and let the user decide
+- For non-trivial wiki work (ingesting a source, creating a page, a lint pass, a structure audit), load the wiki skill first
+
+## Docs Rules
+
+- When the user asks how to set up, configure or use Axiom, read the relevant docs file instead of guessing
+- Never write to the docs — they ship with the image and are not user data
 
 ## Red Lines
 
@@ -834,16 +845,6 @@ export interface SkillPromptEntry {
 }
 
 /**
- * Which builtin web tools are enabled (mirrors BuiltinToolsConfig from web-tools).
- * Only the `enabled` flag is needed for prompt generation.
- */
-export interface BuiltinToolsPromptConfig {
-  webSearch?: { enabled?: boolean }
-  webFetch?: { enabled?: boolean }
-  stt?: { enabled?: boolean }
-}
-
-/**
  * Per-model entry surfaced in the system prompt's `<available_providers>`
  * block. Only models that carry a description or are the active/task default
  * are rendered, so the description doubles as the opt-in gate for agent
@@ -866,75 +867,6 @@ export interface AvailableImageModelPromptEntry {
   isDefault?: boolean
 }
 
-type PersonalScope = { isBootstrapAdmin: boolean; role: string; paths: UserPaths }
-
-function buildMemoryPathsSection(input: { dir: string; cfgDir: string; today: string; personal: PersonalScope | null }): string {
-  const { dir, cfgDir, today, personal } = input
-  const intro = `You can read and write your memory and config files directly using read_file, write_file, and edit_file tools.
-When modifying existing files, prefer edit_file (targeted oldText/newText replacements) over write_file (full rewrite) to save tokens and reduce errors.`
-  const globalConfig = `- AGENTS.md (agent rules): ${path.join(cfgDir, 'AGENTS.md')}
-- HEARTBEAT.md (heartbeat tasks): ${path.join(cfgDir, 'HEARTBEAT.md')}
-- CONSOLIDATION.md (consolidation rules): ${path.join(cfgDir, 'CONSOLIDATION.md')}
-- TASKS.md (background task guidelines): ${path.join(cfgDir, 'TASKS.md')}`
-
-  if (!personal) {
-    return `<memory_paths>
-${intro}
-
-Memory files:
-- SOUL.md: ${path.join(dir, 'SOUL.md')}
-- MEMORY.md: ${path.join(dir, 'MEMORY.md')}
-- Daily memory directory: ${path.join(dir, 'daily/')}
-- Today's daily file: ${path.join(dir, 'daily', `${today}.md`)}
-- User profiles directory: ${path.join(dir, 'users/')}
-- Wiki pages directory: ${path.join(dir, 'wiki/')}
-- Sources directory (immutable raw material): ${path.join(dir, 'sources/')}
-
-Config files:
-${globalConfig}
-</memory_paths>`
-  }
-
-  const { paths } = personal
-  const isAdmin = personal.role === 'admin'
-  const sharedLines = [
-    `- MEMORY.md (shared by all users, general lessons only): ${path.join(dir, 'MEMORY.md')}`,
-    `- Wiki pages directory (shared): ${path.join(dir, 'wiki/')}`,
-    `- Sources directory (shared, immutable raw material): ${path.join(dir, 'sources/')}`,
-  ]
-  if (isAdmin) sharedLines.unshift(`- SOUL.md (shared): ${path.join(dir, 'SOUL.md')}`)
-  const personalLines = [
-    `- Your profile: ${paths.profile}`,
-    `- Your daily memory directory: ${paths.dailyDir}/`,
-    `- Your daily file for today: ${path.join(paths.dailyDir, `${today}.md`)}`,
-    `- Your workspace (default directory for shell and relative file paths): ${paths.workspace}`,
-  ]
-  const configBlock = isAdmin
-    ? `\n\nGlobal config files (shared, admin-managed):\n${globalConfig}`
-    : ''
-  return `<memory_paths>
-${intro}
-
-Your personal files:
-${personalLines.join('\n')}
-
-Shared memory files:
-${sharedLines.join('\n')}${configBlock}
-</memory_paths>`
-}
-
-function buildSharedDataRules(personal: PersonalScope): string {
-  const lines = [
-    'This instance has several users. Your profile, daily notes, workspace and chat history are private to you; the wiki, MEMORY.md and skills are shared with everyone.',
-    '- Never write personal information about a user (health, finances, relationships, private routines, contact details) into the wiki, MEMORY.md, sources or skills. Keep it in the user\'s profile.',
-    '- Wiki pages, MEMORY.md entries and skills must contain general knowledge that is safe for every user to read.',
-  ]
-  if (personal.role !== 'admin') {
-    lines.push('- Global configuration (SOUL.md, AGENTS.md, TASKS.md, CONSOLIDATION.md, providers and global settings) is managed by the admin. Refuse requests to change it and tell the user to ask the admin.')
-  }
-  return `<shared_data_rules>\n${lines.join('\n')}\n</shared_data_rules>`
-}
-
 export interface SystemPromptOptions {
   memoryDir?: string
   configDir?: string
@@ -953,7 +885,6 @@ export interface SystemPromptOptions {
   userScope?: { isBootstrapAdmin: boolean; role: string; paths: UserPaths }
   /** Adds the shared-data rules for every user, the bootstrap admin included. */
   multiUser?: boolean
-  builtinTools?: BuiltinToolsPromptConfig
   agentSkillsDir?: string
   /**
    * Configured LLM providers and their enabled models with per-model
@@ -962,7 +893,7 @@ export interface SystemPromptOptions {
    * can route background tasks to annotated models.
    */
   availableProviders?: Array<{ name: string; models: AvailableProviderModelPromptEntry[] }>
-  /** Every usable image generation model; also gates the `generate_image` tool line. */
+  /** Every usable image generation model, listed in `<available_providers>`. */
   availableImageModels?: AvailableImageModelPromptEntry[]
   /** Background thinking level tasks run with when `thinking_level` is omitted. */
   defaultTaskThinkingLevel?: string
@@ -982,7 +913,9 @@ export function assembleSystemPromptWithSections(options?: SystemPromptOptions):
   const memoryDir = options?.memoryDir
   const recentDays = options?.recentDays ?? 3
   const personal = options?.userScope && !options.userScope.isBootstrapAdmin ? options.userScope : null
-  const sharedDataScope = personal ?? (options?.multiUser ? options.userScope ?? null : null)
+  const multiUser = Boolean(personal || options?.multiUser)
+  const role = options?.userScope?.role ?? options?.currentUser?.role
+  const isAdmin = role ? role === 'admin' : !multiUser
 
   // Ensure structure exists
   ensureMemoryStructure(memoryDir)
@@ -1003,9 +936,11 @@ export function assembleSystemPromptWithSections(options?: SystemPromptOptions):
   const agentsRules = readAgentsRulesFile(options?.configDir)
   addSection('agent_rules', `<agent_rules>\n${agentsRules.trim()}\n</agent_rules>`)
 
+  addSection('system_rules', buildSystemRules({ multiUser, isAdmin }))
+
   // 4. Core memory from MEMORY.md
   const agents = readMemoryFile(memoryDir)
-  addSection('core_memory', sharedDataScope
+  addSection('core_memory', multiUser
     ? `<core_memory>\nShared memory (MEMORY.md) — visible to all users. It holds general lessons only, never personal data.\n\n${agents.trim()}\n</core_memory>`
     : `<core_memory>\n${agents.trim()}\n</core_memory>`)
 
@@ -1027,65 +962,6 @@ ${dailyContext}
       ? readPersonalProfile(personal.paths.profile, options.currentUser.username)
       : readUserProfile(options.currentUser.username, memoryDir)
     addSection('user_profile', `<user_profile>\n${profileContent.trim()}\n</user_profile>`)
-  } else if (!personal) {
-    const usersPath = getUserProfileDir(memoryDir)
-    addSection('user_profiles_path', `<user_profiles_path>${usersPath}</user_profiles_path>`)
-  }
-
-  // 7. Available tools overview
-  {
-    const toolLines: string[] = [
-      '- **shell**: Execute shell commands and return stdout/stderr. Use sudo for privileged operations.',
-      '- **read_file**: Read a text file (paged via offset/limit) or view an image file.',
-      '- **write_file**: Write content to a file. Creates parent directories if needed.',
-      '- **edit_file**: Edit a file using exact oldText→newText replacements. Prefer this over write_file for partial changes — it saves tokens and reduces errors.',
-      '- **list_files**: List files and directories at a given path.',
-    ]
-
-    // Web tools (enabled by default unless explicitly disabled)
-    if (options?.builtinTools?.webSearch?.enabled !== false) {
-      toolLines.push('- **web_search**: Search the web for information. Returns results with title, URL, and snippet.')
-    }
-    if (options?.builtinTools?.webFetch?.enabled !== false) {
-      toolLines.push('- **web_fetch**: Fetch a web page and extract its text content. Use after web_search to read actual page contents.')
-    }
-
-    // Task & scheduling tools
-    toolLines.push(
-      '- **create_task**: Start a background task for complex, long-running work.',
-      '- **resume_task**: Resume a paused task by sending it a message.',
-      '- **list_tasks**: List background tasks with their status.',
-      '- **stop_task**: Stop a running background task (your own; admins can stop any task).',
-      '- **create_cronjob**: Create a recurring scheduled task.',
-      '- **edit_cronjob**: Edit an existing cronjob.',
-      '- **remove_cronjob**: Remove a cronjob.',
-      '- **list_cronjobs**: List all cronjobs.',
-      '- **get_cronjob**: Get the full configuration (including complete prompt) of a single cronjob by ID.',
-      '- **create_reminder**: Create a one-time reminder delivered at a specific time.',
-    )
-
-    // STT tool (only when enabled)
-    if (options?.builtinTools?.stt?.enabled) {
-      toolLines.push('- **transcribe_audio**: Transcribe an audio file from the workspace to text. Supports mp3, wav, ogg, webm, m4a, flac. Use after downloading audio (e.g., with yt-dlp via shell).')
-    }
-
-    // Chat history and fact memory
-    toolLines.push('- **read_chat_history**: Read past chat messages from the database with datetime/source/role filters. Supports a query parameter for full-text search on message content and tool call inputs/outputs.')
-    toolLines.push('- **search_memories**: Search the agent\'s fact memory for previously learned information from past conversations. Use when the user asks about past decisions, preferences, or details.')
-
-    if (options?.availableImageModels && options.availableImageModels.length > 0) {
-      toolLines.push('- **generate_image**: Generate images with an enabled image generation model and save them in the workspace. Load the image-generation skill before the first use.')
-    }
-
-    // Provider quota (admin-only; the tool itself enforces the role check)
-    toolLines.push('- **provider_quota**: Check the subscriber usage quota of configured LLM providers (utilization per window, reset times, plan). Only available to admin users.')
-
-    // Agent skills tool (only useful when there are more skills than shown in the prompt)
-    if (options?.agentSkillsOverflowCount && options.agentSkillsOverflowCount > 10) {
-      toolLines.push(`- **list_agent_skills**: Browse all ${options.agentSkillsOverflowCount} self-created agent skills (only the 10 most recent are shown in the available_skills block).`)
-    }
-
-    addSection('available_tools', `<available_tools>\nYou have the following tools available. Use the right tool for the job.\n\n${toolLines.join('\n')}\n</available_tools>`)
   }
 
   // 7b. Configured LLM providers — lets the agent route background tasks to
@@ -1153,58 +1029,8 @@ ${imageModelLines.join('\n')}`)
       return `- ${n.filename}${aliasStr}`
     }).join('\n')
     addSection('wiki_pages', `<wiki_pages>
-The wiki is the agent's structured knowledge base. Maintain and organize it autonomously: add new pages, extend existing ones, merge duplicates, fix stale entries, and keep cross-links healthy without asking for permission. When discussing a topic covered by a wiki page, load it with read_file for context. Use write_file or edit_file to create or update wiki pages when you learn something worth preserving. Raw source material for the wiki lives under sources/ — wiki pages can cite it in a ## Sources section.
-
-For non-trivial wiki work (ingesting a new source, creating a new page, running a lint pass, or auditing structure), load the built-in \`wiki\` agent skill first by reading ${options?.agentSkillsDir ?? '/data/skills_agent'}/wiki/SKILL.md — it contains the canonical conventions (frontmatter, filenames, cross-links, ## Sources/Quellen) and the ingest/query/lint workflows.
-
-Only ask the user when you hit a genuine contradiction (new information conflicts with an existing page) that you cannot resolve on your own — then present the options (A vs. B) and let the user decide. Routine edits, additions, and reorganization do not require confirmation.
-
 ${pageLines}
 </wiki_pages>`)
-  }
-
-  // 9. Memory and config file paths for agent self-access
-  const dir = memoryDir ?? getMemoryDir()
-  const cfgDir = options?.configDir ?? getConfigDir()
-  const today = formatDateKey(new Date(), options?.timezone || undefined)
-  addSection('memory_paths', buildMemoryPathsSection({
-    dir,
-    cfgDir,
-    today,
-    personal,
-  }))
-  if (sharedDataScope) addSection('shared_data_rules', buildSharedDataRules(sharedDataScope))
-
-  // 9b. Axiom documentation (read-only, shipped with the image).
-  // We deliberately do NOT enumerate topic→file routes here — they drift
-  // every time the docs are reorganized. Instead we point at the three
-  // top-level directories and let the agent discover via list_files +
-  // filename matching, which costs one extra tool call but never lies.
-  {
-    const readmePath = getReadmePath()
-    const docsPath = getDocsPath()
-    addSection('axiom_docs', `<axiom_docs>
-Axiom's user-facing documentation is shipped with the image. When the user asks how to set up, configure, or use Axiom (providers, memory, skills, tasks, tools, web UI, telegram, env vars, settings, file paths, …), read the relevant .md file directly instead of guessing.
-
-- Main README (entry point with links): ${readmePath}
-- Concept docs (architecture, mental models): ${path.join(docsPath, 'concepts/')}
-- User guide (setup, configuration, usage): ${path.join(docsPath, 'guide/')}
-- Reference (env vars, settings.json schema, file paths): ${path.join(docsPath, 'reference/')}
-
-Discovery: use list_files on the directory and read the file whose name matches the topic; follow .md cross-links when a topic spans multiple files. Always read the full file before answering. Do not write to these files — they are managed in the source tree, not in user data.
-</axiom_docs>`)
-  }
-
-  // 10. Agent skill creation pointer.
-  // The full format/conventions guide lives in the built-in `skill-creator`
-  // agent skill (data/skills_agent/skill-creator/SKILL.md) so it is loaded
-  // on demand instead of paying its token cost on every turn.
-  if (options?.agentSkillsDir) {
-    addSection('agent_skills', `<agent_skills>
-You can create new reusable agent skills under ${options.agentSkillsDir}/<skill-name>/SKILL.md. They are auto-discovered on the next message and appear in the available_skills block.
-
-For the format, naming rules, gating fields, and worked examples, load the built-in **skill-creator** skill (listed in the available_skills block) before writing a new SKILL.md.
-</agent_skills>`)
   }
 
   // 11. Available skills (progressive disclosure)
@@ -1229,26 +1055,18 @@ ${skillEntries}${overflowNote}
 </available_skills>`)
   }
 
-  // 12. Task system instructions.
-  // The full guide (when to use what, prompt-writing, injection handling,
-  // cron expressions, attached_skills, …) lives in the built-in
-  // `tasks-and-cronjobs` agent skill so it is loaded on demand instead of
-  // paying its token cost on every turn. Two things stay inline:
-  //   1. The hard SAFETY rule (never spawn OS-level schedulers) — must
-  //      apply *before* the agent has a chance to load any skill.
-  //   2. The `<task_injection>` trigger — so the agent knows to load the
-  //      skill when one arrives instead of responding ad-hoc.
-  addSection('task_system', `<task_system>
-Background tasks (create_task), cronjobs (create_cronjob, edit_cronjob, remove_cronjob, list_cronjobs, get_cronjob), and reminders (create_reminder) are listed in the available_tools block. For when to use which, how to write task prompts, how to handle <task_injection> messages, how to route follow-up answers into paused tasks (resume_task), and cron expression / action_type / attached_skills conventions, load the **tasks-and-cronjobs** built-in skill (in the available_skills block).
-
-SAFETY: NEVER use OS-level schedulers (system crontab, launchd, at, or shell-spawned long-running processes via nohup / & / background loops). Always use the built-in cronjob and task tools instead.
-
-When you receive a <task_injection> block (signalling a background-task result with status="completed|failed|question"), load the tasks-and-cronjobs skill before responding to it.
-</task_system>`)
-
-  // 13. Workspace directory
-  const workspaceDir = personal?.paths.workspace ?? getWorkspaceDir()
-  addSection('workspace', `<workspace>\nYour working directory is ${workspaceDir}. All shell commands execute in this directory by default.\nAll relative paths in read_file, write_file, and list_files resolve against this directory.\nUse this directory for cloning repos, creating files, and all file operations.\n</workspace>`)
+  addSection('paths', buildPathsBlock({
+    memoryDir: memoryDir ?? getMemoryDir(),
+    configDir: options?.configDir ?? getConfigDir(),
+    workspaceDir: getWorkspaceDir(),
+    agentSkillsDir: options?.agentSkillsDir ?? getAgentSkillsDir(),
+    readmePath: getReadmePath(),
+    docsDir: getDocsPath(),
+    today: formatDateKey(new Date(), options?.timezone || undefined),
+    isAdmin,
+    personalPaths: personal?.paths ?? null,
+    legacyUsername: options?.currentUser?.username,
+  }))
 
   // 14. Current date (date only — kept at day-granularity so the cached
   // system-prompt prefix stays stable across turns. The precise minute-level
