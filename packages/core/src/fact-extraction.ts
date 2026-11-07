@@ -17,7 +17,7 @@ const COMMON_WORDS = new Set([
 const systemPrompt = `You are a fact extraction assistant. Your job is to extract atomic, reusable facts from a conversation transcript.
 
 Rules:
-- Extract a maximum of 10 facts per conversation
+- Extract a maximum of 10 facts per transcript
 - Each fact must be a single, self-contained statement
 - Facts should be things worth remembering long-term (preferences, decisions, technical details, personal info)
 - Do NOT extract ephemeral details (greetings, temporary commands, one-off questions)
@@ -25,6 +25,7 @@ Rules:
 - Write each fact on its own line, prefixed with "- "
 - Write facts in the same language as the conversation
 - If no facts worth remembering are found, respond with: NO_FACTS
+- An <earlier_context> block, if present, only helps you understand the transcript. Its facts were already extracted; extract facts from <transcript> only
 
 Example output:
 - User prefers dark mode in all applications
@@ -305,24 +306,40 @@ export interface FactExtractionResult {
   superseded: number
 }
 
+/** LLM output of one extraction run, ready to be written by {@link applyFactExtractionPlan}. */
+export interface FactExtractionPlan {
+  extracted: number
+  exactDuplicates: number
+  newFacts: string[]
+  decisions: FactDecision[]
+}
+
+export interface FactExtractionOptions {
+  /** Already processed transcript lines shown for context only. */
+  earlierContext?: string
+}
+
+function buildExtractionMessage(conversationHistory: string, earlierContext: string | undefined): string {
+  const contextBlock = earlierContext ? `<earlier_context>\n${earlierContext}\n</earlier_context>\n\n` : ''
+  return `Analyze the following session transcript and extract atomic facts worth remembering:\n\n${contextBlock}<transcript>\n${conversationHistory}\n</transcript>`
+}
+
 /**
- * Extract facts from a conversation transcript and reconcile them with the
- * user's existing facts: duplicates are skipped, corrections supersede the
- * facts they replace, everything else is stored as a new fact.
+ * Run the extraction and reconciliation LLM calls without writing anything.
  */
-export async function extractAndStoreFacts(
+export async function planFactExtraction(
   db: Database,
   userId: number | null,
-  sessionId: string,
   conversationHistory: string,
   model: Model<Api>,
   apiKey: string,
-): Promise<FactExtractionResult> {
+  options: FactExtractionOptions = {},
+): Promise<FactExtractionPlan> {
   const responseText = await completeText(
     model,
     apiKey,
     systemPrompt,
-    `Analyze the following session transcript and extract atomic facts worth remembering:\n\n<transcript>\n${conversationHistory}\n</transcript>`,
+    buildExtractionMessage(conversationHistory, options.earlierContext),
     '[fact-extraction] Provider rejected the extraction request',
   )
 
@@ -330,13 +347,27 @@ export async function extractAndStoreFacts(
   const { newFacts, exactDuplicates, relatedFacts } = collectRelatedFacts(db, userId, facts)
   const decisions = await reconcileWithExistingFacts(model, apiKey, newFacts, relatedFacts)
 
+  return { extracted: facts.length, exactDuplicates, newFacts, decisions }
+}
+
+/**
+ * Write a plan in one transaction. Safe to call inside an outer transaction
+ * (better-sqlite3 nests it as a savepoint), so callers can commit their own
+ * bookkeeping atomically with the facts.
+ */
+export function applyFactExtractionPlan(
+  db: Database,
+  userId: number | null,
+  sessionId: string,
+  plan: FactExtractionPlan,
+): FactExtractionResult {
   let stored = 0
   let skipped = 0
   let superseded = 0
 
   db.transaction(() => {
-    newFacts.forEach((fact, index) => {
-      const decision = decisions[index]
+    plan.newFacts.forEach((fact, index) => {
+      const decision = plan.decisions[index]
       if (decision.action === 'skip') {
         skipped += 1
         return
@@ -351,9 +382,26 @@ export async function extractAndStoreFacts(
   })()
 
   return {
-    extracted: facts.length,
+    extracted: plan.extracted,
     stored,
-    duplicates: exactDuplicates + skipped,
+    duplicates: plan.exactDuplicates + skipped,
     superseded,
   }
+}
+
+/**
+ * Extract facts from a conversation transcript and reconcile them with the
+ * user's existing facts: duplicates are skipped, corrections supersede the
+ * facts they replace, everything else is stored as a new fact.
+ */
+export async function extractAndStoreFacts(
+  db: Database,
+  userId: number | null,
+  sessionId: string,
+  conversationHistory: string,
+  model: Model<Api>,
+  apiKey: string,
+): Promise<FactExtractionResult> {
+  const plan = await planFactExtraction(db, userId, conversationHistory, model, apiKey)
+  return applyFactExtractionPlan(db, userId, sessionId, plan)
 }

@@ -4,6 +4,7 @@ import { appendToDailyFile, formatTimeKey } from './memory.js'
 import { getGlobalChatDefaults } from './user-settings.js'
 import { getBootstrapAdminId, resolveUserScope } from './user-scope.js'
 import { logToolCall } from './token-logger.js'
+import { formatConversationLine, loadSessionTreeMessages } from './conversation-transcript.js'
 
 /**
  * The single canonical session ID generator. All new sessions — interactive,
@@ -358,62 +359,12 @@ export class SessionManager {
    * directly via `processTaskInjection`).
    */
   buildConversationHistory(sessionId: string): string | null {
-    type ChatMessageRow = {
-      session_id: string
-      role: string
-      content: string
-      metadata: string | null
-      timestamp: string
-    }
-
-    // Recursive CTE: include the session itself + all descendants via
-    // parent_session_id (task, loop_detection, etc.). Use UNION (distinct)
-    // so accidental cycles in parent_session_id cannot recurse forever.
-    const messages = this.db.prepare(
-      `WITH RECURSIVE session_tree(id) AS (
-         SELECT ?
-         UNION
-         SELECT s.id FROM sessions s
-         JOIN session_tree st ON s.parent_session_id = st.id
-       )
-       SELECT session_id, role, content, metadata, timestamp
-       FROM chat_messages
-       WHERE session_id IN (SELECT id FROM session_tree)
-       ORDER BY timestamp ASC`
-    ).all(sessionId) as ChatMessageRow[]
-
+    const messages = loadSessionTreeMessages(this.db, sessionId, 'timestamp')
     if (messages.length === 0) return null
 
-    const lines: string[] = []
-    for (const msg of messages) {
-      let metadata: Record<string, unknown> | null = null
-      try {
-        metadata = msg.metadata ? JSON.parse(msg.metadata) as Record<string, unknown> : null
-      } catch {
-        metadata = null
-      }
-
-      if (msg.role === 'user') {
-        lines.push(`User: ${msg.content}`)
-      } else if (msg.role === 'assistant') {
-        if (metadata?.type === 'task_injection_response') {
-          lines.push(`Assistant (task update): ${msg.content.slice(0, 2000)}`)
-        } else {
-          lines.push(`Assistant: ${msg.content.slice(0, 2000)}`)
-        }
-      } else if (msg.role === 'system' && metadata?.type === 'task_result') {
-        const taskStatus = typeof metadata.taskResultStatus === 'string'
-          ? metadata.taskResultStatus
-          : typeof metadata.taskStatus === 'string'
-            ? metadata.taskStatus
-            : 'completed'
-        const taskName = typeof metadata.taskName === 'string' ? metadata.taskName.trim() : ''
-        const taskLabel = taskName ? `: ${taskName}` : ''
-        lines.push(`Background task (${taskStatus}${taskLabel}): ${msg.content.slice(0, 2000)}`)
-      } else if (msg.role === 'system' && metadata?.type === 'reminder') {
-        lines.push(`Reminder: ${msg.content.slice(0, 2000)}`)
-      }
-    }
+    const lines = messages
+      .map(formatConversationLine)
+      .filter((line): line is string => line !== null)
 
     const text = lines.join('\n').slice(0, 12000)
     return text || null

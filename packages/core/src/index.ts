@@ -496,6 +496,13 @@ export {
   extractAndStoreFacts,
 } from './fact-extraction.js'
 export type { FactDecision, FactExtractionResult, RelatedFact } from './fact-extraction.js'
+export {
+  buildPendingTranscriptChunks,
+  extractFactsIncrementally,
+  FACT_EXTRACTION_CHUNK_CHARS,
+} from './incremental-fact-extraction.js'
+export { getFactExtractionCursor } from './fact-extraction-cursor-store.js'
+export type { IncrementalFactExtractionOptions, IncrementalFactExtractionResult, TranscriptChunk } from './incremental-fact-extraction.js'
 export { createSearchMemoriesTool } from './memories-tool.js'
 export type { SearchMemoriesToolOptions } from './memories-tool.js'
 export { normalizeFtsQuery, normalizePlainFtsQuery } from './fts-utils.js'

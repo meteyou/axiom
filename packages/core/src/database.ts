@@ -11,6 +11,7 @@ import { migrateTaskOwners } from './task-store.js'
 import { migrateScheduledTaskOwners, migrateScheduledTaskToolOverrides } from './scheduled-task-store.js'
 import { migrateSessionOwners } from './session-owners.js'
 import { migrateMemoryLifecycleColumns } from './memories-store.js'
+import { initFactExtractionCursorsTable } from './fact-extraction-cursor-store.js'
 
 export type Database = BetterSqlite3.Database
 
@@ -358,6 +359,7 @@ export function initDatabase(dbPath?: string): Database {
   initTaskToolJournalTable(db)
   initContextCompactionsTable(db)
   initPushSubscriptionsTable(db)
+  initFactExtractionCursorsTable(db)
 
   // Create scheduled_tasks table
   db.exec(`

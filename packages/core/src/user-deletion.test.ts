@@ -12,6 +12,7 @@ import { purgeUserData, removeUserFolders } from './user-deletion.js'
 import { saveContextCompaction } from './compaction-store.js'
 import { saveContextCompactionNotice } from './context-compaction-notice.js'
 import { markWorkspaceProvisioned } from './user-scope.js'
+import { advanceFactExtractionCursor } from './fact-extraction-cursor-store.js'
 
 describe('purgeUserData', () => {
   let db: Database
@@ -86,6 +87,16 @@ describe('purgeUserData', () => {
     expect(saveContextCompactionNotice(db, { sessionId: 's2', userId: 2, info }).messageId).toBeUndefined()
     expect(saveContextCompactionNotice(db, { sessionId: 's2', userId: null, info }).messageId).toBeUndefined()
     expect(saveContextCompactionNotice(db, { sessionId: 's1', userId: 1, info }).messageId).toBeTypeOf('number')
+  })
+
+  it('removes the fact extraction cursors of the user\'s sessions', () => {
+    db.prepare("INSERT INTO sessions (id, user_id) VALUES ('s1', 1), ('s2', 2)").run()
+    advanceFactExtractionCursor(db, 's1', 10)
+    advanceFactExtractionCursor(db, 's2', 20)
+
+    purgeUserData(db, 2)
+
+    expect(db.prepare('SELECT session_id FROM fact_extraction_cursors').all()).toEqual([{ session_id: 's1' }])
   })
 })
 

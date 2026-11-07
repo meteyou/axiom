@@ -33,7 +33,7 @@ Which provider writes the end-of-session summary into `memory/daily/<date>.md`.
 
 ## Fact extraction
 
-After a session ends with at least _N_ messages, run the transcript through a small LLM and write durable facts into the `memories` table. The agent retrieves these via the `memory_search` tool — useful once memory grows past what fits in a single prompt.
+After a session ends with at least _N_ messages (and after a turn that compacted the context), run the not yet extracted part of the transcript through a small LLM, in chunks, and write durable facts into the `memories` table. The agent retrieves these via the `memory_search` tool — useful once memory grows past what fits in a single prompt.
 
 ### Enable fact extraction
 

@@ -174,6 +174,11 @@ export interface TurnRunnerOptions {
    * (`error.retryActionId`).
    */
   onTurnFailed?: (failure: { turn: TurnInfo; error: TurnErrorInfo }) => void
+  /**
+   * Called after `onTurnEnd` for turns that completed a context compaction, so
+   * consumers see the turn's transcript fully committed.
+   */
+  onCompactedTurnEnd?: (turn: TurnInfo) => void
 }
 
 interface TurnState {
@@ -192,6 +197,7 @@ interface TurnState {
   attemptController: AbortController
   ended: boolean
   endedAt: number | null
+  compacted: boolean
 }
 
 /**
@@ -278,6 +284,7 @@ export class TurnRunner {
   private readonly onTurnStart?: (turn: TurnInfo) => void
   private readonly onTurnEnd?: (turn: TurnInfo) => void
   private readonly onTurnFailed?: (failure: { turn: TurnInfo; error: TurnErrorInfo }) => void
+  private readonly onCompactedTurnEnd?: (turn: TurnInfo) => void
 
   private readonly subscribers = new Map<string, Set<TurnSubscriber>>()
   /** Turns that are queued or streaming, per user. */
@@ -298,6 +305,7 @@ export class TurnRunner {
     this.onTurnStart = options.onTurnStart
     this.onTurnEnd = options.onTurnEnd
     this.onTurnFailed = options.onTurnFailed
+    this.onCompactedTurnEnd = options.onCompactedTurnEnd
   }
 
   /**
@@ -362,6 +370,7 @@ export class TurnRunner {
       abortController: new AbortController(),
       attemptController: new AbortController(),
       ended: false,
+      compacted: false,
       endedAt: null,
     }
 
@@ -487,6 +496,7 @@ export class TurnRunner {
 
     this.emit(turn, { type: 'turn_end', turnId: turn.id })
     this.onTurnEnd?.(toInfo(turn))
+    if (turn.compacted) this.onCompactedTurnEnd?.(toInfo(turn))
   }
 
   /**
@@ -634,6 +644,7 @@ export class TurnRunner {
         }
 
         if (chunk.type === 'compaction') {
+          if (chunk.compaction?.status === 'completed') turn.compacted = true
           this.emitChunk(turn, this.persistCompaction(turn, chunk))
           continue
         }

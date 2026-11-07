@@ -1,6 +1,6 @@
 import {
   buildModel,
-  extractAndStoreFacts,
+  extractFactsIncrementally,
   getActiveProvider,
   getProviderDefaultModel,
   getApiKeyForProvider,
@@ -17,12 +17,6 @@ export interface FactExtractionSettings {
   minSessionMessages: number
 }
 
-interface SessionHistoryProvider {
-  getSessionManager(): {
-    buildConversationHistory(sessionId: string): string | null
-  }
-}
-
 interface SessionRow {
   user_id: number | null
   session_user: string | null
@@ -35,15 +29,17 @@ interface FactExtractionDeps {
   getActiveProvider: typeof getActiveProvider
   buildModel: typeof buildModel
   getApiKeyForProvider: typeof getApiKeyForProvider
-  extractAndStoreFacts: typeof extractAndStoreFacts
+  extractFactsIncrementally: typeof extractFactsIncrementally
   console: Pick<typeof console, 'log' | 'warn' | 'error'>
 }
 
+type FactExtractionTrigger = 'session_end' | 'compaction'
+
 interface TriggerFactExtractionOptions {
   db: Database
-  agentCore: SessionHistoryProvider | null
   userId: string
   sessionId: string
+  trigger: FactExtractionTrigger
   deps?: Partial<FactExtractionDeps>
 }
 
@@ -59,7 +55,7 @@ const defaultDeps: FactExtractionDeps = {
   getActiveProvider,
   buildModel,
   getApiKeyForProvider,
-  extractAndStoreFacts,
+  extractFactsIncrementally,
   console,
 }
 
@@ -126,12 +122,17 @@ export async function resolveFactExtractionExecutionContext(
   }
 }
 
-export function triggerFactExtractionForSessionEnd(options: TriggerFactExtractionOptions): boolean {
-  const { db, agentCore, userId, sessionId } = options
+/**
+ * Fire-and-forget extraction of the session's not yet extracted messages.
+ * Runs at session end and after a turn that compacted the context, so long
+ * sessions are extracted in chunks instead of only their first 12k chars.
+ */
+export function triggerFactExtraction(options: TriggerFactExtractionOptions): boolean {
+  const { db, userId, sessionId, trigger } = options
   const deps = { ...defaultDeps, ...(options.deps ?? {}) }
   const settings = getFactExtractionSettings(deps.loadSettings)
 
-  if (!agentCore || !settings.enabled) {
+  if (!settings.enabled) {
     return false
   }
 
@@ -151,12 +152,6 @@ export function triggerFactExtractionForSessionEnd(options: TriggerFactExtractio
     return false
   }
 
-  const conversationHistory = agentCore.getSessionManager().buildConversationHistory(sessionId)
-
-  if (!conversationHistory) {
-    return false
-  }
-
   void (async () => {
     try {
       const executionContext = await resolveFactExtractionExecutionContext(settings, deps)
@@ -165,18 +160,22 @@ export function triggerFactExtractionForSessionEnd(options: TriggerFactExtractio
         return
       }
 
-      const result = await deps.extractAndStoreFacts(
+      const result = await deps.extractFactsIncrementally({
         db,
-        numericUserId,
+        userId: numericUserId,
         sessionId,
-        conversationHistory,
-        executionContext.model,
-        executionContext.apiKey,
-      )
+        model: executionContext.model,
+        apiKey: executionContext.apiKey,
+      })
 
-      deps.console.log(`[fact-extraction] Session ${sessionId}: ${result.stored} new facts, ${result.superseded} superseded`)
+      if (result.chunks > 0) {
+        deps.console.log(
+          `[fact-extraction] Session ${sessionId} (${trigger}): ${result.chunks} chunk(s), `
+          + `${result.stored} new facts, ${result.superseded} superseded`,
+        )
+      }
     } catch (err) {
-      deps.console.error(`[fact-extraction] Failed for session ${sessionId}:`, err)
+      deps.console.error(`[fact-extraction] Failed for session ${sessionId} (${trigger}):`, err)
     }
   })()
 
