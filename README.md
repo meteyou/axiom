@@ -81,11 +81,7 @@ packages/
 └── telegram/       # Telegram bot integration
 ```
 
-Contributor-facing architecture and design notes live in [`agent_docs/`](agent_docs/) — separate from the user-facing docs so they don't bloat the public site or the runtime agent's prompt:
-
-- [`agent_docs/architecture-conventions.md`](agent_docs/architecture-conventions.md) — package boundaries, backend/frontend layering, verification commands.
-- [`agent_docs/session-id-architecture.md`](agent_docs/session-id-architecture.md) — session ID design and conventions.
-- [`agent_docs/skill-versioning.md`](agent_docs/skill-versioning.md) — built-in skill versioning mechanism.
+Contributor-facing architecture notes live in [`agent_docs/`](agent_docs/).
 
 Run the architecture baseline:
 

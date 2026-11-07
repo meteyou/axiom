@@ -21,7 +21,10 @@ Rule: new per-user features take a `UserScope` (or an owner id) explicitly. Neve
 
 `AgentCore` (`agent.ts`) keeps `runtimes: Map<userId, UserRuntime>`. Each entry owns its own `AgentRuntimeBoundary` (transcript, tools, system prompt), its own `MessageQueue`, `interactiveSessionId` and `activeTurns`. Consequences:
 
+- Entries are keyed by the identity string passed to `sendMessage` (numeric user id or a `telegram-<id>` pseudo identity), created lazily on the first turn and dropped when the user's session ends. An entry that still serves a turn is only cleared and kept.
 - Turns of different users run in parallel; only one user's turns are serialized.
+- User-dependent tools are built per entry through `AgentCoreOptions.createUserTools(context)`. There is no global "current tool user" or "current interactive session" on `AgentCore`.
+- `abort(userId)` aborts only that user's entry. `swapProvider` and `setThinkingLevel` fan out to all live entries and are remembered for later ones.
 - `/stop`, `/new`, session timeout and session summaries act on one entry.
 - `hasModelOverride` marks runtimes running on the user's own model; changing the global or personal model/thinking level rebuilds the affected entries only.
 - Session end writes the summary and extracts facts for the session's owner, into that user's `paths.dailyDir`.
@@ -29,7 +32,7 @@ Rule: new per-user features take a `UserScope` (or an owner id) explicitly. Neve
 
 ## Scoped tools (`scoped-tools.ts`)
 
-`createScopedTools(scope, deps)` builds the tool set for one user and binds every tool to the scope at creation: task tools (`create_task`, `list_tasks`, `resume_task`, `stop_task`), cronjob/reminder tools (chat only), `file_send` (chat only — task runs have no channel that would deliver the file), plus the base tools unless `excludeBaseTools` is set. The actor's role is read from the database on every access check, because a runtime outlives role changes. Both the chat runtime and background task agents use it, so tasks inherit the owner's workspace, email accounts, secrets, facts and chat history. Don't add tools to a runtime outside this factory when they touch user data.
+`createScopedTools(scope, deps)` builds the tool set for one user and binds every tool to the scope at creation: task tools (`task_read`, `task_write`), schedule tools for cronjobs and reminders (`schedule_read`, `schedule_write`, chat only), `file_send` (chat only — task runs have no channel that would deliver the file), plus the base tools unless `excludeBaseTools` is set. The actor's role is read from the database on every access check, because a runtime outlives role changes. Both the chat runtime and background task agents use it, so tasks inherit the owner's workspace, email accounts, secrets, facts and chat history. Don't add tools to a runtime outside this factory when they touch user data.
 
 Data tools filter by the scope's user id: `chat_history_read`, `memory_search` (also in background tasks), email accounts, secrets (user secrets override global ones for that user only).
 
@@ -53,4 +56,4 @@ Pure functions deciding who may do what with tasks and cronjobs:
 
 ## Verification
 
-Run `npm test` in `packages/core`, `packages/web-backend` and `packages/telegram`, plus `npm run baseline:parity`.
+Isolation regressions are covered by `packages/core/src/multi-user-isolation.test.ts`; extend it when adding user-bound behavior. Then run `npm run baseline:parity`.

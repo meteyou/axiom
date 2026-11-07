@@ -40,7 +40,7 @@ These three must be set for any non-development deployment.
 | `GITHUB_TOKEN` | _(unset)_ | When set, used as `Authorization: token <value>` for skill downloads from GitHub (avoids unauthenticated rate limits when installing many skills from public repos). |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | _(generated into `/data/config/vapid.json`)_ | Your own VAPID key pair for [push notifications](../guide/push-notifications#server-configuration). Set both or neither. Changing the keys invalidates every existing device subscription. |
 | `VAPID_SUBJECT` | _(the HTTPS origin a device subscribed from)_ | Contact sent to the push services, as `mailto:you@example.org` or `https://your-axiom.example.org`. Apple rejects `localhost` and made-up domains. |
-| `AXIOM_PROJECT_DIR` | _(auto-detected)_ | Overrides the resolved repo root for `getDocsPath()`/`getReadmePath()`/`getAgentDocsPath()`. Only needed for unusual deployments where source files don't live next to the running code (e.g. read-only image overlays). |
+| `AXIOM_PROJECT_DIR` | _(auto-detected)_ | Overrides the resolved repo root for `getDocsPath()`/`getReadmePath()`. Only needed for unusual deployments where source files don't live next to the running code (e.g. read-only image overlays). |
 
 ## Compose-file convention
 

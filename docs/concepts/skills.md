@@ -70,7 +70,7 @@ The wiki lives at `/data/memory/wiki/`. …
 
 ### Optional frontmatter fields
 
-- **`version`** — semver string (`1.2.0`). Used by the entrypoint to decide whether to update a built-in skill on container start. Missing/empty is treated as `0.0.0`. See [Built-in skill versioning](https://github.com/meteyou/axiom/blob/main/agent_docs/skill-versioning.md).
+- **`version`** — semver string (`1.2.0`). Used by the entrypoint to decide whether to update a built-in skill on container start. Missing/empty is treated as `0.0.0`.
 - **`managed: false`** — opt-out flag. When present on a built-in skill, the entrypoint never overwrites it on startup, regardless of versions. Use this if you've forked the shipped wiki skill and want to keep your fork.
 - **`required_env_vars`** — array of env-var names. Missing vars don't hide the skill — they annotate it with `⚠ requires: VAR_NAME` so the agent can surface a clear error to you instead of failing silently.
 - **`requires_toolsets`** — array of tool names. If any required tool is disabled (e.g. you turned off `web_fetch`), the skill is hidden from the prompt to avoid noise. Old tool names from before the [tool rename](./tools#renamed-tools) (e.g. `generate_image`, `read_file`) are mapped to the new names here and in `allowed-tools`, so existing skills keep working.
@@ -131,7 +131,7 @@ Container startup is handled by [`entrypoint.sh`](https://github.com/meteyou/axi
 
 Backups are never garbage-collected automatically — prune `/data/skills_agent/.backups/` manually if the directory grows.
 
-The full version-bump workflow for project maintainers is documented in [`agent_docs/skill-versioning.md`](https://github.com/meteyou/axiom/blob/main/agent_docs/skill-versioning.md).
+Maintainers ship an update by editing the skill under `data/skills_agent/<name>/` in the repo and bumping `version` in its frontmatter — minor for content changes, major when the skill's contract with the agent changes incompatibly. Instances pick it up on the first container start with the new image.
 
 ### Pinning a local fork
 
@@ -220,4 +220,3 @@ If you have more than 10 skills, the prompt also enables the `skill_list` tool s
 - [Built-in Tools](./tools) — the operations skills compose into workflows.
 - [Memory System](./memory) — the wiki layer that the built-in `wiki` skill operates on.
 - [Tasks & Cronjobs](./tasks-and-cronjobs) — cronjobs can pin specific agent skills into their prompt deterministically via the `attached_skills` parameter.
-- [`agent_docs/skill-versioning.md`](https://github.com/meteyou/axiom/blob/main/agent_docs/skill-versioning.md) — the seed/update contract for built-in skills, for project maintainers.
