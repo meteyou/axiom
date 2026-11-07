@@ -38,6 +38,8 @@ export function createAxiomAgent(options: AxiomAgentOptions): PiAgent {
     afterToolCall: options.afterToolCall ?? createToolResultImageHook(() => agent.state.model),
     transformContext: createTranscriptImageBudget(() => agent.state.model),
     getApiKey: options.getApiKey,
+    // pi-agent-core attributes requests to pi by default (OpenRouter, OpenCode and NVIDIA headers).
+    identity: { attribution: null },
   })
   options.compactor?.attach(agent)
   return agent
