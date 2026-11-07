@@ -27,7 +27,7 @@ export {
   setPushPreviewEnabled,
 } from './push-subscriptions.js'
 export type { PushSubscriptionRecord, PushSubscriptionKeys, SavePushSubscriptionInput } from './push-subscriptions.js'
-export { loadConfig, warnConfigReadFailed, getConfigDir, ensureConfigTemplates, getDefaultTimezone, getProjectRootDir, getReadmePath, getDocsPath, getAgentDocsPath } from './config.js'
+export { loadConfig, warnConfigReadFailed, getConfigDir, ensureConfigTemplates, getDefaultTimezone, getProjectRootDir, getReadmePath, getDocsPath } from './config.js'
 export * from './contracts/index.js'
 export {
   normalizeThinkingLevel,

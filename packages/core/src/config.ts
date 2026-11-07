@@ -215,11 +215,6 @@ export function getDocsPath(): string {
   return path.join(getProjectRootDir(), 'docs')
 }
 
-/** Absolute path to the contributor-facing `agent_docs/` directory. */
-export function getAgentDocsPath(): string {
-  return path.join(getProjectRootDir(), 'agent_docs')
-}
-
 export function loadConfig<T = unknown>(filename: string): T {
   const configDir = getConfigDir()
   const filePath = path.join(configDir, filename)
