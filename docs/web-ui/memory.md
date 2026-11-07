@@ -1,6 +1,6 @@
 # Memory
 
-The Memory page is the inspector and editor for everything the agent remembers. Every tab here maps directly onto a directory or file under `/data/memory/`. Edit a file in the UI, and the agent reads your changes on its next turn — no restart needed.
+The Memory page is the inspector and editor for everything the agent remembers. Every tab here maps directly onto a directory or file under `/data/memory/`. Edit a file in the UI, and the agent reads your changes from its next session (`/new`) — no restart needed. The system prompt is built once per session, see [System Prompt → Built once per session](../concepts/system-prompt#built-once-per-session).
 
 > **Admins and regular users.** Admins see the full page described below. Regular users get a reduced Memory page, see [Memory page for regular users](#memory-page-for-regular-users).
 
@@ -33,7 +33,7 @@ The shared editor used by *Wiki*, *Core Memory*, *User Profile*, *Soul*, and *Da
 
 There is no autosave, no draft state, no dirty-indicator. Saving overwrites the file; closing the tab without saving discards your changes.
 
-> **The agent edits these files too.** While you're editing in the UI, the agent may also be writing to the same files via `edit_file` / `write_file`. The UI shows whatever was on disk at the moment you opened the tab — if you suspect a conflict, switch tabs and back to reload.
+> **The agent edits these files too.** While you're editing in the UI, the agent may also be writing to the same files via `file_edit` / `file_write`. The UI shows whatever was on disk at the moment you opened the tab — if you suspect a conflict, switch tabs and back to reload.
 
 ## Tabs
 

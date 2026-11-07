@@ -164,7 +164,7 @@ describe('task ownership', () => {
     })
 
     it('creates tasks owned by the calling user', async () => {
-      const text = await run(2, 'create_task', { name: 'Alice job', prompt: 'do it' })
+      const text = await run(2, 'task_write', { action: 'create', name: 'Alice job', prompt: 'do it' })
       expect(text).toContain('Background task started')
       expect(store.list().find(t => t.name === 'Alice job')?.ownerUserId).toBe(2)
     })
@@ -172,7 +172,7 @@ describe('task ownership', () => {
     it('lists only own tasks for a regular user', async () => {
       store.create({ name: 'alice task', prompt: 'p', triggerType: 'user', ownerUserId: 2 })
       store.create({ name: 'bob task', prompt: 'p', triggerType: 'user', ownerUserId: 3 })
-      const text = await run(2, 'list_tasks')
+      const text = await run(2, 'task_read')
       expect(text).toContain('alice task')
       expect(text).not.toContain('bob task')
     })
@@ -184,7 +184,7 @@ describe('task ownership', () => {
       const foreign = store.create({ name: 'bob done', prompt: 'p', triggerType: 'user', ownerUserId: 3 })
       store.update(foreign.id, { status: 'completed', resultSummary: 'bobs private result' })
 
-      const text = await run(1, 'list_tasks')
+      const text = await run(1, 'task_read')
       expect(text).toContain('bob task')
       expect(text).toContain('Owner: bob')
       expect(text).toContain('[RUNNING]')
@@ -196,14 +196,14 @@ describe('task ownership', () => {
 
     it('stops own tasks and lets an admin stop any task', async () => {
       const alices = store.create({ name: 'a', prompt: 'p', triggerType: 'user', ownerUserId: 2 })
-      expect(await run(2, 'stop_task', { task_id: alices.id })).toContain('has been stopped')
-      expect(await run(1, 'stop_task', { task_id: alices.id })).toContain('has been stopped')
+      expect(await run(2, 'task_write', { action: 'stop', task_id: alices.id })).toContain('has been stopped')
+      expect(await run(1, 'task_write', { action: 'stop', task_id: alices.id })).toContain('has been stopped')
       expect(aborted).toEqual([alices.id, alices.id])
     })
 
     it('does not let a regular user stop or even find a foreign task', async () => {
       const bobs = store.create({ name: 'b', prompt: 'p', triggerType: 'user', ownerUserId: 3 })
-      expect(await run(2, 'stop_task', { task_id: bobs.id })).toContain('not found')
+      expect(await run(2, 'task_write', { action: 'stop', task_id: bobs.id })).toContain('not found')
       expect(aborted).toEqual([])
     })
 
@@ -212,7 +212,7 @@ describe('task ownership', () => {
       const adminTools = toolsFor(1)
       db.prepare("UPDATE users SET role = 'user' WHERE id = 1").run()
 
-      expect(textOf(await adminTools.get('stop_task')!.execute('call', { task_id: bobs.id }) as never)).toContain('not found')
+      expect(textOf(await adminTools.get('task_write')!.execute('call', { action: 'stop', task_id: bobs.id }) as never)).toContain('not found')
       expect(aborted).toEqual([])
     })
 
@@ -229,9 +229,9 @@ describe('task ownership', () => {
     it('rejects resuming foreign tasks for everyone', async () => {
       const bobs = store.create({ name: 'b', prompt: 'p', triggerType: 'user', ownerUserId: 3 })
       store.update(bobs.id, { status: 'paused' })
-      expect(await run(2, 'resume_task', { task_id: bobs.id, message: 'x' })).toContain('not found')
-      expect(await run(1, 'resume_task', { task_id: bobs.id, message: 'x' })).toContain('only its owner can resume')
-      expect(await run(3, 'resume_task', { task_id: bobs.id, message: 'x' })).toContain('has been resumed')
+      expect(await run(2, 'task_write', { action: 'resume', task_id: bobs.id, message: 'x' })).toContain('not found')
+      expect(await run(1, 'task_write', { action: 'resume', task_id: bobs.id, message: 'x' })).toContain('only its owner can resume')
+      expect(await run(3, 'task_write', { action: 'resume', task_id: bobs.id, message: 'x' })).toContain('has been resumed')
     })
   })
 

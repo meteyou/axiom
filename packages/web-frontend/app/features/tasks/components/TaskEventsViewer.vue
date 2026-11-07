@@ -270,7 +270,7 @@
           >
             <template #header>
               <span class="text-xs font-medium" :class="event.toolIsError ? 'text-destructive' : 'text-foreground'">
-                {{ formatToolName(event.toolName ?? 'unknown') }}
+                {{ formatToolName(event.toolName ?? 'unknown', event.toolArgs) }}
               </span>
               <span
                 v-if="getToolCallSummary(event.toolName ?? '', event.toolArgs)"
@@ -391,7 +391,7 @@ import { buildProviderModelOptions } from '~/utils/providerModelOptions'
 import TaskEventCard from '~/features/tasks/components/TaskEventCard.vue'
 import { useTaskEvents } from '~/features/tasks/composables/useTaskEvents'
 import { useTasksApi } from '~/api/tasks'
-import { formatToolName, getToolCallSummary } from '~/utils/toolNameFormat'
+import { getToolCallSummary } from '~/utils/toolNameFormat'
 import {
   codemodeCallsToDisplay,
   codemodeCollapsedSummary,
@@ -416,6 +416,7 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const { formatToolName, translate } = useToolLabels()
 const { renderMarkdown } = useMarkdown()
 const { formatTime } = useFormat()
 const tasksApi = useTasksApi()
@@ -690,7 +691,7 @@ function codemodeOutput(event: TaskEventItem): string | null {
   return codemodeOutputText(event.toolResult)
 }
 function codemodeSummary(event: TaskEventItem): string | null {
-  const { count, toolNames } = codemodeCollapsedSummary(codemodeNestedCalls(event))
+  const { count, toolNames } = codemodeCollapsedSummary(codemodeNestedCalls(event), translate)
   return count === 0 ? null : t('codemode.callsSummary', { count, names: toolNames.join(', ') })
 }
 function isCodemodeRunning(event: TaskEventItem): boolean {

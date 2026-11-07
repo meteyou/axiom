@@ -26,7 +26,7 @@ vi.mock('./agent-runtime.js', () => ({
   createAgentRuntime: vi.fn(() => ({
     streamPrompt: streamPromptMock,
     retryLastTurn: retryLastTurnMock,
-    getCurrentTimeContext: vi.fn(() => '<current_time>Current time: 12:00 (UTC)</current_time>'),
+    getTurnContext: vi.fn(() => ({ prefix: null, suffix: '<current_time>Current time: 12:00 (UTC)</current_time>' })),
     swapProvider: vi.fn(),
     getProviderManager: vi.fn(() => undefined),
     clearMessages: vi.fn(),

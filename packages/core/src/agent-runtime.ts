@@ -14,7 +14,8 @@ import type { ProviderManager } from './provider-manager.js'
 import type { SettingsThinkingLevel } from './contracts/settings.js'
 import { normalizeThinkingLevel, readBackgroundThinkingLevelFromConfig } from './thinking-level.js'
 import { getSupportedThinkingLevels } from './contracts/providers.js'
-import { assembleSystemPromptWithSections, ensureMemoryStructure, ensureConfigStructure, formatCurrentTimeContext } from './memory.js'
+import { assembleSystemPromptWithSections, ensureMemoryStructure, ensureConfigStructure } from './memory.js'
+import { formatTurnContext, type TurnChannel, type TurnContext } from './turn-context.js'
 import type { SkillPromptEntry, AvailableProviderModelPromptEntry, AvailableImageModelPromptEntry, SystemPromptSection } from './memory.js'
 import { getWorkspaceDir, resolveWorkspacePath } from './workspace.js'
 import { loadConfig, ensureConfigTemplates } from './config.js'
@@ -75,8 +76,8 @@ export interface BaseAgentToolsOptions {
  * task agents (heartbeat, cronjob, user-spawned tasks).
  *
  * Callers add their exclusive tools on top:
- * - Interactive agent: create_task, resume_task, list_tasks, cronjob tools
- * - Background tasks: create_task, resume_task, list_tasks
+ * - Interactive agent: task_read, task_write, schedule_read, schedule_write
+ * - Background tasks: task_read, task_write
  */
 export function createBaseAgentTools(options: BaseAgentToolsOptions): AgentTool[] {
   const getUserWorkspace = options.user ? () => options.user!.paths.workspace : undefined
@@ -148,7 +149,6 @@ export interface AgentRuntimeOptions {
 
 /** Turn inputs the session snapshot is built from; only read when a snapshot is built. */
 export interface SessionPromptContext {
-  channel?: string
   currentUser?: { username: string; role?: string }
 }
 
@@ -174,7 +174,12 @@ export interface AgentRuntimeBoundary {
   compact(instructions?: string, sessionId?: string): AsyncIterable<ResponseChunk>
   /** How full the context window is; null while the model's window is unknown. */
   getContextUsage(): ContextUsageInfo | null
-  getCurrentTimeContext(): string
+  /**
+   * Channel prefix and `<current_time>` suffix for the next turn on `channel`.
+   * Records `channel` as the session's last channel, so the prefix is only
+   * produced on the first Telegram turn and on channel switches.
+   */
+  getTurnContext(channel: TurnChannel): TurnContext
   swapProvider(provider: ProviderConfig, apiKey: string, modelId?: string): void
   getProviderManager(): ProviderManager | undefined
   /** Ends the session: drops the transcript and the session snapshot. */
@@ -549,6 +554,9 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
   private baseTools: AgentTool[]
   private snapshot: SessionSnapshot | null = null
   private sessionPromptContext: SessionPromptContext = {}
+  private lastTurnChannel: TurnChannel | null = null
+  private announceChannelAgain = false
+  private pendingTurnPrefix: string | null = null
 
   constructor(options: AgentRuntimeOptions) {
     this.model = options.model
@@ -596,7 +604,11 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
       resolveApiKey: () => this.resolveApiKey(),
       onEvent: info => this.emitCompactionChunk(info),
       retryPolicy: () => loadRetryPolicy(),
-      rebuildSystemMessage: () => this.rebuildSnapshot(),
+      rebuildSystemMessage: () => {
+        // The channel prefix may have been folded into the summary; announce it again.
+        this.announceChannelAgain = true
+        return this.rebuildSnapshot()
+      },
     })
 
     this.agent = createAxiomAgent({
@@ -656,9 +668,9 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
    * running session's tool list.
    */
   private rebuildSnapshot(): AgentMessage {
-    const { channel, currentUser } = this.sessionPromptContext
+    const { currentUser } = this.sessionPromptContext
     const built = this.fixedSystemPrompt === undefined
-      ? this.buildSystemPrompt(channel, currentUser)
+      ? this.buildSystemPrompt(currentUser)
       : { prompt: this.fixedSystemPrompt, sections: undefined }
     const tools = [...this.baseTools, ...this.buildImageGenerationTools()]
     if (readCodemodeMainAgentEnabled()) tools.push(this.buildCodemodeTool(tools))
@@ -757,9 +769,19 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
     })
   }
 
-  getCurrentTimeContext(): string {
+  getTurnContext(channel: TurnChannel): TurnContext {
     const { timezone } = this.readRuntimeSettings()
-    return formatCurrentTimeContext(timezone)
+    const reannounce = this.announceChannelAgain && channel === this.lastTurnChannel
+    const context = formatTurnContext({
+      previousChannel: reannounce ? null : this.lastTurnChannel,
+      currentChannel: channel,
+      isFirstTurn: this.lastTurnChannel === null,
+      timezone,
+    })
+    this.lastTurnChannel = channel
+    this.announceChannelAgain = false
+    this.pendingTurnPrefix = context.prefix
+    return context
   }
 
   setThinkingLevel(level: SettingsThinkingLevel | string): void {
@@ -782,6 +804,9 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
   clearMessages(): void {
     this.agent.state.messages = []
     this.snapshot = null
+    this.lastTurnChannel = null
+    this.announceChannelAgain = false
+    this.pendingTurnPrefix = null
     this.compactor.reset()
   }
 
@@ -858,7 +883,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
     return { language, timezone, builtinToolsConfig, sttEnabled, thinkingLevel }
   }
 
-  private buildSystemPrompt(channel?: string, currentUser?: { username: string; role?: string }): { prompt: string; sections: SystemPromptSection[] } {
+  private buildSystemPrompt(currentUser?: { username: string; role?: string }): { prompt: string; sections: SystemPromptSection[] } {
     const { language, timezone, builtinToolsConfig, sttEnabled } = this.readRuntimeSettings()
 
     const activeSkills = getActiveSkillEntries()
@@ -866,9 +891,8 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
     // platform / active toolset and annotated with missing required env vars.
     const activeTools = new Set<string>([
       'shell', 'file_read', 'file_write', 'file_edit', 'file_list',
-      'create_task', 'resume_task', 'list_tasks', 'stop_task',
-      'create_cronjob', 'edit_cronjob', 'remove_cronjob', 'list_cronjobs', 'get_cronjob',
-      'create_reminder',
+      'task_read', 'task_write',
+      'schedule_read', 'schedule_write',
       'chat_history_read', 'memory_search', 'skill_list',
     ])
     if (builtinToolsConfig?.webSearch?.enabled !== false) activeTools.add('web_search')
@@ -887,7 +911,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
 
     // Provider/model inventory — lets the agent translate user-facing
     // model names (e.g. "kimi-k2.6") into the right `provider`/`model`
-    // arguments for create_task / create_cronjob / edit_cronjob, and route
+    // arguments for task_write / schedule_write, and route
     // background tasks to models the user annotated with a description.
     // Failures here are non-fatal: the tools still work without this hint,
     // the agent just has to guess or ask.
@@ -945,7 +969,6 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
       baseInstructions: this.baseInstructions,
       language,
       timezone,
-      channel,
       skills: allSkills,
       agentSkillsOverflowCount: totalAgentSkills > 10 ? totalAgentSkills : undefined,
       currentUser,
@@ -1122,6 +1145,10 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
         ? 0
         : estimateMessageTokens({ role: 'user', content: [{ type: 'text', text }, ...(images ?? [])], timestamp: Date.now() })
       await this.compactor.compactBeforePrompt(pendingTokens, pendingStart.signal)
+      // The pending message carries the channel prefix and is appended after this compaction.
+      if (!continueTranscript && this.pendingTurnPrefix && text.startsWith(this.pendingTurnPrefix)) {
+        this.announceChannelAgain = false
+      }
     } finally {
       if (this.pendingStart === pendingStart) this.pendingStart = null
     }

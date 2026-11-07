@@ -1,8 +1,8 @@
 ---
 name: email
-version: 1.0.0
+version: 1.1.0
 description: Rules for working a mailbox well — triaging unread mail, bulk-marking newsletters as read instead of reading them one by one, leaving important mail unread for the human, archiving instead of deleting, handling read-only accounts, checking for new mail on the heartbeat, and what to expect from the send allowlist/approval rules. Load this before any email work.
-requires_toolsets: [email_list, email_read, email_mark_read, email_mark_unread]
+requires_toolsets: [email_read]
 ---
 
 # Email
@@ -13,54 +13,54 @@ You share the mailbox with a human. Every flag you set is visible to them, and e
 
 | Tool | Use it for |
 |---|---|
-| `email_list` | Metadata only (sender, subject, date, UID). Defaults to **unread** in `INBOX`. Always start here. |
-| `email_folders` | Discover folder paths before moving anything. |
-| `email_read` | One message, full body. **Marks it as read.** |
-| `email_mark_read` / `email_mark_unread` | Batch flag changes by UID, no bodies loaded. |
-| `email_move` | Archive/file messages. Needs the account's manage permission. |
-| `email_delete` | Last resort. Needs the account's delete permission. |
-| `email_download_attachment` | Pull an attachment into the workspace. |
-| `email_send` | New mail or reply. Subject to allowlist + approval. |
+| `email_read` `action: "list"` | Metadata only (sender, subject, date, UID). Defaults to **unread** in `INBOX`. Always start here. |
+| `email_read` `action: "folders"` | Discover folder paths before moving anything. |
+| `email_read` `action: "read"` | One message (`uid`), full body. **Marks it as read.** |
+| `email_read` `action: "mark_read"` / `"mark_unread"` | Batch flag changes by `uids`, no bodies loaded. |
+| `email_move` | Archive/file messages. Needs `canManage`. |
+| `email_delete` | Last resort. Needs `canDelete`. |
+| `email_send` | New mail or reply. Needs `canSend`. Subject to allowlist + approval. |
+| `email_download_attachment` | Pull an attachment into the workspace. Needs `canDownloadAttachments`. |
 
-Tools that an account isn't permitted to use are not registered at all — if `email_move` is missing, the account may not manage the mailbox.
+`email_read` is always available, also for read-only accounts. The other tools map 1:1 to an account permission and are not registered at all when no account grants it — if `email_move` is missing, no account may manage the mailbox.
 
 ## Triage loop
 
-1. `email_list` (unread, `INBOX`) — metadata only. This is cheap; reading bodies is not.
+1. `email_read` `action: "list"` (unread, `INBOX`) — metadata only. This is cheap; reading bodies is not.
 2. Classify every entry **from sender + subject alone**:
    - **Noise** — newsletters, notifications, automated reports, marketing.
    - **FYI** — relevant, but no action from you or the human.
    - **Important** — needs a human decision, a reply, a deadline, money, or is from a person who matters.
    - **Unclear** — the subject genuinely doesn't say.
-3. Only open **Unclear** and **Important** ones with `email_read`, and only when you actually need the body.
+3. Only open **Unclear** and **Important** ones with `action: "read"`, and only when you actually need the body.
 4. Report a short summary: what came in, what you handled, what is waiting for the human.
 
-Never loop `email_read` over an inbox. Reading 40 mails to summarize them burns context and destroys the human's unread state.
+Never loop `action: "read"` over an inbox. Reading 40 mails to summarize them burns context and destroys the human's unread state.
 
 ## Bulk-mark noise as read
 
-Newsletters and notifications get **one `email_mark_read` call with all their UIDs** — not one `email_read` each. You already know what a newsletter is from the sender and subject; the body adds nothing.
+Newsletters and notifications get **one `action: "mark_read"` call with all their UIDs** — not one `action: "read"` each. You already know what a newsletter is from the sender and subject; the body adds nothing.
 
 ```
-email_list(unread_only: true)      → 30 UIDs
-email_mark_read(uids: [ …22 noise UIDs… ])   → one call
+email_read(action: "list", unread_only: true)                  → 30 UIDs
+email_read(action: "mark_read", uids: [ …22 noise UIDs… ])     → one call
 ```
 
 Say in your summary which senders you bulk-cleared, so the human can object.
 
 ## Leave important mail unread for the human
 
-`email_read` silently marks a message read. If it turns out to be something the human should see themselves — a personal mail, an invoice, a decision, anything you're not fully handling — put it back:
+`action: "read"` silently marks a message read. If it turns out to be something the human should see themselves — a personal mail, an invoice, a decision, anything you're not fully handling — put it back:
 
 ```
-email_mark_unread(uids: [1234])
+email_read(action: "mark_unread", uids: [1234])
 ```
 
 Rule of thumb: **if you are not closing the loop yourself, leave it unread.** Unread is the human's inbox-zero signal; don't spend it on their behalf.
 
 ## Archive, don't delete
 
-Prefer `email_move` to an `Archive` folder over `email_delete`. Deletion is irreversible and rarely what someone actually wants. Use `email_folders` first to learn the real folder path — folder names differ per provider (`Archive`, `Archiv`, `[Gmail]/All Mail`, …).
+Prefer `email_move` to an `Archive` folder over `email_delete`. Deletion is irreversible and rarely what someone actually wants. Use `email_read` `action: "folders"` first to learn the real folder path — folder names differ per provider (`Archive`, `Archiv`, `[Gmail]/All Mail`, …).
 
 Only delete when the human explicitly asked to delete *those specific* messages. Obvious spam still gets archived or left alone unless told otherwise.
 
@@ -78,7 +78,7 @@ Folder access can also be restricted: if a folder is rejected, it is not accessi
 
 The heartbeat is the right place to check for new mail — it's interval-based, idempotent, and safe to no-op.
 
-- Run `email_list` (unread, metadata only). Nothing new → do nothing, produce no output.
+- Run `email_read` `action: "list"` (unread, metadata only). Nothing new → do nothing, produce no output.
 - Triage as above, bulk-clear the noise silently.
 - **Only interrupt the human when something is actually important.** Use a task injection / notification for that, with a one-line reason ("Invoice from X due Friday", "Reply expected by Y"), and leave the mail unread.
 - Never send mail from a heartbeat run unless the human set up exactly that.

@@ -1,16 +1,16 @@
 # Image Generation
 
-Switch the [`generate_image`](../concepts/image-generation) tool on or off and set its default model, limits and output folder. The image models themselves are configured per provider under [Providers → Image models](../web-ui/providers#image-models) — this tab can enable, disable and rename them, but new models are only added there.
+Switch the [`image_generate`](../concepts/image-generation) tool on or off and set its default model, limits and output folder. The image models themselves are configured per provider under [Providers → Image models](../web-ui/providers#image-models) — this tab can enable, disable and rename them, but new models are only added there.
 
 **URL:** `/settings?tab=imageGeneration`
 
-All changes apply from the **next message** — no restart. Background tasks pick them up as well: new tasks get the updated tool, and a running task that still holds the old tool is checked against the current settings on every call.
+No restart needed. Limits, the default model and the output folder are read on every call. Whether the tool exists at all is decided when a chat session's tool list is built, so switching image generation on or off applies to the chat from the next session (`/new`). Background tasks pick changes up as well: new tasks get the updated tool, and a running task or chat session that still holds the old tool is checked against the current settings on every call.
 
 ## Enabled
 
 Master switch for image generation. Default: **on**, so existing setups keep working.
 
-When off, the agent gets **no** `generate_image` tool (in chat and in background tasks), the system prompt has no *Image generation models* block and no `generate_image` line in `<available_tools>`, and the built-in [`image-generation` skill](../concepts/skills#currently-shipped) disappears from `<available_skills>` (it declares `requires_toolsets: [generate_image]`). Image models stay configured under Providers, so switching back on restores everything.
+When off, the agent gets **no** `image_generate` tool (in chat and in background tasks), the system prompt has no *Image generation models* block, and the built-in [`image-generation` skill](../concepts/skills#currently-shipped) disappears from `<available_skills>` (it declares `requires_toolsets: [image_generate]`). Image models stay configured under Providers, so switching back on restores everything.
 
 Even when on, the tool only exists while at least one image model is enabled on an enabled provider.
 
@@ -22,7 +22,7 @@ The remaining fields are shown while image generation is on.
 
 ## Default image model
 
-Image model used by `generate_image` when the agent does not pick one. The dropdown lists the enabled image models of all enabled providers; text models never appear here, and image models never appear in text-model dropdowns. This is the only place where the default is set.
+Image model used by `image_generate` when the agent does not pick one. The dropdown lists the enabled image models of all enabled providers; text models never appear here, and image models never appear in text-model dropdowns. This is the only place where the default is set.
 
 *First enabled image model* (empty value) picks the first enabled image model. If the selected model is removed later, the same fallback applies; disabling the model or its provider resets the setting.
 
@@ -52,7 +52,7 @@ Folder inside the workspace where images are saved. Default: `images`. Each imag
 
 Every image model configured on an enabled provider, with provider, model id and the model's description. Per model:
 
-- **Switch** (top right) — enables or disables the model for the agent. Disabled models stay configured but are hidden from `generate_image` and the default-image-model dropdown; same as **Disable** / **Enable** on the Providers page.
+- **Switch** (top right) — enables or disables the model for the agent. Disabled models stay configured but are hidden from `image_generate` and the default-image-model dropdown; same as **Disable** / **Enable** on the Providers page.
 - **Edit** (pencil) — display name and description. The description is what the agent reads to pick a model, so describe what each model is good at.
 - **Provider name** — links to the provider on the Providers page.
 

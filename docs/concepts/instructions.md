@@ -8,11 +8,11 @@ This page describes each file, what it controls, when the agent reads it, and wh
 
 The agent contract — and the single most important file for shaping day-to-day behavior. It defines *how* the agent communicates, what it's allowed to do autonomously, and where it should stop and ask.
 
-Living at `/data/config/AGENTS.md`, the file is read on every conversation, every task, and every heartbeat run, and concatenated verbatim into the system prompt as the `<agent_rules>` block (see [System Prompt → layer 3](./system-prompt#_3-agent-rules-config-agents-md)). The shipped default — [`AGENTS_TEMPLATE` in `memory.ts`](https://github.com/meteyou/axiom/blob/main/packages/core/src/memory.ts#L35-L84) — is a sensible starting point you can rewrite freely.
+Living at `/data/config/AGENTS.md`, the file is read whenever the chat agent's system prompt is built and concatenated verbatim into it as the `<agent_rules>` block (see [System Prompt → `<agent_rules>`](./system-prompt#agent-rules-config-agents-md)). The prompt is built once per session, so **edits apply from the next session** — run `/new` to pick them up right away. The shipped default — [`AGENTS_TEMPLATE` in `memory.ts`](https://github.com/meteyou/axiom/blob/main/packages/core/src/memory.ts) — is a sensible starting point you can rewrite freely.
 
 ### What the default template covers
 
-The shipped template has five sections — use them as a starting point, rewrite whatever doesn't fit:
+The shipped template has seven sections — use them as a starting point, rewrite whatever doesn't fit:
 
 | Section | Purpose |
 |---|---|
@@ -20,11 +20,21 @@ The shipped template has five sections — use them as a starting point, rewrite
 | **Execution Rules** | When to ask vs. act; how to handle ambiguity, destructive changes, external actions. |
 | **Anti-Hallucination Rules** | "Say I don't know." Strict-mode vs. creative-mode. Citing sources. |
 | **Memory Rules** | What belongs in `MEMORY.md` vs. daily files vs. user profiles. |
+| **Wiki Rules** | Maintain the wiki autonomously (add, extend, merge, fix, cross-link) and only ask on genuine contradictions; load the `wiki` skill for non-trivial wiki work. |
+| **Docs Rules** | Read the bundled Axiom docs instead of guessing when you ask how to set up or use Axiom; never write to them. |
 | **Red Lines** | Hard "never do this" boundaries. |
+
+### What is not in `AGENTS.md`
+
+Some rules must survive any rewrite of this file, so they are hard-coded in the [`<system_rules>`](./system-prompt#system-rules-hard-coded-rules) block instead: the ban on OS-level schedulers, the *load the tasks skill on `<task_injection>`* trigger and — only on instances with [several users](./multi-user) — the shared-data rules (no personal data in the wiki, `MEMORY.md` or skills) and the *global config is admin-managed* rule.
+
+::: warning Existing installations
+The template only seeds a missing file. If your `AGENTS.md` was created by an older version, it is **not migrated**: it still contains the old "MEMORY, wiki and skills are shared" and "global config is admin-managed" rules (now system rules, harmless but redundant) and lacks the new **Wiki Rules** and **Docs Rules** sections. Open the [Instructions page](./../web-ui/instructions), compare with the default and copy the sections you want — or use **Restore default** if you never customized the file.
+:::
 
 ### Keep it tight
 
-`AGENTS.md` is concatenated verbatim into *every* system prompt. Long rulebooks cost tokens on every turn and dilute the model's attention. Good rules are:
+`AGENTS.md` is concatenated verbatim into *every* chat system prompt. Long rulebooks cost tokens on every request and dilute the model's attention. Good rules are:
 
 - **Imperative** ("Prefer small, verifiable changes over large rewrites.")
 - **Observable** — the user can tell whether the rule is being followed.
@@ -78,18 +88,19 @@ Customize it to match your taxonomy. For example, if you don't use the `wiki/` l
 
 ## `TASKS.md`
 
-The **background task guidelines** — generic rules injected into the system prompt of every agent that runs in the background. Where `AGENTS.md` shapes the *interactive* chat agent, `TASKS.md` shapes the *task* agent: the autonomous worker spawned by `create_task`, by `task`-type cronjob runs, by the heartbeat, and by memory consolidation.
+The **background task guidelines** — generic rules injected into the system prompt of every agent that runs in the background. Where `AGENTS.md` shapes the *interactive* chat agent, `TASKS.md` shapes the *task* agent: the autonomous worker spawned by `task_write`, by `task`-type cronjob runs, by the heartbeat, and by memory consolidation.
 
-The file lives at `/data/config/TASKS.md` and is read on every background task start (in [`task-runner.ts → buildTaskSystemPrompt`](https://github.com/meteyou/axiom/blob/main/packages/core/src/task-runner.ts)). Its content is concatenated into the spawned task's system prompt under a `<task_guidelines>` block, after the hardcoded identity / workspace framing and before the final `STATUS: … / SUMMARY: …` output contract. The shipped default — [`TASKS_TEMPLATE` in `memory.ts`](https://github.com/meteyou/axiom/blob/main/packages/core/src/memory.ts) — captures the generic "work autonomously, report concrete results, don't paraphrase what you did" advice; rewrite it freely to match how *you* want background work done.
+The file lives at `/data/config/TASKS.md` and is read on every background task start (in [`task-system-prompt.ts → buildTaskSystemPrompt`](https://github.com/meteyou/axiom/blob/main/packages/core/src/task-system-prompt.ts)). Its content is concatenated into the spawned task's system prompt under a `<task_guidelines>` block, after the hardcoded identity framing and before the final `STATUS: … / SUMMARY: …` output contract. The shipped default — [`TASKS_TEMPLATE` in `memory.ts`](https://github.com/meteyou/axiom/blob/main/packages/core/src/memory.ts) — captures the generic "work autonomously, report concrete results, don't paraphrase what you did" advice; rewrite it freely to match how *you* want background work done.
 
 ### What stays hardcoded
 
-`TASKS.md` holds *guidelines only*. The non-negotiable parts of a task system prompt are still hardcoded in `task-runner.ts` and cannot be edited from the UI:
+`TASKS.md` holds *guidelines only*. The non-negotiable parts of a task system prompt are hardcoded and cannot be edited from the UI:
 
 - The identity / framing line ("You are a background task agent. You are NOT a chatbot …").
 - The concrete `Your task: <prompt>` block built from the task's `prompt` field.
-- The `<workspace>` block pointing at `/workspace`.
-- The optional `<memory_reference>` block.
+- The `<task_owner>` block naming the user the task works for.
+- The `<system_rules>` block — the same hard rules as the chat agent, plus *work inside the workspace, never in `/tmp`*.
+- The `<paths>` block — the same paths cheatsheet as the chat agent (workspace, memory files, wiki, skills, docs).
 - The final `STATUS: completed | failed | question | silent` / `SUMMARY: …` output contract, including the protocol for `question`, `silent`, and `failed`.
 
 If you blank `TASKS.md` entirely, the `<task_guidelines>` block is omitted from the prompt and tasks fall back to whatever rules the per-task prompt or attached skills carry. The hardcoded framing always remains.
@@ -109,7 +120,7 @@ Use `TASKS.md` for rules that should apply to *all* background work ("always com
 
 ### Effect on cronjobs
 
-A cronjob with `action_type: "task"` spawns a fresh task on every tick, and that task reads `TASKS.md` at start time. Editing `TASKS.md` therefore takes effect on the **next** scheduled run — no restart, no per-cronjob update needed. `action_type: "injection"` cronjobs (and their reminder shortcut) deliver static text and never spawn an agent, so `TASKS.md` does not apply to them.
+A cronjob with `type: "task"` spawns a fresh task on every tick, and that task reads `TASKS.md` at start time. Editing `TASKS.md` therefore takes effect on the **next** scheduled run — no restart, no per-cronjob update needed. Reminders (`type: "reminder"`) deliver static text and never spawn an agent, so `TASKS.md` does not apply to them.
 
 ### Tuning tips
 
@@ -158,7 +169,7 @@ One-line tasks the agent should run on its own, in sequence, on every tick. Keep
 
 ## See also
 
-- [System Prompt](./system-prompt) — how `AGENTS.md` is composed into the live prompt with all the other layers.
+- [System Prompt](./system-prompt) — how `AGENTS.md` is composed into the prompt with all the other layers, once per session.
 - [Memory System](./memory) — the file layout `CONSOLIDATION.md` operates on.
 - [Settings → Agent](./../settings/agent#agent-rules) — jump-off point for `AGENTS.md` from the Agent panel.
 - [Settings → Memory](./../settings/memory#memory-consolidation) — consolidation schedule, provider, and manual "Run now".

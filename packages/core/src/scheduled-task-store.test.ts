@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import BetterSqlite3 from 'better-sqlite3'
 import { initDatabase } from './database.js'
 import { ScheduledTaskStore, migrateScheduledTaskToolOverrides } from './scheduled-task-store.js'
@@ -301,10 +301,32 @@ describe('ScheduledTaskStore', () => {
       const current = createWithOverride(JSON.stringify(['shell', 'file_edit']))
       const empty = createWithOverride(null)
       const invalid = createWithOverride('not-json')
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
       migrateScheduledTaskToolOverrides(db)
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining(invalid.id))
+      warn.mockRestore()
       expect(store.getById(current.id)!.toolsOverride).toBe(JSON.stringify(['shell', 'file_edit']))
       expect(store.getById(empty.id)!.toolsOverride).toBeNull()
       expect(store.getById(invalid.id)!.toolsOverride).toBe('not-json')
+    })
+
+    it('disables a grouped schedule tool only when all of its legacy members were disabled', () => {
+      const all = createWithOverride(JSON.stringify(['list_cronjobs', 'get_cronjob', 'create_cronjob', 'edit_cronjob', 'remove_cronjob', 'create_reminder']))
+      const partial = createWithOverride(JSON.stringify(['shell', 'create_reminder', 'remove_cronjob']))
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+      try {
+        migrateScheduledTaskToolOverrides(db)
+        expect(store.getById(all.id)!.toolsOverride).toBe(JSON.stringify(['schedule_read', 'schedule_write']))
+        expect(store.getById(partial.id)!.toolsOverride).toBe(JSON.stringify(['shell']))
+        expect(log).toHaveBeenCalledWith(expect.stringContaining('schedule_write stays enabled'))
+
+        log.mockClear()
+        migrateScheduledTaskToolOverrides(db)
+        expect(store.getById(partial.id)!.toolsOverride).toBe(JSON.stringify(['shell']))
+        expect(log).not.toHaveBeenCalled()
+      } finally {
+        log.mockRestore()
+      }
     })
 
     it('runs as part of database initialization', () => {

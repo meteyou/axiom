@@ -19,13 +19,13 @@ The context size is the token count the provider reported for the last response 
 
 After a compaction the model sees:
 
-1. The unchanged system prompt and tool declarations.
+1. The system prompt and tool declarations. In the chat they are **rebuilt** at this point — the prompt cache is invalidated anyway — so edits to memory files, your profile, skills or settings made during the session are picked up (see [System Prompt → Built once per session](./system-prompt#built-once-per-session)). Background tasks keep their prompt.
 2. A `<context_summary>` message with the summary.
 3. The most recent messages, verbatim (about 20k tokens, less on small models).
 
 If everything older than the kept messages is only system prompt and tool declarations, there is nothing to summarize: `/compact` answers *Nothing to compact yet* and no summary call is made. The cut never separates a tool call from its result. If the cut lands inside one long request, the beginning of that request is summarized separately and merged into the summary, so the original ask is not lost.
 
-Images in the summarized part are not sent to the summary call; they appear there as `[image]` placeholders, so the agent has to re-open the file with `read_file` if it needs to see it again. Images in the recent messages stay and are still subject to the per-request [image limits](../web-ui/chat#attachments).
+Images in the summarized part are not sent to the summary call; they appear there as `[image]` placeholders, so the agent has to re-open the file with `file_read` if it needs to see it again. Images in the recent messages stay and are still subject to the per-request [image limits](../web-ui/chat#attachments).
 
 The summary uses a fixed structure:
 
@@ -43,7 +43,7 @@ The next compaction updates the previous summary instead of starting from scratc
 
 ### External actions
 
-**External Actions Already Performed** is not written by the model. Axiom builds it from the summarized tool calls that had side effects: sent or moved emails, written or edited files, created tasks, cronjobs or reminders, files sent to the user, and shell commands such as `git push`, `gh pr …` or `curl -X POST`. Each line lists the call with its outcome (`done`, `failed`). The list is carried over from one compaction to the next, so the agent still knows after the third compaction that it already sent that email. This prevents duplicate pushes, emails or tasks after the history was shortened. Read-only tools (`web_fetch`, `read_file`, …) are not listed.
+**External Actions Already Performed** is not written by the model. Axiom builds it from the summarized tool calls that had side effects: sent or moved emails, written or edited files, created tasks, cronjobs or reminders, files sent to the user, and shell commands such as `git push`, `gh pr …` or `curl -X POST`. Each line lists the call with its outcome (`done`, `failed`). The list is carried over from one compaction to the next, so the agent still knows after the third compaction that it already sent that email. This prevents duplicate pushes, emails or tasks after the history was shortened. Read-only tools (`web_fetch`, `file_read`, …) are not listed.
 
 ## Budgets
 
@@ -70,7 +70,7 @@ To compact earlier on a model with a large window, lower its context window in t
 
 After a compaction there should be headroom: system prompt + summary + kept messages must stay below 60% of the trigger. Models that cannot meet this are flagged:
 
-- On the [Providers page](../web-ui/providers#model-sub-row-columns) the model gets a **Window too small** badge, with the affected agent kind (main chat, background tasks) in its tooltip. The main chat's system prompt is much larger (~35k tokens) than a task's (~4k), so a model can be fine for tasks but too small for the main chat.
+- On the [Providers page](../web-ui/providers#model-sub-row-columns) the model gets a **Window too small** badge, with the affected agent kind (main chat, background tasks) in its tooltip. The main chat's system prompt is much larger than a task's (~4k tokens), so a model can be fine for tasks but too small for the main chat.
 - At runtime the first compaction that hits the problem shows it as a warning under its divider (and in its Telegram status line).
 
 If a compaction cannot bring the context below the trigger (for example a single huge tool result in the kept messages, or a system prompt that nearly fills the window), automatic compaction pauses instead of compacting on every turn, and the divider says so. It resumes on its own as soon as a compaction could get below the trigger again: once newer messages let the cut move past a huge message, or after a switch to a model with a larger window. `/compact` always runs, and a provider overflow still triggers its one compact-and-retry.

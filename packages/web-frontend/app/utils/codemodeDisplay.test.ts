@@ -8,6 +8,10 @@ import {
   toCodemodeCallRows,
   type CodemodeNestedCall,
 } from './codemodeDisplay'
+import en from '../i18n/locales/en.json'
+
+const t = (key: string): string =>
+  String(key.split('.').reduce<unknown>((node, part) => (node as Record<string, unknown> | undefined)?.[part], en) ?? key)
 
 const calls: CodemodeNestedCall[] = [
   { id: 'p/file_read/1', name: 'file_read', status: 'ok', durationMs: 12, args: { path: 'src/index.ts' } },
@@ -16,17 +20,17 @@ const calls: CodemodeNestedCall[] = [
 ]
 
 describe('toCodemodeCallRows', () => {
-  it('formats names with the existing tool-name formatting', () => {
-    const rows = toCodemodeCallRows(calls)
-    expect(rows.map(row => row.displayName)).toEqual(['File read', 'File read', 'Web search'])
+  it('formats names with the translated tool labels', () => {
+    const rows = toCodemodeCallRows(calls, t)
+    expect(rows.map(row => row.displayName)).toEqual(['Read file', 'Read file', 'Search web'])
   })
 
   it('keeps the raw name, status, duration and error preview', () => {
-    const rows = toCodemodeCallRows(calls)
+    const rows = toCodemodeCallRows(calls, t)
     expect(rows[0]).toEqual({
       id: 'p/file_read/1',
       name: 'file_read',
-      displayName: 'File read',
+      displayName: 'Read file',
       summary: 'src/index.ts',
       status: 'ok',
       durationMs: 12,
@@ -42,41 +46,41 @@ describe('toCodemodeCallRows', () => {
       { id: '1', name: 'email_read', status: 'ok', args: { uid: 42, folder: 'INBOX' } },
       { id: '2', name: 'shell', status: 'ok', args: { command: 'cd /workspace && ls' } },
       { id: '3', name: 'file_list', status: 'ok', args: { path: 'docs' } },
-    ])
+    ], t)
     expect(rows.map(row => row.summary)).toEqual(['uid: 42 · folder: INBOX', 'ls', 'docs'])
   })
 
   it('returns a null summary when the snapshot carries no args', () => {
-    const rows = toCodemodeCallRows([{ id: '1', name: 'file_read', status: 'ok' }])
+    const rows = toCodemodeCallRows([{ id: '1', name: 'file_read', status: 'ok' }], t)
     expect(rows[0]!.summary).toBeNull()
   })
 
   it('renders legacy tool names like their current names', () => {
-    const rows = toCodemodeCallRows([{ id: '1', name: 'read_file', status: 'ok', args: { path: 'notes.md' } }])
-    expect(rows[0]).toMatchObject({ name: 'read_file', displayName: 'File read', summary: 'notes.md' })
+    const rows = toCodemodeCallRows([{ id: '1', name: 'read_file', status: 'ok', args: { path: 'notes.md' } }], t)
+    expect(rows[0]).toMatchObject({ name: 'read_file', displayName: 'Read file', summary: 'notes.md' })
   })
 
   it('tolerates null and undefined input', () => {
-    expect(toCodemodeCallRows(null)).toEqual([])
-    expect(toCodemodeCallRows(undefined)).toEqual([])
+    expect(toCodemodeCallRows(null, t)).toEqual([])
+    expect(toCodemodeCallRows(undefined, t)).toEqual([])
   })
 })
 
 describe('codemodeCollapsedSummary', () => {
   it('counts calls and deduplicates tool names in first-seen order', () => {
-    expect(codemodeCollapsedSummary(calls)).toEqual({ count: 3, toolNames: ['File read', 'Web search'] })
+    expect(codemodeCollapsedSummary(calls, t)).toEqual({ count: 3, toolNames: ['Read file', 'Search web'] })
   })
 
   it('returns zero and no names for empty input', () => {
-    expect(codemodeCollapsedSummary([])).toEqual({ count: 0, toolNames: [] })
-    expect(codemodeCollapsedSummary(null)).toEqual({ count: 0, toolNames: [] })
+    expect(codemodeCollapsedSummary([], t)).toEqual({ count: 0, toolNames: [] })
+    expect(codemodeCollapsedSummary(null, t)).toEqual({ count: 0, toolNames: [] })
   })
 
   it('deduplicates legacy and current names of the same tool', () => {
     expect(codemodeCollapsedSummary([
       { id: '1', name: 'read_file', status: 'ok' },
       { id: '2', name: 'file_read', status: 'ok' },
-    ])).toEqual({ count: 2, toolNames: ['File read'] })
+    ], t)).toEqual({ count: 2, toolNames: ['Read file'] })
   })
 
   it('lists every distinct name', () => {
@@ -84,7 +88,7 @@ describe('codemodeCollapsedSummary', () => {
       { id: '1', name: 'web_search', status: 'ok' },
       { id: '2', name: 'file_read', status: 'ok' },
       { id: '3', name: 'shell', status: 'cancelled' },
-    ]).toolNames).toEqual(['Web search', 'File read', 'Shell'])
+    ], t).toolNames).toEqual(['Search web', 'Read file', 'Shell'])
   })
 })
 
@@ -133,7 +137,7 @@ describe('codemodeCallsFromResult', () => {
         ],
       },
     }
-    const rows = toCodemodeCallRows(codemodeCallsFromResult(persisted))
+    const rows = toCodemodeCallRows(codemodeCallsFromResult(persisted), t)
     expect(rows.map(row => row.summary)).toEqual(['src/index.ts', 'ls'])
   })
 
@@ -145,7 +149,7 @@ describe('codemodeCallsFromResult', () => {
         ],
       },
     }
-    const rows = toCodemodeCallRows(codemodeCallsFromResult(persisted))
+    const rows = toCodemodeCallRows(codemodeCallsFromResult(persisted), t)
     expect(rows[0]!.errorPreview).toBe('ENOENT: no such file or directory')
   })
 })

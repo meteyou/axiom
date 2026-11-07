@@ -785,6 +785,7 @@ async function handleThinkingLevelChange(level: SettingsThinkingLevel) {
 const { userAvatarUrl, avatarFailed, userInitial, onAvatarError } = useUserAvatar()
 const { renderMarkdown, handleCopyAsMarkdown, handleMarkdownCodeCopy } = useMarkdown()
 const { isSkillLoad, getSkillName } = useSkillDetection()
+const { formatToolName } = useToolLabels()
 function isToolSkillLoad(toolData: ToolCallData): boolean { return isSkillLoad(toolData.toolName, toolData.toolArgs) }
 function getToolMemoryInfo(toolData: ToolCallData) { return detectMemoryFile(toolData.toolName, toolData.toolArgs) }
 function getToolEdits(toolData: ToolCallData) { return extractEditsFromArgs(toolData.toolArgs) }
@@ -799,7 +800,7 @@ function toolDisplayName(toolData: ToolCallData): string {
   if (isToolSkillLoad(toolData)) return `Load Skill: ${getSkillName(toolData.toolArgs)}`
   const memInfo = getToolMemoryInfo(toolData)
   if (memInfo.isMemoryFile) return memInfo.label
-  return formatToolName(toolData.toolName)
+  return formatToolName(toolData.toolName, toolData.toolArgs)
 }
 function toolSummary(toolData: ToolCallData): string | null {
   if (isToolSkillLoad(toolData)) return null

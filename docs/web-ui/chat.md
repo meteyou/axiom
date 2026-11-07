@@ -20,7 +20,7 @@ The top of the page has a slim toolbar (`PageHeader`). On mobile its action butt
 
 Next to it, a **context meter** shows how full the agent's context window is, e.g. *33k / 262k* with a ring. Click it for details: model, used tokens with a bar, and where [automatic compaction](../concepts/compaction) starts (the marker on the bar). The ring turns amber at 80% of the compaction threshold (of the window when automatic compaction is off) and red while automatic compaction is paused. A `~` marks an estimate: right after a new session or a compaction there is no model response to measure yet. The meter updates after every answer and compaction, and appears once the agent has run since the server started. On mobile it shows as a ring next to the action buttons.
 
-Below the details, a **breakdown** shows where the context comes from: the **system prompt**, the **tool definitions** (the tool schemas sent with every request) and the **chat** itself, as a stacked bar with token counts and shares of the used context. The system prompt is split further into its blocks — e.g. personality (`SOUL.md`), agent rules (`AGENTS.md`), core memory (`MEMORY.md`), daily notes, user profile, tool overview, providers & models, skills, wiki pages, docs — largest first, each with its share of the system prompt (the five largest are shown, the rest behind *N more*). The chat is split into the compaction summary, user messages, assistant messages (answers, thinking and tool calls) and tool results. Providers only report the total, so the shares are estimated from text length (`~`); when a measured total exists, the estimates are scaled to add up to it.
+Below the details, a **breakdown** shows where the context comes from: the **system prompt**, the **tool definitions** (the tool schemas sent with every request) and the **chat** itself, as a stacked bar with token counts and shares of the used context. The system prompt is split further into its blocks — personality (`SOUL.md`), agent rules (`AGENTS.md`), system rules, core memory (`MEMORY.md`), daily notes, current user, user profile, providers & models, skills, paths, language — largest first, each with its share of the system prompt (the five largest are shown, the rest behind *N more*). The chat is split into the compaction summary, user messages, assistant messages (answers, thinking and tool calls) and tool results. Providers only report the total, so the shares are estimated from text length (`~`); when a measured total exists, the estimates are scaled to add up to it.
 
 **Right side — actions:**
 
@@ -61,7 +61,7 @@ When the agent uses a reasoning model, its thinking appears as a collapsed card 
 
 ### Tool call cards
 
-Every tool the agent invokes shows up as a collapsible card with the tool name and an icon. Expanding the card shows:
+Every tool the agent invokes shows up as a collapsible card with a readable, translated label and an icon. Grouped tools are labelled by what actually happened — *Read file*, *Create task*, *Create cronjob*, *Create reminder*, *Remove schedule*, *Mark email read*, *Search memory* — and the one-line summary next to it shows the arguments that matter for that action (e.g. the name and cron schedule). Calls from older chats that still carry the [old tool names](../concepts/tools#renamed-tools) get the same labels. Unknown tools (e.g. from MCP servers) fall back to their formatted name. Expanding the card shows:
 
 - **Input** — the arguments passed to the tool.
 - **Output** — the tool's result, or an error message in red if the call failed.
@@ -91,7 +91,7 @@ The composer at the bottom has, from left to right:
 
 - **Brain icon** — quick switch for the [thinking level](../settings/agent#thinking-level); it lists only the levels the active model supports. The icon color encodes the level the model actually runs with (gray → red → purple for `max`); if the stored level isn't supported, a note below the list shows which level is used instead. Changes apply immediately to the next turn.
 
-  > For regular users this changes only *your* thinking level. For admins it changes the global default that every user without a personal override inherits. For a per-task override, use [Cronjobs](./cronjobs) or `create_task` instead.
+  > For regular users this changes only *your* thinking level. For admins it changes the global default that every user without a personal override inherits. For a per-task override, use [Cronjobs](./cronjobs) or `task_write` instead.
 
 - **Text area** — multi-line input. `Enter` sends, `Shift+Enter` inserts a newline. The box auto-resizes up to ~150px and then scrolls.
 - **Paperclip** — opens a file picker. You can also drag and drop files onto the chat area; an overlay appears while dragging.
@@ -108,8 +108,8 @@ What the agent receives:
 
 - **Images** (PNG, JPEG, GIF, WebP, TIFF, AVIF) are attached so a vision-capable model can see them. Before sending, Axiom applies the EXIF rotation, scales the image down to at most 2000×2000 px and keeps it under about 4.5 MB. When the image is resized, the agent gets a note with the original dimensions. The file on disk is not changed.
 - **HEIC photos** (iPhone default) cannot be decoded by the bundled image library. They are referenced by path only; convert them to JPEG first if the agent should see them.
-- **Older images** are dropped from a request once the conversation's images exceed about 16 MB or 50 images in total. The agent gets a note instead and can re-open the file with `read_file`.
-- **Every upload** comes with its path under `/data/uploads/`, so the agent can pass it to other tools (for example `generate_image` for edits, or `send_file_to_user`).
+- **Older images** are dropped from a request once the conversation's images exceed about 16 MB or 50 images in total. The agent gets a note instead and can re-open the file with `file_read`.
+- **Every upload** comes with its path under `/data/uploads/`, so the agent can pass it to other tools (for example `image_generate` for edits, or `file_send`).
 - **Images the model cannot accept** (SVG, corrupt files, formats the server cannot decode) are not attached; the agent only gets the path. This keeps one bad upload from breaking the rest of the conversation.
 - With a text-only model, attached images are replaced by a short "image omitted" placeholder.
 
@@ -125,7 +125,7 @@ carries between surfaces.
 | Command     | What it does                                                                |
 |-------------|-----------------------------------------------------------------------------|
 | `/help`     | List all available slash commands.                                          |
-| `/new`      | Summarize the current session, persist it, and start a fresh conversation.  |
+| `/new`      | Summarize the current session, persist it, and start a fresh conversation with a freshly built system prompt (picks up changes to memory files, skills and settings). |
 | `/stop`     | Abort the current agent turn and clear queued work. (alias `/kill`)         |
 | `/tasks`    | Show running and recent background tasks (read-only).                       |
 | `/cronjobs` | Show configured cronjobs and their next run time. (alias `/cron`)           |

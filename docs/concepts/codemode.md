@@ -45,7 +45,7 @@ The model receives the final `return` value — one compact line — instead of 
 
 There are two switches, both **off by default**, each in a **Codemode** section of its settings page:
 
-- **Codemode for the main agent** ([Settings → Agent](../settings/agent#codemode-experimental)) — the interactive chat agent (web UI and Telegram) gets a `codemode` tool for batching, chaining and filtering. Applies from the next turn; no restart needed.
+- **Codemode for the main agent** ([Settings → Agent](../settings/agent#codemode-experimental)) — the interactive chat agent (web UI and Telegram) gets a `codemode` tool for batching, chaining and filtering. Applies from the next session (`/new`); no restart needed.
 - **Codemode for background tasks** ([Settings → Tasks](../settings/tasks#codemode-experimental)) — task agents (user tasks, agent-created tasks, cronjob runs, heartbeat runs) get the tool. Applies to tasks **started after** the change; already-running tasks are unaffected. **Memory consolidation never gets codemode.**
 
 ```json
@@ -103,14 +103,14 @@ Each script starts a fresh sandbox; the overhead is tens of milliseconds, so sho
 
 ### The spill folder
 
-When a script's output exceeds the budget, the result keeps its **head and tail** and the full text is written to a file in a `codemode/` folder in the workspace — `/workspace/codemode/spill-<timestamp>-<id>.txt` in Docker. The result points at the file, and the agent can `read_file` the rest when it needs it. Spill files are pruned after **7 days**.
+When a script's output exceeds the budget, the result keeps its **head and tail** and the full text is written to a file in a `codemode/` folder in the workspace — `/workspace/codemode/spill-<timestamp>-<id>.txt` in Docker. The result points at the file, and the agent can `file_read` the rest when it needs it. Spill files are pruned after **7 days**.
 
 ## How codemode calls appear
 
 - **Chat** — a codemode call renders as a card with the script, the nested tool calls (name, summary line, status, duration — updated live while the script runs) and the output. Collapsed, the card shows how many nested calls ran and which tools were used. After a page reload the same card renders — the full nested-call list is persisted with the tool row.
 - **Task event viewer** — the same card appears in the [task event timeline](../web-ui/tasks#event-timeline) for background runs.
 - **Activity logs** — every nested call gets its own row in [Activity Logs](../web-ui/activity-logs), marked **via codemode** and linked to its parent codemode call, so logs stay complete and filterable. Loop detection sees nested calls the same way it sees direct ones.
-- **Attachments** — files a script sends with `send_file_to_user` arrive as attachments, exactly like direct calls. Images generated with `generate_image` only land in the workspace; the script (or the agent after it) must still send them with `send_file_to_user` for you to receive them.
+- **Attachments** — files a script sends with `file_send` arrive as attachments, exactly like direct calls. Images generated with `image_generate` only land in the workspace; the script (or the agent after it) must still send them with `file_send` for you to receive them.
 
 ## See also
 

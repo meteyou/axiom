@@ -310,7 +310,7 @@ export class TasksService {
 
     // Resolve (provider, model): explicit override wins; otherwise inherit
     // the original's pinned provider/model; otherwise fall back to the
-    // configured task default. This matches the behaviour of `create_task`.
+    // configured task default. This matches the behaviour of `task_write` (create).
     const hasOverride = overrides.provider !== undefined || overrides.model !== undefined
     const inheritsDisabledModel = !hasOverride && original.provider
       ? isDisabledProviderReference(`${original.provider}:${original.model ?? ''}`, loadProvidersDecrypted().providers)

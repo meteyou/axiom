@@ -1,35 +1,16 @@
-import type { AgentTool } from '@earendil-works/pi-agent-core'
+import type { AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core'
 import { Type } from 'typebox'
-import type { TaskStatus, TaskTriggerType } from './task-store.js'
+import type { TSchema } from 'typebox'
+import type { Task, TaskStatus, TaskTriggerType } from './task-store.js'
 import type { ProviderConfig } from './provider-config.js'
 import { resolveProviderModelInput, getProviderDefaultModel } from './provider-config.js'
 import { normalizeAttachedSkills } from './attached-skills.js'
 import type { TaskRuntimeTaskBoundary } from './task-runtime.js'
-import { SETTINGS_THINKING_LEVELS } from './contracts/settings.js'
-import { normalizeThinkingLevel } from './thinking-level.js'
+import { parseThinkingLevelArg } from './thinking-level.js'
 import { can, canCreateFor, getViewLevel } from './access-policy.js'
 import type { AccessActor } from './access-policy.js'
-
-export const THINKING_LEVEL_PARAM_DESCRIPTION =
-  `Optional reasoning effort for the task agent: ${SETTINGS_THINKING_LEVELS.join(', ')}. ` +
-  'Omit to use the configured background thinking level. Pick a level the chosen model supports ' +
-  '(see the `thinking:` list per model in `<available_providers>`); unsupported levels are rounded to the nearest supported one. ' +
-  'Use higher levels for hard reasoning, planning or coding, lower levels (or off) for simple, mechanical work.'
-
-/**
- * Parse an optional thinking level tool argument. `undefined` means "not
- * passed"; an unknown value is reported as an error string.
- */
-export function parseThinkingLevelArg(value: unknown):
-  | { ok: true; value: ReturnType<typeof normalizeThinkingLevel> }
-  | { ok: false; error: string } {
-  if (value === undefined || value === null || value === '') return { ok: true, value: undefined }
-  const level = normalizeThinkingLevel(typeof value === 'string' ? value.trim().toLowerCase() : value)
-  if (!level) {
-    return { ok: false, error: `Invalid thinking_level "${String(value)}". Valid levels: ${SETTINGS_THINKING_LEVELS.join(', ')}.` }
-  }
-  return { ok: true, value: level }
-}
+import { AGENT_RUN_PARAMETERS, defineActionTool } from './action-tool.js'
+import type { ActionTool } from './action-tool.js'
 
 export interface TaskToolsOptions {
   taskRuntime: TaskRuntimeTaskBoundary
@@ -58,10 +39,18 @@ export interface TaskToolsOptions {
   getUsername?: (userId: number) => string | null
 }
 
-type ToolErrorResult = { content: { type: 'text'; text: string }[]; details: { error: true } }
+type ToolResult = AgentToolResult<unknown>
 
-function toolError(text: string): ToolErrorResult {
+function toolError(text: string): ToolResult {
   return { content: [{ type: 'text' as const, text }], details: { error: true } }
+}
+
+function textResult(text: string, details: unknown): ToolResult {
+  return { content: [{ type: 'text' as const, text }], details }
+}
+
+function withErrorHandling(verb: string, run: () => Promise<ToolResult>): Promise<ToolResult> {
+  return run().catch(err => toolError(`Error ${verb}: ${err instanceof Error ? err.message : String(err)}`))
 }
 
 function taskResource(task: { ownerUserId: number | null }) {
@@ -72,7 +61,7 @@ function taskResource(task: { ownerUserId: number | null }) {
  * A task the actor may not see is reported as missing so its existence stays
  * private; an admin gets an explicit reason for actions only the owner may do.
  */
-function foreignTaskError(actor: AccessActor, taskId: string, action: string): ToolErrorResult {
+function foreignTaskError(actor: AccessActor, taskId: string, action: string): ToolResult {
   if (actor.role === 'admin') {
     return toolError(`Error: Task "${taskId}" belongs to another user; only its owner can ${action} it.`)
   }
@@ -88,285 +77,235 @@ export function formatThinkingLine(requested: string | null, effective: string |
     : `Thinking: ${requested} → ${effective} (clamped to model)`
 }
 
-/**
- * Create the `resume_task` agent tool
- */
-export function createResumeTaskTool(options: TaskToolsOptions): AgentTool {
-  return {
-    name: 'resume_task',
-    label: 'Resume Paused Task',
-    description:
-      'Send a response to a paused background task. Use this when a task has asked a question ' +
-      '(status: question) and the user has now answered. Include the answer plus any brief context the task needs, then the task resumes in the background.',
-    parameters: Type.Object({
-      task_id: Type.String({
-        description: 'The ID of the paused task to resume.',
-      }),
-      message: Type.String({
-        description: 'The response message to send to the paused task. Include the user\'s answer and any relevant context.',
-      }),
-    }),
-    execute: async (_toolCallId, params) => {
-      const { task_id, message } = params as { task_id: string; message: string }
-
-      try {
-        // Check task exists
-        const task = options.taskRuntime.getById(task_id)
-        if (!task) {
-          return {
-            content: [{ type: 'text' as const, text: `Error: Task "${task_id}" not found.` }],
-            details: { error: true },
-          }
-        }
-
-        if (task.status !== 'paused') {
-          return {
-            content: [{ type: 'text' as const, text: `Error: Task "${task_id}" is not paused (current status: ${task.status}).` }],
-            details: { error: true },
-          }
-        }
-
-        if (options.actor && !can(options.actor, taskResource(task), 'resume', 'agent')) {
-          return foreignTaskError(options.actor, task_id, 'resume')
-        }
-
-        // Check if the task agent is still in memory
-        if (!options.taskRuntime.isPaused(task_id)) {
-          return {
-            content: [{ type: 'text' as const, text: `Error: Task "${task_id}" agent is no longer in memory. The task may have timed out.` }],
-            details: { error: true },
-          }
-        }
-
-        // Resume the task
-        const resumed = await options.taskRuntime.resume(task_id, message)
-        if (!resumed) {
-          return {
-            content: [{ type: 'text' as const, text: `Error: Failed to resume task "${task_id}".` }],
-            details: { error: true },
-          }
-        }
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: `Task "${task.name}" (${task_id}) has been resumed with your response. It will continue working in the background.`,
-          }],
-          details: {
-            taskId: task_id,
-            name: task.name,
-            status: 'running',
-          },
-        }
-      } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err)
-        return {
-          content: [{ type: 'text' as const, text: `Error resuming task: ${errorMsg}` }],
-          details: { error: true },
-        }
-      }
-    },
-  }
+interface TaskWriteParams extends Record<string, unknown> {
+  task_id?: string
+  name?: string
+  prompt?: string
+  message?: string
+  max_duration_minutes?: number
+  provider?: string
+  model?: string
+  thinking_level?: string
+  attached_skills?: string[]
 }
 
-/**
- * Create the `create_task` agent tool
- */
-export function createTaskTool(options: TaskToolsOptions): AgentTool {
-  return {
-    name: 'create_task',
-    label: 'Create Background Task',
-    description:
-      'Start a background task that runs autonomously. Use this for complex, long-running, or parallelizable work ' +
-      'that should continue in the background (e.g., building apps, substantial refactors, multi-step research, complex file operations). ' +
-      'Do not use it for simple questions or quick checks you can finish in the current turn. ' +
-      'Provide a self-contained prompt; the task runs in an isolated agent instance and reports back when complete, fails, or needs input. ' +
-      'Use `attached_skills` to bake the rules of specific skills into the task prompt instead of hoping the task agent discovers them.',
-    parameters: Type.Object({
-      prompt: Type.String({
-        description: 'Detailed, self-contained prompt describing what the task should accomplish. Include the goal, constraints, relevant files or URLs, required checks, and the expected final deliverable. Write it so the task can proceed without relying on hidden chat context.',
-      }),
-      name: Type.String({
-        description: 'Short, descriptive name for the task (e.g., "Build React App", "Research AI Papers")',
-      }),
-      provider: Type.Optional(
-        Type.String({
-          description: 'Provider name or id to use for this task (e.g. "Kimi.ai", "OpenAI"). Choose the most appropriate provider based on the descriptions in `<available_providers>`. You may autonomously select a model that matches the task\'s needs. Only pass this if you have a specific reason to deviate from the default task model. Can be combined with `model` to pin both.',
-        })
-      ),
-      model: Type.Optional(
-        Type.String({
-          description: 'Specific model id to use for this task (e.g. "kimi-k2.6", "gpt-5", "claude-sonnet-4-5"). Choose based on the descriptions in `<available_providers>` — prefer cost-effective models for simple work and stronger models for complex coding or research. Only pass this if you have a specific reason to deviate from the default task model. If `provider` is omitted, the provider is auto-detected from the configured providers (requires a unique match).',
-        })
-      ),
-      max_duration_minutes: Type.Optional(
-        Type.Number({
-          description: 'Maximum duration in minutes for this task. Cannot exceed the system maximum. Defaults to system default if not specified.',
-        })
-      ),
-      attached_skills: Type.Optional(
-        Type.Array(Type.String(), {
-          description: 'Optional list of agent-skill names (directory names under /data/skills_agent/<name>/) or installed skill ids ("owner/name") whose SKILL.md should be injected directly into the task prompt. Use this to bake skill rules into the prompt deterministically instead of requiring the task agent to file_read them. Example: ["nitter", "reddit"]. Missing SKILL.md files are skipped with a warning, the task still runs.',
-        })
-      ),
-      thinking_level: Type.Optional(
-        Type.String({ description: THINKING_LEVEL_PARAM_DESCRIPTION })
-      ),
-    }),
-    execute: async (_toolCallId, params) => {
-      const { prompt, name, provider: providerName, model: modelName, max_duration_minutes, attached_skills, thinking_level } = params as {
-        prompt: string
-        name: string
-        provider?: string
-        model?: string
-        max_duration_minutes?: number
-        attached_skills?: string[]
-        thinking_level?: string
-      }
+type ProviderResolution = { ok: true; provider: ProviderConfig; isDefaultModel: boolean } | { ok: false; error: ToolResult }
 
-      try {
-        const thinking = parseThinkingLevelArg(thinking_level)
-        if (!thinking.ok) {
-          return {
-            content: [{ type: 'text' as const, text: `Error: ${thinking.error}` }],
-            details: { error: true },
-          }
-        }
-
-        // Resolve (provider, model) into a concrete provider config.
-        // - Both empty       → use default task provider
-        // - Any combination  → run through the shared resolver so a bare
-        //                       model name ("kimi-k2.6") auto-selects its
-        //                       provider and an enabled-model guard runs.
-        const isDefaultModel = !providerName && !modelName
-        let provider: ProviderConfig
-        if (providerName || modelName) {
-          const resolved = resolveProviderModelInput({ provider: providerName, model: modelName })
-          if (!resolved.ok) {
-            return {
-              content: [{ type: 'text' as const, text: `Error: ${resolved.error}` }],
-              details: { error: true },
-            }
-          }
-          const base = options.resolveProvider(resolved.providerId)
-          if (!base) {
-            return {
-              content: [{ type: 'text' as const, text: `Error: Provider "${resolved.providerName}" could not be loaded.` }],
-              details: { error: true },
-            }
-          }
-          // Pin the requested model by cloning the provider config (same
-          // pattern as `getTaskDefaultProvider` and the cron scheduler).
-          provider = resolved.modelId === getProviderDefaultModel(base)
-            ? base
-            : { ...base, enabledModels: [resolved.modelId] }
-        } else {
-          const def = options.getDefaultProvider()
-          if (!def) {
-            return {
-              content: [{ type: 'text' as const, text: 'Error: No default task provider is configured. Set one in Settings → Tasks, or pass an explicit provider/model.' }],
-              details: { error: true },
-            }
-          }
-          provider = def
-        }
-
-        // Cap max duration
-        let maxDuration = max_duration_minutes ?? options.defaultMaxDurationMinutes
-        if (maxDuration > options.maxDurationMinutesCap) {
-          maxDuration = options.maxDurationMinutesCap
-        }
-        if (maxDuration <= 0) {
-          maxDuration = options.defaultMaxDurationMinutes
-        }
-
-        // Create the task in the store — sessionId is created by the
-        // TaskRunner via SessionManager when the task starts.
-        const task = options.taskRuntime.create({
-          name,
-          prompt,
-          triggerType: 'agent',
-          ownerUserId: options.actor && canCreateFor(options.actor, options.actor.id) ? options.actor.id : undefined,
-          provider: provider.name,
-          model: getProviderDefaultModel(provider),
-          isDefaultModel,
-          thinkingLevel: thinking.value ?? null,
-          maxDurationMinutes: maxDuration,
-        })
-
-        // Start the task, linking its session to the current interactive session
-        const parentSessionId = options.getParentSessionId?.() ?? null
-        const attachedSkills = normalizeAttachedSkills(attached_skills)
-        await options.taskRuntime.start(task, provider, { attachedSkills }, parentSessionId)
-
-        const attachedSkillsLine = attachedSkills
-          ? `Attached skills: ${attachedSkills.join(', ')}\n`
-          : ''
-        const effectiveThinkingLevel = options.taskRuntime.getById(task.id)?.effectiveThinkingLevel ?? null
-        const thinkingLine = formatThinkingLine(thinking.value ?? null, effectiveThinkingLevel)
-
-        return {
-          content: [{
-            type: 'text' as const,
-            text: `Background task started successfully.\n\nTask ID: ${task.id}\nName: ${name}\nProvider: ${provider.name}\nModel: ${getProviderDefaultModel(provider)}\n${thinkingLine}\nMax Duration: ${maxDuration} minutes\n${attachedSkillsLine}\nThe task is now running in the background. You will receive a notification when it completes or fails.`,
-          }],
-          details: {
-            taskId: task.id,
-            name,
-            provider: provider.name,
-            model: getProviderDefaultModel(provider),
-            thinkingLevel: thinking.value ?? null,
-            effectiveThinkingLevel,
-            maxDurationMinutes: maxDuration,
-            attachedSkills,
-          },
-        }
-      } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err)
-        return {
-          content: [{ type: 'text' as const, text: `Error creating task: ${errorMsg}` }],
-          details: { error: true },
-        }
-      }
-    },
+function resolveTaskProvider(options: TaskToolsOptions, providerName?: string, modelName?: string): ProviderResolution {
+  if (!providerName && !modelName) {
+    const provider = options.getDefaultProvider()
+    if (!provider) {
+      return { ok: false, error: toolError('Error: No default task provider is configured. Set one in Settings → Tasks, or pass an explicit provider/model.') }
+    }
+    return { ok: true, provider, isDefaultModel: true }
   }
+
+  const resolved = resolveProviderModelInput({ provider: providerName, model: modelName })
+  if (!resolved.ok) return { ok: false, error: toolError(`Error: ${resolved.error}`) }
+  const base = options.resolveProvider(resolved.providerId)
+  if (!base) return { ok: false, error: toolError(`Error: Provider "${resolved.providerName}" could not be loaded.`) }
+  // Pin the requested model by cloning the provider config (same pattern as
+  // `getTaskDefaultProvider` and the cron scheduler).
+  const provider = resolved.modelId === getProviderDefaultModel(base)
+    ? base
+    : { ...base, enabledModels: [resolved.modelId] }
+  return { ok: true, provider, isDefaultModel: false }
 }
 
-/**
- * Create the `list_tasks` agent tool
- */
-export function listTasksTool(options: Pick<TaskToolsOptions, 'taskRuntime' | 'actor' | 'getUsername'>): AgentTool {
-  return {
-    name: 'list_tasks',
-    label: 'List Background Tasks',
+function resolveMaxDuration(options: TaskToolsOptions, requested?: number): number {
+  const maxDuration = Math.min(requested ?? options.defaultMaxDurationMinutes, options.maxDurationMinutesCap)
+  return maxDuration <= 0 ? options.defaultMaxDurationMinutes : maxDuration
+}
+
+async function createTask(options: TaskToolsOptions, params: TaskWriteParams): Promise<ToolResult> {
+  const name = params.name!
+  const prompt = params.prompt!
+  const thinking = parseThinkingLevelArg(params.thinking_level)
+  if (!thinking.ok) return toolError(`Error: ${thinking.error}`)
+
+  const resolution = resolveTaskProvider(options, params.provider, params.model)
+  if (!resolution.ok) return resolution.error
+  const { provider, isDefaultModel } = resolution
+  const model = getProviderDefaultModel(provider)
+  const maxDuration = resolveMaxDuration(options, params.max_duration_minutes)
+
+  // The TaskRunner creates the session via SessionManager when the task starts.
+  const task = options.taskRuntime.create({
+    name,
+    prompt,
+    triggerType: 'agent',
+    ownerUserId: options.actor && canCreateFor(options.actor, options.actor.id) ? options.actor.id : undefined,
+    provider: provider.name,
+    model,
+    isDefaultModel,
+    thinkingLevel: thinking.value ?? null,
+    maxDurationMinutes: maxDuration,
+  })
+
+  const parentSessionId = options.getParentSessionId?.() ?? null
+  const attachedSkills = normalizeAttachedSkills(params.attached_skills)
+  await options.taskRuntime.start(task, provider, { attachedSkills }, parentSessionId)
+
+  const effectiveThinkingLevel = options.taskRuntime.getById(task.id)?.effectiveThinkingLevel ?? null
+  const lines = [
+    'Background task started successfully.',
+    '',
+    `Task ID: ${task.id}`,
+    `Name: ${name}`,
+    `Provider: ${provider.name}`,
+    `Model: ${model}`,
+    formatThinkingLine(thinking.value ?? null, effectiveThinkingLevel),
+    `Max Duration: ${maxDuration} minutes`,
+    ...(attachedSkills ? [`Attached skills: ${attachedSkills.join(', ')}`] : []),
+    '',
+    'The task is now running in the background. You will receive a notification when it completes or fails.',
+  ]
+
+  return textResult(lines.join('\n'), {
+    taskId: task.id,
+    name,
+    provider: provider.name,
+    model,
+    thinkingLevel: thinking.value ?? null,
+    effectiveThinkingLevel,
+    maxDurationMinutes: maxDuration,
+    attachedSkills,
+  })
+}
+
+async function resumeTask(options: TaskToolsOptions, params: TaskWriteParams): Promise<ToolResult> {
+  const taskId = params.task_id!
+  const task = options.taskRuntime.getById(taskId)
+  if (!task) return toolError(`Error: Task "${taskId}" not found.`)
+  if (task.status !== 'paused') {
+    return toolError(`Error: Task "${taskId}" is not paused (current status: ${task.status}).`)
+  }
+  if (options.actor && !can(options.actor, taskResource(task), 'resume', 'agent')) {
+    return foreignTaskError(options.actor, taskId, 'resume')
+  }
+  if (!options.taskRuntime.isPaused(taskId)) {
+    return toolError(`Error: Task "${taskId}" agent is no longer in memory. The task may have timed out.`)
+  }
+  if (!await options.taskRuntime.resume(taskId, params.message!)) {
+    return toolError(`Error: Failed to resume task "${taskId}".`)
+  }
+
+  return textResult(
+    `Task "${task.name}" (${taskId}) has been resumed with your response. It will continue working in the background.`,
+    { taskId, name: task.name, status: 'running' },
+  )
+}
+
+async function stopTask(options: TaskToolsOptions, params: TaskWriteParams): Promise<ToolResult> {
+  const taskId = params.task_id!
+  const task = options.taskRuntime.getById(taskId)
+  if (!task || (options.actor && getViewLevel(options.actor, taskResource(task), 'agent') === 'none')) {
+    return toolError(`Error: Task "${taskId}" not found.`)
+  }
+  if (options.actor && !can(options.actor, taskResource(task), 'stop', 'agent')) {
+    return toolError(`Error: You are not allowed to stop task "${taskId}".`)
+  }
+  if (task.status !== 'running') {
+    return toolError(`Error: Task "${taskId}" is not running (current status: ${task.status}).`)
+  }
+
+  options.taskRuntime.abort(task.id, 'Stopped by user via task_write')
+  return textResult(`Task "${task.name}" (${task.id}) has been stopped.`, { taskId: task.id, name: task.name, status: 'failed' })
+}
+
+export function createTaskWriteTool(options: TaskToolsOptions): ActionTool {
+  const parameters: Record<keyof TaskWriteParams & string, TSchema> = {
+    task_id: Type.String({ description: 'ID of the task to resume or stop (from the task injection or task_read).' }),
+    name: Type.String({ description: 'Short, descriptive task name (e.g. "Build React App", "Research AI Papers").' }),
+    prompt: Type.String({
+      description: 'Detailed, self-contained prompt with the goal, constraints, relevant files or URLs, required checks and the expected final deliverable. The task cannot see the chat history.',
+    }),
+    message: Type.String({
+      description: 'Response for the paused task: the user\'s answer plus any context the task needs, since it has no chat history.',
+    }),
+    max_duration_minutes: Type.Number({
+      description: 'Maximum run time in minutes. Defaults to the system default and cannot exceed the system maximum.',
+    }),
+    ...AGENT_RUN_PARAMETERS,
+  }
+
+  return defineActionTool<TaskWriteParams, 'create' | 'resume' | 'stop'>({
+    name: 'task_write',
+    label: 'Write Task',
     description:
-      'List background tasks with optional filters. Use this to check the status of running tasks, ' +
-      'find completed or failed tasks, or get an overview of all tasks. Returns the most recent tasks first.',
+      'Start, resume or stop background tasks. A task is an isolated agent run for complex, long-running or parallelizable work ' +
+      '(building apps, substantial refactors, multi-step research, complex file operations) that reports back when it completes, fails or needs input. ' +
+      'Do not create a task for simple questions or quick checks you can finish in the current turn. ' +
+      'Use `attached_skills` to bake the rules of specific skills into the task prompt instead of hoping the task agent discovers them. ' +
+      'Regular users can stop their own tasks; admins can stop any user\'s task.',
+    parameters,
+    actions: {
+      create: {
+        description: 'start a new background task.',
+        required: ['name', 'prompt'],
+        replay: 'unsafe',
+        execute: params => withErrorHandling('creating task', () => createTask(options, params)),
+      },
+      resume: {
+        description: 'answer a paused task (status: question) so it continues in the background.',
+        required: ['task_id', 'message'],
+        replay: 'unsafe',
+        execute: params => withErrorHandling('resuming task', () => resumeTask(options, params)),
+      },
+      stop: {
+        description: 'cancel a running task.',
+        required: ['task_id'],
+        replay: 'unsafe',
+        execute: params => withErrorHandling('stopping task', () => stopTask(options, params)),
+      },
+    },
+  })
+}
+
+function formatDuration(task: Task): string {
+  if (!task.startedAt) return '\u2014'
+  const start = new Date(task.startedAt.replace(' ', 'T') + 'Z').getTime()
+  const end = task.completedAt ? new Date(task.completedAt.replace(' ', 'T') + 'Z').getTime() : Date.now()
+  const mins = Math.round((end - start) / 60000)
+  return mins < 1 ? '<1m' : `${mins}m`
+}
+
+function formatTaskEntry(options: Pick<TaskToolsOptions, 'actor' | 'getUsername'>, task: Task): string | null {
+  const { actor } = options
+  if (actor && !can(actor, taskResource(task), 'view', 'agent')) return null
+  if (actor && getViewLevel(actor, taskResource(task), 'agent') === 'metadata') {
+    const owner = task.ownerUserId != null ? options.getUsername?.(task.ownerUserId) ?? `user ${task.ownerUserId}` : 'unknown'
+    return `\u2022 [${task.status.toUpperCase()}] ${task.name}\n  ID: ${task.id}\n  Owner: ${owner} (details are private)`
+  }
+  const tokens = task.promptTokens + task.completionTokens
+  const modelLine = task.provider
+    ? `\n  Model: ${task.provider}${task.model ? ` / ${task.model}` : ''} | ${formatThinkingLine(task.thinkingLevel, task.effectiveThinkingLevel)}`
+    : ''
+  return `\u2022 [${task.status.toUpperCase()}] ${task.name}\n  ID: ${task.id}\n  Trigger: ${task.triggerType} | Duration: ${formatDuration(task)} | Tokens: ${tokens} | Cost: $${task.estimatedCost.toFixed(4)}${modelLine}\n  Created: ${task.createdAt}`
+}
+
+/** `task_read`: lists background tasks the actor may see, most recent first. */
+export function createTaskReadTool(options: Pick<TaskToolsOptions, 'taskRuntime' | 'actor' | 'getUsername'>): AgentTool {
+  return {
+    name: 'task_read',
+    label: 'Read Tasks',
+    description:
+      'List background tasks with optional filters, most recent first. Use it to check the status of running tasks, ' +
+      'find completed or failed tasks, look up a task id for task_write, or get an overview of all tasks.',
     parameters: Type.Object({
       status: Type.Optional(
-        Type.String({
-          description: 'Filter by status: "running", "paused", "completed", or "failed". Omit to show all.',
-        })
+        Type.String({ description: 'Filter by status: "running", "paused", "completed", or "failed". Omit to show all.' }),
       ),
       trigger_type: Type.Optional(
-        Type.String({
-          description: 'Filter by trigger type: "user", "agent", "cronjob", or "heartbeat". Omit to show all.',
-        })
+        Type.String({ description: 'Filter by trigger type: "user", "agent", "cronjob", or "heartbeat". Omit to show all.' }),
       ),
       limit: Type.Optional(
-        Type.Number({
-          description: 'Maximum number of tasks to return (default: 20, max: 50).',
-        })
+        Type.Number({ description: 'Maximum number of tasks to return (default: 20, max: 50).' }),
       ),
     }),
     execute: async (_toolCallId, params) => {
-      const { status, trigger_type, limit } = params as {
-        status?: string
-        trigger_type?: string
-        limit?: number
-      }
-
-      try {
+      const { status, trigger_type, limit } = params as { status?: string; trigger_type?: string; limit?: number }
+      return withErrorHandling('listing tasks', async () => {
         const { actor } = options
         const tasks = options.taskRuntime.list({
           status: status as TaskStatus | undefined,
@@ -375,90 +314,16 @@ export function listTasksTool(options: Pick<TaskToolsOptions, 'taskRuntime' | 'a
           ownerUserId: actor && actor.role !== 'admin' ? actor.id : undefined,
         })
 
-        if (tasks.length === 0) {
+        const lines = tasks
+          .map(task => formatTaskEntry(options, task))
+          .filter((line): line is string => line !== null)
+
+        if (lines.length === 0) {
           const filterDesc = [status, trigger_type].filter(Boolean).join(', ')
-          return {
-            content: [{ type: 'text' as const, text: filterDesc
-              ? `No tasks found matching filters: ${filterDesc}.`
-              : 'No tasks found.'
-            }],
-            details: { count: 0 },
-          }
+          return textResult(filterDesc ? `No tasks found matching filters: ${filterDesc}.` : 'No tasks found.', { count: 0 })
         }
-
-        const lines = tasks.map(t => {
-          if (actor && !can(actor, taskResource(t), 'view', 'agent') ) return null
-          if (actor && getViewLevel(actor, taskResource(t), 'agent') === 'metadata') {
-            const owner = t.ownerUserId != null ? options.getUsername?.(t.ownerUserId) ?? `user ${t.ownerUserId}` : 'unknown'
-            return `\u2022 [${t.status.toUpperCase()}] ${t.name}\n  ID: ${t.id}\n  Owner: ${owner} (details are private)`
-          }
-          const duration = t.startedAt
-            ? (() => {
-                const start = new Date(t.startedAt.replace(' ', 'T') + 'Z').getTime()
-                const end = t.completedAt
-                  ? new Date(t.completedAt.replace(' ', 'T') + 'Z').getTime()
-                  : Date.now()
-                const mins = Math.round((end - start) / 60000)
-                return mins < 1 ? '<1m' : `${mins}m`
-              })()
-            : '\u2014'
-          const tokens = t.promptTokens + t.completionTokens
-          const modelLine = t.provider ? `\n  Model: ${t.provider}${t.model ? ` / ${t.model}` : ''} | ${formatThinkingLine(t.thinkingLevel, t.effectiveThinkingLevel)}` : ''
-          return `\u2022 [${t.status.toUpperCase()}] ${t.name}\n  ID: ${t.id}\n  Trigger: ${t.triggerType} | Duration: ${duration} | Tokens: ${tokens} | Cost: $${t.estimatedCost.toFixed(4)}${modelLine}\n  Created: ${t.createdAt}`
-        })
-
-        const visibleLines = lines.filter((line): line is string => line !== null)
-        return {
-          content: [{ type: 'text' as const, text: `Found ${visibleLines.length} task(s):\n\n${visibleLines.join('\n\n')}` }],
-          details: { count: visibleLines.length },
-        }
-      } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err)
-        return {
-          content: [{ type: 'text' as const, text: `Error listing tasks: ${errorMsg}` }],
-          details: { error: true },
-        }
-      }
-    },
-  }
-}
-
-/**
- * Create the `stop_task` agent tool: stops a running task of the actor, or of
- * any user when the actor is an admin.
- */
-export function createStopTaskTool(options: Pick<TaskToolsOptions, 'taskRuntime' | 'actor'>): AgentTool {
-  return {
-    name: 'stop_task',
-    label: 'Stop Background Task',
-    description:
-      'Stop a running background task. Use this when the user asks to cancel or stop a task. ' +
-      'Regular users can stop their own tasks; admins can stop any user\'s task. Find the task id with `list_tasks`.',
-    parameters: Type.Object({
-      task_id: Type.String({ description: 'The ID of the running task to stop.' }),
-    }),
-    execute: async (_toolCallId, params) => {
-      const { task_id } = params as { task_id: string }
-      try {
-        const task = options.taskRuntime.getById(task_id)
-        if (!task || (options.actor && getViewLevel(options.actor, taskResource(task), 'agent') === 'none')) {
-          return toolError(`Error: Task "${task_id}" not found.`)
-        }
-        if (options.actor && !can(options.actor, taskResource(task), 'stop', 'agent')) {
-          return toolError(`Error: You are not allowed to stop task "${task_id}".`)
-        }
-        if (task.status !== 'running') {
-          return toolError(`Error: Task "${task_id}" is not running (current status: ${task.status}).`)
-        }
-
-        options.taskRuntime.abort(task.id, 'Stopped by user via stop_task')
-        return {
-          content: [{ type: 'text' as const, text: `Task "${task.name}" (${task.id}) has been stopped.` }],
-          details: { taskId: task.id, name: task.name, status: 'failed' },
-        }
-      } catch (err) {
-        return toolError(`Error stopping task: ${err instanceof Error ? err.message : String(err)}`)
-      }
+        return textResult(`Found ${lines.length} task(s):\n\n${lines.join('\n\n')}`, { count: lines.length })
+      })
     },
   }
 }

@@ -23,7 +23,7 @@ It is **not hard isolation**. Shell, sudo and the file tools stay available to e
 | Secrets (override global ones of the same name) | Global secrets |
 | Chat model, thinking level, language, timezone | |
 
-The agent is instructed to keep personal information out of the wiki, `MEMORY.md` and shared skills, and to refuse changes to global configuration files on behalf of regular users.
+The agent is instructed to keep personal information out of the wiki, `MEMORY.md` and shared skills, and to refuse changes to global configuration files on behalf of regular users. These rules are hard-coded [system rules](./system-prompt#system-rules-hard-coded-rules) that only appear on instances with several users — rewriting `AGENTS.md` cannot remove them.
 
 ## Where files live
 

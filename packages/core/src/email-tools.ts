@@ -16,11 +16,15 @@ import { createEmailSendLogEntry } from './email-send-log.js'
 import type { CreateEmailSendLogInput, EmailSendLogAttachment, EmailSendLogEntry } from './email-send-log.js'
 import { getDatabase } from './database.js'
 import { getWorkspaceDir } from './workspace.js'
+import { defineActionTool } from './action-tool.js'
+import type { ActionTool } from './action-tool.js'
 
 export const DEFAULT_EMAIL_FOLDER = 'INBOX'
 export const DEFAULT_EMAIL_LIST_LIMIT = 50
 export const MAX_EMAIL_LIST_LIMIT = 100
 export const MAX_EMAIL_BULK_UIDS = 200
+
+const UID_SOURCE = 'see email_read action "list" output'
 
 /**
  * Boundary the email tools depend on. Injectable so tests can drive the tools
@@ -153,12 +157,14 @@ function resolveFolder(account: EmailAccount, folder?: string): Resolution<strin
   return { ok: true, value: target }
 }
 
+function accountSchema() {
+  return Type.String({
+    description: 'Email account name or id. Optional when only one account is configured. When it is missing or wrong, the error message lists the available accounts.',
+  })
+}
+
 function accountParam() {
-  return Type.Optional(
-    Type.String({
-      description: 'Email account name or id. Optional when only one account is configured. Use email_folders output or the error message to discover account names.',
-    }),
-  )
+  return Type.Optional(accountSchema())
 }
 
 function uidsParam(description: string) {
@@ -189,14 +195,14 @@ function resolveUids(value: unknown): Resolution<number[]> {
   for (const entry of raw) {
     const num = typeof entry === 'number' ? entry : Number(entry)
     if (!Number.isFinite(num) || num <= 0) {
-      return { ok: false, error: fail('Parameter "uids" must be a non-empty array of positive UIDs (see email_list output).') }
+      return { ok: false, error: fail(`Parameter "uids" must be a non-empty array of positive UIDs (${UID_SOURCE}).`) }
     }
     uids.push(Math.floor(num))
   }
 
   const unique = [...new Set(uids)]
   if (unique.length === 0) {
-    return { ok: false, error: fail('Parameter "uids" must be a non-empty array of positive UIDs (see email_list output).') }
+    return { ok: false, error: fail(`Parameter "uids" must be a non-empty array of positive UIDs (${UID_SOURCE}).`) }
   }
   if (unique.length > MAX_EMAIL_BULK_UIDS) {
     return { ok: false, error: fail(`Too many UIDs — at most ${MAX_EMAIL_BULK_UIDS} messages can be handled per call.`) }
@@ -212,263 +218,233 @@ function formatSender(from: { name?: string; address: string }[]): string {
   return from.length > 0 ? from.map(formatAddress).join(', ') : '(unknown sender)'
 }
 
-export function createEmailListTool(deps: EmailToolsDeps = {}): AgentTool {
-  const resolved = resolveDeps(deps)
+interface EmailReadParams extends Record<string, unknown> {
+  account?: string
+  folder?: string
+  unread_only?: boolean
+  limit?: number
+  uid?: number
+  uids?: number[]
+}
 
-  return {
-    name: 'email_list',
-    label: 'List Emails',
-    description:
-      'List emails of a mailbox folder as metadata only (sender, subject, date, UID) — never full bodies. ' +
-      `Defaults to unread messages in ${DEFAULT_EMAIL_FOLDER} with a limit of ${DEFAULT_EMAIL_LIST_LIMIT}. ` +
-      'Use email_read with the UID to read a single message.',
-    parameters: Type.Object({
-      account: accountParam(),
-      folder: Type.Optional(
-        Type.String({ description: `IMAP folder path (default: ${DEFAULT_EMAIL_FOLDER}). Use email_folders to discover available folders.` }),
-      ),
-      unread_only: Type.Optional(
-        Type.Boolean({ description: 'Only list unread messages. Default: true.' }),
-      ),
-      limit: Type.Optional(
-        Type.Number({ description: `Maximum number of messages to return (default: ${DEFAULT_EMAIL_LIST_LIMIT}, max: ${MAX_EMAIL_LIST_LIMIT}).` }),
-      ),
-    }),
-    execute: async (_toolCallId, params) => {
-      const { account: accountParamValue, folder, unread_only, limit } = params as {
-        account?: string
-        folder?: string
-        unread_only?: boolean
-        limit?: number
-      }
+async function listEmails(resolved: ResolvedDeps, params: EmailReadParams): Promise<ToolResult> {
+  const account = resolveAccount(resolved, params.account)
+  if (!account.ok) return account.error
 
-      const account = resolveAccount(resolved, accountParamValue)
-      if (!account.ok) return account.error
+  const targetFolder = resolveFolder(account.value, params.folder)
+  if (!targetFolder.ok) return targetFolder.error
 
-      const targetFolder = resolveFolder(account.value, folder)
-      if (!targetFolder.ok) return targetFolder.error
+  const unseenOnly = params.unread_only !== false
+  const effectiveLimit = Math.min(
+    Math.max(1, Math.floor(params.limit ?? DEFAULT_EMAIL_LIST_LIMIT)),
+    MAX_EMAIL_LIST_LIMIT,
+  )
 
-      const unseenOnly = unread_only !== false
-      const effectiveLimit = Math.min(
-        Math.max(1, Math.floor(limit ?? DEFAULT_EMAIL_LIST_LIMIT)),
-        MAX_EMAIL_LIST_LIMIT,
+  try {
+    const messages = await resolved.client.listMessages(toClientAccount(account.value), {
+      folder: targetFolder.value,
+      unseenOnly,
+      limit: effectiveLimit,
+    })
+
+    if (messages.length === 0) {
+      return ok(
+        `No ${unseenOnly ? 'unread ' : ''}messages in "${targetFolder.value}" (account "${account.value.name}").`,
+        { accountId: account.value.id, folder: targetFolder.value, count: 0 },
       )
+    }
 
-      try {
-        const messages = await resolved.client.listMessages(toClientAccount(account.value), {
-          folder: targetFolder.value,
-          unseenOnly,
-          limit: effectiveLimit,
-        })
+    const lines = messages.map(message => {
+      const date = message.date ?? 'unknown date'
+      const flags = message.seen ? '' : ' [unread]'
+      return `• UID ${message.uid} | ${date} | ${formatSender(message.from)} | ${message.subject}${flags}`
+    })
 
-        if (messages.length === 0) {
-          return ok(
-            `No ${unseenOnly ? 'unread ' : ''}messages in "${targetFolder.value}" (account "${account.value.name}").`,
-            { accountId: account.value.id, folder: targetFolder.value, count: 0 },
-          )
-        }
-
-        const lines = messages.map(message => {
-          const date = message.date ?? 'unknown date'
-          const flags = message.seen ? '' : ' [unread]'
-          return `• UID ${message.uid} | ${date} | ${formatSender(message.from)} | ${message.subject}${flags}`
-        })
-
-        return ok(
-          `${messages.length} message(s) in "${targetFolder.value}" (account "${account.value.name}"):\n\n${lines.join('\n')}`,
-          {
-            accountId: account.value.id,
-            folder: targetFolder.value,
-            count: messages.length,
-            unreadOnly: unseenOnly,
-            limit: effectiveLimit,
-          },
-        )
-      } catch (err) {
-        return fail(`Failed to list emails: ${errorText(err)}`)
-      }
-    },
+    return ok(
+      `${messages.length} message(s) in "${targetFolder.value}" (account "${account.value.name}"):\n\n${lines.join('\n')}`,
+      {
+        accountId: account.value.id,
+        folder: targetFolder.value,
+        count: messages.length,
+        unreadOnly: unseenOnly,
+        limit: effectiveLimit,
+      },
+    )
+  } catch (err) {
+    return fail(`Failed to list emails: ${errorText(err)}`)
   }
 }
 
-export function createEmailFoldersTool(deps: EmailToolsDeps = {}): AgentTool {
-  const resolved = resolveDeps(deps)
+async function listFolders(resolved: ResolvedDeps, params: EmailReadParams): Promise<ToolResult> {
+  const account = resolveAccount(resolved, params.account)
+  if (!account.ok) return account.error
 
-  return {
-    name: 'email_folders',
-    label: 'List Email Folders',
-    description:
-      'List the folders of an email account. Only folders the account is allowed to access are returned. ' +
-      'Use the returned paths as the "folder" parameter of email_list / email_read.',
-    parameters: Type.Object({
-      account: accountParam(),
-    }),
-    execute: async (_toolCallId, params) => {
-      const { account: accountParamValue } = params as { account?: string }
+  try {
+    const folders = await resolved.client.listFolders(toClientAccount(account.value))
+    const allowed = folders.filter(entry => isFolderAllowed(account.value, entry.path))
 
-      const account = resolveAccount(resolved, accountParamValue)
-      if (!account.ok) return account.error
+    if (allowed.length === 0) {
+      return ok(`No accessible folders for account "${account.value.name}".`, {
+        accountId: account.value.id,
+        count: 0,
+      })
+    }
 
-      try {
-        const folders = await resolved.client.listFolders(toClientAccount(account.value))
-        const allowed = folders.filter(entry => isFolderAllowed(account.value, entry.path))
+    const lines = allowed.map(entry => {
+      const special = entry.specialUse ? ` (${entry.specialUse})` : ''
+      return `• ${entry.path}${special}`
+    })
 
-        if (allowed.length === 0) {
-          return ok(`No accessible folders for account "${account.value.name}".`, {
-            accountId: account.value.id,
-            count: 0,
-          })
-        }
-
-        const lines = allowed.map(entry => {
-          const special = entry.specialUse ? ` (${entry.specialUse})` : ''
-          return `• ${entry.path}${special}`
-        })
-
-        return ok(
-          `${allowed.length} folder(s) for account "${account.value.name}":\n\n${lines.join('\n')}`,
-          { accountId: account.value.id, count: allowed.length, folders: allowed.map(entry => entry.path) },
-        )
-      } catch (err) {
-        return fail(`Failed to list folders: ${errorText(err)}`)
-      }
-    },
+    return ok(
+      `${allowed.length} folder(s) for account "${account.value.name}":\n\n${lines.join('\n')}`,
+      { accountId: account.value.id, count: allowed.length, folders: allowed.map(entry => entry.path) },
+    )
+  } catch (err) {
+    return fail(`Failed to list folders: ${errorText(err)}`)
   }
 }
 
-export function createEmailReadTool(deps: EmailToolsDeps = {}): AgentTool {
+async function readEmail(resolved: ResolvedDeps, params: EmailReadParams): Promise<ToolResult> {
+  const { uid } = params
+  if (typeof uid !== 'number' || !Number.isFinite(uid)) {
+    return fail(`Parameter "uid" must be a number (${UID_SOURCE}).`)
+  }
+
+  const account = resolveAccount(resolved, params.account)
+  if (!account.ok) return account.error
+
+  const targetFolder = resolveFolder(account.value, params.folder)
+  if (!targetFolder.ok) return targetFolder.error
+
+  try {
+    const message = await resolved.client.readMessage(
+      toClientAccount(account.value),
+      targetFolder.value,
+      uid,
+      { markSeen: true },
+    )
+
+    const attachments = message.attachments.length > 0
+      ? message.attachments.map(a => `${a.filename} (${a.contentType}, ${a.size} bytes)`).join(', ')
+      : 'none'
+
+    const header = [
+      `From: ${formatSender(message.from)}`,
+      `To: ${message.to.map(formatAddress).join(', ') || '(none)'}`,
+      message.cc.length > 0 ? `Cc: ${message.cc.map(formatAddress).join(', ')}` : null,
+      `Date: ${message.date ?? 'unknown'}`,
+      `Subject: ${message.subject}`,
+      `Folder: ${targetFolder.value} | UID: ${message.uid} | Account: ${account.value.name}`,
+      `Attachments: ${attachments}`,
+    ].filter(Boolean).join('\n')
+
+    return ok(`${header}\n\n${message.text || '(empty body)'}`, {
+      accountId: account.value.id,
+      folder: targetFolder.value,
+      uid: message.uid,
+      markedRead: true,
+      attachments: message.attachments,
+    })
+  } catch (err) {
+    return fail(`Failed to read email: ${errorText(err)}`)
+  }
+}
+
+async function setSeen(resolved: ResolvedDeps, params: EmailReadParams, seen: boolean): Promise<ToolResult> {
+  const verb = seen ? 'read' : 'unread'
+
+  const account = resolveAccount(resolved, params.account)
+  if (!account.ok) return account.error
+
+  const targetFolder = resolveFolder(account.value, params.folder)
+  if (!targetFolder.ok) return targetFolder.error
+
+  const targetUids = resolveUids(params.uids)
+  if (!targetUids.ok) return targetUids.error
+
+  try {
+    const count = await resolved.client.setSeen(
+      toClientAccount(account.value),
+      targetFolder.value,
+      targetUids.value,
+      seen,
+    )
+
+    return ok(
+      `Marked ${count} message(s) as ${verb} in "${targetFolder.value}" (account "${account.value.name}").`,
+      {
+        accountId: account.value.id,
+        folder: targetFolder.value,
+        uids: targetUids.value,
+        seen,
+        count,
+      },
+    )
+  } catch (err) {
+    return fail(`Failed to mark messages as ${verb}: ${errorText(err)}`)
+  }
+}
+
+export type EmailReadAction = 'list' | 'folders' | 'read' | 'mark_read' | 'mark_unread'
+
+/**
+ * `email_read`: listing, reading and read/unread flagging. Registered for every
+ * account, including read-only ones; flag changes only toggle `\Seen`, which is
+ * idempotent and therefore replay-safe.
+ */
+export function createEmailReadTool(deps: EmailToolsDeps = {}): ActionTool<EmailReadAction> {
   const resolved = resolveDeps(deps)
 
-  return {
+  return defineActionTool<EmailReadParams, EmailReadAction>({
     name: 'email_read',
     label: 'Read Email',
     description:
-      'Read a single email by UID including its full body (HTML is converted to plain text). ' +
-      'The message is automatically marked as read. Use email_list first to get UIDs.',
-    parameters: Type.Object({
-      account: accountParam(),
-      folder: Type.Optional(
-        Type.String({ description: `IMAP folder path the message lives in (default: ${DEFAULT_EMAIL_FOLDER}).` }),
-      ),
-      uid: Type.Number({ description: 'UID of the message, as returned by email_list.' }),
-    }),
-    execute: async (_toolCallId, params) => {
-      const { account: accountParamValue, folder, uid } = params as {
-        account?: string
-        folder?: string
-        uid: number
-      }
-
-      if (typeof uid !== 'number' || !Number.isFinite(uid)) {
-        return fail('Parameter "uid" must be a number (see email_list output).')
-      }
-
-      const account = resolveAccount(resolved, accountParamValue)
-      if (!account.ok) return account.error
-
-      const targetFolder = resolveFolder(account.value, folder)
-      if (!targetFolder.ok) return targetFolder.error
-
-      try {
-        const message = await resolved.client.readMessage(
-          toClientAccount(account.value),
-          targetFolder.value,
-          uid,
-          { markSeen: true },
-        )
-
-        const attachments = message.attachments.length > 0
-          ? message.attachments.map(a => `${a.filename} (${a.contentType}, ${a.size} bytes)`).join(', ')
-          : 'none'
-
-        const header = [
-          `From: ${formatSender(message.from)}`,
-          `To: ${message.to.map(formatAddress).join(', ') || '(none)'}`,
-          message.cc.length > 0 ? `Cc: ${message.cc.map(formatAddress).join(', ')}` : null,
-          `Date: ${message.date ?? 'unknown'}`,
-          `Subject: ${message.subject}`,
-          `Folder: ${targetFolder.value} | UID: ${message.uid} | Account: ${account.value.name}`,
-          `Attachments: ${attachments}`,
-        ].filter(Boolean).join('\n')
-
-        return ok(`${header}\n\n${message.text || '(empty body)'}`, {
-          accountId: account.value.id,
-          folder: targetFolder.value,
-          uid: message.uid,
-          markedRead: true,
-          attachments: message.attachments,
-        })
-      } catch (err) {
-        return fail(`Failed to read email: ${errorText(err)}`)
-      }
+      'Browse and triage mailboxes: list messages as metadata, list folders, read a single message, and mark messages read or unread. ' +
+      `Start with action "list" (defaults to unread messages in ${DEFAULT_EMAIL_FOLDER}, limit ${DEFAULT_EMAIL_LIST_LIMIT}) and only "read" bodies you actually need. ` +
+      'Use "mark_read" / "mark_unread" with several UIDs to flag a whole batch without loading bodies.',
+    parameters: {
+      account: accountSchema(),
+      folder: Type.String({
+        description: `IMAP folder path (default: ${DEFAULT_EMAIL_FOLDER}). Use action "folders" to discover available folders.`,
+      }),
+      unread_only: Type.Boolean({ description: 'For "list": only list unread messages. Default: true.' }),
+      limit: Type.Number({
+        description: `For "list": maximum number of messages to return (default: ${DEFAULT_EMAIL_LIST_LIMIT}, max: ${MAX_EMAIL_LIST_LIMIT}).`,
+      }),
+      uid: Type.Number({ description: 'For "read": UID of the message, as returned by action "list".' }),
+      uids: uidsParam(`For "mark_read" / "mark_unread": UIDs of the messages (max ${MAX_EMAIL_BULK_UIDS}), as returned by action "list".`),
     },
-  }
-}
-
-function createSetSeenTool(deps: EmailToolsDeps, seen: boolean): AgentTool {
-  const resolved = resolveDeps(deps)
-  const verb = seen ? 'read' : 'unread'
-
-  return {
-    name: seen ? 'email_mark_read' : 'email_mark_unread',
-    label: seen ? 'Mark Emails Read' : 'Mark Emails Unread',
-    description:
-      `Mark one or more messages as ${verb} by UID without loading their bodies into the context. ` +
-      'Pass several UIDs at once to handle a whole batch in a single call. Use email_list to get UIDs.',
-    parameters: Type.Object({
-      account: accountParam(),
-      folder: Type.Optional(
-        Type.String({ description: `IMAP folder the messages live in (default: ${DEFAULT_EMAIL_FOLDER}).` }),
-      ),
-      uids: uidsParam(`UIDs of the messages to mark as ${verb}, as returned by email_list.`),
-    }),
-    execute: async (_toolCallId, params) => {
-      const { account: accountParamValue, folder, uids } = params as {
-        account?: string
-        folder?: string
-        uids?: number[]
-      }
-
-      const account = resolveAccount(resolved, accountParamValue)
-      if (!account.ok) return account.error
-
-      const targetFolder = resolveFolder(account.value, folder)
-      if (!targetFolder.ok) return targetFolder.error
-
-      const targetUids = resolveUids(uids)
-      if (!targetUids.ok) return targetUids.error
-
-      try {
-        const count = await resolved.client.setSeen(
-          toClientAccount(account.value),
-          targetFolder.value,
-          targetUids.value,
-          seen,
-        )
-
-        return ok(
-          `Marked ${count} message(s) as ${verb} in "${targetFolder.value}" (account "${account.value.name}").`,
-          {
-            accountId: account.value.id,
-            folder: targetFolder.value,
-            uids: targetUids.value,
-            seen,
-            count,
-          },
-        )
-      } catch (err) {
-        return fail(`Failed to mark messages as ${verb}: ${errorText(err)}`)
-      }
+    actions: {
+      list: {
+        description: 'list messages of a folder as metadata only (sender, subject, date, UID), never full bodies.',
+        replay: 'safe',
+        execute: params => listEmails(resolved, params),
+      },
+      folders: {
+        description: 'list the folders the account may access; use the paths as "folder".',
+        replay: 'safe',
+        execute: params => listFolders(resolved, params),
+      },
+      read: {
+        description: 'read one message including its full body (HTML converted to text) and attachment part ids. Marks it as read.',
+        required: ['uid'],
+        replay: 'safe',
+        execute: params => readEmail(resolved, params),
+      },
+      mark_read: {
+        description: 'mark messages as read without loading their bodies.',
+        required: ['uids'],
+        replay: 'safe',
+        execute: params => setSeen(resolved, params, true),
+      },
+      mark_unread: {
+        description: 'mark messages as unread, e.g. to leave a message for the human after reading it.',
+        required: ['uids'],
+        replay: 'safe',
+        execute: params => setSeen(resolved, params, false),
+      },
     },
-  }
-}
-
-export function createEmailMarkReadTool(deps: EmailToolsDeps = {}): AgentTool {
-  return createSetSeenTool(deps, true)
-}
-
-export function createEmailMarkUnreadTool(deps: EmailToolsDeps = {}): AgentTool {
-  return createSetSeenTool(deps, false)
+  })
 }
 
 export function createEmailMoveTool(deps: EmailToolsDeps = {}): AgentTool {
@@ -485,8 +461,8 @@ export function createEmailMoveTool(deps: EmailToolsDeps = {}): AgentTool {
       folder: Type.Optional(
         Type.String({ description: `Source folder the messages live in (default: ${DEFAULT_EMAIL_FOLDER}).` }),
       ),
-      target_folder: Type.String({ description: 'Destination folder path, e.g. "Archive". Use email_folders to discover it.' }),
-      uids: uidsParam('UIDs of the messages to move, as returned by email_list.'),
+      target_folder: Type.String({ description: 'Destination folder path, e.g. "Archive". Use email_read action "folders" to discover it.' }),
+      uids: uidsParam('UIDs of the messages to move, as returned by email_read action "list".'),
     }),
     execute: async (_toolCallId, params) => {
       const { account: accountParamValue, folder, target_folder, uids } = params as {
@@ -506,7 +482,7 @@ export function createEmailMoveTool(deps: EmailToolsDeps = {}): AgentTool {
       if (!sourceFolder.ok) return sourceFolder.error
 
       if (!target_folder?.trim()) {
-        return fail('Parameter "target_folder" is required (use email_folders to discover folders).')
+        return fail('Parameter "target_folder" is required (use email_read action "folders" to discover folders).')
       }
       const targetFolder = resolveFolder(account.value, target_folder)
       if (!targetFolder.ok) return targetFolder.error
@@ -557,7 +533,7 @@ export function createEmailDeleteTool(deps: EmailToolsDeps = {}): AgentTool {
       folder: Type.Optional(
         Type.String({ description: `Folder the messages live in (default: ${DEFAULT_EMAIL_FOLDER}).` }),
       ),
-      uids: uidsParam('UIDs of the messages to delete, as returned by email_list.'),
+      uids: uidsParam('UIDs of the messages to delete, as returned by email_read action "list".'),
     }),
     execute: async (_toolCallId, params) => {
       const { account: accountParamValue, folder, uids } = params as {
@@ -639,14 +615,14 @@ export function createEmailDownloadAttachmentTool(deps: EmailToolsDeps = {}): Ag
     label: 'Download Email Attachment',
     description:
       'Download a single attachment of a message into the workspace and return its file path. ' +
-      'Use email_read first to get the attachment part ids. Requires the account permission to download attachments.',
+      'Use email_read action "read" first to get the attachment part ids. Requires the account permission to download attachments.',
     parameters: Type.Object({
       account: accountParam(),
       folder: Type.Optional(
         Type.String({ description: `Folder the message lives in (default: ${DEFAULT_EMAIL_FOLDER}).` }),
       ),
-      uid: Type.Number({ description: 'UID of the message, as returned by email_list.' }),
-      part_id: Type.String({ description: 'Attachment part id, as listed by email_read.' }),
+      uid: Type.Number({ description: 'UID of the message, as returned by email_read action "list".' }),
+      part_id: Type.String({ description: 'Attachment part id, as listed by email_read action "read".' }),
       filename: Type.Optional(
         Type.String({ description: 'Override the file name used inside the workspace directory.' }),
       ),
@@ -661,10 +637,10 @@ export function createEmailDownloadAttachmentTool(deps: EmailToolsDeps = {}): Ag
       }
 
       if (typeof uid !== 'number' || !Number.isFinite(uid)) {
-        return fail('Parameter "uid" must be a number (see email_list output).')
+        return fail(`Parameter "uid" must be a number (${UID_SOURCE}).`)
       }
       if (!part_id?.trim()) {
-        return fail('Parameter "part_id" is required (see the attachment list of email_read).')
+        return fail('Parameter "part_id" is required (see the attachment list of email_read action "read").')
       }
 
       const account = resolveAccount(resolved, accountParamValue)
@@ -818,7 +794,7 @@ export function createEmailSendTool(deps: EmailToolsDeps = {}): AgentTool {
 
       if (reply_to_uid !== undefined) {
         if (typeof reply_to_uid !== 'number' || !Number.isFinite(reply_to_uid)) {
-          return fail('Parameter "reply_to_uid" must be a number (see email_list output).')
+          return fail(`Parameter "reply_to_uid" must be a number (${UID_SOURCE}).`)
         }
 
         const sourceFolder = resolveFolder(account.value, folder)
@@ -984,13 +960,7 @@ export function createEmailTools(deps: EmailToolsDeps = {}): AgentTool[] {
     .filter((entry): entry is EmailAccount => entry !== null)
   if (accounts.length === 0) return []
 
-  const tools = [
-    createEmailListTool(resolved),
-    createEmailFoldersTool(resolved),
-    createEmailReadTool(resolved),
-    createEmailMarkReadTool(resolved),
-    createEmailMarkUnreadTool(resolved),
-  ]
+  const tools: AgentTool[] = [createEmailReadTool(resolved)]
 
   if (accounts.some(account => account.canSend)) tools.push(createEmailSendTool(resolved))
   if (accounts.some(account => account.canManage)) tools.push(createEmailMoveTool(resolved))

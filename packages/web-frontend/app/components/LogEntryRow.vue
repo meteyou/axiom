@@ -13,6 +13,7 @@ defineEmits<{
 
 const {
   isEntrySkillLoad,
+  entryBadgeName,
   entryDisplayName,
   isTaskSession,
   getSourceLabel,
@@ -24,6 +25,7 @@ const {
 const { formatTimestamp, formatDuration } = useFormat()
 
 const displayName = computed(() => entryDisplayName(props.entry))
+const badgeName = computed(() => entryBadgeName(props.entry))
 const skillLoad = computed(() => isEntrySkillLoad(props.entry))
 </script>
 
@@ -36,10 +38,10 @@ const skillLoad = computed(() => isEntrySkillLoad(props.entry))
 
     <!-- Tool badge -->
     <Badge
-      :class="toolBadgeClass(displayName)"
+      :class="toolBadgeClass(badgeName)"
       class="h-[22px] shrink-0 gap-1 px-2 py-0 font-mono text-[11px] leading-none"
     >
-      <AppIcon :name="toolIcon(displayName)" class="h-3 w-3" />
+      <AppIcon :name="toolIcon(badgeName)" class="h-3 w-3" />
       {{ displayName }}
     </Badge>
 

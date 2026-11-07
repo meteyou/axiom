@@ -67,3 +67,24 @@ export function resolveBackgroundReasoning(): PiAiThinkingLevel | undefined {
 export function resolveChatReasoning(): PiAiThinkingLevel | undefined {
   return toPiAiReasoning(readChatThinkingLevelFromConfig() ?? 'off')
 }
+
+export const THINKING_LEVEL_PARAM_DESCRIPTION =
+  `Optional reasoning effort for the task agent: ${SETTINGS_THINKING_LEVELS.join(', ')}. ` +
+  'Omit to use the configured background thinking level. Pick a level the chosen model supports ' +
+  '(see the `thinking:` list per model in `<available_providers>`); unsupported levels are rounded to the nearest supported one. ' +
+  'Use higher levels for hard reasoning, planning or coding, lower levels (or off) for simple, mechanical work.'
+
+/**
+ * Parse an optional thinking level tool argument. `undefined` means "not
+ * passed"; an unknown value is reported as an error string.
+ */
+export function parseThinkingLevelArg(value: unknown):
+  | { ok: true; value: ReturnType<typeof normalizeThinkingLevel> }
+  | { ok: false; error: string } {
+  if (value === undefined || value === null || value === '') return { ok: true, value: undefined }
+  const level = normalizeThinkingLevel(typeof value === 'string' ? value.trim().toLowerCase() : value)
+  if (!level) {
+    return { ok: false, error: `Invalid thinking_level "${String(value)}". Valid levels: ${SETTINGS_THINKING_LEVELS.join(', ')}.` }
+  }
+  return { ok: true, value: level }
+}

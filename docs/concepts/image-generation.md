@@ -1,6 +1,6 @@
 # Image Generation
 
-Axiom can generate and edit images through dedicated **image generation models**. They are configured per provider, kept strictly apart from text (chat) models, and used by the agent through the `generate_image` tool. Results are saved as files in the workspace and delivered with `send_file_to_user`.
+Axiom can generate and edit images through dedicated **image generation models**. They are configured per provider, kept strictly apart from text (chat) models, and used by the agent through the `image_generate` tool. Results are saved as files in the workspace and delivered with `file_send`.
 
 Three provider types offer image models:
 
@@ -18,7 +18,7 @@ See [Image backends](#image-backends) for the differences in parameters, limits 
 |---|---|---|
 | Stored in `providers.json` as | `enabledModels` | `enabledImageModels` |
 | Catalog | pi-ai text catalog (or the live `/models` list) | pi-ai **image** catalog plus Axiom's OpenAI/ChatGPT entries (or the provider's live image list) |
-| Used by | chat, tasks, cronjobs, consolidation, fact extraction, … | `generate_image` only |
+| Used by | chat, tasks, cronjobs, consolidation, fact extraction, … | `image_generate` only |
 | Shown in model pickers (Settings, `/model`, task restart, cronjobs) | yes | **no** — only in *Settings → Image Generation → Default image model* |
 | Listed in the system prompt | `<available_providers>` text list (description-gated) | separate *Image generation models* block (always all) |
 | Thinking levels, context window, token costs | yes | no — billed per image, per token, or included in a subscription |
@@ -70,11 +70,11 @@ The tab also shows a read-only list of all enabled image models with their descr
 
 ### Default image model
 
-The [default image model](../settings/image-generation#default-image-model) is the single place that decides which model `generate_image` uses when the agent does not pick one. It is stored as `imageGeneration.defaultModel` (`providerId:modelId`) in `settings.json`. When it is empty or points at a model that is no longer enabled, the first enabled image model is used. Disabling the provider resets the setting.
+The [default image model](../settings/image-generation#default-image-model) is the single place that decides which model `image_generate` uses when the agent does not pick one. It is stored as `imageGeneration.defaultModel` (`providerId:modelId`) in `settings.json`. When it is empty or points at a model that is no longer enabled, the first enabled image model is used. Disabling the provider resets the setting.
 
-## The `generate_image` tool
+## The `image_generate` tool
 
-The tool is registered only while image generation is **switched on** (`imageGeneration.enabled`, default on) **and** at least one image model is usable (enabled, on an enabled provider). The interactive agent re-checks both before every turn, background agents whenever the setting or the image models change — no restart needed. While switched off, the tool, the *Image generation models* prompt block, the `generate_image` line in `<available_tools>` and the `image-generation` skill listing are all absent; a background task that still holds the tool gets a clear "switched off" error instead of a generation.
+The tool is registered only while image generation is **switched on** (`imageGeneration.enabled`, default on) **and** at least one image model is usable (enabled, on an enabled provider). The interactive agent checks both when a session's tool list is built (so changes apply from the next session, `/new`), background agents whenever the setting or the image models change — no restart needed. While switched off, the tool, the *Image generation models* prompt block and the `image-generation` skill listing are all absent; a chat session or background task that still holds the tool gets a clear "switched off" error instead of a generation.
 
 | Parameter | Required | Notes |
 |---|---|---|
@@ -101,7 +101,7 @@ Every image is written to the workspace, under the configured [output folder](..
 - The output folder must stay inside the workspace; absolute paths and `..` escapes are rejected when the setting is saved.
 - The sidecar (`<file>.json`, e.g. `logo.svg.json`) records model, provider, prompt, parameters (`aspectRatio`, `quality`, `background`, `n`, `inputImages`), duration, the cost, how it was billed (`billing`: `reported`, `estimated` or `subscription`) and the provider's generation id.
 
-The tool result lists the relative paths, format, file size, the cost (or *"included in the ChatGPT subscription"*), the duration and any parameter notes. It **never** contains image data, so a generation does not blow up the context window. To show an image to the user, the agent calls [`send_file_to_user`](./tools#user-delivery) with the path (web chat shows a preview, Telegram sends raster images as photos and SVG files as documents).
+The tool result lists the relative paths, format, file size, the cost (or *"included in the ChatGPT subscription"*), the duration and any parameter notes. It **never** contains image data, so a generation does not blow up the context window. To show an image to the user, the agent calls [`file_send`](./tools#user-delivery) with the path (web chat shows a preview, Telegram sends raster images as photos and SVG files as documents).
 
 ### Errors
 
@@ -109,7 +109,7 @@ Provider errors (invalid key, insufficient credits, an exhausted ChatGPT usage l
 
 Each request times out after **6 minutes**. Most models finish in 20–60 s, but GPT Image 2 at high quality regularly needs 2–5 minutes per image, and an abandoned request is still billed.
 
-While `generate_image` runs, the chat shows a spinner and the elapsed time on the tool card.
+While `image_generate` runs, the chat shows a spinner and the elapsed time on the tool card.
 
 ## Cost tracking
 
@@ -130,11 +130,11 @@ Axiom does not cap spending per call. Spending limits belong on the provider's A
 
 ## System prompt
 
-When image generation is switched on and at least one image model is usable, `<available_providers>` gains an *Image generation models* block that lists every usable image model with its provider, id, the description from the [image model edit dialog](../web-ui/providers#image-models) and a *default image model* label. It also states that these models are only for `generate_image`. `<available_tools>` gains a `generate_image` line. See [System Prompt](./system-prompt#_8-available-providers-configured-llm-providers).
+When image generation is switched on and at least one image model is usable, `<available_providers>` gains an *Image generation models* block that lists every usable image model with its provider, id, the description from the [image model edit dialog](../web-ui/providers#image-models) and a *default image model* label. It also states that these models are only for `image_generate`. See [System Prompt](./system-prompt#available-providers-configured-llm-providers).
 
 ## The `image-generation` skill
 
-The built-in [`image-generation` skill](./skills#currently-shipped) carries the workflow the tool description points to: when to generate, how to write a detailed prompt, generating variants within the configured limit, optional self-checks, delivery via `send_file_to_user`, iterating with `input_images` instead of re-rolling, model choice (from the descriptions you give each image model) and cost awareness (`provider_quota` before batch runs, no base64 in chat). It declares `requires_toolsets: [generate_image]`, so it only appears in `<available_skills>` while the tool is available.
+The built-in [`image-generation` skill](./skills#currently-shipped) carries the workflow the tool description points to: when to generate, how to write a detailed prompt, generating variants within the configured limit, optional self-checks, delivery via `file_send`, iterating with `input_images` instead of re-rolling, model choice (from the descriptions you give each image model) and cost awareness (`provider_quota` before batch runs, no base64 in chat). It declares `requires_toolsets: [image_generate]`, so it only appears in `<available_skills>` while the tool is available.
 
 ## Migration of existing configurations
 
@@ -147,9 +147,9 @@ Ids are left as text models when they also answer with text (e.g. `google/gemini
 - **OpenRouter, OpenAI and ChatGPT only.** Other providers show no *Add image model* action.
 - **ChatGPT subscription:** no choice of model, size or quality, and the endpoint is not a public API (see [above](#chatgpt-subscription)).
 - **OpenAI costs are estimates** based on list prices shipped with Axiom; check the OpenAI usage dashboard for the billed amount.
-- **Long generations in chat.** The [provider-stall watchdog](../reference/settings#watchdog) is paused while `generate_image` runs, so a slow generation never shows a stall warning; only the 6-minute per-request timeout applies.
+- **Long generations in chat.** The [provider-stall watchdog](../reference/settings#watchdog) is paused while `image_generate` runs, so a slow generation never shows a stall warning; only the 6-minute per-request timeout applies.
 - **Remote image URLs** are not supported; a model must return inline image data.
-- **Vision self-check needs a vision chat model.** The agent can open a generated image with `read_file` and look at it, but only when the active chat model accepts image input. With a text-only model the image is replaced by an "image omitted" placeholder.
+- **Vision self-check needs a vision chat model.** The agent can open a generated image with `file_read` and look at it, but only when the active chat model accepts image input. With a text-only model the image is replaced by an "image omitted" placeholder.
 - **`aspect_ratio`** is forwarded to OpenRouter, but whether a given model honours it is up to the model.
 - **Variants on a ChatGPT subscription** run one after another, so `n: 4` takes about four times as long as one image.
 
@@ -157,5 +157,5 @@ Ids are left as text models when they also answer with text (e.g. `google/gemini
 
 - [Providers → Image models](../web-ui/providers#image-models) — enabling models, live model lists, availability check, test image.
 - [Settings → Image Generation](../settings/image-generation) — on/off switch, default image model, limits, output folder.
-- [Built-in Tools](./tools#generate-image) — the tool registry.
+- [Built-in Tools](./tools#image-generate) — the tool registry.
 - [`settings.json` → `imageGeneration`](../reference/settings#imagegeneration) and [`providers.json` → `enabledImageModels`](../reference/settings#providerconfig)

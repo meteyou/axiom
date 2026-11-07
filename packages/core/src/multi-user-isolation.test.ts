@@ -64,7 +64,7 @@ vi.mock('./agent-runtime.js', async (importOriginal) => {
           if (gate) await gate.promise
           yield { type: 'done' }
         },
-        getCurrentTimeContext: () => '',
+        getTurnContext: () => ({ prefix: null, suffix: '' }),
         swapProvider: (provider: { id: string }, apiKey: string, modelId?: string) => {
           runtime.swaps++
           runtime.lastSwap = { providerId: provider.id, apiKey, modelId }

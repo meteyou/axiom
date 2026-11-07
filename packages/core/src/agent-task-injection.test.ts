@@ -3,6 +3,7 @@ import { AgentCore } from './agent.js'
 import { initDatabase } from './database.js'
 import type { Database } from './database.js'
 import type { ResponseChunk } from './agent-runtime-types.js'
+import type { TurnChannel } from './turn-context.js'
 
 const { streamPromptMock } = vi.hoisted(() => ({
   streamPromptMock: vi.fn(),
@@ -13,6 +14,7 @@ vi.mock('./memory.js', () => ({
   ensureConfigStructure: vi.fn(),
   assembleSystemPromptWithSections: vi.fn(() => ({ prompt: 'test system prompt', sections: [] })),
   appendToDailyFile: vi.fn(),
+  formatCurrentTimeContext: vi.fn(() => '<current_time>Current time: 12:00 (UTC)</current_time>'),
 }))
 
 vi.mock('./config.js', () => ({
@@ -22,10 +24,18 @@ vi.mock('./config.js', () => ({
   getDefaultTimezone: vi.fn(() => 'UTC'),
 }))
 
-vi.mock('./agent-runtime.js', () => ({
-  createAgentRuntime: vi.fn(() => ({
+vi.mock('./agent-runtime.js', async () => {
+  const { formatTurnContext } = await vi.importActual<typeof import('./turn-context.js')>('./turn-context.js')
+  return {
+  createAgentRuntime: vi.fn(() => {
+    let lastChannel: TurnChannel | null = null
+    return {
     streamPrompt: streamPromptMock,
-    getCurrentTimeContext: vi.fn(() => '<current_time>Current time: 12:00 (UTC)</current_time>'),
+    getTurnContext: vi.fn((channel: TurnChannel) => {
+      const context = formatTurnContext({ previousChannel: lastChannel, currentChannel: channel, isFirstTurn: lastChannel === null })
+      lastChannel = channel
+      return context
+    }),
     swapProvider: vi.fn(),
     getProviderManager: vi.fn(() => undefined),
     clearMessages: vi.fn(),
@@ -38,10 +48,12 @@ vi.mock('./agent-runtime.js', () => ({
     getCurrentModel: vi.fn(() => ({ id: 'mock-model' })),
     getCurrentApiKey: vi.fn(() => 'mock-key'),
     setThinkingLevel: vi.fn(),
-  })),
+    }
+  }),
   createYoloTools: vi.fn(() => []),
   isRetryablePreStreamError: vi.fn(() => false),
-}))
+  }
+})
 
 function makeModel() {
   return {
@@ -104,7 +116,6 @@ describe('AgentCore task injection chunk metadata', () => {
 
     expect(streamPromptMock).toHaveBeenCalledTimes(1)
     expect(streamPromptMock.mock.calls[0][3]).toEqual({
-      channel: 'web',
       currentUser: { username: 'bob', role: 'user' },
     })
 
@@ -257,5 +268,59 @@ describe('AgentCore task injection chunk metadata', () => {
     expect(row.type).toBe('interactive')
     await agent.dispose()
     db.close()
+  })
+
+  describe('delivery channel turn context', () => {
+    const TELEGRAM_MARKER = 'through Telegram'
+    const injectedText = (call: number) => streamPromptMock.mock.calls[call][0] as string
+
+    it('prefixes a first-turn injection delivered via Telegram with the Telegram channel context', async () => {
+      const agent = new AgentCore({ model: makeModel(), apiKey: 'sk-test', db, tools: [] })
+
+      await agent.injectTaskResult('<task_injection>done</task_injection>', '1', undefined, undefined, 'telegram')
+
+      expect(injectedText(0)).toContain(TELEGRAM_MARKER)
+      expect(injectedText(0).indexOf(TELEGRAM_MARKER)).toBeLessThan(injectedText(0).indexOf('<task_injection>'))
+      expect(injectedText(0)).toContain('<current_time>')
+
+      await agent.dispose()
+      db.close()
+    })
+
+    it('adds no prefix when the injection channel is unchanged', async () => {
+      const agent = new AgentCore({ model: makeModel(), apiKey: 'sk-test', db, tools: [] })
+
+      await agent.injectTaskResult('<task_injection>one</task_injection>', '1', undefined, undefined, 'telegram')
+      await agent.injectTaskResult('<task_injection>two</task_injection>', '1', undefined, undefined, 'telegram')
+
+      expect(injectedText(1)).not.toContain('<channel_context>')
+      expect(injectedText(1).startsWith('<task_injection>two</task_injection>')).toBe(true)
+
+      await agent.dispose()
+      db.close()
+    })
+
+    it('adds no prefix for a first-turn web injection', async () => {
+      const agent = new AgentCore({ model: makeModel(), apiKey: 'sk-test', db, tools: [] })
+
+      await agent.injectTaskResult('<task_injection>done</task_injection>', '1', undefined, undefined, 'web')
+
+      expect(injectedText(0)).not.toContain('<channel_context>')
+
+      await agent.dispose()
+      db.close()
+    })
+
+    it('announces the switch when the resolved channel differs from the previous turn', async () => {
+      const agent = new AgentCore({ model: makeModel(), apiKey: 'sk-test', db, tools: [] })
+
+      await agent.injectTaskResult('<task_injection>one</task_injection>', '1', undefined, undefined, 'web')
+      await agent.injectTaskResult('<task_injection>two</task_injection>', '1', undefined, undefined, 'telegram')
+
+      expect(injectedText(1)).toContain(TELEGRAM_MARKER)
+
+      await agent.dispose()
+      db.close()
+    })
   })
 })

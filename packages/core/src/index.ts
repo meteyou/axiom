@@ -462,7 +462,7 @@ export {
   formatPeriodicStatusUpdate,
 } from './loop-detection.js'
 export type { TrackedToolCall, LoopDetectionConfig, LoopDetectionResult } from './loop-detection.js'
-export { createTaskTool, createResumeTaskTool, listTasksTool } from './task-tools.js'
+export { createTaskReadTool, createTaskWriteTool } from './task-tools.js'
 export type { TaskToolsOptions } from './task-tools.js'
 export { createReadChatHistoryTool } from './chat-history-tools.js'
 export type { ChatHistoryToolsOptions } from './chat-history-tools.js'
@@ -589,11 +589,7 @@ export type {
 } from './email-send-log.js'
 export {
   createEmailTools,
-  createEmailListTool,
-  createEmailFoldersTool,
   createEmailReadTool,
-  createEmailMarkReadTool,
-  createEmailMarkUnreadTool,
   createEmailMoveTool,
   createEmailDeleteTool,
   createEmailDownloadAttachmentTool,
@@ -610,7 +606,7 @@ export {
   MAX_EMAIL_LIST_LIMIT,
   MAX_EMAIL_BULK_UIDS,
 } from './email-tools.js'
-export type { EmailToolsDeps } from './email-tools.js'
+export type { EmailToolsDeps, EmailReadAction } from './email-tools.js'
 export { createEmailApprovalService, recoverStuckApprovedEmails } from './email-approval.js'
 export {
   registerEmailApprovalNotifier,
@@ -630,8 +626,10 @@ export { ScheduledTaskStore, initScheduledTasksTable, migrateScheduledTaskOwners
 export type { ScheduledTask, ScheduledTaskActionType, ScheduledTaskCodemode, CreateScheduledTaskInput, UpdateScheduledTaskInput, ScheduledTaskListFilters } from './scheduled-task-store.js'
 export { TaskScheduler } from './task-scheduler.js'
 export type { TaskSchedulerOptions } from './task-scheduler.js'
-export { createCronjobTool, editCronjobTool, removeCronjobTool, listCronjobsTool, getCronjobTool, createReminderTool } from './cronjob-tools.js'
-export type { CronjobToolsOptions } from './cronjob-tools.js'
+export { createScheduleReadTool, createScheduleWriteTool } from './schedule-tools.js'
+export type { ScheduleToolsOptions } from './schedule-tools.js'
+export { defineActionTool, AGENT_RUN_PARAMETERS } from './action-tool.js'
+export type { ActionTool, ActionConfig, ActionToolDefinition } from './action-tool.js'
 export {
   formatTaskTelegramMessage,
   formatTaskStatusUpdateContent,
@@ -642,6 +640,9 @@ export {
   deliverTaskNotification,
   deliverTaskStatusUpdate,
 } from './task-notification.js'
+export { resolveDeliveryChannel } from './delivery-channel.js'
+export type { DeliveryChannelInput } from './delivery-channel.js'
+export type { TurnChannel } from './turn-context.js'
 export type {
   TelegramDeliveryMode,
   TaskNotificationOptions,

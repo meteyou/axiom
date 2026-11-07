@@ -175,9 +175,12 @@ export function migrateScheduledTaskToolOverrides(db: Database): void {
       try {
         parsed = JSON.parse(row.tools_override)
       } catch {
+        parsed = undefined
+      }
+      if (!Array.isArray(parsed) || !parsed.every((name): name is string => typeof name === 'string')) {
+        console.warn(`[db] Cronjob "${row.name}" (${row.id}): tools_override is not a list of tool names; legacy names not migrated`)
         continue
       }
-      if (!Array.isArray(parsed) || !parsed.every((name): name is string => typeof name === 'string')) continue
 
       const migrated = migrateDisabledToolNames(parsed)
       for (const kept of migrated.keptEnabled) {

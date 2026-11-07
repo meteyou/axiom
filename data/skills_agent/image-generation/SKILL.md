@@ -7,7 +7,7 @@ requires_toolsets: [image_generate]
 
 # Image Generation
 
-`image_generate` renders images with the image generation models the user enabled under **Providers → Image models**. The models, their descriptions and the default are listed in the **Image generation models** part of `<available_providers>` in your system prompt. Image models are only reachable through this tool — never pass them to `create_task`, `create_cronjob` or any chat model parameter.
+`image_generate` renders images with the image generation models the user enabled under **Providers → Image models**. The models, their descriptions and the default are listed in the **Image generation models** part of `<available_providers>` in your system prompt. Image models are only reachable through this tool — never pass them to `task_write`, `schedule_write` or any chat model parameter.
 
 ## When to use it
 

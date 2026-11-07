@@ -83,7 +83,7 @@ The dropdown is pre-populated with a small list of common models. Click the **re
 
 ## Transcription language
 
-Transcription uses the requesting user's [language setting](./agent#personal-agent-settings-regular-users) (the global one for admins). `match` lets the provider auto-detect. The agent's `transcribe_audio` tool (e.g. for downloaded audio files) auto-detects unless the agent passes a language.
+Transcription uses the requesting user's [language setting](./agent#personal-agent-settings-regular-users) (the global one for admins). `match` lets the provider auto-detect. The agent's `audio_transcribe` tool (e.g. for downloaded audio files) auto-detects unless the agent passes a language.
 
 ## Deepgram language
 

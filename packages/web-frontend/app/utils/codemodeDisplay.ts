@@ -1,4 +1,4 @@
-import { formatToolName, getToolCallSummary } from './toolNameFormat'
+import { formatToolName, getToolCallSummary, type TranslateFn } from './toolNameFormat'
 
 /**
  * One nested tool call inside a codemode script. Mirrors the `nestedCalls`
@@ -28,11 +28,11 @@ export interface CodemodeCallRow {
 }
 
 /** Map nested-call snapshots to the display rows of the codemode card. */
-export function toCodemodeCallRows(calls: readonly CodemodeNestedCall[] | null | undefined): CodemodeCallRow[] {
+export function toCodemodeCallRows(calls: readonly CodemodeNestedCall[] | null | undefined, t: TranslateFn): CodemodeCallRow[] {
   return (calls ?? []).map(call => ({
     id: call.id,
     name: call.name,
-    displayName: formatToolName(call.name),
+    displayName: formatToolName(call.name, call.args, t),
     summary: getToolCallSummary(call.name, call.args),
     status: call.status,
     durationMs: call.durationMs,
@@ -47,14 +47,14 @@ export interface CodemodeCollapsedSummary {
 
 /**
  * Summary shown on the collapsed card: how many nested calls ran and which
- * tools, deduplicated in first-seen order.
+ * tool labels, deduplicated in first-seen order.
  */
-export function codemodeCollapsedSummary(calls: readonly CodemodeNestedCall[] | null | undefined): CodemodeCollapsedSummary {
+export function codemodeCollapsedSummary(calls: readonly CodemodeNestedCall[] | null | undefined, t: TranslateFn): CodemodeCollapsedSummary {
   const list = calls ?? []
   const seen = new Set<string>()
   const toolNames: string[] = []
   for (const call of list) {
-    const name = formatToolName(call.name)
+    const name = formatToolName(call.name, call.args, t)
     if (!seen.has(name)) {
       seen.add(name)
       toolNames.push(name)

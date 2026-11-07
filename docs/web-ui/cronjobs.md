@@ -17,7 +17,7 @@ Each cronjob and reminder belongs to the user who created it (existing ones belo
 | Delete | yes | yes | no |
 | Run now | yes | no | no |
 
-For foreign cronjobs the admin's row shows the owner and offers only the enabled toggle and **Delete**. The same rules apply to the cronjob tools of the agent (`create_cronjob`, `edit_cronjob`, `remove_cronjob`, `list_cronjobs`, `get_cronjob`, `create_reminder`): a regular user's agent only ever sees their own cronjobs, and the admin's agent sees only name, owner and status of other users' cronjobs and may disable or delete them. The `/cronjobs` slash command lists only your own cronjobs.
+For foreign cronjobs the admin's row shows the owner and offers only the enabled toggle and **Delete**. The same rules apply to the schedule tools of the agent (`schedule_read`, `schedule_write`): a regular user's agent only ever sees their own cronjobs, and the admin's agent sees only name, owner and status of other users' cronjobs and may disable or delete them. The `/cronjobs` slash command lists only your own cronjobs.
 
 > **What is a cronjob?** This page is about *operating* cronjobs. For the architecture — how the scheduler works, the 5-field cron grammar, auto-disable for one-shot patterns, the 55-second deduplication cooldown, the 5-second past-due grace, and why reminders are a separate tool — see [Tasks & Cronjobs concept](../concepts/tasks-and-cronjobs).
 
@@ -54,7 +54,7 @@ A few details worth knowing:
 - **Enabled state defaults to `Enabled only`.** Disabled cronjobs are hidden when the page loads. Switch the filter to `All states` or `Disabled only` to see them. Because this is the default, it does not count as an active filter (see the mobile badge below).
 - The **Provider** dropdown is built from the data, not from the configured-providers list: it only offers providers that some `Task` cronjob actually uses. The `Default` entry appears only if at least one `Task` cronjob runs on the [task default](../settings/tasks), and it selects exactly those.
 - **Never ran** matches cronjobs that have no `Last Run` timestamp yet.
-- **Schedule type** is derived from the cron expression. `Fixed date` means both the day-of-month and month fields are fixed numbers (e.g. `30 11 30 3 *`), so the schedule fires on specific calendar dates at most once a year. That is the shape `create_reminder` produces for one-shot reminders. Everything else is `Recurring`.
+- **Schedule type** is derived from the cron expression. `Fixed date` means both the day-of-month and month fields are fixed numbers (e.g. `30 11 30 3 *`), so the schedule fires on specific calendar dates at most once a year. That is the shape the agent uses for one-shot reminders (`schedule_write` with `type: "reminder"`). Everything else is `Recurring`.
 
 ### Columns
 
@@ -109,7 +109,7 @@ The Action column distinguishes the two cronjob flavors:
 | `Task`      | Each firing spawns a full task agent with the configured prompt, tools, and skills. Use for anything that needs to think, fetch data, or run tools. |
 | `Injection` | Each firing inserts the configured prompt verbatim into the parent chat as a system message. No agent runs. Used for static periodic notifications and reminders. |
 
-Reminders created via the agent's `create_reminder` tool show up here with action type `Injection` — internally they're just cronjobs with a tighter contract. See [Tasks & Cronjobs → Reminders](../concepts/tasks-and-cronjobs#reminders).
+Reminders created by the agent (`schedule_write` with `type: "reminder"`) show up here with action type `Injection` — internally they're just cronjobs with a tighter contract. See [Tasks & Cronjobs → Reminders](../concepts/tasks-and-cronjobs#reminders).
 
 ### Enabled toggle
 
@@ -117,7 +117,7 @@ The switch in the Enabled column (or on the card, on mobile) flips `enabled` on 
 
 Note that the [Enabled state filter](#filter-toolbar) defaults to `Enabled only`, so a cronjob you just switched off disappears from the list. It is not deleted. Set the filter to `All states` or `Disabled only` to find it again and switch it back on.
 
-> **Auto-disable.** Some cronjobs disable themselves after firing. If a cron expression matches a single point in time more than 364 days in the future (e.g. `30 11 30 3 *` = March 30 at 11:30, fired by `create_reminder`), the scheduler auto-disables the row after the first run so it doesn't fire again next year. `Task`-type cronjobs are never auto-disabled.
+> **Auto-disable.** Some cronjobs disable themselves after firing. If a cron expression matches a single point in time more than 364 days in the future (e.g. `30 11 30 3 *` = March 30 at 11:30, a typical one-shot reminder), the scheduler auto-disables the row after the first run so it doesn't fire again next year. `Task`-type cronjobs are never auto-disabled.
 
 ### Row menu (⋮)
 
@@ -206,7 +206,7 @@ See [Tasks & Cronjobs → `attached_skills`](../concepts/tasks-and-cronjobs#atta
 
 #### System Prompt Override
 
-A free-text textarea. When set, it **completely replaces** the default task agent system prompt — including the `STATUS / SUMMARY` final-message contract, the `/workspace` pointer, and everything in `<task_system>`. Leave empty to use the default.
+A free-text textarea. When set, it **completely replaces** the default task agent system prompt — including the `STATUS / SUMMARY` final-message contract, the `<paths>` block and the `<system_rules>`. Leave empty to use the default.
 
 Use sparingly. The defaults exist for a reason; the most common use case is a cronjob that needs a very different persona or output format than a normal task agent.
 

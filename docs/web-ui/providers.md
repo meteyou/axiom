@@ -89,7 +89,7 @@ Instead of deleting a provider or removing a model, you can **disable** it from 
 While disabled, it is treated as if it were not configured for LLM work:
 
 - It no longer appears in any provider/model dropdown (Settings → Agent, Tasks, Memory, Cronjobs, task restart, …) or in the `/model` picker in chat and Telegram.
-- It is removed from the agent's [`<available_providers>`](../concepts/system-prompt#_8-available_providers-configured-llm-providers) list, and the agent can no longer start tasks or cronjobs on it.
+- It is removed from the agent's [`<available_providers>`](../concepts/system-prompt#available-providers-configured-llm-providers) list, and the agent can no longer start tasks or cronjobs on it.
 - It can't be set as active or fallback.
 
 Disabling a whole provider affects all of its models. **TTS and STT are not affected:** a disabled provider's credentials can still be used for text-to-speech, speech-to-text and the STT rewrite model.
@@ -361,7 +361,7 @@ If the catalog fetch fails, an error message with a retry link is shown.
 
 Opened from a model sub-row's ⋮ menu → **Edit Model**. Sets per model:
 
-- **Description** — a free-form note describing what this model is suited for (e.g. *"Fast model for text processing like Twitter/Reddit Digest"*). The description is surfaced in the system prompt's [`<available_providers>` block](../concepts/system-prompt#_8-available_providers-configured-llm-providers) and doubles as the opt-in gate for agent model routing: a model without a description (and that isn't the active or default task model) is hidden from the agent's routing list. Clear the field to remove a model from the routing list.
+- **Description** — a free-form note describing what this model is suited for (e.g. *"Fast model for text processing like Twitter/Reddit Digest"*). The description is surfaced in the system prompt's [`<available_providers>` block](../concepts/system-prompt#available-providers-configured-llm-providers) and doubles as the opt-in gate for agent model routing: a model without a description (and that isn't the active or default task model) is hidden from the agent's routing list. Clear the field to remove a model from the routing list.
 - **Cost** — per-million-token input and output costs in USD. **Cache read** and **cache write** fields are always shown for providers whose models are built from Axiom's own configuration (see below); for other providers they appear only when the resolved cost already carries cache values, or for Anthropic providers. Enter `0` for a free model. Cache prices apply to the cache tokens the provider reports (e.g. OpenAI-style `cached_tokens`) and flow into the cost shown on the [Token Usage page](./token-usage).
 
 For providers whose models are built from Axiom's own configuration (API-key presets such as Custom, OpenRouter, DeepSeek, …) the dialog additionally offers:
@@ -379,7 +379,7 @@ Subscription/OAuth providers, OpenCode Zen/Go and Radius take these values from 
 
 ## Image models
 
-Image generation models are configured separately from text models. They come from an **image catalog** (not the text catalog), are only used by the agent's [`generate_image`](../concepts/image-generation) tool, and never appear in chat, task, cronjob, consolidation or other text-model selectors, nor in the text-model list of the system prompt. Three provider types offer image models:
+Image generation models are configured separately from text models. They come from an **image catalog** (not the text catalog), are only used by the agent's [`image_generate`](../concepts/image-generation) tool, and never appear in chat, task, cronjob, consolidation or other text-model selectors, nor in the text-model list of the system prompt. Three provider types offer image models:
 
 - **OpenRouter** — billed per image; OpenRouter reports the amount.
 - **OpenAI** (API key) — GPT Image models, billed per token; Axiom estimates the cost from OpenAI's list prices.
@@ -393,7 +393,7 @@ Opened from the provider header row's ⋮ menu → **Add image model**.
 - **Search** — filters the image models by name or id, e.g. `vector` finds `recraft/recraft-v4.1-vector`.
 - **Live list** — OpenRouter and OpenAI list their image models **live**, with the provider's stored API key (OpenRouter: `GET /models?output_modalities=image`, OpenAI: `GET /v1/models` filtered to `gpt-image-*` and `chatgpt-image-*`). New models and dated snapshots appear without an Axiom release. The refresh button next to the search field loads the list again. If the request fails, the bundled catalog is shown instead. ChatGPT has no live list; it offers its one bundled model, other ids are added as custom models.
 - **Model list** — multi-select. Each model shows its list price per 1M output tokens when the provider publishes one (OpenRouter's `pricing.image_output`, OpenAI's list prices), e.g. *$8.38 / 1M tokens*. Models that accept no input images — and can therefore not edit or vary existing images — carry a *no image input* badge. Models already enabled are greyed out.
-- **Custom model fallback** — when the search text matches no entry, you can add the typed id (e.g. a model published after the list was loaded). Such models are sent as image-only requests. For an OpenAI id without a bundled list price the row shows *per image (estimated)*, the `generate_image` result reports the cost as unknown and Token Usage books it at $0; aspect ratios are mapped to the fixed sizes 1024x1024 / 1536x1024 / 1024x1536, which every GPT Image model accepts. For ChatGPT (Codex login) this is how newer models are requested, e.g. `gpt-image-2.6-flare`; the ChatGPT backend accepts any id without an error, so a successful generation does not prove that the id was honoured.
+- **Custom model fallback** — when the search text matches no entry, you can add the typed id (e.g. a model published after the list was loaded). Such models are sent as image-only requests. For an OpenAI id without a bundled list price the row shows *per image (estimated)*, the `image_generate` result reports the cost as unknown and Token Usage books it at $0; aspect ratios are mapped to the fixed sizes 1024x1024 / 1536x1024 / 1024x1536, which every GPT Image model accepts. For ChatGPT (Codex login) this is how newer models are requested, e.g. `gpt-image-2.6-flare`; the ChatGPT backend accepts any id without an error, so a successful generation does not prove that the id was honoured.
 - **Add** — stores the selection in the provider's `enabledImageModels`. For models taken from a live list, the display name, the input/output modalities and the output price are stored with the model, so models newer than the bundled catalog are called correctly (e.g. models that return text and image, or accept no input images) and the price shows up in the model row.
 
 ### Image model rows
@@ -444,4 +444,4 @@ This is what you see right after first install — until at least one provider i
 - [Settings → Tasks](../settings/tasks) — separate default provider for background task agents.
 - [Settings → Health Monitor](../settings/health-monitor) — periodic health checks, automatic fallback switchover.
 - [Token Usage](./token-usage) — actual spend per provider and model over time.
-- [Image Generation](../concepts/image-generation) — how image models, the default image model and `generate_image` fit together.
+- [Image Generation](../concepts/image-generation) — how image models, the default image model and `image_generate` fit together.

@@ -9,6 +9,8 @@ import type { ProviderConfig } from './provider-config.js'
 import type { ProviderManager } from './provider-manager.js'
 import { loadConfig } from './config.js'
 import { buildUploadPromptContext } from './uploads.js'
+import { applyTurnContext, toTurnChannel } from './turn-context.js'
+import type { TurnChannel } from './turn-context.js'
 import type { UploadDescriptor } from './uploads.js'
 import { SessionManager } from './session-manager.js'
 import type { SessionInfo } from './session-manager.js'
@@ -253,7 +255,6 @@ export class AgentCore {
     // Group chats get no per-user profile.
     const scope = source !== 'telegram-group' ? resolveUserScope(this.db, userId) : null
     return {
-      channel: source?.startsWith('telegram') ? 'telegram' : source,
       currentUser: scope ? { username: scope.username, role: scope.role } : undefined,
     }
   }
@@ -365,12 +366,18 @@ export class AgentCore {
    * per-injection metadata map without colliding with other injections
    * that happen to share the same target session id. When omitted a fresh
    * UUID is generated so every call still has a unique token.
+   *
+   * `channel` is the pre-resolved delivery channel (see
+   * `resolveDeliveryChannel`). It drives the turn-context prefix so the
+   * agent formats its response for where it will actually be delivered.
+   * When omitted, the channel is derived from the session source.
    */
   async injectTaskResult(
     injection: string,
     targetUserId: string,
     forcedSessionId?: string,
     injectionId?: string,
+    channel?: TurnChannel,
   ): Promise<void> {
     if (this.isDeletedUser(targetUserId)) return
     const resolvedInjectionId = injectionId ?? randomUUID()
@@ -385,6 +392,7 @@ export class AgentCore {
           msg.payload.text,
           forcedSessionId,
           resolvedInjectionId,
+          channel,
         )
       },
     )
@@ -419,9 +427,8 @@ export class AgentCore {
         ? await buildUploadPromptContext(attachments, runtime.getCurrentModel().inputLimits?.images?.resize)
         : { images: [], hints: [] }
 
-      const timeContext = runtime.getCurrentTimeContext()
       const baseText = fileHints.length > 0 ? `${text}\n\n${fileHints.join('\n')}` : text
-      const enrichedText = `${baseText}\n\n${timeContext}`
+      const enrichedText = applyTurnContext(baseText, runtime.getTurnContext(toTurnChannel(source)))
 
       const stream = retry
         ? runtime.retryLastTurn(enrichedText, sessionId, images.length > 0 ? images : undefined, promptContext)
@@ -456,6 +463,7 @@ export class AgentCore {
     injection: string,
     forcedSessionId?: string,
     injectionId?: string,
+    channel?: TurnChannel,
   ): AsyncIterable<ResponseChunk> {
     // Resolve the session for this injection. Never create interactive
     // sessions with source='task' — this breaks source-based history /
@@ -497,8 +505,11 @@ export class AgentCore {
         yield { type: 'done', sessionId, injectionId }
         return
       }
-      const promptContext = this.sessionPromptContext(targetUserId, this.sessionManager.getSession(targetUserId)?.source)
-      for await (const chunk of entry.runtime.streamPrompt(injection, sessionId, undefined, promptContext)) {
+      const source = this.sessionManager.getSession(targetUserId)?.source
+      const promptContext = this.sessionPromptContext(targetUserId, source)
+      const turnChannel = channel ?? toTurnChannel(source ?? this.resolveLastInteractiveSource(targetUserId) ?? undefined)
+      const enrichedInjection = applyTurnContext(injection, entry.runtime.getTurnContext(turnChannel))
+      for await (const chunk of entry.runtime.streamPrompt(enrichedInjection, sessionId, undefined, promptContext)) {
         // Tag task-injection chunks with the actual session used AND the
         // per-injection correlation token. Downstream correlation MUST
         // key off `chunk.injectionId` (unique per call) and not

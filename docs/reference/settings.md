@@ -53,7 +53,7 @@ The on-disk shape is a **superset** of [`SettingsContract`](https://github.com/)
 | `agentHeartbeat`                   | object                                                            | see below      | nested                                  | Background reflection loop.                                                                                       |
 | `tasks`                            | object                                                            | see below      | nested                                  | Task & cronjob defaults.                                                                                          |
 | `codemode`                         | object                                                            | see below      | nested                                  | Experimental codemode switches for the main agent and background tasks.                                           |
-| `imageGeneration`                  | object                                                            | see below      | nested                                  | `generate_image` switch, default image model, limits, output folder.                                              |
+| `imageGeneration`                  | object                                                            | see below      | nested                                  | `image_generate` switch, default image model, limits, output folder.                                              |
 | `tts`                              | object                                                            | see below      | nested                                  | Voice output config.                                                                                              |
 | `stt`                              | object                                                            | see below      | nested                                  | Voice input config.                                                                                               |
 | `appearance`                       | object                                                            | see below      | nested                                  | Web UI branding (logo).                                                                                           |
@@ -94,7 +94,7 @@ restart.
 { "watchdog": { "stallWarnMs": 30000, "stallAbortMs": 90000 } }
 ```
 
-Time spent executing tool calls (shell commands, `generate_image`, …) is not
+Time spent executing tool calls (shell commands, `image_generate`, …) is not
 silence: the clock is paused while any tool runs and restarts when the last one
 returns. Tools are bounded by their own timeouts instead (e.g. the `shell`
 `timeout` argument); a running tool shows a spinner and its elapsed time in the
@@ -264,7 +264,7 @@ A flat `tasks.statusUpdateIntervalMinutes` may exist on disk from older installs
 
 | Key                       | Type      | Default   | Notes                                                                                                                                       |
 |---------------------------|-----------|-----------|---------------------------------------------------------------------------------------------------------------------------------------------|
-| `codemode.mainAgent`      | `boolean` | `false`   | Adds the `codemode` tool to the interactive chat agent. Read before each turn — a change applies from the next turn, no restart needed.   |
+| `codemode.mainAgent`      | `boolean` | `false`   | Adds the `codemode` tool to the interactive chat agent. Read when a session's tool list is built — a change applies from the next session (`/new`), no restart needed. |
 | `codemode.tasks`          | `boolean` | `false`   | Adds the `codemode` tool to background task agents. Read when a task starts — applies to tasks started after the change. Overridable per cronjob (`on` / `off` / inherit); memory consolidation never uses it. |
 
 ```json
@@ -277,7 +277,7 @@ A flat `tasks.statusUpdateIntervalMinutes` may exist on disk from older installs
 
 | Key                            | Type                            | Default    | Range / enum |
 |--------------------------------|---------------------------------|------------|--------------|
-| `imageGeneration.enabled`      | `boolean`                       | `true`     | boolean. `false` removes `generate_image`, the *Image generation models* prompt block and the `image-generation` skill listing. |
+| `imageGeneration.enabled`      | `boolean`                       | `true`     | boolean. `false` removes `image_generate`, the *Image generation models* prompt block and the `image-generation` skill listing. |
 | `imageGeneration.defaultModel` | `string` (`providerId:modelId`) | `""`       | string; `""` = first enabled image model. Reset to `""` when its provider is disabled. |
 | `imageGeneration.maxVariants`  | `number`                        | `4`        | integer `1–10`. Upper limit of the tool's `n` parameter. |
 | `imageGeneration.outputDir`    | `string`                        | `"images"` | workspace-relative folder; absolute paths and paths escaping the workspace are rejected. Stored normalized (`./a//b/` → `a/b`). |
@@ -522,7 +522,7 @@ LLM provider catalog. UI-managed via the [Providers page](../web-ui/providers); 
 | `baseUrl`                | `string`                                        | API base URL.                                                                                  |
 | `apiKey`                 | `string` (**encrypted**)                        | Encrypted with `ENCRYPTION_KEY` (`packages/core/src/encryption.ts`). Use the UI to write.      |
 | `enabledModels`          | `string[]?`                                     | Model ids the user has enabled for this provider. The first entry is the default/primary model used when `activeModel` is unset. |
-| `enabledImageModels`     | `string[]?`                                     | Image generation model ids enabled for this provider. Only used by `generate_image`; never part of `enabledModels` or any text-model picker. Only stored for provider types with an image backend (OpenRouter, OpenAI, ChatGPT Plus/Pro); dropped when the provider type changes to another image backend. See [Image Generation](../concepts/image-generation). |
+| `enabledImageModels`     | `string[]?`                                     | Image generation model ids enabled for this provider. Only used by `image_generate`; never part of `enabledModels` or any text-model picker. Only stored for provider types with an image backend (OpenRouter, OpenAI, ChatGPT Plus/Pro); dropped when the provider type changes to another image backend. See [Image Generation](../concepts/image-generation). |
 | `disabled`               | `boolean?`                                      | `true` hides the provider from all LLM model pickers and the agent; TTS/STT can still use it. See [Disabling providers and models](../web-ui/providers#disabling-providers-and-models). |
 | `disabledModels`         | `string[]?`                                     | Subset of `enabledModels` that is disabled. The default model is the first enabled model that is not disabled. |
 | `degradedThresholdMs`    | `number?`                                       | Latency threshold for `healthy → degraded` transitions in [Health Monitor](../settings/health-monitor). |
@@ -691,14 +691,14 @@ After a successful write, the service fires whichever of these hooks the changed
 | Trigger                                  | Restarts / refreshes                                                        |
 |------------------------------------------|-----------------------------------------------------------------------------|
 | `sessionTimeoutMinutes` changed          | `agentCore.getSessionManager().setTimeoutMinutes(…)`                       |
-| `language` or `timezone` changed         | `agentCore.refreshSystemPrompt()`                                          |
+| `timezone` changed                       | Reschedules cronjobs of the affected owner (or of everyone for the global timezone) |
 | `thinkingLevel` changed                  | `agentCore.setThinkingLevel(…)`                                            |
 | `healthMonitorIntervalMinutes` or any `healthMonitor.*` changed | `onHealthMonitorSettingsChanged()`                  |
 | `memoryConsolidation.*` changed          | `onConsolidationSettingsChanged()`                                          |
 | `agentHeartbeat.*` changed               | `onAgentHeartbeatSettingsChanged()`                                         |
 | `telegram.enabled` or `telegram.botToken` changed | `onTelegramSettingsChanged()` — restart bot                        |
 
-No container restart is needed for any of the above. Changes to fields outside this list (e.g. `tasks.*`, `tts.*`, `stt.*`, `factExtraction.*`, `codemode.*`, `appearance.*`) are read on next use rather than via a hook.
+No container restart is needed for any of the above. `language` (and every other input of the system prompt) is not pushed into a running chat: the prompt is built once per session, so the new value applies from the next session (`/new` or session timeout) — see [System Prompt → Built once per session](../concepts/system-prompt#built-once-per-session). Changes to fields outside this list (e.g. `tasks.*`, `tts.*`, `stt.*`, `factExtraction.*`, `codemode.*`, `appearance.*`) are read on next use rather than via a hook.
 
 ---
 

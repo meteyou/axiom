@@ -168,7 +168,7 @@ const HEARTBEAT_TEMPLATE = `# Heartbeat Tasks
 const TASKS_TEMPLATE = `# Background Task Guidelines
 
 <!-- These guidelines are injected into every background task's system prompt. -->
-<!-- They apply to tasks created via create_task, cronjob runs with action_type="task", -->
+<!-- They apply to tasks created via task_write, cronjob runs with action_type="task", -->
 <!-- heartbeat-spawned tasks, and consolidation-spawned tasks. -->
 <!-- Both the user and the agent can edit this file. Keep it tight — every line ships in every task prompt. -->
 
@@ -859,7 +859,6 @@ export interface SystemPromptOptions {
   recentDays?: number
   language?: string
   timezone?: string
-  channel?: string
   skills?: SkillPromptEntry[]
   agentSkillsOverflowCount?: number
   currentUser?: { username: string; role?: string }
@@ -977,11 +976,11 @@ ${dailyContext}
     }
 
     if (providerLines.length > 0) {
-      providerBlocks.push(`Configured LLM providers and their enabled models. When the user asks for a task or cronjob with a specific model or provider, pass it through to \`create_task\` / \`create_cronjob\` / \`edit_cronjob\` via their \`provider\` and/or \`model\` parameters. If the user names only a model (e.g. "run this with kimi-k2.6"), pass it as \`model\` — the tool will auto-detect the provider from this list.
+      providerBlocks.push(`Configured LLM providers and their enabled models. When the user asks for a task or cronjob with a specific model or provider, pass it through to \`task_write\` / \`schedule_write\` via their \`provider\` and/or \`model\` parameters. If the user names only a model (e.g. "run this with kimi-k2.6"), pass it as \`model\` — the tool will auto-detect the provider from this list.
 
 For background tasks, you may choose the most appropriate model based on the descriptions below. Prefer cost-effective models for simple work; use stronger models for complex coding or research. When a description indicates a model is suited for a specific task type (e.g. "Textverarbeitung wie Twitter/Reddit Digest"), prefer that model for matching tasks.
 
-\`thinking:\` lists the reasoning levels a model supports. Tasks and cronjobs run with the background thinking level${options.defaultTaskThinkingLevel ? ` (currently \`${options.defaultTaskThinkingLevel}\`)` : ''} unless you pass \`thinking_level\` to \`create_task\` / \`create_cronjob\` / \`edit_cronjob\`. Only override it when the task clearly needs more (hard reasoning, planning, complex coding) or less (simple, mechanical work) effort, and pick a level from the model's list.
+\`thinking:\` lists the reasoning levels a model supports. Tasks and cronjobs run with the background thinking level${options.defaultTaskThinkingLevel ? ` (currently \`${options.defaultTaskThinkingLevel}\`)` : ''} unless you pass \`thinking_level\` to \`task_write\` / \`schedule_write\`. Only override it when the task clearly needs more (hard reasoning, planning, complex coding) or less (simple, mechanical work) effort, and pick a level from the model's list.
 
 ${providerLines.join('\n')}`)
     }
@@ -1052,13 +1051,6 @@ ${skillEntries}${overflowNote}
     }
   }
 
-  // 16. Channel context
-  if (options?.channel === 'telegram') {
-    addSection('channel_context', `<channel_context>
-You are communicating with the user through Telegram. You ARE the Telegram bot — messages the user sends arrive directly to you, and your responses are sent back to the user automatically. Do not tell the user to use the Telegram Bot API, curl commands, or any external tools to communicate. Just respond naturally to their messages.
-Keep responses concise and well-formatted for Telegram (use Markdown sparingly, avoid very long messages).
-</channel_context>`)
-  }
 
   return { prompt: sections.map(section => section.text).join('\n\n'), sections }
 }
