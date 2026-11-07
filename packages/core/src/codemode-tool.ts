@@ -10,7 +10,7 @@ import type {
   AgentToolResult,
 } from '@earendil-works/pi-agent-core'
 import type { Api, AssistantMessage, JsonObject, Model, Usage } from '@earendil-works/pi-ai'
-import { Type } from '@earendil-works/pi-ai'
+import { Type } from 'typebox'
 import {
   CODEMODE_SOURCE_GRAMMAR,
   CodemodeSandbox,

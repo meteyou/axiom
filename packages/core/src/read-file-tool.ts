@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises'
 import nodePath from 'node:path'
 import type { AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core'
-import { Type } from '@earendil-works/pi-ai'
+import { Type } from 'typebox'
 import { trackAgentSkillUsage } from './agent-skills.js'
 import { detectImageMimeType, prepareImageForLlm } from './llm-image.js'
 import { getSkillDecrypted, loadSkills } from './skill-config.js'

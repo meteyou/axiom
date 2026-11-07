@@ -22,7 +22,7 @@ const PI_CATALOG_BASE_URL = 'https://pi.dev'
  * ships. Must match the installed `@earendil-works/pi-ai` (locked by
  * `pi-catalog.test.ts`).
  */
-const PI_AI_VERSION = '1.3.0'
+const PI_AI_VERSION = '1.5.0'
 
 const CATALOG_FILE = 'pi-catalog.json'
 const FETCH_TIMEOUT_MS = 15_000

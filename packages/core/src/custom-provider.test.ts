@@ -44,9 +44,11 @@ describe('validateModelCompat', () => {
     ['openai-responses', OpenAIResponsesCompatSchema],
     ['anthropic-messages', AnthropicMessagesCompatSchema],
   ] as const)('mirrors the pi-ai compat schema for %s', (apiType, schema) => {
-    const kindOf = (property: { const?: unknown; anyOf?: { const?: unknown }[]; type?: unknown }) =>
+    type CompatProperty = { const?: unknown; anyOf?: { const?: unknown }[]; type?: unknown }
+    const kindOf = (property: CompatProperty) =>
       'const' in property ? [property.const] : property.anyOf ? property.anyOf.map(option => option.const) : property.type
-    const piAiFields = Object.fromEntries(Object.entries(schema.properties).map(([key, property]) => [key, kindOf(property)]))
+    const properties = (schema as { properties: Record<string, CompatProperty> }).properties
+    const piAiFields = Object.fromEntries(Object.entries(properties).map(([key, property]) => [key, kindOf(property)]))
     expect(MODEL_COMPAT_FIELDS[apiType]).toEqual(piAiFields)
   })
 })
