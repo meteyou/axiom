@@ -1022,7 +1022,7 @@ export function useChat() {
 
       case 'attachment':
         // A file sent by the agent for the current assistant turn (e.g. via
-        // the `send_file_to_user` tool). We attach it to the in-progress
+        // the `file_send` tool). We attach it to the in-progress
         // assistant message so the download card renders inside the bubble
         // — same visual treatment as user-side attachments, just on the
         // opposite side.

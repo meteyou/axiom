@@ -60,12 +60,12 @@ export interface BaseAgentToolsOptions {
   db: Database
   builtinToolsConfig?: BuiltinToolsConfigSource
   sttEnabled?: boolean
-  /** User the tools act for; scopes search_memories and gates provider_quota. Omitted for background agents. */
+  /** User the tools act for; scopes memory_search and gates provider_quota. Omitted for background agents. */
   user?: UserScope | null
-  /** Session identity of an interactive caller without a user row (e.g. `telegram-<id>`); scopes read_chat_history and search_memories. */
+  /** Session identity of an interactive caller without a user row (e.g. `telegram-<id>`); scopes chat_history_read and memory_search. */
   sessionUser?: string
   quotaService?: QuotaServiceLike
-  /** Session that `generate_image` books its cost on; omitted for background agents. */
+  /** Session that `image_generate` books its cost on; omitted for background agents. */
   getSessionId?: () => string | null | undefined
 }
 
@@ -306,9 +306,9 @@ export function createYoloTools(
   }
 
   const writeFileTool: AgentTool = {
-    name: 'write_file',
+    name: 'file_write',
     label: 'Write File',
-    description: 'Write content to a file, replacing it entirely. Creates parent directories if needed. For partial changes to an existing file, prefer edit_file.',
+    description: 'Write content to a file, replacing it entirely. Creates parent directories if needed. For partial changes to an existing file, prefer file_edit.',
     parameters: Type.Object({
       path: Type.String({ description: 'Path to the file to write' }),
       content: Type.String({ description: 'Content to write to the file' }),
@@ -337,9 +337,9 @@ export function createYoloTools(
   }
 
   const editFileTool: AgentTool = {
-    name: 'edit_file',
+    name: 'file_edit',
     label: 'Edit File',
-    description: 'Edit a file using exact text replacements. Each edit specifies an oldText to find and a newText to replace it with. The oldText must match exactly and be unique in the file. Prefer this over write_file whenever you only need to change specific parts of a file — it saves tokens and reduces errors.',
+    description: 'Edit a file using exact text replacements. Each edit specifies an oldText to find and a newText to replace it with. The oldText must match exactly and be unique in the file. Prefer this over file_write whenever you only need to change specific parts of a file — it saves tokens and reduces errors.',
     parameters: Type.Object({
       path: Type.String({ description: 'Path to the file to edit' }),
       edits: Type.Array(
@@ -423,7 +423,7 @@ export function createYoloTools(
   }
 
   const listFilesTool: AgentTool = {
-    name: 'list_files',
+    name: 'file_list',
     label: 'List Files',
     description: 'List files and directories at the given path.',
     parameters: Type.Object({
@@ -696,7 +696,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
 
   /**
    * Image generation can be switched, and image models enabled or removed,
-   * while a chat runtime lives, so `generate_image` is added, dropped or
+   * while a chat runtime lives, so `image_generate` is added, dropped or
    * redeclared before each turn; pi-agent-core declares the change to the
    * model. An unchanged declaration is kept so the tool list stays stable.
    */
@@ -859,15 +859,15 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
     // Build a skill-prompt context so agent skills can be gated by the current
     // platform / active toolset and annotated with missing required env vars.
     const activeTools = new Set<string>([
-      'shell', 'read_file', 'write_file', 'edit_file', 'list_files',
+      'shell', 'file_read', 'file_write', 'file_edit', 'file_list',
       'create_task', 'resume_task', 'list_tasks', 'stop_task',
       'create_cronjob', 'edit_cronjob', 'remove_cronjob', 'list_cronjobs', 'get_cronjob',
       'create_reminder',
-      'read_chat_history', 'search_memories', 'list_agent_skills',
+      'chat_history_read', 'memory_search', 'skill_list',
     ])
     if (builtinToolsConfig?.webSearch?.enabled !== false) activeTools.add('web_search')
     if (builtinToolsConfig?.webFetch?.enabled !== false) activeTools.add('web_fetch')
-    if (sttEnabled) activeTools.add('transcribe_audio')
+    if (sttEnabled) activeTools.add('audio_transcribe')
 
     const availableImageModels = this.listImageModelsForPrompt()
     if (availableImageModels.length > 0) activeTools.add(GENERATE_IMAGE_TOOL_NAME)

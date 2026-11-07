@@ -326,7 +326,7 @@ interface ActiveImageGeneration {
 }
 
 /**
- * Settings and usable image models while `generate_image` is offered: image
+ * Settings and usable image models while `image_generate` is offered: image
  * generation is switched on and at least one image model is usable. Tool
  * registration and the prompt's model list both derive from this.
  */
@@ -369,7 +369,7 @@ export type ImageModelResolution =
   | { ok: false; error: string }
 
 /**
- * Resolve the `model` argument of `generate_image`: `providerId:modelId`,
+ * Resolve the `model` argument of `image_generate`: `providerId:modelId`,
  * `providerName:modelId` or a bare model id (unique across providers). An
  * empty value selects the default image model.
  */

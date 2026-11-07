@@ -91,7 +91,7 @@ ${consolidationRules.trim()}
 ## Memory Directory
 
 The memory directory is located at: ${memoryDir}
-All file paths below are ABSOLUTE paths. You MUST use the full absolute paths when calling read_file, write_file, list_files, and edit_file.
+All file paths below are ABSOLUTE paths. You MUST use the full absolute paths when calling file_read, file_write, file_list, and file_edit.
 
 ## What you may write to
 
@@ -106,18 +106,18 @@ You must NOT write to any other file. No config files, no code files, no files o
 
 ## Steps
 
-1. **Read recent daily files**: Use \`list_files\` on \`${dailyDir}\`, then \`read_file\` to read the last ${lookbackDays} days of daily files (files named YYYY-MM-DD.md, sorted by date). Skip files that only contain a header and no content.
+1. **Read recent daily files**: Use \`file_list\` on \`${dailyDir}\`, then \`file_read\` to read the last ${lookbackDays} days of daily files (files named YYYY-MM-DD.md, sorted by date). Skip files that only contain a header and no content.
 
-2. **Read MEMORY.md**: Use \`read_file\` to read \`${memoryDir}/MEMORY.md\`. This is the long-term memory file.
+2. **Read MEMORY.md**: Use \`file_read\` to read \`${memoryDir}/MEMORY.md\`. This is the long-term memory file.
 
-3. **Read wiki pages**: Use \`list_files\` on \`${memoryDir}/wiki\`, then \`read_file\` to read each wiki page. These contain project notes, concepts, and knowledge base entries.
+3. **Read wiki pages**: Use \`file_list\` on \`${memoryDir}/wiki\`, then \`file_read\` to read each wiki page. These contain project notes, concepts, and knowledge base entries.
 
-4. ${userRun && scope ? `**Read the user profile**: Use \`read_file\` to read \`${scope.paths.profile}\`.` : `**Read user profiles**: Use \`list_files\` on \`${memoryDir}/users\`, then \`read_file\` to read each user profile.${extraProfiles.length > 0 ? ` Also \`read_file\` the other users' profiles: ${extraProfileList}.` : ''}`}
+4. ${userRun && scope ? `**Read the user profile**: Use \`file_read\` to read \`${scope.paths.profile}\`.` : `**Read user profiles**: Use \`file_list\` on \`${memoryDir}/users\`, then \`file_read\` to read each user profile.${extraProfiles.length > 0 ? ` Also \`file_read\` the other users' profiles: ${extraProfileList}.` : ''}`}
 
-5. **Optionally read chat history**: If daily files reference conversations that need more detail, use \`read_chat_history\` to get the full context.
+5. **Optionally read chat history**: If daily files reference conversations that need more detail, use \`chat_history_read\` to get the full context.
 
 6. **Decide what to promote/update** (guided by the consolidation rules above):
-   - If you find recurring patterns, learned lessons, or important facts in daily files, add them to \`${memoryDir}/MEMORY.md\` using \`edit_file\` or \`write_file\`.
+   - If you find recurring patterns, learned lessons, or important facts in daily files, add them to \`${memoryDir}/MEMORY.md\` using \`file_edit\` or \`file_write\`.
    - If you find project-specific information or concepts worth preserving, update the relevant wiki page in \`${memoryDir}/wiki/\` or create a new one if a new project or concept is detected.
    - If you find user-specific information (preferences, context), update ${userRun && scope ? `the profile \`${scope.paths.profile}\`` : `the relevant user profile in \`${memoryDir}/users/\``}.
 ${userRun ? `   - Only ADD general lessons to MEMORY.md. Do NOT remove, rewrite, merge, or compact existing MEMORY.md entries — pruning and compacting the shared MEMORY.md is done by the admin run.
@@ -144,7 +144,7 @@ ${userRun ? '' : `7. **Wiki Health Check (Lint)**:
 ## Additional input: Extracted Facts
 
 The system automatically extracts atomic facts from conversations and stores them in a database table called "memories".
-You can search these facts using the **search_memories** tool with a query string.
+You can search these facts using the **memory_search** tool with a query string.
 
 Use this as an additional signal when deciding what to promote:
 - Search for key topics from daily files to see if related facts were extracted

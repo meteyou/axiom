@@ -76,7 +76,7 @@ describe('tool replay policy', () => {
   beforeAll(() => {
     dbPath = path.join(os.tmpdir(), `axiom-tool-replay-test-${Date.now()}-${Math.random().toString(36).slice(2)}.db`)
     db = initDatabase(dbPath)
-    // createBaseAgentTools reads providers.json (to decide on generate_image); never let it touch a real /data.
+    // createBaseAgentTools reads providers.json (to decide on image_generate); never let it touch a real /data.
     dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'axiom-tool-replay-data-'))
     process.env.DATA_DIR = dataDir
   })
@@ -95,22 +95,38 @@ describe('tool replay policy', () => {
     const toolNames = buildEveryRegisteredTool(db).map(tool => tool.name)
 
     expect(toolNames).toContain('email_send')
-    expect(toolNames).toContain('transcribe_audio')
+    expect(toolNames).toContain('audio_transcribe')
     expect(toolNames).toContain('provider_quota')
     expect(toolNames.filter(name => !hasExplicitToolReplayPolicy(name))).toEqual([])
   })
 
   it('treats file, shell and outbound tools as unsafe', () => {
-    for (const name of ['shell', 'write_file', 'edit_file', 'email_send', 'create_task', 'send_file_to_user', 'generate_image', 'codemode']) {
+    for (const name of ['shell', 'file_write', 'file_edit', 'email_send', 'create_task', 'file_send', 'image_generate', 'codemode']) {
       expect(getToolReplayPolicy(name)).toBe('unsafe')
     }
     expect(hasExplicitToolReplayPolicy('codemode')).toBe(true)
   })
 
   it('treats read-only tools as safe', () => {
-    for (const name of ['read_file', 'list_files', 'web_fetch', 'email_read', 'list_tasks']) {
+    for (const name of ['file_read', 'file_list', 'web_fetch', 'email_read', 'list_tasks']) {
       expect(getToolReplayPolicy(name)).toBe('safe')
     }
+  })
+
+  it('resolves legacy tool names to the policy of their current name', () => {
+    for (const name of ['read_file', 'list_files', 'search_memories', 'read_chat_history', 'list_agent_skills', 'transcribe_audio']) {
+      expect(hasExplicitToolReplayPolicy(name)).toBe(true)
+      expect(getToolReplayPolicy(name)).toBe('safe')
+    }
+    for (const name of ['write_file', 'edit_file', 'send_file_to_user', 'generate_image']) {
+      expect(hasExplicitToolReplayPolicy(name)).toBe(true)
+      expect(getToolReplayPolicy(name)).toBe('unsafe')
+    }
+  })
+
+  it('ignores an action argument on tools without per-action policies', () => {
+    expect(getToolReplayPolicy('file_read', { action: 'delete', path: 'a' })).toBe('safe')
+    expect(getToolReplayPolicy('shell', { action: 'list' })).toBe('unsafe')
   })
 
   it('defaults unknown tools to unsafe', () => {

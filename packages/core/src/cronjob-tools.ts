@@ -150,7 +150,7 @@ export function createCronjobTool(options: CronjobToolsOptions): AgentTool {
       ),
       attached_skills: Type.Optional(
         Type.Array(Type.String(), {
-          description: 'Optional list of agent-skill names (directory names under /data/skills_agent/<name>/) whose SKILL.md should be injected directly into the task prompt on each run. Use this to bake skill rules into the prompt deterministically instead of requiring the task agent to read_file them at run time. Only relevant for action_type "task". Example: ["nitter", "reddit"]. Missing SKILL.md files are skipped with a warning, the task still runs.',
+          description: 'Optional list of agent-skill names (directory names under /data/skills_agent/<name>/) whose SKILL.md should be injected directly into the task prompt on each run. Use this to bake skill rules into the prompt deterministically instead of requiring the task agent to file_read them at run time. Only relevant for action_type "task". Example: ["nitter", "reddit"]. Missing SKILL.md files are skipped with a warning, the task still runs.',
         })
       ),
       thinking_level: Type.Optional(

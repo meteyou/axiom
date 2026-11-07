@@ -375,10 +375,10 @@ describe('setupWebSocketChat kill switch', () => {
     }
     const agentCore = {
       sendMessage: vi.fn(async function* (): AsyncGenerator<ResponseChunk> {
-        yield { type: 'tool_call_start', toolName: 'send_file_to_user', toolCallId: 'tc-1', toolArgs: { path: 'report.md' } }
+        yield { type: 'tool_call_start', toolName: 'file_send', toolCallId: 'tc-1', toolArgs: { path: 'report.md' } }
         yield {
           type: 'tool_call_end',
-          toolName: 'send_file_to_user',
+          toolName: 'file_send',
           toolCallId: 'tc-1',
           toolResult: { details: { uploadedFile: uploadDescriptor } },
         }

@@ -259,7 +259,7 @@ describe('AgentHeartbeatService', () => {
       // Should NOT contain old memory-maintenance instructions
       expect(createCall.prompt).not.toContain('Daily Memory Update')
       expect(createCall.prompt).not.toContain('Memory Hygiene')
-      expect(createCall.prompt).not.toContain('read_chat_history')
+      expect(createCall.prompt).not.toContain('chat_history_read')
     })
 
     it('skips when HEARTBEAT.md is effectively empty', async () => {

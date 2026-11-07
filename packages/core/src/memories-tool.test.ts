@@ -22,7 +22,7 @@ function getDetails(result: Awaited<ReturnType<AgentTool['execute']>>): Record<s
   return (result as { details: Record<string, unknown> }).details
 }
 
-describe('search_memories tool', () => {
+describe('memory_search tool', () => {
   let db: Database
 
   beforeEach(() => {
@@ -34,7 +34,7 @@ describe('search_memories tool', () => {
   it('creates a tool with correct metadata and schema', () => {
     const tool = createSearchMemoriesTool({ db })
 
-    expect(tool.name).toBe('search_memories')
+    expect(tool.name).toBe('memory_search')
     expect(tool.label).toBe('Search Memories')
     expect(tool.description).toContain('fact memory')
     const schema = tool.parameters as { properties: Record<string, unknown>; required?: string[] }

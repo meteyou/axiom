@@ -10,6 +10,7 @@ import { clampThinkingLevel } from './contracts/providers.js'
 import { TaskStore } from './task-store.js'
 import { TaskToolJournal } from './task-tool-journal.js'
 import { getToolReplayPolicy } from './tool-replay.js'
+import { migrateDisabledToolNames } from './contracts/tool-names.js'
 import { formatJournalRecoveryContext } from './task-recovery-prompt.js'
 import type { Task, TaskResultStatus, TaskTriggerType } from './task-store.js'
 import type { SessionManager, SessionType } from './session-manager.js'
@@ -251,7 +252,7 @@ Your task: ${taskPrompt}
 
 <workspace>
 Your working directory is ${workspaceDir}. All shell commands execute in this directory by default.
-All relative paths in read_file, write_file, and list_files resolve against this directory.
+All relative paths in file_read, file_write, and file_list resolve against this directory.
 Use this directory for cloning repos, creating files, and all file operations.
 Do NOT create working directories elsewhere (e.g. /tmp) — use ${workspaceDir} instead.
 </workspace>`)
@@ -546,8 +547,9 @@ export class TaskRunner {
         : (this.options.tools ?? [])
       if (overrides?.toolsOverride) {
         try {
-          const disabledTools: string[] = JSON.parse(overrides.toolsOverride)
-          if (Array.isArray(disabledTools) && disabledTools.length > 0) {
+          const parsed: unknown = JSON.parse(overrides.toolsOverride)
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const disabledTools = migrateDisabledToolNames(parsed.filter((name): name is string => typeof name === 'string')).names
             effectiveTools = effectiveTools.filter(t => !disabledTools.includes(t.name))
           }
         } catch {
@@ -588,7 +590,7 @@ export class TaskRunner {
                     toolCallId: info.toolCallId,
                     toolName: info.toolName,
                     args: info.args,
-                    replay: getToolReplayPolicy(info.toolName),
+                    replay: getToolReplayPolicy(info.toolName, info.args),
                   }))
                 },
                 onCallEnd: info => {
@@ -982,7 +984,7 @@ export class TaskRunner {
           toolCallId: event.toolCallId,
           toolName: event.toolName,
           args: event.args,
-          replay: getToolReplayPolicy(event.toolName),
+          replay: getToolReplayPolicy(event.toolName, event.args),
         }))
 
         // Emit to task event bus

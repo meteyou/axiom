@@ -12,7 +12,7 @@ export interface SearchMemoriesToolOptions {
 
 export function createSearchMemoriesTool(options: SearchMemoriesToolOptions): AgentTool {
   return {
-    name: 'search_memories',
+    name: 'memory_search',
     label: 'Search Memories',
     description:
       'Search the agent\'s fact memory for previously learned information. ' +

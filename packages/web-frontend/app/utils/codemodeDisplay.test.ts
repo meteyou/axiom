@@ -10,23 +10,23 @@ import {
 } from './codemodeDisplay'
 
 const calls: CodemodeNestedCall[] = [
-  { id: 'p/read_file/1', name: 'read_file', status: 'ok', durationMs: 12, args: { path: 'src/index.ts' } },
-  { id: 'p/read_file/2', name: 'read_file', status: 'error', durationMs: 340, errorPreview: 'ENOENT: no such file' },
+  { id: 'p/file_read/1', name: 'file_read', status: 'ok', durationMs: 12, args: { path: 'src/index.ts' } },
+  { id: 'p/file_read/2', name: 'file_read', status: 'error', durationMs: 340, errorPreview: 'ENOENT: no such file' },
   { id: 'p/web_search/1', name: 'web_search', status: 'running' },
 ]
 
 describe('toCodemodeCallRows', () => {
   it('formats names with the existing tool-name formatting', () => {
     const rows = toCodemodeCallRows(calls)
-    expect(rows.map(row => row.displayName)).toEqual(['Read file', 'Read file', 'Web search'])
+    expect(rows.map(row => row.displayName)).toEqual(['File read', 'File read', 'Web search'])
   })
 
   it('keeps the raw name, status, duration and error preview', () => {
     const rows = toCodemodeCallRows(calls)
     expect(rows[0]).toEqual({
-      id: 'p/read_file/1',
-      name: 'read_file',
-      displayName: 'Read file',
+      id: 'p/file_read/1',
+      name: 'file_read',
+      displayName: 'File read',
       summary: 'src/index.ts',
       status: 'ok',
       durationMs: 12,
@@ -41,14 +41,19 @@ describe('toCodemodeCallRows', () => {
     const rows = toCodemodeCallRows([
       { id: '1', name: 'email_read', status: 'ok', args: { uid: 42, folder: 'INBOX' } },
       { id: '2', name: 'shell', status: 'ok', args: { command: 'cd /workspace && ls' } },
-      { id: '3', name: 'list_files', status: 'ok', args: { path: 'docs' } },
+      { id: '3', name: 'file_list', status: 'ok', args: { path: 'docs' } },
     ])
     expect(rows.map(row => row.summary)).toEqual(['uid: 42 · folder: INBOX', 'ls', 'docs'])
   })
 
   it('returns a null summary when the snapshot carries no args', () => {
-    const rows = toCodemodeCallRows([{ id: '1', name: 'read_file', status: 'ok' }])
+    const rows = toCodemodeCallRows([{ id: '1', name: 'file_read', status: 'ok' }])
     expect(rows[0]!.summary).toBeNull()
+  })
+
+  it('renders legacy tool names like their current names', () => {
+    const rows = toCodemodeCallRows([{ id: '1', name: 'read_file', status: 'ok', args: { path: 'notes.md' } }])
+    expect(rows[0]).toMatchObject({ name: 'read_file', displayName: 'File read', summary: 'notes.md' })
   })
 
   it('tolerates null and undefined input', () => {
@@ -59,7 +64,7 @@ describe('toCodemodeCallRows', () => {
 
 describe('codemodeCollapsedSummary', () => {
   it('counts calls and deduplicates tool names in first-seen order', () => {
-    expect(codemodeCollapsedSummary(calls)).toEqual({ count: 3, toolNames: ['Read file', 'Web search'] })
+    expect(codemodeCollapsedSummary(calls)).toEqual({ count: 3, toolNames: ['File read', 'Web search'] })
   })
 
   it('returns zero and no names for empty input', () => {
@@ -67,18 +72,25 @@ describe('codemodeCollapsedSummary', () => {
     expect(codemodeCollapsedSummary(null)).toEqual({ count: 0, toolNames: [] })
   })
 
+  it('deduplicates legacy and current names of the same tool', () => {
+    expect(codemodeCollapsedSummary([
+      { id: '1', name: 'read_file', status: 'ok' },
+      { id: '2', name: 'file_read', status: 'ok' },
+    ])).toEqual({ count: 2, toolNames: ['File read'] })
+  })
+
   it('lists every distinct name', () => {
     expect(codemodeCollapsedSummary([
       { id: '1', name: 'web_search', status: 'ok' },
-      { id: '2', name: 'read_file', status: 'ok' },
+      { id: '2', name: 'file_read', status: 'ok' },
       { id: '3', name: 'shell', status: 'cancelled' },
-    ]).toolNames).toEqual(['Web search', 'Read file', 'Shell'])
+    ]).toolNames).toEqual(['Web search', 'File read', 'Shell'])
   })
 })
 
 describe('codemodeScriptCode', () => {
   it('extracts the code argument', () => {
-    expect(codemodeScriptCode({ code: 'await tools.read_file({ path: "a" })' })).toBe('await tools.read_file({ path: "a" })')
+    expect(codemodeScriptCode({ code: 'await tools.file_read({ path: "a" })' })).toBe('await tools.file_read({ path: "a" })')
   })
 
   it('returns an empty string when the code is missing or not a string', () => {
@@ -93,7 +105,7 @@ describe('codemodeCallsFromResult', () => {
     content: [{ type: 'text', text: 'Script completed' }],
     details: {
       calls: [
-        { id: 'p/1', name: 'read_file', status: 'ok', durationMs: 10 },
+        { id: 'p/1', name: 'file_read', status: 'ok', durationMs: 10 },
         { id: 'p/2', name: 'shell', status: 'cancelled' },
       ],
     },
@@ -101,7 +113,7 @@ describe('codemodeCallsFromResult', () => {
 
   it('reads the persisted nested calls from the result details', () => {
     expect(codemodeCallsFromResult(result)).toEqual([
-      { id: 'p/1', name: 'read_file', status: 'ok', durationMs: 10, errorPreview: undefined },
+      { id: 'p/1', name: 'file_read', status: 'ok', durationMs: 10, errorPreview: undefined },
       { id: 'p/2', name: 'shell', status: 'cancelled', durationMs: undefined, errorPreview: undefined },
     ])
   })
@@ -116,7 +128,7 @@ describe('codemodeCallsFromResult', () => {
     const persisted = {
       details: {
         calls: [
-          { id: 'p/1', name: 'read_file', status: 'ok', durationMs: 10, args: { path: 'src/index.ts' } },
+          { id: 'p/1', name: 'file_read', status: 'ok', durationMs: 10, args: { path: 'src/index.ts' } },
           { id: 'p/2', name: 'shell', status: 'error', args: { command: 'cd /workspace && ls' } },
         ],
       },
@@ -129,7 +141,7 @@ describe('codemodeCallsFromResult', () => {
     const persisted = {
       details: {
         calls: [
-          { id: 'p/1', name: 'read_file', status: 'error', durationMs: 40, errorPreview: 'ENOENT: no such file or directory' },
+          { id: 'p/1', name: 'file_read', status: 'error', durationMs: 40, errorPreview: 'ENOENT: no such file or directory' },
         ],
       },
     }
@@ -142,14 +154,14 @@ describe('codemodeCallsToDisplay', () => {
   // Stale live snapshot: the last progress event still shows call p/2 as
   // running, because the script ended (rejection/timeout) before it finished.
   const staleLive: CodemodeNestedCall[] = [
-    { id: 'p/1', name: 'read_file', status: 'ok', durationMs: 10 },
+    { id: 'p/1', name: 'file_read', status: 'ok', durationMs: 10 },
     { id: 'p/2', name: 'shell', status: 'running' },
   ]
   const result = {
     content: [{ type: 'text', text: 'Script failed' }],
     details: {
       calls: [
-        { id: 'p/1', name: 'read_file', status: 'ok', durationMs: 10 },
+        { id: 'p/1', name: 'file_read', status: 'ok', durationMs: 10 },
         { id: 'p/2', name: 'shell', status: 'cancelled' },
       ],
     },
@@ -162,7 +174,7 @@ describe('codemodeCallsToDisplay', () => {
 
   it('prefers the final result calls once the result is in, over the retained live snapshot', () => {
     expect(codemodeCallsToDisplay(staleLive, result)).toEqual([
-      { id: 'p/1', name: 'read_file', status: 'ok', durationMs: 10, errorPreview: undefined },
+      { id: 'p/1', name: 'file_read', status: 'ok', durationMs: 10, errorPreview: undefined },
       { id: 'p/2', name: 'shell', status: 'cancelled', durationMs: undefined, errorPreview: undefined },
     ])
   })

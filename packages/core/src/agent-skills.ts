@@ -291,11 +291,11 @@ export function getAgentSkillsCount(): number {
 }
 
 /**
- * Create the list_agent_skills tool for agent discovery.
+ * Create the skill_list tool for agent discovery.
  */
 export function createAgentSkillTools(): AgentTool[] {
   const listTool: AgentTool = {
-    name: 'list_agent_skills',
+    name: 'skill_list',
     label: 'List Agent Skills',
     description:
       'List all self-created agent skills with their descriptions and file locations. ' +

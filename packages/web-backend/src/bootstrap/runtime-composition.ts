@@ -147,7 +147,7 @@ export interface RuntimeComposition {
   getTelegramBot: () => TelegramBot | null
   onTelegramSettingsChanged: () => void
   onActiveProviderChanged: () => void
-  /** Rebuilds the background tool set; the interactive agent re-syncs `generate_image` per turn. */
+  /** Rebuilds the background tool set; the interactive agent re-syncs `image_generate` per turn. */
   onImageModelsChanged: () => void
   setWebSocketChatPresenceChecker: (checker: { hasActiveWebSocket: (userId: number) => boolean } | null) => void
   stopBackgroundServices: () => Promise<void>

@@ -6,7 +6,7 @@ import sharp from 'sharp'
 import type { AgentToolResult } from '@earendil-works/pi-agent-core'
 import { createReadFileTool, READ_FILE_MAX_BYTES, READ_FILE_MAX_LINES } from './read-file-tool.js'
 
-describe('read_file tool', () => {
+describe('file_read tool', () => {
   let workspace: string
   let previousWorkspace: string | undefined
 

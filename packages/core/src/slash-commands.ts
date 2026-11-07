@@ -427,10 +427,10 @@ function handleSkillCommand(rawArgs: string): SlashCommandReply {
   return {
     kind: 'agent_turn',
     text: `${block}\n\n${instruction}`,
-    // Mirrors the real `read_file` tool's SKILL.md output so the chat UI
+    // Mirrors the real `file_read` tool's SKILL.md output so the chat UI
     // renders the same "Load Skill" row it shows for agent-initiated loads.
     toolCall: {
-      toolName: 'read_file',
+      toolName: 'file_read',
       toolArgs: { path: loaded.path },
       toolResult: {
         content: [{ type: 'text', text: `Skill directory: ${path.dirname(loaded.path)}\n\n${loaded.content}` }],

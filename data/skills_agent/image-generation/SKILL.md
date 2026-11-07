@@ -1,13 +1,13 @@
 ---
 name: image-generation
-version: 1.0.0
-description: Generate and edit images with the generate_image tool — prompt writing, model choice, variants, cost control, self-checks and delivery via send_file_to_user. Load this skill before the first generate_image call in a conversation and whenever the user asks for a picture, logo, icon, illustration, mockup or an edit of an existing image.
-requires_toolsets: [generate_image]
+version: 1.1.0
+description: Generate and edit images with the image_generate tool — prompt writing, model choice, variants, cost control, self-checks and delivery via file_send. Load this skill before the first image_generate call in a conversation and whenever the user asks for a picture, logo, icon, illustration, mockup or an edit of an existing image.
+requires_toolsets: [image_generate]
 ---
 
 # Image Generation
 
-`generate_image` renders images with the image generation models the user enabled under **Providers → Image models**. The models, their descriptions and the default are listed in the **Image generation models** part of `<available_providers>` in your system prompt. Image models are only reachable through this tool — never pass them to `create_task`, `create_cronjob` or any chat model parameter.
+`image_generate` renders images with the image generation models the user enabled under **Providers → Image models**. The models, their descriptions and the default are listed in the **Image generation models** part of `<available_providers>` in your system prompt. Image models are only reachable through this tool — never pass them to `create_task`, `create_cronjob` or any chat model parameter.
 
 ## When to use it
 
@@ -30,8 +30,8 @@ requires_toolsets: [generate_image]
    - `background: "transparent"` for logos, icons, stickers and cut-outs that need an alpha channel.
    Not every model honours every parameter. The tool result says what was ignored or adjusted (`Note: …`); if the format still matters, describe it in the prompt and tell the user.
 4. **Files are saved for you** under the output folder named in the tool description (default `images/YYYY-MM-DD/`) in the workspace, each with a `.json` sidecar (model, prompt, parameters, cost, generation id). The tool result lists the paths, format, file size, cost and duration — it never contains image data.
-5. **Optional self-check.** You usually cannot see the generated pixels: Axiom's file tools return text, not images. If a vision-capable text model is configured and the user has given you a way to query it (for example a script or skill that sends an image to that model), use it to verify what matters — readable text, correct subject, no obvious artefacts. Without such a path, do not claim the image is correct; tell the user what to check (e.g. spelling of rendered text). For SVG output, `read_file` shows the markup, which is enough to check `viewBox`, colours and whether text was converted to paths.
-6. **Deliver** every image the user should see with `send_file_to_user` (one call per file, with a one-line caption). Then summarise what you generated, which model you used and the cost from the tool result.
+5. **Optional self-check.** You usually cannot see the generated pixels: Axiom's file tools return text, not images. If a vision-capable text model is configured and the user has given you a way to query it (for example a script or skill that sends an image to that model), use it to verify what matters — readable text, correct subject, no obvious artefacts. Without such a path, do not claim the image is correct; tell the user what to check (e.g. spelling of rendered text). For SVG output, `file_read` shows the markup, which is enough to check `viewBox`, colours and whether text was converted to paths.
+6. **Deliver** every image the user should see with `file_send` (one call per file, with a one-line caption). Then summarise what you generated, which model you used and the cost from the tool result.
 7. **Iterate with `input_images`.** For "make it bluer", "remove the background", "same logo but round", pass the previous file path in `input_images` together with a prompt describing only the change. This keeps composition and identity; re-rolling from scratch usually loses them. Not every model accepts input images; if the call fails for that reason, tell the user. SVG files cannot be passed as `input_images`: iterate on vector output by generating again with a refined prompt, or edit the SVG markup directly for small changes (colours, text).
 
 ## Choosing a model

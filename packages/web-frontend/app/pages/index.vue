@@ -789,7 +789,7 @@ function isToolSkillLoad(toolData: ToolCallData): boolean { return isSkillLoad(t
 function getToolMemoryInfo(toolData: ToolCallData) { return detectMemoryFile(toolData.toolName, toolData.toolArgs) }
 function getToolEdits(toolData: ToolCallData) { return extractEditsFromArgs(toolData.toolArgs) }
 function getToolMemoryFileName(toolData: ToolCallData) { return extractMemoryFileName(toolData.toolArgs) ?? undefined }
-function isEditFileTool(toolData: ToolCallData) { return toolData.toolName === 'edit_file' || toolData.toolName === 'Edit' }
+function isEditFileTool(toolData: ToolCallData) { return fileToolKind(toolData.toolName) === 'edit' }
 function getToolMemoryWriteContent(toolData: ToolCallData) { return extractMemoryWriteContent(toolData.toolName, toolData.toolArgs) }
 function hasMemoryView(toolData: ToolCallData) {
   return (isEditFileTool(toolData) && getToolEdits(toolData) && getToolMemoryInfo(toolData).isMemoryFile)

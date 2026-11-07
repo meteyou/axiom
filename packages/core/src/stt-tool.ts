@@ -27,7 +27,7 @@ function resolveWorkspacePath(filePath: string, workspaceDir: string): string {
 }
 
 /**
- * Create the `transcribe_audio` agent tool.
+ * Create the `audio_transcribe` agent tool.
  *
  * Transcribes audio files from the workspace using the configured STT provider.
  * Supports common formats: mp3, wav, ogg, webm, m4a, flac.
@@ -38,7 +38,7 @@ function resolveWorkspacePath(filePath: string, workspaceDir: string): string {
  */
 export function createTranscribeAudioTool(getWorkspace: () => string = getWorkspaceDir): AgentTool {
   return {
-    name: 'transcribe_audio',
+    name: 'audio_transcribe',
     label: 'Transcribe Audio',
     description:
       'Transcribe an audio file to text using the configured speech-to-text provider. ' +

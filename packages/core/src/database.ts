@@ -8,7 +8,7 @@ import { initContextCompactionsTable } from './compaction-store.js'
 import { initPushSubscriptionsTable } from './push-subscriptions.js'
 import { migrateEmailAccountOwners } from './email-account-store.js'
 import { migrateTaskOwners } from './task-store.js'
-import { migrateScheduledTaskOwners } from './scheduled-task-store.js'
+import { migrateScheduledTaskOwners, migrateScheduledTaskToolOverrides } from './scheduled-task-store.js'
 import { migrateSessionOwners } from './session-owners.js'
 
 export type Database = BetterSqlite3.Database
@@ -694,6 +694,7 @@ export function initDatabase(dbPath?: string): Database {
   migrateLegacySessionIds(db)
   migrateTaskOwners(db)
   migrateScheduledTaskOwners(db)
+  migrateScheduledTaskToolOverrides(db)
   migrateSessionOwners(db)
   migrateEmailSendLogOwners(db)
   migrateEmailAccountOwners(db)

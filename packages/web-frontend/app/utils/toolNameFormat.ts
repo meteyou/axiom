@@ -1,9 +1,12 @@
+import { currentToolName } from '@axiom/core/contracts'
+
 /**
- * Turns a raw tool identifier such as `read_file` or `email_send` into a
- * human-readable label (`Read file`, `Email send`).
+ * Turns a raw tool identifier such as `file_read` or `email_send` into a
+ * human-readable label (`File read`, `Email send`). Legacy names render like
+ * the tool they were renamed to.
  */
 export function formatToolName(name: string): string {
-  const words = name.split(/[_\s]+/).filter(Boolean)
+  const words = currentToolName(name).split(/[_\s]+/).filter(Boolean)
   if (words.length === 0) return name
 
   const [first, ...rest] = words
@@ -22,12 +25,12 @@ const ID_ONLY: SummaryPart[] = [{ key: 'id' }]
 
 const TOOL_SUMMARY: Record<string, SummaryPart[]> = {
   shell: [{ key: 'command' }],
-  read_file: PATH_ONLY,
-  write_file: PATH_ONLY,
-  edit_file: PATH_ONLY,
-  list_files: PATH_ONLY,
-  send_file_to_user: PATH_ONLY,
-  transcribe_audio: PATH_ONLY,
+  file_read: PATH_ONLY,
+  file_write: PATH_ONLY,
+  file_edit: PATH_ONLY,
+  file_list: PATH_ONLY,
+  file_send: PATH_ONLY,
+  audio_transcribe: PATH_ONLY,
 
   create_task: [{ key: 'name' }],
   resume_task: [{ key: 'task_id' }],
@@ -39,7 +42,7 @@ const TOOL_SUMMARY: Record<string, SummaryPart[]> = {
   get_cronjob: ID_ONLY,
   create_reminder: [{ key: 'name' }, { key: 'schedule', label: 'schedule' }],
 
-  read_chat_history: [
+  chat_history_read: [
     { key: 'query', label: 'query' },
     { key: 'start', label: 'start' },
     { key: 'end', label: 'end' },
@@ -48,7 +51,7 @@ const TOOL_SUMMARY: Record<string, SummaryPart[]> = {
 
   web_search: QUERY_ONLY,
   web_fetch: [{ key: 'url' }],
-  search_memories: QUERY_ONLY,
+  memory_search: QUERY_ONLY,
 
   email_list: [{ key: 'folder', label: 'folder' }, { key: 'limit', label: 'limit' }],
   email_read: [{ key: 'uid', label: 'uid' }, { key: 'folder', label: 'folder' }],
@@ -67,7 +70,8 @@ const TOOL_SUMMARY: Record<string, SummaryPart[]> = {
  * arguments are present.
  */
 export function getToolCallSummary(toolName: string, args: unknown): string | null {
-  const parts = TOOL_SUMMARY[toolName]
+  const name = currentToolName(toolName)
+  const parts = Object.prototype.hasOwnProperty.call(TOOL_SUMMARY, name) ? TOOL_SUMMARY[name] : undefined
   if (!parts || typeof args !== 'object' || args === null) return null
 
   const record = args as Record<string, unknown>
@@ -76,7 +80,7 @@ export function getToolCallSummary(toolName: string, args: unknown): string | nu
   for (const part of parts) {
     let value = formatSummaryValue(record[part.key])
     if (value === null) continue
-    if (toolName === 'shell') value = stripLeadingCd(value)
+    if (name === 'shell') value = stripLeadingCd(value)
     if (value === '') continue
     rendered.push(part.label ? `${part.label}: ${value}` : value)
   }

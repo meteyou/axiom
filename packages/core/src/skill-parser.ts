@@ -1,4 +1,5 @@
 import yaml from 'js-yaml'
+import { currentToolNames } from './contracts/tool-names.js'
 
 /**
  * Parsed skill metadata from a SKILL.md file
@@ -180,13 +181,14 @@ export function parseSkillMd(content: string): ParsedSkill {
   let allowedTools: string[] | undefined
   const at = frontmatter['allowed-tools']
   if (Array.isArray(at)) {
-    allowedTools = at.filter((v: unknown) => typeof v === 'string')
+    allowedTools = currentToolNames(at.filter((v: unknown): v is string => typeof v === 'string'))
   }
 
   // Parse optional gating fields (string arrays, top-level frontmatter)
   const requiredEnvVars = parseStringArray(frontmatter.required_env_vars)
   const platforms = parseStringArray(frontmatter.platforms)
-  const requiresToolsets = parseStringArray(frontmatter.requires_toolsets)
+  const requiredToolNames = parseStringArray(frontmatter.requires_toolsets)
+  const requiresToolsets = requiredToolNames && currentToolNames(requiredToolNames)
 
   return {
     name: normalizedName,

@@ -27,7 +27,7 @@ import type { ImageBackground, ImageQuality } from './image-backends.js'
 import { logTokenUsage } from './token-logger.js'
 import { getWorkspaceDir } from './workspace.js'
 
-export const GENERATE_IMAGE_TOOL_NAME = 'generate_image'
+export const GENERATE_IMAGE_TOOL_NAME = 'image_generate'
 
 const MAX_INPUT_IMAGES = 8
 const MAX_INPUT_IMAGE_BYTES = 20 * 1024 * 1024
@@ -95,7 +95,7 @@ export interface GenerateImageToolDetails {
 
 type GenerateImageToolResult = AgentToolResult<GenerateImageToolDetails>
 
-/** `generate_image` is only registered while image generation is on and at least one image model is usable. */
+/** `image_generate` is only registered while image generation is on and at least one image model is usable. */
 export function createImageGenerationTools(options: GenerateImageToolOptions = {}): AgentTool[] {
   return isImageGenerationAvailable() ? [createGenerateImageTool(options)] : []
 }
@@ -302,7 +302,7 @@ export function createGenerateImageTool(options: GenerateImageToolOptions = {}):
       'Generate images with an enabled image generation model (listed under "Image generation models" in available_providers). '
       + `Files are saved in the workspace under ${declared.outputDir}/YYYY-MM-DD/ with a JSON sidecar; the result lists paths, format, `
       + 'size, the cost (or the subscription usage) and the duration, never image data. To edit or vary an existing image, pass it via '
-      + 'input_images instead of generating from scratch. Deliver results to the user with send_file_to_user. '
+      + 'input_images instead of generating from scratch. Deliver results to the user with file_send. '
       + 'Load the image-generation skill before the first use for prompt writing, model choice and cost guidance.',
     parameters: Type.Object({
       prompt: Type.String({ description: 'Detailed description of the image: subject, composition, style, colours, any text that must appear.' }),
@@ -422,7 +422,7 @@ export function createGenerateImageTool(options: GenerateImageToolOptions = {}):
         lines.push(`${result.errors.length} of ${count} requests failed: ${result.errors.join(' | ')}`)
       }
       lines.push(...trailer)
-      lines.push(`Paths are relative to ${workspaceDir}. Deliver them with send_file_to_user; never paste image data into the chat.`)
+      lines.push(`Paths are relative to ${workspaceDir}. Deliver them with file_send; never paste image data into the chat.`)
 
       return {
         content: [{ type: 'text', text: lines.join('\n') }],

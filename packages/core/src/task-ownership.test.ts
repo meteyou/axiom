@@ -148,17 +148,17 @@ describe('task ownership', () => {
       return textOf(await tool.execute('call', params) as never)
     }
 
-    it('scopes search_memories and read_chat_history of a task agent to its owner', async () => {
+    it('scopes memory_search and chat_history_read of a task agent to its owner', async () => {
       createMemory(db, 2, null, 'alice likes pineapple pizza')
       createMemory(db, 3, null, 'bob likes pineapple juice')
       db.prepare("INSERT INTO sessions (id, user_id, session_user, source, type) VALUES ('sa', 2, '2', 'web', 'interactive'), ('sb', 3, '3', 'web', 'interactive')").run()
       db.prepare("INSERT INTO chat_messages (session_id, user_id, role, content) VALUES ('sa', 2, 'user', 'hello from alice'), ('sb', 3, 'user', 'hello from bob')").run()
 
-      const facts = await run(2, 'search_memories', { query: 'pineapple' })
+      const facts = await run(2, 'memory_search', { query: 'pineapple' })
       expect(facts).toContain('alice likes')
       expect(facts).not.toContain('bob likes')
 
-      const history = await run(2, 'read_chat_history', {})
+      const history = await run(2, 'chat_history_read', {})
       expect(history).toContain('hello from alice')
       expect(history).not.toContain('hello from bob')
     })
@@ -216,14 +216,14 @@ describe('task ownership', () => {
       expect(aborted).toEqual([])
     })
 
-    it('gives send_file_to_user only to tools of an interactive turn', () => {
-      expect(toolsFor(2).has('send_file_to_user')).toBe(false)
+    it('gives file_send only to tools of an interactive turn', () => {
+      expect(toolsFor(2).has('file_send')).toBe(false)
       const chatTools = createScopedTools(resolveUserScope(db, 2)!, {
         db,
         taskTools: { taskRuntime: runtime, getDefaultProvider: () => provider, resolveProvider: () => provider, defaultMaxDurationMinutes: 10, maxDurationMinutesCap: 20 },
         getInteractiveSessionId: () => 'chat-session',
       })
-      expect(chatTools.some(tool => tool.name === 'send_file_to_user')).toBe(true)
+      expect(chatTools.some(tool => tool.name === 'file_send')).toBe(true)
     })
 
     it('rejects resuming foreign tasks for everyone', async () => {

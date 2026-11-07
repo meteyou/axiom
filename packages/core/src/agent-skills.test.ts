@@ -269,13 +269,13 @@ describe('agent-skills', () => {
     })
   })
 
-  describe('list_agent_skills tool', () => {
+  describe('skill_list tool', () => {
     it('returns formatted skill list', async () => {
       createSkill('tool-skill', 'A skill for tool testing')
 
       const tools = createAgentSkillTools()
       expect(tools).toHaveLength(1)
-      expect(tools[0].name).toBe('list_agent_skills')
+      expect(tools[0].name).toBe('skill_list')
 
       const result = await tools[0].execute('test-call-id', {})
       const text = (result as { content: { text: string }[] }).content[0].text
@@ -319,7 +319,7 @@ describe('agent-skills', () => {
       expect(prompt).toContain('<available_skills>')
     })
 
-    it('includes the list_agent_skills overflow note when agentSkillsOverflowCount > 10', () => {
+    it('includes the skill_list overflow note when agentSkillsOverflowCount > 10', () => {
       const memoryDir = path.join(tmpDir, 'memory')
       const skills: SkillPromptEntry[] = [
         { name: 'test-skill', description: 'Test', location: '/data/skills_agent/test-skill' },
@@ -332,10 +332,10 @@ describe('agent-skills', () => {
       })
 
       expect(prompt).toContain('15 self-created agent skills')
-      expect(prompt).toContain('list_agent_skills')
+      expect(prompt).toContain('skill_list')
     })
 
-    it('does not include list_agent_skills tool when agentSkillsOverflowCount is undefined', () => {
+    it('does not include skill_list tool when agentSkillsOverflowCount is undefined', () => {
       const memoryDir = path.join(tmpDir, 'memory')
       const skills: SkillPromptEntry[] = [
         { name: 'test-skill', description: 'Test', location: '/data/skills_agent/test-skill' },
@@ -343,11 +343,11 @@ describe('agent-skills', () => {
 
       const prompt = assembleSystemPrompt({ memoryDir, skills })
 
-      // No overflow → list_agent_skills should not appear at all
-      expect(prompt).not.toContain('list_agent_skills')
+      // No overflow → skill_list should not appear at all
+      expect(prompt).not.toContain('skill_list')
     })
 
-    it('does not include list_agent_skills tool when count <= 10', () => {
+    it('does not include skill_list tool when count <= 10', () => {
       const memoryDir = path.join(tmpDir, 'memory')
       const skills: SkillPromptEntry[] = [
         { name: 'test-skill', description: 'Test', location: '/data/skills_agent/test-skill' },
@@ -361,7 +361,7 @@ describe('agent-skills', () => {
         agentSkillsOverflowCount: 10,
       })
 
-      expect(prompt).not.toContain('list_agent_skills')
+      expect(prompt).not.toContain('skill_list')
     })
   })
 
@@ -460,7 +460,7 @@ describe('agent-skills', () => {
       else expect(p).toBe(process.platform)
     })
 
-    it('list_agent_skills tool output marks skills with missing env vars', async () => {
+    it('skill_list tool output marks skills with missing env vars', async () => {
       createSkillWithFrontmatter('needs-env', 'required_env_vars:\n  - NEVER_SET_VAR_XYZ\n')
 
       const tools = createAgentSkillTools()
@@ -485,11 +485,11 @@ describe('agent-skills', () => {
     })
   })
 
-  describe('usage tracking via read_file', () => {
+  describe('usage tracking via file_read', () => {
     it('trackAgentSkillUsage updates when SKILL.md path matches agent skills directory', () => {
       createSkill('read-tracked', 'Track on read')
 
-      // Simulate the detection pattern from read_file in agent.ts
+      // Simulate the detection pattern from file_read in agent.ts
       const resolved = path.join(tmpDir, 'skills_agent', 'read-tracked', 'SKILL.md')
       const match = resolved.match(/\/skills_agent\/([^/]+)\/SKILL\.md$/)
 

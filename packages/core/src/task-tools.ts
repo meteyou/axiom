@@ -206,7 +206,7 @@ export function createTaskTool(options: TaskToolsOptions): AgentTool {
       ),
       attached_skills: Type.Optional(
         Type.Array(Type.String(), {
-          description: 'Optional list of agent-skill names (directory names under /data/skills_agent/<name>/) or installed skill ids ("owner/name") whose SKILL.md should be injected directly into the task prompt. Use this to bake skill rules into the prompt deterministically instead of requiring the task agent to read_file them. Example: ["nitter", "reddit"]. Missing SKILL.md files are skipped with a warning, the task still runs.',
+          description: 'Optional list of agent-skill names (directory names under /data/skills_agent/<name>/) or installed skill ids ("owner/name") whose SKILL.md should be injected directly into the task prompt. Use this to bake skill rules into the prompt deterministically instead of requiring the task agent to file_read them. Example: ["nitter", "reddit"]. Missing SKILL.md files are skipped with a warning, the task still runs.',
         })
       ),
       thinking_level: Type.Optional(

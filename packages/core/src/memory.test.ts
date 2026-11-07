@@ -710,7 +710,7 @@ describe('memory', () => {
 
       const block = prompt.slice(prompt.indexOf('<available_providers>'), prompt.indexOf('</available_providers>'))
       expect(block).toContain('- Anthropic — opus: default agent model')
-      expect(block).toContain('Image generation models (usable only with `generate_image`')
+      expect(block).toContain('Image generation models (usable only with `image_generate`')
       expect(block).toContain('- OpenRouter — recraft/recraft-v4.1-vector: default image model. Logos and icons as SVG.')
       expect(block).toContain('- OpenRouter — google/gemini-3.1-flash-image')
       expect(block.indexOf('- Anthropic — opus')).toBeLessThan(block.indexOf('Image generation models'))
@@ -731,7 +731,7 @@ describe('memory', () => {
       expect(prompt).not.toContain('Configured LLM providers')
     })
 
-    it('omits the image block and the generate_image tool line without image models', () => {
+    it('omits the image block and the image_generate tool line without image models', () => {
       const dir = makeTmpDir()
       ensureMemoryStructure(dir)
 
@@ -743,7 +743,7 @@ describe('memory', () => {
 
       expect(prompt).toContain('<available_providers>')
       expect(prompt).not.toContain('Image generation models')
-      expect(prompt).not.toContain('generate_image')
+      expect(prompt).not.toContain('image_generate')
     })
   })
 

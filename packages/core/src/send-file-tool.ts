@@ -6,7 +6,7 @@ import { saveUpload, type UploadDescriptor } from './uploads.js'
 import { getWorkspaceDir } from './workspace.js'
 
 /**
- * Options for the `send_file_to_user` tool.
+ * Options for the `file_send` tool.
  *
  * The tool needs to know which user and session the file belongs to so that
  * downstream channels (ws-chat, telegram-bot) can correlate the generated
@@ -25,7 +25,7 @@ export interface SendFileToolOptions {
 }
 
 /**
- * Payload attached to a `send_file_to_user` tool result so channels can
+ * Payload attached to a `file_send` tool result so channels can
  * generically pick up the uploaded file without sniffing for specific tool
  * names.
  *
@@ -86,7 +86,7 @@ const MAX_FILE_SIZE = 50 * 1024 * 1024
 
 /**
  * Resolve `inputPath` against the workspace dir (same semantics as the
- * `read_file`/`write_file` YOLO tools). Returns an absolute path.
+ * `file_read`/`file_write` YOLO tools). Returns an absolute path.
  */
 function resolvePath(inputPath: string, workspaceDir: string): string {
   if (path.isAbsolute(inputPath)) return inputPath
@@ -100,10 +100,10 @@ function formatBytes(size: number): string {
 }
 
 /**
- * Create the `send_file_to_user` agent tool.
+ * Create the `file_send` agent tool.
  *
  * The agent calls this tool with a path to an existing file (typically one
- * it just wrote via `shell`/`write_file` into the workspace). The tool:
+ * it just wrote via `shell`/`file_write` into the workspace). The tool:
  *   1. Reads the file from disk.
  *   2. Copies it into the uploads dir via {@link saveUpload}, producing a
  *      stable, sandboxed URL served by `/api/uploads/...`.
@@ -117,11 +117,11 @@ function formatBytes(size: number): string {
  */
 export function createSendFileTool(options: SendFileToolOptions): AgentTool {
   return {
-    name: 'send_file_to_user',
+    name: 'file_send',
     label: 'Send File to User',
     description:
       'Send a file to the current user via their active channel (web chat or Telegram). ' +
-      'The file must already exist on disk — typically one you created with shell or write_file ' +
+      'The file must already exist on disk — typically one you created with shell or file_write ' +
       'inside the workspace. The user will see a download button / attachment card for the file ' +
       'on your assistant message; on Telegram, the file is delivered as a document (or photo for images). ' +
       'Use this to deliver generated reports, exported data, rendered images, compiled archives, etc. ' +
@@ -159,7 +159,7 @@ export function createSendFileTool(options: SendFileToolOptions): AgentTool {
         return {
           content: [{
             type: 'text' as const,
-            text: 'Error: send_file_to_user cannot be used in background contexts (no active user).',
+            text: 'Error: file_send cannot be used in background contexts (no active user).',
           }],
           details: { error: true } satisfies SendFileToolDetails,
         }

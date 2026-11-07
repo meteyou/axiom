@@ -169,7 +169,7 @@ export function createCodemodeTool(options: CodemodeToolOptions): AgentTool {
       const timeoutMs = resolveTimeoutMs(parsed.options.timeoutMs)
 
       const calls: CodemodeNestedCall[] = []
-      // Uploads reported by nested calls (e.g. send_file_to_user) are lifted into
+      // Uploads reported by nested calls (e.g. file_send) are lifted into
       // this result's details so the channel layers deliver them like direct calls.
       const uploads: UploadDescriptor[] = []
       const collectUploads = (toolResult: unknown): void => {
@@ -453,7 +453,7 @@ function buildCodemodeResult(
       details.outputTruncated = true
     }
     const note = spillPath
-      ? `\n\n[Full output: ${spillPath} — read it with read_file to continue]`
+      ? `\n\n[Full output: ${spillPath} — read it with file_read to continue]`
       : '\n\n[Could not save the full output]'
     content.push({
       type: 'text',

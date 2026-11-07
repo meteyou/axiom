@@ -41,7 +41,7 @@ describe('skill loading', () => {
       expect(prompt).toContain('<location>/data/skills/zats/perplexity</location>')
     })
 
-    it('includes instruction text about read_file for skill loading', () => {
+    it('includes instruction text about file_read for skill loading', () => {
       const dir = makeTmpDir()
       const memoryDir = path.join(dir, 'memory')
       const skills: SkillPromptEntry[] = [
@@ -54,7 +54,7 @@ describe('skill loading', () => {
 
       const prompt = assembleSystemPrompt({ memoryDir, skills })
 
-      expect(prompt).toContain('read_file')
+      expect(prompt).toContain('file_read')
       expect(prompt).toContain('SKILL.md')
     })
 
@@ -95,7 +95,7 @@ describe('skill loading', () => {
 
   describe('{baseDir} replacement', () => {
     it('replaces {baseDir} with skill directory path', () => {
-      // Simulate what read_file does: replace {baseDir} with dirname of SKILL.md
+      // Simulate what file_read does: replace {baseDir} with dirname of SKILL.md
       const skillContent = `Use the tool at {baseDir}/scripts/run.sh
 Config is at {baseDir}/config.json`
       const skillDir = '/data/skills/zats/perplexity'
@@ -188,7 +188,7 @@ Config is at /data/skills/zats/perplexity/config.json`)
       }
     })
 
-    it('replaces {baseDir} and prepends header in mock read_file flow', () => {
+    it('replaces {baseDir} and prepends header in mock file_read flow', () => {
       // Set up a mock skill directory
       const skillDir = path.join(dataDir, 'skills', 'test-owner', 'test-skill')
       fs.mkdirSync(skillDir, { recursive: true })
@@ -204,7 +204,7 @@ Config at {baseDir}/config.json`,
         'utf-8'
       )
 
-      // Simulate what read_file does
+      // Simulate what file_read does
       const resolved = path.join(skillDir, 'SKILL.md')
       let content = fs.readFileSync(resolved, 'utf-8')
 

@@ -1,6 +1,6 @@
 ---
 name: skill-creator
-version: 1.0.0
+version: 1.1.0
 description: Create or update an agent skill — a SKILL.md file under /data/skills_agent/<name>/ that captures a reusable workflow you can load on demand later. Use when the user asks to "save this as a skill", "create a skill", "remember this workflow", or when you spot a recurring pattern across conversations that's worth extracting.
 ---
 
@@ -14,7 +14,7 @@ This skill walks you through creating them correctly the first time, so the file
 
 | Type | Directory | Who writes it | Editable from chat? |
 |---|---|---|---|
-| **Agent-created** (this skill creates these) | `/data/skills_agent/<name>/` | You, at runtime | **Yes** — write_file/edit_file |
+| **Agent-created** (this skill creates these) | `/data/skills_agent/<name>/` | You, at runtime | **Yes** — file_write/file_edit |
 | Built-in (shipped with Axiom) | `/data/skills_agent/<name>/` (seeded from `/app/skills_agent_defaults/` on container start) | The Axiom project | Technically yes, but they get auto-overwritten on update unless you set `managed: false` |
 | User-installed | `/data/skills/<owner>/<name>/` | The user, via the web UI installer | No — managed via Settings → Skills |
 
@@ -33,13 +33,13 @@ Create one when **all** of these are true:
 |---|---|
 | "How do I ingest a podcast transcript and distill it into a wiki page?" — a workflow | **Skill** |
 | "What does our deployment architecture look like?" — knowledge | **Wiki page** under `/data/memory/wiki/` |
-| "Read a file from disk." — atomic operation | **Built-in tool** (`read_file`) — already exists, don't reinvent |
+| "Read a file from disk." — atomic operation | **Built-in tool** (`file_read`) — already exists, don't reinvent |
 | "Remember that the user prefers German." — a fact | **User profile** under `/data/memory/users/<username>.md` |
 
 ### When NOT to create a skill
 
 - One-off task ("rename this file"). Just do it.
-- Already covered by a built-in tool (`web_fetch`, `shell`, `read_file`, …). Skills *use* tools, they don't replace them.
+- Already covered by a built-in tool (`web_fetch`, `shell`, `file_read`, …). Skills *use* tools, they don't replace them.
 - Pure knowledge with no workflow ("Project X uses Postgres"). That's a wiki page.
 - The user explicitly said "don't save this".
 
@@ -54,7 +54,7 @@ Two parts: YAML frontmatter (the contract with the runtime) and a Markdown body 
 name: my-skill
 description: One or two sentences explaining when to use this skill. This is the routing signal — the agent only sees this in the prompt index, so be specific about triggers.
 # Optional fields below — omit if not needed
-version: 1.0.0
+version: 1.1.0
 required_env_vars: [SOME_API_KEY]
 requires_toolsets: [web_fetch]
 platforms: [linux, macos]
@@ -89,7 +89,7 @@ Body content — instructions, operations, tool sequences, examples.
 
 - **`required_env_vars`** — list of env-var names the skill needs. Missing vars **don't hide** the skill — they annotate it in the prompt with `⚠ requires: VAR_NAME` so you can warn the user instead of silently failing. Use this when the skill calls an external API.
 
-- **`requires_toolsets`** — list of built-in tool names the skill depends on (e.g. `web_fetch`, `web_search`, `shell`, `transcribe_audio`). If the user has disabled any of these, the skill is **hidden entirely** from the prompt to avoid noise.
+- **`requires_toolsets`** — list of built-in tool names the skill depends on (e.g. `web_fetch`, `web_search`, `shell`, `audio_transcribe`). If the user has disabled any of these, the skill is **hidden entirely** from the prompt to avoid noise.
 
 - **`platforms`** — list of `linux`, `macos`, `windows`. Production Axiom always runs on Linux (Docker), so this is rarely needed. Only set it if the skill calls platform-specific binaries (e.g. `pbcopy`, `xdg-open`).
 
@@ -102,11 +102,11 @@ The body is what you'll read when the skill activates. Treat it as **instruction
 1. **Open with one line** stating what the skill does and which `/data/...` paths it touches.
 2. **Use absolute paths** (`/data/memory/wiki/`, `/workspace/`) — never relative.
 3. **Break work into named operations** (e.g. `## Ingest`, `## Query`, `## Lint`). Each operation = explicit numbered steps with tool sequences.
-4. **Show the exact tool calls**: `web_fetch → write_file → list_files → edit_file`. Don't make future-you invent the workflow from a description.
+4. **Show the exact tool calls**: `web_fetch → file_write → file_list → file_edit`. Don't make future-you invent the workflow from a description.
 5. **Include 1–2 worked examples** with realistic inputs.
 6. **End with edge cases and "when *not* to use this skill"**.
 
-If the skill ships helper files (scripts, templates, prompt fragments) in its directory, reference them with the `{baseDir}` placeholder. The runtime substitutes it for the skill's actual directory when you `read_file` the SKILL.md:
+If the skill ships helper files (scripts, templates, prompt fragments) in its directory, reference them with the `{baseDir}` placeholder. The runtime substitutes it for the skill's actual directory when you `file_read` the SKILL.md:
 
 ```markdown
 Run the import script: `bash {baseDir}/scripts/import.sh <url>`
@@ -127,18 +127,18 @@ Use the template in `{baseDir}/templates/report.md`.
 
 4. **Draft the body.** Pull the actual workflow from the conversation. If you're extracting a pattern you noticed across conversations, restate the pattern explicitly in the first sentence.
 
-5. **Write the file** with `write_file`:
+5. **Write the file** with `file_write`:
    ```
-   write_file /data/skills_agent/<name>/SKILL.md
+   file_write /data/skills_agent/<name>/SKILL.md
    ```
-   No need to `mkdir` — `write_file` creates parent directories.
+   No need to `mkdir` — `file_write` creates parent directories.
 
 6. **Confirm to the user.** Show the `name`, `description`, and `location`. Mention that it will appear in `<available_skills>` from the **next message** onward (no restart). The agent's listing is sorted by `lastUsed`, so brand-new skills appear at the top until something else gets used.
 
 ### Update — Modify an existing skill
 
-1. `read_file /data/skills_agent/<name>/SKILL.md` first — never overwrite blind.
-2. Use `edit_file` for targeted changes. Reserve `write_file` (full overwrite) for major rewrites.
+1. `file_read /data/skills_agent/<name>/SKILL.md` first — never overwrite blind.
+2. Use `file_edit` for targeted changes. Reserve `file_write` (full overwrite) for major rewrites.
 3. If the change is a behavior change visible to the user, mention what changed.
 4. Don't touch built-in skills (those with `version:` and shipped in the project repo) without asking — your edits will be reverted on the next container update unless you set `managed: false`. If you do need to override a built-in, the safer path is usually a *new* skill that supersedes it.
 
@@ -249,7 +249,7 @@ Convert a PDF file to Markdown using the bundled extraction script.
 The extractor strips headers/footers, preserves headings, and converts tables to Markdown tables.
 ```
 
-In this case, you'd `write_file` two files:
+In this case, you'd `file_write` two files:
 - `/data/skills_agent/pdf2md/SKILL.md` (the file above)
 - `/data/skills_agent/pdf2md/scripts/extract.sh` (the helper script)
 
@@ -257,8 +257,8 @@ In this case, you'd `write_file` two files:
 
 - The skill is live on the **next user message**. You don't need to restart anything.
 - It appears in `<available_skills>` with the description you wrote.
-- The first time you actually `read_file` its SKILL.md, the runtime records the timestamp in `/data/skills_agent/.usage.json`. The 10 most-recently-used skills float to the top of the prompt; older ones are reachable via `list_agent_skills`.
-- You can list all your created skills any time with `list_agent_skills`.
+- The first time you actually `file_read` its SKILL.md, the runtime records the timestamp in `/data/skills_agent/.usage.json`. The 10 most-recently-used skills float to the top of the prompt; older ones are reachable via `skill_list`.
+- You can list all your created skills any time with `skill_list`.
 
 ## Common mistakes to avoid
 
@@ -267,7 +267,7 @@ In this case, you'd `write_file` two files:
 - **Mismatched name and folder.** `name: foo-bar` in a folder called `foo_bar/` → won't load.
 - **Over-gating.** Setting `requires_toolsets: [web_fetch]` on a skill that doesn't actually call `web_fetch` will hide the skill the moment a user disables web fetching, for no real reason.
 - **Treating the body as documentation.** It's an instruction set for future-you. Use imperative steps and explicit tool calls, not narrative explanation.
-- **Recreating built-in tools.** A skill called `read-file` that wraps `read_file` adds nothing. Skills compose tools into workflows; they don't proxy them.
+- **Recreating built-in tools.** A skill called `read-file` that wraps `file_read` adds nothing. Skills compose tools into workflows; they don't proxy them.
 - **Editing a built-in skill in place.** Your edit will get reverted on the next image update unless you also set `managed: false`. If you want to keep the change, add `managed: false` to the frontmatter — but understand you'll then miss future improvements to that skill.
 
 ## Paths summary

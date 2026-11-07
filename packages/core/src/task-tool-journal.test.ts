@@ -50,7 +50,7 @@ describe('TaskToolJournal', () => {
   })
 
   it('finalizes the call with the model-facing result text', () => {
-    journal.recordStarted({ taskId: 'task-1', sessionId: null, toolCallId: 'call-1', toolName: 'read_file', args: { path: 'a.txt' }, replay: 'safe' })
+    journal.recordStarted({ taskId: 'task-1', sessionId: null, toolCallId: 'call-1', toolName: 'file_read', args: { path: 'a.txt' }, replay: 'safe' })
     journal.recordEnded({
       taskId: 'task-1',
       toolCallId: 'call-1',
@@ -74,7 +74,7 @@ describe('TaskToolJournal', () => {
   })
 
   it('leaves a call without an end event in started state (crash simulation)', () => {
-    journal.recordStarted({ taskId: 'task-1', sessionId: null, toolCallId: 'call-1', toolName: 'read_file', args: {}, replay: 'safe' })
+    journal.recordStarted({ taskId: 'task-1', sessionId: null, toolCallId: 'call-1', toolName: 'file_read', args: {}, replay: 'safe' })
     journal.recordEnded({ taskId: 'task-1', toolCallId: 'call-1', isError: false, result: 'done' })
     journal.recordStarted({ taskId: 'task-1', sessionId: null, toolCallId: 'call-2', toolName: 'email_send', args: { to: ['a@b.c'] }, replay: 'unsafe' })
 
@@ -87,7 +87,7 @@ describe('TaskToolJournal', () => {
 
   it('truncates oversized args and results with a marker', () => {
     const huge = 'x'.repeat(MAX_JOURNAL_FIELD_CHARS + 100)
-    journal.recordStarted({ taskId: 'task-1', sessionId: null, toolCallId: 'call-1', toolName: 'write_file', args: huge, replay: 'unsafe' })
+    journal.recordStarted({ taskId: 'task-1', sessionId: null, toolCallId: 'call-1', toolName: 'file_write', args: huge, replay: 'unsafe' })
     journal.recordEnded({ taskId: 'task-1', toolCallId: 'call-1', isError: false, result: huge })
 
     const [entry] = journal.listForTask('task-1')
@@ -97,9 +97,9 @@ describe('TaskToolJournal', () => {
   })
 
   it('replaces the row when a tool call id repeats within a task', () => {
-    journal.recordStarted({ taskId: 'task-1', sessionId: null, toolCallId: 'call-1', toolName: 'read_file', args: { path: 'a' }, replay: 'safe' })
+    journal.recordStarted({ taskId: 'task-1', sessionId: null, toolCallId: 'call-1', toolName: 'file_read', args: { path: 'a' }, replay: 'safe' })
     journal.recordEnded({ taskId: 'task-1', toolCallId: 'call-1', isError: false, result: 'a' })
-    journal.recordStarted({ taskId: 'task-1', sessionId: null, toolCallId: 'call-2', toolName: 'list_files', args: {}, replay: 'safe' })
+    journal.recordStarted({ taskId: 'task-1', sessionId: null, toolCallId: 'call-2', toolName: 'file_list', args: {}, replay: 'safe' })
     journal.recordStarted({ taskId: 'task-1', sessionId: null, toolCallId: 'call-1', toolName: 'shell', args: { command: 'ls' }, replay: 'unsafe' })
 
     const entries = journal.listForTask('task-1')
