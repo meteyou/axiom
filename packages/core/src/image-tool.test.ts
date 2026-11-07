@@ -16,6 +16,7 @@ import {
 } from './image-tool.js'
 import type { GenerateImageToolDetails } from './image-tool.js'
 import { normalizeImageGenerationSettings } from './contracts/settings.js'
+import { IMAGE_BACKGROUNDS, IMAGE_QUALITIES } from './image-backends.js'
 import type { ImageGenerationSettingsContract } from './contracts/settings.js'
 
 const IMAGE_BYTES = Buffer.from('generated-image-bytes')
@@ -204,6 +205,16 @@ describe('generate_image tool', () => {
 
     await run(tool, { prompt: 'p', n: 2 })
     expect(generate).toHaveBeenCalledWith(expect.objectContaining({ count: 2 }))
+  })
+
+  it('declares quality and background as optional plain string enums', () => {
+    const parameters = JSON.parse(JSON.stringify(createTool(vi.fn()).parameters)) as {
+      required: string[]
+      properties: Record<string, unknown>
+    }
+    expect(parameters.required).toEqual(['prompt'])
+    expect(parameters.properties.quality).toEqual({ type: 'string', enum: [...IMAGE_QUALITIES], description: expect.any(String) })
+    expect(parameters.properties.background).toEqual({ type: 'string', enum: [...IMAGE_BACKGROUNDS], description: expect.any(String) })
   })
 
   it('defaults to at most 4 variants', async () => {
