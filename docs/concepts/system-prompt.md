@@ -79,11 +79,9 @@ When image generation models are enabled, the block additionally contains a sepa
 
 The block is dropped entirely if no provider has a routable text model and no image model is enabled.
 
-### 9. `<wiki_pages>`: `memory/wiki/*.md`
+### 9. Wiki pages (not in the prompt)
 
-*Present when the wiki has at least one page.*
-
-The titles and aliases of every wiki page — **not** the full content. The agent loads a specific page on demand with `read_file` when a topic comes up. This is the prompt's largest source of agent-curated knowledge while staying token-cheap. See [Memory System → Wiki](./memory#wiki-wiki-md).
+Wiki pages are no longer listed in the prompt. The agent finds them with `memory_search`, which searches a full-text index of every page's path, title, aliases and body, and opens hits with `file_read`. See [Memory System → Wiki](./memory#wiki-wiki-md).
 
 ### 10. `<memory_paths>`: file paths cheatsheet
 

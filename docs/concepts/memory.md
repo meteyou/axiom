@@ -62,7 +62,7 @@ The agent maintains the file as it learns about the user.
 
 ### Wiki - `wiki/*.md`
 
-The agent's own structured knowledge base: project notes, architecture decisions, key dependencies, evergreen concepts. Pages have an optional YAML frontmatter (`aliases: [Foo, foo-thing]`) and are listed in the system prompt **by title only** — the agent loads a page on demand with `read_file` when the topic comes up.
+The agent's own structured knowledge base: project notes, architecture decisions, key dependencies, evergreen concepts. Pages have an optional YAML frontmatter (`aliases: [Foo, foo-thing]`). They are **not** listed in the system prompt. Instead, a full-text index (path, title, aliases, body) is kept in SQLite and refreshed automatically before every search: `memory_search` returns matching facts and wiki pages with path, title, aliases and a snippet, and the agent opens relevant pages with `file_read`.
 
 The wiki is shared across all users, so sensitive personal data (health, finances, relationships) belongs in the user profile, not in a wiki page.
 

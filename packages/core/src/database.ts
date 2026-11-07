@@ -290,6 +290,23 @@ export function initDatabase(dbPath?: string): Database {
     END;
   `)
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS wiki_index_files (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      path TEXT NOT NULL UNIQUE,
+      mtime_ms REAL NOT NULL,
+      size INTEGER NOT NULL
+    );
+
+    CREATE VIRTUAL TABLE IF NOT EXISTS wiki_index_fts USING fts5(
+      path,
+      title,
+      aliases,
+      body,
+      tokenize="unicode61 remove_diacritics 2"
+    );
+  `)
+
   // Backfill external-content FTS indexes only when the virtual table is first
   // created during migration. Rebuilding on every boot rescans the full dataset
   // and can significantly slow startup on larger installations.

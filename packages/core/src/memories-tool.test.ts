@@ -1,4 +1,7 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AgentTool } from '@earendil-works/pi-agent-core'
 import { initDatabase } from './database.js'
 import type { Database } from './database.js'
@@ -24,19 +27,29 @@ function getDetails(result: Awaited<ReturnType<AgentTool['execute']>>): Record<s
 
 describe('memory_search tool', () => {
   let db: Database
+  let memoryDir: string
 
   beforeEach(() => {
     db = initDatabase(':memory:')
     insertUser(db, 1, 'alice')
     insertUser(db, 2, 'bob')
+    memoryDir = fs.mkdtempSync(path.join(os.tmpdir(), 'axiom-memory-search-'))
+    fs.mkdirSync(path.join(memoryDir, 'wiki'))
+  })
+
+  afterEach(() => {
+    db.close()
+    fs.rmSync(memoryDir, { recursive: true, force: true })
   })
 
   it('creates a tool with correct metadata and schema', () => {
-    const tool = createSearchMemoriesTool({ db })
+    const tool = createSearchMemoriesTool({ db, memoryDir })
 
     expect(tool.name).toBe('memory_search')
     expect(tool.label).toBe('Search Memories')
     expect(tool.description).toContain('fact memory')
+    expect(tool.description).toContain('wiki')
+    expect(tool.description).toContain('file_read')
     const schema = tool.parameters as { properties: Record<string, unknown>; required?: string[] }
     expect(schema.properties.query).toBeDefined()
     expect(schema.properties.limit).toBeDefined()
@@ -47,7 +60,7 @@ describe('memory_search tool', () => {
     createMemory(db, 1, 'session-a', 'Postgres runs on port 5432', 'extracted_fact')
     createMemory(db, 1, 'session-b', 'Redis runs on port 6379', 'extracted_fact')
 
-    const tool = createSearchMemoriesTool({ db, getCurrentUserId: () => 1 })
+    const tool = createSearchMemoriesTool({ db, memoryDir, getCurrentUserId: () => 1 })
     const result = await tool.execute('tool-call-1', { query: 'postgres port' })
     const text = getTextContent(result)
     const details = getDetails(result)
@@ -65,7 +78,7 @@ describe('memory_search tool', () => {
     createMemory(db, 1, 'session-a', 'postgres port is 5432', 'session')
     createMemory(db, 2, 'session-b', 'postgres port is 6432', 'session')
 
-    const tool = createSearchMemoriesTool({ db, getCurrentUserId: () => 2 })
+    const tool = createSearchMemoriesTool({ db, memoryDir, getCurrentUserId: () => 2 })
     const result = await tool.execute('tool-call-2', { query: 'postgres' })
     const text = getTextContent(result)
 
@@ -74,17 +87,39 @@ describe('memory_search tool', () => {
   })
 
   it('handles empty results gracefully', async () => {
-    const tool = createSearchMemoriesTool({ db, getCurrentUserId: () => 1 })
+    const tool = createSearchMemoriesTool({ db, memoryDir, getCurrentUserId: () => 1 })
     const result = await tool.execute('tool-call-3', { query: 'no-match-xyz' })
     const text = getTextContent(result)
     const details = getDetails(result)
 
-    expect(text).toContain('No memories found for query "no-match-xyz".')
+    expect(text).toContain('## Facts\n\nNo matching facts.')
+    expect(text).toContain('## Wiki\n\nNo matching wiki pages.')
     expect(details.count).toBe(0)
+    expect(details.wikiCount).toBe(0)
+  })
+
+  it('returns a facts group and a wiki group with path, title, aliases and snippet', async () => {
+    createMemory(db, 1, 'session-a', 'Postgres runs on port 5432', 'extracted_fact')
+    const wikiPage = path.join(memoryDir, 'wiki', 'database.md')
+    fs.writeFileSync(wikiPage, '---\naliases: [db, pg]\n---\n# Database Setup\n\nPostgres is backed up nightly.\n')
+
+    const tool = createSearchMemoriesTool({ db, memoryDir, getCurrentUserId: () => 1 })
+    const result = await tool.execute('tool-call-7', { query: 'postgres' })
+    const text = getTextContent(result)
+    const details = getDetails(result)
+
+    expect(text.indexOf('## Facts')).toBeLessThan(text.indexOf('Postgres runs on port 5432'))
+    expect(text.indexOf('## Wiki')).toBeGreaterThan(text.indexOf('Postgres runs on port 5432'))
+    expect(text).toContain('1. Database Setup')
+    expect(text).toContain(`Path: ${wikiPage}`)
+    expect(text).toContain('Aliases: db, pg')
+    expect(text).toContain('**Postgres** is backed up nightly.')
+    expect(details.count).toBe(1)
+    expect(details.wikiCount).toBe(1)
   })
 
   it('validates query and limit parameters', async () => {
-    const tool = createSearchMemoriesTool({ db })
+    const tool = createSearchMemoriesTool({ db, memoryDir })
 
     const blankQueryResult = await tool.execute('tool-call-4', { query: '   ' })
     expect(getTextContent(blankQueryResult)).toContain('query must be a non-empty string')
@@ -98,7 +133,7 @@ describe('memory_search tool', () => {
       createMemory(db, 1, `session-${i}`, `postgres fact ${i}`, 'session')
     }
 
-    const tool = createSearchMemoriesTool({ db, getCurrentUserId: () => 1 })
+    const tool = createSearchMemoriesTool({ db, memoryDir, getCurrentUserId: () => 1 })
     const result = await tool.execute('tool-call-6', { query: 'postgres', limit: 100 })
     const details = getDetails(result)
 

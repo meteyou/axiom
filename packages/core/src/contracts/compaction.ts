@@ -55,7 +55,6 @@ const SYSTEM_PROMPT_SECTION_LABELS = {
   current_user: 'Current user',
   user_profile: 'User profile',
   available_providers: 'Providers & models',
-  wiki_pages: 'Wiki pages',
   available_skills: 'Skills',
   paths: 'Paths',
   language: 'Language',
