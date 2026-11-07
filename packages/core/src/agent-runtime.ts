@@ -1,9 +1,9 @@
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import nodePath from 'node:path'
-import type { Agent as PiAgent, AgentEvent, AgentOptions, AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core'
+import type { Agent as PiAgent, AgentEvent, AgentMessage, AgentOptions, AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core'
 import type { Api, AssistantMessage, Message, ImageContent, Model } from '@earendil-works/pi-ai'
-import { getCurrentSystemMessage } from '@earendil-works/pi-ai'
+import { toToolDeclaration } from '@earendil-works/pi-ai'
 import { Type } from 'typebox'
 import type { Database } from './database.js'
 import { logTokenUsage, logToolCall } from './token-logger.js'
@@ -144,15 +144,26 @@ export interface AgentRuntimeOptions {
   thinkingLevel?: SettingsThinkingLevel
 }
 
+/** Turn inputs the session snapshot is built from; only read when a snapshot is built. */
+export interface SessionPromptContext {
+  channel?: string
+  currentUser?: { username: string; role?: string }
+}
+
 export interface AgentRuntimeBoundary {
-  streamPrompt(text: string, sessionId: string, images?: ImageContent[]): AsyncIterable<ResponseChunk>
+  /**
+   * The first turn of a session builds the session snapshot — system prompt
+   * and tool list — from `session`. It stays byte-identical until the session
+   * ends or compaction rebuilds it, so provider prompt caches keep hitting.
+   */
+  streamPrompt(text: string, sessionId: string, images?: ImageContent[], session?: SessionPromptContext): AsyncIterable<ResponseChunk>
   /**
    * Re-run the last assistant turn after it failed. The trailing failed
    * assistant message is dropped and the turn continues from the existing
    * transcript, so the user message is never sent (and billed) twice. Falls
    * back to a normal prompt when the transcript has no continuable tail.
    */
-  retryLastTurn(text: string, sessionId: string, images?: ImageContent[]): AsyncIterable<ResponseChunk>
+  retryLastTurn(text: string, sessionId: string, images?: ImageContent[], session?: SessionPromptContext): AsyncIterable<ResponseChunk>
   /**
    * Summarize the older part of the conversation now (`/compact`). Streams
    * `compaction` chunks: `running` while the summary is written, then the
@@ -161,10 +172,10 @@ export interface AgentRuntimeBoundary {
   compact(instructions?: string, sessionId?: string): AsyncIterable<ResponseChunk>
   /** How full the context window is; null while the model's window is unknown. */
   getContextUsage(): ContextUsageInfo | null
-  refreshSystemPrompt(channel?: string, currentUser?: { username: string; role?: string }): void
   getCurrentTimeContext(): string
   swapProvider(provider: ProviderConfig, apiKey: string, modelId?: string): void
   getProviderManager(): ProviderManager | undefined
+  /** Ends the session: drops the transcript and the session snapshot. */
   clearMessages(): void
   abort(): void
   getStateSnapshot(): AgentRuntimeStateSnapshot
@@ -503,8 +514,11 @@ function supportedThinkingLevels(provider: ProviderConfig, modelId: string): str
   }
 }
 
-function hasSameDeclaration(a: AgentTool, b: AgentTool): boolean {
-  return a.description === b.description && JSON.stringify(a.parameters) === JSON.stringify(b.parameters)
+interface SessionSnapshot {
+  prompt: string
+  /** Blocks of `prompt` for the context breakdown; absent for a fixed prompt. */
+  sections?: SystemPromptSection[]
+  tools: AgentTool[]
 }
 
 class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess {
@@ -528,8 +542,11 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
   private compactionSink: ((chunk: ResponseChunk) => void) | null = null
   /** Aborts a prompt that is still waiting for its pre-prompt compaction. */
   private pendingStart: AbortController | null = null
-  /** Last system prompt built here, with its blocks for the context breakdown. */
-  private builtSystemPrompt: { prompt: string; sections: SystemPromptSection[] } | null = null
+  private fixedSystemPrompt?: string
+  /** Tools every snapshot starts from; image generation and codemode are added per snapshot. */
+  private baseTools: AgentTool[]
+  private snapshot: SessionSnapshot | null = null
+  private sessionPromptContext: SessionPromptContext = {}
 
   constructor(options: AgentRuntimeOptions) {
     this.model = options.model
@@ -550,14 +567,13 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
     const { sttEnabled, thinkingLevel: storedThinkingLevel } = this.readRuntimeSettings()
     const effectiveThinkingLevel = normalizeThinkingLevel(options.thinkingLevel) ?? storedThinkingLevel ?? 'off'
 
-    this.builtSystemPrompt = options.systemPrompt === undefined ? this.buildSystemPrompt() : null
-    const systemPrompt = this.builtSystemPrompt?.prompt ?? options.systemPrompt
+    this.fixedSystemPrompt = options.systemPrompt
 
     // Shared by direct tool calls and the codemode tool's nested calls so both
     // normalize images the same way.
     this.imageHook = createToolResultImageHook(() => this.agent.state.model)
 
-    const tools: AgentTool[] = [
+    this.baseTools = [
       ...(options.tools ?? []),
       ...createBaseAgentTools({
         db: this.db,
@@ -568,7 +584,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
         quotaService: options.quotaService,
         getSessionId: () => this.agent.sessionId,
       }),
-    ]
+    ].filter(tool => tool.name !== GENERATE_IMAGE_TOOL_NAME)
 
     this.compactor = new ContextCompactor({
       scope: 'interactive',
@@ -577,13 +593,13 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
       resolveApiKey: () => this.resolveApiKey(),
       onEvent: info => this.emitCompactionChunk(info),
       retryPolicy: () => loadRetryPolicy(),
+      rebuildSystemMessage: () => this.rebuildSnapshot(),
     })
 
     this.agent = createAxiomAgent({
       initialState: {
-        systemPrompt,
         model: this.model,
-        tools,
+        tools: this.baseTools,
         thinkingLevel: effectiveThinkingLevel,
       },
       provider: this.providerConfig,
@@ -612,13 +628,45 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
     this.compactionSink?.({ type: 'compaction', text: formatContextCompactionContent(info), compaction: info })
   }
 
-  streamPrompt(text: string, sessionId: string, images?: ImageContent[]): AsyncIterable<ResponseChunk> {
-    return this.executePromptWithRetry(text, sessionId, false, images)
+  async *streamPrompt(text: string, sessionId: string, images?: ImageContent[], session?: SessionPromptContext): AsyncIterable<ResponseChunk> {
+    this.ensureSnapshot(session)
+    yield* this.executePromptWithRetry(text, sessionId, false, images)
   }
 
-  retryLastTurn(text: string, sessionId: string, images?: ImageContent[]): AsyncIterable<ResponseChunk> {
+  async *retryLastTurn(text: string, sessionId: string, images?: ImageContent[], session?: SessionPromptContext): AsyncIterable<ResponseChunk> {
+    this.ensureSnapshot(session)
     const continuable = this.dropFailedAssistantTail()
-    return this.executePromptWithRetry(text, sessionId, false, images, continuable)
+    yield* this.executePromptWithRetry(text, sessionId, false, images, continuable)
+  }
+
+  private ensureSnapshot(session: SessionPromptContext | undefined): void {
+    if (session) this.sessionPromptContext = session
+    if (this.snapshot) return
+    const systemMessage = this.rebuildSnapshot()
+    this.agent.state.messages = [systemMessage, ...this.agent.state.messages.filter(message => message.role !== 'system')]
+  }
+
+  /**
+   * Build a fresh snapshot, make its tools executable and return the system
+   * message that declares its prompt and tools. Image generation and codemode
+   * are only synced here, so toggling them mid-session never changes the
+   * running session's tool list.
+   */
+  private rebuildSnapshot(): AgentMessage {
+    const { channel, currentUser } = this.sessionPromptContext
+    const built = this.fixedSystemPrompt === undefined
+      ? this.buildSystemPrompt(channel, currentUser)
+      : { prompt: this.fixedSystemPrompt, sections: undefined }
+    const tools = [...this.baseTools, ...this.buildImageGenerationTools()]
+    if (readCodemodeMainAgentEnabled()) tools.push(this.buildCodemodeTool(tools))
+    this.snapshot = { prompt: built.prompt, sections: built.sections, tools }
+    this.agent.state.tools = tools
+    return {
+      role: 'system',
+      content: built.prompt,
+      ...(tools.length > 0 ? { toolsAdded: tools.map(toToolDeclaration) } : {}),
+      timestamp: 0,
+    }
   }
 
   /**
@@ -637,9 +685,9 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
 
   getContextUsage(): ContextUsageInfo | null {
     const leading = this.agent.state.messages[0]
-    const built = this.builtSystemPrompt
-    const sectionsMatchPrompt = built !== null && leading?.role === 'system' && leading.content === built.prompt
-    return this.compactor.getContextUsage(sectionsMatchPrompt ? built.sections : undefined)
+    const snapshot = this.snapshot
+    const sectionsMatchPrompt = snapshot !== null && leading?.role === 'system' && leading.content === snapshot.prompt
+    return this.compactor.getContextUsage(sectionsMatchPrompt ? snapshot.sections : undefined)
   }
 
   compact(instructions?: string, sessionId?: string): AsyncIterable<ResponseChunk> {
@@ -678,58 +726,13 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
     }
   }
 
-  refreshSystemPrompt(channel?: string, currentUser?: { username: string; role?: string }): void {
-    this.syncImageGenerationTool()
-    this.syncCodemodeTool()
-    const built = this.buildSystemPrompt(channel, currentUser)
-    this.builtSystemPrompt = built
-    const systemPrompt = built.prompt
-    const messages = this.agent.state.messages
-    const leading = messages[0]
-    if (leading?.role === 'system') {
-      if (leading.content === systemPrompt) return
-      this.agent.state.messages = [{ ...leading, content: systemPrompt }, ...messages.slice(1)]
-      return
-    }
-    this.agent.state.messages = [{ role: 'system', content: systemPrompt, timestamp: 0 }, ...messages]
-  }
-
-  /**
-   * Image generation can be switched, and image models enabled or removed,
-   * while a chat runtime lives, so `image_generate` is added, dropped or
-   * redeclared before each turn; pi-agent-core declares the change to the
-   * model. An unchanged declaration is kept so the tool list stays stable.
-   */
-  private syncImageGenerationTool(): void {
-    const tools = this.agent.state.tools
-    const registered = tools.find(tool => tool.name === GENERATE_IMAGE_TOOL_NAME)
+  private buildImageGenerationTools(): AgentTool[] {
     const user = this.user
-    const [current] = createImageGenerationTools({
+    return createImageGenerationTools({
       db: this.db,
       getSessionId: () => this.agent.sessionId,
       getWorkspaceDir: user ? () => user.paths.workspace : undefined,
     })
-    if (!registered && !current) return
-    if (registered && current && hasSameDeclaration(registered, current)) return
-    this.agent.state.tools = [...tools.filter(tool => tool.name !== GENERATE_IMAGE_TOOL_NAME), ...(current ? [current] : [])]
-  }
-
-  /**
-   * Codemode can be switched for the main agent while a chat runtime lives, so
-   * `codemode` is added or dropped before each turn; pi-agent-core declares
-   * the change to the model. An unchanged declaration is kept so the tool
-   * list stays stable.
-   */
-  private syncCodemodeTool(): void {
-    const enabled = readCodemodeMainAgentEnabled()
-    const tools = this.agent.state.tools
-    const registered = tools.find(tool => tool.name === CODEMODE_TOOL_NAME)
-    if (!registered && !enabled) return
-    if (registered && enabled && hasSameDeclaration(registered, this.buildCodemodeTool())) return
-    this.agent.state.tools = [
-      ...tools.filter(tool => tool.name !== CODEMODE_TOOL_NAME),
-      ...(enabled ? [this.buildCodemodeTool()] : []),
-    ]
   }
 
   /**
@@ -738,8 +741,9 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
    * closures, so nested calls reach every main-agent tool (including the
    * interactive-only ones) and are logged like direct calls.
    */
-  private buildCodemodeTool(): AgentTool {
+  private buildCodemodeTool(advertisedTools: AgentTool[]): AgentTool {
     return createCodemodeTool({
+      advertisedTools,
       owner: {
         getTools: () => this.agent.state.tools,
         getMessages: () => this.agent.state.messages,
@@ -773,9 +777,8 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
   }
 
   clearMessages(): void {
-    // The leading system message carries the system prompt and tool declarations.
-    const baseline = getCurrentSystemMessage(this.agent.state.messages)
-    this.agent.state.messages = baseline ? [baseline] : []
+    this.agent.state.messages = []
+    this.snapshot = null
     this.compactor.reset()
   }
 

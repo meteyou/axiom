@@ -26,6 +26,15 @@ describe('buildSystemRules', () => {
     expect(rules).toContain('several users')
     expect(rules).toContain('managed by the admin. Refuse')
   })
+
+  it('replaces the task injection trigger with the working-directory rule in the task variant', () => {
+    const rules = buildSystemRules({ multiUser: true, isAdmin: false, variant: 'task' })
+    expect(rules).toContain('OS-level schedulers')
+    expect(rules).toContain('/tmp')
+    expect(rules).not.toContain('<task_injection>')
+    expect(rules).toContain('Never write personal information')
+    expect(rules).toContain('managed by the admin. Refuse')
+  })
 })
 
 describe('buildPathsBlock', () => {

@@ -58,7 +58,6 @@ const SYSTEM_PROMPT_SECTION_LABELS = {
   wiki_pages: 'Wiki pages',
   available_skills: 'Skills',
   paths: 'Paths',
-  current_date: 'Current date',
   language: 'Language',
   channel_context: 'Channel context',
   other: 'Other',

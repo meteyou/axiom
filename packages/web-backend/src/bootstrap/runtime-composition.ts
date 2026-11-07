@@ -1015,7 +1015,6 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
 
   const consolidationScheduler = new MemoryConsolidationScheduler({
     db,
-    agentCore: null,
     taskRuntime: taskRuntime.tasks,
     getDefaultProvider: getTaskDefaultProvider,
     sessionManager: backgroundSessions,
@@ -1349,7 +1348,6 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
       })
 
       healthMonitorService.setProviderManager(providerManager)
-      consolidationScheduler.setAgentCore(agentCore)
 
       wireAgentCoreEvents()
 

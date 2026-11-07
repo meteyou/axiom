@@ -4,13 +4,19 @@ import type { UserPaths } from './user-scope.js'
 export interface SystemRulesOptions {
   multiUser: boolean
   isAdmin: boolean
+  /** `task` renders the rules for background task agents instead of the main chat agent. */
+  variant?: 'chat' | 'task'
 }
 
 export function buildSystemRules(options: SystemRulesOptions): string {
   const rules = [
     '- Never use OS-level schedulers (system crontab, launchd, at, or shell-spawned long-running processes via nohup / & / background loops). Always use the built-in task and cronjob tools instead.',
-    '- When you receive a <task_injection> block (a background-task result with status="completed|failed|question"), load the tasks-and-cronjobs skill before responding to it.',
   ]
+  if (options.variant === 'task') {
+    rules.push('- Do not create working directories elsewhere (e.g. /tmp). Use your workspace (see <paths>) for cloning repos, creating files and all other file operations.')
+  } else {
+    rules.push('- When you receive a <task_injection> block (a background-task result with status="completed|failed|question"), load the tasks-and-cronjobs skill before responding to it.')
+  }
   if (options.multiUser) {
     rules.push(
       '- This instance has several users. Your profile, daily notes, workspace and chat history are private to you; the wiki, MEMORY.md and skills are shared with everyone.',

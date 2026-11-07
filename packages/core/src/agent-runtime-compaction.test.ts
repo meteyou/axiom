@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentMessage } from '@earendil-works/pi-agent-core'
 import { createFauxCore, fauxAssistantMessage } from '@earendil-works/pi-ai'
 import type { AssistantMessage, TranscriptContext } from '@earendil-works/pi-ai'
@@ -8,6 +8,8 @@ import type { ResponseChunk } from './agent-runtime-types.js'
 import { initDatabase } from './database.js'
 import { SUMMARIZATION_SYSTEM_PROMPT, findSummaryMessage } from './compaction.js'
 import { listContextCompactions } from './compaction-store.js'
+import { assembleSystemPromptWithSections } from './memory.js'
+import { loadConfig } from './config.js'
 
 const faux = vi.hoisted(() => ({
   core: null as ReturnType<typeof createFauxCore> | null,
@@ -186,5 +188,82 @@ describe('AgentRuntime context compaction', () => {
     expect(core.state.callCount).toBe(2)
     expect(chunks.find(chunk => chunk.compaction?.status === 'completed')?.compaction?.reason).toBe('threshold')
     expect(findSummaryMessage(agent.state.messages)).not.toBeNull()
+  })
+
+  describe('session snapshot', () => {
+    const baseConfig = { retry: { enabled: false }, compaction: { keepRecentTokens: 1_500 } }
+
+    function systemMessagesOf(messages: readonly unknown[]): Array<{ content: unknown; toolsAdded?: Array<{ name: string }> }> {
+      return (messages as Array<{ role: string }>).filter(message => message.role === 'system') as never
+    }
+
+    function setupBuiltPrompt(steps: Step[]) {
+      faux.core = createFauxCore({ models: [{ id: 'faux-model', contextWindow: 200_000, maxTokens: 4_000 }] })
+      faux.core.setResponses(steps.map(step => (context, options) => step(context, options)))
+      const runtime = createAgentRuntime({ model: faux.core.getModel(), apiKey: 'test-key', db: initDatabase(':memory:') })
+      return { runtime, agent: (runtime as unknown as AgentRuntimePiAgentAccess).getAgent() }
+    }
+
+    afterEach(() => {
+      vi.mocked(assembleSystemPromptWithSections).mockImplementation(() => ({ prompt: 'runtime system prompt', sections: [] }))
+      vi.mocked(loadConfig).mockImplementation(() => baseConfig)
+    })
+
+    it('keeps prompt and tools frozen across turns and rebuilds both on compaction', async () => {
+      const requests: TranscriptContext[] = []
+      const answer = (text: string): Step => (context) => {
+        requests.push(context)
+        return fauxAssistantMessage(text)
+      }
+      const { runtime, agent } = setupBuiltPrompt([answer('first'), answer('second'), summary, answer('third')])
+      vi.mocked(assembleSystemPromptWithSections).mockImplementation(() => ({ prompt: 'prompt v1', sections: [] }))
+
+      await drain(runtime.streamPrompt('hello', 'session-6'))
+      // Memory edits and a codemode toggle mid-session must not reach the running session.
+      vi.mocked(assembleSystemPromptWithSections).mockImplementation(() => ({ prompt: 'prompt v2', sections: [] }))
+      vi.mocked(loadConfig).mockImplementation(() => ({ ...baseConfig, codemode: { mainAgent: true } }))
+      await drain(runtime.streamPrompt('again', 'session-6'))
+
+      const [first, second] = requests.map(context => systemMessagesOf(context.messages))
+      expect(first).toHaveLength(1)
+      expect(first![0]!.content).toBe('prompt v1')
+      expect(second).toEqual(first)
+      expect(first![0]!.toolsAdded?.map(tool => tool.name)).not.toContain('codemode')
+
+      agent.state.messages = [...agent.state.messages, ...history()]
+      const chunks = await drain(runtime.compact(undefined, 'session-6'))
+      expect(chunks.at(-1)?.compaction?.status).toBe('completed')
+
+      const rebuilt = systemMessagesOf(agent.state.messages)
+      expect(rebuilt).toHaveLength(1)
+      expect(agent.state.messages[0]).toBe(rebuilt[0])
+      expect(rebuilt[0]!.content).toBe('prompt v2')
+      expect(rebuilt[0]!.toolsAdded?.map(tool => tool.name)).toEqual(agent.state.tools.map(tool => tool.name))
+      expect(agent.state.tools.map(tool => tool.name)).toContain('codemode')
+      expect(findSummaryMessage(agent.state.messages)).not.toBeNull()
+
+      await drain(runtime.streamPrompt('after compaction', 'session-6'))
+      const third = systemMessagesOf(requests[2]!.messages)
+      expect(third).toEqual(rebuilt)
+    })
+
+    it('starts a fresh snapshot after the session ends', async () => {
+      const requests: TranscriptContext[] = []
+      const answer: Step = (context) => {
+        requests.push(context)
+        return fauxAssistantMessage('ok')
+      }
+      const { runtime } = setupBuiltPrompt([answer, answer])
+      vi.mocked(assembleSystemPromptWithSections).mockImplementation(() => ({ prompt: 'prompt v1', sections: [] }))
+      await drain(runtime.streamPrompt('hello', 'session-7'))
+
+      vi.mocked(assembleSystemPromptWithSections).mockImplementation(() => ({ prompt: 'prompt v2', sections: [] }))
+      runtime.clearMessages()
+      await drain(runtime.streamPrompt('new session', 'session-8'))
+
+      const second = requests[1]!.messages
+      expect(systemMessagesOf(second).map(message => message.content)).toEqual(['prompt v2'])
+      expect(second.filter(message => message.role === 'user')).toHaveLength(1)
+    })
   })
 })

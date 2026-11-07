@@ -18,7 +18,6 @@ let tempDataDir: string
 let previousDataDir: string | undefined
 
 const setTimeoutMinutes = vi.fn()
-const refreshSystemPrompt = vi.fn()
 const onHealthMonitorSettingsChanged = vi.fn()
 const onConsolidationSettingsChanged = vi.fn()
 const onAgentHeartbeatSettingsChanged = vi.fn()
@@ -34,7 +33,6 @@ beforeAll(async () => {
 
   const getAgentCore = () => ({
     getSessionManager: () => ({ setTimeoutMinutes }),
-    refreshSystemPrompt,
   }) as unknown as AgentCore
 
   server = http.createServer(createApp({
@@ -78,7 +76,6 @@ afterAll(async () => {
 
 beforeEach(() => {
   setTimeoutMinutes.mockClear()
-  refreshSystemPrompt.mockClear()
   onHealthMonitorSettingsChanged.mockClear()
   onConsolidationSettingsChanged.mockClear()
   onAgentHeartbeatSettingsChanged.mockClear()
@@ -162,7 +159,6 @@ describe('settings route module', () => {
     expect(body.agentHeartbeat.enabled).toBe(true)
 
     expect(setTimeoutMinutes).toHaveBeenCalledWith(35)
-    expect(refreshSystemPrompt).toHaveBeenCalled()
     expect(onHealthMonitorSettingsChanged).toHaveBeenCalled()
     expect(onConsolidationSettingsChanged).toHaveBeenCalled()
     expect(onAgentHeartbeatSettingsChanged).toHaveBeenCalled()

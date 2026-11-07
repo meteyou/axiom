@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { initDatabase, TaskStore, initTasksTable } from '@axiom/core'
-import type { AgentCore, Database, Task, ProviderConfig } from '@axiom/core'
+import type { Database, Task, ProviderConfig } from '@axiom/core'
 import { MemoryConsolidationScheduler, DEFAULT_CONSOLIDATION_SETTINGS } from './memory-consolidation-scheduler.js'
 
 let tempDataDir: string
@@ -216,33 +216,6 @@ describe('MemoryConsolidationScheduler', () => {
       expect(result.usage).toEqual({ input: 100, output: 50 })
     })
 
-    it('refreshes system prompt after task completion when agentCore is set', async () => {
-      const taskStore = new TaskStore(db)
-      const taskRuntime = createMockTaskRuntime(taskStore)
-      const provider = makeProvider()
-      const mockAgentCore = { refreshSystemPrompt: vi.fn() }
-
-      taskRuntime.setTaskCompletionCallback((taskId: string) => {
-        taskStore.update(taskId, {
-          status: 'completed',
-          resultStatus: 'completed',
-          resultSummary: 'Updated MEMORY.md.',
-          completedAt: new Date().toISOString().replace('T', ' ').slice(0, 19),
-        })
-      })
-
-      const scheduler = new MemoryConsolidationScheduler({
-        db,
-        agentCore: mockAgentCore as unknown as AgentCore,
-        taskRuntime,
-        getDefaultProvider: () => provider,
-      })
-
-      await scheduler.runNow()
-
-      expect(mockAgentCore.refreshSystemPrompt).toHaveBeenCalledOnce()
-    })
-
     it('deduplicates concurrent runNow calls', async () => {
       const taskStore = new TaskStore(db)
       const taskRuntime = createMockTaskRuntime(taskStore)
@@ -330,12 +303,6 @@ describe('MemoryConsolidationScheduler', () => {
   })
 
   describe('setters', () => {
-    it('setAgentCore updates the agentCore reference', () => {
-      const scheduler = new MemoryConsolidationScheduler({ db })
-      const mockAgentCore = { refreshSystemPrompt: vi.fn() }
-      scheduler.setAgentCore(mockAgentCore as unknown as AgentCore)
-    })
-
     it('setTaskRuntime updates the taskRuntime reference', () => {
       const scheduler = new MemoryConsolidationScheduler({ db })
       const taskStore = new TaskStore(db)

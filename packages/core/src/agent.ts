@@ -14,7 +14,7 @@ import { SessionManager } from './session-manager.js'
 import type { SessionInfo } from './session-manager.js'
 import { MessageQueue } from './message-queue.js'
 import { createAgentRuntime } from './agent-runtime.js'
-import type { AgentRuntimeBoundary, AgentRuntimePiAgentAccess } from './agent-runtime.js'
+import type { AgentRuntimeBoundary, AgentRuntimePiAgentAccess, SessionPromptContext } from './agent-runtime.js'
 import type { AgentRuntimeStateSnapshot, ResponseChunk } from './agent-runtime-types.js'
 import type { ContextUsageInfo } from './contracts/compaction.js'
 import { normalizeThinkingLevel, resolveBackgroundReasoning } from './thinking-level.js'
@@ -211,11 +211,7 @@ export class AgentCore {
    */
   private endRuntimeSession(entry: UserRuntime): void {
     entry.runtime.clearMessages()
-    if (entry.activeTurns === 0 && entry.queue.length === 0) {
-      this.runtimes.delete(entry.userId)
-      return
-    }
-    this.refreshRuntimePrompt(entry)
+    if (entry.activeTurns === 0 && entry.queue.length === 0) this.runtimes.delete(entry.userId)
   }
 
   /**
@@ -253,9 +249,13 @@ export class AgentCore {
     return null
   }
 
-  private refreshRuntimePrompt(entry: UserRuntime, channel?: string): void {
-    const scope = resolveUserScope(this.db, entry.userId)
-    entry.runtime.refreshSystemPrompt(channel, scope ? { username: scope.username, role: scope.role } : undefined)
+  private sessionPromptContext(userId: string, source: string | undefined): SessionPromptContext {
+    // Group chats get no per-user profile.
+    const scope = source !== 'telegram-group' ? resolveUserScope(this.db, userId) : null
+    return {
+      channel: source?.startsWith('telegram') ? 'telegram' : source,
+      currentUser: scope ? { username: scope.username, role: scope.role } : undefined,
+    }
   }
 
   /**
@@ -412,12 +412,7 @@ export class AgentCore {
         yield { type: 'done' }
         return
       }
-      // Group chats get no per-user profile.
-      const scope = source !== 'telegram-group' ? resolveUserScope(this.db, userId) : null
-
-      // Pass channel as 'telegram' for both DM and group sources
-      const channel = source.startsWith('telegram') ? 'telegram' : source
-      runtime.refreshSystemPrompt(channel, scope ? { username: scope.username, role: scope.role } : undefined)
+      const promptContext = this.sessionPromptContext(userId, source)
       this.sessionManager.recordMessage(userId)
 
       const { images, hints: fileHints } = attachments?.length
@@ -429,8 +424,8 @@ export class AgentCore {
       const enrichedText = `${baseText}\n\n${timeContext}`
 
       const stream = retry
-        ? runtime.retryLastTurn(enrichedText, sessionId, images.length > 0 ? images : undefined)
-        : runtime.streamPrompt(enrichedText, sessionId, images.length > 0 ? images : undefined)
+        ? runtime.retryLastTurn(enrichedText, sessionId, images.length > 0 ? images : undefined, promptContext)
+        : runtime.streamPrompt(enrichedText, sessionId, images.length > 0 ? images : undefined, promptContext)
       yield* stream
     } finally {
       entry.activeTurns--
@@ -502,7 +497,8 @@ export class AgentCore {
         yield { type: 'done', sessionId, injectionId }
         return
       }
-      for await (const chunk of entry.runtime.streamPrompt(injection, sessionId)) {
+      const promptContext = this.sessionPromptContext(targetUserId, this.sessionManager.getSession(targetUserId)?.source)
+      for await (const chunk of entry.runtime.streamPrompt(injection, sessionId, undefined, promptContext)) {
         // Tag task-injection chunks with the actual session used AND the
         // per-injection correlation token. Downstream correlation MUST
         // key off `chunk.injectionId` (unique per call) and not
@@ -783,10 +779,7 @@ Do NOT add this section if everything discussed was resolved or if there is noth
     // `chat_messages` table), so we don't lose anything by clearing the
     // in-memory copy here.
     const entry = this.runtimes.get(userId)
-    if (entry) {
-      entry.runtime.clearMessages()
-      this.refreshRuntimePrompt(entry)
-    }
+    entry?.runtime.clearMessages()
     return this.sessionManager.handleNewCommandAsync(userId, source)
   }
 
@@ -827,13 +820,6 @@ Do NOT add this section if everything discussed was resolved or if there is noth
   }
 
   /**
-   * Refresh the system prompt from current memory state.
-   */
-  refreshSystemPrompt(): void {
-    for (const entry of this.runtimes.values()) this.refreshRuntimePrompt(entry)
-  }
-
-  /**
    * Update the thinking/reasoning level used for future agent turns.
    * Accepts any string; invalid values are ignored by the runtime.
    */
@@ -843,15 +829,6 @@ Do NOT add this section if everything discussed was resolved or if there is noth
     if (!normalizeThinkingLevel(level)) return
     this.thinkingLevel = level
     for (const entry of this.runtimes.values()) entry.runtime.setThinkingLevel(level)
-  }
-
-  /**
-   * Refresh skills: rebuild system prompt with current active skills.
-   */
-  // Used by skill-management routes after install/update/remove operations.
-  // fallow-ignore-next-line unused-class-member
-  refreshSkills(): void {
-    this.refreshSystemPrompt()
   }
 
   /**

@@ -2838,7 +2838,8 @@ return 'done';`,
       expect(systemPrompt).not.toContain('Do NOT just describe what you did')
 
       expect(systemPrompt).toContain('background task agent')
-      expect(systemPrompt).toContain('<workspace>')
+      expect(systemPrompt).toContain('<paths>')
+      expect(systemPrompt).not.toContain('<workspace>')
       expect(systemPrompt).toContain('STATUS: completed | failed | question | silent')
     })
   })

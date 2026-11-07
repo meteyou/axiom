@@ -26,7 +26,6 @@ let previousDataDir: string | undefined
 let previousAdminUsername: string | undefined
 let previousAdminPassword: string | undefined
 const setTimeoutMinutes = vi.fn()
-const refreshSystemPrompt = vi.fn()
 const setThinkingLevel = vi.fn()
 const restartHealthMonitor = vi.fn()
 const healthMonitorSnapshot: HealthMonitorSnapshot = {
@@ -72,7 +71,6 @@ beforeAll(async () => {
         restored: false,
       }),
     }),
-    refreshSystemPrompt,
     discardUser: vi.fn(),
     setThinkingLevel,
   } as unknown as AgentCore
@@ -763,7 +761,6 @@ describe('memory API', () => {
     const putBody = (await putRes.json()) as { content: string }
     expect(putRes.status).toBe(200)
     expect(putBody.content).toContain('Updated from test')
-    expect(refreshSystemPrompt).toHaveBeenCalled()
   })
 
   it('lists, writes, and reads daily memory files', async () => {
@@ -813,7 +810,6 @@ describe('memory API', () => {
     const putBody = (await putRes.json()) as { content: string }
     expect(putRes.status).toBe(200)
     expect(putBody.content).toContain('Updated from test')
-    expect(refreshSystemPrompt).toHaveBeenCalled()
   })
 
   it('reads, updates, and exposes the default of TASKS.md', async () => {
@@ -843,7 +839,6 @@ describe('memory API', () => {
     const putBody = (await putRes.json()) as { content: string }
     expect(putRes.status).toBe(200)
     expect(putBody.content).toContain('Be concise')
-    expect(refreshSystemPrompt).toHaveBeenCalled()
 
     const onDisk = fs.readFileSync(path.join(tempDataDir, 'config', 'TASKS.md'), 'utf-8')
     expect(onDisk).toContain('Be concise')
@@ -870,7 +865,6 @@ describe('memory API', () => {
     expect(putRes.status).toBe(200)
     expect(putBody.username).toBe('admin')
     expect(putBody.content).toContain('Updated from test')
-    expect(refreshSystemPrompt).toHaveBeenCalled()
   })
 
   it('lists, filters, updates, and deletes stored facts', async () => {
@@ -1004,7 +998,6 @@ describe('settings API', () => {
 
   it('updates settings and applies live changes', async () => {
     setTimeoutMinutes.mockClear()
-    refreshSystemPrompt.mockClear()
     restartHealthMonitor.mockClear()
 
     const res = await fetch(`${baseUrl}/api/settings`, {
@@ -1037,7 +1030,6 @@ describe('settings API', () => {
     expect(body.telegram.batchingDelayMs).toBe(4000)
     expect(body.telegram.botToken).toBe('telegram-secret')
     expect(setTimeoutMinutes).toHaveBeenCalledWith(30)
-    expect(refreshSystemPrompt).toHaveBeenCalled()
     expect(restartHealthMonitor).toHaveBeenCalled()
 
     const settingsPath = path.join(tempDataDir, 'config', 'settings.json')
@@ -1205,7 +1197,6 @@ describe('settings API', () => {
     // the service would silently log "Failed to apply live settings update" and
     // subsequent live updates in the same try-block would be skipped.
     setTimeoutMinutes.mockClear()
-    refreshSystemPrompt.mockClear()
     setThinkingLevel.mockClear()
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
@@ -1231,7 +1222,6 @@ describe('settings API', () => {
       // All live hooks must have been called — proves none of them silently threw
       // and caused the catch-block to swallow the rest.
       expect(setThinkingLevel).toHaveBeenCalledWith('medium')
-      expect(refreshSystemPrompt).toHaveBeenCalled()
       expect(setTimeoutMinutes).toHaveBeenCalled()
 
       // And the service must not have logged any live-update failure.

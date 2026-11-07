@@ -72,7 +72,7 @@ describe('formatContextUsage', () => {
       { key: 'recent_memory', tokens: 800 },
       { key: 'system_rules', tokens: 600 },
       { key: 'paths', tokens: 400 },
-      { key: 'current_date', tokens: 200 },
+      { key: 'language', tokens: 200 },
     ] as const
     const text = formatContextUsage({
       ...usage,

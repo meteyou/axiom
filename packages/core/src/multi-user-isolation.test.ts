@@ -10,7 +10,7 @@ import { updateUserSettings } from './user-settings.js'
 import { resolveUserPaths } from './user-scope.js'
 import type { Database } from './database.js'
 import type { ResponseChunk } from './agent-runtime-types.js'
-import type { AgentRuntimeOptions } from './agent-runtime.js'
+import type { AgentRuntimeOptions, SessionPromptContext } from './agent-runtime.js'
 import { createBaseAgentTools } from './agent-runtime.js'
 import { assembleSystemPrompt, ensureMemoryStructure } from './memory.js'
 
@@ -55,16 +55,14 @@ vi.mock('./agent-runtime.js', async (importOriginal) => {
       const runtime: FakeRuntime = { options, transcript: [], aborted: false, cleared: 0, swaps: 0, systemPrompts: [] }
       runtimes.push(runtime)
       return {
-        async *streamPrompt(rawText: string): AsyncIterable<ResponseChunk> {
+        async *streamPrompt(rawText: string, _sessionId: string, _images?: unknown, session?: SessionPromptContext): AsyncIterable<ResponseChunk> {
+          runtime.systemPrompts.push(session?.currentUser)
           const text = rawText.trim()
           runtime.transcript.push(text)
           yield { type: 'text', text: `echo:${text}` }
           const gate = gates.get(text)
           if (gate) await gate.promise
           yield { type: 'done' }
-        },
-        refreshSystemPrompt: (_channel: string | undefined, user?: { username: string; role?: string }) => {
-          runtime.systemPrompts.push(user)
         },
         getCurrentTimeContext: () => '',
         swapProvider: (provider: { id: string }, apiKey: string, modelId?: string) => {

@@ -115,15 +115,15 @@ vi.mock('./stt.js', () => ({
 }))
 
 vi.mock('./stt-tool.js', () => ({
-  createTranscribeAudioTool: vi.fn(() => ({ name: 'audio_transcribe', execute: vi.fn() })),
+  createTranscribeAudioTool: vi.fn(() => ({ name: 'audio_transcribe', parameters: {}, execute: vi.fn() })),
 }))
 
 vi.mock('./web-tools.js', () => ({
-  createBuiltinWebTools: vi.fn(() => [{ name: 'builtin_web_tool', execute: vi.fn() }]),
+  createBuiltinWebTools: vi.fn(() => [{ name: 'builtin_web_tool', parameters: {}, execute: vi.fn() }]),
 }))
 
 vi.mock('./agent-skills.js', () => ({
-  createAgentSkillTools: vi.fn(() => [{ name: 'agent_skill_tool', execute: vi.fn() }]),
+  createAgentSkillTools: vi.fn(() => [{ name: 'agent_skill_tool', parameters: {}, execute: vi.fn() }]),
   getAgentSkillsForPrompt: vi.fn(() => [{ name: 'recent skill', description: 'desc', location: '/skills-agent/recent' }]),
   getAgentSkillsCount: vi.fn(() => 1),
   getAgentSkillsDir: vi.fn(() => '/skills-agent'),
@@ -132,7 +132,7 @@ vi.mock('./agent-skills.js', () => ({
 }))
 
 vi.mock('./memories-tool.js', () => ({
-  createSearchMemoriesTool: vi.fn(() => ({ name: 'memory_search', execute: vi.fn() })),
+  createSearchMemoriesTool: vi.fn(() => ({ name: 'memory_search', parameters: {}, execute: vi.fn() })),
 }))
 
 vi.mock('./provider-config.js', async (importOriginal) => {
@@ -149,6 +149,24 @@ vi.mock('./token-logger.js', () => ({
   logTokenUsage: vi.fn(),
   logToolCall: vi.fn(),
 }))
+
+const endTurn = async (agent: { emit: (event: unknown) => void }) => {
+  agent.emit({ type: 'agent_end', messages: [] })
+}
+
+async function runTurn(
+  runtime: ReturnType<typeof createAgentRuntime>,
+  session?: Parameters<ReturnType<typeof createAgentRuntime>['streamPrompt']>[3],
+): Promise<void> {
+  runtimeHarness.promptBehaviors.push(endTurn)
+  for await (const _chunk of runtime.streamPrompt('turn', 'session-1', undefined, session)) { /* drain */ }
+}
+
+/** Ends the session and runs the first turn of the next one. */
+async function startNewSession(runtime: ReturnType<typeof createAgentRuntime>): Promise<void> {
+  runtime.clearMessages()
+  await runTurn(runtime)
+}
 
 function makeModel() {
   return {
@@ -178,7 +196,7 @@ describe('AgentRuntime boundary', () => {
 
   it('wires tools behind a single runtime boundary', () => {
     const db = initDatabase(':memory:')
-    const customTool = { name: 'custom_tool', execute: vi.fn() } as unknown as AgentTool
+    const customTool = { name: 'custom_tool', parameters: {}, execute: vi.fn() } as unknown as AgentTool
 
     const runtime = createAgentRuntime({
       model: makeModel(),
@@ -209,7 +227,7 @@ describe('AgentRuntime boundary', () => {
     expect(tools.find(tool => tool.name === 'file_write')?.description).toContain('prefer file_edit')
   })
 
-  it('assembles system prompt via runtime boundary with config + skills context', () => {
+  it('assembles system prompt via runtime boundary with config + skills context', async () => {
     const db = initDatabase(':memory:')
     const runtime = createAgentRuntime({
       model: makeModel(),
@@ -220,7 +238,8 @@ describe('AgentRuntime boundary', () => {
       baseInstructions: 'base rules',
     })
 
-    runtime.refreshSystemPrompt('telegram', { username: 'alice' })
+    expect(assembleSystemPromptWithSections).not.toHaveBeenCalled()
+    await runTurn(runtime, { channel: 'telegram', currentUser: { username: 'alice' } })
 
     const promptCalls = vi.mocked(assembleSystemPromptWithSections).mock.calls
     const latestCall = promptCalls.at(-1)?.[0]
@@ -236,36 +255,69 @@ describe('AgentRuntime boundary', () => {
     expect(latestCall?.recentDays).toBeUndefined()
   })
 
-  it('omits daily notes from the prompt of callers without a user row', () => {
-    createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db: initDatabase(':memory:'), tools: [], user: null, sessionUser: 'telegram-42' })
+  it('omits daily notes from the prompt of callers without a user row', async () => {
+    const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db: initDatabase(':memory:'), tools: [], user: null, sessionUser: 'telegram-42' })
+    await runTurn(runtime)
     expect(vi.mocked(assembleSystemPromptWithSections).mock.calls.at(-1)?.[0]?.recentDays).toBe(0)
   })
 
-  it('replaces the leading system message on refresh and keeps it when clearing messages', () => {
-    const db = initDatabase(':memory:')
-    const runtime = createAgentRuntime({
-      model: makeModel(),
-      apiKey: 'sk-primary',
-      db,
-      tools: [],
+  describe('session snapshot', () => {
+    function piAgentOf(runtime: ReturnType<typeof createAgentRuntime>) {
+      return (runtime as unknown as AgentRuntimePiAgentAccess).getAgent()
+    }
+
+    function systemMessages(runtime: ReturnType<typeof createAgentRuntime>) {
+      return (piAgentOf(runtime).state.messages as Array<{ role: string }>).filter(message => message.role === 'system')
+    }
+
+    it('builds the prompt and tools on the first turn and keeps them byte-identical for the session', async () => {
+      const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db: initDatabase(':memory:'), tools: [] })
+      const piAgent = piAgentOf(runtime)
+      vi.mocked(assembleSystemPromptWithSections).mockReturnValueOnce({ prompt: 'session prompt', sections: [] })
+
+      await runTurn(runtime)
+      const [systemAfterFirstTurn] = systemMessages(runtime)
+      const toolsAfterFirstTurn = piAgent.state.tools
+      expect(systemAfterFirstTurn).toMatchObject({ role: 'system', content: 'session prompt' })
+      expect((systemAfterFirstTurn as { toolsAdded?: Array<{ name: string }> }).toolsAdded?.map(tool => tool.name))
+        .toEqual(toolsAfterFirstTurn.map(tool => tool.name))
+
+      // Memory, skills or settings changing mid-session must not leak into it.
+      vi.mocked(assembleSystemPromptWithSections).mockReturnValue({ prompt: 'changed prompt', sections: [] })
+      try {
+        await runTurn(runtime, { channel: 'telegram', currentUser: { username: 'alice' } })
+        await runTurn(runtime)
+
+        expect(assembleSystemPromptWithSections).toHaveBeenCalledTimes(1)
+        expect(systemMessages(runtime)).toEqual([systemAfterFirstTurn])
+        expect(piAgent.state.tools).toBe(toolsAfterFirstTurn)
+      } finally {
+        vi.mocked(assembleSystemPromptWithSections).mockReturnValue({ prompt: 'runtime system prompt', sections: [] })
+      }
     })
-    const piAgent = (runtime as unknown as AgentRuntimePiAgentAccess).getAgent()
-    piAgent.state.messages = [
-      { role: 'system', content: 'old prompt', timestamp: 0 },
-      { role: 'user', content: 'hello', timestamp: 1 },
-    ] as never
 
-    vi.mocked(assembleSystemPromptWithSections).mockReturnValueOnce({ prompt: 'new prompt', sections: [] })
-    runtime.refreshSystemPrompt()
+    it('drops the system message on session end and builds a fresh snapshot in the next session', async () => {
+      const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db: initDatabase(':memory:'), tools: [] })
+      const piAgent = piAgentOf(runtime)
+      vi.mocked(assembleSystemPromptWithSections).mockReturnValueOnce({ prompt: 'first session', sections: [] })
+      await runTurn(runtime)
+      piAgent.state.messages = [...piAgent.state.messages, { role: 'user', content: 'hello', timestamp: 1 }] as never
 
-    expect(piAgent.state.messages).toEqual([
-      { role: 'system', content: 'new prompt', timestamp: 0 },
-      { role: 'user', content: 'hello', timestamp: 1 },
-    ])
+      runtime.clearMessages()
+      expect(piAgent.state.messages).toEqual([])
 
-    runtime.clearMessages()
+      vi.mocked(assembleSystemPromptWithSections).mockReturnValueOnce({ prompt: 'second session', sections: [] })
+      await runTurn(runtime, { currentUser: { username: 'alice' } })
+      expect(systemMessages(runtime)).toEqual([expect.objectContaining({ content: 'second session' })])
+      expect(vi.mocked(assembleSystemPromptWithSections).mock.calls.at(-1)?.[0]?.currentUser).toEqual({ username: 'alice' })
+    })
 
-    expect(piAgent.state.messages).toEqual([{ role: 'system', content: 'new prompt', timestamp: 0 }])
+    it('uses a fixed system prompt as the snapshot prompt', async () => {
+      const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db: initDatabase(':memory:'), tools: [], systemPrompt: 'fixed prompt' })
+      await runTurn(runtime)
+      expect(systemMessages(runtime)).toEqual([expect.objectContaining({ content: 'fixed prompt' })])
+      expect(assembleSystemPromptWithSections).not.toHaveBeenCalled()
+    })
   })
 
   it('orchestrates prompt execution events into runtime response chunks', async () => {
@@ -599,9 +651,6 @@ describe('AgentRuntime boundary', () => {
       tools: [],
     })
     const piAgent = (runtime as unknown as AgentRuntimePiAgentAccess).getAgent()
-    const endTurn = async (agent: { emit: (event: unknown) => void }) => {
-      agent.emit({ type: 'agent_end', messages: [] })
-    }
 
     runtimeHarness.promptBehaviors.push(endTurn)
     for await (const _chunk of runtime.streamPrompt('x', 'sess-A')) { /* drain */ }
@@ -673,25 +722,25 @@ describe('AgentRuntime boundary', () => {
       vi.mocked(loadConfig).mockImplementation(defaultLoadConfig)
     })
 
-    it('drops the tool, the image model block and the skill while image generation is switched off', () => {
+    it('drops the tool, the image model block and the skill while image generation is switched off', async () => {
       writeProviders(['recraft/recraft-v4.1-vector'])
       try {
         setImageGenerationSettings({ enabled: false })
         const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db: initDatabase(':memory:'), tools: [] })
-        runtime.refreshSystemPrompt()
+        await runTurn(runtime)
 
         expect(runtime.getStateSnapshot().toolNames).not.toContain('image_generate')
         expect(latestPromptOptions()?.availableImageModels).toEqual([])
         expect(latestActiveTools()?.has('image_generate')).toBe(false)
 
         setImageGenerationSettings({ enabled: true })
-        runtime.refreshSystemPrompt()
+        await startNewSession(runtime)
         expect(runtime.getStateSnapshot().toolNames).toContain('image_generate')
         expect(latestPromptOptions()?.availableImageModels).toHaveLength(1)
         expect(latestActiveTools()?.has('image_generate')).toBe(true)
 
         setImageGenerationSettings({ enabled: false })
-        runtime.refreshSystemPrompt()
+        await startNewSession(runtime)
         expect(runtime.getStateSnapshot().toolNames).not.toContain('image_generate')
         expect(latestPromptOptions()?.availableImageModels).toEqual([])
       } finally {
@@ -699,12 +748,12 @@ describe('AgentRuntime boundary', () => {
       }
     })
 
-    it('offers nothing when image generation is on but no image model is enabled', () => {
+    it('offers nothing when image generation is on but no image model is enabled', async () => {
       writeProviders([])
       try {
         setImageGenerationSettings({ enabled: true })
         const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db: initDatabase(':memory:'), tools: [] })
-        runtime.refreshSystemPrompt()
+        await runTurn(runtime)
 
         expect(runtime.getStateSnapshot().toolNames).not.toContain('image_generate')
         expect(latestPromptOptions()?.availableImageModels).toEqual([])
@@ -714,33 +763,32 @@ describe('AgentRuntime boundary', () => {
       }
     })
 
-    it('redeclares image_generate only when its declaration changes', () => {
+    it('picks up a changed image_generate declaration only in the next session', async () => {
       writeProviders(['recraft/recraft-v4.1-vector'])
+      const maxVariants = (tool: AgentTool | undefined) => (tool?.parameters as unknown as { properties: { n: { maximum: number } } }).properties.n.maximum
       try {
         setImageGenerationSettings({ maxVariants: 2 })
         const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db: initDatabase(':memory:'), tools: [] })
-        runtime.refreshSystemPrompt()
+        await runTurn(runtime)
         const first = imageToolOf(runtime)
-        expect((first?.parameters as unknown as { properties: { n: { maximum: number } } }).properties.n.maximum).toBe(2)
-
-        runtime.refreshSystemPrompt()
-        expect(imageToolOf(runtime)).toBe(first)
+        expect(maxVariants(first)).toBe(2)
 
         setImageGenerationSettings({ maxVariants: 6 })
-        runtime.refreshSystemPrompt()
-        const redeclared = imageToolOf(runtime)
-        expect(redeclared).not.toBe(first)
-        expect((redeclared?.parameters as unknown as { properties: { n: { maximum: number } } }).properties.n.maximum).toBe(6)
+        await runTurn(runtime)
+        expect(imageToolOf(runtime)).toBe(first)
+
+        await startNewSession(runtime)
+        expect(maxVariants(imageToolOf(runtime))).toBe(6)
       } finally {
         fs.rmSync(configDir, { recursive: true, force: true })
       }
     })
 
-    it('keeps image models out of the text model list and passes them as image models', () => {
+    it('keeps image models out of the text model list and passes them as image models', async () => {
       writeProviders(['recraft/recraft-v4.1-vector'])
       try {
         const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db: initDatabase(':memory:'), tools: [] })
-        runtime.refreshSystemPrompt()
+        await runTurn(runtime)
 
         const options = latestPromptOptions()
         const textModelIds = options?.availableProviders?.flatMap(p => p.models.map(m => m.id))
@@ -754,22 +802,26 @@ describe('AgentRuntime boundary', () => {
       }
     })
 
-    it('adds and removes image_generate as image models are enabled or removed', () => {
+    it('adds and removes image_generate with the next session as image models are enabled or removed', async () => {
       writeProviders([])
       try {
         const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db: initDatabase(':memory:'), tools: [] })
+        await runTurn(runtime)
         expect(runtime.getStateSnapshot().toolNames).not.toContain('image_generate')
         expect(latestPromptOptions()?.availableImageModels).toEqual([])
 
         writeProviders(['recraft/recraft-v4.1-vector'])
-        runtime.refreshSystemPrompt()
+        await runTurn(runtime)
+        expect(runtime.getStateSnapshot().toolNames).not.toContain('image_generate')
+
+        await startNewSession(runtime)
         expect(runtime.getStateSnapshot().toolNames.filter(name => name === 'image_generate')).toHaveLength(1)
 
-        runtime.refreshSystemPrompt()
+        await startNewSession(runtime)
         expect(runtime.getStateSnapshot().toolNames.filter(name => name === 'image_generate')).toHaveLength(1)
 
         writeProviders([])
-        runtime.refreshSystemPrompt()
+        await startNewSession(runtime)
         expect(runtime.getStateSnapshot().toolNames).not.toContain('image_generate')
       } finally {
         fs.rmSync(configDir, { recursive: true, force: true })
@@ -805,17 +857,20 @@ describe('AgentRuntime boundary', () => {
       return message?.content ?? ''
     }
 
-    it('adds the codemode tool, with its guideline in the description, when the setting turns on', () => {
+    it('adds the codemode tool, with its guideline in the description, from the next session after the setting turns on', async () => {
       const db = initDatabase(':memory:')
-      const interactiveTool = { name: 'interactive_only_tool', description: 'Only usable in chat.', execute: vi.fn() } as unknown as AgentTool
+      const interactiveTool = { name: 'interactive_only_tool', description: 'Only usable in chat.', parameters: {}, execute: vi.fn() } as unknown as AgentTool
       const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db, tools: [interactiveTool] })
 
-      runtime.refreshSystemPrompt()
+      await runTurn(runtime)
       expect(codemodeToolOf(runtime)).toBeUndefined()
       expect(leadingSystemMessage(runtime)).toBe('runtime system prompt')
 
       codemode.mainAgent = true
-      runtime.refreshSystemPrompt()
+      await runTurn(runtime)
+      expect(codemodeToolOf(runtime)).toBeUndefined()
+
+      await startNewSession(runtime)
       const codemodeTool = codemodeToolOf(runtime)
       expect(codemodeTool).toBeDefined()
       expect(runtime.getStateSnapshot().toolNames).toContain('codemode')
@@ -825,34 +880,32 @@ describe('AgentRuntime boundary', () => {
       expect(leadingSystemMessage(runtime)).toBe('runtime system prompt')
     })
 
-    it('keeps an unchanged declaration stable across re-syncs and drops it when the setting turns off', () => {
+    it('keeps codemode for the running session and drops it in the next one when the setting turns off', async () => {
       const db = initDatabase(':memory:')
       const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db, tools: [] })
 
       codemode.mainAgent = true
-      runtime.refreshSystemPrompt()
+      await runTurn(runtime)
       const first = codemodeToolOf(runtime)
       expect(first).toBeDefined()
-      expect(leadingSystemMessage(runtime)).toBe('runtime system prompt')
-
-      // Unchanged state: the same tool instance and prompt survive a re-sync.
-      runtime.refreshSystemPrompt()
-      expect(codemodeToolOf(runtime)).toBe(first)
 
       codemode.mainAgent = false
-      runtime.refreshSystemPrompt()
+      await runTurn(runtime)
+      expect(codemodeToolOf(runtime)).toBe(first)
+
+      await startNewSession(runtime)
       expect(codemodeToolOf(runtime)).toBeUndefined()
       expect(leadingSystemMessage(runtime)).toBe('runtime system prompt')
     })
 
-    it('breaks the context down by the prompt blocks it built, without a codemode block', () => {
+    it('breaks the context down by the snapshot sections, without a codemode block', async () => {
       const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db: initDatabase(':memory:'), tools: [] })
       codemode.mainAgent = true
       vi.mocked(assembleSystemPromptWithSections).mockReturnValueOnce({
         prompt: 'runtime system prompt',
         sections: [{ key: 'personality', text: 'runtime system prompt' }],
       })
-      runtime.refreshSystemPrompt()
+      await runTurn(runtime)
 
       const sectionKeys = () => runtime.getContextUsage()?.breakdown?.systemPrompt.sections.map(section => section.key).sort()
       expect(sectionKeys()).toEqual(['personality'])
@@ -862,32 +915,13 @@ describe('AgentRuntime boundary', () => {
       expect(sectionKeys()).toEqual(['other'])
     })
 
-    it('rebuilds the declaration when the main agent tool set changes', () => {
-      const db = initDatabase(':memory:')
-      const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db, tools: [] })
-
-      codemode.mainAgent = true
-      runtime.refreshSystemPrompt()
-      const first = codemodeToolOf(runtime)
-      expect(first).toBeDefined()
-
-      const piAgent = (runtime as unknown as AgentRuntimePiAgentAccess).getAgent()
-      piAgent.state.tools = [
-        ...piAgent.state.tools,
-        { name: 'extra_tool', description: 'An extra tool.', execute: vi.fn() } as unknown as AgentTool,
-      ]
-      runtime.refreshSystemPrompt()
-      expect(codemodeToolOf(runtime)).not.toBe(first)
-      expect(codemodeToolOf(runtime)!.description).toContain('extra_tool')
-    })
-
     it('runs nested calls through the main agent\'s tools, including interactive-only ones', async () => {
       const db = initDatabase(':memory:')
-      const interactiveTool = { name: 'interactive_only_tool', description: 'Only usable in chat.', execute: vi.fn() } as unknown as AgentTool
+      const interactiveTool = { name: 'interactive_only_tool', description: 'Only usable in chat.', parameters: {}, execute: vi.fn() } as unknown as AgentTool
       const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db, tools: [interactiveTool] })
 
       codemode.mainAgent = true
-      runtime.refreshSystemPrompt()
+      await runTurn(runtime)
       const codemodeTool = codemodeToolOf(runtime)!
       const piAgent = (runtime as unknown as AgentRuntimePiAgentAccess).getAgent()
       piAgent.sessionId = 'session-1'

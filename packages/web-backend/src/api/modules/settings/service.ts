@@ -198,9 +198,6 @@ export function createSettingsService(options: SettingsRouterOptions = {}): Sett
         if (body.sessionTimeoutMinutes !== undefined) {
           agentCore.getSessionManager().setTimeoutMinutes(settings.sessionTimeoutMinutes)
         }
-        if (body.language !== undefined || body.timezone !== undefined) {
-          agentCore.refreshSystemPrompt()
-        }
         if (body.thinkingLevel !== undefined) {
           agentCore.setThinkingLevel(body.thinkingLevel as string)
         }

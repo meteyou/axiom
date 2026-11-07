@@ -1,6 +1,5 @@
 import type { Database } from '@axiom/core'
 import type { ConsolidationResult } from '@axiom/core'
-import type { AgentCore } from '@axiom/core'
 import type { Task } from '@axiom/core'
 import type { TaskRuntimeTaskBoundary } from '@axiom/core'
 import type { ProviderConfig } from '@axiom/core'
@@ -168,7 +167,6 @@ type ConsolidationTaskRuntime = Pick<TaskRuntimeTaskBoundary, 'create' | 'getByI
 
 export interface ConsolidationSchedulerOptions {
   db: Database
-  agentCore?: AgentCore | null
   taskRuntime?: ConsolidationTaskRuntime | null
   getDefaultProvider?: () => ProviderConfig | null
   /**
@@ -192,7 +190,6 @@ export interface ConsolidationSnapshot {
 
 export class MemoryConsolidationScheduler {
   private db: Database
-  private agentCore: AgentCore | null
   private taskRuntime: ConsolidationTaskRuntime | null
   private getDefaultProviderFn: (() => ProviderConfig | null) | null
   private sessionManager: SessionManager | null
@@ -205,7 +202,6 @@ export class MemoryConsolidationScheduler {
 
   constructor(options: ConsolidationSchedulerOptions) {
     this.db = options.db
-    this.agentCore = options.agentCore ?? null
     this.taskRuntime = options.taskRuntime ?? null
     this.getDefaultProviderFn = options.getDefaultProvider ?? null
     this.sessionManager = options.sessionManager ?? null
@@ -266,13 +262,6 @@ export class MemoryConsolidationScheduler {
       lastResult: this.lastResult,
       nextRunEstimate: this.settings.enabled ? this.getNextRunTime().toISOString() : null,
     }
-  }
-
-  /**
-   * Update the agent core reference (e.g., when provider changes)
-   */
-  setAgentCore(agentCore: AgentCore | null): void {
-    this.agentCore = agentCore
   }
 
   /**
@@ -451,15 +440,6 @@ export class MemoryConsolidationScheduler {
 
       this.lastRun = new Date().toISOString()
       this.lastResult = result
-
-      // Refresh the agent's system prompt if memory files may have been modified
-      if (this.agentCore) {
-        try {
-          this.agentCore.refreshSystemPrompt()
-        } catch (err) {
-          console.error('[axiom] Failed to refresh system prompt after consolidation:', err)
-        }
-      }
 
       // Log to activity log
       logToolCall(this.db, {
