@@ -1,9 +1,9 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
-import type { AgentCore, Database } from '@axiom/core'
+import type { Database } from '@axiom/core'
 import { createMemory, initDatabase } from '@axiom/core'
 import { createApp } from '../../../app.js'
 import { generateAccessToken } from '../../../auth.js'
@@ -15,7 +15,6 @@ let adminToken: string
 let userToken: string
 let tempDataDir: string
 let previousDataDir: string | undefined
-const refreshSystemPrompt = vi.fn()
 
 beforeAll(async () => {
   previousDataDir = process.env.DATA_DIR
@@ -24,11 +23,7 @@ beforeAll(async () => {
 
   db = initDatabase(':memory:')
 
-  const getAgentCore = () => ({
-    refreshSystemPrompt,
-  }) as unknown as AgentCore
-
-  server = http.createServer(createApp({ db, getAgentCore }))
+  server = http.createServer(createApp({ db }))
   await new Promise<void>((resolve) => server.listen(0, resolve))
 
   const port = (server.address() as { port: number }).port
@@ -51,7 +46,6 @@ afterAll(async () => {
 })
 
 beforeEach(() => {
-  refreshSystemPrompt.mockClear()
   db.prepare('DELETE FROM memories').run()
   db.prepare('DELETE FROM users WHERE id != 1').run()
   db.prepare("INSERT INTO users (id, username, password_hash, role) VALUES (2, 'user', 'x', 'user')").run()
@@ -82,7 +76,6 @@ describe('memory route module', () => {
     })
 
     expect(putSoulRes.status).toBe(200)
-    expect(refreshSystemPrompt).toHaveBeenCalledTimes(1)
 
     const putDailyRes = await fetch(`${baseUrl}/api/memory/daily/2026-03-27`, {
       method: 'PUT',

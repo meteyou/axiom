@@ -19,12 +19,12 @@ vi.mock('./config.js', () => ({
   ensureConfigTemplates: vi.fn(),
   loadConfig: vi.fn(() => ({})),
   getConfigDir: vi.fn(() => '/tmp/test-config'),
+  getDefaultTimezone: vi.fn(() => 'UTC'),
 }))
 
 vi.mock('./agent-runtime.js', () => ({
   createAgentRuntime: vi.fn(() => ({
     streamPrompt: streamPromptMock,
-    refreshSystemPrompt: vi.fn(),
     getCurrentTimeContext: vi.fn(() => '<current_time>Current time: 12:00 (UTC)</current_time>'),
     swapProvider: vi.fn(),
     getProviderManager: vi.fn(() => undefined),
@@ -91,6 +91,22 @@ describe('AgentCore task injection chunk metadata', () => {
     expect(usedSessionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
     expect(chunks.length).toBeGreaterThan(0)
     expect(chunks.every(chunk => chunk.sessionId === usedSessionId)).toBe(true)
+
+    await agent.dispose()
+    db.close()
+  })
+
+  it('passes the session prompt context so an injection as the first turn builds the snapshot', async () => {
+    db.prepare("INSERT INTO users (id, username, password_hash, role) VALUES (7, 'bob', 'h', 'user')").run()
+    const agent = new AgentCore({ model: makeModel(), apiKey: 'sk-test', db, tools: [] })
+
+    await agent.injectTaskResult('<task_injection>done</task_injection>', '7')
+
+    expect(streamPromptMock).toHaveBeenCalledTimes(1)
+    expect(streamPromptMock.mock.calls[0][3]).toEqual({
+      channel: 'web',
+      currentUser: { username: 'bob', role: 'user' },
+    })
 
     await agent.dispose()
     db.close()

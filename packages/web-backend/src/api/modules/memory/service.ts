@@ -67,7 +67,6 @@ class MemoryService {
 
     const soulPath = path.join(memoryDir, 'SOUL.md')
     fs.writeFileSync(soulPath, content, 'utf-8')
-    this.refreshAgentPrompt()
   }
 
   readCoreMemory(): string {
@@ -76,7 +75,6 @@ class MemoryService {
 
   writeCoreMemory(content: string): void {
     writeMemoryFile(content)
-    this.refreshAgentPrompt()
   }
 
   readAgentRules(): string {
@@ -85,7 +83,6 @@ class MemoryService {
 
   writeAgentRules(content: string): void {
     writeAgentsRulesFile(content)
-    this.refreshAgentPrompt()
   }
 
   readDefaultAgentRules(): string {
@@ -116,7 +113,6 @@ class MemoryService {
     const filePath = path.join(memoryDir, relPath)
     fs.mkdirSync(path.dirname(filePath), { recursive: true })
     fs.writeFileSync(filePath, content, 'utf-8')
-    this.refreshAgentPrompt()
   }
 
   deleteFileByPath(relPath: string): void {
@@ -127,7 +123,6 @@ class MemoryService {
     }
 
     fs.unlinkSync(filePath)
-    this.refreshAgentPrompt()
   }
 
   listDailyFiles(dailyDir: string): DailyFileSummary[] {
@@ -175,7 +170,6 @@ class MemoryService {
 
     const filePath = path.join(dailyDir, `${date}.md`)
     fs.writeFileSync(filePath, content, 'utf-8')
-    this.refreshAgentPrompt()
   }
 
   listWikiPages(): WikiFileSummary[] {
@@ -232,7 +226,6 @@ class MemoryService {
 
     const filePath = path.join(wikiDir, safeFilename)
     fs.writeFileSync(filePath, content, 'utf-8')
-    this.refreshAgentPrompt()
   }
 
   deleteWikiPage(safeFilename: string): void {
@@ -244,7 +237,6 @@ class MemoryService {
     }
 
     fs.unlinkSync(filePath)
-    this.refreshAgentPrompt()
   }
 
   listLegacyProjectFiles(): LegacyProjectFileSummary[] {
@@ -298,7 +290,6 @@ class MemoryService {
 
     const filePath = path.join(wikiDir, `${name}.md`)
     fs.writeFileSync(filePath, content, 'utf-8')
-    this.refreshAgentPrompt()
   }
 
   readHeartbeat(scope: UserScope): string {
@@ -307,7 +298,6 @@ class MemoryService {
 
   writeHeartbeat(scope: UserScope, content: string): void {
     writeUserHeartbeat(scope, content)
-    this.refreshAgentPrompt()
   }
 
   readHeartbeatSettings(scope: UserScope) {
@@ -337,7 +327,6 @@ class MemoryService {
   writeProfile(scope: UserScope, content: string): void {
     readProfileFile(scope)
     fs.writeFileSync(scope.paths.profile, content, 'utf-8')
-    this.refreshAgentPrompt()
   }
 
   listFacts(query: FactsQuery) {
@@ -388,7 +377,6 @@ class MemoryService {
 
   writeTasksGuidelines(content: string): void {
     writeTasksGuidelinesFile(content)
-    this.refreshAgentPrompt()
   }
 
   readDefaultTasksGuidelines(): string {
@@ -410,22 +398,7 @@ class MemoryService {
       throw new MemorySchedulerUnavailableError('Consolidation scheduler not available')
     }
 
-    const result = await scheduler.runNow()
-    this.refreshAgentPrompt()
-    return result
-  }
-
-  private refreshAgentPrompt(): void {
-    const agentCore = this.options.getAgentCore?.() ?? null
-    if (!agentCore) {
-      return
-    }
-
-    try {
-      agentCore.refreshSystemPrompt()
-    } catch (err) {
-      console.error('[axiom] Failed to refresh system prompt after memory update:', err)
-    }
+    return scheduler.runNow()
   }
 }
 

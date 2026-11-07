@@ -1,9 +1,8 @@
-import type { AgentCore, Database } from '@axiom/core'
+import type { Database } from '@axiom/core'
 import type { MemoryConsolidationScheduler } from '../../../memory-consolidation-scheduler.js'
 
 export interface MemoryModuleOptions {
   db: Database
-  getAgentCore?: () => AgentCore | null
   consolidationScheduler?: MemoryConsolidationScheduler | null
 }
 

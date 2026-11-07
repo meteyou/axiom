@@ -328,7 +328,7 @@ export type {
 export { createAgentRuntime, createBaseAgentTools } from './agent-runtime.js'
 export { createScopedTools } from './scoped-tools.js'
 export type { ScopedToolsDeps } from './scoped-tools.js'
-export type { AgentRuntimeBoundary, AgentRuntimeOptions, AgentRuntimePiAgentAccess, BaseAgentToolsOptions } from './agent-runtime.js'
+export type { AgentRuntimeBoundary, AgentRuntimeOptions, AgentRuntimePiAgentAccess, BaseAgentToolsOptions, SessionPromptContext } from './agent-runtime.js'
 export type {
   AgentRuntimeStateSnapshot,
   RetryInfo,

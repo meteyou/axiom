@@ -160,7 +160,6 @@ function createMockAgentCore(): AgentCore {
     resetSession: vi.fn(),
     abort: vi.fn(),
     getSessionManager: vi.fn(() => mockSessionManager),
-    refreshSystemPrompt: vi.fn(),
     getAgent: vi.fn(),
     dispose: vi.fn(),
   } as unknown as AgentCore

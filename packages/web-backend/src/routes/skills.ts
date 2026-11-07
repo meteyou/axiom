@@ -18,7 +18,7 @@ import {
   maskApiKey,
   listAgentSkills,
 } from '@axiom/core'
-import type { AgentCore, SkillConfig, BuiltinToolsConfig } from '@axiom/core'
+import type { SkillConfig, BuiltinToolsConfig } from '@axiom/core'
 import { jwtMiddleware } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
 
@@ -36,10 +36,6 @@ const upload = multer({
   },
 })
 
-export interface SkillsRouterOptions {
-  getAgentCore?: () => AgentCore | null
-}
-
 /**
  * Settings file shape (only the parts we care about)
  */
@@ -56,9 +52,8 @@ function sanitizeSkill(skill: SkillConfig): Omit<SkillConfig, 'envValues'> {
   return rest
 }
 
-export function createSkillsRouter(options: SkillsRouterOptions = {}): Router {
+export function createSkillsRouter(): Router {
   const router = Router()
-  const getAgentCore = options.getAgentCore ?? (() => null)
 
   // All routes require auth
   router.use(jwtMiddleware)
@@ -113,9 +108,6 @@ export function createSkillsRouter(options: SkillsRouterOptions = {}): Router {
         emoji: result.parsed.emoji,
       })
 
-      // Refresh agent skills
-      getAgentCore()?.refreshSkills()
-
       res.status(201).json({ skill: sanitizeSkill(skill) })
     } catch (err) {
       res.status(400).json({ error: `Failed to install skill: ${(err as Error).message}` })
@@ -149,9 +141,6 @@ export function createSkillsRouter(options: SkillsRouterOptions = {}): Router {
         envKeys: result.parsed.envKeys,
         emoji: result.parsed.emoji,
       })
-
-      // Refresh agent skills
-      getAgentCore()?.refreshSkills()
 
       res.status(201).json({ skill: sanitizeSkill(skill) })
     } catch (err) {
@@ -281,9 +270,6 @@ export function createSkillsRouter(options: SkillsRouterOptions = {}): Router {
 
       fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf-8')
 
-      // Refresh agent tools (skills + built-in tools)
-      getAgentCore()?.refreshSkills()
-
       // Mask API key in response — read from builtinTools.webSearch (canonical location)
       const rawKey = settings.builtinTools?.webSearch?.braveSearchApiKey ?? ''
       const maskedApiKey = rawKey ? maskApiKey(rawKey) : ''
@@ -326,9 +312,6 @@ export function createSkillsRouter(options: SkillsRouterOptions = {}): Router {
       // Remove from skills.json
       deleteSkillConfig(id)
 
-      // Refresh agent skills
-      getAgentCore()?.refreshSkills()
-
       res.json({ message: 'Skill deleted', id })
     } catch (err) {
       res.status(500).json({ error: `Failed to delete skill: ${(err as Error).message}` })
@@ -355,9 +338,6 @@ export function createSkillsRouter(options: SkillsRouterOptions = {}): Router {
         envValues: body.envValues,
         envKeys: body.envKeys,
       })
-
-      // Refresh agent skills
-      getAgentCore()?.refreshSkills()
 
       res.json({ skill: sanitizeSkill(updated) })
     } catch (err) {

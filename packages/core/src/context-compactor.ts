@@ -58,6 +58,13 @@ export interface ContextCompactorOptions {
   /** Token usage of every successful compaction, e.g. for per-task cost totals. */
   onUsage?: (usage: CompactionUsage) => void
   retryPolicy?: () => RetryPolicy | undefined
+  /**
+   * Replaces every system message of a compacted transcript with the one
+   * returned, e.g. a freshly built prompt declaring the full current tool
+   * set (the chat runtime's session snapshot). The returned tools must be
+   * the agent's executable `state.tools` by the time this returns.
+   */
+  rebuildSystemMessage?: () => AgentMessage
   keepaliveMs?: number
   /** Abort the summary call when the provider shows no sign of life for this long. */
   idleTimeoutMs?: number
@@ -220,7 +227,8 @@ export class ContextCompactor {
   async prepareNextTurn(turn: PrepareNextTurnContext, signal?: AbortSignal): Promise<AgentLoopTurnUpdate | undefined> {
     const outcome = await this.compactIfNeeded(turn.context.messages, 0, signal)
     if (!outcome) return undefined
-    return { context: { ...turn.context, messages: outcome.messages.slice() } }
+    const tools = this.options.rebuildSystemMessage ? this.requireAgent().state.tools : turn.context.tools
+    return { context: { ...turn.context, messages: outcome.messages.slice(), tools } }
   }
 
   /**
@@ -321,7 +329,7 @@ export class ContextCompactor {
     keepalive.unref?.()
 
     try {
-      const outcome = await compactMessages(messages, {
+      const compacted = await compactMessages(messages, {
         budget,
         model,
         apiKey: await this.options.resolveApiKey(),
@@ -333,10 +341,11 @@ export class ContextCompactor {
         onProgress: () => { lastProgressAt = Date.now() },
         now,
       })
-      if (!outcome) {
+      if (!compacted) {
         emit({ status: 'skipped', error: 'Nothing to compact yet.' })
         return null
       }
+      const outcome = this.withRebuiltSystem(compacted)
 
       agent.state.messages = outcome.messages
       this.lastCompactionAnchor = lastAssistant(outcome.messages)
@@ -369,6 +378,13 @@ export class ContextCompactor {
       clearInterval(keepalive)
       if (this.activeAbort === controller) this.activeAbort = null
     }
+  }
+
+  private withRebuiltSystem(outcome: CompactionOutcome): CompactionOutcome {
+    const rebuild = this.options.rebuildSystemMessage
+    if (!rebuild) return outcome
+    const messages = [rebuild(), ...outcome.messages.filter(message => message.role !== 'system')]
+    return { ...outcome, messages, tokensAfter: estimateMessagesTokens(messages) }
   }
 
   /** Warnings worth showing with this compaction; each is reported once per conversation. */

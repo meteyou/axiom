@@ -149,7 +149,6 @@ export function createApp(options?: AppOptions): express.Express {
     }))
     app.use('/api/memory', createMemoryRouter({
       db: options.db,
-      getAgentCore,
       consolidationScheduler: options.consolidationScheduler ?? null,
     }))
     app.use('/api/settings', createSettingsRouter({
@@ -160,7 +159,6 @@ export function createApp(options?: AppOptions): express.Express {
         options.onActiveProviderChanged?.()
       },
       onTimezoneChanged: (userId) => {
-        getAgentCore()?.refreshSystemPrompt()
         options.getTaskRuntime?.()?.schedules.rescheduleOwner(userId ?? undefined)
       },
       onHealthMonitorSettingsChanged: () => {
@@ -189,9 +187,7 @@ export function createApp(options?: AppOptions): express.Express {
       db: options.db,
       getTelegramBot: options.getTelegramBot ?? (() => null),
     }))
-    app.use('/api/skills', createSkillsRouter({
-      getAgentCore,
-    }))
+    app.use('/api/skills', createSkillsRouter())
     app.use('/api/stats', createStatsRouter(options.db))
     app.use('/api/tasks', createTasksRouter({
       db: options.db,

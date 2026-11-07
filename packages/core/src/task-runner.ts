@@ -3,7 +3,7 @@ import type { AssistantMessage, Message, Model, Api, TextContent } from '@earend
 
 import type { Database } from './database.js'
 import { renderAttachedSkillsBlock } from './attached-skills.js'
-import { readTasksGuidelinesFile } from './memory.js'
+import { buildTaskSystemPrompt } from './task-system-prompt.js'
 import type { SettingsThinkingLevel } from './contracts/settings.js'
 import { readBackgroundThinkingLevelFromConfig } from './thinking-level.js'
 import { clampThinkingLevel } from './contracts/providers.js'
@@ -38,7 +38,6 @@ import {
 } from './loop-detection.js'
 import type { LoopDetectionConfig, LoopDetectionResult } from './loop-detection.js'
 import type { TaskEventBus } from './task-event-bus.js'
-import { getWorkspaceDir } from './agent.js'
 import { createAxiomAgent } from './agent-factory.js'
 import { ContextCompactor, describeContextOverflow } from './context-compactor.js'
 import type { CompactionUsage } from './context-compactor.js'
@@ -235,70 +234,6 @@ interface PausedTask {
 const CLEANUP_INTERVAL_MS = 60 * 60 * 1000
 /** Max time a task can remain paused before being cleaned up (24 hours) */
 const MAX_PAUSE_DURATION_MS = 24 * 60 * 60 * 1000
-
-function buildTaskSystemPrompt(
-  taskPrompt: string,
-  memoryDir?: string,
-  configDir?: string,
-  scope?: UserScope | null,
-  multiUser = false,
-): string {
-  const sections: string[] = []
-
-  const workspaceDir = scope?.paths.workspace ?? getWorkspaceDir()
-  sections.push(`You are a background task agent. You are NOT a chatbot — you are an autonomous worker.
-
-Your task: ${taskPrompt}
-
-<workspace>
-Your working directory is ${workspaceDir}. All shell commands execute in this directory by default.
-All relative paths in file_read, file_write, and file_list resolve against this directory.
-Use this directory for cloning repos, creating files, and all file operations.
-Do NOT create working directories elsewhere (e.g. /tmp) — use ${workspaceDir} instead.
-</workspace>`)
-
-  const taskGuidelines = readTasksGuidelinesFile(configDir).trim()
-  if (taskGuidelines.length > 0) {
-    sections.push(`<task_guidelines>
-${taskGuidelines}
-</task_guidelines>`)
-  }
-
-  if (scope) {
-    const sharedDataRule = multiUser
-      ? '\nMEMORY.md, the wiki and skills are shared by all users: never write personal information there; keep it in the owner\'s profile.'
-      : ''
-    sections.push(`<task_owner>
-This task belongs to the user "${scope.username}" (role: ${scope.role}). Results are delivered only to this user.
-Memory tools and chat history only return this user's data. Never include or act on other users' personal data.${sharedDataRule}
-</task_owner>`)
-  }
-
-  if (memoryDir) {
-    const personalReference = scope
-      ? `\nThe owner's profile is ${scope.paths.profile} and their daily notes are in ${scope.paths.dailyDir}.`
-      : ''
-    sections.push(`<memory_reference>
-Your memory files are located in: ${memoryDir}
-You can read SOUL.md and MEMORY.md if you need context about the user's preferences or prior interactions.${personalReference}
-</memory_reference>`)
-  }
-
-  sections.push(`Your final message MUST follow this exact format:
-
-STATUS: completed | failed | question | silent
-SUMMARY:
-<your complete, detailed results here — this is the ONLY thing the user will see, so include ALL data, analysis, findings, content, etc. Do NOT write a meta-description of what you did. Instead, write the actual output the user asked for.>
-
-Use STATUS: question only when you are blocked and need the user to answer something specific before you can continue. In that case, the SUMMARY must contain exactly one concrete question plus the minimal context needed to answer it.
-Do not ask multi-part questions. Ask only for the smallest missing piece required to continue.
-
-Use STATUS: silent when there is genuinely nothing to report to the user (e.g. a periodic check found no changes). The task will be recorded as completed but NO message will be delivered to the user. Only use this when the prompt explicitly allows silent completion.
-
-If you encounter an unrecoverable error, use STATUS: failed and explain what went wrong.`)
-
-  return sections.join('\n\n')
-}
 
 /**
  * Parse the task agent's final output to extract status and summary.
@@ -527,7 +462,12 @@ export class TaskRunner {
       // Determine effective system prompt
       const baseSystemPrompt = overrides?.systemPromptOverride
         ? overrides.systemPromptOverride
-        : buildTaskSystemPrompt(task.prompt, this.options.memoryDir, undefined, scope, isMultiUser(this.db))
+        : buildTaskSystemPrompt({
+          taskPrompt: task.prompt,
+          scope,
+          multiUser: isMultiUser(this.db),
+          memoryDir: this.options.memoryDir,
+        })
 
       // Codemode eligibility is decided once at start: memory consolidation never
       // gets it, a per-cronjob override wins when set, otherwise the global

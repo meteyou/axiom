@@ -26,10 +26,21 @@ import {
   parseProjectAliases,
   listWikiPages,
   listProjectNotes,
+  formatCurrentTimeContext,
 } from './memory.js'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
+
+describe('formatCurrentTimeContext', () => {
+  it('carries date, time and timezone of the configured zone', () => {
+    const now = new Date('2026-03-01T23:30:00Z')
+    expect(formatCurrentTimeContext('Europe/Berlin', now))
+      .toBe('<current_time>Current time: Monday, 2026-03-02 00:30 (Europe/Berlin)</current_time>')
+    expect(formatCurrentTimeContext('UTC', now))
+      .toBe('<current_time>Current time: Sunday, 2026-03-01 23:30 (UTC)</current_time>')
+  })
+})
 
 describe('memory', () => {
   let tmpDir: string
@@ -390,7 +401,7 @@ describe('memory', () => {
       expect(sections.map(section => section.key)).toEqual([
         'personality', 'instructions', 'agent_rules', 'system_rules', 'core_memory', 'recent_memory', 'current_user',
         'user_profile', 'available_providers', 'wiki_pages',
-        'available_skills', 'paths', 'current_date', 'language', 'channel_context',
+        'available_skills', 'paths', 'language', 'channel_context',
       ])
     })
 
