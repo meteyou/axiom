@@ -1,13 +1,13 @@
 import type { Api, Model } from '@earendil-works/pi-ai'
 import { completeSimple } from './pi-models.js'
 import type { Database } from './database.js'
-import { createMemory } from './memories-store.js'
+import { createMemory, supersedeMemories } from './memories-store.js'
 import { assertLlmResponseOk } from './llm-response.js'
 import { resolveBackgroundReasoning } from './thinking-level.js'
 
 const MAX_FACTS = 10
-const DUPLICATE_OVERLAP_THRESHOLD = 0.7
-const DUPLICATE_SEARCH_LIMIT = 25
+const RELATED_SEARCH_LIMIT = 25
+const MAX_RELATED_PER_FACT = 5
 
 const COMMON_WORDS = new Set([
   'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'das', 'der', 'die', 'ein', 'eine', 'einer', 'einem', 'einen',
@@ -30,6 +30,24 @@ Example output:
 - User prefers dark mode in all applications
 - The project uses PostgreSQL on port 5433 (non-standard)
 - Deployment is done via Docker Compose with 3 services`
+
+const reconciliationSystemPrompt = `You maintain a long-term fact memory. Compare newly extracted facts with existing facts from the same user.
+
+For every new fact, decide exactly one of:
+- ADD: the new fact is new information
+- SKIP: an existing fact already says the same thing
+- SUPERSEDES #<id>[, #<id>...]: the new fact corrects, updates or contradicts the listed existing facts, which will be retired
+
+Rules:
+- Supersede only when the new fact clearly replaces the existing one (changed preference, corrected value, outdated state)
+- Related but compatible facts are not superseded; use ADD for those
+- Only reference ids from the existing facts list
+- Answer with one line per new fact in the form "N<number>: <decision>" and nothing else
+
+Example output:
+N1: ADD
+N2: SUPERSEDES #42
+N3: SKIP`
 
 function normalizeWhitespace(text: string): string {
   return text.replace(/\s+/g, ' ').trim()
@@ -90,10 +108,6 @@ function normalizeFactCandidate(line: string): string {
   return normalizeWhitespace(withoutPrefix)
 }
 
-interface CandidateRow {
-  content: string
-}
-
 /**
  * Parse an LLM fact extraction response into a normalized fact array.
  */
@@ -123,41 +137,43 @@ export function parseFactLines(response: string): string[] {
     .slice(0, MAX_FACTS)
 }
 
+export interface RelatedFact {
+  id: number
+  content: string
+  /** Normalized word overlap with the new fact, 1 means the same words. */
+  overlap: number
+}
+
 /**
- * Check whether a fact already exists for the same user.
- * Uses FTS5 candidate search followed by normalized word-overlap matching.
+ * Find active facts of the same user that share keywords with `newFact`,
+ * most similar first. Retired (superseded) facts are never returned.
  */
-export function isDuplicateFact(db: Database, userId: number | null, newFact: string): boolean {
+export function findRelatedFacts(
+  db: Database,
+  userId: number | null,
+  newFact: string,
+  limit: number = RELATED_SEARCH_LIMIT,
+): RelatedFact[] {
   const normalizedFact = normalizeWhitespace(newFact)
-  if (!normalizedFact) return false
+  if (!normalizedFact) return []
 
   const keywords = getSearchKeywords(normalizedFact)
   const fallbackWords = getNormalizedWords(normalizedFact).slice(0, 6)
   const queryTerms = keywords.length > 0 ? keywords : fallbackWords
-  if (queryTerms.length === 0) return false
-
-  const ftsQuery = buildFtsOrQuery(queryTerms)
-  const userClause = userId === null ? 'm.user_id IS NULL' : 'm.user_id = ?'
-  const params = userId === null
-    ? [ftsQuery, DUPLICATE_SEARCH_LIMIT]
-    : [ftsQuery, userId, DUPLICATE_SEARCH_LIMIT]
+  if (queryTerms.length === 0) return []
 
   const candidates = db.prepare(`
-    SELECT m.content
+    SELECT m.id, m.content
     FROM memories_fts
     INNER JOIN memories m ON m.id = memories_fts.rowid
-    WHERE memories_fts MATCH ? AND ${userClause}
+    WHERE memories_fts MATCH ? AND m.user_id IS ? AND m.deleted_at IS NULL
     ORDER BY bm25(memories_fts) ASC, m.timestamp DESC, m.id DESC
     LIMIT ?
-  `).all(...params) as CandidateRow[]
+  `).all(buildFtsOrQuery(queryTerms), userId, limit) as Array<{ id: number; content: string }>
 
-  for (const candidate of candidates) {
-    if (computeWordOverlap(candidate.content, normalizedFact) > DUPLICATE_OVERLAP_THRESHOLD) {
-      return true
-    }
-  }
-
-  return false
+  return candidates
+    .map(candidate => ({ ...candidate, overlap: computeWordOverlap(candidate.content, normalizedFact) }))
+    .sort((a, b) => b.overlap - a.overlap)
 }
 
 /**
@@ -167,19 +183,45 @@ export function storeFact(db: Database, userId: number | null, sessionId: string
   return createMemory(db, userId, sessionId, normalizeWhitespace(content), 'extracted_fact')
 }
 
-/**
- * Extract facts from a conversation transcript, deduplicate them, and store new facts.
- */
-export async function extractAndStoreFacts(
-  db: Database,
-  userId: number | null,
-  sessionId: string,
-  conversationHistory: string,
-  model: Model<Api>,
-  apiKey: string,
-): Promise<{ extracted: number; stored: number; duplicates: number }> {
-  const userMessage = `Analyze the following session transcript and extract atomic facts worth remembering:\n\n<transcript>\n${conversationHistory}\n</transcript>`
+export type FactDecision =
+  | { action: 'add' }
+  | { action: 'skip' }
+  | { action: 'supersede'; ids: number[] }
 
+/**
+ * Parse the reconciliation answer into one decision per new fact (index-aligned).
+ * Facts the model did not answer for default to `add`, which matches the
+ * behaviour before reconciliation existed. Superseded ids outside
+ * `allowedIds` are dropped so the model cannot retire facts it was not shown.
+ */
+export function parseFactDecisions(
+  response: string,
+  factCount: number,
+  allowedIds: ReadonlySet<number>,
+): FactDecision[] {
+  const decisions: FactDecision[] = Array.from({ length: factCount }, () => ({ action: 'add' as const }))
+
+  for (const line of response.split(/\r?\n/)) {
+    const match = line.trim().match(/^[-*•]?\s*\[?N(\d+)\]?\s*[:.)-]\s*(ADD|SKIP|SUPERSEDES?)\b(.*)$/i)
+    if (!match) continue
+
+    const index = Number.parseInt(match[1], 10) - 1
+    if (index < 0 || index >= factCount) continue
+
+    const action = match[2].toUpperCase()
+    if (action === 'SKIP') {
+      decisions[index] = { action: 'skip' }
+    } else if (action.startsWith('SUPERSEDE')) {
+      const ids = Array.from(match[3].matchAll(/\d+/g), idMatch => Number.parseInt(idMatch[0], 10))
+        .filter(id => allowedIds.has(id))
+      decisions[index] = ids.length > 0 ? { action: 'supersede', ids } : { action: 'add' }
+    }
+  }
+
+  return decisions
+}
+
+async function completeText(model: Model<Api>, apiKey: string, systemPrompt: string, userMessage: string, context: string): Promise<string> {
   const response = await completeSimple(model, {
     systemPrompt,
     messages: [{
@@ -192,31 +234,126 @@ export async function extractAndStoreFacts(
     reasoning: resolveBackgroundReasoning(),
   })
 
-  assertLlmResponseOk(response, '[fact-extraction] Provider rejected the extraction request')
+  assertLlmResponseOk(response, context)
 
-  const responseText = response.content
+  return response.content
     .filter(item => item.type === 'text')
     .map(item => (item as { type: 'text'; text: string }).text)
     .join('')
     .trim()
+}
 
-  const facts = parseFactLines(responseText)
-  let stored = 0
-  let duplicates = 0
+function buildReconciliationMessage(facts: readonly string[], relatedFacts: readonly RelatedFact[]): string {
+  const existing = relatedFacts.map(fact => `[#${fact.id}] ${fact.content}`).join('\n')
+  const incoming = facts.map((fact, index) => `N${index + 1}: ${fact}`).join('\n')
+  return `<existing_facts>\n${existing}\n</existing_facts>\n\n<new_facts>\n${incoming}\n</new_facts>`
+}
+
+async function reconcileWithExistingFacts(
+  model: Model<Api>,
+  apiKey: string,
+  facts: readonly string[],
+  relatedFacts: readonly RelatedFact[],
+): Promise<FactDecision[]> {
+  if (relatedFacts.length === 0) {
+    return facts.map(() => ({ action: 'add' }))
+  }
+
+  const responseText = await completeText(
+    model,
+    apiKey,
+    reconciliationSystemPrompt,
+    buildReconciliationMessage(facts, relatedFacts),
+    '[fact-extraction] Provider rejected the reconciliation request',
+  )
+
+  return parseFactDecisions(responseText, facts.length, new Set(relatedFacts.map(fact => fact.id)))
+}
+
+function collectRelatedFacts(db: Database, userId: number | null, facts: readonly string[]): {
+  newFacts: string[]
+  exactDuplicates: number
+  relatedFacts: RelatedFact[]
+} {
+  const newFacts: string[] = []
+  const seenWordSets = new Set<string>()
+  const relatedById = new Map<number, RelatedFact>()
+  let exactDuplicates = 0
 
   for (const fact of facts) {
-    if (isDuplicateFact(db, userId, fact)) {
-      duplicates += 1
+    const wordSet = getNormalizedWords(fact).sort().join(' ')
+    const related = findRelatedFacts(db, userId, fact)
+    if (seenWordSets.has(wordSet) || related.some(candidate => candidate.overlap === 1)) {
+      exactDuplicates += 1
       continue
     }
 
-    storeFact(db, userId, sessionId, fact)
-    stored += 1
+    seenWordSets.add(wordSet)
+    newFacts.push(fact)
+    for (const candidate of related.slice(0, MAX_RELATED_PER_FACT)) {
+      relatedById.set(candidate.id, candidate)
+    }
   }
+
+  return { newFacts, exactDuplicates, relatedFacts: [...relatedById.values()] }
+}
+
+export interface FactExtractionResult {
+  extracted: number
+  stored: number
+  duplicates: number
+  superseded: number
+}
+
+/**
+ * Extract facts from a conversation transcript and reconcile them with the
+ * user's existing facts: duplicates are skipped, corrections supersede the
+ * facts they replace, everything else is stored as a new fact.
+ */
+export async function extractAndStoreFacts(
+  db: Database,
+  userId: number | null,
+  sessionId: string,
+  conversationHistory: string,
+  model: Model<Api>,
+  apiKey: string,
+): Promise<FactExtractionResult> {
+  const responseText = await completeText(
+    model,
+    apiKey,
+    systemPrompt,
+    `Analyze the following session transcript and extract atomic facts worth remembering:\n\n<transcript>\n${conversationHistory}\n</transcript>`,
+    '[fact-extraction] Provider rejected the extraction request',
+  )
+
+  const facts = parseFactLines(responseText)
+  const { newFacts, exactDuplicates, relatedFacts } = collectRelatedFacts(db, userId, facts)
+  const decisions = await reconcileWithExistingFacts(model, apiKey, newFacts, relatedFacts)
+
+  let stored = 0
+  let skipped = 0
+  let superseded = 0
+
+  db.transaction(() => {
+    newFacts.forEach((fact, index) => {
+      const decision = decisions[index]
+      if (decision.action === 'skip') {
+        skipped += 1
+        return
+      }
+
+      const factId = storeFact(db, userId, sessionId, fact)
+      stored += 1
+      if (decision.action === 'supersede') {
+        superseded += supersedeMemories(db, userId, decision.ids, factId).length
+      }
+    })
+  })()
 
   return {
     extracted: facts.length,
     stored,
-    duplicates,
+    duplicates: exactDuplicates + skipped,
+    superseded,
   }
 }

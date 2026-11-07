@@ -76,7 +76,7 @@ You can edit this file freely, but be aware: the nightly consolidation job ([Set
 
 ### Facts
 
-The Facts tab is the only non-editor view. It's a searchable, paginated table of the structured facts the agent has stored in the SQLite `memories` table — atomic things like *"User's home airport is FRA"* or *"Project X uses pnpm, not npm"*.
+The Facts tab is the only non-editor view. It's a searchable, paginated table of the structured facts the agent has stored in the SQLite `memories` table — atomic things like *"User's home airport is FRA"* or *"Project X uses pnpm, not npm"*. Facts that were superseded by a later correction are hidden (see [Fact extraction](../concepts/memory#fact-extraction)).
 
 **Toolbar:**
 

@@ -9,6 +9,10 @@ export interface MemoryFact {
   content: string
   source: string
   timestamp: string
+  /** Id of the fact that replaced this one; null while active or when the replacement was deleted. */
+  supersededBy: number | null
+  /** Set when the fact was retired (soft delete); retired facts are hidden from search and listings. */
+  deletedAt: string | null
 }
 
 export interface SearchMemoriesOptions {
@@ -36,7 +40,11 @@ interface MemoryRow {
   content: string
   source: string
   timestamp: string
+  superseded_by: number | null
+  deleted_at: string | null
 }
+
+const MEMORY_COLUMNS = 'm.id, m.user_id, m.session_id, m.content, m.source, m.timestamp, m.superseded_by, m.deleted_at'
 
 function rowToMemoryFact(row: MemoryRow): MemoryFact {
   return {
@@ -46,7 +54,28 @@ function rowToMemoryFact(row: MemoryRow): MemoryFact {
     content: row.content,
     source: row.source,
     timestamp: row.timestamp,
+    supersededBy: row.superseded_by,
+    deletedAt: row.deleted_at,
   }
+}
+
+/**
+ * Adds the soft-delete columns used to retire superseded facts. Existing facts
+ * stay active. The FTS triggers only fire on `content` changes, so retiring a
+ * fact leaves `memories_fts` untouched; queries filter retired rows instead.
+ */
+export function migrateMemoryLifecycleColumns(db: Database): void {
+  const columns = db.prepare('PRAGMA table_info(memories)').all() as { name: string }[]
+  if (!columns.some(column => column.name === 'superseded_by')) {
+    db.exec('ALTER TABLE memories ADD COLUMN superseded_by INTEGER REFERENCES memories(id) ON DELETE SET NULL')
+  }
+  if (!columns.some(column => column.name === 'deleted_at')) {
+    db.exec('ALTER TABLE memories ADD COLUMN deleted_at TEXT')
+  }
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_memories_superseded_by ON memories(superseded_by);
+    CREATE INDEX IF NOT EXISTS idx_memories_active_user ON memories(user_id) WHERE deleted_at IS NULL;
+  `)
 }
 
 function normalizeDateFrom(input: string): string {
@@ -95,7 +124,7 @@ function buildMemoryFilters(
   options: Pick<SearchMemoriesOptions, 'userId' | 'sessionUser' | 'dateFrom' | 'dateTo'>,
   alias: string,
 ): { conditions: string[]; params: unknown[] } {
-  const conditions: string[] = []
+  const conditions: string[] = [`${alias}.deleted_at IS NULL`]
   const params: unknown[] = []
 
   if (options.userId !== undefined) {
@@ -130,10 +159,10 @@ export function searchMemories(db: Database, query: string, options: SearchMemor
   const limit = Math.max(1, Math.floor(options.limit ?? 10))
   const ftsQuery = normalizeFtsQuery(trimmedQuery, 'OR')
   const { conditions, params } = buildMemoryFilters(options, 'm')
-  const whereClause = conditions.length > 0 ? ` AND ${conditions.join(' AND ')}` : ''
+  const whereClause = ` AND ${conditions.join(' AND ')}`
 
   const sql = `
-    SELECT m.id, m.user_id, m.session_id, m.content, m.source, m.timestamp
+    SELECT ${MEMORY_COLUMNS}
     FROM memories_fts
     INNER JOIN memories m ON m.id = memories_fts.rowid
     WHERE memories_fts MATCH ?${whereClause}
@@ -153,7 +182,7 @@ export function listMemories(db: Database, options: ListMemoriesOptions = {}): {
 
   if (trimmedQuery) {
     const ftsQuery = normalizeFtsQuery(trimmedQuery)
-    const whereClause = conditions.length > 0 ? ` AND ${conditions.join(' AND ')}` : ''
+    const whereClause = ` AND ${conditions.join(' AND ')}`
 
     const countSql = `
       SELECT COUNT(*) as count
@@ -166,7 +195,7 @@ export function listMemories(db: Database, options: ListMemoriesOptions = {}): {
     const { count } = db.prepare(countSql).get(ftsQuery, ...params) as { count: number }
 
     const selectSql = `
-      SELECT m.id, m.user_id, m.session_id, m.content, m.source, m.timestamp
+      SELECT ${MEMORY_COLUMNS}
       FROM memories_fts
       INNER JOIN memories m ON m.id = memories_fts.rowid
       WHERE memories_fts MATCH ?${whereClause}
@@ -178,12 +207,12 @@ export function listMemories(db: Database, options: ListMemoriesOptions = {}): {
     return { facts: rows.map(rowToMemoryFact), total: count }
   }
 
-  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
+  const whereClause = `WHERE ${conditions.join(' AND ')}`
   const countSql = `SELECT COUNT(*) as count FROM memories m ${whereClause}`
   const { count } = db.prepare(countSql).get(...params) as { count: number }
 
   const selectSql = `
-    SELECT m.id, m.user_id, m.session_id, m.content, m.source, m.timestamp
+    SELECT ${MEMORY_COLUMNS}
     FROM memories m
     ${whereClause}
     ORDER BY m.timestamp DESC, m.id DESC
@@ -196,7 +225,7 @@ export function listMemories(db: Database, options: ListMemoriesOptions = {}): {
 
 export function getMemoryById(db: Database, id: number): MemoryFact | null {
   const row = db.prepare(
-    'SELECT id, user_id, session_id, content, source, timestamp FROM memories WHERE id = ?'
+    `SELECT ${MEMORY_COLUMNS} FROM memories m WHERE m.id = ?`
   ).get(id) as MemoryRow | undefined
 
   return row ? rowToMemoryFact(row) : null
@@ -228,4 +257,26 @@ export function deleteMemory(db: Database, id: number): void {
   if (result.changes === 0) {
     throw new NotFoundError(`Memory not found: ${id}`)
   }
+}
+
+/**
+ * Retires active facts of the same user in favour of `replacementId`. Facts of
+ * other users, already retired facts and the replacement itself are left
+ * untouched. Returns the ids that were actually superseded.
+ */
+export function supersedeMemories(
+  db: Database,
+  userId: number | null,
+  supersededIds: readonly number[],
+  replacementId: number,
+): number[] {
+  const markSuperseded = db.prepare(`
+    UPDATE memories
+    SET superseded_by = ?, deleted_at = datetime('now')
+    WHERE id = ? AND id != ? AND user_id IS ? AND deleted_at IS NULL
+  `)
+
+  return [...new Set(supersededIds)].filter(id =>
+    markSuperseded.run(replacementId, id, replacementId, userId).changes > 0,
+  )
 }

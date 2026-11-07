@@ -174,7 +174,7 @@ export function triggerFactExtractionForSessionEnd(options: TriggerFactExtractio
         executionContext.apiKey,
       )
 
-      deps.console.log(`[fact-extraction] Session ${sessionId}: ${result.stored} new facts`)
+      deps.console.log(`[fact-extraction] Session ${sessionId}: ${result.stored} new facts, ${result.superseded} superseded`)
     } catch (err) {
       deps.console.error(`[fact-extraction] Failed for session ${sessionId}:`, err)
     }

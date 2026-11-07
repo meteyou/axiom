@@ -422,6 +422,54 @@ describe('database', () => {
     db.close()
   })
 
+  it('adds the fact lifecycle columns to an existing memories table without touching FTS', () => {
+    const dbPath = tmpDbPath()
+    const legacyDb = new BetterSqlite3(dbPath)
+    legacyDb.exec(`
+      CREATE TABLE memories (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        session_id TEXT,
+        content TEXT NOT NULL,
+        source TEXT NOT NULL DEFAULT 'session',
+        timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+        embedding BLOB
+      );
+      CREATE VIRTUAL TABLE memories_fts USING fts5(
+        content,
+        content=memories,
+        content_rowid=id,
+        tokenize="unicode61 remove_diacritics 2"
+      );
+      CREATE TRIGGER memories_fts_insert AFTER INSERT ON memories BEGIN
+        INSERT INTO memories_fts(rowid, content) VALUES (new.id, new.content);
+      END;
+    `)
+    legacyDb.prepare("INSERT INTO memories (content, source) VALUES ('Legacy fact about postgres', 'extracted_fact')").run()
+    legacyDb.close()
+
+    const execSpy = vi.spyOn(BetterSqlite3.prototype, 'exec')
+    let db = initDatabase(dbPath)
+    const memoriesRebuildCount = execSpy.mock.calls.filter(([sql]) =>
+      typeof sql === 'string' && sql.includes("INSERT INTO memories_fts(memories_fts) VALUES('rebuild')")
+    ).length
+    expect(memoriesRebuildCount).toBe(0)
+
+    const columnNames = (db.prepare('PRAGMA table_info(memories)').all() as { name: string }[]).map(col => col.name)
+    expect(columnNames).toEqual(expect.arrayContaining(['superseded_by', 'deleted_at']))
+    expect(db.prepare('SELECT id, superseded_by, deleted_at FROM memories').all()).toEqual([
+      { id: 1, superseded_by: null, deleted_at: null },
+    ])
+    expect(db.prepare("SELECT rowid FROM memories_fts WHERE memories_fts MATCH 'postgres'").all()).toEqual([{ rowid: 1 }])
+    expect(() => db.exec("INSERT INTO memories_fts(memories_fts) VALUES('integrity-check')")).not.toThrow()
+    db.close()
+
+    db = initDatabase(dbPath)
+    const reopenedColumnNames = (db.prepare('PRAGMA table_info(memories)').all() as { name: string }[]).map(col => col.name)
+    expect(reopenedColumnNames).toEqual(columnNames)
+    db.close()
+  })
+
   it('keeps memories_fts in sync on insert, update, and delete', () => {
     const db = initDatabase(tmpDbPath())
 

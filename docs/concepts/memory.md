@@ -111,7 +111,7 @@ The summary provider defaults to the active chat provider; most setups override 
 
 In parallel, the transcript is fed to an extraction model that pulls out atomic, sentence-sized facts and writes them into the `memories` table. Sessions shorter than `minSessionMessages` are skipped — there's nothing worth extracting from a two-line exchange.
 
-Facts are deduplicated against existing entries (token-overlap heuristic) and capped at 10 per session. The agent retrieves them later via [`memory_search`](./tools).
+Facts are capped at 10 per session and reconciled against the user's existing facts. Facts with exactly the same wording are skipped. When a new fact shares keywords with stored facts, a short second LLM call compares them and decides for each new fact whether it is new, a duplicate, or a correction. A correction (*"User now prefers light mode"* after *"User prefers dark mode"*) **supersedes** the old fact: the old row stays in the database with a pointer to its replacement, but it no longer shows up in `memory_search` or on the Facts tab. The agent retrieves the current facts later via [`memory_search`](./tools).
 
 Tune under [Settings → Memory → Fact extraction](./../settings/memory#fact-extraction).
 
