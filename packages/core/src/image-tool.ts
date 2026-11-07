@@ -312,12 +312,13 @@ export function createGenerateImageTool(options: GenerateImageToolOptions = {}):
       aspect_ratio: Type.Optional(Type.String({
         description: 'Aspect ratio such as "1:1", "16:9", "9:16", "4:3" or "3:2". Not every model honours it; the result notes any adjustment.',
       })),
-      quality: Type.Optional(StringEnum(IMAGE_QUALITIES, {
+      // StringEnum returns plain JSON Schema since pi-ai 1.5; without Type.Unsafe, Type.Optional leaks a "~optional" key into the request.
+      quality: Type.Optional(Type.Unsafe(StringEnum(IMAGE_QUALITIES, {
         description: 'Rendering quality (OpenAI GPT Image models via API key). Higher quality costs more and takes longer. Other models ignore it.',
-      })),
-      background: Type.Optional(StringEnum(IMAGE_BACKGROUNDS, {
+      }))),
+      background: Type.Optional(Type.Unsafe(StringEnum(IMAGE_BACKGROUNDS, {
         description: '"transparent" for a PNG with alpha channel, e.g. logos and cut-outs (OpenAI GPT Image models). Other models ignore it.',
-      })),
+      }))),
       n: Type.Optional(Type.Integer({
         minimum: 1,
         maximum: declared.maxVariants,
