@@ -87,6 +87,9 @@ export function purgeUserData(db: Database, userId: number): UserPurgeResult {
       if (tableExists(db, 'context_compactions')) {
         db.prepare('DELETE FROM context_compactions WHERE session_id = ?').run(sessionId)
       }
+      if (tableExists(db, 'fact_extraction_cursors')) {
+        db.prepare('DELETE FROM fact_extraction_cursors WHERE session_id = ?').run(sessionId)
+      }
     }
     db.prepare('DELETE FROM chat_messages WHERE user_id = ?').run(userId)
     db.prepare('DELETE FROM memories WHERE user_id = ?').run(userId)

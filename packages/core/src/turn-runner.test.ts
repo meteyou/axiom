@@ -1371,6 +1371,47 @@ describe('TurnRunner', () => {
 
       expect(started.map(t => t.turnId)).toEqual(ended.map(t => t.turnId))
     })
+
+    it('reports turns that completed a compaction after they ended', async () => {
+      const db = freshDb()
+      const compaction = { compactionId: 'c1', reason: 'threshold' as const, tokensBefore: 100, occurredAt: new Date().toISOString() }
+      const agent = scriptedAgent([
+        { type: 'compaction', compaction: { ...compaction, status: 'running' } },
+        { type: 'compaction', compaction: { ...compaction, status: 'completed', tokensAfter: 10 } },
+        { type: 'text', text: 'answer' },
+      ])
+      const order: string[] = []
+      const compactedTurns: TurnInfo[] = []
+      const runner = startRunner(db, agent, {
+        onTurnEnd: () => { order.push('end') },
+        onCompactedTurnEnd: (turn: TurnInfo) => {
+          order.push('compacted')
+          compactedTurns.push(turn)
+        },
+      })
+
+      runner.startTurn({ userId: USER_ID, sessionId: SESSION_ID, text: 'hi' })
+      await waitFor(() => !runner.hasActiveTurn(USER_ID))
+
+      expect(order).toEqual(['end', 'compacted'])
+      expect(compactedTurns).toEqual([expect.objectContaining({ sessionId: SESSION_ID, userId: USER_ID })])
+    })
+
+    it('does not report turns whose compaction did not complete', async () => {
+      const db = freshDb()
+      const compaction = { compactionId: 'c1', reason: 'threshold' as const, tokensBefore: 100, occurredAt: new Date().toISOString() }
+      const agent = scriptedAgent([
+        { type: 'compaction', compaction: { ...compaction, status: 'skipped' } },
+        { type: 'text', text: 'answer' },
+      ])
+      const onCompactedTurnEnd = vi.fn()
+      const runner = startRunner(db, agent, { onCompactedTurnEnd })
+
+      runner.startTurn({ userId: USER_ID, sessionId: SESSION_ID, text: 'hi' })
+      await waitFor(() => !runner.hasActiveTurn(USER_ID))
+
+      expect(onCompactedTurnEnd).not.toHaveBeenCalled()
+    })
   })
 
   it('drops the replay buffer of a completed turn once its retention window passed', async () => {

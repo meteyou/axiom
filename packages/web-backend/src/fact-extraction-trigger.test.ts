@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Api, Model } from '@earendil-works/pi-ai'
 import { initDatabase } from '@axiom/core'
-import type { Database, ProviderConfig } from '@axiom/core'
+import type { Database, IncrementalFactExtractionResult, ProviderConfig } from '@axiom/core'
 import {
   resolveFactExtractionExecutionContext,
-  triggerFactExtractionForSessionEnd,
-} from './fact-extraction-session-end.js'
+  triggerFactExtraction,
+} from './fact-extraction-trigger.js'
 
 function insertSession(db: Database, input: { id: string; userId: number; messageCount: number }): void {
   db.prepare(
@@ -49,7 +49,11 @@ function makeModel(id = 'gpt-4o-mini'): Model<Api> {
   }
 }
 
-describe('fact-extraction session-end trigger', () => {
+function makeResult(overrides: Partial<IncrementalFactExtractionResult> = {}): IncrementalFactExtractionResult {
+  return { chunks: 1, extracted: 1, stored: 1, duplicates: 0, superseded: 0, ...overrides }
+}
+
+describe('fact-extraction trigger', () => {
   it('resolves a dedicated provider first and falls back to the active provider', async () => {
     const dedicatedProvider = makeProvider('dedicated', 'Dedicated')
     const activeProvider = makeProvider('active', 'Active')
@@ -95,37 +99,32 @@ describe('fact-extraction session-end trigger', () => {
     db.prepare('INSERT INTO users (id, username, password_hash, role) VALUES (1, ?, ?, ?)').run('alice', 'hash', 'user')
     insertSession(db, { id: 'session-1', userId: 1, messageCount: 2 })
 
-    const extractAndStoreFacts = vi.fn().mockResolvedValue({ extracted: 1, stored: 1, duplicates: 0 })
-    const historyProvider = {
-      getSessionManager: () => ({
-        buildConversationHistory: vi.fn(() => 'User: hi'),
-      }),
-    }
+    const extractFactsIncrementally = vi.fn().mockResolvedValue(makeResult())
 
-    expect(triggerFactExtractionForSessionEnd({
+    expect(triggerFactExtraction({
       db,
-      agentCore: historyProvider,
       userId: '1',
       sessionId: 'session-1',
+      trigger: 'session_end',
       deps: {
         loadSettings: () => ({ factExtraction: { enabled: false, providerId: '', minSessionMessages: 3 } }),
-        extractAndStoreFacts,
+        extractFactsIncrementally,
       },
     })).toBe(false)
 
-    expect(triggerFactExtractionForSessionEnd({
+    expect(triggerFactExtraction({
       db,
-      agentCore: historyProvider,
       userId: '1',
       sessionId: 'session-1',
+      trigger: 'compaction',
       deps: {
         loadSettings: () => ({ factExtraction: { enabled: true, providerId: '', minSessionMessages: 3 } }),
-        extractAndStoreFacts,
+        extractFactsIncrementally,
       },
     })).toBe(false)
 
     await Promise.resolve()
-    expect(extractAndStoreFacts).not.toHaveBeenCalled()
+    expect(extractFactsIncrementally).not.toHaveBeenCalled()
     db.close()
   })
 
@@ -137,28 +136,62 @@ describe('fact-extraction session-end trigger', () => {
       'UPDATE sessions SET user_id = NULL, session_user = ? WHERE id = ?'
     ).run('telegram-123', 'session-guest')
 
-    const extractAndStoreFacts = vi.fn().mockResolvedValue({ extracted: 1, stored: 1, duplicates: 0 })
-    const buildConversationHistory = vi.fn(() => 'User: remember this')
+    const extractFactsIncrementally = vi.fn().mockResolvedValue(makeResult())
     const warn = vi.fn()
 
-    const triggered = triggerFactExtractionForSessionEnd({
+    const triggered = triggerFactExtraction({
       db,
-      agentCore: {
-        getSessionManager: () => ({ buildConversationHistory }),
-      },
       userId: 'telegram-123',
       sessionId: 'session-guest',
+      trigger: 'session_end',
       deps: {
         loadSettings: () => ({ factExtraction: { enabled: true, providerId: '', minSessionMessages: 3 } }),
-        extractAndStoreFacts,
+        extractFactsIncrementally,
         console: { log: vi.fn(), warn, error: vi.fn() },
       },
     })
 
     expect(triggered).toBe(false)
-    expect(buildConversationHistory).not.toHaveBeenCalled()
-    expect(extractAndStoreFacts).not.toHaveBeenCalled()
+    expect(extractFactsIncrementally).not.toHaveBeenCalled()
     expect(warn).toHaveBeenCalledWith('[fact-extraction] Skipping session session-guest: no numeric user ID available')
+
+    db.close()
+  })
+
+  it('runs the incremental extraction in the background and logs the result', async () => {
+    const db = initDatabase(':memory:')
+    db.prepare('INSERT INTO users (id, username, password_hash, role) VALUES (1, ?, ?, ?)').run('alice', 'hash', 'user')
+    insertSession(db, { id: 'session-3', userId: 1, messageCount: 40 })
+
+    const extractFactsIncrementally = vi.fn().mockResolvedValue(makeResult({ chunks: 3, stored: 5, superseded: 1 }))
+    const log = vi.fn()
+
+    const triggered = triggerFactExtraction({
+      db,
+      userId: '1',
+      sessionId: 'session-3',
+      trigger: 'compaction',
+      deps: {
+        loadSettings: () => ({ factExtraction: { enabled: true, providerId: '', minSessionMessages: 3 } }),
+        getActiveProvider: () => makeProvider('active', 'Active'),
+        buildModel: vi.fn(() => makeModel('gpt-4o-mini')),
+        getApiKeyForProvider: vi.fn().mockResolvedValue('key'),
+        extractFactsIncrementally,
+        console: { log, warn: vi.fn(), error: vi.fn() },
+      },
+    })
+
+    expect(triggered).toBe(true)
+    await vi.waitFor(() => {
+      expect(extractFactsIncrementally).toHaveBeenCalledWith({
+        db,
+        userId: 1,
+        sessionId: 'session-3',
+        model: expect.objectContaining({ id: 'gpt-4o-mini' }),
+        apiKey: 'key',
+      })
+      expect(log).toHaveBeenCalledWith('[fact-extraction] Session session-3 (compaction): 3 chunk(s), 5 new facts, 1 superseded')
+    })
 
     db.close()
   })
@@ -168,46 +201,35 @@ describe('fact-extraction session-end trigger', () => {
     db.prepare('INSERT INTO users (id, username, password_hash, role) VALUES (1, ?, ?, ?)').run('alice', 'hash', 'user')
     insertSession(db, { id: 'session-2', userId: 1, messageCount: 4 })
 
-    const extractAndStoreFacts = vi.fn().mockRejectedValue(new Error('boom'))
+    const extractFactsIncrementally = vi.fn().mockRejectedValue(new Error('boom'))
     const log = vi.fn()
     const error = vi.fn()
-    const buildConversationHistory = vi.fn(() => 'User: remember that I use dark mode')
 
-    const triggered = triggerFactExtractionForSessionEnd({
+    const triggered = triggerFactExtraction({
       db,
-      agentCore: {
-        getSessionManager: () => ({ buildConversationHistory }),
-      },
       userId: '1',
       sessionId: 'session-2',
+      trigger: 'session_end',
       deps: {
         loadSettings: () => ({ factExtraction: { enabled: true, providerId: '', minSessionMessages: 3 } }),
         getActiveProvider: () => makeProvider('active', 'Active'),
         buildModel: vi.fn(() => makeModel('gpt-4o-mini')),
         getApiKeyForProvider: vi.fn().mockResolvedValue('key'),
-        extractAndStoreFacts,
+        extractFactsIncrementally,
         console: { log, warn: vi.fn(), error },
       },
     })
 
     expect(triggered).toBe(true)
-    expect(buildConversationHistory).toHaveBeenCalledOnce()
-    expect(extractAndStoreFacts).not.toHaveBeenCalled()
+    expect(extractFactsIncrementally).not.toHaveBeenCalled()
 
     await vi.waitFor(() => {
-      expect(extractAndStoreFacts).toHaveBeenCalledWith(
-        db,
-        1,
-        'session-2',
-        'User: remember that I use dark mode',
-        expect.objectContaining({ id: 'gpt-4o-mini' }),
-        'key',
-      )
+      expect(extractFactsIncrementally).toHaveBeenCalledOnce()
       expect(error).toHaveBeenCalled()
     })
 
     expect(log).not.toHaveBeenCalled()
-    expect(String(error.mock.calls[0][0])).toContain('[fact-extraction] Failed for session session-2:')
+    expect(String(error.mock.calls[0][0])).toContain('[fact-extraction] Failed for session session-2 (session_end):')
 
     db.close()
   })

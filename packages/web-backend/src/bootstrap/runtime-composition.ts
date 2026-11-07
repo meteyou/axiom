@@ -63,7 +63,7 @@ import { ChatActionRegistry } from '../chat-actions.js'
 import { registerEmailApprovalChatChannel } from '../email-approval-chat.js'
 import { registerTurnRetryChatChannel } from '../turn-retry-chat.js'
 import type { TurnRetryChatChannel } from '../turn-retry-chat.js'
-import { triggerFactExtractionForSessionEnd } from '../fact-extraction-session-end.js'
+import { triggerFactExtraction } from '../fact-extraction-trigger.js'
 import { HealthMonitorService } from '../health-monitor.js'
 import { MemoryConsolidationScheduler } from '../memory-consolidation-scheduler.js'
 import { QuotaMonitorService } from '../quota-monitor.js'
@@ -489,6 +489,12 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
     onTurnStart: () => runtimeMetrics.startRequest(),
     onTurnEnd: () => runtimeMetrics.endRequest(),
     onTurnFailed: failure => retryChatChannel?.attachRetryAction(failure),
+    onCompactedTurnEnd: turn => triggerFactExtraction({
+      db,
+      userId: turn.agentUserId,
+      sessionId: turn.sessionId,
+      trigger: 'compaction',
+    }),
   })
   retryChatChannel = registerTurnRetryChatChannel({ chatActions, db, runner: turnRunner })
 
@@ -1135,11 +1141,11 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
         }
       }
 
-      triggerFactExtractionForSessionEnd({
+      triggerFactExtraction({
         db,
-        agentCore,
         userId,
         sessionId,
+        trigger: 'session_end',
       })
     })
 
