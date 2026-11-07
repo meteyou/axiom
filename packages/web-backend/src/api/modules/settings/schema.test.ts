@@ -87,6 +87,18 @@ describe('settings schema', () => {
       changed: false,
     })
 
+    for (const snapshotRetention of [0, 91, 2.5, '7']) {
+      expect(mergeConsolidation({ memoryConsolidation: { snapshotRetention } }, settingsRaw)).toEqual({
+        error: 'memoryConsolidation.snapshotRetention must be an integer 1-90',
+        changed: false,
+      })
+    }
+    expect(mergeConsolidation({ memoryConsolidation: { snapshotRetention: 14 } }, settingsRaw)).toEqual({
+      error: null,
+      changed: true,
+    })
+    expect(settingsRaw.memoryConsolidation).toEqual({ snapshotRetention: 14 })
+
     expect(mergeFactExtraction({ factExtraction: { minSessionMessages: 5 } }, settingsRaw)).toEqual({
       error: null,
       changed: true,

@@ -24,6 +24,7 @@ The two environment variables `DATA_DIR` and `WORKSPACE_DIR` are the only knobs.
 ├── db/              ← SQLite database
 ├── config/          ← JSON config + agent contract files
 ├── memory/          ← all memory tiers (SOUL, MEMORY, daily, users, wiki, sources)
+├── memory-snapshots/ ← copies of memory taken before each consolidation run
 ├── skills/          ← user-installed skills
 ├── skills_agent/    ← built-in + agent-created skills
 ├── uploads/         ← user-uploaded files
@@ -103,6 +104,12 @@ The bootstrap admin (the oldest admin account, normally the first one) keeps all
 Usernames are alphanumeric. Creating a user fails when `/workspace/<username>` or `/data/users/<username>` already exists, so a user never takes over an existing repo or folder. Deleting a user only removes `/workspace/<username>` if Axiom created it that way (`users.workspace_provisioned`); accounts from before multi-user support keep it. Profiles of those accounts are moved from `/data/memory/users/<username>.md` into `/data/users/<username>/PROFILE.md` at startup; an existing `PROFILE.md` is never overwritten. `SOUL.md`, `MEMORY.md`, `wiki/` and `sources/` stay shared.
 
 The SQLite `memories` table (atomic facts the agent searches on demand) is **not** in this directory — it lives in `/data/db/axiom.db`.
+
+### `/data/memory-snapshots/` — pre-consolidation snapshots
+
+Written by `createMemorySnapshot()` in `packages/core/src/memory-snapshot.ts`, called by the consolidation scheduler before each run. One directory per run, named after the UTC start time (`2026-11-07T03-00-00-000Z`). Inside, files keep their path relative to `/data`: `memory/MEMORY.md`, `memory/users/`, `memory/wiki/`, `users/<username>/PROFILE.md`. Only the newest `memoryConsolidation.snapshotRetention` snapshots (default 7) are kept. Directories with a `.partial` suffix are interrupted snapshots and are removed on the next run.
+
+**Read-only for the agent.** Restore by copying a file back to its original location; never edit a snapshot in place.
 
 ### `/data/skills/` — user-installed skills
 

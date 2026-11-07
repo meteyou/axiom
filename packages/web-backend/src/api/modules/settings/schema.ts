@@ -152,6 +152,12 @@ export function mergeConsolidation(
     existing.providerId = memoryConsolidation.providerId
   }
 
+  if (memoryConsolidation.snapshotRetention !== undefined) {
+    const err = validateIntegerRange(memoryConsolidation.snapshotRetention, 'memoryConsolidation.snapshotRetention', 1, 90)
+    if (err) return { error: err, changed: false }
+    existing.snapshotRetention = memoryConsolidation.snapshotRetention
+  }
+
   settingsRaw.memoryConsolidation = existing
   return { error: null, changed: true }
 }

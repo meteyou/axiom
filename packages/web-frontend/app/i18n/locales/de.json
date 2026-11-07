@@ -708,6 +708,8 @@
     "consolidationRunAtHourHint": "Stunde des Tages (0–23), zu der der Konsolidierungsjob läuft. Verwendet die lokale Serverzeit.",
     "consolidationLookbackDays": "Rückblick-Tage",
     "consolidationLookbackDaysHint": "Anzahl vergangener Tage des Tagesgedächtnisses, die pro Durchlauf überprüft werden.",
+    "consolidationSnapshotRetention": "Aufbewahrte Snapshots",
+    "consolidationSnapshotRetentionHint": "Vor jedem Durchlauf werden MEMORY.md, Benutzerprofile und das Wiki nach /data/memory-snapshots/ kopiert. Ältere Snapshots über diese Anzahl hinaus werden gelöscht.",
     "consolidationProvider": "Provider",
     "consolidationProviderDefault": "Aktiver Provider (Standard)",
     "consolidationProviderHint": "Wähle einen bestimmten Provider/Modell für die Konsolidierung oder nutze den aktiven Provider.",

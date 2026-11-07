@@ -125,7 +125,15 @@ How aggressively it promotes vs. drops is governed by `/data/config/CONSOLIDATIO
 
 On instances with several users, consolidation runs **once per user**, sequentially, with the bootstrap admin (the first account) last. A user's run reads only that user's daily notes and chat history and may update their own profile, the shared `MEMORY.md` (general lessons only, no personal data) and the wiki. Users with no daily notes in the lookback window are skipped. The global steps — wiki lint, source coverage and `MEMORY.md` compaction — run only in the admin run. A manual run (admin only) executes the whole sequence, and the consolidation status reflects the combined result. Single-user instances behave as before.
 
-Schedule, lookback window, and provider are configured under [Settings → Memory](./../settings/memory#memory-consolidation). You can also trigger a consolidation run manually from the Memory page in the web UI.
+### Snapshots before each run
+
+Consolidation rewrites `MEMORY.md`, profiles, and wiki pages with an LLM, so every run first copies them to `/data/memory-snapshots/<timestamp>/`. A snapshot contains `MEMORY.md`, `memory/users/`, `memory/wiki/`, and the `PROFILE.md` of every other user, stored under the same paths they have below `/data` (for example `memory-snapshots/<timestamp>/memory/MEMORY.md`). Daily notes, sources, and `SOUL.md` are not included: consolidation never writes them.
+
+If the snapshot cannot be written (disk full, permissions), the run is **aborted** before any task starts; the consolidation status and the activity log show `Memory snapshot failed, consolidation aborted: …`. Only the newest snapshots are kept — 7 by default, configurable as [Snapshots to keep](./../settings/memory#snapshots-to-keep).
+
+To undo a bad run, copy the files you need back from the snapshot, e.g. `cp /data/memory-snapshots/<timestamp>/memory/MEMORY.md /data/memory/MEMORY.md`. There is no restore button yet.
+
+Schedule, lookback window, provider, and snapshot retention are configured under [Settings → Memory](./../settings/memory#memory-consolidation). You can also trigger a consolidation run manually from the Memory page in the web UI.
 
 ## See also
 

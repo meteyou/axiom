@@ -708,6 +708,8 @@
     "consolidationRunAtHourHint": "Hour of the day (0–23) when the consolidation job runs. Uses server local time.",
     "consolidationLookbackDays": "Lookback days",
     "consolidationLookbackDaysHint": "Number of past days of daily memory to review in each run.",
+    "consolidationSnapshotRetention": "Snapshots to keep",
+    "consolidationSnapshotRetentionHint": "Before each run, MEMORY.md, user profiles and the wiki are copied to /data/memory-snapshots/. Older snapshots beyond this count are deleted.",
     "consolidationProvider": "Provider",
     "consolidationProviderDefault": "Active provider (default)",
     "consolidationProviderHint": "Choose a specific provider/model for consolidation, or use the active provider.",
