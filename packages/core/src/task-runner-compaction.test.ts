@@ -3,7 +3,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentTool } from '@earendil-works/pi-agent-core'
-import { Type, createFauxCore, fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai'
+import { createFauxCore, fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai'
+import { Type } from 'typebox'
 import type { TranscriptContext } from '@earendil-works/pi-ai'
 import { initDatabase } from './database.js'
 import type { Database } from './database.js'
@@ -44,7 +45,7 @@ vi.mock('./pi-models.js', async (importOriginal) => {
 })
 
 const SUMMARY_TEXT = '## Goal\n- Collect the pages and report\n\n## Open Threads & Next Steps\n1. Write the report'
-const PAGE_TOKENS = 9_000
+const PAGE_TOKENS = 10_000
 
 const provider: ProviderConfig = {
   id: 'faux-provider-id',

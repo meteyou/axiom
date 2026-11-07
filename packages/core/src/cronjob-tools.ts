@@ -1,5 +1,5 @@
 import type { AgentTool } from '@earendil-works/pi-agent-core'
-import { Type } from '@earendil-works/pi-ai'
+import { Type } from 'typebox'
 import type { ScheduledTask, ScheduledTaskActionType } from './scheduled-task-store.js'
 import type { TaskRuntimeScheduleBoundary } from './task-runtime.js'
 import { formatDateKey, formatTimeKey } from './memory.js'
