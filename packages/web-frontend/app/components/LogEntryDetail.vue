@@ -29,11 +29,10 @@ function extractFileNameFromInput(input: string | null | undefined): string | nu
   return null
 }
 
-/** Check if this is an edit_file on a memory file — render edits directly from input */
+/** Check if this is a file_edit on a memory file — render edits directly from input */
 const memoryEditsInfo = computed<{ edits: Array<{ oldText: string; newText: string }>; fileName: string | null } | null>(() => {
   if (!props.entry) return null
-  const toolName = props.entry.toolName
-  if (toolName !== 'edit_file' && toolName !== 'Edit') return null
+  if (fileToolKind(props.entry.toolName) !== 'edit') return null
 
   try {
     const input = JSON.parse(props.entry.input ?? '{}')
@@ -52,14 +51,13 @@ const memoryEditsInfo = computed<{ edits: Array<{ oldText: string; newText: stri
 })
 
 /**
- * For `write_file` calls on memory files, render the new content as an
- * all-added diff. Surgical edits should use `edit_file`, which produces a
+ * For `file_write` calls on memory files, render the new content as an
+ * all-added diff. Surgical edits should use `file_edit`, which produces a
  * real before/after view from its `edits` arg — see `memoryEditsInfo` above.
  */
 const memoryFileDiff = computed<{ before: string; after: string; fileName: string | null } | null>(() => {
   if (!props.entry) return null
-  const toolName = props.entry.toolName
-  if (toolName !== 'write_file' && toolName !== 'Write') return null
+  if (fileToolKind(props.entry.toolName) !== 'write') return null
 
   const fileName = extractFileNameFromInput(props.entry.input)
   if (!fileName) return null

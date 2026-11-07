@@ -3,6 +3,7 @@ import type { Database } from './database.js'
 import type { SettingsThinkingLevel } from './contracts/settings.js'
 import { normalizeThinkingLevel } from './thinking-level.js'
 import { getBootstrapAdminId } from './user-scope.js'
+import { migrateDisabledToolNames } from './contracts/tool-names.js'
 
 export type ScheduledTaskActionType = 'task' | 'injection'
 
@@ -25,7 +26,7 @@ export interface ScheduledTask {
    * `/data/skills_agent/<name>/`) whose `SKILL.md` content should be
    * injected verbatim into the task prompt under an `<attached_skills>`
    * block. Lets cronjobs bake skill rules into the prompt deterministically
-   * instead of requiring the task agent to `read_file` them on every run.
+   * instead of requiring the task agent to `file_read` them on every run.
    */
   attachedSkills: string[] | null
   /** Thinking level for the spawned task; `null` = the background default at run time. */
@@ -156,6 +157,35 @@ export function migrateScheduledTaskOwners(db: Database): void {
   const bootstrapAdminId = getBootstrapAdminId(db)
   if (bootstrapAdminId === null) return
   db.prepare('UPDATE scheduled_tasks SET owner_user_id = ? WHERE owner_user_id IS NULL').run(bootstrapAdminId)
+}
+
+/**
+ * Rewrites legacy tool names in `scheduled_tasks.tools_override` to the current
+ * names. Idempotent: overrides without legacy names are left untouched.
+ */
+export function migrateScheduledTaskToolOverrides(db: Database): void {
+  const rows = db.prepare(
+    "SELECT id, name, tools_override FROM scheduled_tasks WHERE tools_override IS NOT NULL AND tools_override != ''",
+  ).all() as { id: string; name: string; tools_override: string }[]
+  const update = db.prepare('UPDATE scheduled_tasks SET tools_override = ? WHERE id = ?')
+
+  db.transaction(() => {
+    for (const row of rows) {
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(row.tools_override)
+      } catch {
+        continue
+      }
+      if (!Array.isArray(parsed) || !parsed.every((name): name is string => typeof name === 'string')) continue
+
+      const migrated = migrateDisabledToolNames(parsed)
+      for (const kept of migrated.keptEnabled) {
+        console.log(`[db] Cronjob "${row.name}" (${row.id}): ${kept.name} stays enabled — only ${kept.disabledLegacyNames.join(', ')} of its legacy tools were disabled`)
+      }
+      if (migrated.changed) update.run(JSON.stringify(migrated.names), row.id)
+    }
+  })()
 }
 
 /**

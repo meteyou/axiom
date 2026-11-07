@@ -1,3 +1,4 @@
+import { currentToolName } from '@axiom/core/contracts'
 import type { LogEntry } from '~/composables/useLogs'
 
 /**
@@ -15,9 +16,9 @@ export function useLogDisplay() {
     return isSkillLoad(entry.toolName, entry.input)
   }
 
-  /** User-facing tool name (replaces read_file with "Load Skill" when applicable) */
+  /** User-facing tool name: "Load Skill" for skill loads, otherwise the current name of renamed tools */
   function entryDisplayName(entry: LogEntry): string {
-    return isEntrySkillLoad(entry) ? 'Load Skill' : entry.toolName
+    return isEntrySkillLoad(entry) ? 'Load Skill' : currentToolName(entry.toolName)
   }
 
   /**

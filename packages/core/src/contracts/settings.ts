@@ -191,9 +191,9 @@ export interface AppearanceSettingsContract {
 export const IMAGE_GENERATION_MAX_VARIANTS_BOUNDS = { min: 1, max: 10 } as const
 
 export interface ImageGenerationSettingsContract {
-  /** Master switch for `generate_image`; enabled image models are still required. */
+  /** Master switch for `image_generate`; enabled image models are still required. */
   enabled: boolean
-  /** Default model of `generate_image` as `providerId:modelId`; empty selects the first enabled image model. */
+  /** Default model of `image_generate` as `providerId:modelId`; empty selects the first enabled image model. */
   defaultModel: string
   /** Upper bound of the tool's `n` parameter. */
   maxVariants: number

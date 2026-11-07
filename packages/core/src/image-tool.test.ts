@@ -69,7 +69,7 @@ function textOf(output: ToolOutput): string {
   return output.content.map(part => part.text ?? '').join('\n')
 }
 
-describe('generate_image tool', () => {
+describe('image_generate tool', () => {
   let workspace: string
   let dataDir: string
   let db: Database
@@ -134,7 +134,7 @@ describe('generate_image tool', () => {
     expect(text).toContain('image/webp')
     expect(text).toContain('$0.0350')
     expect(text).toContain('5.7 s')
-    expect(text).toContain('send_file_to_user')
+    expect(text).toContain('file_send')
     expect(JSON.stringify(output)).not.toContain(IMAGE_BASE64)
     expect(output.details).toMatchObject({ model: 'recraft/recraft-v4.1', costUsd: 0.035, durationMs: 5736 })
     expect(generate).toHaveBeenCalledWith(expect.objectContaining({
@@ -388,7 +388,7 @@ describe('generate_image tool', () => {
     expect(createImageGenerationTools()).toEqual([])
 
     fs.writeFileSync(providersPath, JSON.stringify({ providers: [provider] }))
-    expect(createImageGenerationTools().map(tool => tool.name)).toEqual(['generate_image'])
+    expect(createImageGenerationTools().map(tool => tool.name)).toEqual(['image_generate'])
 
     fs.writeFileSync(providersPath, JSON.stringify({ providers: [{ ...provider, disabled: true }] }))
     expect(createImageGenerationTools()).toEqual([])
@@ -407,7 +407,7 @@ describe('generate_image tool', () => {
     expect(createImageGenerationTools()).toEqual([])
 
     writeSettings(true)
-    expect(createImageGenerationTools().map(tool => tool.name)).toEqual(['generate_image'])
+    expect(createImageGenerationTools().map(tool => tool.name)).toEqual(['image_generate'])
   })
 
   it('is not registered while settings.json cannot be read, even with usable image models', () => {

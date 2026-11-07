@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import BetterSqlite3 from 'better-sqlite3'
 import { initDatabase } from './database.js'
-import { ScheduledTaskStore } from './scheduled-task-store.js'
+import { ScheduledTaskStore, migrateScheduledTaskToolOverrides } from './scheduled-task-store.js'
 import type { Database } from './database.js'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -269,6 +269,56 @@ describe('ScheduledTaskStore', () => {
         for (const suffix of ['', '-wal', '-shm']) {
           try { fs.unlinkSync(legacyPath + suffix) } catch { /* ignore */ }
         }
+      }
+    })
+  })
+
+  describe('tool override migration', () => {
+    function createWithOverride(toolsOverride: string | null) {
+      const task = store.create({ name: 'Job', prompt: 'p', schedule: '0 9 * * *' })
+      return store.update(task.id, { toolsOverride })!
+    }
+
+    it('rewrites legacy tool names to the current names', () => {
+      const task = createWithOverride(JSON.stringify(['shell', 'write_file', 'send_file_to_user']))
+      migrateScheduledTaskToolOverrides(db)
+      expect(store.getById(task.id)!.toolsOverride).toBe(JSON.stringify(['shell', 'file_write', 'file_send']))
+    })
+
+    it('is a no-op when run twice', () => {
+      const task = createWithOverride(JSON.stringify(['read_file', 'file_read', 'generate_image']))
+      migrateScheduledTaskToolOverrides(db)
+      const migrated = store.getById(task.id)!
+      expect(migrated.toolsOverride).toBe(JSON.stringify(['file_read', 'image_generate']))
+
+      migrateScheduledTaskToolOverrides(db)
+      const again = store.getById(task.id)!
+      expect(again.toolsOverride).toBe(migrated.toolsOverride)
+      expect(again.updatedAt).toBe(migrated.updatedAt)
+    })
+
+    it('leaves current, empty and invalid overrides untouched', () => {
+      const current = createWithOverride(JSON.stringify(['shell', 'file_edit']))
+      const empty = createWithOverride(null)
+      const invalid = createWithOverride('not-json')
+      migrateScheduledTaskToolOverrides(db)
+      expect(store.getById(current.id)!.toolsOverride).toBe(JSON.stringify(['shell', 'file_edit']))
+      expect(store.getById(empty.id)!.toolsOverride).toBeNull()
+      expect(store.getById(invalid.id)!.toolsOverride).toBe('not-json')
+    })
+
+    it('runs as part of database initialization', () => {
+      const dbPath = tmpDbPath()
+      const first = initDatabase(dbPath)
+      const task = new ScheduledTaskStore(first).create({ name: 'Job', prompt: 'p', schedule: '0 9 * * *' })
+      first.prepare('UPDATE scheduled_tasks SET tools_override = ? WHERE id = ?').run(JSON.stringify(['edit_file']), task.id)
+      first.close()
+
+      const reopened = initDatabase(dbPath)
+      try {
+        expect(new ScheduledTaskStore(reopened).getById(task.id)!.toolsOverride).toBe(JSON.stringify(['file_edit']))
+      } finally {
+        reopened.close()
       }
     })
   })

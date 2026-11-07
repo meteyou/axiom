@@ -181,10 +181,10 @@ describe('multi-user memory and workspace', () => {
       const pwd = await tool(tools, 'shell').execute('c', { command: 'pwd' })
       expect(fs.realpathSync(text(pwd).trim())).toBe(fs.realpathSync(workspace))
 
-      await tool(tools, 'write_file').execute('c', { path: 'note.txt', content: 'hi' })
+      await tool(tools, 'file_write').execute('c', { path: 'note.txt', content: 'hi' })
       expect(fs.readFileSync(path.join(workspace, 'note.txt'), 'utf-8')).toBe('hi')
-      expect(text(await tool(tools, 'read_file').execute('c', { path: 'note.txt' }))).toContain('hi')
-      expect(text(await tool(tools, 'list_files').execute('c', { path: '.' }))).toContain('note.txt')
+      expect(text(await tool(tools, 'file_read').execute('c', { path: 'note.txt' }))).toContain('hi')
+      expect(text(await tool(tools, 'file_list').execute('c', { path: '.' }))).toContain('note.txt')
     })
 
     it('keeps the legacy workspace for the bootstrap admin', async () => {
@@ -200,11 +200,11 @@ describe('multi-user memory and workspace', () => {
       addSession('s-ann', ann, 'ann private message')
       addSession('s-bob', bob, 'bob private message')
 
-      const annResult = text(await tool(toolsFor(ann), 'read_chat_history').execute('c', {}))
+      const annResult = text(await tool(toolsFor(ann), 'chat_history_read').execute('c', {}))
       expect(annResult).toContain('ann private message')
       expect(annResult).not.toContain('bob private message')
 
-      const bySession = text(await tool(toolsFor(ann), 'read_chat_history').execute('c', { session_id: 's-bob' }))
+      const bySession = text(await tool(toolsFor(ann), 'chat_history_read').execute('c', { session_id: 's-bob' }))
       expect(bySession).not.toContain('bob private message')
     })
 
@@ -215,7 +215,7 @@ describe('multi-user memory and workspace', () => {
       db.prepare("INSERT INTO chat_messages (session_id, user_id, role, content) VALUES ('s-tg', NULL, 'user', 'telegram message')").run()
 
       const tools = createBaseAgentTools({ db, user: null, sessionUser: 'telegram-42' })
-      const result = text(await tool(tools, 'read_chat_history').execute('c', {}))
+      const result = text(await tool(tools, 'chat_history_read').execute('c', {}))
       expect(result).toContain('telegram message')
       expect(result).not.toContain('ann private message')
     })
@@ -228,7 +228,7 @@ describe('multi-user memory and workspace', () => {
       createMemory(db, null, null, 'ownerless zebrafish fact', 'task')
 
       const tools = createBaseAgentTools({ db, user: null, sessionUser: 'telegram-42' })
-      const result = text(await tool(tools, 'search_memories').execute('c', { query: 'zebrafish' }))
+      const result = text(await tool(tools, 'memory_search').execute('c', { query: 'zebrafish' }))
       expect(result).toContain('telegram likes')
       expect(result).not.toContain('ann likes')
       expect(result).not.toContain('ownerless')
@@ -238,10 +238,10 @@ describe('multi-user memory and workspace', () => {
       db.prepare("INSERT INTO sessions (id, user_id, source, type, session_user) VALUES ('s-task', NULL, 'task', 'task', NULL)").run()
       db.prepare("INSERT INTO chat_messages (session_id, user_id, role, content) VALUES ('s-task', NULL, 'assistant', 'task transcript')").run()
 
-      const adminResult = text(await tool(toolsFor(admin), 'read_chat_history').execute('c', { source: 'task' }))
+      const adminResult = text(await tool(toolsFor(admin), 'chat_history_read').execute('c', { source: 'task' }))
       expect(adminResult).toContain('task transcript')
 
-      const annResult = text(await tool(toolsFor(ann), 'read_chat_history').execute('c', { source: 'task' }))
+      const annResult = text(await tool(toolsFor(ann), 'chat_history_read').execute('c', { source: 'task' }))
       expect(annResult).not.toContain('task transcript')
     })
 
@@ -249,7 +249,7 @@ describe('multi-user memory and workspace', () => {
       createMemory(db, ann, 'sess-a', 'ann likes zebrafish', 'web')
       createMemory(db, bob, 'sess-b', 'bob likes zebrafish too', 'web')
 
-      const result = text(await tool(toolsFor(ann), 'search_memories').execute('c', { query: 'zebrafish' }))
+      const result = text(await tool(toolsFor(ann), 'memory_search').execute('c', { query: 'zebrafish' }))
       expect(result).toContain('ann likes')
       expect(result).not.toContain('bob likes')
     })

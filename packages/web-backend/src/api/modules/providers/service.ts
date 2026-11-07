@@ -231,7 +231,7 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
     return JSON.stringify(loadProviders().providers.map(p => [p.id, getUsableImageModels(p)]))
   }
 
-  /** Background agents build their tool set once; tell them when `generate_image` may have to appear or vanish. */
+  /** Background agents build their tool set once; tell them when `image_generate` may have to appear or vanish. */
   function notifyOnImageModelChange<T>(mutate: () => T): T {
     const before = usableImageModelSignature()
     const result = mutate()

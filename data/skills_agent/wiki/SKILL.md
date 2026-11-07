@@ -1,6 +1,6 @@
 ---
 name: wiki
-version: 1.2.0
+version: 1.3.0
 description: Maintain and search the user's LLM wiki (knowledge base of Markdown pages). Use this skill for ingesting new sources, querying the wiki, and wiki maintenance/linting.
 ---
 
@@ -118,7 +118,7 @@ Update this `SKILL.md` when wiki conventions evolve. Good triggers:
 
 How to update the schema/rules:
 
-1. Edit `SKILL.md` directly with `edit_file` (or equivalent focused file editing).
+1. Edit `SKILL.md` directly with `file_edit` (or equivalent focused file editing).
 2. Keep the change narrow and operational.
 3. Append an `update` entry to `/data/memory/wiki/log.md` describing the rule change.
 
@@ -139,7 +139,7 @@ Goal: extract knowledge from an external source (URL, file, conversation context
    - Body: the raw text as received — no interpretation, no editing
    - **Never modify an existing source file.** If the source itself changes, add a new dated file.
 
-3. **List existing wiki pages** via `list_files /data/memory/wiki/`:
+3. **List existing wiki pages** via `file_list /data/memory/wiki/`:
    - Which pages already exist?
    - Is there an existing page that should be extended?
 
@@ -162,18 +162,18 @@ Goal: extract knowledge from an external source (URL, file, conversation context
 **Example — ingest a web article:**
 ```
 1. web_fetch the URL
-2. write_file /data/memory/sources/articles/2026-04-17-<slug>.md (raw text, with frontmatter)
-3. list_files /data/memory/wiki/
+2. file_write /data/memory/sources/articles/2026-04-17-<slug>.md (raw text, with frontmatter)
+3. file_list /data/memory/wiki/
 4. Extract relevant knowledge, identify duplicates
-5. write_file or edit_file /data/memory/wiki/topic.md with distilled knowledge + ## Sources pointing to the archived source
+5. file_write or file_edit /data/memory/wiki/topic.md with distilled knowledge + ## Sources pointing to the archived source
 ```
 
 **Example — ingest context from a conversation:**
 ```
-1. list_files /data/memory/wiki/
+1. file_list /data/memory/wiki/
 2. Check whether a matching page exists
-3. If yes: edit_file to add a section
-4. If no: write_file to create a new page
+3. If yes: file_edit to add a section
+4. If no: file_write to create a new page
 (No sources/ archive needed when the "source" is just conversational context.)
 ```
 
@@ -185,9 +185,9 @@ Goal: search the wiki for knowledge relevant to a current task.
 
 **Steps:**
 
-1. `list_files /data/memory/wiki/` — list all pages
+1. `file_list /data/memory/wiki/` — list all pages
 2. Scan filenames: which pages might be relevant?
-3. Read relevant pages with `read_file`
+3. Read relevant pages with `file_read`
 4. If a page links to others (`[Name](file.md)`): read those too
 
 **Tips:**
@@ -210,8 +210,8 @@ Goal: audit the wiki for quality — find contradictions, orphaned pages, missin
 
 1. **Triage before reading everything:**
    ```
-   read_file /data/memory/wiki/index.md
-   list_files /data/memory/wiki/
+   file_read /data/memory/wiki/index.md
+   file_list /data/memory/wiki/
    shell: wc -l /data/memory/wiki/*.md /data/memory/wiki/*/*.md
    ```
    For small wikis (< ~20 pages) read every page. For larger wikis read fully only the pages that are relevant to recent changes, oversized, or flagged by earlier lint reports — do not burn tokens re-reading the whole wiki every run.
@@ -227,7 +227,7 @@ Goal: audit the wiki for quality — find contradictions, orphaned pages, missin
 
 4. **Find missing cross-links:**
    - Concepts mentioned on page A for which page B exists — but no link?
-   - Add cross-links with `edit_file`
+   - Add cross-links with `file_edit`
 
 5. **Surface content gaps** (Karpathy/AI-Maker-Lab pattern):
    - Which concepts, people, projects, or tools are **referenced repeatedly across pages but have no dedicated page**?
@@ -255,7 +255,7 @@ Goal: audit the wiki for quality — find contradictions, orphaned pages, missin
      ```
 
 9. **Apply fixes:**
-   - Apply obvious corrections directly (edit_file)
+   - Apply obvious corrections directly (file_edit)
    - Only when certain — no speculative changes
    - Gap suggestions are reported only, not auto-resolved
 

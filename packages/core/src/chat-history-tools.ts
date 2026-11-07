@@ -29,7 +29,7 @@ interface ChatMessageRow {
 }
 
 /**
- * Create the `read_chat_history` agent tool.
+ * Create the `chat_history_read` agent tool.
  *
  * Reads chat messages from the database with optional datetime and source filtering.
  * Useful for:
@@ -39,7 +39,7 @@ interface ChatMessageRow {
  */
 export function createReadChatHistoryTool(options: ChatHistoryToolsOptions): AgentTool {
   return {
-    name: 'read_chat_history',
+    name: 'chat_history_read',
     label: 'Read Chat History',
     description:
       'Read chat messages from the database. Supports filtering by datetime range, source (web/telegram/task), ' +

@@ -71,7 +71,7 @@ describe('TaskEventBus', () => {
       taskId: 'task-1',
       timestamp: '2024-01-01T00:00:00Z',
       toolCallId: 'parent-1',
-      nestedCalls: [{ id: 'parent-1/read_file/1', name: 'read_file', status: 'running' }],
+      nestedCalls: [{ id: 'parent-1/file_read/1', name: 'file_read', status: 'running' }],
     })
     bus.emitTaskEvent({
       type: 'tool_call_start',
@@ -85,8 +85,8 @@ describe('TaskEventBus', () => {
       timestamp: '2024-01-01T00:00:02Z',
       toolCallId: 'parent-1',
       nestedCalls: [
-        { id: 'parent-1/read_file/1', name: 'read_file', status: 'ok', durationMs: 12 },
-        { id: 'parent-1/read_file/2', name: 'read_file', status: 'running' },
+        { id: 'parent-1/file_read/1', name: 'file_read', status: 'ok', durationMs: 12 },
+        { id: 'parent-1/file_read/2', name: 'file_read', status: 'running' },
       ],
     })
     bus.emitTaskEvent({
@@ -105,8 +105,8 @@ describe('TaskEventBus', () => {
       type: 'codemode_progress',
       toolCallId: 'parent-1',
       nestedCalls: [
-        { id: 'parent-1/read_file/1', name: 'read_file', status: 'ok', durationMs: 12 },
-        { id: 'parent-1/read_file/2', name: 'read_file', status: 'running' },
+        { id: 'parent-1/file_read/1', name: 'file_read', status: 'ok', durationMs: 12 },
+        { id: 'parent-1/file_read/2', name: 'file_read', status: 'running' },
       ],
     })
     expect(backlog[1]).toMatchObject({ type: 'tool_call_start', toolName: 'bash' })
@@ -127,14 +127,14 @@ describe('TaskEventBus', () => {
       taskId: 'task-1',
       timestamp: '2024-01-01T00:00:00Z',
       toolCallId: 'parent-1',
-      nestedCalls: [{ id: 'parent-1/read_file/1', name: 'read_file', status: 'running' }],
+      nestedCalls: [{ id: 'parent-1/file_read/1', name: 'file_read', status: 'running' }],
     })
     bus.emitTaskEvent({
       type: 'codemode_progress',
       taskId: 'task-1',
       timestamp: '2024-01-01T00:00:01Z',
       toolCallId: 'parent-1',
-      nestedCalls: [{ id: 'parent-1/read_file/1', name: 'read_file', status: 'ok', durationMs: 12 }],
+      nestedCalls: [{ id: 'parent-1/file_read/1', name: 'file_read', status: 'ok', durationMs: 12 }],
     })
 
     expect(handler).toHaveBeenCalledTimes(2)

@@ -189,7 +189,7 @@ describe('createTranscriptImageBudget', () => {
   it('keeps the newest images within the count budget and omits everything older', async () => {
     const transcript = [
       { role: 'user', content: [{ type: 'text', text: 'first' }, imageBlock(10)], timestamp: 1 },
-      { role: 'toolResult', toolCallId: 't1', toolName: 'read_file', content: [imageBlock(10)], isError: false, timestamp: 2 },
+      { role: 'toolResult', toolCallId: 't1', toolName: 'file_read', content: [imageBlock(10)], isError: false, timestamp: 2 },
       { role: 'user', content: [imageBlock(10), imageBlock(10)], timestamp: 3 },
     ] as AgentMessage[]
     const budget = createTranscriptImageBudget(() => modelWithLimits({ images: { maxPerRequest: 2 } }))

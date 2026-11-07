@@ -1,5 +1,7 @@
+import { currentToolName } from '@axiom/core/contracts'
+
 /**
- * Detects when a read_file tool call is loading a SKILL.md file
+ * Detects when a file_read tool call is loading a SKILL.md file
  * and provides helpers to extract skill name and formatted content.
  */
 export function useSkillDetection() {
@@ -9,7 +11,7 @@ export function useSkillDetection() {
    * Works with both parsed objects and JSON strings.
    */
   function isSkillLoad(toolName: string, input: unknown): boolean {
-    if (toolName !== 'read_file') return false
+    if (currentToolName(toolName) !== 'file_read') return false
     const path = extractPath(input)
     return path !== null && /\/SKILL\.md$/i.test(path)
   }
@@ -28,7 +30,7 @@ export function useSkillDetection() {
   }
 
   /**
-   * Extract the readable text content from a read_file output.
+   * Extract the readable text content from a file_read output.
    * The output typically has the shape:
    *   { content: [{ type: "text", text: "..." }] }
    * or is a JSON string wrapping that structure.

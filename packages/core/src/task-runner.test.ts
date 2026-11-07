@@ -1242,7 +1242,7 @@ describe('TaskRunner', () => {
       // Add some tool calls for the session
       db.prepare(
         "INSERT INTO tool_calls (session_id, tool_name, input, output, duration_ms, status) VALUES (?, ?, ?, ?, ?, 'success')"
-      ).run('session-restart-test', 'read_file', '{"path":"index.ts"}', '"file contents"', 100)
+      ).run('session-restart-test', 'file_read', '{"path":"index.ts"}', '"file contents"', 100)
 
       const result = await runner.recoverTasks(
         (name) => name === 'test-provider' ? mockProvider : null,
@@ -1262,7 +1262,7 @@ describe('TaskRunner', () => {
       expect(resumedTask).toBeDefined()
       expect(resumedTask!.prompt).toContain('Build an app')
       expect(resumedTask!.prompt).toContain('server restart')
-      expect(resumedTask!.prompt).toContain('Progress from previous run (1 tool calls made):\n- read_file: "file contents"')
+      expect(resumedTask!.prompt).toContain('Progress from previous run (1 tool calls made):\n- file_read: "file contents"')
       expect(resumedTask!.prompt).not.toContain('<recovery_context>')
       expect(original.resultSummary).toBe(`server restart — task being resumed as ${resumedTask!.id}`)
     })
@@ -1283,17 +1283,17 @@ describe('TaskRunner', () => {
     it('builds the resume prompt from the tool journal including arguments', async () => {
       const task = createCrashedTask('journal-recovery-session')
       const journal = new TaskToolJournal(db)
-      journal.recordStarted({ taskId: task.id, sessionId: 'journal-recovery-session', toolCallId: 'call-1', toolName: 'read_file', args: { path: 'CHANGELOG.md' }, replay: 'safe' })
+      journal.recordStarted({ taskId: task.id, sessionId: 'journal-recovery-session', toolCallId: 'call-1', toolName: 'file_read', args: { path: 'CHANGELOG.md' }, replay: 'safe' })
       journal.recordEnded({ taskId: task.id, toolCallId: 'call-1', isError: false, result: { content: [{ type: 'text', text: '## 1.2.0' }] } })
       db.prepare(
-        "INSERT INTO tool_calls (session_id, tool_name, input, output, duration_ms, status) VALUES (?, 'read_file', '{}', 'legacy output', 1, 'success')"
+        "INSERT INTO tool_calls (session_id, tool_name, input, output, duration_ms, status) VALUES (?, 'file_read', '{}', 'legacy output', 1, 'success')"
       ).run('journal-recovery-session')
 
       const prompt = await recoverAndGetResumedPrompt()
 
       expect(prompt).toContain('Ship the release')
       expect(prompt).toContain('<recovery_context>')
-      expect(prompt).toContain('1. read_file {"path":"CHANGELOG.md"} → completed\n   Result: ## 1.2.0')
+      expect(prompt).toContain('1. file_read {"path":"CHANGELOG.md"} → completed\n   Result: ## 1.2.0')
       expect(prompt).not.toContain('legacy output')
       expect(prompt).not.toContain('Continue from where you left off')
     })
@@ -1422,8 +1422,8 @@ describe('TaskRunner', () => {
 
       // Recreate runner with named tools
       const toolA = { name: 'shell', description: 'Shell', parameters: {}, execute: async () => '' }
-      const toolB = { name: 'read_file', description: 'Read', parameters: {}, execute: async () => '' }
-      const toolC = { name: 'write_file', description: 'Write', parameters: {}, execute: async () => '' }
+      const toolB = { name: 'file_read', description: 'Read', parameters: {}, execute: async () => '' }
+      const toolC = { name: 'file_write', description: 'Write', parameters: {}, execute: async () => '' }
 
       const runnerWithTools = new TaskRunner({
         db,
@@ -1440,6 +1440,7 @@ describe('TaskRunner', () => {
         triggerType: 'cronjob',
       })
 
+      // `write_file` is the legacy name of file_write and must still disable it.
       const overrides: TaskOverrides = {
         toolsOverride: JSON.stringify(['shell', 'write_file']),
       }
@@ -1447,11 +1448,11 @@ describe('TaskRunner', () => {
       await runnerWithTools.startTask(task, mockProvider, overrides)
       await new Promise(resolve => setTimeout(resolve, 100))
 
-      // The PiAgent should have been created with only read_file
+      // The PiAgent should have been created with only file_read
       expect(capturedOptions).toBeTruthy()
       const passedTools = capturedOptions!.initialState.tools
       expect(passedTools).toHaveLength(1)
-      expect(passedTools[0].name).toBe('read_file')
+      expect(passedTools[0].name).toBe('file_read')
 
       runnerWithTools.dispose()
     })
@@ -1752,8 +1753,8 @@ describe('TaskRunner', () => {
     }
 
     const readFileTool: AgentTool = {
-      name: 'read_file',
-      label: 'read_file',
+      name: 'file_read',
+      label: 'file_read',
       description: 'Read a file from the workspace.',
       parameters: Type.Object({ path: Type.String() }),
       execute: async () => ({ content: [{ type: 'text' as const, text: 'file contents' }], details: {} }),
@@ -1785,7 +1786,7 @@ describe('TaskRunner', () => {
       const { taskId, session, codemode, runner } = await startCodemodeTask([readFileTool, shellTool])
       try {
         const result = await codemode.execute('parent-1', {
-          code: `const r = await tools.read_file({ path: 'a.md' });
+          code: `const r = await tools.file_read({ path: 'a.md' });
 const s = await tools.shell({ command: 'ls' });
 return r + s;`,
         }) as { isError?: boolean }
@@ -1794,17 +1795,17 @@ return r + s;`,
         // Tool-call log: one row per nested call, each linked to the codemode call.
         const rows = nestedLogRows(session)
         expect(rows).toHaveLength(2)
-        expect(rows[0]).toMatchObject({ tool_name: 'read_file', parent_tool_call_id: 'parent-1', status: 'success' })
+        expect(rows[0]).toMatchObject({ tool_name: 'file_read', parent_tool_call_id: 'parent-1', status: 'success' })
         expect(rows[1]).toMatchObject({ tool_name: 'shell', parent_tool_call_id: 'parent-1', status: 'success' })
-        expect(rows[0].tool_call_id).toBe('parent-1/read_file/1')
+        expect(rows[0].tool_call_id).toBe('parent-1/file_read/1')
         expect(rows[1].tool_call_id).toBe('parent-1/shell/1')
 
         // Journal: each nested call with its own tool's replay policy.
         const journal = new TaskToolJournal(db).listForTask(taskId)
         expect(journal).toHaveLength(2)
         expect(journal[0]).toMatchObject({
-          toolCallId: 'parent-1/read_file/1',
-          toolName: 'read_file',
+          toolCallId: 'parent-1/file_read/1',
+          toolName: 'file_read',
           replay: 'safe',
           status: 'completed',
         })
@@ -1961,17 +1962,17 @@ return 'done';`,
           args: {},
           partialResult: {
             content: [],
-            details: { calls: [{ id: 'parent-1/read_file/1', name: 'read_file', status: 'running' }] },
+            details: { calls: [{ id: 'parent-1/file_read/1', name: 'file_read', status: 'running' }] },
           },
         })
 
-        await codemode.execute('parent-1', { code: `await tools.read_file({ path: 'a.md' });` })
+        await codemode.execute('parent-1', { code: `await tools.file_read({ path: 'a.md' });` })
         unsubscribe()
 
         const progress = events.filter(event => event.type === 'codemode_progress')
         expect(progress).toHaveLength(1)
         expect(progress[0]).toMatchObject({ taskId, toolCallId: 'parent-1' })
-        expect(progress[0]!.nestedCalls).toEqual([{ id: 'parent-1/read_file/1', name: 'read_file', status: 'running' }])
+        expect(progress[0]!.nestedCalls).toEqual([{ id: 'parent-1/file_read/1', name: 'file_read', status: 'running' }])
       } finally {
         runner.dispose()
       }
@@ -1979,22 +1980,22 @@ return 'done';`,
 
     it('lists nested calls from the journal in the crash-recovery prompt', async () => {
       const hangingTool: AgentTool = {
-        name: 'read_file',
-        label: 'read_file',
+        name: 'file_read',
+        label: 'file_read',
         description: 'Read a file from the workspace.',
         parameters: Type.Object({ path: Type.String() }),
         execute: () => new Promise(() => {}), // never resolves — in flight when the "crash" happens
       }
       const { taskId, codemode, runner } = await startCodemodeTask([hangingTool])
       const scriptAbort = new AbortController()
-      const pending = codemode.execute('parent-1', { code: `await tools.read_file({ path: 'a.md' });` }, scriptAbort.signal)
+      const pending = codemode.execute('parent-1', { code: `await tools.file_read({ path: 'a.md' });` }, scriptAbort.signal)
 
       // Wait until the journal row for the nested call exists (status 'started').
       const journal = new TaskToolJournal(db)
       for (let i = 0; i < 200 && journal.listForTask(taskId).length === 0; i++) {
         await new Promise(resolve => setTimeout(resolve, 25))
       }
-      expect(journal.listForTask(taskId)[0]).toMatchObject({ toolName: 'read_file', status: 'started' })
+      expect(journal.listForTask(taskId)[0]).toMatchObject({ toolName: 'file_read', status: 'started' })
 
       // A new runner picks up the still-running task and builds the recovery
       // prompt from the journal — the nested call must be listed there.
@@ -2011,7 +2012,7 @@ return 'done';`,
       const resumed = store.list().find(task => task.name === 'Nested Task (resumed)')
       expect(resumed).toBeDefined()
       expect(resumed!.prompt).toContain('<recovery_context>')
-      expect(resumed!.prompt).toContain('read_file')
+      expect(resumed!.prompt).toContain('file_read')
       expect(resumed!.prompt).toContain('safe to re-run')
 
       runner.dispose()
@@ -2612,12 +2613,12 @@ return 'done';`,
     it('records the replay policy of each tool', async () => {
       const { task, emit } = await startTaskWithControllableAgent('journal-replay-session')
 
-      emit({ type: 'tool_execution_start', toolCallId: 'call-1', toolName: 'read_file', args: { path: 'a.txt' } })
+      emit({ type: 'tool_execution_start', toolCallId: 'call-1', toolName: 'file_read', args: { path: 'a.txt' } })
       emit({ type: 'tool_execution_start', toolCallId: 'call-2', toolName: 'shell', args: { command: 'ls' } })
       emit({ type: 'tool_execution_start', toolCallId: 'call-3', toolName: 'unclassified_tool', args: {} })
 
       expect(new TaskToolJournal(db).listForTask(task.id).map(entry => [entry.toolName, entry.replay])).toEqual([
-        ['read_file', 'safe'],
+        ['file_read', 'safe'],
         ['shell', 'unsafe'],
         ['unclassified_tool', 'unsafe'],
       ])
@@ -2702,15 +2703,15 @@ return 'done';`,
     it('fails the task when a tool keeps returning the same error result without the isError flag', async () => {
       const { task, abort, emitToolCall } = await startTaskWithLoopDetection('loop-details-error-session')
 
-      emitToolCall('edit_file', failingEditArgs, failingEditResult)
-      emitToolCall('edit_file', failingEditArgs, failingEditResult)
+      emitToolCall('file_edit', failingEditArgs, failingEditResult)
+      emitToolCall('file_edit', failingEditArgs, failingEditResult)
       expect(store.getById(task.id)!.status).toBe('running')
 
-      emitToolCall('edit_file', failingEditArgs, failingEditResult)
+      emitToolCall('file_edit', failingEditArgs, failingEditResult)
 
       const row = store.getById(task.id)!
       expect(row.status).toBe('failed')
-      expect(row.errorMessage).toBe('Loop detected (systematic): Tool "edit_file" produced the same error 3 consecutive times')
+      expect(row.errorMessage).toBe('Loop detected (systematic): Tool "file_edit" produced the same error 3 consecutive times')
       expect(abort).toHaveBeenCalled()
       expect(onTaskCompleteCalls.some(call => call.taskId === task.id && call.injection.includes('Loop detected'))).toBe(true)
     })
@@ -2728,13 +2729,13 @@ return 'done';`,
     it('logs tool results that report details.error as errors in tool_calls', async () => {
       const { emitToolCall } = await startTaskWithLoopDetection('loop-status-session')
 
-      emitToolCall('read_file', { path: 'a.txt' }, { content: [{ type: 'text', text: 'hello' }], details: {} })
-      emitToolCall('edit_file', failingEditArgs, failingEditResult)
+      emitToolCall('file_read', { path: 'a.txt' }, { content: [{ type: 'text', text: 'hello' }], details: {} })
+      emitToolCall('file_edit', failingEditArgs, failingEditResult)
 
       const rows = db.prepare('SELECT tool_name, status FROM tool_calls WHERE session_id = ? ORDER BY id').all('loop-status-session')
       expect(rows).toEqual([
-        { tool_name: 'read_file', status: 'success' },
-        { tool_name: 'edit_file', status: 'error' },
+        { tool_name: 'file_read', status: 'success' },
+        { tool_name: 'file_edit', status: 'error' },
       ])
     })
   })

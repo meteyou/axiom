@@ -19,7 +19,7 @@ function insertMessage(
 }
 
 /**
- * Seed a session row so the `read_chat_history` source filter (which joins
+ * Seed a session row so the `chat_history_read` source filter (which joins
  * the `sessions` table) can resolve its type/source metadata. Safe to call
  * multiple times for the same id — subsequent calls are ignored.
  */
@@ -45,7 +45,7 @@ function getDetails(result: Awaited<ReturnType<AgentTool['execute']>>): Record<s
   return (result as { details: Record<string, unknown> }).details
 }
 
-describe('read_chat_history tool', () => {
+describe('chat_history_read tool', () => {
   let db: Database
   let tool: AgentTool
 

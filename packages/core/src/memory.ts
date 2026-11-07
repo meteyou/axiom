@@ -948,7 +948,7 @@ export function assembleSystemPromptWithSections(options?: SystemPromptOptions):
   const dailyContext = readRecentDailyFiles(recentDays, memoryDir, personal?.paths.dailyDir, options?.timezone)
   if (dailyContext) {
     addSection('recent_memory', `<recent_memory>
-These are summarized session notes from recent days. They are condensed — for full conversation details, use the read_chat_history tool.
+These are summarized session notes from recent days. They are condensed — for full conversation details, use the chat_history_read tool.
 
 ${dailyContext}
 </recent_memory>`)
@@ -1012,7 +1012,7 @@ ${providerLines.join('\n')}`)
       const suffix = labels.join('. ')
       return suffix ? `- ${model.provider} — ${model.id}: ${suffix}` : `- ${model.provider} — ${model.id}`
     })
-    providerBlocks.push(`Image generation models (usable only with \`generate_image\` via its \`model\` parameter — never for chat, tasks or cronjobs). Omit \`model\` to use the default image model.
+    providerBlocks.push(`Image generation models (usable only with \`image_generate\` via its \`model\` parameter — never for chat, tasks or cronjobs). Omit \`model\` to use the default image model.
 
 ${imageModelLines.join('\n')}`)
   }
@@ -1041,13 +1041,13 @@ ${pageLines}
     }).join('\n')
     let overflowNote = ''
     if (options?.agentSkillsOverflowCount && options.agentSkillsOverflowCount > 10) {
-      overflowNote = `\n\nYou have ${options.agentSkillsOverflowCount} self-created agent skills in total (only the 10 most recent are shown above). Use \`list_agent_skills\` to browse all of them.`
+      overflowNote = `\n\nYou have ${options.agentSkillsOverflowCount} self-created agent skills in total (only the 10 most recent are shown above). Use \`skill_list\` to browse all of them.`
     }
 
     addSection('available_skills', `<available_skills>
 The following skills provide specialized capabilities you can load on demand.
 When the user's request materially matches a skill's description, load that skill before continuing.
-To load a skill, use the read_file tool to read <location>/SKILL.md, then follow that file's instructions.
+To load a skill, use the file_read tool to read <location>/SKILL.md, then follow that file's instructions.
 Treat this as a strong routing rule: do not answer from memory when a matching skill should be used first.
 Do not claim to be using a skill unless you actually loaded its SKILL.md in the current conversation.
 

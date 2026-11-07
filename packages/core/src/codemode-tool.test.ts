@@ -361,7 +361,7 @@ await tools.hang({});`)
       size: 2,
     }
     const send = makeTool({
-      name: 'send_file_to_user',
+      name: 'file_send',
       execute: async (_id, params) => {
         const p = (params as { file: string }).file
         return { content: [{ type: 'text' as const, text: 'sent' }], details: { uploadedFile: p === 'a' ? uploadA : uploadB } }
@@ -373,8 +373,8 @@ await tools.hang({});`)
     })
     const codemode = createCodemodeTool({ owner: makeOwner([send, batch]) })
     const result = await run(codemode, `
-      await tools.send_file_to_user({ file: 'a' });
-      await tools.send_file_to_user({ file: 'b' });
+      await tools.file_send({ file: 'a' });
+      await tools.file_send({ file: 'b' });
       await tools.export({});
       return 'done';
     `)
@@ -400,13 +400,13 @@ await tools.hang({});`)
       size: 3,
     }
     const send = makeTool({
-      name: 'send_file_to_user',
+      name: 'file_send',
       execute: async () => ({ content: [{ type: 'text' as const, text: 'sent' }], details: { uploadedFile: upload } }),
     })
     const boom = makeTool({ name: 'boom', execute: async () => { throw new Error('exploded') } })
     const codemode = createCodemodeTool({ owner: makeOwner([send, boom]) })
     const result = await run(codemode, `
-      await tools.send_file_to_user({});
+      await tools.file_send({});
       await tools.boom({});
     `)
     expect(result.isError).toBe(true)
@@ -499,7 +499,7 @@ describe('nested call observer and progress', () => {
     const starts: CodemodeNestedCallStart[] = []
     const ends: CodemodeNestedCallEnd[] = []
     const tool = makeTool({
-      name: 'read_file',
+      name: 'file_read',
       execute: async () => ({ content: [{ type: 'text' as const, text: 'file contents' }], details: {} }),
     })
     const codemode = createCodemodeTool({
@@ -509,22 +509,22 @@ describe('nested call observer and progress', () => {
         onCallEnd: info => ends.push(info),
       },
     })
-    const result = await runWith(codemode, `const r = await tools.read_file({ path: 'a.md' }); return r;`)
+    const result = await runWith(codemode, `const r = await tools.file_read({ path: 'a.md' }); return r;`)
     expect(result.isError).toBeFalsy()
 
     expect(starts).toHaveLength(1)
     expect(starts[0]).toMatchObject({
       parentToolCallId: 'parent-1',
-      toolCallId: 'parent-1/read_file/1',
-      toolName: 'read_file',
+      toolCallId: 'parent-1/file_read/1',
+      toolName: 'file_read',
     })
     expect(starts[0]!.args).toMatchObject({ path: 'a.md' })
 
     expect(ends).toHaveLength(1)
     expect(ends[0]).toMatchObject({
       parentToolCallId: 'parent-1',
-      toolCallId: 'parent-1/read_file/1',
-      toolName: 'read_file',
+      toolCallId: 'parent-1/file_read/1',
+      toolName: 'file_read',
       isError: false,
     })
     expect(ends[0]!.result).toEqual({ content: [{ type: 'text', text: 'file contents' }], details: {} })
@@ -573,28 +573,28 @@ describe('nested call observer and progress', () => {
 
   it('includes the nested call args in the final result details', async () => {
     const tool = makeTool({
-      name: 'read_file',
+      name: 'file_read',
       execute: async () => ({ content: [{ type: 'text' as const, text: 'file contents' }], details: {} }),
     })
     const codemode = createCodemodeTool({ owner: makeOwner([tool]) })
-    const result = await runWith(codemode, `await tools.read_file({ path: 'a.md' });`)
+    const result = await runWith(codemode, `await tools.file_read({ path: 'a.md' });`)
     const calls = result.details.calls as Array<Record<string, unknown>>
     expect(calls).toHaveLength(1)
-    expect(calls[0]).toMatchObject({ id: 'parent-1/read_file/1', name: 'read_file', status: 'ok', args: { path: 'a.md' } })
+    expect(calls[0]).toMatchObject({ id: 'parent-1/file_read/1', name: 'file_read', status: 'ok', args: { path: 'a.md' } })
   })
 
   it('persists the nested call error preview in the final result details', async () => {
     const tool = makeTool({
-      name: 'read_file',
+      name: 'file_read',
       execute: async () => ({ content: [{ type: 'text' as const, text: 'ENOENT: no such file or directory' }], details: { error: true } }),
     })
     const codemode = createCodemodeTool({ owner: makeOwner([tool]) })
-    const result = await runWith(codemode, `try { await tools.read_file({ path: 'missing.md' }); } catch (err) { return 'handled' }`)
+    const result = await runWith(codemode, `try { await tools.file_read({ path: 'missing.md' }); } catch (err) { return 'handled' }`)
     const calls = result.details.calls as Array<Record<string, unknown>>
     expect(calls).toHaveLength(1)
     expect(calls[0]).toMatchObject({
-      id: 'parent-1/read_file/1',
-      name: 'read_file',
+      id: 'parent-1/file_read/1',
+      name: 'file_read',
       status: 'error',
       args: { path: 'missing.md' },
       errorPreview: 'ENOENT: no such file or directory',
@@ -606,7 +606,7 @@ describe('nested call observer and progress', () => {
     const updates: AgentToolResult<Record<string, unknown>>[] = []
     const starts: CodemodeNestedCallStart[] = []
     const tool = makeTool({
-      name: 'write_file',
+      name: 'file_write',
       execute: async () => ({ content: [{ type: 'text' as const, text: 'written' }], details: {} }),
     })
     const codemode = createCodemodeTool({
@@ -615,7 +615,7 @@ describe('nested call observer and progress', () => {
     })
     const result = await runWith(
       codemode,
-      `await tools.write_file({ path: 'a.md', content: ${JSON.stringify(content)} });`,
+      `await tools.file_write({ path: 'a.md', content: ${JSON.stringify(content)} });`,
       partial => updates.push(partial),
     )
 
@@ -676,14 +676,14 @@ describe('nested call observer and progress', () => {
 describe('codemode description', () => {
   it('lists the globals and each callable tool with its resolve hint', () => {
     const tools = [
-      makeTool({ name: 'read_file', description: 'Read a file from the workspace. It returns the content.' }),
+      makeTool({ name: 'file_read', description: 'Read a file from the workspace. It returns the content.' }),
       makeTool({ name: 'calc', description: 'Compute.', outputSchema: Type.Object({ value: Type.Number() }) }),
     ]
     const description = buildCodemodeDescription(tools)
     expect(description).toContain('text(value)')
     expect(description).toContain('console.log')
     expect(description).toContain('return value')
-    expect(description).toContain('await tools.read_file(')
+    expect(description).toContain('await tools.file_read(')
     expect(description).toContain('a string')
     expect(description).toContain('await tools.calc(')
     expect(description).toContain('an object')

@@ -35,6 +35,6 @@ export interface SettingsRouterOptions {
   onConsolidationSettingsChanged?: () => void
   onAgentHeartbeatSettingsChanged?: () => void
   onTelegramSettingsChanged?: () => void
-  /** Background tools are built once, so they must be rebuilt for `generate_image` to follow the settings. */
+  /** Background tools are built once, so they must be rebuilt for `image_generate` to follow the settings. */
   onImageGenerationSettingsChanged?: () => void
 }

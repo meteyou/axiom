@@ -121,7 +121,7 @@ function readSkillFile(resolved: string, raw: string, offset?: number, limit?: n
 
 export function createReadFileTool(getWorkspace: () => string = getWorkspaceDir): AgentTool {
   return {
-    name: 'read_file',
+    name: 'file_read',
     label: 'Read File',
     description: `Read the contents of a file at the given path. Supports text files and images (PNG, JPEG, GIF, WebP, TIFF, AVIF); images are attached so you can see them. Text output is truncated to ${READ_FILE_MAX_LINES} lines or ${READ_FILE_MAX_BYTES / 1024} KB, whichever comes first; use offset/limit to read further.`,
     parameters: Type.Object({

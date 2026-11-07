@@ -30,7 +30,7 @@ export interface ScopedToolsDeps {
   cronjobTools?: Omit<CronjobToolsOptions, 'actor' | 'getUsername' | 'getTimezone'>
   /**
    * Interactive session of the calling turn; omitted for background task agents,
-   * which then get no `send_file_to_user` (nothing would deliver the file).
+   * which then get no `file_send` (nothing would deliver the file).
    */
   getInteractiveSessionId?: () => string | null
   /** Set when the caller adds the base tool set itself (the chat runtime does). */

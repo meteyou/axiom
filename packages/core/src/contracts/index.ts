@@ -148,3 +148,19 @@ export type {
   CompactionScopeContract,
   ProviderReferenceContract,
 } from './providers.js'
+
+export {
+  LEGACY_TOOL_NAMES,
+  currentToolName,
+  currentToolNames,
+  migrateDisabledToolNames,
+  resolveToolName,
+  toolNameWithLegacyAliases,
+} from './tool-names.js'
+
+export type {
+  LegacyToolTarget,
+  MigratedToolOverride,
+  ResolvedToolName,
+  ScheduleToolType,
+} from './tool-names.js'

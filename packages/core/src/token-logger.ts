@@ -1,4 +1,5 @@
 import type { Database } from './database.js'
+import { toolNameWithLegacyAliases } from './contracts/tool-names.js'
 
 export interface TokenUsageRecord {
   provider: string
@@ -292,14 +293,20 @@ export interface MemoryUsageStats {
   searches: MemorySearchStat[]
 }
 
+function placeholders(values: readonly unknown[]): string {
+  return values.map(() => '?').join(', ')
+}
+
 /**
  * Aggregate memory usage from the tool_calls log: which files under the
- * memory dir were read via read_file, and which search_memories calls ran.
+ * memory dir were read via file_read, and which memory_search calls ran.
  */
 export function getMemoryUsageStats(db: Database, options: { memoryDir: string; days: number }): MemoryUsageStats {
   const days = Math.min(Math.max(Math.floor(options.days), 1), 365)
   const since = `-${days} days`
   const prefix = options.memoryDir.endsWith('/') ? options.memoryDir : `${options.memoryDir}/`
+  const readToolNames = toolNameWithLegacyAliases('file_read')
+  const searchToolNames = toolNameWithLegacyAliases('memory_search')
 
   const fileReads = (db.prepare(
     `SELECT
@@ -307,13 +314,13 @@ export function getMemoryUsageStats(db: Database, options: { memoryDir: string; 
        COUNT(*) AS count,
        MAX(timestamp) AS lastReadAt
      FROM tool_calls
-     WHERE tool_name = 'read_file'
+     WHERE tool_name IN (${placeholders(readToolNames)})
        AND status = 'success'
        AND timestamp >= datetime('now', ?)
        AND json_extract(output, '$.details.path') LIKE ?
      GROUP BY path
      ORDER BY count DESC, path ASC`
-  ).all(since, `${prefix}%`) as MemoryFileReadStat[]).map((row) => ({
+  ).all(...readToolNames, since, `${prefix}%`) as MemoryFileReadStat[]).map((row) => ({
     ...row,
     path: row.path.slice(prefix.length),
   }))
@@ -321,11 +328,11 @@ export function getMemoryUsageStats(db: Database, options: { memoryDir: string; 
   const searchRows = db.prepare(
     `SELECT id, timestamp, input, output
      FROM tool_calls
-     WHERE tool_name = 'search_memories'
+     WHERE tool_name IN (${placeholders(searchToolNames)})
        AND timestamp >= datetime('now', ?)
      ORDER BY timestamp DESC
      LIMIT 500`
-  ).all(since) as { id: number; timestamp: string; input: string; output: string }[]
+  ).all(...searchToolNames, since) as { id: number; timestamp: string; input: string; output: string }[]
 
   const searches: MemorySearchStat[] = searchRows.map((row) => {
     let query = ''

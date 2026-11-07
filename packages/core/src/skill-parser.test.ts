@@ -264,6 +264,23 @@ body`
       expect(result.requiresToolsets).toEqual(['web_fetch', 'shell'])
     })
 
+    it('maps legacy tool names in allowed-tools and requires_toolsets to current names', () => {
+      const content = `---
+name: legacy-skill
+description: Legacy
+allowed-tools:
+  - read_file
+  - file_read
+  - search_memories
+  - shell
+requires_toolsets: [generate_image, transcribe_audio, web_fetch]
+---
+body`
+      const result = parseSkillMd(content)
+      expect(result.allowedTools).toEqual(['file_read', 'memory_search', 'shell'])
+      expect(result.requiresToolsets).toEqual(['image_generate', 'audio_transcribe', 'web_fetch'])
+    })
+
     it('leaves gating fields undefined when absent (backward compat)', () => {
       const content = `---
 name: plain-skill

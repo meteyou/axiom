@@ -251,7 +251,7 @@ describe('Cronjobs REST API', () => {
       const res = await apiFetch(`/api/cronjobs/${createdId}`, {
         method: 'PUT',
         body: JSON.stringify({
-          toolsOverride: JSON.stringify(['shell', 'write_file']),
+          toolsOverride: JSON.stringify(['shell', 'file_write']),
           skillsOverride: JSON.stringify(['brave-search']),
           systemPromptOverride: 'Custom system prompt for this cronjob.',
         }),
@@ -259,7 +259,7 @@ describe('Cronjobs REST API', () => {
 
       expect(res.status).toBe(200)
       const body = await res.json() as { cronjob: { toolsOverride: string; skillsOverride: string; systemPromptOverride: string } }
-      expect(body.cronjob.toolsOverride).toBe(JSON.stringify(['shell', 'write_file']))
+      expect(body.cronjob.toolsOverride).toBe(JSON.stringify(['shell', 'file_write']))
       expect(body.cronjob.skillsOverride).toBe(JSON.stringify(['brave-search']))
       expect(body.cronjob.systemPromptOverride).toBe('Custom system prompt for this cronjob.')
     })
@@ -407,7 +407,7 @@ describe('Cronjobs REST API', () => {
       const wiredDb = initDatabase(':memory:')
       const wiredApp = createApp({
         db: wiredDb,
-        getBackgroundTaskToolNames: () => ['shell', 'read_file', 'web_fetch'],
+        getBackgroundTaskToolNames: () => ['shell', 'file_read', 'web_fetch'],
       })
       const wiredServer = http.createServer(wiredApp)
       await new Promise<void>((resolve) => wiredServer.listen(0, resolve))
@@ -418,7 +418,7 @@ describe('Cronjobs REST API', () => {
         })
         expect(res.status).toBe(200)
         const body = await res.json() as { tools: string[] }
-        expect(body.tools).toEqual(['shell', 'read_file', 'web_fetch'])
+        expect(body.tools).toEqual(['shell', 'file_read', 'web_fetch'])
       } finally {
         await new Promise<void>((resolve, reject) => {
           wiredServer.close((err) => (err ? reject(err) : resolve()))

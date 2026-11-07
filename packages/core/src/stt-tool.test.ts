@@ -48,7 +48,7 @@ const mockReadFileSync = vi.mocked(fs.readFileSync)
 describe('createTranscribeAudioTool', () => {
   it('creates a tool with correct metadata', () => {
     const tool = createTranscribeAudioTool()
-    expect(tool.name).toBe('transcribe_audio')
+    expect(tool.name).toBe('audio_transcribe')
     expect(tool.label).toBe('Transcribe Audio')
     expect(tool.description).toBeTruthy()
     expect(tool.description).toContain('audio')
@@ -70,7 +70,7 @@ describe('createTranscribeAudioTool', () => {
 
 // ── Execute — happy path ─────────────────────────────────────────────
 
-describe('transcribe_audio execute', () => {
+describe('audio_transcribe execute', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
@@ -261,7 +261,7 @@ describe('transcribe_audio execute', () => {
 
 // ── Execute — error cases ────────────────────────────────────────────
 
-describe('transcribe_audio error handling', () => {
+describe('audio_transcribe error handling', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })

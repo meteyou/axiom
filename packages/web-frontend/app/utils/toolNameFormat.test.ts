@@ -7,8 +7,14 @@ describe('formatToolName', () => {
   })
 
   it('replaces underscores with spaces and capitalizes only the first word', () => {
-    expect(formatToolName('read_file')).toBe('Read file')
+    expect(formatToolName('file_read')).toBe('File read')
     expect(formatToolName('email_download_attachment')).toBe('Email download attachment')
+  })
+
+  it('renders legacy tool names like their current names', () => {
+    expect(formatToolName('read_file')).toBe('File read')
+    expect(formatToolName('search_memories')).toBe('Memory search')
+    expect(formatToolName('send_file_to_user')).toBe('File send')
   })
 
   it('normalizes already capitalized identifiers', () => {
@@ -23,8 +29,8 @@ describe('formatToolName', () => {
 
 describe('getToolCallSummary', () => {
   it('returns the path for file tools', () => {
-    expect(getToolCallSummary('read_file', { path: 'src/index.ts' })).toBe('src/index.ts')
-    expect(getToolCallSummary('write_file', { path: 'a.txt', content: 'x' })).toBe('a.txt')
+    expect(getToolCallSummary('file_read', { path: 'src/index.ts' })).toBe('src/index.ts')
+    expect(getToolCallSummary('file_write', { path: 'a.txt', content: 'x' })).toBe('a.txt')
   })
 
   it('returns the first line of a shell command', () => {
@@ -39,14 +45,20 @@ describe('getToolCallSummary', () => {
     expect(getToolCallSummary('shell', { command: 'cd /workspace' })).toBe('cd /workspace')
   })
 
+  it('resolves legacy tool names for the summary', () => {
+    expect(getToolCallSummary('read_file', { path: 'src/index.ts' })).toBe('src/index.ts')
+    expect(getToolCallSummary('read_chat_history', { query: 'x' })).toBe('query: x')
+    expect(getToolCallSummary('search_memories', { query: 'coffee' })).toBe('coffee')
+  })
+
   it('shows the task name for create_task', () => {
     expect(getToolCallSummary('create_task', { name: 'GUI Debug Tool Runner', prompt: 'long…' })).toBe('GUI Debug Tool Runner')
   })
 
-  it('joins multiple labeled arguments for read_chat_history', () => {
-    expect(getToolCallSummary('read_chat_history', { query: 'cache Test Task', limit: 30 }))
+  it('joins multiple labeled arguments for chat_history_read', () => {
+    expect(getToolCallSummary('chat_history_read', { query: 'cache Test Task', limit: 30 }))
       .toBe('query: cache Test Task · limit: 30')
-    expect(getToolCallSummary('read_chat_history', { start: '2026-08-23', limit: 40 }))
+    expect(getToolCallSummary('chat_history_read', { start: '2026-08-23', limit: 40 }))
       .toBe('start: 2026-08-23 · limit: 40')
   })
 
@@ -57,10 +69,10 @@ describe('getToolCallSummary', () => {
   })
 
   it('returns null for unknown tools or missing arguments', () => {
-    expect(getToolCallSummary('list_agent_skills', {})).toBeNull()
+    expect(getToolCallSummary('skill_list', {})).toBeNull()
     expect(getToolCallSummary('list_cronjobs', { enabled_only: true })).toBeNull()
-    expect(getToolCallSummary('read_file', {})).toBeNull()
-    expect(getToolCallSummary('read_file', null)).toBeNull()
+    expect(getToolCallSummary('file_read', {})).toBeNull()
+    expect(getToolCallSummary('file_read', null)).toBeNull()
     expect(getToolCallSummary('shell', { command: '   ' })).toBeNull()
   })
 })

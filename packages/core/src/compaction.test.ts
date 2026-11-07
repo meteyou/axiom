@@ -231,10 +231,10 @@ describe('findCutPoint', () => {
     const messages = [
       system(),
       user('task'),
-      assistant('', { toolCalls: [toolCall('a', 'read_file', { path: 'a' })] }),
-      toolResult('a', 'read_file', filler(3_000)),
-      assistant('', { toolCalls: [toolCall('b', 'read_file', { path: 'b' })] }),
-      toolResult('b', 'read_file', filler(3_000)),
+      assistant('', { toolCalls: [toolCall('a', 'file_read', { path: 'a' })] }),
+      toolResult('a', 'file_read', filler(3_000)),
+      assistant('', { toolCalls: [toolCall('b', 'file_read', { path: 'b' })] }),
+      toolResult('b', 'file_read', filler(3_000)),
       assistant('done'),
     ]
     const cut = findCutPoint(messages, 1, 4_000)
@@ -269,13 +269,13 @@ describe('external actions', () => {
     user('go'),
     assistant('', {
       toolCalls: [
-        toolCall('1', 'read_file', { path: '/a' }),
+        toolCall('1', 'file_read', { path: '/a' }),
         toolCall('2', 'shell', { command: 'git push origin feat/x' }),
         toolCall('3', 'shell', { command: 'ls -la' }),
         toolCall('4', 'email_send', { to: ['a@example.com'], subject: 'Hi' }),
       ],
     }),
-    toolResult('1', 'read_file', 'content'),
+    toolResult('1', 'file_read', 'content'),
     toolResult('2', 'shell', 'pushed'),
     toolResult('3', 'shell', 'files'),
     toolResult('4', 'email_send', 'Error: blocked', true),
@@ -368,10 +368,10 @@ describe('compactMessages', () => {
       user('first request'),
       assistant(filler(1_500)),
       user('long task'),
-      assistant('', { toolCalls: [toolCall('r1', 'read_file', { path: 'a' })] }),
-      toolResult('r1', 'read_file', filler(1_500)),
-      assistant('', { toolCalls: [toolCall('r2', 'read_file', { path: 'b' })] }),
-      toolResult('r2', 'read_file', filler(1_200)),
+      assistant('', { toolCalls: [toolCall('r1', 'file_read', { path: 'a' })] }),
+      toolResult('r1', 'file_read', filler(1_500)),
+      assistant('', { toolCalls: [toolCall('r2', 'file_read', { path: 'b' })] }),
+      toolResult('r2', 'file_read', filler(1_200)),
     ]
     const calls: RecordedCall[] = []
     const outcome = await compactMessages(messages, { budget, model, streamFn: fakeStreamFn((_p, n) => (n === 1 ? SUMMARY : '## Original Request\nlong task'), calls) })
@@ -409,7 +409,7 @@ describe('compactMessages', () => {
   })
 
   it('keeps a tool change from the summarized part ahead of the summary', async () => {
-    const change = toolDeclaration('generate_image')
+    const change = toolDeclaration('image_generate')
     const messages = [system(), toolDeclaration(), user(`draw ${filler(600)}`), assistant(filler(1_500)), change, ...conversation().slice(1)]
     const outcome = await compactMessages(messages, { budget, model, streamFn: fakeStreamFn(() => SUMMARY) })
     expect(outcome!.messages.slice(0, 3)).toEqual([messages[0], messages[1], change])

@@ -320,10 +320,10 @@ describe('TurnRunner', () => {
 
   it('persists the codemode tool row with its final nested-call details and ignores progress updates', async () => {
     const db = freshDb()
-    const nestedCalls = [{ id: 'code-1/read_file/1', name: 'read_file', status: 'ok', durationMs: 12 }]
+    const nestedCalls = [{ id: 'code-1/file_read/1', name: 'file_read', status: 'ok', durationMs: 12 }]
     const runner = startRunner(db, scriptedAgent([
       { type: 'tool_call_start', toolName: 'codemode', toolCallId: 'code-1', toolArgs: { code: 'return 1' } },
-      { type: 'tool_call_update', toolName: 'codemode', toolCallId: 'code-1', nestedCalls: [{ id: 'code-1/read_file/1', name: 'read_file', status: 'running' }] },
+      { type: 'tool_call_update', toolName: 'codemode', toolCallId: 'code-1', nestedCalls: [{ id: 'code-1/file_read/1', name: 'file_read', status: 'running' }] },
       { type: 'tool_call_end', toolName: 'codemode', toolCallId: 'code-1', toolResult: { content: [], details: { calls: nestedCalls } }, toolIsError: false },
       { type: 'text', text: 'Done.' },
       { type: 'done' },
@@ -350,7 +350,7 @@ describe('TurnRunner', () => {
       userId: USER_ID,
       sessionId: SESSION_ID,
       text: 'hi',
-      preambleToolCalls: [{ toolName: 'read_file', toolArgs: { path: '/x/SKILL.md' }, toolResult: { ok: true } }],
+      preambleToolCalls: [{ toolName: 'file_read', toolArgs: { path: '/x/SKILL.md' }, toolResult: { ok: true } }],
     })
     await waitFor(() => !runner.hasActiveTurn(USER_ID))
 
@@ -358,7 +358,7 @@ describe('TurnRunner', () => {
     const persisted = rows(db)
     expect(persisted.map(r => r.role)).toEqual(['tool', 'assistant'])
     const meta = JSON.parse(persisted[0]!.metadata!)
-    expect(meta).toMatchObject({ toolName: 'read_file', toolArgs: { path: '/x/SKILL.md' }, toolResult: { ok: true }, toolIsError: false })
+    expect(meta).toMatchObject({ toolName: 'file_read', toolArgs: { path: '/x/SKILL.md' }, toolResult: { ok: true }, toolIsError: false })
     expect(meta.toolCallId).toMatch(/^preamble-/)
   })
 
@@ -374,8 +374,8 @@ describe('TurnRunner', () => {
       size: 42,
     }
     const runner = startRunner(db, scriptedAgent([
-      { type: 'tool_call_start', toolName: 'send_file_to_user', toolCallId: 'tc-1' },
-      { type: 'tool_call_end', toolName: 'send_file_to_user', toolCallId: 'tc-1', toolResult: { details: { uploadedFile: upload } } },
+      { type: 'tool_call_start', toolName: 'file_send', toolCallId: 'tc-1' },
+      { type: 'tool_call_end', toolName: 'file_send', toolCallId: 'tc-1', toolResult: { details: { uploadedFile: upload } } },
       { type: 'text', text: 'Here you go.' },
       { type: 'done' },
     ]))
@@ -414,9 +414,9 @@ describe('TurnRunner', () => {
       size: 2,
     }
     const runner = startRunner(db, scriptedAgent([
-      { type: 'tool_call_start', toolName: 'codemode', toolCallId: 'code-1', toolArgs: { code: 'await tools.send_file_to_user({})' } },
-      { type: 'tool_call_update', toolName: 'codemode', toolCallId: 'code-1', nestedCalls: [{ id: 'code-1/send_file_to_user/1', name: 'send_file_to_user', status: 'running' }] },
-      { type: 'tool_call_end', toolName: 'codemode', toolCallId: 'code-1', toolResult: { content: [], details: { calls: [{ id: 'code-1/send_file_to_user/1', name: 'send_file_to_user', status: 'ok', durationMs: 5 }], uploadedFiles: [uploadA, uploadB] } }, toolIsError: false },
+      { type: 'tool_call_start', toolName: 'codemode', toolCallId: 'code-1', toolArgs: { code: 'await tools.file_send({})' } },
+      { type: 'tool_call_update', toolName: 'codemode', toolCallId: 'code-1', nestedCalls: [{ id: 'code-1/file_send/1', name: 'file_send', status: 'running' }] },
+      { type: 'tool_call_end', toolName: 'codemode', toolCallId: 'code-1', toolResult: { content: [], details: { calls: [{ id: 'code-1/file_send/1', name: 'file_send', status: 'ok', durationMs: 5 }], uploadedFiles: [uploadA, uploadB] } }, toolIsError: false },
       { type: 'text', text: 'Here they are.' },
       { type: 'done' },
     ]))
@@ -684,7 +684,7 @@ describe('TurnRunner', () => {
 
     it.each([
       ['shell', { command: 'sleep 600' }],
-      ['generate_image', { prompt: 'a fox', n: 2 }],
+      ['image_generate', { prompt: 'a fox', n: 2 }],
     ])('does not count a running %s call as provider silence', async (toolName, toolArgs) => {
       vi.useFakeTimers()
       const db = freshDb()
@@ -739,7 +739,7 @@ describe('TurnRunner', () => {
 
       // A codemode script starts and streams a nested image generation that
       // runs for far longer than the abort threshold.
-      push({ type: 'tool_call_start', toolName: 'codemode', toolCallId: 'code-1', toolArgs: { code: 'await tools.generate_image({ prompt: "a fox" })' } })
+      push({ type: 'tool_call_start', toolName: 'codemode', toolCallId: 'code-1', toolArgs: { code: 'await tools.image_generate({ prompt: "a fox" })' } })
       for (let i = 0; i < 12; i++) {
         await vi.advanceTimersByTimeAsync(5 * 60_000)
         push({
@@ -748,8 +748,8 @@ describe('TurnRunner', () => {
           toolCallId: 'code-1',
           // A growing full snapshot, like a batched script: each one supersedes the last.
           nestedCalls: Array.from({ length: i + 1 }, (_, j) => ({
-            id: `code-1/generate_image/${j + 1}`,
-            name: 'generate_image',
+            id: `code-1/image_generate/${j + 1}`,
+            name: 'image_generate',
             status: 'running' as const,
           })),
         })
@@ -771,7 +771,7 @@ describe('TurnRunner', () => {
       const replayedUpdate = late.find(e => e.type === 'chunk' && e.chunk.type === 'tool_call_update') as { chunk: ResponseChunk; replay?: boolean }
       expect(replayedUpdate.replay).toBe(true)
       expect(replayedUpdate.chunk.nestedCalls).toEqual(
-        Array.from({ length: 12 }, (_, j) => ({ id: `code-1/generate_image/${j + 1}`, name: 'generate_image', status: 'running' })),
+        Array.from({ length: 12 }, (_, j) => ({ id: `code-1/image_generate/${j + 1}`, name: 'image_generate', status: 'running' })),
       )
 
       push({ type: 'tool_call_end', toolName: 'codemode', toolCallId: 'code-1', toolResult: {}, toolIsError: false })
@@ -941,14 +941,14 @@ describe('TurnRunner', () => {
         userId: USER_ID,
         sessionId: SESSION_ID,
         text: 'hi',
-        preambleToolCalls: [{ toolName: 'read_file', toolArgs: { path: '/x/SKILL.md' }, toolResult: {} }],
+        preambleToolCalls: [{ toolName: 'file_read', toolArgs: { path: '/x/SKILL.md' }, toolResult: {} }],
       })
       await vi.advanceTimersByTimeAsync(0)
       await vi.advanceTimersByTimeAsync(1_000)
       await waitFor(() => !runner.hasActiveTurn(USER_ID))
 
       expect(rows(db).map(r => ({ role: r.role, content: r.content }))).toEqual([
-        { role: 'tool', content: 'Tool: read_file' },
+        { role: 'tool', content: 'Tool: file_read' },
         { role: 'assistant', content: 'answer' },
       ])
     })

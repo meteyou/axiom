@@ -247,11 +247,11 @@ describe('token-logger', () => {
       })
       logToolCall(testDb, {
         sessionId: 's1',
-        toolName: 'read_file',
+        toolName: 'file_read',
         input: '{"path":"MEMORY.md"}',
         output: '{}',
         durationMs: 5,
-        toolCallId: 'call-parent/read_file/1',
+        toolCallId: 'call-parent/file_read/1',
         parentToolCallId: 'call-parent',
       })
 
@@ -260,10 +260,10 @@ describe('token-logger', () => {
       ).all() as Array<{ id: number; tool_name: string; tool_call_id: string | null; parent_tool_call_id: string | null }>
       expect(rows).toHaveLength(2)
       expect(rows[0]).toEqual({ id: parentId, tool_name: 'codemode', tool_call_id: 'call-parent', parent_tool_call_id: null })
-      expect(rows[1]).toEqual({ id: rows[1].id, tool_name: 'read_file', tool_call_id: 'call-parent/read_file/1', parent_tool_call_id: 'call-parent' })
+      expect(rows[1]).toEqual({ id: rows[1].id, tool_name: 'file_read', tool_call_id: 'call-parent/file_read/1', parent_tool_call_id: 'call-parent' })
 
       const queried = getToolCallById(testDb, rows[1].id)!
-      expect(queried.toolCallId).toBe('call-parent/read_file/1')
+      expect(queried.toolCallId).toBe('call-parent/file_read/1')
       expect(queried.parentToolCallId).toBe('call-parent')
 
       const paged = queryToolCalls(testDb)
@@ -324,7 +324,7 @@ describe('token-logger', () => {
       const testDb = createDb()
 
       logToolCall(testDb, { sessionId: 's1', toolName: 'shell', input: '{}', output: '{}', durationMs: 100 })
-      logToolCall(testDb, { sessionId: 's1', toolName: 'read_file', input: '{}', output: '{}', durationMs: 50 })
+      logToolCall(testDb, { sessionId: 's1', toolName: 'file_read', input: '{}', output: '{}', durationMs: 50 })
 
       const records = getToolCalls(testDb)
       expect(records).toHaveLength(2)
@@ -345,11 +345,11 @@ describe('token-logger', () => {
       const testDb = createDb()
 
       logToolCall(testDb, { sessionId: 's1', toolName: 'shell', input: '{}', output: '{}', durationMs: 100 })
-      logToolCall(testDb, { sessionId: 's1', toolName: 'read_file', input: '{}', output: '{}', durationMs: 50 })
+      logToolCall(testDb, { sessionId: 's1', toolName: 'file_read', input: '{}', output: '{}', durationMs: 50 })
 
-      const records = getToolCalls(testDb, { toolName: 'read_file' })
+      const records = getToolCalls(testDb, { toolName: 'file_read' })
       expect(records).toHaveLength(1)
-      expect(records[0].toolName).toBe('read_file')
+      expect(records[0].toolName).toBe('file_read')
     })
 
     it('respects limit', () => {
@@ -403,17 +403,18 @@ describe('token-logger', () => {
       const testDb = createDb()
 
       const readOutput = (p: string) => JSON.stringify({ content: [], details: { path: p, size: 10 } })
-      logToolCall(testDb, { sessionId: 's1', toolName: 'read_file', input: '{"path":"MEMORY.md"}', output: readOutput('/data/memory/MEMORY.md'), durationMs: 5 })
+      logToolCall(testDb, { sessionId: 's1', toolName: 'file_read', input: '{"path":"MEMORY.md"}', output: readOutput('/data/memory/MEMORY.md'), durationMs: 5 })
+      // Calls recorded before the rename still count.
       logToolCall(testDb, { sessionId: 's1', toolName: 'read_file', input: '{"path":"/data/memory/MEMORY.md"}', output: readOutput('/data/memory/MEMORY.md'), durationMs: 5 })
-      logToolCall(testDb, { sessionId: 's1', toolName: 'read_file', input: '{"path":"wiki/foo.md"}', output: readOutput('/data/memory/wiki/foo.md'), durationMs: 5 })
+      logToolCall(testDb, { sessionId: 's1', toolName: 'file_read', input: '{"path":"wiki/foo.md"}', output: readOutput('/data/memory/wiki/foo.md'), durationMs: 5 })
       // outside memory dir — must be ignored
-      logToolCall(testDb, { sessionId: 's1', toolName: 'read_file', input: '{"path":"/tmp/x"}', output: readOutput('/tmp/x'), durationMs: 5 })
+      logToolCall(testDb, { sessionId: 's1', toolName: 'file_read', input: '{"path":"/tmp/x"}', output: readOutput('/tmp/x'), durationMs: 5 })
       // failed read — must be ignored
-      logToolCall(testDb, { sessionId: 's1', toolName: 'read_file', input: '{"path":"gone.md"}', output: '{"details":{"error":true}}', durationMs: 5, status: 'error' })
+      logToolCall(testDb, { sessionId: 's1', toolName: 'file_read', input: '{"path":"gone.md"}', output: '{"details":{"error":true}}', durationMs: 5, status: 'error' })
 
       logToolCall(testDb, {
         sessionId: 's1',
-        toolName: 'search_memories',
+        toolName: 'memory_search',
         input: JSON.stringify({ query: 'postgres port' }),
         output: JSON.stringify({ content: [], details: { count: 1, query: 'postgres port', facts: [{ content: 'Port is 5433', timestamp: '2026-07-01', source: 'session', sessionId: 'x' }] } }),
         durationMs: 5,

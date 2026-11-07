@@ -447,7 +447,7 @@ const SIDE_EFFECT_SHELL_PATTERN = new RegExp([
 ].join('|'), 'i')
 
 function isSideEffectingCall(call: ToolCall): boolean {
-  if (getToolReplayPolicy(call.name) === 'safe') return false
+  if (getToolReplayPolicy(call.name, call.arguments) === 'safe') return false
   if (call.name !== 'shell') return true
   const command = typeof call.arguments?.command === 'string' ? call.arguments.command : ''
   return SIDE_EFFECT_SHELL_PATTERN.test(command)

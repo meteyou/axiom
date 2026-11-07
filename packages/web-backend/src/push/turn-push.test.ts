@@ -126,8 +126,8 @@ describe('watchTurnOutcome', () => {
   it('keeps the earlier text when the turn ends on a tool call', async () => {
     const runner = runnerFor(agentStreaming([
       { type: 'text', text: 'Saved the file.' },
-      { type: 'tool_call_start', toolName: 'write_file', toolCallId: 't1', toolArgs: {} },
-      { type: 'tool_call_end', toolName: 'write_file', toolCallId: 't1', toolResult: 'ok' },
+      { type: 'tool_call_start', toolName: 'file_write', toolCallId: 't1', toolArgs: {} },
+      { type: 'tool_call_end', toolName: 'file_write', toolCallId: 't1', toolResult: 'ok' },
       { type: 'done' },
     ]))
     const turn = runner.startTurn({ userId: 1, sessionId: 's1', text: 'hi' })

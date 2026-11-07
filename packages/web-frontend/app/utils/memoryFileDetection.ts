@@ -2,6 +2,25 @@
  * Utility to detect memory-related file operations and provide
  * descriptive labels and icon hints for the chat view.
  */
+import { currentToolName } from '@axiom/core/contracts'
+
+type FileToolKind = 'read' | 'write' | 'edit'
+
+// `Read`/`Write`/`Edit` are the capitalized names of externally recorded tool calls.
+const FILE_TOOL_KINDS: Record<string, FileToolKind> = {
+  file_read: 'read',
+  Read: 'read',
+  file_write: 'write',
+  Write: 'write',
+  file_edit: 'edit',
+  Edit: 'edit',
+}
+
+/** Which file tool a call used, for current and legacy tool names alike. */
+export function fileToolKind(toolName: string): FileToolKind | null {
+  const name = currentToolName(toolName)
+  return Object.prototype.hasOwnProperty.call(FILE_TOOL_KINDS, name) ? FILE_TOOL_KINDS[name]! : null
+}
 
 export interface MemoryFileInfo {
   isMemoryFile: boolean
@@ -39,11 +58,10 @@ export function detectMemoryFile(
 ): MemoryFileInfo {
   const defaultResult: MemoryFileInfo = { isMemoryFile: false, label: '', icon: 'settings', displayPath: null }
 
-  // Only match file read/write/edit tools
-  const isRead = toolName === 'read_file' || toolName === 'Read'
-  const isWrite = toolName === 'write_file' || toolName === 'Write'
-  const isEdit = toolName === 'edit_file' || toolName === 'Edit'
-  if (!isRead && !isWrite && !isEdit) return defaultResult
+  const kind = fileToolKind(toolName)
+  if (!kind) return defaultResult
+  const isWrite = kind === 'write'
+  const isEdit = kind === 'edit'
 
   // Extract path from tool args
   const filePath = extractPath(toolArgs)
@@ -134,13 +152,13 @@ function toMemoryRelativePath(filePath: string): string | null {
 }
 
 /**
- * Extract the written content from a write_file tool call on a memory file.
+ * Extract the written content from a file_write tool call on a memory file.
  * The chat view renders this as an "all-added" diff for memory writes — note
- * that for surgical changes the agent should use `edit_file`, which produces
+ * that for surgical changes the agent should use `file_edit`, which produces
  * a real before/after view from its `edits` args.
  */
 export function extractMemoryWriteContent(toolName: string, toolArgs: unknown): string | null {
-  if (toolName !== 'write_file' && toolName !== 'Write') return null
+  if (fileToolKind(toolName) !== 'write') return null
   if (!toolArgs || typeof toolArgs !== 'object') return null
 
   const args = toolArgs as Record<string, unknown>
@@ -154,7 +172,7 @@ export function extractMemoryWriteContent(toolName: string, toolArgs: unknown): 
 }
 
 /**
- * Extract edits from an edit_file tool call's args.
+ * Extract edits from a file_edit tool call's args.
  * Returns array of { oldText, newText } if present, null otherwise.
  */
 export function extractEditsFromArgs(toolArgs: unknown): Array<{ oldText: string; newText: string }> | null {

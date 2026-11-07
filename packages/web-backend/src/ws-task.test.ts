@@ -102,7 +102,7 @@ describe('GET /api/tasks/:id/events', () => {
       'INSERT INTO tool_calls (session_id, tool_name, input, output, duration_ms, status, tool_call_id, parent_tool_call_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
     )
     insertCall.run('codemode-session-1', 'codemode', '{"code":"x"}', '{"details":{"calls":[]}}', 100, 'success', 'call-parent-1', null)
-    insertCall.run('codemode-session-1', 'read_file', '{"path":"a.txt"}', '"data"', 30, 'success', 'call-parent-1/read_file/1', 'call-parent-1')
+    insertCall.run('codemode-session-1', 'file_read', '{"path":"a.txt"}', '"data"', 30, 'success', 'call-parent-1/file_read/1', 'call-parent-1')
 
     const token = getToken()
     const res = await fetch(`${baseUrl}/api/tasks/${task.id}/events`, {
@@ -146,7 +146,7 @@ describe('WebSocket /ws/task/:id', () => {
     // Add a tool call
     db.prepare(
       'INSERT INTO tool_calls (session_id, tool_name, input, output, duration_ms, status) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run('completed-session-1', 'read_file', '{"path":"test.txt"}', '"hello world"', 50, 'success')
+    ).run('completed-session-1', 'file_read', '{"path":"test.txt"}', '"hello world"', 50, 'success')
 
     const token = getToken()
     const messages: Record<string, unknown>[] = []
@@ -325,14 +325,14 @@ describe('WebSocket /ws/task/:id', () => {
       type: 'tool_call_start',
       taskId: task.id,
       timestamp: new Date().toISOString(),
-      toolName: 'read_file',
+      toolName: 'file_read',
       toolCallId: 'tc-backlog-1',
     })
     taskEventBus.emitTaskEvent({
       type: 'tool_call_end',
       taskId: task.id,
       timestamp: new Date().toISOString(),
-      toolName: 'read_file',
+      toolName: 'file_read',
       toolCallId: 'tc-backlog-1',
       toolResult: 'contents',
       durationMs: 10,

@@ -115,7 +115,7 @@ vi.mock('./stt.js', () => ({
 }))
 
 vi.mock('./stt-tool.js', () => ({
-  createTranscribeAudioTool: vi.fn(() => ({ name: 'transcribe_audio', execute: vi.fn() })),
+  createTranscribeAudioTool: vi.fn(() => ({ name: 'audio_transcribe', execute: vi.fn() })),
 }))
 
 vi.mock('./web-tools.js', () => ({
@@ -132,7 +132,7 @@ vi.mock('./agent-skills.js', () => ({
 }))
 
 vi.mock('./memories-tool.js', () => ({
-  createSearchMemoriesTool: vi.fn(() => ({ name: 'search_memories', execute: vi.fn() })),
+  createSearchMemoriesTool: vi.fn(() => ({ name: 'memory_search', execute: vi.fn() })),
 }))
 
 vi.mock('./provider-config.js', async (importOriginal) => {
@@ -190,23 +190,23 @@ describe('AgentRuntime boundary', () => {
     const toolNames = runtime.getStateSnapshot().toolNames
     expect(toolNames).toEqual(expect.arrayContaining([
       'custom_tool',
-      'search_memories',
+      'memory_search',
       'builtin_web_tool',
-      'transcribe_audio',
+      'audio_transcribe',
       'agent_skill_tool',
       'shell',
-      'read_file',
-      'write_file',
-      'edit_file',
-      'list_files',
+      'file_read',
+      'file_write',
+      'file_edit',
+      'file_list',
     ]))
   })
 
-  it('describes write_file and edit_file so partial changes prefer edit_file', () => {
+  it('describes file_write and file_edit so partial changes prefer file_edit', () => {
     const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db: initDatabase(':memory:'), tools: [] })
     const tools = (runtime as unknown as AgentRuntimePiAgentAccess).getAgent().state.tools
-    expect(tools.find(tool => tool.name === 'edit_file')?.description).toContain('Prefer this over write_file')
-    expect(tools.find(tool => tool.name === 'write_file')?.description).toContain('prefer edit_file')
+    expect(tools.find(tool => tool.name === 'file_edit')?.description).toContain('Prefer this over file_write')
+    expect(tools.find(tool => tool.name === 'file_write')?.description).toContain('prefer file_edit')
   })
 
   it('assembles system prompt via runtime boundary with config + skills context', () => {
@@ -284,13 +284,13 @@ describe('AgentRuntime boundary', () => {
       })
       agent.emit({
         type: 'tool_execution_start',
-        toolName: 'search_memories',
+        toolName: 'memory_search',
         toolCallId: 'tool-1',
         args: { query: 'test' },
       })
       agent.emit({
         type: 'tool_execution_end',
-        toolName: 'search_memories',
+        toolName: 'memory_search',
         toolCallId: 'tool-1',
         isError: false,
         result: { matches: [] },
@@ -315,18 +315,18 @@ describe('AgentRuntime boundary', () => {
     const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db, tools: [] })
 
     runtimeHarness.promptBehaviors.push(async (agent) => {
-      agent.emit({ type: 'tool_execution_start', toolName: 'read_file', toolCallId: 'tool-err', args: { path: 'missing.txt' } })
+      agent.emit({ type: 'tool_execution_start', toolName: 'file_read', toolCallId: 'tool-err', args: { path: 'missing.txt' } })
       agent.emit({
         type: 'tool_execution_end',
-        toolName: 'read_file',
+        toolName: 'file_read',
         toolCallId: 'tool-err',
         isError: false,
         result: { content: [{ type: 'text', text: 'File not found' }], details: { error: true } },
       })
-      agent.emit({ type: 'tool_execution_start', toolName: 'read_file', toolCallId: 'tool-ok', args: { path: 'a.txt' } })
+      agent.emit({ type: 'tool_execution_start', toolName: 'file_read', toolCallId: 'tool-ok', args: { path: 'a.txt' } })
       agent.emit({
         type: 'tool_execution_end',
-        toolName: 'read_file',
+        toolName: 'file_read',
         toolCallId: 'tool-ok',
         isError: false,
         result: { content: [{ type: 'text', text: 'hello' }], details: {} },
@@ -350,10 +350,10 @@ describe('AgentRuntime boundary', () => {
     const data = Buffer.alloc(3 * 1024).toString('base64')
 
     runtimeHarness.promptBehaviors.push(async (agent) => {
-      agent.emit({ type: 'tool_execution_start', toolName: 'read_file', toolCallId: 'tool-img', args: { path: 'a.png' } })
+      agent.emit({ type: 'tool_execution_start', toolName: 'file_read', toolCallId: 'tool-img', args: { path: 'a.png' } })
       agent.emit({
         type: 'tool_execution_end',
-        toolName: 'read_file',
+        toolName: 'file_read',
         toolCallId: 'tool-img',
         isError: false,
         result: { content: [{ type: 'text', text: 'Read image file [image/png]' }, { type: 'image', mimeType: 'image/png', data }], details: {} },
@@ -657,7 +657,7 @@ describe('AgentRuntime boundary', () => {
     }
 
     function imageToolOf(runtime: ReturnType<typeof createAgentRuntime>): AgentTool | undefined {
-      return (runtime as unknown as AgentRuntimePiAgentAccess).getAgent().state.tools.find(tool => tool.name === 'generate_image')
+      return (runtime as unknown as AgentRuntimePiAgentAccess).getAgent().state.tools.find(tool => tool.name === 'image_generate')
     }
 
     const defaultLoadConfig = vi.mocked(loadConfig).getMockImplementation()!
@@ -680,19 +680,19 @@ describe('AgentRuntime boundary', () => {
         const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db: initDatabase(':memory:'), tools: [] })
         runtime.refreshSystemPrompt()
 
-        expect(runtime.getStateSnapshot().toolNames).not.toContain('generate_image')
+        expect(runtime.getStateSnapshot().toolNames).not.toContain('image_generate')
         expect(latestPromptOptions()?.availableImageModels).toEqual([])
-        expect(latestActiveTools()?.has('generate_image')).toBe(false)
+        expect(latestActiveTools()?.has('image_generate')).toBe(false)
 
         setImageGenerationSettings({ enabled: true })
         runtime.refreshSystemPrompt()
-        expect(runtime.getStateSnapshot().toolNames).toContain('generate_image')
+        expect(runtime.getStateSnapshot().toolNames).toContain('image_generate')
         expect(latestPromptOptions()?.availableImageModels).toHaveLength(1)
-        expect(latestActiveTools()?.has('generate_image')).toBe(true)
+        expect(latestActiveTools()?.has('image_generate')).toBe(true)
 
         setImageGenerationSettings({ enabled: false })
         runtime.refreshSystemPrompt()
-        expect(runtime.getStateSnapshot().toolNames).not.toContain('generate_image')
+        expect(runtime.getStateSnapshot().toolNames).not.toContain('image_generate')
         expect(latestPromptOptions()?.availableImageModels).toEqual([])
       } finally {
         fs.rmSync(configDir, { recursive: true, force: true })
@@ -706,15 +706,15 @@ describe('AgentRuntime boundary', () => {
         const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db: initDatabase(':memory:'), tools: [] })
         runtime.refreshSystemPrompt()
 
-        expect(runtime.getStateSnapshot().toolNames).not.toContain('generate_image')
+        expect(runtime.getStateSnapshot().toolNames).not.toContain('image_generate')
         expect(latestPromptOptions()?.availableImageModels).toEqual([])
-        expect(latestActiveTools()?.has('generate_image')).toBe(false)
+        expect(latestActiveTools()?.has('image_generate')).toBe(false)
       } finally {
         fs.rmSync(configDir, { recursive: true, force: true })
       }
     })
 
-    it('redeclares generate_image only when its declaration changes', () => {
+    it('redeclares image_generate only when its declaration changes', () => {
       writeProviders(['recraft/recraft-v4.1-vector'])
       try {
         setImageGenerationSettings({ maxVariants: 2 })
@@ -748,29 +748,29 @@ describe('AgentRuntime boundary', () => {
         expect(options?.availableImageModels).toEqual([
           { provider: 'OpenRouter', id: 'recraft/recraft-v4.1-vector', description: 'SVG logos.', isDefault: true },
         ])
-        expect(runtime.getStateSnapshot().toolNames).toContain('generate_image')
+        expect(runtime.getStateSnapshot().toolNames).toContain('image_generate')
       } finally {
         fs.rmSync(configDir, { recursive: true, force: true })
       }
     })
 
-    it('adds and removes generate_image as image models are enabled or removed', () => {
+    it('adds and removes image_generate as image models are enabled or removed', () => {
       writeProviders([])
       try {
         const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db: initDatabase(':memory:'), tools: [] })
-        expect(runtime.getStateSnapshot().toolNames).not.toContain('generate_image')
+        expect(runtime.getStateSnapshot().toolNames).not.toContain('image_generate')
         expect(latestPromptOptions()?.availableImageModels).toEqual([])
 
         writeProviders(['recraft/recraft-v4.1-vector'])
         runtime.refreshSystemPrompt()
-        expect(runtime.getStateSnapshot().toolNames.filter(name => name === 'generate_image')).toHaveLength(1)
+        expect(runtime.getStateSnapshot().toolNames.filter(name => name === 'image_generate')).toHaveLength(1)
 
         runtime.refreshSystemPrompt()
-        expect(runtime.getStateSnapshot().toolNames.filter(name => name === 'generate_image')).toHaveLength(1)
+        expect(runtime.getStateSnapshot().toolNames.filter(name => name === 'image_generate')).toHaveLength(1)
 
         writeProviders([])
         runtime.refreshSystemPrompt()
-        expect(runtime.getStateSnapshot().toolNames).not.toContain('generate_image')
+        expect(runtime.getStateSnapshot().toolNames).not.toContain('image_generate')
       } finally {
         fs.rmSync(configDir, { recursive: true, force: true })
       }
@@ -921,7 +921,7 @@ describe('AgentRuntime boundary', () => {
           toolName: 'codemode',
           toolCallId: 'code-1',
           args: { code: 'x' },
-          partialResult: { content: [], details: { calls: [{ id: 'code-1/read_file/1', name: 'read_file', status: 'running' }] } },
+          partialResult: { content: [], details: { calls: [{ id: 'code-1/file_read/1', name: 'file_read', status: 'running' }] } },
         })
         // Updates of other tools never produce a chat chunk.
         piAgent.emit({ type: 'tool_execution_update', toolName: 'shell', toolCallId: 'sh-1', args: {}, partialResult: { content: [] } })
@@ -938,7 +938,7 @@ describe('AgentRuntime boundary', () => {
       expect(updates[0]).toMatchObject({
         toolName: 'codemode',
         toolCallId: 'code-1',
-        nestedCalls: [{ id: 'code-1/read_file/1', name: 'read_file', status: 'running' }],
+        nestedCalls: [{ id: 'code-1/file_read/1', name: 'file_read', status: 'running' }],
       })
       expect(chunks.map(c => c.type)).toEqual(['tool_call_start', 'tool_call_update', 'done'])
     })

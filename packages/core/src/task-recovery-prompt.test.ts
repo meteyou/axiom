@@ -5,7 +5,7 @@ import type { ToolJournalEntry } from './task-tool-journal.js'
 function entry(overrides: Partial<ToolJournalEntry>): ToolJournalEntry {
   return {
     toolCallId: 'call',
-    toolName: 'read_file',
+    toolName: 'file_read',
     args: '{}',
     status: 'completed',
     result: 'ok',
@@ -19,12 +19,12 @@ function entry(overrides: Partial<ToolJournalEntry>): ToolJournalEntry {
 describe('formatJournalRecoveryContext', () => {
   it('lists finished calls with arguments and result previews', () => {
     const context = formatJournalRecoveryContext([
-      entry({ toolName: 'read_file', args: '{"path":"README.md"}', result: 'line 1\nline 2' }),
+      entry({ toolName: 'file_read', args: '{"path":"README.md"}', result: 'line 1\nline 2' }),
       entry({ toolName: 'shell', args: '{"command":"npm test"}', status: 'error', result: 'Error: 1 failing', replay: 'unsafe' }),
     ])
 
     expect(context).toContain('The previous run made 2 tool call(s).')
-    expect(context).toContain('1. read_file {"path":"README.md"} → completed\n   Result: line 1\n   line 2')
+    expect(context).toContain('1. file_read {"path":"README.md"} → completed\n   Result: line 1\n   line 2')
     expect(context).toContain('2. shell {"command":"npm test"} → failed\n   Result: Error: 1 failing')
     expect(context).not.toContain('Interrupted tool calls')
   })
@@ -58,7 +58,7 @@ describe('formatJournalRecoveryContext', () => {
 
   it('caps long arguments and results', () => {
     const context = formatJournalRecoveryContext([
-      entry({ toolName: 'write_file', args: 'a'.repeat(600), result: 'b'.repeat(700), replay: 'unsafe' }),
+      entry({ toolName: 'file_write', args: 'a'.repeat(600), result: 'b'.repeat(700), replay: 'unsafe' }),
     ])
 
     expect(context).toContain(`${'a'.repeat(500)}… [truncated 100 chars]`)

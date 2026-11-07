@@ -12,25 +12,25 @@ const skillPath = path.join(getProjectRootDir(), 'data', 'skills_agent', 'image-
 describe('bundled image-generation skill', () => {
   const content = fs.readFileSync(skillPath, 'utf-8')
 
-  it('is versioned for entrypoint auto-updates and hidden without the generate_image tool', () => {
+  it('is versioned for entrypoint auto-updates and hidden without the image_generate tool', () => {
     const parsed = parseSkillMd(content)
     expect(parsed.name).toBe('image-generation')
-    expect(parsed.requiresToolsets).toEqual(['generate_image'])
-    expect(extractFrontmatter(content).frontmatter?.version).toBe('1.0.0')
+    expect(parsed.requiresToolsets).toEqual(['image_generate'])
+    expect(extractFrontmatter(content).frontmatter?.version).toBe('1.1.0')
   })
 
-  it('is referenced by the generate_image tool description', () => {
+  it('is referenced by the image_generate tool description', () => {
     const tool = createGenerateImageTool({ readSettings: () => normalizeImageGenerationSettings(undefined) })
     expect(tool.description).toContain('image-generation skill')
   })
 
-  it('stays out of <available_skills> unless generate_image is an active tool', () => {
+  it('stays out of <available_skills> unless image_generate is an active tool', () => {
     const parsed = parseSkillMd(content)
     const entry = { name: parsed.name, description: parsed.description, location: skillPath, requiresToolsets: parsed.requiresToolsets }
     const visibleWith = (activeTools: string[]) =>
       filterAndAnnotateAgentSkills([entry], { platform: 'linux', activeTools: new Set(activeTools) }).map(s => s.name)
 
     expect(visibleWith(['web_fetch'])).toEqual([])
-    expect(visibleWith(['web_fetch', 'generate_image'])).toEqual(['image-generation'])
+    expect(visibleWith(['web_fetch', 'image_generate'])).toEqual(['image-generation'])
   })
 })

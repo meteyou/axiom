@@ -17,7 +17,7 @@ function detailsOf(result: Awaited<ReturnType<AgentTool['execute']>>): Record<st
   return (result as { details: Record<string, unknown> }).details
 }
 
-describe('send_file_to_user tool', () => {
+describe('file_send tool', () => {
   let dataDir: string
   let workspaceDir: string
   let originalEnv: { DATA_DIR?: string; WORKSPACE_DIR?: string }

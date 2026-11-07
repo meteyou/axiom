@@ -67,7 +67,7 @@ describe('AgentCore runtime boundary', () => {
     db = initDatabase(':memory:')
   })
 
-  it('registers search_memories by default', () => {
+  it('registers memory_search by default', () => {
     const agentCore = new AgentCore({
       model: makeModel(),
       apiKey: 'sk-primary',
@@ -76,7 +76,7 @@ describe('AgentCore runtime boundary', () => {
     })
 
     const toolNames = agentCore.getRuntimeStateSnapshot('1').toolNames
-    expect(toolNames).toContain('search_memories')
+    expect(toolNames).toContain('memory_search')
   })
 
   it('swapProvider() updates runtime model id through the boundary', () => {
