@@ -1006,18 +1006,6 @@ ${imageModelLines.join('\n')}`)
     addSection('available_providers', `<available_providers>\n${providerBlocks.join('\n\n')}\n</available_providers>`)
   }
 
-  // 8. Wiki pages (LLM-maintained knowledge base)
-  const wikiPages = listWikiPages(memoryDir)
-  if (wikiPages.length > 0) {
-    const pageLines = wikiPages.map(n => {
-      const aliasStr = n.aliases.length > 0 ? ` (aliases: ${n.aliases.join(', ')})` : ''
-      return `- ${n.filename}${aliasStr}`
-    }).join('\n')
-    addSection('wiki_pages', `<wiki_pages>
-${pageLines}
-</wiki_pages>`)
-  }
-
   // 11. Available skills (progressive disclosure)
   if (options?.skills && options.skills.length > 0) {
     const skillEntries = options.skills.map(s => {

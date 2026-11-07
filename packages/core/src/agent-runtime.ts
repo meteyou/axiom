@@ -67,6 +67,7 @@ export interface BaseAgentToolsOptions {
   quotaService?: QuotaServiceLike
   /** Session that `image_generate` books its cost on; omitted for background agents. */
   getSessionId?: () => string | null | undefined
+  memoryDir?: string
 }
 
 /**
@@ -95,6 +96,7 @@ export function createBaseAgentTools(options: BaseAgentToolsOptions): AgentTool[
       db: options.db,
       getCurrentUserId: () => options.user?.id,
       getSessionUser: () => options.sessionUser,
+      memoryDir: options.memoryDir,
     }),
     ...createAgentSkillTools(),
     ...(options.user ? createEmailTools({ ownerUserId: options.user.id, workspaceDir: getUserWorkspace }) : []),
@@ -583,6 +585,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
         sessionUser: this.sessionUser,
         quotaService: options.quotaService,
         getSessionId: () => this.agent.sessionId,
+        memoryDir: options.memoryDir,
       }),
     ].filter(tool => tool.name !== GENERATE_IMAGE_TOOL_NAME)
 

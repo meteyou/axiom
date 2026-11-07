@@ -1,6 +1,6 @@
 ---
 name: wiki
-version: 1.3.0
+version: 1.4.0
 description: Maintain and search the user's LLM wiki (knowledge base of Markdown pages). Use this skill for ingesting new sources, querying the wiki, and wiki maintenance/linting.
 ---
 
@@ -139,9 +139,10 @@ Goal: extract knowledge from an external source (URL, file, conversation context
    - Body: the raw text as received — no interpretation, no editing
    - **Never modify an existing source file.** If the source itself changes, add a new dated file.
 
-3. **List existing wiki pages** via `file_list /data/memory/wiki/`:
-   - Which pages already exist?
+3. **Find existing wiki pages** on the topic with `memory_search` (several related keywords):
+   - Which pages already cover it? The wiki hits show path, title, aliases and a snippet.
    - Is there an existing page that should be extended?
+   - Use `file_list /data/memory/wiki/` only when you need the full structure (e.g. picking a topic folder).
 
 4. **Extract the essential knowledge** from the source:
    - Facts, concepts, decisions, dependencies
@@ -163,15 +164,15 @@ Goal: extract knowledge from an external source (URL, file, conversation context
 ```
 1. web_fetch the URL
 2. file_write /data/memory/sources/articles/2026-04-17-<slug>.md (raw text, with frontmatter)
-3. file_list /data/memory/wiki/
+3. memory_search "<topic keywords>" → check the wiki hits
 4. Extract relevant knowledge, identify duplicates
 5. file_write or file_edit /data/memory/wiki/topic.md with distilled knowledge + ## Sources pointing to the archived source
 ```
 
 **Example — ingest context from a conversation:**
 ```
-1. file_list /data/memory/wiki/
-2. Check whether a matching page exists
+1. memory_search "<topic keywords>"
+2. Check whether a wiki hit matches the topic
 3. If yes: file_edit to add a section
 4. If no: file_write to create a new page
 (No sources/ archive needed when the "source" is just conversational context.)
@@ -185,12 +186,13 @@ Goal: search the wiki for knowledge relevant to a current task.
 
 **Steps:**
 
-1. `file_list /data/memory/wiki/` — list all pages
-2. Scan filenames: which pages might be relevant?
-3. Read relevant pages with `file_read`
+1. `memory_search` with several related keywords (e.g. `docker deployment server`). It returns facts plus wiki hits with path, title, aliases and a snippet. The wiki index is full-text (path, title, aliases, body) and updates automatically on every search.
+2. Pick the relevant wiki hits by title and snippet.
+3. Open them with `file_read` using the returned absolute path.
 4. If a page links to others (`[Name](file.md)`): read those too
 
 **Tips:**
+- No hits: retry with synonyms, aliases or prefix queries (`deploy*`) before concluding the wiki has nothing
 - Broad topics: read multiple pages, then synthesize
 - Specific questions: read one or two targeted pages
 - If no matching page exists: inform the user and offer to create one

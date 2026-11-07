@@ -400,7 +400,7 @@ describe('memory', () => {
       for (const section of sections) expect(section.text.startsWith(`<${section.key}>`)).toBe(true)
       expect(sections.map(section => section.key)).toEqual([
         'personality', 'instructions', 'agent_rules', 'system_rules', 'core_memory', 'recent_memory', 'current_user',
-        'user_profile', 'available_providers', 'wiki_pages',
+        'user_profile', 'available_providers',
         'available_skills', 'paths', 'language', 'channel_context',
       ])
     })
@@ -563,32 +563,15 @@ describe('memory', () => {
       expect(rules).not.toContain('several users')
     })
 
-    it('includes wiki_pages section when wiki pages exist', () => {
+    it('does not list wiki pages in the prompt', () => {
       const dir = makeTmpDir()
       ensureMemoryStructure(dir)
-
-      // Create a wiki page
-      const wikiDir = path.join(dir, 'wiki')
-      fs.writeFileSync(path.join(wikiDir, 'axiom.md'), '---\naliases: [Axiom, the-axiom]\n---\n# Project: Axiom\n', 'utf-8')
-
-      const prompt = assembleSystemPrompt({ memoryDir: dir })
-
-      expect(prompt).toContain('<wiki_pages>')
-      expect(prompt).toContain('axiom.md')
-      expect(prompt).toContain('Axiom')
-      expect(prompt).toContain('the-axiom')
-      const wiki = assembleSystemPromptWithSections({ memoryDir: dir }).sections.find(section => section.key === 'wiki_pages')!.text
-      expect(wiki).toBe('<wiki_pages>\n- axiom.md (aliases: Axiom, the-axiom)\n</wiki_pages>')
-      expect(prompt).toContain('</wiki_pages>')
-    })
-
-    it('excludes wiki_pages section when no wiki pages exist', () => {
-      const dir = makeTmpDir()
-      ensureMemoryStructure(dir)
+      fs.writeFileSync(path.join(dir, 'wiki', 'axiom.md'), '---\naliases: [Axiom, the-axiom]\n---\n# Project: Axiom\n', 'utf-8')
 
       const prompt = assembleSystemPrompt({ memoryDir: dir })
 
       expect(prompt).not.toContain('<wiki_pages>')
+      expect(prompt).not.toContain('the-axiom')
     })
 
     it('includes custom AGENTS.md content in agent_rules', () => {

@@ -23,7 +23,7 @@ The agent's read-side into its own past. These tools are what make the [Memory S
 | Tool | Notes |
 |---|---|
 | `read_chat_history` | Full-text search over past chat messages with filters for datetime range, source (`web` / `telegram` / `task`), role (`user` / `assistant` / `tool` / `system`), and session id. Pagination via `limit` (default 100, max 500) and `offset`. |
-| `search_memories` | Searches the atomic facts produced by [fact extraction](./memory#fact-extraction). Returns up to 50 facts per query. |
+| `memory_search` | Searches the atomic facts produced by [fact extraction](./memory#fact-extraction) (up to 50 per query) and the [wiki](./memory#wiki-wiki-md) full-text index (up to 10 pages, each with path, title, aliases and snippet). |
 | `list_agent_skills` | Browse every self-created skill under `/data/skills_agent/` with its description, location, last-used date, and any missing required env vars. The 10 most recent are already injected into the prompt; this tool reaches the rest. See [Skills](./skills). |
 
 ## Tasks, cronjobs & reminders

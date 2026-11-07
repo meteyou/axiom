@@ -2,12 +2,35 @@ import type { AgentTool } from '@earendil-works/pi-agent-core'
 import { Type } from 'typebox'
 import type { Database } from './database.js'
 import { searchMemories } from './memories-store.js'
+import type { MemoryFact } from './memories-store.js'
+import { searchWiki } from './wiki-index.js'
+import type { WikiSearchHit } from './wiki-index.js'
+
+const MAX_WIKI_HITS = 10
 
 export interface SearchMemoriesToolOptions {
   db: Database
   getCurrentUserId?: () => number | undefined
   /** Session identity of a caller without a user row; restricts results to facts from its own sessions. */
   getSessionUser?: () => string | undefined
+  memoryDir?: string
+}
+
+function formatFacts(facts: MemoryFact[]): string {
+  if (facts.length === 0) return 'No matching facts.'
+  return facts.map((fact, index) => {
+    const header = `${index + 1}. [${fact.timestamp}] [${fact.source}]`
+    const sessionLine = fact.sessionId ? `Session: ${fact.sessionId}\n` : ''
+    return `${header}\n${sessionLine}${fact.content}`
+  }).join('\n\n')
+}
+
+function formatWikiHits(hits: WikiSearchHit[]): string {
+  if (hits.length === 0) return 'No matching wiki pages.'
+  return hits.map((hit, index) => {
+    const aliasLine = hit.aliases.length > 0 ? `\nAliases: ${hit.aliases.join(', ')}` : ''
+    return `${index + 1}. ${hit.title}\nPath: ${hit.path}${aliasLine}\n${hit.snippet}`
+  }).join('\n\n')
 }
 
 export function createSearchMemoriesTool(options: SearchMemoriesToolOptions): AgentTool {
@@ -15,10 +38,10 @@ export function createSearchMemoriesTool(options: SearchMemoriesToolOptions): Ag
     name: 'memory_search',
     label: 'Search Memories',
     description:
-      'Search the agent\'s fact memory for previously learned information. ' +
-      'Returns atomic facts extracted from past conversations. ' +
-      'Use this when the user asks about past decisions, preferences, or details discussed in earlier sessions. ' +
-      'Plain queries match facts containing ANY of the keywords, ranked by relevance — ' +
+      'Search the agent\'s memory: atomic facts from past conversations (fact memory) and the wiki knowledge base. ' +
+      'Search before answering knowledge questions about projects, systems, people, past decisions, preferences or how things are usually done. ' +
+      'Returns two groups: facts, and wiki hits with path, title, aliases and a snippet — open relevant wiki hits with `file_read` before answering. ' +
+      'Plain queries match ANY of the keywords, ranked by relevance — ' +
       'so provide several related keywords (e.g. docker deployment server) rather than a full sentence. ' +
       'For strict matching, FTS5 syntax is supported: prefix queries (e.g. config*), ' +
       'quoted phrases (e.g. "postgres port"), and boolean operators (e.g. docker AND compose).',
@@ -28,7 +51,7 @@ export function createSearchMemoriesTool(options: SearchMemoriesToolOptions): Ag
       }),
       limit: Type.Optional(
         Type.Number({
-          description: 'Maximum number of facts to return (default: 10, max: 50).',
+          description: 'Maximum number of facts to return (default: 10, max: 50). Wiki hits are capped at 10.',
         }),
       ),
     }),
@@ -57,33 +80,23 @@ export function createSearchMemoriesTool(options: SearchMemoriesToolOptions): Ag
           sessionUser: userId === undefined ? options.getSessionUser?.() : undefined,
           limit,
         })
+        const wikiHits = searchWiki(options.db, query, {
+          memoryDir: options.memoryDir,
+          limit: Math.min(limit, MAX_WIKI_HITS),
+        })
 
-        if (facts.length === 0) {
-          return {
-            content: [{ type: 'text' as const, text: `No memories found for query "${query}".` }],
-            details: {
-              count: 0,
-              query,
-              limit,
-              userId,
-            },
-          }
-        }
-
-        const formatted = facts.map((fact, index) => {
-          const header = `${index + 1}. [${fact.timestamp}] [${fact.source}]`
-          const sessionLine = fact.sessionId ? `Session: ${fact.sessionId}\n` : ''
-          return `${header}\n${sessionLine}${fact.content}`
-        }).join('\n\n')
+        const text = `## Facts\n\n${formatFacts(facts)}\n\n## Wiki\n\n${formatWikiHits(wikiHits)}`
 
         return {
-          content: [{ type: 'text' as const, text: formatted }],
+          content: [{ type: 'text' as const, text }],
           details: {
             count: facts.length,
+            wikiCount: wikiHits.length,
             query,
             limit,
             userId,
             facts,
+            wikiHits,
           },
         }
       } catch (err) {
