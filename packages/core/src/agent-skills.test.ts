@@ -215,6 +215,19 @@ describe('agent-skills', () => {
       expect(result[0].name).toBe('used-skill')
       expect(result[1].name).toBe('unused-skill')
     })
+
+    it('always keeps the pinned built-in skills within the limit', () => {
+      createSkill('tasks-and-cronjobs', 'Tasks')
+      createSkill('skill-creator', 'Skill creation')
+      for (let i = 0; i < 5; i++) {
+        createSkill(`skill-${i}`, `Skill ${i}`)
+        trackAgentSkillUsage(`skill-${i}`)
+      }
+
+      const names = getRecentAgentSkills(3).map(skill => skill.name)
+      expect(names).toHaveLength(3)
+      expect(names).toEqual(expect.arrayContaining(['tasks-and-cronjobs', 'skill-creator']))
+    })
   })
 
   describe('getAgentSkillsForPrompt', () => {
@@ -306,7 +319,7 @@ describe('agent-skills', () => {
       expect(prompt).toContain('<available_skills>')
     })
 
-    it('includes list_agent_skills tool and overflow note when agentSkillsOverflowCount > 10', () => {
+    it('includes the list_agent_skills overflow note when agentSkillsOverflowCount > 10', () => {
       const memoryDir = path.join(tmpDir, 'memory')
       const skills: SkillPromptEntry[] = [
         { name: 'test-skill', description: 'Test', location: '/data/skills_agent/test-skill' },
@@ -318,7 +331,6 @@ describe('agent-skills', () => {
         agentSkillsOverflowCount: 15,
       })
 
-      // list_agent_skills appears in both <available_tools> and <available_skills> overflow note
       expect(prompt).toContain('15 self-created agent skills')
       expect(prompt).toContain('list_agent_skills')
     })

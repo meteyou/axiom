@@ -588,23 +588,6 @@ export function pruneCodemodeSpillFolder(nowMs = Date.now()): number {
   }
 }
 
-/* ── Prompt guideline ─────────────────────────────────────────────── */
-
-/**
- * Short system-prompt guideline appended to an agent's prompt while codemode is
- * active, so the model reaches for it when it saves work and leaves single calls
- * direct.
- */
-export function buildCodemodePromptGuideline(): string {
-  return `<codemode>
-The \`codemode\` tool runs a JavaScript script that calls your other tools; only the script's output reaches you. Use it when it saves round trips or context:
-- Batch independent calls (e.g. \`Promise.allSettled\`) instead of many separate tool calls.
-- Chain calls so one result feeds the next.
-- Filter or aggregate large tool output before it reaches you.
-Do NOT wrap a single tool call in a script — call that tool directly instead.
-</codemode>`
-}
-
 /* ── Description ──────────────────────────────────────────────────────────── */
 
 /** What a script sees a nested call resolve to, in a few words. */
@@ -643,6 +626,14 @@ export function buildCodemodeDescription(tools: AgentTool[]): string {
     '- Optional first line: `// @options: {"max_output_tokens": 10000, "timeout_ms": 300000}` (default budget 10000 tokens, default deadline 5 minutes, capped at 30).',
   ].join('\n')
 
+  const whenToUse = [
+    'When to use:',
+    '- Batch independent calls (e.g. `Promise.allSettled`) instead of many separate tool calls.',
+    '- Chain calls so one result feeds the next.',
+    '- Filter or aggregate large tool output before it reaches you.',
+    'Do NOT wrap a single tool call in a script — call that tool directly instead.',
+  ].join('\n')
+
   const globals = [
     'Globals:',
     '- `text(value)` adds a text item to the output; a top-level `return value` does the same.',
@@ -657,5 +648,5 @@ export function buildCodemodeDescription(tools: AgentTool[]): string {
     return `- \`await tools.${label}({ ...args })\` — ${firstSentence(tool.description)} Resolves to ${describeResolveHint(tool)}.`
   })
 
-  return [intro, globals, ...(toolLines.length > 0 ? [`Callable tools:`, ...toolLines] : [])].join('\n\n')
+  return [intro, whenToUse, globals, ...(toolLines.length > 0 ? [`Callable tools:`, ...toolLines] : [])].join('\n\n')
 }

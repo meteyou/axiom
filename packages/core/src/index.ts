@@ -367,7 +367,6 @@ export {
   createCodemodeTool,
   createNestedCallLogObserver,
   buildCodemodeDescription,
-  buildCodemodePromptGuideline,
   pruneCodemodeSpillFolder,
 } from './codemode-tool.js'
 export type {

@@ -6,7 +6,6 @@ import type { AgentRuntimePiAgentAccess } from './agent-runtime.js'
 import { initDatabase } from './database.js'
 import type { AgentTool } from '@earendil-works/pi-agent-core'
 import { assembleSystemPromptWithSections } from './memory.js'
-import { buildCodemodePromptGuideline } from './codemode-tool.js'
 import { logToolCall } from './token-logger.js'
 import { loadConfig } from './config.js'
 import { getAgentSkillsForPrompt } from './agent-skills.js'
@@ -203,6 +202,13 @@ describe('AgentRuntime boundary', () => {
     ]))
   })
 
+  it('describes write_file and edit_file so partial changes prefer edit_file', () => {
+    const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db: initDatabase(':memory:'), tools: [] })
+    const tools = (runtime as unknown as AgentRuntimePiAgentAccess).getAgent().state.tools
+    expect(tools.find(tool => tool.name === 'edit_file')?.description).toContain('Prefer this over write_file')
+    expect(tools.find(tool => tool.name === 'write_file')?.description).toContain('prefer edit_file')
+  })
+
   it('assembles system prompt via runtime boundary with config + skills context', () => {
     const db = initDatabase(':memory:')
     const runtime = createAgentRuntime({
@@ -223,7 +229,6 @@ describe('AgentRuntime boundary', () => {
     expect(latestCall?.timezone).toBe('Europe/Berlin')
     expect(latestCall?.channel).toBe('telegram')
     expect(latestCall?.currentUser).toEqual({ username: 'alice' })
-    expect(latestCall?.builtinTools).toEqual({ webSearch: { enabled: true }, stt: { enabled: true } })
     expect(latestCall?.skills).toEqual(expect.arrayContaining([
       { name: 'Enabled skill', description: 'desc', location: '/skills/enabled' },
       { name: 'recent skill', description: 'desc', location: '/skills-agent/recent' },
@@ -800,7 +805,7 @@ describe('AgentRuntime boundary', () => {
       return message?.content ?? ''
     }
 
-    it('adds the codemode tool and the prompt guideline when the setting turns on', () => {
+    it('adds the codemode tool, with its guideline in the description, when the setting turns on', () => {
       const db = initDatabase(':memory:')
       const interactiveTool = { name: 'interactive_only_tool', description: 'Only usable in chat.', execute: vi.fn() } as unknown as AgentTool
       const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db, tools: [interactiveTool] })
@@ -816,7 +821,8 @@ describe('AgentRuntime boundary', () => {
       expect(runtime.getStateSnapshot().toolNames).toContain('codemode')
       // The tool description is rendered from the main agent's own tools.
       expect(codemodeTool!.description).toContain('interactive_only_tool')
-      expect(leadingSystemMessage(runtime)).toContain('<codemode>')
+      expect(codemodeTool!.description).toContain('Do NOT wrap a single tool call in a script')
+      expect(leadingSystemMessage(runtime)).toBe('runtime system prompt')
     })
 
     it('keeps an unchanged declaration stable across re-syncs and drops it when the setting turns off', () => {
@@ -827,7 +833,7 @@ describe('AgentRuntime boundary', () => {
       runtime.refreshSystemPrompt()
       const first = codemodeToolOf(runtime)
       expect(first).toBeDefined()
-      expect(leadingSystemMessage(runtime)).toBe(`runtime system prompt\n\n${buildCodemodePromptGuideline()}`)
+      expect(leadingSystemMessage(runtime)).toBe('runtime system prompt')
 
       // Unchanged state: the same tool instance and prompt survive a re-sync.
       runtime.refreshSystemPrompt()
@@ -839,7 +845,7 @@ describe('AgentRuntime boundary', () => {
       expect(leadingSystemMessage(runtime)).toBe('runtime system prompt')
     })
 
-    it('breaks the context down by the prompt blocks it built, codemode included', () => {
+    it('breaks the context down by the prompt blocks it built, without a codemode block', () => {
       const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db: initDatabase(':memory:'), tools: [] })
       codemode.mainAgent = true
       vi.mocked(assembleSystemPromptWithSections).mockReturnValueOnce({
@@ -849,7 +855,7 @@ describe('AgentRuntime boundary', () => {
       runtime.refreshSystemPrompt()
 
       const sectionKeys = () => runtime.getContextUsage()?.breakdown?.systemPrompt.sections.map(section => section.key).sort()
-      expect(sectionKeys()).toEqual(['codemode', 'personality'])
+      expect(sectionKeys()).toEqual(['personality'])
 
       const piAgent = (runtime as unknown as AgentRuntimePiAgentAccess).getAgent()
       piAgent.state.messages = [{ ...piAgent.state.messages[0], content: 'replaced elsewhere' } as never]

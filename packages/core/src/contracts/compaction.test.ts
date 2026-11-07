@@ -70,8 +70,8 @@ describe('formatContextUsage', () => {
       { key: 'agent_rules', tokens: 1_000 },
       { key: 'personality', tokens: 1_000 },
       { key: 'recent_memory', tokens: 800 },
-      { key: 'available_tools', tokens: 600 },
-      { key: 'axiom_docs', tokens: 400 },
+      { key: 'system_rules', tokens: 600 },
+      { key: 'paths', tokens: 400 },
       { key: 'current_date', tokens: 200 },
     ] as const
     const text = formatContextUsage({
@@ -95,7 +95,7 @@ describe('formatContextUsage', () => {
       '  · Agent rules (AGENTS.md): 1k (10%)',
       '  · Personality (SOUL.md): 1k (10%)',
       '  · Daily notes: 800 (8%)',
-      '  · Tool overview: 600 (6%)',
+      '  · System rules: 600 (6%)',
       '  · 2 more: 600 (6%)',
       'Tool definitions: 8k (20%), 24 tools',
       'Chat: 22k (55%)',
