@@ -93,9 +93,6 @@
         "systemPrompt": "System-Prompt",
         "toolDefinitions": "Tool-Definitionen ({count})",
         "chat": "Chat",
-        "showMore": "{count} weitere",
-        "showLess": "Weniger anzeigen",
-        "estimated": "Anteile sind anhand der Textlänge geschätzt; Provider melden nur die Gesamtzahl.",
         "chatParts": {
           "summary": "Komprimierungs-Zusammenfassung",
           "user": "Benutzernachrichten",

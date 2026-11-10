@@ -70,6 +70,12 @@ export interface ContextBreakdownSection {
   tokens: number
 }
 
+export interface ContextBreakdownToolGroup {
+  /** Display name: a tool name, a family like `file_*`, or merged families like `schedule/task`. */
+  name: string
+  tokens: number
+}
+
 /**
  * Where the context comes from. Always a heuristic split: providers only
  * report totals. The parts add up to `ContextUsageInfo.tokens`.
@@ -81,7 +87,12 @@ export interface ContextUsageBreakdown {
     sections: ContextBreakdownSection[]
   }
   /** JSON schemas of the tools declared to the model. */
-  toolDefinitions: { tokens: number; count: number }
+  toolDefinitions: {
+    tokens: number
+    count: number
+    /** Largest first; add up to `tokens`. */
+    groups: ContextBreakdownToolGroup[]
+  }
   chat: {
     tokens: number
     /** Summary of the last compaction. */
@@ -132,17 +143,8 @@ export function formatContextUsage(info: ContextUsageInfo): string {
   return lines.join('\n')
 }
 
-const BREAKDOWN_SECTION_LINES = 6
-
-const CHAT_PART_LABELS = {
-  summary: 'Compaction summary',
-  user: 'User messages',
-  assistant: 'Assistant messages',
-  toolResults: 'Tool results',
-} as const
-
-function breakdownLine(label: string, tokens: number, whole: number, indent = false): string {
-  return `${indent ? '  · ' : ''}${label}: ${formatTokenCount(tokens)} (${contextUsagePercent(tokens, whole)}%)`
+function breakdownLine(label: string, tokens: number, whole: number): string {
+  return `${label}: ${formatTokenCount(tokens)} (${contextUsagePercent(tokens, whole)}%)`
 }
 
 /**
@@ -151,18 +153,11 @@ function breakdownLine(label: string, tokens: number, whole: number, indent = fa
  */
 function formatContextBreakdown(breakdown: ContextUsageBreakdown, total: number): string[] {
   const { systemPrompt, toolDefinitions, chat } = breakdown
-  const shown = systemPrompt.sections.slice(0, BREAKDOWN_SECTION_LINES)
-  const rest = systemPrompt.sections.slice(BREAKDOWN_SECTION_LINES)
-  const restTokens = rest.reduce((sum, section) => sum + section.tokens, 0)
-  const chatParts = (Object.keys(CHAT_PART_LABELS) as (keyof typeof CHAT_PART_LABELS)[]).filter(part => chat[part] > 0)
   return [
     'Breakdown (estimated):',
     breakdownLine('System prompt', systemPrompt.tokens, total),
-    ...shown.map(section => breakdownLine(SYSTEM_PROMPT_SECTION_LABELS[section.key], section.tokens, systemPrompt.tokens, true)),
-    ...(rest.length > 0 ? [breakdownLine(`${rest.length} more`, restTokens, systemPrompt.tokens, true)] : []),
     `${breakdownLine('Tool definitions', toolDefinitions.tokens, total)}, ${toolDefinitions.count} tools`,
     breakdownLine('Chat', chat.tokens, total),
-    ...chatParts.map(part => breakdownLine(CHAT_PART_LABELS[part], chat[part], chat.tokens, true)),
   ]
 }
 
