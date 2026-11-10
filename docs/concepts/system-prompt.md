@@ -108,7 +108,7 @@ XML-formatted listing of every active skill — name, description, location of t
 One block with every file and directory the agent works with, so it never has to guess:
 
 - **Workspace** — `/workspace`, or `/workspace/<username>` for every user except the first account. The default directory for shell commands and relative paths.
-- **Memory** — your profile, the daily notes directory and today's daily file, `MEMORY.md`, `SOUL.md`, the wiki and sources directories.
+- **Memory** — your profile, the daily notes directory (one `YYYY-MM-DD.md` file per day; the agent takes the date from `<current_time>`), `MEMORY.md`, `SOUL.md`, the wiki and sources directories.
 - **Skills** — the agent skills directory (`/data/skills_agent/`), where new skills are written.
 - **Config files** *(admins only)* — `AGENTS.md`, `HEARTBEAT.md`, `CONSOLIDATION.md`, `TASKS.md`.
 - **Axiom docs** *(read-only)* — the README and the `concepts/`, `guide/` and `reference/` directories of this documentation. When you ask *"how do I configure X?"*, the agent reads the matching file instead of guessing from training data.

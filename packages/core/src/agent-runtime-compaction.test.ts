@@ -164,10 +164,19 @@ describe('AgentRuntime context compaction', () => {
     expect(findSummaryMessage(agent.state.messages)).not.toBeNull()
   })
 
+  const answer: Step = () => fauxAssistantMessage('answer')
+
+  /** Runs a whole turn on `channel` and returns the channel prefix its message carried. */
+  async function turnPrefix(runtime: ReturnType<typeof setup>['runtime'], channel: 'web' | 'telegram'): Promise<string | null> {
+    const { prefix } = runtime.getTurnContext(channel)
+    await drain(runtime.streamPrompt(`${prefix ?? ''}short question`, 'session-turn'))
+    return prefix
+  }
+
   it('announces the current channel again after compaction rebuilt the snapshot', async () => {
-    const { runtime } = setup([summary])
-    expect(runtime.getTurnContext('telegram').prefix).toContain('through Telegram')
-    expect(runtime.getTurnContext('telegram').prefix).toBeNull()
+    const { runtime } = setup([answer, answer, summary])
+    expect(await turnPrefix(runtime, 'telegram')).toContain('through Telegram')
+    expect(await turnPrefix(runtime, 'telegram')).toBeNull()
 
     await drain(runtime.compact(undefined, 'session-3b'))
 
@@ -175,12 +184,12 @@ describe('AgentRuntime context compaction', () => {
   })
 
   it('still announces the switch back to web after compaction during a Telegram conversation', async () => {
-    const { runtime } = setup([summary])
-    runtime.getTurnContext('telegram')
+    const { runtime } = setup([answer, summary, answer])
+    await turnPrefix(runtime, 'telegram')
 
     await drain(runtime.compact(undefined, 'session-3c'))
 
-    expect(runtime.getTurnContext('web').prefix).toContain('switched from Telegram')
+    expect(await turnPrefix(runtime, 'web')).toContain('switched from Telegram')
     expect(runtime.getTurnContext('web').prefix).toBeNull()
   })
 

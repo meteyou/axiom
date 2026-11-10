@@ -37,8 +37,12 @@ export interface PathsBlockOptions {
   agentSkillsDir: string
   readmePath: string
   docsDir: string
-  /** Date key (YYYY-MM-DD) of today in the user's timezone. */
-  today: string
+  /**
+   * Date key (YYYY-MM-DD) that adds today's daily file. Only for prompts built
+   * per run: a session prompt is frozen and would point at yesterday's file
+   * after midnight.
+   */
+  today?: string
   isAdmin: boolean
   /** Personal paths of a non-bootstrap user; null keeps the legacy single-user layout. */
   personalPaths: UserPaths | null
@@ -49,13 +53,14 @@ export interface PathsBlockOptions {
 export function buildPathsBlock(options: PathsBlockOptions): string {
   const { memoryDir, configDir, today, personalPaths } = options
   const groups: string[] = []
+  const todayLine = (label: string, dailyDir: string) =>
+    today ? `\n- ${label}: ${path.join(dailyDir, `${today}.md`)}` : ''
 
   if (personalPaths) {
     groups.push(`Your personal files:
 - Workspace (default directory for shell and relative file paths): ${personalPaths.workspace}
 - Your profile: ${personalPaths.profile}
-- Your daily notes directory: ${personalPaths.dailyDir}/
-- Your daily file for today: ${path.join(personalPaths.dailyDir, `${today}.md`)}`)
+- Your daily notes directory (one file per day, YYYY-MM-DD.md): ${personalPaths.dailyDir}/${todayLine('Your daily file for today', personalPaths.dailyDir)}`)
     groups.push(`Shared files:
 - MEMORY.md (general lessons only): ${path.join(memoryDir, 'MEMORY.md')}
 - SOUL.md${options.isAdmin ? '' : ' (admin-managed)'}: ${path.join(memoryDir, 'SOUL.md')}
@@ -69,8 +74,7 @@ export function buildPathsBlock(options: PathsBlockOptions): string {
     groups.push(`Files:
 - Workspace (default directory for shell and relative file paths): ${options.workspaceDir}
 ${profileLine}
-- Daily notes directory: ${path.join(memoryDir, 'daily/')}
-- Today's daily file: ${path.join(memoryDir, 'daily', `${today}.md`)}
+- Daily notes directory (one file per day, YYYY-MM-DD.md): ${path.join(memoryDir, 'daily/')}${todayLine("Today's daily file", path.join(memoryDir, 'daily'))}
 - MEMORY.md: ${path.join(memoryDir, 'MEMORY.md')}
 - SOUL.md: ${path.join(memoryDir, 'SOUL.md')}
 - Wiki pages directory: ${path.join(memoryDir, 'wiki/')}

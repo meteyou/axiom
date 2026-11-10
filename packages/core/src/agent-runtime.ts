@@ -176,8 +176,9 @@ export interface AgentRuntimeBoundary {
   getContextUsage(): ContextUsageInfo | null
   /**
    * Channel prefix and `<current_time>` suffix for the next turn on `channel`.
-   * Records `channel` as the session's last channel, so the prefix is only
-   * produced on the first Telegram turn and on channel switches.
+   * The prefix is only produced on the first Telegram turn and on channel
+   * switches. `channel` becomes the session's last channel once the turn's
+   * message is added to the transcript.
    */
   getTurnContext(channel: TurnChannel): TurnContext
   swapProvider(provider: ProviderConfig, apiKey: string, modelId?: string): void
@@ -556,7 +557,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
   private sessionPromptContext: SessionPromptContext = {}
   private lastTurnChannel: TurnChannel | null = null
   private announceChannelAgain = false
-  private pendingTurnPrefix: string | null = null
+  private pendingTurn: { channel: TurnChannel; prefix: string | null; compacted: boolean } | null = null
 
   constructor(options: AgentRuntimeOptions) {
     this.model = options.model
@@ -607,6 +608,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
       rebuildSystemMessage: () => {
         // The channel prefix may have been folded into the summary; announce it again.
         this.announceChannelAgain = true
+        if (this.pendingTurn) this.pendingTurn.compacted = true
         return this.rebuildSnapshot()
       },
     })
@@ -669,11 +671,11 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
    */
   private rebuildSnapshot(): AgentMessage {
     const { currentUser } = this.sessionPromptContext
-    const built = this.fixedSystemPrompt === undefined
-      ? this.buildSystemPrompt(currentUser)
-      : { prompt: this.fixedSystemPrompt, sections: undefined }
     const tools = [...this.baseTools, ...this.buildImageGenerationTools()]
     if (readCodemodeMainAgentEnabled()) tools.push(this.buildCodemodeTool(tools))
+    const built = this.fixedSystemPrompt === undefined
+      ? this.buildSystemPrompt(currentUser, new Set(tools.map(tool => tool.name)))
+      : { prompt: this.fixedSystemPrompt, sections: undefined }
     this.snapshot = { prompt: built.prompt, sections: built.sections, tools }
     this.agent.state.tools = tools
     return {
@@ -778,10 +780,24 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
       isFirstTurn: this.lastTurnChannel === null,
       timezone,
     })
-    this.lastTurnChannel = channel
-    this.announceChannelAgain = false
-    this.pendingTurnPrefix = context.prefix
+    this.pendingTurn = { channel, prefix: context.prefix, compacted: false }
     return context
+  }
+
+  /**
+   * Channel state only advances once the turn's message reaches the
+   * transcript; an aborted or continued turn must leave it untouched, or its
+   * channel prefix would never be announced.
+   */
+  private commitTurnContext(text: string): void {
+    const pending = this.pendingTurn
+    this.pendingTurn = null
+    if (!pending) return
+    const carriesPrefix = pending.prefix !== null && text.startsWith(pending.prefix)
+    if (pending.prefix !== null && !carriesPrefix) return
+    this.lastTurnChannel = pending.channel
+    // A compaction during this turn may have folded the earlier announcement into the summary.
+    if (carriesPrefix || !pending.compacted) this.announceChannelAgain = false
   }
 
   setThinkingLevel(level: SettingsThinkingLevel | string): void {
@@ -806,7 +822,7 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
     this.snapshot = null
     this.lastTurnChannel = null
     this.announceChannelAgain = false
-    this.pendingTurnPrefix = null
+    this.pendingTurn = null
     this.compactor.reset()
   }
 
@@ -883,24 +899,15 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
     return { language, timezone, builtinToolsConfig, sttEnabled, thinkingLevel }
   }
 
-  private buildSystemPrompt(currentUser?: { username: string; role?: string }): { prompt: string; sections: SystemPromptSection[] } {
-    const { language, timezone, builtinToolsConfig, sttEnabled } = this.readRuntimeSettings()
+  /** `activeTools` are the tools of the snapshot being built; skills that require a missing one are not listed. */
+  private buildSystemPrompt(
+    currentUser: { username: string; role?: string } | undefined,
+    activeTools: ReadonlySet<string>,
+  ): { prompt: string; sections: SystemPromptSection[] } {
+    const { language, timezone } = this.readRuntimeSettings()
 
     const activeSkills = getActiveSkillEntries()
-    // Build a skill-prompt context so agent skills can be gated by the current
-    // platform / active toolset and annotated with missing required env vars.
-    const activeTools = new Set<string>([
-      'shell', 'file_read', 'file_write', 'file_edit', 'file_list',
-      'task_read', 'task_write',
-      'schedule_read', 'schedule_write',
-      'chat_history_read', 'memory_search', 'skill_list',
-    ])
-    if (builtinToolsConfig?.webSearch?.enabled !== false) activeTools.add('web_search')
-    if (builtinToolsConfig?.webFetch?.enabled !== false) activeTools.add('web_fetch')
-    if (sttEnabled) activeTools.add('audio_transcribe')
-
     const availableImageModels = this.listImageModelsForPrompt()
-    if (availableImageModels.length > 0) activeTools.add(GENERATE_IMAGE_TOOL_NAME)
 
     const agentSkillEntries = getAgentSkillsForPrompt({
       platform: currentPlatform(),
@@ -1145,16 +1152,16 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
         ? 0
         : estimateMessageTokens({ role: 'user', content: [{ type: 'text', text }, ...(images ?? [])], timestamp: Date.now() })
       await this.compactor.compactBeforePrompt(pendingTokens, pendingStart.signal)
-      // The pending message carries the channel prefix and is appended after this compaction.
-      if (!continueTranscript && this.pendingTurnPrefix && text.startsWith(this.pendingTurnPrefix)) {
-        this.announceChannelAgain = false
-      }
     } finally {
       if (this.pendingStart === pendingStart) this.pendingStart = null
     }
-    if (pendingStart.signal.aborted) return
-    if (continueTranscript) await this.agent.continue()
-    else await this.agent.prompt(text, images)
+    if (pendingStart.signal.aborted || continueTranscript) {
+      this.pendingTurn = null
+      if (continueTranscript && !pendingStart.signal.aborted) await this.agent.continue()
+      return
+    }
+    this.commitTurnContext(text)
+    await this.agent.prompt(text, images)
   }
 
   /** The failed assistant message when it is an overflow worth one compact-and-retry. */
