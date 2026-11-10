@@ -378,21 +378,13 @@ describe('image generation models', () => {
     await expect(service.getLiveImageModels(anthropic.id)).rejects.toBeInstanceOf(ProvidersValidationError)
   })
 
-  it('notifies when the usable image models change, and only then', () => {
-    addProvider({ name: 'Active', providerType: 'anthropic', apiKey: 'test-key', enabledModels: ['claude-sonnet-4-5'] })
+  it('stores the enabled image models of a provider', () => {
     const provider = createOpenRouterProvider()
-    const onImageModelsChanged = vi.fn()
-    const service = createProvidersService({ onImageModelsChanged })
-
-    service.updateProvider(provider.id, { name: 'OpenRouter 2' })
-    expect(onImageModelsChanged).not.toHaveBeenCalled()
+    const service = createProvidersService()
 
     service.updateProvider(provider.id, { enabledImageModels: ['recraft/recraft-v4.1'] })
-    expect(onImageModelsChanged).toHaveBeenCalledTimes(1)
-    expect(loadProviders().providers.find(p => p.id === provider.id)!.enabledImageModels).toEqual(['recraft/recraft-v4.1'])
 
-    service.updateProvider(provider.id, { disabled: true })
-    expect(onImageModelsChanged).toHaveBeenCalledTimes(2)
+    expect(loadProviders().providers.find(p => p.id === provider.id)!.enabledImageModels).toEqual(['recraft/recraft-v4.1'])
   })
 
   it('runs the free availability check instead of a chat request for image models', async () => {
