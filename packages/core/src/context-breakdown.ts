@@ -1,5 +1,5 @@
 import type { AgentMessage } from '@earendil-works/pi-agent-core'
-import type { ContextBreakdownSection, ContextUsageBreakdown, SystemPromptSectionKey } from './contracts/compaction.js'
+import type { ContextBreakdownSection, ContextBreakdownToolGroup, ContextUsageBreakdown, SystemPromptSectionKey } from './contracts/compaction.js'
 import {
   charsToTokens,
   type ContextTokenEstimate,
@@ -138,7 +138,7 @@ export function estimateContextBreakdown(
 
   return {
     systemPrompt: { tokens: sections.reduce((acc, section) => acc + section.tokens, 0), sections },
-    toolDefinitions: { tokens: parts.tools, count: countDeclaredTools(messages) },
+    toolDefinitions: { tokens: parts.tools, count: countDeclaredTools(messages), groups: toolGroups(messages, parts.tools) },
     chat: { tokens: CHAT_PARTS.reduce((acc, part) => acc + parts.chat[part], 0), ...parts.chat },
   }
 }
@@ -152,4 +152,39 @@ function countDeclaredTools(messages: readonly AgentMessage[]): number {
     for (const tool of message.toolsAdded ?? []) names.add(tool.name)
   }
   return names.size
+}
+
+const MERGED_TOOL_PREFIXES: Record<string, string> = { schedule: 'task' }
+
+/**
+ * Split the tool definition tokens over tool families (`file_*`, `email_*`)
+ * by declaration length. Every declaration in the transcript counts, as in
+ * {@link systemMessageChars}: a removed tool's schema stays in the context.
+ */
+function toolGroups(messages: readonly AgentMessage[], tokens: number): ContextBreakdownToolGroup[] {
+  const groups = new Map<string, { chars: number; prefixes: Set<string>; tools: Set<string> }>()
+  for (const message of messages) {
+    if (message.role !== 'system') continue
+    for (const tool of message.toolsAdded ?? []) {
+      const prefix = tool.name.split('_')[0]
+      const key = MERGED_TOOL_PREFIXES[prefix] ?? prefix
+      const group = groups.get(key) ?? { chars: 0, prefixes: new Set<string>(), tools: new Set<string>() }
+      group.chars += JSON.stringify(tool).length
+      group.prefixes.add(prefix)
+      group.tools.add(tool.name)
+      groups.set(key, group)
+    }
+  }
+  const entries = [...groups.values()]
+  const shares = apportion(tokens, entries.map(group => group.chars))
+  return entries
+    .map((group, i) => ({ name: toolGroupName(group.prefixes, group.tools), tokens: shares[i] }))
+    .filter(group => group.tokens > 0)
+    .sort((a, b) => b.tokens - a.tokens)
+}
+
+function toolGroupName(prefixes: Set<string>, tools: Set<string>): string {
+  if (tools.size === 1) return [...tools][0]
+  if (prefixes.size === 1) return `${[...prefixes][0]}_*`
+  return [...prefixes].sort().join('/')
 }

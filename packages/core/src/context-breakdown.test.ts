@@ -113,4 +113,13 @@ describe('estimateContextBreakdown', () => {
     expect(breakdown.chat.user).toBeLessThan(150)
     expect(breakdown.toolDefinitions.count).toBe(1)
   })
+
+  it('splits the tool definitions into tool families that add up to their total', () => {
+    const named = (name: string, chars = 400): Tool => ({ ...TOOL, name, description: 'd'.repeat(chars) })
+    const tools = [named('shell'), named('file_read', 2_000), named('file_write', 2_000), named('task_read'), named('schedule_write'), named('email_send', 100)]
+    const { toolDefinitions } = estimateContextBreakdown([system(PROMPT, tools), user(400)], SECTIONS)
+
+    expect(toolDefinitions.groups.map(group => group.name)).toEqual(['file_*', 'schedule/task', 'shell', 'email_send'])
+    expect(toolDefinitions.groups.reduce((sum, group) => sum + group.tokens, 0)).toBe(toolDefinitions.tokens)
+  })
 })

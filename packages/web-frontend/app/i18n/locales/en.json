@@ -93,9 +93,6 @@
         "systemPrompt": "System prompt",
         "toolDefinitions": "Tool definitions ({count})",
         "chat": "Chat",
-        "showMore": "{count} more",
-        "showLess": "Show less",
-        "estimated": "Shares are estimated from text length; providers only report the total.",
         "chatParts": {
           "summary": "Compaction summary",
           "user": "User messages",

@@ -118,8 +118,7 @@
             msg.role === 'divider' || msg.compactionInfo ? 'w-full' : (msg.role === 'tool' || (msg.role === 'system' && (msg.isTaskResult || msg.isTaskStatusUpdate || msg.isReminder || msg.stallInfo || msg.errorInfo || msg.picker || msg.chatAction)) || msg.isThinking) ? 'self-start w-full max-w-full sm:max-w-[75%] pl-11' : 'flex max-w-full gap-3 sm:max-w-[75%]',
             {
               'self-end flex-row-reverse': msg.role === 'user',
-              'self-start': msg.role === 'assistant' && !msg.isThinking,
-              'self-center max-w-full sm:max-w-[85%]': msg.role === 'system' && !msg.compactionInfo && !msg.isTaskResult && !msg.isTaskStatusUpdate && !msg.isReminder && !msg.stallInfo && !msg.errorInfo && !msg.picker && !msg.chatAction,
+              'self-start': (msg.role === 'assistant' && !msg.isThinking) || (msg.role === 'system' && !msg.compactionInfo && !msg.isTaskResult && !msg.isTaskStatusUpdate && !msg.isReminder && !msg.stallInfo && !msg.errorInfo && !msg.picker && !msg.chatAction),
             },
           ]"
         >
@@ -481,7 +480,7 @@
               'rounded-tr-bubble-tail border border-[#2AABEE]/30 bg-[#2AABEE]/10 text-foreground': msg.role === 'user' && msg.source === 'telegram',
               'rounded-tl-bubble-tail border border-border bg-muted text-foreground': msg.role === 'assistant' && !msg.telegramDelivered,
               'rounded-tl-bubble-tail border border-[#2AABEE]/30 bg-[#2AABEE]/10 text-foreground': msg.role === 'assistant' && msg.telegramDelivered,
-              'rounded-lg border border-border bg-muted/50 text-muted-foreground text-xs': msg.role === 'system',
+              'rounded-tl-bubble-tail border border-border bg-muted/50 text-muted-foreground text-xs': msg.role === 'system',
             }">
               <!-- Telegram label (source or delivered) -->
               <p v-if="msg.source === 'telegram'" class="mb-1 text-xs font-medium text-[#2AABEE]">

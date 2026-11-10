@@ -63,7 +63,7 @@ describe('formatContextUsage', () => {
     autoCompactionPaused: false,
   }
 
-  it('lists the largest system prompt blocks, tool definitions and chat parts', () => {
+  it('lists system prompt, tool definitions and chat without sub-groups', () => {
     const sections = [
       { key: 'core_memory', tokens: 4_000 },
       { key: 'available_skills', tokens: 2_000 },
@@ -78,7 +78,7 @@ describe('formatContextUsage', () => {
       ...usage,
       breakdown: {
         systemPrompt: { tokens: 10_000, sections: [...sections] },
-        toolDefinitions: { tokens: 8_000, count: 24 },
+        toolDefinitions: { tokens: 8_000, count: 24, groups: [] },
         chat: { tokens: 22_000, summary: 0, user: 2_000, assistant: 5_000, toolResults: 15_000 },
       },
     })
@@ -90,18 +90,8 @@ describe('formatContextUsage', () => {
       '',
       'Breakdown (estimated):',
       'System prompt: 10k (25%)',
-      '  · Core memory (MEMORY.md): 4k (40%)',
-      '  · Skills: 2k (20%)',
-      '  · Agent rules (AGENTS.md): 1k (10%)',
-      '  · Personality (SOUL.md): 1k (10%)',
-      '  · Daily notes: 800 (8%)',
-      '  · System rules: 600 (6%)',
-      '  · 2 more: 600 (6%)',
       'Tool definitions: 8k (20%), 24 tools',
       'Chat: 22k (55%)',
-      '  · User messages: 2k (9%)',
-      '  · Assistant messages: 5k (23%)',
-      '  · Tool results: 15k (68%)',
     ].join('\n'))
   })
 

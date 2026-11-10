@@ -115,24 +115,13 @@ Model: Qwen3.8 27B
 
 Breakdown (estimated):
 System prompt: 12k (36%)
-  · Core memory (MEMORY.md): 4k (33%)
-  · Skills: 3k (25%)
-  · Agent rules (AGENTS.md): 2k (17%)
-  · Daily notes: 1k (8%)
-  · Personality (SOUL.md): 1k (8%)
-  · Tool overview: 600 (5%)
-  · 9 more: 500 (4%)
 Tool definitions: 9k (27%), 31 tools
 Chat: 12k (36%)
-  · User messages: 1k (8%)
-  · Assistant messages: 4k (33%)
-  · Tool results: 7k (58%)
 ```
 
-The breakdown splits the context into the system prompt (with its six
-largest blocks, each as a share of the system prompt), the tool definitions
-sent with every request and the chat (compaction summary, user messages,
-assistant messages incl. thinking and tool calls, tool results). Providers
+The breakdown splits the context into the system prompt, the tool definitions
+sent with every request and the chat. The context meter in the
+[web chat toolbar](../web-ui/chat#toolbar) splits these further. Providers
 only report the total, so the parts are estimated from text length and scaled
 to the measured total.
 
