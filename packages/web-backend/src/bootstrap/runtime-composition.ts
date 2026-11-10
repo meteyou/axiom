@@ -152,8 +152,6 @@ export interface RuntimeComposition {
   getTelegramBot: () => TelegramBot | null
   onTelegramSettingsChanged: () => void
   onActiveProviderChanged: () => void
-  /** Rebuilds the background tool set; the interactive agent re-syncs `image_generate` per turn. */
-  onImageModelsChanged: () => void
   setWebSocketChatPresenceChecker: (checker: { hasActiveWebSocket: (userId: number) => boolean } | null) => void
   stopBackgroundServices: () => Promise<void>
 }
@@ -1415,7 +1413,6 @@ export async function createRuntimeComposition(options: RuntimeCompositionOption
         logger.error('[axiom] Error initializing agent core after provider change:', err)
       })
     },
-    onImageModelsChanged: () => {},
     setWebSocketChatPresenceChecker: (checker) => {
       wsChatPresenceChecker = checker ? checker.hasActiveWebSocket : null
     },

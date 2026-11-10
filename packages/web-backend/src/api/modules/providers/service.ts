@@ -12,7 +12,6 @@ import {
   getAvailableImageModels,
   getAvailableModels,
   getRadiusCatalog,
-  getUsableImageModels,
   IMAGE_TEST_PROMPT,
   ImageProviderAuthError,
   listLiveImageModels,
@@ -225,18 +224,6 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
       console.warn(`[axiom] Live image model fetch failed for provider "${provider.name}", using bundled catalog: ${(err as Error).message}`)
       return catalog
     }
-  }
-
-  function usableImageModelSignature(): string {
-    return JSON.stringify(loadProviders().providers.map(p => [p.id, getUsableImageModels(p)]))
-  }
-
-  /** Background agents build their tool set once; tell them when `image_generate` may have to appear or vanish. */
-  function notifyOnImageModelChange<T>(mutate: () => T): T {
-    const before = usableImageModelSignature()
-    const result = mutate()
-    if (usableImageModelSignature() !== before) options.onImageModelsChanged?.()
-    return result
   }
 
   /**
@@ -563,7 +550,7 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
   }
 
   function updateProvider(id: string, payload: ProviderUpdatePayloadContract): ProviderConfig {
-    return notifyOnImageModelChange(() => applyProviderUpdate(id, payload))
+    return applyProviderUpdate(id, payload)
   }
 
   function applyProviderUpdate(id: string, payload: ProviderUpdatePayloadContract): ProviderConfig {
@@ -609,7 +596,7 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
 
   function deleteProvider(id: string): void {
     try {
-      notifyOnImageModelChange(() => deleteProviderConfig(id))
+      deleteProviderConfig(id)
     } catch (err) {
       const message = (err as Error).message
       if (message.includes('not found')) {
@@ -620,7 +607,7 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
   }
 
   function updateProviderModel(providerId: string, modelId: string, payload: ProviderModelUpdatePayloadContract): ProviderConfig {
-    return notifyOnImageModelChange(() => applyProviderModelUpdate(providerId, modelId, payload))
+    return applyProviderModelUpdate(providerId, modelId, payload)
   }
 
   function applyProviderModelUpdate(providerId: string, modelId: string, payload: ProviderModelUpdatePayloadContract): ProviderConfig {

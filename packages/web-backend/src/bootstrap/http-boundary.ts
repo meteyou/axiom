@@ -49,7 +49,6 @@ export async function startHttpBoundary(
     getTelegramBot: runtimeComposition.getTelegramBot,
     onTelegramSettingsChanged: runtimeComposition.onTelegramSettingsChanged,
     onActiveProviderChanged: runtimeComposition.onActiveProviderChanged,
-    onImageModelsChanged: runtimeComposition.onImageModelsChanged,
     taskEventBus: runtimeComposition.taskEventBus,
     chatActions: runtimeComposition.chatActions,
     abortUserTurns: userId => { runtimeComposition.turnRunner.abortTurn(userId) },

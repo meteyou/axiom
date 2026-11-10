@@ -22,7 +22,6 @@ const onHealthMonitorSettingsChanged = vi.fn()
 const onConsolidationSettingsChanged = vi.fn()
 const onAgentHeartbeatSettingsChanged = vi.fn()
 const onTelegramSettingsChanged = vi.fn()
-const onImageModelsChanged = vi.fn()
 
 beforeAll(async () => {
   previousDataDir = process.env.DATA_DIR
@@ -40,7 +39,6 @@ beforeAll(async () => {
     getAgentCore,
     onAgentHeartbeatSettingsChanged,
     onTelegramSettingsChanged,
-    onImageModelsChanged,
     healthMonitorService: {
       restart: onHealthMonitorSettingsChanged,
     } as unknown as NonNullable<AppOptions['healthMonitorService']>,
@@ -80,7 +78,6 @@ beforeEach(() => {
   onConsolidationSettingsChanged.mockClear()
   onAgentHeartbeatSettingsChanged.mockClear()
   onTelegramSettingsChanged.mockClear()
-  onImageModelsChanged.mockClear()
 })
 
 function authHeaders(token: string): Record<string, string> {
@@ -297,7 +294,7 @@ describe('settings route module', () => {
     expect(await invalid.json()).toEqual({ error: 'retry.maxRetries must be an integer 0-10' })
   })
 
-  it('round-trips image generation settings and reports changes', async () => {
+  it('round-trips image generation settings', async () => {
     const defaults = await fetch(`${baseUrl}/api/settings`, { headers: authHeaders(adminToken) })
     expect((await defaults.json() as { imageGeneration: unknown }).imageGeneration).toEqual({
       enabled: true,
@@ -326,7 +323,6 @@ describe('settings route module', () => {
       outputDir: 'assets/generated',
     }
     expect((await updated.json() as { imageGeneration: unknown }).imageGeneration).toEqual(expected)
-    expect(onImageModelsChanged).toHaveBeenCalledTimes(1)
 
     const settings = JSON.parse(fs.readFileSync(path.join(tempDataDir, 'config', 'settings.json'), 'utf-8')) as {
       imageGeneration: unknown
@@ -334,7 +330,6 @@ describe('settings route module', () => {
     expect(settings.imageGeneration).toEqual(expected)
 
     expect((await put({ enabled: false })).status).toBe(200)
-    expect(onImageModelsChanged).toHaveBeenCalledTimes(1)
 
     const invalid = await put({ defaultModel: 42 })
     expect(invalid.status).toBe(400)
