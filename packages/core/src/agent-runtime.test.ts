@@ -969,7 +969,7 @@ describe('AgentRuntime boundary', () => {
 
     it('adds the codemode tool, with its guideline in the description, from the next session after the setting turns on', async () => {
       const db = initDatabase(':memory:')
-      const interactiveTool = { name: 'interactive_only_tool', description: 'Only usable in chat.', parameters: {}, execute: vi.fn() } as unknown as AgentTool
+      const interactiveTool = { name: 'interactive-only-tool', description: 'Only usable in chat.', parameters: {}, execute: vi.fn() } as unknown as AgentTool
       const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db, tools: [interactiveTool] })
 
       await runTurn(runtime)
@@ -985,7 +985,7 @@ describe('AgentRuntime boundary', () => {
       expect(codemodeTool).toBeDefined()
       expect(runtime.getStateSnapshot().toolNames).toContain('codemode')
       // The tool description is rendered from the main agent's own tools.
-      expect(codemodeTool!.description).toContain('interactive_only_tool')
+      expect(codemodeTool!.description).toContain('`tools.interactive_only_tool` is the tool `interactive-only-tool`.')
       expect(codemodeTool!.description).toContain('Do NOT wrap a single tool call in a script')
       expect(leadingSystemMessage(runtime)).toBe('runtime system prompt')
     })
