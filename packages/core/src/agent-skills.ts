@@ -35,7 +35,7 @@ export interface SkillPromptContext {
   /** Current platform name: "linux" | "macos" | "windows" | other. */
   platform: string
   /** Names of tools currently registered in the active toolset. */
-  activeTools: Set<string>
+  activeTools: ReadonlySet<string>
   /** Returns the value of an env var (or undefined if unset). */
   getEnv?: (name: string) => string | undefined
 }
@@ -197,7 +197,17 @@ export function getRecentAgentSkills(limit: number = 10): AgentSkillEntry[] {
   const combined = [...withUsage, ...withoutUsage]
   const pinnedCount = Math.min(combined.filter(s => PINNED_AGENT_SKILLS.has(s.name)).length, limit)
   let unpinnedSlots = limit - pinnedCount
-  return combined.filter(s => PINNED_AGENT_SKILLS.has(s.name) || unpinnedSlots-- > 0).slice(0, limit)
+  const recent: AgentSkillEntry[] = []
+  for (const skill of combined) {
+    if (recent.length === limit) break
+    if (PINNED_AGENT_SKILLS.has(skill.name)) {
+      recent.push(skill)
+    } else if (unpinnedSlots > 0) {
+      recent.push(skill)
+      unpinnedSlots--
+    }
+  }
+  return recent
 }
 
 /**

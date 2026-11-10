@@ -45,7 +45,6 @@ describe('buildPathsBlock', () => {
     agentSkillsDir: '/data/skills_agent',
     readmePath: '/app/README.md',
     docsDir: '/app/docs',
-    today: '2026-01-02',
     isAdmin: true,
     personalPaths: null,
   }
@@ -60,7 +59,7 @@ describe('buildPathsBlock', () => {
   it('lists the legacy layout with config and docs', () => {
     const block = buildPathsBlock(base)
     for (const expected of [
-      '/workspace\n', '/data/memory/users/', '/data/memory/daily/', path.join('/data/memory/daily', '2026-01-02.md'),
+      '/workspace\n', '/data/memory/users/', '(one file per day, YYYY-MM-DD.md): /data/memory/daily/',
       '/data/memory/MEMORY.md', '/data/memory/SOUL.md', '/data/memory/wiki/', '/data/memory/sources/',
       '/data/skills_agent/', '/data/config/AGENTS.md', '/data/config/TASKS.md', '/app/README.md',
       '/app/docs/concepts/', '/app/docs/guide/', '/app/docs/reference/',
@@ -77,6 +76,14 @@ describe('buildPathsBlock', () => {
     expect(block).not.toContain('/data/memory/users/')
     expect(block).not.toContain('/data/config/')
     expect(block).toContain('/app/docs/reference/')
+  })
+
+  it('names a dated daily file only when a date is given', () => {
+    for (const options of [base, { ...base, personalPaths }]) {
+      const dailyDir = options.personalPaths?.dailyDir ?? '/data/memory/daily'
+      expect(buildPathsBlock(options)).not.toMatch(/\d{4}-\d{2}-\d{2}\.md/)
+      expect(buildPathsBlock({ ...options, today: '2026-01-02' })).toContain(path.join(dailyDir, '2026-01-02.md'))
+    }
   })
 
   it('adds config files for personal admins', () => {

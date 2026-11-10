@@ -1034,7 +1034,6 @@ ${skillEntries}${overflowNote}
     agentSkillsDir: options?.agentSkillsDir ?? getAgentSkillsDir(),
     readmePath: getReadmePath(),
     docsDir: getDocsPath(),
-    today: formatDateKey(new Date(), options?.timezone || undefined),
     isAdmin,
     personalPaths: personal?.paths ?? null,
     legacyUsername: options?.currentUser?.username,
@@ -1050,7 +1049,6 @@ ${skillEntries}${overflowNote}
       addSection('language', `<language>\nAlways respond in ${lang}.\n</language>`)
     }
   }
-
 
   return { prompt: sections.map(section => section.text).join('\n\n'), sections }
 }

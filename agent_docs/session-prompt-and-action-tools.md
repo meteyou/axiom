@@ -31,7 +31,7 @@ Things that must **not** go into the system prompt because they change within a 
 - `suffix` — `<current_time>` with weekday, date, time and timezone, appended to every user message.
 - `prefix` — an optional `<channel_context>`: Telegram guidance on the first Telegram turn or when switching to Telegram; a short web note only when switching back from Telegram; nothing otherwise (web is the silent default).
 
-The runtime tracks `lastTurnChannel` per session. Task injections get their channel from `resolveDeliveryChannel()` **before** the injection runs, using the same rules as notification delivery (user, Telegram delivery mode `auto`/`always`, active web socket, Telegram link; for `always` Telegram wins). Don't let the injection guess the channel on its own.
+The runtime tracks `lastTurnChannel` per session. `getTurnContext()` only computes the prefix; the channel state advances in `startRun` right before the message is added to the transcript, so a turn that is stopped earlier or continues the transcript (retry) announces the channel again next time. Task injections get their channel from `resolveDeliveryChannel()` **before** the injection runs, using the same rules as notification delivery (user, Telegram delivery mode `auto`/`always`, active web socket, Telegram link; for `always` Telegram wins). Don't let the injection guess the channel on its own.
 
 ## Action-tool toolkit (`action-tool.ts`)
 

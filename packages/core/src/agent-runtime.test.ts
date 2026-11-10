@@ -9,6 +9,7 @@ import { assembleSystemPromptWithSections } from './memory.js'
 import { logToolCall } from './token-logger.js'
 import { loadConfig } from './config.js'
 import { getAgentSkillsForPrompt } from './agent-skills.js'
+import { applyTurnContext } from './turn-context.js'
 
 const runtimeHarness = vi.hoisted(() => ({
   promptBehaviors: [] as Array<(agent: { emit: (event: unknown) => void }, text: string) => Promise<void>>,
@@ -262,26 +263,84 @@ describe('AgentRuntime boundary', () => {
   })
 
   describe('turn context', () => {
-    const prefixOf = (runtime: ReturnType<typeof createAgentRuntime>, channel: 'web' | 'telegram') =>
-      runtime.getTurnContext(channel).prefix
+    type Runtime = ReturnType<typeof createAgentRuntime>
+    type Channel = 'web' | 'telegram'
+    const newRuntime = () => createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db: initDatabase(':memory:'), tools: [] })
+    const drain = async (stream: AsyncIterable<unknown>) => {
+      for await (const _chunk of stream) { /* drain */ }
+    }
 
-    it('announces Telegram on the first turn but stays silent for web', () => {
-      const db = initDatabase(':memory:')
-      const telegram = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db, tools: [] })
-      const web = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db, tools: [] })
+    /** Runs a whole turn on `channel` and returns the channel prefix its message carried. */
+    async function turnPrefix(runtime: Runtime, channel: Channel): Promise<string | null> {
+      const context = runtime.getTurnContext(channel)
+      runtimeHarness.promptBehaviors.push(endTurn)
+      await drain(runtime.streamPrompt(applyTurnContext('turn', context), 'session-1'))
+      return context.prefix
+    }
 
-      expect(prefixOf(telegram, 'telegram')).toContain('through Telegram')
-      expect(prefixOf(web, 'web')).toBeNull()
+    function compactorOf(runtime: Runtime) {
+      return (runtime as unknown as {
+        compactor: { compactBeforePrompt: () => Promise<void>; options: { rebuildSystemMessage: () => unknown } }
+      }).compactor
+    }
+
+    it('announces Telegram on the first turn but stays silent for web', async () => {
+      expect(await turnPrefix(newRuntime(), 'telegram')).toContain('through Telegram')
+      expect(await turnPrefix(newRuntime(), 'web')).toBeNull()
     })
 
-    it('announces each channel switch exactly once and nothing while the channel is unchanged', () => {
-      const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db: initDatabase(':memory:'), tools: [] })
+    it('announces each channel switch exactly once and nothing while the channel is unchanged', async () => {
+      const runtime = newRuntime()
 
-      expect(prefixOf(runtime, 'web')).toBeNull()
-      expect(prefixOf(runtime, 'telegram')).toContain('through Telegram')
-      expect(prefixOf(runtime, 'telegram')).toBeNull()
-      expect(prefixOf(runtime, 'web')).toContain('web interface')
-      expect(prefixOf(runtime, 'web')).toBeNull()
+      expect(await turnPrefix(runtime, 'web')).toBeNull()
+      expect(await turnPrefix(runtime, 'telegram')).toContain('through Telegram')
+      expect(await turnPrefix(runtime, 'telegram')).toBeNull()
+      expect(await turnPrefix(runtime, 'web')).toContain('web interface')
+      expect(await turnPrefix(runtime, 'web')).toBeNull()
+    })
+
+    it('announces the channel again when the turn was stopped before its message was added', async () => {
+      const runtime = newRuntime()
+      vi.spyOn(compactorOf(runtime), 'compactBeforePrompt').mockImplementationOnce(async () => runtime.abort())
+
+      const context = runtime.getTurnContext('telegram')
+      await drain(runtime.streamPrompt(applyTurnContext('stopped', context), 'session-1'))
+
+      expect(context.prefix).toContain('through Telegram')
+      expect(runtimeHarness.promptCalls).toEqual([])
+      expect(await turnPrefix(runtime, 'telegram')).toContain('through Telegram')
+      expect(await turnPrefix(runtime, 'telegram')).toBeNull()
+    })
+
+    it('keeps the channel state when a retry continues the transcript without adding its message', async () => {
+      const runtime = newRuntime()
+      expect(await turnPrefix(runtime, 'telegram')).toContain('through Telegram')
+      const piAgent = (runtime as unknown as AgentRuntimePiAgentAccess).getAgent()
+      piAgent.state.messages = [...piAgent.state.messages, { role: 'user', content: 'hello', timestamp: 1 }] as never
+
+      const context = runtime.getTurnContext('web')
+      runtimeHarness.promptBehaviors.push(endTurn)
+      await drain(runtime.retryLastTurn(applyTurnContext('hello', context), 'session-1'))
+
+      expect(runtimeHarness.continueCalls).toBe(1)
+      expect(await turnPrefix(runtime, 'web')).toContain('web interface')
+    })
+
+    it('announces Telegram again after a compaction unless the pending message already carries it', async () => {
+      const runtime = newRuntime()
+      const compactor = compactorOf(runtime)
+      const compactBeforeNextPrompt = () => vi.spyOn(compactor, 'compactBeforePrompt')
+        .mockImplementationOnce(async () => { compactor.options.rebuildSystemMessage() })
+      expect(await turnPrefix(runtime, 'telegram')).toContain('through Telegram')
+
+      compactBeforeNextPrompt()
+      expect(await turnPrefix(runtime, 'telegram')).toBeNull()
+      expect(await turnPrefix(runtime, 'telegram')).toContain('through Telegram')
+
+      expect(await turnPrefix(runtime, 'web')).toContain('web interface')
+      compactBeforeNextPrompt()
+      expect(await turnPrefix(runtime, 'telegram')).toContain('through Telegram')
+      expect(await turnPrefix(runtime, 'telegram')).toBeNull()
     })
 
     it('appends the current time in the configured timezone', () => {
@@ -289,14 +348,14 @@ describe('AgentRuntime boundary', () => {
       expect(runtime.getTurnContext('web').suffix).toBe('<current_time>Europe/Berlin</current_time>')
     })
 
-    it('treats the first turn after session end as a first turn again', () => {
-      const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db: initDatabase(':memory:'), tools: [] })
-      expect(prefixOf(runtime, 'telegram')).not.toBeNull()
+    it('treats the first turn after session end as a first turn again', async () => {
+      const runtime = newRuntime()
+      expect(await turnPrefix(runtime, 'telegram')).not.toBeNull()
 
       runtime.clearMessages()
-      expect(prefixOf(runtime, 'telegram')).not.toBeNull()
+      expect(await turnPrefix(runtime, 'telegram')).not.toBeNull()
       runtime.clearMessages()
-      expect(prefixOf(runtime, 'web')).toBeNull()
+      expect(await turnPrefix(runtime, 'web')).toBeNull()
     })
   })
 
@@ -333,6 +392,18 @@ describe('AgentRuntime boundary', () => {
       } finally {
         vi.mocked(assembleSystemPromptWithSections).mockReturnValue({ prompt: 'runtime system prompt', sections: [] })
       }
+    })
+
+    it('gates skills on the tools the snapshot actually declares', async () => {
+      const emailRead = { name: 'email_read', parameters: {}, execute: vi.fn() } as unknown as AgentTool
+      const runtime = createAgentRuntime({ model: makeModel(), apiKey: 'sk-primary', db: initDatabase(':memory:'), tools: [emailRead] })
+      await runTurn(runtime)
+
+      const activeTools = vi.mocked(getAgentSkillsForPrompt).mock.calls.at(-1)?.[0]?.activeTools
+      expect([...activeTools ?? []]).toEqual(piAgentOf(runtime).state.tools.map(tool => tool.name))
+      expect(activeTools?.has('email_read')).toBe(true)
+      // Not offered by this runtime, so skills requiring them stay hidden.
+      expect(activeTools?.has('task_write')).toBe(false)
     })
 
     it('drops the system message on session end and builds a fresh snapshot in the next session', async () => {
@@ -740,7 +811,7 @@ describe('AgentRuntime boundary', () => {
       return vi.mocked(assembleSystemPromptWithSections).mock.calls.at(-1)?.[0]
     }
 
-    function latestActiveTools(): Set<string> | undefined {
+    function latestActiveTools(): ReadonlySet<string> | undefined {
       return vi.mocked(getAgentSkillsForPrompt).mock.calls.at(-1)?.[0]?.activeTools
     }
 
