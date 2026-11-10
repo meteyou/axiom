@@ -674,7 +674,7 @@ describe('nested call observer and progress', () => {
 })
 
 describe('codemode description', () => {
-  it('lists the globals and each callable tool with its resolve hint', () => {
+  it('lists the globals and only the tools that differ from the general rule', () => {
     const tools = [
       makeTool({ name: 'file_read', description: 'Read a file from the workspace. It returns the content.' }),
       makeTool({ name: 'calc', description: 'Compute.', outputSchema: Type.Object({ value: Type.Number() }) }),
@@ -683,13 +683,17 @@ describe('codemode description', () => {
     expect(description).toContain('text(value)')
     expect(description).toContain('console.log')
     expect(description).toContain('return value')
-    expect(description).toContain('await tools.file_read(')
-    expect(description).toContain('a string')
-    expect(description).toContain('await tools.calc(')
-    expect(description).toContain('an object')
+    expect(description).toContain('as a string unless listed under Exceptions')
+    expect(description).not.toContain('file_read')
+    expect(description).not.toContain('Read a file')
+    expect(description).toContain('`tools.calc` resolves to an object { value }.')
     // v1 does not advertise store/load or the models API
     expect(description).not.toContain('store(')
     expect(description).not.toContain('models.')
+  })
+
+  it('has no exceptions block when every tool follows the general rule', () => {
+    expect(buildCodemodeDescription([makeTool({ name: 'file_read' })])).not.toContain('Exceptions:')
   })
 
   it('shows that shell resolves to { output, exit_code } without rejecting on non-zero exit', () => {
@@ -715,6 +719,6 @@ describe('codemode description', () => {
   it('maps non-identifier tool names to identifiers in the description', () => {
     const tools = [makeTool({ name: 'my tool' })]
     const description = buildCodemodeDescription(tools)
-    expect(description).toContain('tools.my_tool')
+    expect(description).toContain('`tools.my_tool` is the tool `my tool`.')
   })
 })

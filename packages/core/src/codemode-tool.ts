@@ -590,9 +590,8 @@ export function pruneCodemodeSpillFolder(nowMs = Date.now()): number {
 
 /* ── Description ──────────────────────────────────────────────────────────── */
 
-/** What a script sees a nested call resolve to, in a few words. */
-function describeResolveHint(tool: AgentTool): string {
-  if (!tool.outputSchema) return 'a string (the tool\'s text output)'
+/** What a script sees a structured nested call resolve to, in a few words. */
+function describeObjectResult(tool: AgentTool): string {
   const props = objectPropertyNames(tool.outputSchema)
   const shape = props.length > 0 ? `an object { ${props.join(', ')} }` : 'an object (the tool\'s structured output)'
   if (tool.name === 'shell') {
@@ -606,23 +605,18 @@ function objectPropertyNames(schema: unknown): string[] {
   return props && typeof props === 'object' ? Object.keys(props) : []
 }
 
-function firstSentence(text: string | undefined): string {
-  const trimmed = (text ?? '').trim()
-  if (trimmed === '') return ''
-  const match = trimmed.match(/^[^.!?]+[.!?]?\s*/)
-  return (match ? match[0].trim() : trimmed).replace(/\s+/g, ' ')
-}
-
 /**
  * Model-facing description: intro, the globals a script may use, and one line per
- * callable tool with how to call it and what it resolves to. `store()`/`load()` and
- * the `models.*` API are not advertised in v1.
+ * tool a script cannot infer from its own declaration (structured result or renamed
+ * identifier). Every other tool is covered by the general rule, so the description
+ * does not repeat the tool list. `store()`/`load()` and the `models.*` API are not
+ * advertised in v1.
  */
 export function buildCodemodeDescription(tools: AgentTool[]): string {
   const intro = [
     'Run JavaScript that calls your other tools; only the script\'s output reaches you, so use it to batch, chain and filter.',
     'The input is raw JavaScript (not JSON, no code fence), run as an async function body in a sandboxed VM: top-level `await` and `return` work. There is no Node, file system, network or timers.',
-    '- `await tools.<name>({ ...args })` calls a tool, resolves to ' + 'a string or an object, and rejects with an Error on failure. Calls still running when the script ends are cancelled; use `try/catch` or `Promise.allSettled` to handle failures.',
+    '- `await tools.<name>({ ...args })` calls any of your other tools by its name with the same arguments as a direct call, resolves to the tool\'s text output as a string unless listed under Exceptions, and rejects with an Error on failure. Calls still running when the script ends are cancelled; use `try/catch` or `Promise.allSettled` to handle failures.',
     '- Optional first line: `// @options: {"max_output_tokens": 10000, "timeout_ms": 300000}` (default budget 10000 tokens, default deadline 5 minutes, capped at 30).',
   ].join('\n')
 
@@ -642,11 +636,14 @@ export function buildCodemodeDescription(tools: AgentTool[]): string {
     '- With several text items, each starts with a `==> text N/M <==` line.',
   ].join('\n')
 
-  const toolLines = tools.map(tool => {
+  const exceptions = tools.flatMap(tool => {
     const id = toCodemodeIdentifier(tool.name)
-    const label = id === tool.name ? id : `${id} (tool \`${tool.name}\`)`
-    return `- \`await tools.${label}({ ...args })\` — ${firstSentence(tool.description)} Resolves to ${describeResolveHint(tool)}.`
+    const notes = [
+      ...(id === tool.name ? [] : [`is the tool \`${tool.name}\``]),
+      ...(tool.outputSchema ? [`resolves to ${describeObjectResult(tool)}`] : []),
+    ]
+    return notes.length > 0 ? [`- \`tools.${id}\` ${notes.join(' and ')}.`] : []
   })
 
-  return [intro, whenToUse, globals, ...(toolLines.length > 0 ? [`Callable tools:`, ...toolLines] : [])].join('\n\n')
+  return [intro, whenToUse, globals, ...(exceptions.length > 0 ? ['Exceptions:', ...exceptions] : [])].join('\n\n')
 }
