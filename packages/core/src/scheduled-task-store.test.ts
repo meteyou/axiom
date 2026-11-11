@@ -274,73 +274,134 @@ describe('ScheduledTaskStore', () => {
   })
 
   describe('tool override migration', () => {
-    function createWithOverride(toolsOverride: string | null) {
-      const task = store.create({ name: 'Job', prompt: 'p', schedule: '0 9 * * *' })
-      return store.update(task.id, { toolsOverride })!
+    const allEmailTools = ['email_list', 'email_folders', 'email_read', 'email_mark_read', 'email_mark_unread']
+
+    /** A row as written before tool-name format versions existed (or with an explicit version). */
+    function createStored(toolsOverride: string | null, version: number | null = null) {
+      const task = store.create({ name: 'Free text name', prompt: 'p', schedule: '0 9 * * *' })
+      db.prepare('UPDATE scheduled_tasks SET tools_override = ?, tools_override_version = ? WHERE id = ?')
+        .run(toolsOverride, version, task.id)
+      return store.getById(task.id)!
     }
 
-    it('rewrites legacy tool names to the current names', () => {
-      const task = createWithOverride(JSON.stringify(['shell', 'write_file', 'send_file_to_user']))
-      migrateScheduledTaskToolOverrides(db)
-      expect(store.getById(task.id)!.toolsOverride).toBe(JSON.stringify(['shell', 'file_write', 'file_send']))
-    })
-
-    it('is a no-op when run twice', () => {
-      const task = createWithOverride(JSON.stringify(['read_file', 'file_read', 'generate_image']))
-      migrateScheduledTaskToolOverrides(db)
-      const migrated = store.getById(task.id)!
-      expect(migrated.toolsOverride).toBe(JSON.stringify(['file_read', 'image_generate']))
-
-      migrateScheduledTaskToolOverrides(db)
-      const again = store.getById(task.id)!
-      expect(again.toolsOverride).toBe(migrated.toolsOverride)
-      expect(again.updatedAt).toBe(migrated.updatedAt)
-    })
-
-    it('leaves current, empty and invalid overrides untouched', () => {
-      const current = createWithOverride(JSON.stringify(['shell', 'file_edit']))
-      const empty = createWithOverride(null)
-      const invalid = createWithOverride('not-json')
-      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-      migrateScheduledTaskToolOverrides(db)
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining(invalid.id))
-      warn.mockRestore()
-      expect(store.getById(current.id)!.toolsOverride).toBe(JSON.stringify(['shell', 'file_edit']))
-      expect(store.getById(empty.id)!.toolsOverride).toBeNull()
-      expect(store.getById(invalid.id)!.toolsOverride).toBe('not-json')
-    })
-
-    it('disables a grouped schedule tool only when all of its legacy members were disabled', () => {
-      const all = createWithOverride(JSON.stringify(['list_cronjobs', 'get_cronjob', 'create_cronjob', 'edit_cronjob', 'remove_cronjob', 'create_reminder']))
-      const partial = createWithOverride(JSON.stringify(['shell', 'create_reminder', 'remove_cronjob']))
+    function migrateQuietly() {
       const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
       try {
         migrateScheduledTaskToolOverrides(db)
-        expect(store.getById(all.id)!.toolsOverride).toBe(JSON.stringify(['schedule_read', 'schedule_write']))
-        expect(store.getById(partial.id)!.toolsOverride).toBe(JSON.stringify(['shell']))
-        expect(log).toHaveBeenCalledWith(expect.stringContaining('schedule_write stays enabled'))
-
-        log.mockClear()
-        migrateScheduledTaskToolOverrides(db)
-        expect(store.getById(partial.id)!.toolsOverride).toBe(JSON.stringify(['shell']))
-        expect(log).not.toHaveBeenCalled()
+        return { log: log.mock.calls.map(call => String(call[0])), warn: warn.mock.calls.map(call => String(call[0])) }
       } finally {
         log.mockRestore()
+        warn.mockRestore()
       }
+    }
+
+    const overrideOf = (id: string) => {
+      const task = store.getById(id)!
+      return { names: task.toolsOverride === null ? null : JSON.parse(task.toolsOverride) as string[], version: task.toolsOverrideVersion }
+    }
+
+    it('stamps rows written through the store with the current version', () => {
+      const created = store.create({ name: 'Job', prompt: 'p', schedule: '0 9 * * *', toolsOverride: JSON.stringify(['email_read']) })
+      expect(created.toolsOverrideVersion).toBe(2)
+      expect(store.update(createStored(null).id, { toolsOverride: JSON.stringify(['shell']) })!.toolsOverrideVersion).toBe(2)
     })
 
-    it('runs as part of database initialization', () => {
-      const dbPath = tmpDbPath()
-      const first = initDatabase(dbPath)
-      const task = new ScheduledTaskStore(first).create({ name: 'Job', prompt: 'p', schedule: '0 9 * * *' })
-      first.prepare('UPDATE scheduled_tasks SET tools_override = ? WHERE id = ?').run(JSON.stringify(['edit_file']), task.id)
-      first.close()
+    it('migrates unversioned and version 1 lists, reading email_read as the old single read tool', () => {
+      const cases = {
+        onlyRead: createStored(JSON.stringify(['email_read'])),
+        allEmail: createStored(JSON.stringify(allEmailTools), 1),
+        readAndCreateTask: createStored(JSON.stringify(['email_read', 'create_task'])),
+        readAndReadFile: createStored(JSON.stringify(['email_read', 'read_file'])),
+        empty: createStored(JSON.stringify([])),
+        none: createStored(null),
+        currentNamesOnly: createStored(JSON.stringify(['file_read', 'task_write', 'shell'])),
+        renamed: createStored(JSON.stringify(['shell', 'write_file', 'send_file_to_user'])),
+      }
 
-      const reopened = initDatabase(dbPath)
+      migrateQuietly()
+
+      expect(overrideOf(cases.onlyRead.id)).toEqual({ names: [], version: 2 })
+      expect(overrideOf(cases.allEmail.id)).toEqual({ names: ['email_read'], version: 2 })
+      expect(overrideOf(cases.readAndCreateTask.id)).toEqual({ names: [], version: 2 })
+      expect(overrideOf(cases.readAndReadFile.id)).toEqual({ names: ['file_read'], version: 2 })
+      expect(overrideOf(cases.empty.id)).toEqual({ names: [], version: 2 })
+      expect(overrideOf(cases.none.id)).toEqual({ names: null, version: 2 })
+      expect(overrideOf(cases.currentNamesOnly.id)).toEqual({ names: ['file_read', 'task_write', 'shell'], version: 2 })
+      expect(overrideOf(cases.renamed.id)).toEqual({ names: ['shell', 'file_write', 'file_send'], version: 2 })
+    })
+
+    it('never touches version 2 rows, so a second boot changes nothing', () => {
+      const current = createStored(JSON.stringify(['email_read']), 2)
+      const legacy = createStored(JSON.stringify(['read_file', 'file_read', 'generate_image']))
+
+      const first = migrateQuietly()
+      expect(overrideOf(current.id)).toEqual({ names: ['email_read'], version: 2 })
+      expect(overrideOf(legacy.id)).toEqual({ names: ['file_read', 'image_generate'], version: 2 })
+      expect(first.log).toContainEqual(expect.stringContaining('Migrated 1 cronjob tool override(s)'))
+
+      const before = db.prepare('SELECT * FROM scheduled_tasks ORDER BY id').all()
+      const second = migrateQuietly()
+      expect(db.prepare('SELECT * FROM scheduled_tasks ORDER BY id').all()).toEqual(before)
+      expect(second.log).toEqual([])
+    })
+
+    it('logs narrowed permissions with the task id and never the free-text name', () => {
+      const partial = createStored(JSON.stringify(['shell', 'create_reminder', 'remove_cronjob']))
+      const all = createStored(JSON.stringify(['list_cronjobs', 'get_cronjob', 'create_cronjob', 'edit_cronjob', 'remove_cronjob', 'create_reminder']))
+
+      const { log } = migrateQuietly()
+
+      expect(overrideOf(all.id).names).toEqual(['schedule_read', 'schedule_write'])
+      expect(overrideOf(partial.id).names).toEqual(['shell'])
+      expect(log).toContainEqual(expect.stringContaining(`Cronjob ${partial.id}: schedule_write stays enabled`))
+      expect(log.some(line => line.includes(all.id))).toBe(false)
+      expect(log.some(line => line.includes('Free text name'))).toBe(false)
+    })
+
+    it('leaves unparseable lists without a version so their runs fail closed', () => {
+      const invalid = createStored('not-json')
+      const { warn } = migrateQuietly()
+      expect(warn).toContainEqual(expect.stringContaining(invalid.id))
+      expect(store.getById(invalid.id)!).toMatchObject({ toolsOverride: 'not-json', toolsOverrideVersion: null })
+    })
+
+    it('runs as part of database initialization on a table without the version column', () => {
+      const legacyPath = tmpDbPath()
+      const legacy = new BetterSqlite3(legacyPath)
+      legacy.exec(`
+        CREATE TABLE scheduled_tasks (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          prompt TEXT NOT NULL,
+          schedule TEXT NOT NULL,
+          provider TEXT,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          tools_override TEXT,
+          skills_override TEXT,
+          system_prompt_override TEXT,
+          last_run_at TEXT,
+          last_run_task_id TEXT,
+          last_run_status TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        INSERT INTO scheduled_tasks (id, name, prompt, schedule, tools_override)
+          VALUES ('legacy-1', 'Legacy', 'x', '0 9 * * *', '["email_read","edit_file"]');
+      `)
+      legacy.close()
+
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {})
       try {
-        expect(new ScheduledTaskStore(reopened).getById(task.id)!.toolsOverride).toBe(JSON.stringify(['file_edit']))
+        const reopened = initDatabase(legacyPath)
+        try {
+          expect(new ScheduledTaskStore(reopened).getById('legacy-1')!)
+            .toMatchObject({ toolsOverride: JSON.stringify(['file_edit']), toolsOverrideVersion: 2 })
+        } finally {
+          reopened.close()
+        }
       } finally {
-        reopened.close()
+        log.mockRestore()
       }
     })
   })
@@ -358,6 +419,7 @@ describe('ScheduledTaskStore', () => {
       expect(colNames).toContain('provider')
       expect(colNames).toContain('enabled')
       expect(colNames).toContain('tools_override')
+      expect(colNames).toContain('tools_override_version')
       expect(colNames).toContain('skills_override')
       expect(colNames).toContain('system_prompt_override')
       expect(colNames).toContain('attached_skills')

@@ -175,6 +175,23 @@ describe('TaskScheduler', () => {
       )
     })
 
+    it('passes the tools override together with its format version to the task runner', async () => {
+      const scheduledTask = scheduledTaskStore.create({
+        name: 'Override Job',
+        prompt: 'Do something',
+        schedule: '0 9 * * *',
+        toolsOverride: JSON.stringify(['email_read']),
+      })
+
+      await scheduler.triggerNow(scheduledTask.id)
+
+      expect(mockTaskRunner.startTask).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'Override Job' }),
+        expect.anything(),
+        expect.objectContaining({ toolsOverride: JSON.stringify(['email_read']), toolsOverrideVersion: 2 }),
+      )
+    })
+
     it('returns null for non-existent schedule', async () => {
       scheduler.start()
       const result = await scheduler.triggerNow('non-existent')

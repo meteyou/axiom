@@ -1,5 +1,13 @@
 export type ScheduleToolType = 'task' | 'reminder'
 
+/**
+ * Format of stored tool-name lists (cronjob `tools_override`). 1 or missing =
+ * names from before the `area_verb` rename, 2 = current names. `email_read`
+ * exists in both with different meanings, so a list can only be interpreted
+ * through its version, never through its content.
+ */
+export const TOOL_NAMES_FORMAT_VERSION = 2
+
 export interface LegacyToolTarget {
   name: string
   action?: string
@@ -58,6 +66,11 @@ function legacyMembers(name: string, mapping: LegacyToolNameMap): string[] {
   return Object.keys(mapping).filter(legacy => legacyTarget(legacy, mapping)?.name === name)
 }
 
+/** Names that are no longer valid in a current (format version 2) tool-name list. */
+export function legacyToolNamesIn(names: readonly string[]): string[] {
+  return names.filter(name => legacyTarget(name) !== undefined)
+}
+
 /** Every old tool folded into `name`, including an old tool that kept the name. */
 function foldedTools(name: string, mapping: LegacyToolNameMap): string[] {
   return Object.keys(mapping).filter(legacy => mapping[legacy]!.name === name)
@@ -108,20 +121,11 @@ export interface MigratedToolOverride {
 }
 
 /**
- * A tool that kept its name while absorbing others (email_read) is ambiguous:
- * in a list that still holds other legacy names it means the old single tool;
- * otherwise it is the current grouped tool.
- */
-function migrationTarget(name: string, predatesMigration: boolean, mapping: LegacyToolNameMap): string | undefined {
-  const target = legacyTarget(name, mapping)?.name
-  if (target !== undefined) return target
-  return predatesMigration && foldedTools(name, mapping).includes(name) ? name : undefined
-}
-
-/**
- * Rewrites a list of disabled tool names to current names. A grouped tool is
- * only disabled when every legacy member that maps onto it was disabled;
- * otherwise disabling it would remove actions the user wanted to keep.
+ * Rewrites a format version 1 list of disabled tool names to current names.
+ * Every mapped name is read with its old meaning, so `email_read` is the old
+ * single read tool. A grouped tool is only disabled when every legacy member
+ * that maps onto it was disabled; otherwise disabling it would remove actions
+ * the user wanted to keep.
  */
 export function migrateDisabledToolNames(
   names: readonly string[],
@@ -130,10 +134,9 @@ export function migrateDisabledToolNames(
   const disabled = new Set(names)
   const result = new Set<string>()
   const keptEnabled: MigratedToolOverride['keptEnabled'] = []
-  const predatesMigration = names.some(name => legacyTarget(name, mapping) !== undefined)
 
   for (const name of names) {
-    const target = migrationTarget(name, predatesMigration, mapping)
+    const target = Object.prototype.hasOwnProperty.call(mapping, name) ? mapping[name]!.name : undefined
     if (target === undefined) {
       result.add(name)
       continue

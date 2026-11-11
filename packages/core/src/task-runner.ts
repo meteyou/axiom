@@ -10,7 +10,7 @@ import { clampThinkingLevel } from './contracts/providers.js'
 import { TaskStore } from './task-store.js'
 import { TaskToolJournal } from './task-tool-journal.js'
 import { getToolReplayPolicy } from './tool-replay.js'
-import { migrateDisabledToolNames } from './contracts/tool-names.js'
+import { TOOL_NAMES_FORMAT_VERSION } from './contracts/tool-names.js'
 import { formatJournalRecoveryContext } from './task-recovery-prompt.js'
 import type { Task, TaskResultStatus, TaskTriggerType } from './task-store.js'
 import type { SessionManager, SessionType } from './session-manager.js'
@@ -60,9 +60,36 @@ function taskStartedAtMs(value: string | null | undefined): number {
   return parseTaskTimestampMs(value) ?? Date.now()
 }
 
+/**
+ * Reads a cronjob's disabled-tool list. Lists are migrated once at boot, so a
+ * wrong version or malformed list here is a bug; refusing the run keeps the
+ * task from silently getting tools the user disabled.
+ */
+function parseDisabledTools(taskId: string, toolsOverride: string, version: number | null | undefined): string[] {
+  let reason: string | undefined
+  let parsed: unknown
+  if (version !== TOOL_NAMES_FORMAT_VERSION) {
+    reason = `tool-name format version ${version ?? 'missing'}, expected ${TOOL_NAMES_FORMAT_VERSION}`
+  } else {
+    try {
+      parsed = JSON.parse(toolsOverride)
+    } catch {
+      reason = 'override is not valid JSON'
+    }
+  }
+  if (reason === undefined && Array.isArray(parsed) && parsed.every((name): name is string => typeof name === 'string')) {
+    return parsed
+  }
+  reason ??= 'override is not a list of tool names'
+  console.error(`[task-runner] Task ${taskId}: ${reason}; refusing to run with an unverified tool list`)
+  throw new Error(`Disabled-tool override cannot be applied: ${reason}`)
+}
+
 export interface TaskOverrides {
   /** JSON array of tool names to exclude (null = all enabled) */
   toolsOverride?: string | null
+  /** Tool-name format of `toolsOverride`; a list on any other version than `TOOL_NAMES_FORMAT_VERSION` is refused. */
+  toolsOverrideVersion?: number | null
   /** JSON array of skill names to exclude (null = all enabled) */
   skillsOverride?: string | null
   /** Custom system prompt — replaces default entirely when set */
@@ -486,15 +513,8 @@ export class TaskRunner {
         ? this.options.createTools({ scope, task })
         : (this.options.tools ?? [])
       if (overrides?.toolsOverride) {
-        try {
-          const parsed: unknown = JSON.parse(overrides.toolsOverride)
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            const disabledTools = migrateDisabledToolNames(parsed.filter((name): name is string => typeof name === 'string')).names
-            effectiveTools = effectiveTools.filter(t => !disabledTools.includes(t.name))
-          }
-        } catch {
-          // Invalid JSON — use all tools
-        }
+        const disabledTools = parseDisabledTools(taskId, overrides.toolsOverride, overrides.toolsOverrideVersion)
+        effectiveTools = effectiveTools.filter(t => !disabledTools.includes(t.name))
       }
 
       // The codemode tool is bound to the task agent it is created for (it needs

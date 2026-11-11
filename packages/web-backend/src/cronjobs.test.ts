@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest'
 import http from 'node:http'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -431,5 +431,91 @@ describe('Cronjobs REST API', () => {
       const res = await fetch(`${baseUrl}/api/cronjobs/meta`)
       expect(res.status).toBe(401)
     })
+  })
+})
+
+describe('Cronjobs REST API tool overrides', () => {
+  let wiredDb: Database
+  let wiredServer: http.Server
+  let wiredUrl: string
+  let registry: string[]
+
+  async function send(urlPath: string, method: 'POST' | 'PUT', body: Record<string, unknown>) {
+    const res = await fetch(`${wiredUrl}${urlPath}`, {
+      method,
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+    })
+    return { status: res.status, body: await res.json() as { error?: string; cronjob?: { id: string; toolsOverride: string | null; toolsOverrideVersion: number | null } } }
+  }
+
+  const job = { name: 'Inbox digest', prompt: 'Summarize', schedule: '0 9 * * *' }
+  const storedRow = (id: string) => wiredDb.prepare('SELECT tools_override, tools_override_version FROM scheduled_tasks WHERE id = ?').get(id)
+
+  beforeAll(async () => {
+    wiredDb = initDatabase(':memory:')
+    const app = createApp({ db: wiredDb, getBackgroundTaskToolNames: () => registry })
+    wiredServer = http.createServer(app)
+    await new Promise<void>((resolve) => wiredServer.listen(0, resolve))
+    wiredUrl = `http://localhost:${(wiredServer.address() as { port: number }).port}`
+  })
+
+  beforeEach(() => {
+    registry = ['shell', 'file_read', 'file_write', 'email_read', 'email_send', 'task_write']
+  })
+
+  afterAll(async () => {
+    await new Promise<void>((resolve, reject) => {
+      wiredServer.close((err) => (err ? reject(err) : resolve()))
+    })
+    wiredDb.close()
+  })
+
+  it('stores a valid list on create together with the current format version', async () => {
+    const res = await send('/api/cronjobs', 'POST', { ...job, toolsOverride: JSON.stringify(['email_read', 'shell']) })
+    expect(res.status).toBe(201)
+    expect(res.body.cronjob).toMatchObject({ toolsOverride: JSON.stringify(['email_read', 'shell']), toolsOverrideVersion: 2 })
+    expect(storedRow(res.body.cronjob!.id)).toEqual({ tools_override: JSON.stringify(['email_read', 'shell']), tools_override_version: 2 })
+  })
+
+  it('stores a valid list on update together with the current format version', async () => {
+    const created = await send('/api/cronjobs', 'POST', job)
+    const res = await send(`/api/cronjobs/${created.body.cronjob!.id}`, 'PUT', { toolsOverride: JSON.stringify(['email_read']) })
+    expect(res.status).toBe(200)
+    expect(storedRow(created.body.cronjob!.id)).toEqual({ tools_override: JSON.stringify(['email_read']), tools_override_version: 2 })
+  })
+
+  it.each([
+    ['mixed current and legacy names', ['email_read', 'create_task'], 'legacy tool names: create_task'],
+    ['only legacy names', ['read_file', 'email_list'], 'legacy tool names: read_file, email_list'],
+    ['unknown names', ['shell', 'no_such_tool'], 'unknown tool names: no_such_tool'],
+  ])('rejects %s on create and update without storing them', async (_label, names, error) => {
+    const create = await send('/api/cronjobs', 'POST', { ...job, toolsOverride: JSON.stringify(names) })
+    expect(create.status).toBe(400)
+    expect(create.body.error).toContain(error)
+
+    const created = await send('/api/cronjobs', 'POST', { ...job, toolsOverride: JSON.stringify(['shell']) })
+    const update = await send(`/api/cronjobs/${created.body.cronjob!.id}`, 'PUT', { toolsOverride: JSON.stringify(names) })
+    expect(update.status).toBe(400)
+    expect(update.body.error).toContain(error)
+    expect(storedRow(created.body.cronjob!.id)).toEqual({ tools_override: JSON.stringify(['shell']), tools_override_version: 2 })
+  })
+
+  it('rejects a non-list override', async () => {
+    const res = await send('/api/cronjobs', 'POST', { ...job, toolsOverride: JSON.stringify({ shell: true }) })
+    expect(res.status).toBe(400)
+    expect(res.body.error).toBe('toolsOverride must be a JSON array of strings')
+  })
+
+  it('keeps already stored names valid after their tool left the registry', async () => {
+    const created = await send('/api/cronjobs', 'POST', { ...job, toolsOverride: JSON.stringify(['email_read']) })
+    registry = registry.filter(name => !name.startsWith('email_'))
+
+    const resave = await send(`/api/cronjobs/${created.body.cronjob!.id}`, 'PUT', { name: 'Renamed', toolsOverride: JSON.stringify(['email_read', 'shell']) })
+    expect(resave.status).toBe(200)
+
+    const added = await send(`/api/cronjobs/${created.body.cronjob!.id}`, 'PUT', { toolsOverride: JSON.stringify(['email_read', 'email_send']) })
+    expect(added.status).toBe(400)
+    expect(added.body.error).toContain('unknown tool names: email_send')
   })
 })

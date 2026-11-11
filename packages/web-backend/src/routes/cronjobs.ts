@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import type { Response } from 'express'
 import type { AccessAction, AccessActor, Database, ScheduledTask, TaskRuntimeScheduleBoundary } from '@axiom/core'
-import { ScheduledTaskStore, canAccess, validateCronExpression, cronToHumanReadable, loadSkills, listAgentSkills, normalizeThinkingLevel, SETTINGS_THINKING_LEVELS } from '@axiom/core'
+import { ScheduledTaskStore, canAccess, validateCronExpression, cronToHumanReadable, loadSkills, listAgentSkills, normalizeThinkingLevel, SETTINGS_THINKING_LEVELS, TOOL_NAMES_FORMAT_VERSION, legacyToolNamesIn } from '@axiom/core'
 import type { SettingsThinkingLevel } from '@axiom/core'
 import { jwtMiddleware } from '../auth.js'
 import type { AuthenticatedRequest } from '../auth.js'
@@ -33,6 +33,45 @@ function parseCodemodeBody(value: unknown): { ok: true; value: ScheduledTaskCode
   if (value === null || value === '') return { ok: true, value: null }
   if (value === 'on' || value === 'off') return { ok: true, value }
   return { ok: false, error: "codemode must be 'on', 'off' or null" }
+}
+
+function parseToolNameList(raw: string): string[] | null {
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    return Array.isArray(parsed) && parsed.every((v: unknown) => typeof v === 'string') ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * `undefined` = not sent, `null` = no override, otherwise a JSON array of
+ * current tool names. Legacy names are rejected rather than translated: the
+ * stored list is applied verbatim at run time.
+ */
+function parseToolsOverrideBody(
+  value: unknown,
+  knownToolNames: ReadonlySet<string> | null,
+): { ok: true; value: string | null | undefined } | { ok: false; error: string } {
+  if (value === undefined || value === null) return { ok: true, value }
+  if (typeof value !== 'string') return { ok: false, error: 'toolsOverride must be a JSON array of strings' }
+  try {
+    JSON.parse(value)
+  } catch {
+    return { ok: false, error: 'toolsOverride must be valid JSON' }
+  }
+  const names = parseToolNameList(value)
+  if (!names) return { ok: false, error: 'toolsOverride must be a JSON array of strings' }
+
+  const legacy = legacyToolNamesIn(names)
+  if (legacy.length > 0) {
+    return { ok: false, error: `toolsOverride contains legacy tool names: ${legacy.join(', ')}. Use the current tool names.` }
+  }
+  const unknown = knownToolNames ? names.filter(name => !knownToolNames.has(name)) : []
+  if (unknown.length > 0) {
+    return { ok: false, error: `toolsOverride contains unknown tool names: ${unknown.join(', ')}` }
+  }
+  return { ok: true, value }
 }
 
 export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
@@ -71,6 +110,19 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
       return null
     }
     return existing
+  }
+
+  /** `null` when no tool registry is wired; unknown names are then not checked. */
+  const knownToolNames = (existing: ScheduledTask | null): Set<string> | null => {
+    const live = options.getBackgroundTaskToolNames?.()
+    if (!live) return null
+    const known = new Set(live)
+    // Some tools only exist while configured (e.g. an email account); keep
+    // already stored names valid so unrelated edits of the cronjob still save.
+    if (existing?.toolsOverride && existing.toolsOverrideVersion === TOOL_NAMES_FORMAT_VERSION) {
+      for (const name of parseToolNameList(existing.toolsOverride) ?? []) known.add(name)
+    }
+    return known
   }
 
   router.use(jwtMiddleware)
@@ -145,13 +197,14 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
    */
   router.post('/', (req: AuthenticatedRequest, res) => {
     try {
-      const { name, prompt, schedule, actionType, provider, enabled, attachedSkills, thinkingLevel, codemode } = req.body as {
+      const { name, prompt, schedule, actionType, provider, enabled, toolsOverride, attachedSkills, thinkingLevel, codemode } = req.body as {
         name?: string
         prompt?: string
         schedule?: string
         actionType?: string
         provider?: string
         enabled?: boolean
+        toolsOverride?: unknown
         attachedSkills?: string[] | null
         thinkingLevel?: string | null
         codemode?: string | null
@@ -171,6 +224,12 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
 
       if (!name || !prompt || !schedule) {
         res.status(400).json({ error: 'Missing required fields: name, prompt, schedule' })
+        return
+      }
+
+      const tools = parseToolsOverrideBody(toolsOverride, knownToolNames(null))
+      if (!tools.ok) {
+        res.status(400).json({ error: tools.error })
         return
       }
 
@@ -206,6 +265,7 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
             actionType: actionType === 'injection' ? 'injection' : 'task',
             provider: provider || undefined,
             enabled: enabled !== undefined ? enabled : true,
+            toolsOverride: tools.value,
             attachedSkills: normalizedAttachedSkills,
             thinkingLevel: thinking.value ?? null,
             codemode: codemodeParsed.value ?? null,
@@ -218,6 +278,7 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
             actionType: actionType === 'injection' ? 'injection' : 'task',
             provider: provider || undefined,
             enabled: enabled !== undefined ? enabled : true,
+            toolsOverride: tools.value,
             attachedSkills: normalizedAttachedSkills,
             thinkingLevel: thinking.value ?? null,
             codemode: codemodeParsed.value ?? null,
@@ -246,7 +307,8 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
       const body = req.body as Record<string, unknown>
       const onlyToggle = body.enabled !== undefined
         && Object.keys(body).every(key => key === 'enabled' || body[key] === undefined)
-      if (!loadForAction(req, res, onlyToggle ? 'toggle' : 'edit')) return
+      const existing = loadForAction(req, res, onlyToggle ? 'toggle' : 'edit')
+      if (!existing) return
 
       const { name, prompt, schedule, actionType, provider, enabled, toolsOverride, skillsOverride, systemPromptOverride, attachedSkills, thinkingLevel, codemode } = req.body as {
         name?: string
@@ -255,7 +317,7 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
         actionType?: string
         provider?: string
         enabled?: boolean
-        toolsOverride?: string | null
+        toolsOverride?: unknown
         skillsOverride?: string | null
         systemPromptOverride?: string | null
         attachedSkills?: string[] | null
@@ -284,18 +346,10 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
         }
       }
 
-      // Validate override JSON formats
-      if (toolsOverride !== undefined && toolsOverride !== null) {
-        try {
-          const parsed = JSON.parse(toolsOverride)
-          if (!Array.isArray(parsed) || !parsed.every((v: unknown) => typeof v === 'string')) {
-            res.status(400).json({ error: 'toolsOverride must be a JSON array of strings' })
-            return
-          }
-        } catch {
-          res.status(400).json({ error: 'toolsOverride must be valid JSON' })
-          return
-        }
+      const tools = parseToolsOverrideBody(toolsOverride, knownToolNames(existing))
+      if (!tools.ok) {
+        res.status(400).json({ error: tools.error })
+        return
       }
 
       if (skillsOverride !== undefined && skillsOverride !== null) {
@@ -340,7 +394,7 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
             actionType: actionType !== undefined ? (actionType === 'injection' ? 'injection' : 'task') : undefined,
             provider,
             enabled,
-            toolsOverride: toolsOverride !== undefined ? toolsOverride : undefined,
+            toolsOverride: tools.value,
             skillsOverride: skillsOverride !== undefined ? skillsOverride : undefined,
             systemPromptOverride: systemPromptOverride !== undefined ? systemPromptOverride : undefined,
             attachedSkills: attachedSkillsUpdate,
@@ -354,7 +408,7 @@ export function createCronjobsRouter(options: CronjobsRouterOptions): Router {
             actionType: actionType !== undefined ? (actionType === 'injection' ? 'injection' : 'task') : undefined,
             provider,
             enabled,
-            toolsOverride: toolsOverride !== undefined ? toolsOverride : undefined,
+            toolsOverride: tools.value,
             skillsOverride: skillsOverride !== undefined ? skillsOverride : undefined,
             systemPromptOverride: systemPromptOverride !== undefined ? systemPromptOverride : undefined,
             attachedSkills: attachedSkillsUpdate,

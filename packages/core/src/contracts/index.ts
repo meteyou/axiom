@@ -151,8 +151,10 @@ export type {
 
 export {
   LEGACY_TOOL_NAMES,
+  TOOL_NAMES_FORMAT_VERSION,
   currentToolName,
   currentToolNames,
+  legacyToolNamesIn,
   migrateDisabledToolNames,
   resolveToolName,
   toolNameWithLegacyAliases,
