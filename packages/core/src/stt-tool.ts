@@ -100,7 +100,7 @@ function resolveToolUsage(options: ToolUsageOptions | undefined): VoiceUsageCont
   return { db: options.db, sessionId: options.getSessionId?.() ?? null, userId: options.getUserId?.() ?? null }
 }
 
-export function isTranscribeAudioToolEnabled(settings: SttSettings): boolean {
+function isTranscribeAudioToolEnabled(settings: SttSettings): boolean {
   return settings.enabled && settings.agentTool && settings.model !== ''
 }
 

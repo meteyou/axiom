@@ -32,7 +32,7 @@ export interface SendVoiceMessageToolDetails {
   error?: boolean
 }
 
-export function isSendVoiceMessageToolEnabled(settings: TtsSettings): boolean {
+function isSendVoiceMessageToolEnabled(settings: TtsSettings): boolean {
   return settings.enabled && settings.agentTool && settings.model !== ''
 }
 
