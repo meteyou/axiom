@@ -129,7 +129,7 @@ On instances with several users, consolidation runs **once per user**, sequentia
 
 Consolidation rewrites `MEMORY.md`, profiles, and wiki pages with an LLM, so every run first copies them to `/data/memory-snapshots/<timestamp>/`. A snapshot contains `MEMORY.md`, `memory/users/`, `memory/wiki/`, and the `PROFILE.md` of every other user, stored under the same paths they have below `/data` (for example `memory-snapshots/<timestamp>/memory/MEMORY.md`). Daily notes, sources, and `SOUL.md` are not included: consolidation never writes them.
 
-If the snapshot cannot be written (disk full, permissions), the run is **aborted** before any task starts; the consolidation status and the activity log show `Memory snapshot failed, consolidation aborted: …`. Only the newest snapshots are kept — 7 by default, configurable as [Snapshots to keep](./../settings/memory#snapshots-to-keep).
+If the snapshot cannot be written (disk full, permissions), the run is **aborted** before any task starts; the consolidation status and the activity log show `Memory snapshot failed, consolidation aborted: …`. Only the newest snapshots are kept — 7 by default, configurable as [Snapshots to keep](./../settings/memory#snapshots-to-keep). If old snapshots cannot be deleted, the run still continues but is logged as an error with `snapshotPruneError` in the activity log.
 
 To undo a bad run, copy the files you need back from the snapshot, e.g. `cp /data/memory-snapshots/<timestamp>/memory/MEMORY.md /data/memory/MEMORY.md`. There is no restore button yet.
 
