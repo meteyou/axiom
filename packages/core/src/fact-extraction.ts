@@ -212,7 +212,7 @@ export function parseFactDecisions(
     if (action === 'SKIP') {
       decisions[index] = { action: 'skip' }
     } else if (action.startsWith('SUPERSEDE')) {
-      const ids = Array.from(match[3].matchAll(/\d+/g), idMatch => Number.parseInt(idMatch[0], 10))
+      const ids = Array.from(match[3].matchAll(/#\s*(\d+)/g), idMatch => Number.parseInt(idMatch[1], 10))
         .filter(id => allowedIds.has(id))
       decisions[index] = ids.length > 0 ? { action: 'supersede', ids } : { action: 'add' }
     }
