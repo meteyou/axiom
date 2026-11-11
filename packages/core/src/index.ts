@@ -153,7 +153,7 @@ export {
   getProviderExtraFieldDefs,
   maskProviderExtraFields,
 } from './provider-config.js'
-export { isDisabledProviderReference, resetDisabledProviderReferences } from './provider-references.js'
+export { isDisabledProviderReference, resetDisabledProviderReferences, resetUnusableVoiceModelReferences } from './provider-references.js'
 export type { ResetDisabledProviderReferencesResult } from './provider-references.js'
 export type { ProviderConfig, MaskedProviderConfig, MaskedProvidersFile, ProviderModelConfig, ProvidersFile, ProviderType, ProviderTypePreset, ProviderExtraFieldDef, AuthMethod, TextVerbosity, AvailableModel, OAuthCredentialsStored, TokenPriceTable } from './provider-config.js'
 export {

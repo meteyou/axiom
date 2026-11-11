@@ -37,6 +37,7 @@ import {
   performProviderHealthCheck,
   PROVIDER_TYPE_PRESETS,
   resetDisabledProviderReferences,
+  resetUnusableVoiceModelReferences,
   ScheduledTaskStore,
   setActiveProvider,
   setFallbackProvider,
@@ -578,6 +579,10 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
     }
   }
 
+  function resetVoiceModelReferences(): void {
+    if (resetUnusableVoiceModelReferences().length > 0) options.onProviderReferencesReset?.()
+  }
+
   function applyDisabledChange(disabled: boolean | undefined, apply: (disabled: boolean) => unknown): void {
     if (disabled === undefined) return
     const fallbackBefore = loadProviders().fallbackProvider ?? null
@@ -621,7 +626,8 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
         compat: configPayload.compat,
       })
 
-      if (activeProvider === id) {
+      resetVoiceModelReferences()
+      if (activeProvider === id || (loadProviders().activeProvider ?? null) !== activeProvider) {
         options.onActiveProviderChanged?.()
       }
 
@@ -638,6 +644,7 @@ export function createProvidersService(options: ProvidersRouterOptions = {}): Pr
   function deleteProvider(id: string): void {
     try {
       deleteProviderConfig(id)
+      resetVoiceModelReferences()
     } catch (err) {
       const message = (err as Error).message
       if (message.includes('not found')) {
