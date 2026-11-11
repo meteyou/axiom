@@ -50,7 +50,7 @@ function makeModel(id = 'gpt-4o-mini'): Model<Api> {
 }
 
 function makeResult(overrides: Partial<IncrementalFactExtractionResult> = {}): IncrementalFactExtractionResult {
-  return { chunks: 1, extracted: 1, stored: 1, duplicates: 0, superseded: 0, ...overrides }
+  return { chunks: 1, skippedChunks: 0, extracted: 1, stored: 1, duplicates: 0, superseded: 0, ...overrides }
 }
 
 describe('fact-extraction trigger', () => {
@@ -158,10 +158,18 @@ describe('fact-extraction trigger', () => {
     db.close()
   })
 
-  it('runs the incremental extraction in the background and logs the result', async () => {
+  it('runs the incremental extraction in the background, bounded to the messages present when triggered', async () => {
     const db = initDatabase(':memory:')
     db.prepare('INSERT INTO users (id, username, password_hash, role) VALUES (1, ?, ?, ?)').run('alice', 'hash', 'user')
     insertSession(db, { id: 'session-3', userId: 1, messageCount: 40 })
+    const insertMessage = (content: string) => Number(db.prepare(
+      "INSERT INTO chat_messages (session_id, user_id, role, content) VALUES ('session-3', 1, 'user', ?)"
+    ).run(content).lastInsertRowid)
+    const lastMessageAtTrigger = insertMessage('finished turn')
+    const getApiKeyForProvider = vi.fn(async () => {
+      insertMessage('next turn, still running')
+      return 'key'
+    })
 
     const extractFactsIncrementally = vi.fn().mockResolvedValue(makeResult({ chunks: 3, stored: 5, superseded: 1 }))
     const log = vi.fn()
@@ -175,7 +183,7 @@ describe('fact-extraction trigger', () => {
         loadSettings: () => ({ factExtraction: { enabled: true, providerId: '', minSessionMessages: 3 } }),
         getActiveProvider: () => makeProvider('active', 'Active'),
         buildModel: vi.fn(() => makeModel('gpt-4o-mini')),
-        getApiKeyForProvider: vi.fn().mockResolvedValue('key'),
+        getApiKeyForProvider,
         extractFactsIncrementally,
         console: { log, warn: vi.fn(), error: vi.fn() },
       },
@@ -187,10 +195,11 @@ describe('fact-extraction trigger', () => {
         db,
         userId: 1,
         sessionId: 'session-3',
+        upToMessageId: lastMessageAtTrigger,
         model: expect.objectContaining({ id: 'gpt-4o-mini' }),
         apiKey: 'key',
       })
-      expect(log).toHaveBeenCalledWith('[fact-extraction] Session session-3 (compaction): 3 chunk(s), 5 new facts, 1 superseded')
+      expect(log).toHaveBeenCalledWith('[fact-extraction] Session session-3 (compaction): 3 chunk(s), 0 skipped, 5 new facts, 1 superseded')
     })
 
     db.close()

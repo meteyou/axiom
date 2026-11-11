@@ -3,6 +3,7 @@ import {
   extractFactsIncrementally,
   getActiveProvider,
   getProviderDefaultModel,
+  getSessionTreeLastMessageId,
   getApiKeyForProvider,
   isProviderModelUsable,
   loadConfig,
@@ -152,6 +153,8 @@ export function triggerFactExtraction(options: TriggerFactExtractionOptions): bo
     return false
   }
 
+  const upToMessageId = getSessionTreeLastMessageId(db, sessionId)
+
   void (async () => {
     try {
       const executionContext = await resolveFactExtractionExecutionContext(settings, deps)
@@ -164,14 +167,15 @@ export function triggerFactExtraction(options: TriggerFactExtractionOptions): bo
         db,
         userId: numericUserId,
         sessionId,
+        upToMessageId,
         model: executionContext.model,
         apiKey: executionContext.apiKey,
       })
 
-      if (result.chunks > 0) {
+      if (result.chunks > 0 || result.skippedChunks > 0) {
         deps.console.log(
           `[fact-extraction] Session ${sessionId} (${trigger}): ${result.chunks} chunk(s), `
-          + `${result.stored} new facts, ${result.superseded} superseded`,
+          + `${result.skippedChunks} skipped, ${result.stored} new facts, ${result.superseded} superseded`,
         )
       }
     } catch (err) {
