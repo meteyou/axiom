@@ -251,7 +251,7 @@ export interface TtsSettingsContract {
   /** Delivery instructions for models that accept them (e.g. gpt-4o-mini-tts). */
   instructions: string
   responseFormat: TtsResponseFormat
-  /** Offer the `send_voice_message` tool to the chat agent. */
+  /** Offer the `audio_send` tool to the chat agent. */
   agentTool: boolean
 }
 

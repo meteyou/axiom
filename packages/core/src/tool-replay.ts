@@ -38,7 +38,7 @@ const TOOL_REPLAY_POLICIES: ReadonlyMap<string, ToolReplayClassification> = new 
   ['task_write', { create: 'unsafe', resume: 'unsafe', stop: 'unsafe' }],
   ['schedule_write', { create: 'unsafe', edit: 'unsafe', remove: 'unsafe' }],
   ['file_send', 'unsafe'],
-  ['send_voice_message', 'unsafe'],
+  ['audio_send', 'unsafe'],
   ['image_generate', 'unsafe'],
   // A script runs arbitrary nested calls with side effects, so it is never blindly replayable.
   ['codemode', 'unsafe'],

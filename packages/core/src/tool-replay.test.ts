@@ -90,13 +90,13 @@ describe('tool replay policy', () => {
 
     expect(toolNames).toContain('email_send')
     expect(toolNames).toContain('audio_transcribe')
-    expect(toolNames).toContain('send_voice_message')
+    expect(toolNames).toContain('audio_send')
     expect(toolNames).toContain('provider_quota')
     expect(toolNames.filter(name => !hasExplicitToolReplayPolicy(name))).toEqual([])
   })
 
   it('treats file, shell and outbound tools as unsafe', () => {
-    for (const name of ['shell', 'file_write', 'file_edit', 'email_send', 'file_send', 'send_voice_message', 'image_generate', 'codemode']) {
+    for (const name of ['shell', 'file_write', 'file_edit', 'email_send', 'file_send', 'audio_send', 'image_generate', 'codemode']) {
       expect(getToolReplayPolicy(name)).toBe('unsafe')
     }
     expect(hasExplicitToolReplayPolicy('codemode')).toBe(true)

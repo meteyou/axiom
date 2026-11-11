@@ -1189,7 +1189,7 @@ export class TelegramBot {
         await this.sendAssistantResponseToTelegram(chatId, outcome.text, outcome.uploads)
         // Optional voice reply. Best-effort: a TTS failure must never
         // suppress the text response or abort the turn.
-        // A turn that already spoke through `send_voice_message` must not get a second voice note.
+        // A turn that already spoke through `audio_send` must not get a second voice note.
         if (outcome.text.trim() && !outcome.uploads.some(upload => upload.voiceMessage)) {
           try {
             await this.maybeSendVoiceReply(

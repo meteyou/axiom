@@ -9,7 +9,7 @@ import type { Database } from './database.js'
 import { saveUpload } from './uploads.js'
 import type { UploadDescriptor } from './uploads.js'
 
-export const SEND_VOICE_MESSAGE_TOOL_NAME = 'send_voice_message'
+export const SEND_VOICE_MESSAGE_TOOL_NAME = 'audio_send'
 
 /** Keeps a reply a voice message rather than an audiobook, and below most providers' input limits. */
 const MAX_SPEECH_CHARS = 4000
@@ -36,7 +36,7 @@ export function isSendVoiceMessageToolEnabled(settings: TtsSettings): boolean {
   return settings.enabled && settings.agentTool && settings.model !== ''
 }
 
-/** `send_voice_message` when TTS is enabled and offered to the agent in the settings, otherwise nothing. */
+/** `audio_send` when TTS is enabled and offered to the agent in the settings, otherwise nothing. */
 export function createSendVoiceMessageTools(options: Omit<SendVoiceMessageToolOptions, 'settings'>): AgentTool[] {
   let settings: TtsSettings
   try {
@@ -76,7 +76,7 @@ function deliveryNote(channel: string | undefined, extension: string): string {
 }
 
 /**
- * Create the `send_voice_message` tool: speaks `text` with the configured TTS
+ * Create the `audio_send` tool: speaks `text` with the configured TTS
  * model and attaches the audio to the current turn. The `format` parameter is
  * only declared when the provider can return more than one format.
  */

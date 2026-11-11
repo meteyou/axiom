@@ -77,7 +77,7 @@ beforeEach(() => {
 
 describe('createSendVoiceMessageTools', () => {
   it('offers the tool only when TTS is enabled, offered to the agent and has a model', () => {
-    expect(createSendVoiceMessageTools(options()).map(tool => tool.name)).toEqual(['send_voice_message'])
+    expect(createSendVoiceMessageTools(options()).map(tool => tool.name)).toEqual(['audio_send'])
     useSettings({ agentTool: false })
     expect(createSendVoiceMessageTools(options())).toEqual([])
     useSettings({ enabled: false })
@@ -87,7 +87,7 @@ describe('createSendVoiceMessageTools', () => {
   })
 })
 
-describe('send_voice_message declaration', () => {
+describe('audio_send declaration', () => {
   it('offers exactly the formats of the provider and the Telegram opus hint', () => {
     const format = properties(createSendVoiceMessageTool(options()))['format']!
     expect(format.enum).toEqual(ALL_FORMATS)
@@ -108,7 +108,7 @@ describe('send_voice_message declaration', () => {
   })
 })
 
-describe('send_voice_message execute', () => {
+describe('audio_send execute', () => {
   it('speaks the text without markdown and attaches a voice upload', async () => {
     const result = await createSendVoiceMessageTool(options('web')).execute('id', { text: '**Hello** `world`' })
 
