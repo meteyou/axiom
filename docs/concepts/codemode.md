@@ -46,7 +46,7 @@ The model receives the final `return` value — one compact line — instead of 
 There are two switches, both **off by default**, each in a **Codemode** section of its settings page:
 
 - **Codemode for the main agent** ([Settings → Agent](../settings/agent#codemode-experimental)) — the interactive chat agent (web UI and Telegram) gets a `codemode` tool for batching, chaining and filtering. Applies from the next session (`/new`); no restart needed.
-- **Codemode for background tasks** ([Settings → Tasks](../settings/tasks#codemode-experimental)) — task agents (user tasks, agent-created tasks, cronjob runs, heartbeat runs) get the tool. Applies to tasks **started after** the change; already-running tasks are unaffected. **Memory consolidation never gets codemode.**
+- **Codemode for background tasks** ([Settings → Tasks](../settings/tasks#codemode-experimental)) — task agents (user tasks, agent-created tasks, cronjob runs, heartbeat runs) get the tool. Applies to tasks **started after** the change; already-running tasks are unaffected. **Memory consolidation never gets codemode** — it runs with its own [restricted tool set](./memory#restricted-tool-set).
 
 ```json
 { "codemode": { "mainAgent": true, "tasks": true } }

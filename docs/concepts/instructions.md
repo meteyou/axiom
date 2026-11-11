@@ -99,8 +99,8 @@ The file lives at `/data/config/TASKS.md` and is read on every background task s
 - The identity / framing line ("You are a background task agent. You are NOT a chatbot …").
 - The concrete `Your task: <prompt>` block built from the task's `prompt` field.
 - The `<task_owner>` block naming the user the task works for.
-- The `<system_rules>` block — the same hard rules as the chat agent, plus *work inside the workspace, never in `/tmp`*.
-- The `<paths>` block — the same paths cheatsheet as the chat agent (workspace, memory files, wiki, skills, docs).
+- The `<system_rules>` block — the same hard rules as the chat agent, plus *work inside the workspace, never in `/tmp`* (memory consolidation has no workspace and gets neither this rule nor the `<paths>` block).
+- The `<paths>` block — the same paths cheatsheet as the chat agent (workspace, memory files, wiki, skills, docs); omitted for memory consolidation.
 - The final `STATUS: completed | failed | question | silent` / `SUMMARY: …` output contract, including the protocol for `question`, `silent`, and `failed`.
 
 If you blank `TASKS.md` entirely, the `<task_guidelines>` block is omitted from the prompt and tasks fall back to whatever rules the per-task prompt or attached skills carry. The hardcoded framing always remains.

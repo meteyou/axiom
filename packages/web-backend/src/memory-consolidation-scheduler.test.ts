@@ -184,6 +184,9 @@ describe('MemoryConsolidationScheduler', () => {
       expect(startedTask.task.prompt).toContain('if no relevant facts are found, continue with the daily files alone as before')
       expect(startedTask.task.prompt).toContain('Consolidation Rules')
       expect(startedTask.task.prompt).toContain('Memory Consolidation Rules')
+      expect(startedTask.task.prompt).toContain('There is no shell')
+      expect(startedTask.task.prompt).toContain('file_stats')
+      expect(startedTask.task.prompt).not.toContain('wc -l')
 
       expect(result.updated).toBe(false)
     })

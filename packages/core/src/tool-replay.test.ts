@@ -16,6 +16,7 @@ import type { ScheduleToolsOptions } from './schedule-tools.js'
 import type { ActionTool } from './action-tool.js'
 import { createSendFileTool } from './send-file-tool.js'
 import { createGenerateImageTool } from './image-tool.js'
+import { createConsolidationTools } from './consolidation-tools.js'
 import type { QuotaServiceLike } from './quota-tool.js'
 import { getToolReplayPolicy, hasExplicitToolReplayPolicy } from './tool-replay.js'
 
@@ -53,6 +54,7 @@ function buildEveryRegisteredTool(db: Database): AgentTool[] {
     createScheduleWriteTool(scheduleToolsOptions),
     createSendFileTool({ getCurrentToolUserId: () => undefined }),
     createGenerateImageTool(),
+    ...createConsolidationTools({ db, scope: null }),
   ]
 }
 
@@ -97,7 +99,7 @@ describe('tool replay policy', () => {
   })
 
   it('treats read-only tools as safe', () => {
-    for (const name of ['file_read', 'file_list', 'web_fetch', 'email_read', 'task_read']) {
+    for (const name of ['file_read', 'file_list', 'file_stats', 'file_search', 'web_fetch', 'email_read', 'task_read']) {
       expect(getToolReplayPolicy(name)).toBe('safe')
     }
   })

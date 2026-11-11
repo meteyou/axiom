@@ -4,6 +4,7 @@ import type { AssistantMessage, Message, Model, Api, TextContent } from '@earend
 import type { Database } from './database.js'
 import { renderAttachedSkillsBlock } from './attached-skills.js'
 import { buildTaskSystemPrompt } from './task-system-prompt.js'
+import { createConsolidationTools } from './consolidation-tools.js'
 import type { SettingsThinkingLevel } from './contracts/settings.js'
 import { readBackgroundThinkingLevelFromConfig } from './thinking-level.js'
 import { clampThinkingLevel } from './contracts/providers.js'
@@ -114,7 +115,11 @@ export interface TaskRunnerOptions {
   buildModel: (provider: ProviderConfig) => Model<Api>
   /** Function to get API key for a provider */
   getApiKey: (provider: ProviderConfig) => Promise<string>
-  /** Builds the tools of one task agent, bound to the task owner's scope. */
+  /**
+   * Builds the tools of one task agent, bound to the task owner's scope.
+   * Neither this nor `tools` applies to memory consolidation tasks, which
+   * always get the restricted set from `createConsolidationTools`.
+   */
   createTools?: (context: { scope: UserScope; task: Task }) => AgentTool[]
   /** Fixed tools for task agents; used when `createTools` is not given. */
   tools?: AgentTool[]
@@ -485,6 +490,7 @@ export class TaskRunner {
       task.effectiveThinkingLevel = thinkingLevel
 
       const scope = this.resolveTaskScope(task)
+      const isConsolidation = task.triggerType === 'consolidation'
 
       // Determine effective system prompt
       const baseSystemPrompt = overrides?.systemPromptOverride
@@ -494,6 +500,7 @@ export class TaskRunner {
           scope,
           multiUser: isMultiUser(this.db),
           memoryDir: this.options.memoryDir,
+          restrictedToMemory: isConsolidation,
         })
 
       // Codemode eligibility is decided once at start: memory consolidation never
@@ -509,9 +516,11 @@ export class TaskRunner {
         : baseSystemPrompt
 
       // Determine effective tools (filter out disabled tools)
-      let effectiveTools = scope && this.options.createTools
-        ? this.options.createTools({ scope, task })
-        : (this.options.tools ?? [])
+      let effectiveTools = isConsolidation
+        ? createConsolidationTools({ db: this.db, scope })
+        : scope && this.options.createTools
+          ? this.options.createTools({ scope, task })
+          : (this.options.tools ?? [])
       if (overrides?.toolsOverride) {
         const disabledTools = parseDisabledTools(taskId, overrides.toolsOverride, overrides.toolsOverrideVersion)
         effectiveTools = effectiveTools.filter(t => !disabledTools.includes(t.name))

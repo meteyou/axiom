@@ -14,6 +14,8 @@ type ToolReplayClassification = ToolReplayPolicy | Readonly<Record<string, ToolR
 const TOOL_REPLAY_POLICIES: ReadonlyMap<string, ToolReplayClassification> = new Map<string, ToolReplayClassification>([
   ['file_read', 'safe'],
   ['file_list', 'safe'],
+  ['file_stats', 'safe'],
+  ['file_search', 'safe'],
   ['web_search', 'safe'],
   ['web_fetch', 'safe'],
   // read and the flag actions only toggle the IMAP \Seen flag, which is idempotent.

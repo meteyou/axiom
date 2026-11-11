@@ -41,6 +41,19 @@ The agent can spawn its own background workers and schedule recurring or one-sho
 | `schedule_read` | `action: "list"` lists cronjobs and reminders with schedules, status and next run times. `action: "get"` returns one schedule's full configuration including its complete prompt. |
 | `schedule_write` | `action: "create"` creates a schedule from a standard 5-field cron expression, evaluated in your `timezone`. `type: "task"` (default) runs a full background agent on every fire and accepts `provider`, `model`, `thinking_level` and `attached_skills`. `type: "reminder"` delivers a static message verbatim into the chat — no agent, no recurrence beyond the cron expression — and rejects requests that need fresh data or tools. `action: "edit"` changes only the passed fields (pass only `enabled` to toggle). `action: "remove"` deletes a schedule permanently. |
 
+## Memory consolidation tool set
+
+[Memory consolidation](./memory#restricted-tool-set) tasks do **not** get the tools above. They run with a fixed, path-restricted set instead:
+
+| Tool | Notes |
+|---|---|
+| `file_read`, `file_list`, `file_write`, `file_edit` | Same behavior as above, but only absolute paths inside the memory locations of the run are accepted. Anything else returns `Access denied`. |
+| `file_stats` | Line count and byte size of a file, or of every file in a directory (`recursive: true` includes subfolders). Replaces `wc -l` for size budgets and oversized wiki pages. |
+| `file_search` | Literal text search (optionally case-insensitive) in a file or, recursively, a directory. Returns `path:line: text`, at most 200 matches. Does not follow symlinks. |
+| `chat_history_read`, `memory_search` | Unchanged, scoped to the owner of the run. |
+
+There is no `shell`, no task, cronjob, email, web, or image tool, and no `codemode`.
+
 ## Provider quota
 
 | Tool | Notes |

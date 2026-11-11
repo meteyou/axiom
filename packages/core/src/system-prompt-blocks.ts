@@ -4,8 +4,8 @@ import type { UserPaths } from './user-scope.js'
 export interface SystemRulesOptions {
   multiUser: boolean
   isAdmin: boolean
-  /** `task` renders the rules for background task agents instead of the main chat agent. */
-  variant?: 'chat' | 'task'
+  /** `task` and `consolidation` render the rules for background task agents instead of the main chat agent. */
+  variant?: 'chat' | 'task' | 'consolidation'
 }
 
 export function buildSystemRules(options: SystemRulesOptions): string {
@@ -14,7 +14,7 @@ export function buildSystemRules(options: SystemRulesOptions): string {
   ]
   if (options.variant === 'task') {
     rules.push('- Do not create working directories elsewhere (e.g. /tmp). Use your workspace (see <paths>) for cloning repos, creating files and all other file operations.')
-  } else {
+  } else if (options.variant !== 'consolidation') {
     rules.push('- When you receive a <task_injection> block (a background-task result with status="completed|failed|question"), load the tasks-and-cronjobs skill before responding to it.')
   }
   if (options.multiUser) {

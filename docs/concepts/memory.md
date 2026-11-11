@@ -133,6 +133,17 @@ If the snapshot cannot be written (disk full, permissions), the run is **aborted
 
 To undo a bad run, copy the files you need back from the snapshot, e.g. `cp /data/memory-snapshots/<timestamp>/memory/MEMORY.md /data/memory/MEMORY.md`. There is no restore button yet.
 
+### Restricted tool set
+
+Consolidation reads conversation content, which can contain text that looks like instructions. Its limits are therefore enforced by the tools, not only by the prompt. A consolidation task gets only file, chat-history, and fact-search tools ([full list](./tools#memory-consolidation-tool-set)): no `shell`, no task, cronjob, email, or web tools, and no codemode. The file tools accept only absolute paths and reject everything outside the locations of the run:
+
+| Run | May write | May also read |
+|---|---|---|
+| Bootstrap admin (or single-user instance) | `memory/MEMORY.md`, `memory/users/`, `memory/wiki/`, every other user's `PROFILE.md` | the rest of `memory/` (daily notes, `sources/`, `SOUL.md`), the `wiki` skill |
+| Any other user | `memory/MEMORY.md`, `memory/wiki/`, their own `PROFILE.md` | `memory/sources/`, their own `/data/users/<name>/` folder (daily notes), the `wiki` skill |
+
+`/data/config/` (including `AGENTS.md`) and `/data/memory-snapshots/` are neither readable nor writable. `SOUL.md`, the legacy `memory/AGENTS.md`, `sources/`, daily notes, and skills are never writable. Paths are resolved before the check — `..` segments and symlinks that point outside an allowed location are rejected, as are symlinks with a missing target.
+
 Schedule, lookback window, provider, and snapshot retention are configured under [Settings → Memory](./../settings/memory#memory-consolidation). You can also trigger a consolidation run manually from the Memory page in the web UI.
 
 ## See also

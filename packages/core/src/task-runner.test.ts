@@ -1685,6 +1685,22 @@ describe('TaskRunner', () => {
       const captured = await startAndCapture('consolidation', true, { codemode: 'on' })
       expect(toolNames(captured)).not.toContain('codemode')
     })
+
+    it('gives memory consolidation the restricted memory tool set instead of the task tools', async () => {
+      const captured = await startAndCapture('consolidation', false)
+
+      expect(toolNames(captured).sort()).toEqual([
+        'chat_history_read', 'file_edit', 'file_list', 'file_read', 'file_search', 'file_stats', 'file_write', 'memory_search',
+      ])
+      expect(captured.initialState.systemPrompt).not.toContain('<paths>')
+      expect(captured.initialState.systemPrompt).not.toContain('Use your workspace')
+    })
+
+    it('keeps the paths block for other background tasks', async () => {
+      const captured = await startAndCapture('user', false)
+
+      expect(captured.initialState.systemPrompt).toContain('<paths>')
+    })
   })
 
   describe('codemode nested calls', () => {
