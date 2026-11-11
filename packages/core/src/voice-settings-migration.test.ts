@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -139,15 +139,36 @@ describe('migrateLegacyVoiceSettings', () => {
     expect(readSettings().tts).toEqual({ enabled: true, model: `${deepgram[0].id}:aura-2-thalia-en` })
   })
 
-  it('drops Ollama STT and a Whisper URL that is no OpenAI-compatible endpoint without a model', () => {
-    writeSettings({ stt: { enabled: true, provider: 'whisper-url', whisperUrl: 'http://whisper/asr', ollamaModel: 'x' } })
+  it('keeps the legacy settings when an encrypted Deepgram key cannot be decrypted', () => {
+    const legacy = { enabled: true, provider: 'deepgram', deepgramModel: 'nova-2', deepgramApiKey: encrypt('dg-secret') }
+    writeSettings({ stt: legacy })
+    const previousKey = process.env.ENCRYPTION_KEY
+    process.env.ENCRYPTION_KEY = 'a-different-encryption-key'
+    const warn = vi.fn()
+    try {
+      migrateLegacyVoiceSettings({ log: () => {}, warn })
+    } finally {
+      if (previousKey === undefined) delete process.env.ENCRYPTION_KEY
+      else process.env.ENCRYPTION_KEY = previousKey
+    }
+
+    expect(readSettings().stt).toEqual(legacy)
+    expect(loadProviders().providers.filter(p => p.providerType === 'deepgram')).toHaveLength(0)
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('cannot be decrypted'))
+  })
+
+  it('keeps a Whisper URL that is no OpenAI-compatible endpoint in the legacy settings', () => {
+    const legacy = { enabled: true, provider: 'whisper-url', whisperUrl: 'http://whisper/asr', ollamaModel: 'x' }
+    writeSettings({ stt: legacy })
 
     migrateLegacyVoiceSettings(silent)
 
-    expect(readSettings().stt).toEqual({ enabled: true })
+    expect(readSettings().stt).toEqual(legacy)
     expect(loadProviders().providers).toHaveLength(1)
     expect(findProvider('oa')?.enabledSttModels).toBeUndefined()
+  })
 
+  it('drops Ollama STT without a model', () => {
     writeSettings({ stt: { enabled: true, provider: 'ollama', ollamaModel: 'x' } })
     migrateLegacyVoiceSettings(silent)
     expect(readSettings().stt).toEqual({ enabled: true })

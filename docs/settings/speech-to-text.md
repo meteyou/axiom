@@ -42,7 +42,7 @@ A self-hosted, OpenAI-compatible transcription server (e.g. `faster-whisper-serv
 
 ISO‑639‑1 code passed to the STT model (`en`, `de`, `es`, …). Deepgram additionally accepts `multi` for recordings that switch between languages.
 
-Leave empty to use the requesting user's [language setting](./agent#personal-agent-settings-regular-users) (the global one for admins); `match` lets the model auto-detect. The agent's `audio_transcribe` tool auto-detects unless the agent passes a language.
+Leave empty to use the requesting user's [language setting](./agent#personal-agent-settings-regular-users) (the global one for admins); `match` lets the model auto-detect. The agent's `audio_transcribe` tool ignores this setting: it auto-detects unless the agent passes a language.
 
 ```json
 { "stt": { "language": "" } }
@@ -80,7 +80,7 @@ Older versions configured the backend directly on this tab. On the first start a
 
 - **OpenAI** — the selected model (e.g. `whisper-1`) is added as an STT model to the selected provider and becomes the STT model.
 - **Deepgram** — a **Deepgram** provider is created from the API key stored in the settings (or an existing Deepgram provider with the same key is reused). The model and the language are kept.
-- **Whisper URL** — an OpenAI-compatible endpoint (`…/v1/audio/transcriptions`) is added as a **Whisper** provider of type **Custom – OpenAI Chat Completions**. The old setting sent no model name, so add an STT model to that provider on the Providers page and select it here. Other URLs are not migrated; add the server as a custom provider yourself (see the tip above).
+- **Whisper URL** — an OpenAI-compatible endpoint (`…/v1/audio/transcriptions`) is added as a **Whisper** provider of type **Custom – OpenAI Chat Completions**. The old setting sent no model name, so add an STT model to that provider on the Providers page and select it here. Other URLs are not migrated and stay in `settings.json` (`stt.whisperUrl`) until you select an STT model; add the server as a custom provider yourself (see the tip above).
 - **Ollama** — no longer supported. Select a model from one of the providers above.
 
 Until an STT model is selected, the mic button, Telegram voice messages and `audio_transcribe` report that no STT model is configured.
