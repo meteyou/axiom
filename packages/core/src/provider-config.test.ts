@@ -1020,6 +1020,19 @@ describe('provider CRUD', () => {
     expect(getActiveModelId()).toBe('gpt-4o')
   })
 
+  it('stores a provider as active once it gets the first chat model of the setup', () => {
+    setupEmpty()
+    const openai = addProvider({ name: 'OpenAI', providerType: 'openai', apiKey: 'sk-1', enabledModels: [] })
+    const anthropic = addProvider({ name: 'Anthropic', providerType: 'anthropic', apiKey: 'sk-2', enabledModels: [] })
+    expect(loadProviders().activeProvider).toBeUndefined()
+
+    updateProvider(anthropic.id, { enabledModels: ['claude-sonnet-4-5'] })
+    expect(loadProviders()).toMatchObject({ activeProvider: anthropic.id, activeModel: 'claude-sonnet-4-5' })
+
+    updateProvider(openai.id, { enabledModels: ['gpt-4o'] })
+    expect(loadProviders()).toMatchObject({ activeProvider: anthropic.id, activeModel: 'claude-sonnet-4-5' })
+  })
+
   it('setActiveProvider changes active provider', () => {
     setupEmpty()
     const p1 = addProvider({ name: 'first', providerType: 'openai', apiKey: 'sk-1', enabledModels: ['gpt-4o'] })

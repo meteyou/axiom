@@ -1077,8 +1077,8 @@ function resolveActiveChatProvider(file: ProvidersFile): ProviderConfig | null {
     ?? null
 }
 
-/** A new provider with a chat model becomes active while no stored active provider can serve chat. */
-function activateNewProvider(file: ProvidersFile, provider: ProviderConfig): void {
+/** A provider that gains a chat model becomes active while no stored active provider can serve chat. */
+function activateChatProvider(file: ProvidersFile, provider: ProviderConfig): void {
   const model = getChatModel(file, provider)
   if (!model) return
   const active = file.providers.find(p => p.id === file.activeProvider)
@@ -1319,7 +1319,7 @@ export function addProvider(input: {
   }
 
   file.providers.push(provider)
-  activateNewProvider(file, provider)
+  activateChatProvider(file, provider)
   saveProviders(file)
   return provider
 }
@@ -1373,7 +1373,7 @@ export function addOAuthProvider(input: {
   }
 
   file.providers.push(provider)
-  activateNewProvider(file, provider)
+  activateChatProvider(file, provider)
   saveProviders(file)
   return provider
 }
@@ -1512,6 +1512,7 @@ export function updateProvider(id: string, input: {
   existing.status = 'untested'
 
   file.providers[index] = existing
+  if (input.enabledModels !== undefined) activateChatProvider(file, existing)
   saveProviders(file)
   return existing
 }
