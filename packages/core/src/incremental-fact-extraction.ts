@@ -122,7 +122,7 @@ async function runIncrementalFactExtraction(options: IncrementalFactExtractionOp
   for (const chunk of chunks) {
     let plan: Awaited<ReturnType<typeof planFactExtraction>>
     try {
-      plan = await planFactExtraction(db, userId, chunk.text, model, apiKey, { earlierContext: chunk.earlierContext })
+      plan = await planFactExtraction(db, userId, chunk.text, model, apiKey, { earlierContext: chunk.earlierContext, sessionId })
     } catch (err) {
       recordFactExtractionFailure(db, sessionId, chunk.throughMessageId)
       throw err

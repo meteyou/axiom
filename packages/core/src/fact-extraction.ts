@@ -1,6 +1,7 @@
 import type { Api, Model } from '@earendil-works/pi-ai'
 import { completeSimple } from './pi-models.js'
 import { logCompletionUsage } from './completion-usage.js'
+import type { CompletionUsageContext } from './completion-usage.js'
 import type { Database } from './database.js'
 import { createMemory, supersedeMemories } from './memories-store.js'
 import { assertLlmResponseOk } from './llm-response.js'
@@ -223,7 +224,14 @@ export function parseFactDecisions(
   return decisions
 }
 
-async function completeText(model: Model<Api>, apiKey: string, systemPrompt: string, userMessage: string, context: string): Promise<string> {
+async function completeText(
+  model: Model<Api>,
+  apiKey: string,
+  systemPrompt: string,
+  userMessage: string,
+  context: string,
+  usage: CompletionUsageContext,
+): Promise<string> {
   const response = await completeSimple(model, {
     systemPrompt,
     messages: [{
@@ -235,7 +243,7 @@ async function completeText(model: Model<Api>, apiKey: string, systemPrompt: str
     apiKey,
     reasoning: resolveBackgroundReasoning(),
   })
-  logCompletionUsage({ db, sessionId, userId }, model, response)
+  logCompletionUsage(usage, model, response)
 
   assertLlmResponseOk(response, context)
 
@@ -257,6 +265,7 @@ async function reconcileWithExistingFacts(
   apiKey: string,
   facts: readonly string[],
   relatedFacts: readonly RelatedFact[],
+  usage: CompletionUsageContext,
 ): Promise<FactDecision[]> {
   if (relatedFacts.length === 0) {
     return facts.map(() => ({ action: 'add' }))
@@ -268,6 +277,7 @@ async function reconcileWithExistingFacts(
     reconciliationSystemPrompt,
     buildReconciliationMessage(facts, relatedFacts),
     '[fact-extraction] Provider rejected the reconciliation request',
+    usage,
   )
 
   return parseFactDecisions(responseText, facts.length, new Set(relatedFacts.map(fact => fact.id)))
@@ -319,6 +329,8 @@ export interface FactExtractionPlan {
 export interface FactExtractionOptions {
   /** Already processed transcript lines shown for context only. */
   earlierContext?: string
+  /** Session the LLM calls are booked on. */
+  sessionId?: string
 }
 
 function buildExtractionMessage(conversationHistory: string, earlierContext: string | undefined): string {
@@ -337,17 +349,19 @@ export async function planFactExtraction(
   apiKey: string,
   options: FactExtractionOptions = {},
 ): Promise<FactExtractionPlan> {
+  const usage: CompletionUsageContext = { db, sessionId: options.sessionId, userId }
   const responseText = await completeText(
     model,
     apiKey,
     systemPrompt,
     buildExtractionMessage(conversationHistory, options.earlierContext),
     '[fact-extraction] Provider rejected the extraction request',
+    usage,
   )
 
   const facts = parseFactLines(responseText)
   const { newFacts, exactDuplicates, relatedFacts } = collectRelatedFacts(db, userId, facts)
-  const decisions = await reconcileWithExistingFacts(model, apiKey, newFacts, relatedFacts)
+  const decisions = await reconcileWithExistingFacts(model, apiKey, newFacts, relatedFacts, usage)
 
   return { extracted: facts.length, exactDuplicates, newFacts, decisions }
 }
@@ -404,6 +418,6 @@ export async function extractAndStoreFacts(
   model: Model<Api>,
   apiKey: string,
 ): Promise<FactExtractionResult> {
-  const plan = await planFactExtraction(db, userId, conversationHistory, model, apiKey)
+  const plan = await planFactExtraction(db, userId, conversationHistory, model, apiKey, { sessionId })
   return applyFactExtractionPlan(db, userId, sessionId, plan)
 }
