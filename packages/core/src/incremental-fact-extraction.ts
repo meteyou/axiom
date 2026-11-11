@@ -1,13 +1,19 @@
 import type { Api, Model } from '@earendil-works/pi-ai'
 import type { Database } from './database.js'
 import { formatConversationLine, loadSessionTreeMessages } from './conversation-transcript.js'
-import { advanceFactExtractionCursor, getFactExtractionCursor } from './fact-extraction-cursor-store.js'
+import {
+  advanceFactExtractionCursor,
+  getFactExtractionCursorState,
+  recordFactExtractionFailure,
+} from './fact-extraction-cursor-store.js'
 import { applyFactExtractionPlan, planFactExtraction } from './fact-extraction.js'
 import type { FactExtractionResult } from './fact-extraction.js'
 
 /** Same size the one-shot extraction used to cut the whole session to. */
 export const FACT_EXTRACTION_CHUNK_CHARS = 12000
 const EARLIER_CONTEXT_CHARS = 2000
+/** Runs in a row that may fail on the chunk after the cursor before it is skipped. */
+export const MAX_FACT_EXTRACTION_CHUNK_ATTEMPTS = 3
 
 export interface TranscriptChunk {
   text: string
@@ -19,6 +25,7 @@ export interface TranscriptChunk {
 
 export interface IncrementalFactExtractionResult extends FactExtractionResult {
   chunks: number
+  skippedChunks: number
 }
 
 interface PendingEntry {
@@ -54,14 +61,16 @@ function groupIntoChunks(entries: readonly PendingEntry[], maxChars: number): Ch
  * `maxChars`, cut at message boundaries. A single message longer than a chunk
  * is truncated. Messages without a transcript line (tool rows, ...) still move
  * the cursor of the chunk before them so they are not looked at again.
+ * Messages after `upToMessageId` are ignored.
  */
 export function buildPendingTranscriptChunks(
   db: Database,
   sessionId: string,
   afterMessageId: number,
+  upToMessageId: number,
   maxChars: number = FACT_EXTRACTION_CHUNK_CHARS,
 ): TranscriptChunk[] {
-  const messages = loadSessionTreeMessages(db, sessionId, 'id')
+  const messages = loadSessionTreeMessages(db, sessionId, 'id').filter(message => message.id <= upToMessageId)
   const transcriptSoFar = messages
     .filter(message => message.id <= afterMessageId)
     .map(formatConversationLine)
@@ -81,17 +90,43 @@ export interface IncrementalFactExtractionOptions {
   db: Database
   userId: number | null
   sessionId: string
+  /**
+   * Last message to cover. Capture it synchronously when the extraction is
+   * triggered: rows of a turn that starts later may still be discarded on a
+   * retryable error, and facts must not be extracted from them.
+   */
+  upToMessageId: number
   model: Model<Api>
   apiKey: string
 }
 
 async function runIncrementalFactExtraction(options: IncrementalFactExtractionOptions): Promise<IncrementalFactExtractionResult> {
-  const { db, userId, sessionId, model, apiKey } = options
-  const chunks = buildPendingTranscriptChunks(db, sessionId, getFactExtractionCursor(db, sessionId))
-  const total: IncrementalFactExtractionResult = { chunks: 0, extracted: 0, stored: 0, duplicates: 0, superseded: 0 }
+  const { db, userId, sessionId, upToMessageId, model, apiKey } = options
+  const total: IncrementalFactExtractionResult = { chunks: 0, skippedChunks: 0, extracted: 0, stored: 0, duplicates: 0, superseded: 0 }
+
+  // A chunk the provider keeps rejecting would otherwise block every later message of the session.
+  const cursor = getFactExtractionCursorState(db, sessionId)
+  let afterMessageId = cursor.lastMessageId
+  if (cursor.failedAttempts >= MAX_FACT_EXTRACTION_CHUNK_ATTEMPTS && cursor.failedThroughMessageId !== null) {
+    console.error(
+      `[fact-extraction] Skipping messages ${cursor.lastMessageId + 1}-${cursor.failedThroughMessageId} of session ${sessionId}: `
+      + `extraction failed ${cursor.failedAttempts} times in a row`,
+    )
+    advanceFactExtractionCursor(db, sessionId, cursor.failedThroughMessageId)
+    afterMessageId = cursor.failedThroughMessageId
+    total.skippedChunks += 1
+  }
+
+  const chunks = buildPendingTranscriptChunks(db, sessionId, afterMessageId, upToMessageId)
 
   for (const chunk of chunks) {
-    const plan = await planFactExtraction(db, userId, chunk.text, model, apiKey, { earlierContext: chunk.earlierContext })
+    let plan: Awaited<ReturnType<typeof planFactExtraction>>
+    try {
+      plan = await planFactExtraction(db, userId, chunk.text, model, apiKey, { earlierContext: chunk.earlierContext })
+    } catch (err) {
+      recordFactExtractionFailure(db, sessionId, chunk.throughMessageId)
+      throw err
+    }
     const result = db.transaction(() => {
       const applied = applyFactExtractionPlan(db, userId, sessionId, plan)
       advanceFactExtractionCursor(db, sessionId, chunk.throughMessageId)

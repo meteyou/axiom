@@ -15,11 +15,13 @@ import {
   buildPendingTranscriptChunks,
   extractFactsIncrementally,
   FACT_EXTRACTION_CHUNK_CHARS,
+  MAX_FACT_EXTRACTION_CHUNK_ATTEMPTS,
 } from './incremental-fact-extraction.js'
-import { getFactExtractionCursor } from './fact-extraction-cursor-store.js'
+import { getFactExtractionCursor, getFactExtractionCursorState } from './fact-extraction-cursor-store.js'
 import { listMemories } from './memories-store.js'
 
 const mockCompleteSimple = vi.mocked(completeSimple)
+const ALL = Number.MAX_SAFE_INTEGER
 
 const model = {
   id: 'gpt-4o-mini',
@@ -105,6 +107,10 @@ function storedFacts(db: Database): string[] {
 describe('incremental fact extraction', () => {
   let db: Database
 
+  function extractAll() {
+    return extractFactsIncrementally({ db, userId: 1, sessionId: 'session-1', upToMessageId: ALL, model, apiKey: 'key' })
+  }
+
   beforeEach(() => {
     db = initDatabase(':memory:')
     db.prepare("INSERT INTO users (id, username, password_hash, role) VALUES (1, 'alice', 'hash', 'user')").run()
@@ -121,7 +127,7 @@ describe('incremental fact extraction', () => {
     it('splits a long session at message boundaries and covers every message once', () => {
       const lastId = insertLongConversation(db, 'session-1', 0, 30)
 
-      const chunks = buildPendingTranscriptChunks(db, 'session-1', 0)
+      const chunks = buildPendingTranscriptChunks(db, 'session-1', 0, ALL)
 
       expect(chunks.length).toBeGreaterThan(2)
       for (const chunk of chunks) {
@@ -144,7 +150,7 @@ describe('incremental fact extraction', () => {
       const cursor = insertMessage(db, 'session-1', 'assistant', 'Earlier answer about postgres')
       insertMessage(db, 'session-1', 'user', 'New question about redis')
 
-      const [chunk, ...rest] = buildPendingTranscriptChunks(db, 'session-1', cursor)
+      const [chunk, ...rest] = buildPendingTranscriptChunks(db, 'session-1', cursor, ALL)
 
       expect(rest).toEqual([])
       expect(chunk.text).toBe('User: New question about redis')
@@ -157,7 +163,7 @@ describe('incremental fact extraction', () => {
       insertMessage(db, 'task-1', 'system', 'Task finished', JSON.stringify({ type: 'task_result', taskName: 'Build' }))
       const toolRowId = insertMessage(db, 'session-1', 'tool', 'tool output')
 
-      const chunks = buildPendingTranscriptChunks(db, 'session-1', 0, 30)
+      const chunks = buildPendingTranscriptChunks(db, 'session-1', 0, ALL, 30)
 
       expect(chunks.map(chunk => chunk.text)).toEqual([
         `User: ${'z'.repeat(24)}`,
@@ -166,9 +172,18 @@ describe('incremental fact extraction', () => {
       expect(chunks.at(-1)?.throughMessageId).toBe(toolRowId)
     })
 
+    it('ignores messages after the upper bound', () => {
+      const boundId = insertMessage(db, 'session-1', 'user', 'Finished turn')
+      insertMessage(db, 'session-1', 'user', 'Turn still running')
+
+      const chunks = buildPendingTranscriptChunks(db, 'session-1', 0, boundId)
+
+      expect(chunks).toEqual([{ text: 'User: Finished turn', earlierContext: '', throughMessageId: boundId }])
+    })
+
     it('returns no chunks when nothing new arrived', () => {
       const lastId = insertLongConversation(db, 'session-1', 0, 2)
-      expect(buildPendingTranscriptChunks(db, 'session-1', lastId)).toEqual([])
+      expect(buildPendingTranscriptChunks(db, 'session-1', lastId, ALL)).toEqual([])
     })
   })
 
@@ -176,7 +191,7 @@ describe('incremental fact extraction', () => {
     it('extracts facts from the whole session, not only the first 12k chars', async () => {
       const lastId = insertLongConversation(db, 'session-1', 0, 30)
 
-      const result = await extractFactsIncrementally({ db, userId: 1, sessionId: 'session-1', model, apiKey: 'key' })
+      const result = await extractAll()
 
       expect(result.chunks).toBeGreaterThan(2)
       expect(result.chunks).toBe(extractionCalls().length)
@@ -188,18 +203,18 @@ describe('incremental fact extraction', () => {
 
     it('does not extract a chunk twice when re-run, and only processes messages added since', async () => {
       insertLongConversation(db, 'session-1', 0, 15)
-      await extractFactsIncrementally({ db, userId: 1, sessionId: 'session-1', model, apiKey: 'key' })
+      await extractAll()
       const firstRunCalls = extractionCalls().length
       const factsAfterFirstRun = storedFacts(db)
 
-      const rerun = await extractFactsIncrementally({ db, userId: 1, sessionId: 'session-1', model, apiKey: 'key' })
+      const rerun = await extractAll()
 
-      expect(rerun).toEqual({ chunks: 0, extracted: 0, stored: 0, duplicates: 0, superseded: 0 })
+      expect(rerun).toEqual({ chunks: 0, skippedChunks: 0, extracted: 0, stored: 0, duplicates: 0, superseded: 0 })
       expect(extractionCalls()).toHaveLength(firstRunCalls)
       expect(storedFacts(db)).toEqual(factsAfterFirstRun)
 
       const lastId = insertLongConversation(db, 'session-1', 15, 1)
-      const incremental = await extractFactsIncrementally({ db, userId: 1, sessionId: 'session-1', model, apiKey: 'key' })
+      const incremental = await extractAll()
 
       expect(incremental).toMatchObject({ chunks: 1, stored: 1 })
       const latestTranscript = transcriptOf(extractionCalls().at(-1)!)
@@ -217,27 +232,72 @@ describe('incremental fact extraction', () => {
         return extractRememberedTokens(context)
       })
 
-      await expect(extractFactsIncrementally({ db, userId: 1, sessionId: 'session-1', model, apiKey: 'key' }))
+      await expect(extractAll())
         .rejects.toThrow('provider down')
 
-      const [firstChunk] = buildPendingTranscriptChunks(db, 'session-1', 0)
+      const [firstChunk] = buildPendingTranscriptChunks(db, 'session-1', 0, ALL)
       expect(getFactExtractionCursor(db, 'session-1')).toBe(firstChunk.throughMessageId)
       const factsAfterFailure = storedFacts(db)
       expect(factsAfterFailure.length).toBeGreaterThan(0)
       expect(factsAfterFailure).not.toContain('Remembered token29')
 
-      const resumed = await extractFactsIncrementally({ db, userId: 1, sessionId: 'session-1', model, apiKey: 'key' })
+      const resumed = await extractAll()
 
       expect(resumed.stored).toBe(30 - factsAfterFailure.length)
       expect(storedFacts(db)).toHaveLength(30)
+    })
+
+    it('skips the chunk after the cursor once it failed too often in a row and continues after it', async () => {
+      const failingId = insertMessage(db, 'session-1', 'user', 'Please remember poison.')
+      insertMessage(db, 'session-1', 'tool', 'tool output')
+      const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+      mockCompleteSimple.mockImplementation(async (_model, context) => {
+        if (isExtractionCall(context) && transcriptOf(context).includes('poison')) throw new Error('rejected')
+        return extractRememberedTokens(context)
+      })
+
+      for (let attempt = 0; attempt < MAX_FACT_EXTRACTION_CHUNK_ATTEMPTS; attempt += 1) {
+        await expect(extractAll()).rejects.toThrow('rejected')
+      }
+      expect(getFactExtractionCursor(db, 'session-1')).toBe(0)
+      expect(getFactExtractionCursorState(db, 'session-1').failedThroughMessageId).toBe(failingId + 1)
+      const callsBeforeSkip = extractionCalls().length
+
+      const laterId = insertMessage(db, 'session-1', 'user', 'Please remember token1.')
+      const resumed = await extractAll()
+
+      expect(resumed).toMatchObject({ skippedChunks: 1, chunks: 1, stored: 1 })
+      expect(extractionCalls()).toHaveLength(callsBeforeSkip + 1)
+      expect(storedFacts(db)).toEqual(['Remembered token1'])
+      expect(getFactExtractionCursor(db, 'session-1')).toBe(laterId)
+      expect(errorLog).toHaveBeenCalledWith(expect.stringContaining(`Skipping messages 1-${failingId + 1} of session session-1`))
+      errorLog.mockRestore()
+    })
+
+    it('resets the failure count once a chunk succeeds', async () => {
+      insertMessage(db, 'session-1', 'user', 'Please remember token1.')
+      let failures = MAX_FACT_EXTRACTION_CHUNK_ATTEMPTS - 1
+      mockCompleteSimple.mockImplementation(async (_model, context) => {
+        if (isExtractionCall(context) && failures > 0) {
+          failures -= 1
+          throw new Error('provider down')
+        }
+        return extractRememberedTokens(context)
+      })
+      for (let attempt = 0; attempt < MAX_FACT_EXTRACTION_CHUNK_ATTEMPTS - 1; attempt += 1) {
+        await expect(extractAll()).rejects.toThrow('provider down')
+      }
+
+      expect(await extractAll()).toMatchObject({ skippedChunks: 0, stored: 1 })
+      expect(getFactExtractionCursorState(db, 'session-1').failedAttempts).toBe(0)
     })
 
     it('serializes concurrent runs for the same session so no chunk is extracted twice', async () => {
       insertLongConversation(db, 'session-1', 0, 15)
 
       const [first, second] = await Promise.all([
-        extractFactsIncrementally({ db, userId: 1, sessionId: 'session-1', model, apiKey: 'key' }),
-        extractFactsIncrementally({ db, userId: 1, sessionId: 'session-1', model, apiKey: 'key' }),
+        extractAll(),
+        extractAll(),
       ])
 
       expect(first.chunks).toBeGreaterThan(0)

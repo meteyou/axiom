@@ -500,7 +500,9 @@ export {
   buildPendingTranscriptChunks,
   extractFactsIncrementally,
   FACT_EXTRACTION_CHUNK_CHARS,
+  MAX_FACT_EXTRACTION_CHUNK_ATTEMPTS,
 } from './incremental-fact-extraction.js'
+export { getSessionTreeLastMessageId } from './conversation-transcript.js'
 export { getFactExtractionCursor } from './fact-extraction-cursor-store.js'
 export type { IncrementalFactExtractionOptions, IncrementalFactExtractionResult, TranscriptChunk } from './incremental-fact-extraction.js'
 export { createSearchMemoriesTool } from './memories-tool.js'

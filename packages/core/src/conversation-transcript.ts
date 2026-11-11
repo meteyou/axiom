@@ -9,6 +9,24 @@ export interface ConversationMessageRow {
   timestamp: string
 }
 
+// UNION (distinct) keeps accidental cycles in parent_session_id from recursing forever.
+const SESSION_TREE_CTE = `WITH RECURSIVE session_tree(id) AS (
+  SELECT ?
+  UNION
+  SELECT s.id FROM sessions s
+  JOIN session_tree st ON s.parent_session_id = st.id
+)`
+
+/** Highest `chat_messages.id` in a session and its descendant sessions, or 0 when there are none. */
+export function getSessionTreeLastMessageId(db: Database, sessionId: string): number {
+  const row = db.prepare(
+    `${SESSION_TREE_CTE}
+     SELECT MAX(id) AS last_id FROM chat_messages
+     WHERE session_id IN (SELECT id FROM session_tree)`
+  ).get(sessionId) as { last_id: number | null }
+  return row.last_id ?? 0
+}
+
 /**
  * Messages of a session and all its descendant sessions (tasks, loop
  * detection, ...) linked via `parent_session_id`, oldest first.
@@ -20,14 +38,8 @@ export function loadSessionTreeMessages(
   order: 'timestamp' | 'id',
 ): ConversationMessageRow[] {
   const orderColumn = order === 'id' ? 'id' : 'timestamp'
-  // UNION (distinct) keeps accidental cycles in parent_session_id from recursing forever.
   return db.prepare(
-    `WITH RECURSIVE session_tree(id) AS (
-       SELECT ?
-       UNION
-       SELECT s.id FROM sessions s
-       JOIN session_tree st ON s.parent_session_id = st.id
-     )
+    `${SESSION_TREE_CTE}
      SELECT id, session_id, role, content, metadata, timestamp
      FROM chat_messages
      WHERE session_id IN (SELECT id FROM session_tree)
