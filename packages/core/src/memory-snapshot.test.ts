@@ -97,12 +97,21 @@ describe('createMemorySnapshot', () => {
     expect(listSnapshotDirs()).toEqual(['2026-11-07T03-00-00-000Z', 'keep-me'])
   })
 
-  it('throws and leaves no snapshot behind when a source cannot be copied', () => {
+  it('rejects paths outside the data dir whether or not they exist, without creating a snapshot', () => {
     writeFile('memory/MEMORY.md', 'content')
+    const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'axiom-outside-'))
+    const outsideFile = path.join(outsideDir, 'PROFILE.md')
+    fs.writeFileSync(outsideFile, 'outside')
 
-    expect(() => createMemorySnapshot({ retention: 7, extraFiles: ['/etc/hostname'] }))
-      .toThrow(/outside the data directory/)
-    expect(listSnapshotDirs()).toEqual([])
+    try {
+      for (const extra of [outsideFile, path.join(outsideDir, 'missing.md')]) {
+        expect(() => createMemorySnapshot({ retention: 7, extraFiles: [extra] }))
+          .toThrow(/outside the data directory/)
+      }
+      expect(fs.existsSync(snapshotsDir()) ? listSnapshotDirs() : []).toEqual([])
+    } finally {
+      fs.rmSync(outsideDir, { recursive: true, force: true })
+    }
   })
 
   it('throws when the snapshot directory cannot be created', () => {
