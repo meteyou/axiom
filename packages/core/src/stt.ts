@@ -23,6 +23,8 @@ export interface TranscribeResult {
 
 export interface TranscribeOptions {
   language?: string
+  /** Use `language` as given (auto-detect when omitted) instead of the `stt.language` setting. */
+  ignoreLanguageSetting?: boolean
   /** Original filename hint (e.g. 'audio.ogg'). Helps APIs detect the format. */
   filename?: string
   /**
@@ -143,7 +145,7 @@ export async function transcribeAudio(
   const { provider, modelId } = resolveVoiceModelRef(settings.model, 'stt')
   // The STT language override wins over the chat language so multilingual
   // setups (Telegram in DE, agent in EN) keep working.
-  const language = settings.language.trim() || resolveLanguageCode(options.language)
+  const language = (options.ignoreLanguageSetting ? '' : settings.language.trim()) || resolveLanguageCode(options.language)
   const transcription = await transcribeWithProvider(provider, {
     audio: buffer,
     modelId,

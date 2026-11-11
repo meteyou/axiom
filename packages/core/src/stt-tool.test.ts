@@ -160,6 +160,7 @@ describe('audio_transcribe execute', () => {
     })
     expect(mockTranscribeAudio).toHaveBeenCalledWith(Buffer.from('fake-audio'), {
       language: undefined,
+      ignoreLanguageSetting: true,
       filename: 'recording.mp3',
       rewrite: false,
     })
@@ -196,7 +197,7 @@ describe('audio_transcribe execute', () => {
 
     expect(textOf(result)).toBe('Hallo Welt')
     expect(result.details).toMatchObject({ language: 'de', mimeType: 'audio/wav' })
-    expect(mockTranscribeAudio).toHaveBeenCalledWith(Buffer.from('fake-wav'), { language: 'de', filename: 'audio.wav', rewrite: false })
+    expect(mockTranscribeAudio).toHaveBeenCalledWith(Buffer.from('fake-wav'), { language: 'de', ignoreLanguageSetting: true, filename: 'audio.wav', rewrite: false })
   })
 
   it('rewrites when requested and configured', async () => {
