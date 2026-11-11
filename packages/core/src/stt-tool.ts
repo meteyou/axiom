@@ -264,6 +264,7 @@ export function createTranscribeAudioTool(options: TranscribeAudioToolOptions = 
         const { buffer, uploadName, reencoded } = upload
         const result = await transcribeAudio(buffer, {
           language,
+          ignoreLanguageSetting: true,
           filename: uploadName,
           rewrite: rewrite === true && isRewriteOffered(settings),
           usage: resolveToolUsage(options.usage),

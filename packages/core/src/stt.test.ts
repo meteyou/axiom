@@ -149,6 +149,18 @@ describe('transcribeAudio', () => {
     })
   })
 
+  it('uses the given language instead of the STT language override when asked to', async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => jsonResponse({ text: 'Hello' }))
+    globalThis.fetch = fetchMock
+    mockStt({ enabled: true, model: 'or:openai/whisper-1', language: 'fr' })
+
+    await transcribeAudio(Buffer.from('audio'), { language: 'en', ignoreLanguageSetting: true })
+    await transcribeAudio(Buffer.from('audio'), { ignoreLanguageSetting: true })
+
+    expect(JSON.parse(fetchMock.mock.calls[0]![1].body as string).language).toBe('en')
+    expect(JSON.parse(fetchMock.mock.calls[1]![1].body as string)).not.toHaveProperty('language')
+  })
+
   it('uses the xAI /stt endpoint with the file as the last form field', async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ text: 'hi' }))
     globalThis.fetch = fetchMock
