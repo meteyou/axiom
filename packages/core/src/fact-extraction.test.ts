@@ -131,6 +131,16 @@ describe('fact-extraction', () => {
     ])
   })
 
+  it('parseFactDecisions ignores numbers in explanation text after SUPERSEDES', () => {
+    const decisions = parseFactDecisions(
+      'N1: SUPERSEDES #42 (user moved in 2024, has 3 cats)',
+      1,
+      new Set([3, 42, 2024]),
+    )
+
+    expect(decisions).toEqual([{ action: 'supersede', ids: [42] }])
+  })
+
   it('stores unrelated facts without a reconciliation call', async () => {
     mockCompleteSimple.mockResolvedValueOnce(makeResponse([
       '- The project uses PostgreSQL on port 5433',
