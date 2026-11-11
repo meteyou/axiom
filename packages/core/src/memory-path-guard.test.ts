@@ -106,4 +106,29 @@ describe('checkPathAccess', () => {
 
     expect(checkPathAccess(policy, path.join(root, 'memory/wiki-private/notes.md'), 'write').allowed).toBe(false)
   })
+
+  it('denies access when a deny root cannot be resolved', () => {
+    const configLink = path.join(root, 'config-link')
+    fs.symlinkSync(path.join(root, 'missing-config'), configLink)
+    policy.deny = [configLink]
+
+    const result = checkPathAccess(policy, path.join(root, 'memory/MEMORY.md'), 'read')
+
+    expect(result.allowed).toBe(false)
+    if (!result.allowed) expect(result.reason).toContain('cannot resolve the access policy')
+  })
+
+  it('denies access when an allow root is a symlink loop', () => {
+    const loop = path.join(root, 'loop')
+    fs.symlinkSync(loop, loop)
+    policy.read.push(path.join(loop, 'inner'))
+
+    expect(checkPathAccess(policy, path.join(root, 'memory/MEMORY.md'), 'read').allowed).toBe(false)
+  })
+
+  it('accepts roots that do not exist yet', () => {
+    policy.write.push(path.join(root, 'memory/users/new-user/PROFILE.md'))
+
+    expect(checkPathAccess(policy, path.join(root, 'memory/users/new-user/PROFILE.md'), 'write').allowed).toBe(true)
+  })
 })
