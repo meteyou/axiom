@@ -6,9 +6,15 @@ import type { ProviderConfig } from './provider-config.js'
 import type { ScheduledTaskStore } from './scheduled-task-store.js'
 
 type ReferenceKind = 'text' | 'image' | 'stt' | 'tts'
+type VoiceReferenceKind = 'stt' | 'tts'
+
+interface SettingsReference {
+  path: readonly string[]
+  kind?: ReferenceKind
+}
 
 /** `settings.json` fields holding a `providerId[:modelId]` model reference. */
-const SETTINGS_PROVIDER_REFERENCE_PATHS: ReadonlyArray<{ path: readonly string[]; kind?: ReferenceKind }> = [
+const SETTINGS_PROVIDER_REFERENCE_PATHS: readonly SettingsReference[] = [
   { path: ['sessionSummaryProviderId'] },
   { path: ['factExtraction', 'providerId'] },
   { path: ['memoryConsolidation', 'providerId'] },
@@ -46,21 +52,31 @@ function isDisabledModelReference(value: string, providers: ProviderConfig[], ki
   return !isProviderVoiceModelUsable(ref.provider, kind, ref.modelId)
 }
 
-function resetSettingsReferences(providers: ProviderConfig[]): string[] {
+/** Unlike a disabled reference, this also covers a model or provider that was removed. */
+function isUnusableVoiceReference(value: string, providers: ProviderConfig[], kind: VoiceReferenceKind): boolean {
+  if (!value) return false
+  const ref = findReferencedProvider(value, providers)
+  return !ref?.modelId || !isProviderVoiceModelUsable(ref.provider, kind, ref.modelId)
+}
+
+function resetSettingsReferences(
+  isStale: (value: string, kind: ReferenceKind) => boolean,
+  references: readonly SettingsReference[] = SETTINGS_PROVIDER_REFERENCE_PATHS,
+): string[] {
   const settingsPath = path.join(getConfigDir(), 'settings.json')
   if (!fs.existsSync(settingsPath)) return []
 
   const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as Record<string, unknown>
   const resetPaths: string[] = []
 
-  for (const { path: refPath, kind = 'text' } of SETTINGS_PROVIDER_REFERENCE_PATHS) {
+  for (const { path: refPath, kind = 'text' } of references) {
     const parent = refPath.slice(0, -1).reduce<unknown>(
       (node, key) => (node && typeof node === 'object' ? (node as Record<string, unknown>)[key] : undefined),
       settings,
     ) as Record<string, unknown> | undefined
     const leaf = refPath[refPath.length - 1]!
     const value = parent?.[leaf]
-    if (typeof value === 'string' && isDisabledModelReference(value, providers, kind)) {
+    if (typeof value === 'string' && isStale(value, kind)) {
       parent![leaf] = ''
       resetPaths.push(refPath.join('.'))
     }
@@ -92,7 +108,19 @@ export function resetDisabledProviderReferences(
 ): ResetDisabledProviderReferencesResult {
   const providers = loadProviders().providers
   return {
-    settingsPaths: resetSettingsReferences(providers),
+    settingsPaths: resetSettingsReferences((value, kind) => isDisabledModelReference(value, providers, kind)),
     cronjobIds: options.scheduledTaskStore ? resetCronjobReferences(options.scheduledTaskStore, providers) : [],
   }
+}
+
+/**
+ * Clear `stt.model` / `tts.model` when the selected model or its provider no
+ * longer exists or is disabled. Returns the reset settings paths.
+ */
+export function resetUnusableVoiceModelReferences(): string[] {
+  const providers = loadProviders().providers
+  return resetSettingsReferences(
+    (value, kind) => isUnusableVoiceReference(value, providers, kind as VoiceReferenceKind),
+    SETTINGS_PROVIDER_REFERENCE_PATHS.filter(reference => reference.kind === 'stt' || reference.kind === 'tts'),
+  )
 }

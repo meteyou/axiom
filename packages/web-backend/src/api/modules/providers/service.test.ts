@@ -532,6 +532,21 @@ describe('image generation models', () => {
   })
 })
 
+describe('active provider', () => {
+  it('announces the provider that becomes active with its first chat model', () => {
+    const provider = addProvider({ name: 'OpenAI', providerType: 'openai', apiKey: 'sk', enabledModels: [] })
+    const onActiveProviderChanged = vi.fn()
+    const service = createProvidersService({ onActiveProviderChanged })
+
+    service.updateProvider(provider.id, { name: 'Renamed' })
+    expect(onActiveProviderChanged).not.toHaveBeenCalled()
+
+    service.updateProvider(provider.id, { enabledModels: ['gpt-4o'] })
+    expect(loadProviders().activeProvider).toBe(provider.id)
+    expect(onActiveProviderChanged).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('voice models', () => {
   function createDeepgramProvider() {
     return addProvider({ name: 'Deepgram', providerType: 'deepgram', apiKey: 'dg-key', enabledModels: [] })
@@ -584,6 +599,57 @@ describe('voice models', () => {
     expect(result).toMatchObject({ contentType: 'audio/mpeg', extension: 'mp3' })
     expect(String(fetchSpy.mock.calls[0]![0])).toContain('/v1/speak?model=aura-2-thalia-en&encoding=mp3')
     await expect(service.testTtsModel(provider.id, { modelId: 'aura-asteria-en' })).rejects.toBeInstanceOf(ProvidersValidationError)
+  })
+
+  describe('selected voice models in the settings', () => {
+    const settingsPath = () => path.join(tempDataDir, 'config', 'settings.json')
+    const readVoiceSelection = () => {
+      const settings = JSON.parse(fs.readFileSync(settingsPath(), 'utf-8')) as { stt: { model: string }; tts: { model: string } }
+      return { stt: settings.stt.model, tts: settings.tts.model }
+    }
+
+    function selectVoiceModels(providerType: 'deepgram' | 'openai' = 'deepgram') {
+      const provider = addProvider({ name: 'Voice', providerType, apiKey: 'key', enabledModels: [] })
+      updateProvider(provider.id, { enabledSttModels: ['stt-a', 'stt-b'], enabledTtsModels: ['tts-a'] })
+      fs.writeFileSync(settingsPath(), JSON.stringify({ stt: { model: `${provider.id}:stt-a` }, tts: { model: `${provider.id}:tts-a` } }), 'utf-8')
+      return provider
+    }
+
+    it('clears the selection of a removed voice model and keeps the others', () => {
+      const provider = selectVoiceModels()
+      const onProviderReferencesReset = vi.fn()
+
+      createProvidersService({ onProviderReferencesReset }).updateProvider(provider.id, { enabledSttModels: ['stt-b'] })
+
+      expect(readVoiceSelection()).toEqual({ stt: '', tts: `${provider.id}:tts-a` })
+      expect(onProviderReferencesReset).toHaveBeenCalledTimes(1)
+    })
+
+    it('keeps the selection when an update leaves the selected models in place', () => {
+      const provider = selectVoiceModels()
+      const onProviderReferencesReset = vi.fn()
+
+      createProvidersService({ onProviderReferencesReset }).updateProvider(provider.id, { name: 'Renamed', enabledSttModels: ['stt-a'] })
+
+      expect(readVoiceSelection()).toEqual({ stt: `${provider.id}:stt-a`, tts: `${provider.id}:tts-a` })
+      expect(onProviderReferencesReset).not.toHaveBeenCalled()
+    })
+
+    it('clears the selection when the provider type loses voice support', () => {
+      const provider = selectVoiceModels('openai')
+
+      createProvidersService().updateProvider(provider.id, { providerType: 'anthropic' })
+
+      expect(readVoiceSelection()).toEqual({ stt: '', tts: '' })
+    })
+
+    it('clears the selection when the provider is deleted', () => {
+      const provider = selectVoiceModels()
+
+      createProvidersService().deleteProvider(provider.id)
+
+      expect(readVoiceSelection()).toEqual({ stt: '', tts: '' })
+    })
   })
 
   it('books the TTS test clip on the requesting user', async () => {
