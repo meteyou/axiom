@@ -139,6 +139,8 @@ describe('MemoryConsolidationScheduler', () => {
     })
 
     it('creates and starts a consolidation task via task runtime boundary', async () => {
+      fs.mkdirSync(path.join(tempDataDir, 'config'), { recursive: true })
+      fs.writeFileSync(path.join(tempDataDir, 'config', 'AGENTS.md'), 'Custom agent rule for consolidation.\n', 'utf-8')
       const taskStore = new TaskStore(db)
       const taskRuntime = createMockTaskRuntime(taskStore)
       const provider = makeProvider()
@@ -184,6 +186,8 @@ describe('MemoryConsolidationScheduler', () => {
       expect(startedTask.task.prompt).toContain('if no relevant facts are found, continue with the daily files alone as before')
       expect(startedTask.task.prompt).toContain('Consolidation Rules')
       expect(startedTask.task.prompt).toContain('Memory Consolidation Rules')
+      expect(startedTask.task.prompt).toContain('<agents_md>\nCustom agent rule for consolidation.\n</agents_md>')
+      expect(startedTask.task.prompt).toContain('covered by the AGENTS.md rules above')
       expect(startedTask.task.prompt).toContain('There is no shell')
       expect(startedTask.task.prompt).toContain('file_stats')
       expect(startedTask.task.prompt).not.toContain('wc -l')
