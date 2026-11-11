@@ -142,7 +142,7 @@ Consolidation reads conversation content, which can contain text that looks like
 | Bootstrap admin (or single-user instance) | `memory/MEMORY.md`, `memory/users/`, `memory/wiki/`, every other user's `PROFILE.md` | the rest of `memory/` (daily notes, `sources/`, `SOUL.md`), the `wiki` skill |
 | Any other user | `memory/MEMORY.md`, `memory/wiki/`, their own `PROFILE.md` | `memory/sources/`, their own `/data/users/<name>/` folder (daily notes), the `wiki` skill |
 
-`/data/config/` (including `AGENTS.md`) and `/data/memory-snapshots/` are neither readable nor writable. `SOUL.md`, the legacy `memory/AGENTS.md`, `sources/`, daily notes, and skills are never writable. Paths are resolved before the check — `..` segments and symlinks that point outside an allowed location are rejected, as are symlinks with a missing target.
+`/data/config/` and `/data/memory-snapshots/` are neither readable nor writable. The content of `AGENTS.md` is included in the consolidation prompt instead, so the run can still prune lessons that `AGENTS.md` already covers. `SOUL.md`, the legacy `memory/AGENTS.md`, `sources/`, daily notes, and skills are never writable. Paths are resolved before the check — `..` segments and symlinks that point outside an allowed location are rejected, as are symlinks with a missing target.
 
 Schedule, lookback window, provider, and snapshot retention are configured under [Settings → Memory](./../settings/memory#memory-consolidation). You can also trigger a consolidation run manually from the Memory page in the web UI.
 
