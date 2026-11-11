@@ -107,7 +107,7 @@ The SQLite `memories` table (atomic facts the agent searches on demand) is **not
 
 ### `/data/memory-snapshots/` — pre-consolidation snapshots
 
-Written by `createMemorySnapshot()` in `packages/core/src/memory-snapshot.ts`, called by the consolidation scheduler before each run. One directory per run, named after the UTC start time (`2026-11-07T03-00-00-000Z`). Inside, files keep their path relative to `/data`: `memory/MEMORY.md`, `memory/users/`, `memory/wiki/`, `users/<username>/PROFILE.md`. Only the newest `memoryConsolidation.snapshotRetention` snapshots (default 7) are kept. Directories with a `.partial` suffix are interrupted snapshots and are removed on the next run.
+Written by `createMemorySnapshot()` in `packages/core/src/memory-snapshot.ts`, called by the consolidation scheduler before each run. One directory per run, named after the UTC start time (`2026-11-07T03-00-00-000Z`). Inside, files keep their path relative to `/data`: `memory/MEMORY.md`, `memory/users/`, `memory/wiki/`, `users/<username>/PROFILE.md`. Only the newest `memoryConsolidation.snapshotRetention` snapshots (default 7) are kept. Directories with a `.partial` suffix are interrupted snapshots and are removed on the next run. Deleting a user with their files removes `users/<username>/` and `memory/users/<username>.md` from every snapshot.
 
 **Read-only for the agent.** Restore by copying a file back to its original location; never edit a snapshot in place.
 
