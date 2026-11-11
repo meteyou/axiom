@@ -14,7 +14,7 @@ Master toggle. When off, the speaker icons disappear from the UI.
 
 ## Provide as agent tool
 
-Gives the agent the [`send_voice_message`](../concepts/tools#send-voice-message) tool, so it can answer with a spoken voice message when you ask for one — e.g. "answer me as a voice message" on Telegram. On by default; the speaker button and the automatic [Telegram voice replies](./telegram#send-voice-reply) work without it. Applies to new chat sessions.
+Gives the agent the [`audio_send`](../concepts/tools#audio-send) tool, so it can answer with a spoken voice message when you ask for one — e.g. "answer me as a voice message" on Telegram. On by default; the speaker button and the automatic [Telegram voice replies](./telegram#send-voice-reply) work without it. Applies to new chat sessions.
 
 ```json
 { "tts": { "agentTool": true } }

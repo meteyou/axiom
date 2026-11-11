@@ -15,6 +15,7 @@ const TOOL_LABEL_KEYS: Readonly<Record<string, string>> = {
   skill_list: 'skill_list',
   image_generate: 'image_generate',
   audio_transcribe: 'audio_transcribe',
+  audio_send: 'audio_send',
   web_search: 'web_search',
   web_fetch: 'web_fetch',
   codemode: 'codemode',
@@ -121,7 +122,7 @@ const TOOL_SUMMARY: Readonly<Record<string, SummaryPart[]>> = {
   file_list: PATH_ONLY,
   file_send: PATH_ONLY,
   audio_transcribe: PATH_ONLY,
-  send_voice_message: [{ key: 'text' }],
+  audio_send: [{ key: 'text' }],
 
   task_read: [{ key: 'status', label: 'status' }, { key: 'trigger_type', label: 'trigger' }, { key: 'limit', label: 'limit' }],
   'task_write:create': [{ key: 'name' }],
