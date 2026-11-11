@@ -10,7 +10,7 @@ Token Usage is the consumption analytics page — how many requests went out, ho
 
 > **Speech (STT/TTS)** is recorded per request as well, in audio seconds (speech-to-text) or input characters (text-to-speech) instead of tokens:
 >
-> - **Covered:** the chat's mic button and read-aloud button, Telegram voice messages and voice replies, the `transcribe_audio` and `send_voice_message` tools, the TTS preview in the settings and *Play test audio* on the Providers page.
+> - **Covered:** the chat's mic button and read-aloud button, Telegram voice messages and voice replies, the `audio_transcribe` and `send_voice_message` tools, the TTS preview in the settings and *Play test audio* on the Providers page.
 > - **Cost:** the cost the provider reports (OpenRouter transcriptions), otherwise the units times the model's price from [Edit voice model](./providers#voice-model-rows). Without a price the request is recorded at `$0.00`.
 > - **Audio length:** taken from the provider response when it reports it (OpenRouter, OpenAI `whisper-1`, Mistral, Deepgram), otherwise from the audio file header, and only then from the length the recording reports (Telegram, browser).
 

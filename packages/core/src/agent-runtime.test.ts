@@ -198,7 +198,7 @@ describe('AgentRuntime boundary', () => {
     vi.mocked(logToolCall).mockClear()
   })
 
-  it('wires tools behind a single runtime boundary', () => {
+  it('wires tools behind a single runtime boundary', async () => {
     const db = initDatabase(':memory:')
     const customTool = { name: 'custom_tool', parameters: {}, execute: vi.fn() } as unknown as AgentTool
 
@@ -208,6 +208,7 @@ describe('AgentRuntime boundary', () => {
       db,
       tools: [customTool],
     })
+    await runTurn(runtime)
 
     const toolNames = runtime.getStateSnapshot().toolNames
     expect(toolNames).toEqual(expect.arrayContaining([
