@@ -33,14 +33,17 @@ function hasLegacyKeys(kind: VoiceModelKind, block: VoiceBlock): boolean {
   return LEGACY_KEYS[kind].some(key => key in block)
 }
 
-function decryptLegacyKey(raw: string, logger: Logger): string {
+const PLAINTEXT_DEEPGRAM_KEY = /^[0-9a-f]{40}$/i
+
+function decryptLegacyKey(raw: string): string {
   if (!raw || !isEncrypted(raw)) return raw
   try {
     return decrypt(raw)
-  } catch {
+  } catch (err) {
     // Plaintext Deepgram keys (40 hex chars) pass the isEncrypted() heuristic.
-    logger.warn('[axiom] Legacy Deepgram API key is not decryptable, treating it as plaintext')
-    return raw
+    if (PLAINTEXT_DEEPGRAM_KEY.test(raw)) return raw
+    // Storing the ciphertext as the key would lose the original once the legacy settings are dropped.
+    throw new Error(`the legacy Deepgram API key cannot be decrypted (was ENCRYPTION_KEY changed?), keeping the legacy settings: ${(err as Error).message}`)
   }
 }
 
@@ -81,8 +84,8 @@ function enableVoiceModel(providerId: string, kind: VoiceModelKind, modelId: str
   saveProviders(file)
 }
 
-function migrateDeepgram(kind: VoiceModelKind, block: VoiceBlock, logger: Logger): boolean {
-  const apiKey = decryptLegacyKey(str(block.deepgramApiKey), logger)
+function migrateDeepgram(kind: VoiceModelKind, block: VoiceBlock): boolean {
+  const apiKey = decryptLegacyKey(str(block.deepgramApiKey))
   if (!apiKey) return false
   const provider = ensureDeepgramProvider(apiKey)
   const modelId = str(block.deepgramModel) || LEGACY_DEFAULT_MODELS[kind].deepgram
@@ -99,23 +102,25 @@ function whisperBaseUrl(url: string): string | null {
 
 /**
  * The old backend posted to a full endpoint URL without a model id, so the
- * server is kept as a provider but no model is guessed.
+ * server is kept as a provider but no model is guessed. Returns false when
+ * the URL could not be turned into a provider.
  */
-function migrateWhisperUrl(block: VoiceBlock, logger: Logger): void {
+function migrateWhisperUrl(block: VoiceBlock, logger: Logger): boolean {
   const url = str(block.whisperUrl)
   if (!url) {
     if (block.enabled === true) logger.warn('[axiom] STT migration: no Whisper URL configured, select an STT model in Settings')
-    return
+    return true
   }
   const baseUrl = whisperBaseUrl(url)
   if (!baseUrl) {
-    logger.warn(`[axiom] STT migration: Whisper URL "${url}" is not an OpenAI-compatible /v1/audio/transcriptions endpoint, add the server as a custom provider and select an STT model in Settings`)
-    return
+    logger.warn(`[axiom] STT migration: Whisper URL "${url}" is not an OpenAI-compatible /v1/audio/transcriptions endpoint, keeping the legacy settings; add the server as a custom provider and select an STT model in Settings`)
+    return false
   }
   const existing = loadProviders().providers.find(p => getVoiceBackendId(p.providerType) === 'openai-compatible' && p.baseUrl.replace(/\/+$/, '') === baseUrl)
   const provider = existing ?? addProvider({ name: uniqueProviderName('Whisper'), providerType: 'custom-openai-completions', baseUrl, enabledModels: [] })
   const action = existing ? 'matches the existing provider' : 'added as provider'
   logger.warn(`[axiom] STT migration: Whisper server ${action} "${provider.name}", add an STT model to it and select it in Settings`)
+  return true
 }
 
 function resolveVoiceProvider(kind: VoiceModelKind, legacyProvider: string, providerId: string, logger: Logger): ProviderConfig | null {
@@ -160,10 +165,11 @@ function migrateBlock(kind: VoiceModelKind, block: VoiceBlock, logger: Logger): 
   const legacyProvider = str(block.provider) || (kind === 'stt' ? 'whisper-url' : 'openai')
 
   let migrated = false
-  if (legacyProvider === 'deepgram') migrated = migrateDeepgram(kind, block, logger)
+  if (legacyProvider === 'deepgram') migrated = migrateDeepgram(kind, block)
   else if (legacyProvider === 'openai' || legacyProvider === 'mistral') migrated = migrateProviderBacked(kind, legacyProvider, block, logger)
-  else if (kind === 'stt' && legacyProvider === 'whisper-url') migrateWhisperUrl(block, logger)
-  else if (block.enabled === true) {
+  else if (kind === 'stt' && legacyProvider === 'whisper-url') {
+    if (!migrateWhisperUrl(block, logger)) return false
+  } else if (block.enabled === true) {
     logger.warn(`[axiom] STT backend "${legacyProvider}" is no longer supported, select an STT model in Settings`)
   }
 
