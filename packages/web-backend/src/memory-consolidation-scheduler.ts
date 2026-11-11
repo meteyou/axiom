@@ -25,6 +25,7 @@ import {
   createMemorySnapshot,
   DEFAULT_MEMORY_SNAPSHOT_RETENTION,
 } from '@axiom/core'
+import type { MemorySnapshotResult } from '@axiom/core'
 
 export interface ConsolidationSettings {
   enabled: boolean
@@ -391,16 +392,19 @@ export class MemoryConsolidationScheduler {
       const compactionRun = !scheduled || new Date().getDay() === 0
       const { runs, otherUserProfiles } = this.planRuns()
 
-      let snapshotDir: string
+      let snapshot: MemorySnapshotResult
       try {
-        snapshotDir = createMemorySnapshot({
+        snapshot = createMemorySnapshot({
           retention: this.settings.snapshotRetention,
           extraFiles: otherUserProfiles,
-        }).dir
+        })
       } catch (err) {
         return this.abortWithoutSnapshot(sessionId, startTime, err as Error)
       }
+      const snapshotDir = snapshot.dir
+      const snapshotPruneError = snapshot.pruneError?.message
       console.log(`[axiom] Memory snapshot written to ${snapshotDir}`)
+      if (snapshot.pruneError) console.error('[axiom] Failed to prune old memory snapshots:', snapshot.pruneError)
       const results: Array<{ label: string | null; result: ConsolidationResult }> = []
       const taskIds: string[] = []
       const failedRuns: string[] = []
@@ -473,9 +477,10 @@ export class MemoryConsolidationScheduler {
           dailyFilesReviewed: result.dailyFilesReviewed,
           reason: result.reason ?? null,
           ...(failedRuns.length > 0 ? { failedRuns } : {}),
+          ...(snapshotPruneError ? { snapshotPruneError } : {}),
         }),
         durationMs: Date.now() - startTime,
-        status: failedRuns.length > 0 ? 'error' : 'success',
+        status: failedRuns.length > 0 || snapshotPruneError ? 'error' : 'success',
       })
 
       console.log(

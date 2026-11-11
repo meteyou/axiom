@@ -18,6 +18,8 @@ export interface MemorySnapshotResult {
   dir: string
   files: number
   pruned: string[]
+  /** Set when the snapshot was written but old snapshots could not be pruned. */
+  pruneError?: Error
 }
 
 function dataDir(): string {
@@ -127,12 +129,13 @@ export function createMemorySnapshot(options: MemorySnapshotOptions): MemorySnap
     throw err
   }
 
-  let pruned: string[] = []
+  const files = countFiles(finalDir)
+  // The new snapshot is already complete, so a pruning failure must not abort
+  // the consolidation; it is returned so the caller reports it instead.
   try {
-    pruned = pruneMemorySnapshots(options.retention)
+    return { dir: finalDir, files, pruned: pruneMemorySnapshots(options.retention) }
   } catch (err) {
-    console.warn('[axiom] Failed to prune old memory snapshots:', err)
+    return { dir: finalDir, files, pruned: [], pruneError: err as Error }
   }
-
-  return { dir: finalDir, files: countFiles(finalDir), pruned }
 }
+

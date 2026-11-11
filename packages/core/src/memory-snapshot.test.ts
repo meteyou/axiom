@@ -114,6 +114,23 @@ describe('createMemorySnapshot', () => {
     }
   })
 
+  it.skipIf(process.getuid?.() === 0)('returns the pruning error instead of throwing once the snapshot is written', () => {
+    const stuck = path.join(snapshotsDir(), '2026-10-01T03-00-00-000Z', 'locked')
+    fs.mkdirSync(stuck, { recursive: true })
+    fs.writeFileSync(path.join(stuck, 'file'), 'x')
+    fs.chmodSync(stuck, 0o555)
+
+    try {
+      const result = createMemorySnapshot({ retention: 1, now: new Date('2026-11-07T03:00:00.000Z') })
+
+      expect(result.pruneError).toBeInstanceOf(Error)
+      expect(result.pruned).toEqual([])
+      expect(fs.existsSync(result.dir)).toBe(true)
+    } finally {
+      fs.chmodSync(stuck, 0o755)
+    }
+  })
+
   it('throws when the snapshot directory cannot be created', () => {
     fs.writeFileSync(snapshotsDir(), 'not a directory')
 
