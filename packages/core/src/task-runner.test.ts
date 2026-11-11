@@ -1424,12 +1424,13 @@ describe('TaskRunner', () => {
       const toolA = { name: 'shell', description: 'Shell', parameters: {}, execute: async () => '' }
       const toolB = { name: 'file_read', description: 'Read', parameters: {}, execute: async () => '' }
       const toolC = { name: 'file_write', description: 'Write', parameters: {}, execute: async () => '' }
+      const toolD = { name: 'email_read', description: 'Email', parameters: {}, execute: async () => '' }
 
       const runnerWithTools = new TaskRunner({
         db,
         buildModel: () => ({} as ReturnType<TaskRunnerOptions['buildModel']>),
         getApiKey: async () => 'test-key',
-        tools: [toolA, toolB, toolC] as unknown as TaskRunnerOptions['tools'],
+        tools: [toolA, toolB, toolC, toolD] as unknown as TaskRunnerOptions['tools'],
         onTaskComplete: () => {},
         sessionManager,
       })
@@ -1440,19 +1441,18 @@ describe('TaskRunner', () => {
         triggerType: 'cronjob',
       })
 
-      // `write_file` is the legacy name of file_write and must still disable it.
+      // Version 2 lists are applied verbatim: `email_read` is the whole email
+      // group, and a legacy name such as `write_file` is not translated.
       const overrides: TaskOverrides = {
-        toolsOverride: JSON.stringify(['shell', 'write_file']),
+        toolsOverride: JSON.stringify(['shell', 'email_read', 'write_file']),
+        toolsOverrideVersion: 2,
       }
 
       await runnerWithTools.startTask(task, mockProvider, overrides)
       await new Promise(resolve => setTimeout(resolve, 100))
 
-      // The PiAgent should have been created with only file_read
       expect(capturedOptions).toBeTruthy()
-      const passedTools = capturedOptions!.initialState.tools
-      expect(passedTools).toHaveLength(1)
-      expect(passedTools[0].name).toBe('file_read')
+      expect(capturedOptions!.initialState.tools.map(tool => tool.name)).toEqual(['file_read', 'file_write'])
 
       runnerWithTools.dispose()
     })
@@ -1561,23 +1561,29 @@ describe('TaskRunner', () => {
       expect(capturedOptions!.initialState.systemPrompt).toContain('Do work')
     })
 
-    it('handles invalid toolsOverride JSON gracefully', async () => {
-      const task = store.create({
-        name: 'Bad JSON Task',
-        prompt: 'Do work',
-        triggerType: 'cronjob',
-      })
-
-      const overrides: TaskOverrides = {
-        toolsOverride: 'invalid-json',
+    it.each([
+      ['a missing version', { toolsOverride: JSON.stringify(['shell']) }, 'version missing'],
+      ['a legacy version', { toolsOverride: JSON.stringify(['email_read']), toolsOverrideVersion: 1 }, 'version 1'],
+      ['an unknown version', { toolsOverride: JSON.stringify(['shell']), toolsOverrideVersion: 3 }, 'version 3'],
+      ['invalid JSON', { toolsOverride: 'invalid-json', toolsOverrideVersion: 2 }, 'not valid JSON'],
+      ['a non-list override', { toolsOverride: JSON.stringify({ shell: true }), toolsOverrideVersion: 2 }, 'not a list'],
+    ] as const)('refuses to run a disabled-tool override with %s', async (_label, overrides: TaskOverrides, reason) => {
+      const { Agent } = await import('@earendil-works/pi-agent-core')
+      const MockAgent = Agent as unknown as ReturnType<typeof vi.fn>
+      MockAgent.mockClear()
+      const task = store.create({ name: 'Unverified Override Task', prompt: 'Do work', triggerType: 'cronjob' })
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+      try {
+        await expect(runner.startTask(task, mockProvider, overrides)).rejects.toThrow(reason)
+        expect(error).toHaveBeenCalledWith(expect.stringContaining(task.id))
+      } finally {
+        error.mockRestore()
       }
 
-      // Should not throw, should use all tools
-      await runner.startTask(task, mockProvider, overrides)
-      await new Promise(resolve => setTimeout(resolve, 100))
-
+      expect(MockAgent).not.toHaveBeenCalled()
       const updated = store.getById(task.id)!
-      expect(updated.status).toBe('completed')
+      expect(updated.status).toBe('failed')
+      expect(updated.resultSummary).toContain('Disabled-tool override cannot be applied')
     })
   })
 
@@ -1836,7 +1842,7 @@ return r + s;`,
         },
       }
       const { codemode, runner } = await startCodemodeTask([readFileTool, secretTool], {
-        overrides: { codemode: 'on', toolsOverride: JSON.stringify(['secret_tool']) },
+        overrides: { codemode: 'on', toolsOverride: JSON.stringify(['secret_tool']), toolsOverrideVersion: 2 },
       })
       try {
         const result = await codemode.execute('parent-1', {

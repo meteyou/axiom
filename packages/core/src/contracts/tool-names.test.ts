@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   LEGACY_TOOL_NAMES,
+  TOOL_NAMES_FORMAT_VERSION,
   currentToolName,
   currentToolNames,
+  legacyToolNamesIn,
   migrateDisabledToolNames,
   resolveToolName,
   toolNameWithLegacyAliases,
@@ -64,8 +66,25 @@ describe('legacy tool names', () => {
       .toEqual([{ name: 'email_read', disabledLegacyNames: ['email_list', 'email_read'] }])
   })
 
-  it('treats email_read without other legacy names as the current grouped tool', () => {
-    expect(migrateDisabledToolNames(['email_read', 'shell'])).toEqual({ names: ['email_read', 'shell'], keptEnabled: [], changed: false })
+  it('reads email_read in a version 1 list as the old single read tool, whatever else is listed', () => {
+    const onlyRead = { name: 'email_read', disabledLegacyNames: ['email_read'] }
+    expect(migrateDisabledToolNames(['email_read'])).toEqual({ names: [], keptEnabled: [onlyRead], changed: true })
+    expect(migrateDisabledToolNames(['email_read', 'shell'])).toEqual({ names: ['shell'], keptEnabled: [onlyRead], changed: true })
+    expect(migrateDisabledToolNames(['email_read', 'create_task'])).toEqual({
+      names: [],
+      keptEnabled: [onlyRead, { name: 'task_write', disabledLegacyNames: ['create_task'] }],
+      changed: true,
+    })
+    expect(migrateDisabledToolNames(['email_read', 'read_file']))
+      .toEqual({ names: ['file_read'], keptEnabled: [onlyRead], changed: true })
+    expect(migrateDisabledToolNames(['email_read', 'file_read']))
+      .toEqual({ names: ['file_read'], keptEnabled: [onlyRead], changed: true })
+  })
+
+  it('keeps a version 1 list without mapped names as it is', () => {
+    expect(migrateDisabledToolNames([])).toEqual({ names: [], keptEnabled: [], changed: false })
+    expect(migrateDisabledToolNames(['file_read', 'task_write', 'shell']))
+      .toEqual({ names: ['file_read', 'task_write', 'shell'], keptEnabled: [], changed: false })
   })
 
   it('maps the task tools to task_read and the task_write actions', () => {
@@ -111,6 +130,12 @@ describe('legacy tool names', () => {
 
   it('maps name lists to current names without duplicates', () => {
     expect(currentToolNames(['read_file', 'file_read', 'shell', 'generate_image'])).toEqual(['file_read', 'shell', 'image_generate'])
+  })
+
+  it('finds the names a current (version 2) list must not contain', () => {
+    expect(TOOL_NAMES_FORMAT_VERSION).toBe(2)
+    expect(legacyToolNamesIn(['email_read', 'create_task', 'shell', 'read_file', 'file_read'])).toEqual(['create_task', 'read_file'])
+    expect(legacyToolNamesIn(['email_read', 'email_send', 'task_write'])).toEqual([])
   })
 
   it('lists the legacy aliases of a current name', () => {

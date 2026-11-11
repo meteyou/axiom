@@ -51,6 +51,16 @@ When adding a grouped tool: define it with `defineActionTool`, add its classific
 - the frontend label/summary/detection code (`resolveToolName`), so old chat history renders like new calls,
 - the skill parser (`currentToolNames` for `allowed-tools` and `requires_toolsets`),
 - the replay policy (journal entries written under old names),
-- the idempotent DB migration `migrateScheduledTaskToolOverrides` (`scheduled-task-store.ts`, run from `initDatabase`). A grouped tool is only disabled when *all* its legacy members were disabled; otherwise it stays enabled and the migration logs it.
+- the one-time DB migration `migrateScheduledTaskToolOverrides` (`scheduled-task-store.ts`, run from `initDatabase`). A grouped tool is only disabled when *all* its legacy members were disabled; otherwise it stays enabled and the migration logs it with the cronjob id.
+
+### Stored tool-name lists are versioned
+
+`email_read` is both an old tool (read one message) and the current grouped email tool, so a stored list cannot be interpreted by its content. Cronjob tool overrides therefore carry `scheduled_tasks.tools_override_version` (`TOOL_NAMES_FORMAT_VERSION`, currently 2; `NULL`/1 = old names):
+
+- **Boot:** every `NULL`/1 row is migrated once in a single transaction and stamped 2. v2 rows are never re-read. Unparseable lists stay unversioned.
+- **Writes:** `ScheduledTaskStore` stamps every create/update with v2. The cronjob routes reject legacy names (`legacyToolNamesIn`) and names missing from the background task tool registry with a 400; names already stored on the cronjob stay valid.
+- **Runtime:** `TaskRunner` applies v2 lists verbatim and never migrates. Any other version or a malformed list fails the run (fail closed) instead of enabling all tools.
+
+If names change again, bump `TOOL_NAMES_FORMAT_VERSION`, add a v2→v3 step to the boot migration, and keep the runtime strict.
 
 The model only ever sees current names — never declare aliases. Stored chat/tool history is not rewritten.

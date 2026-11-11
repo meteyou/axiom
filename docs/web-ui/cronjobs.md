@@ -190,6 +190,8 @@ A switch for every tool in the agent's tool registry. By default every tool is e
 
 If a previously disabled tool no longer exists (e.g. it was renamed or removed), it shows up below the live list with strike-through styling so you can clean up the dead override.
 
+If a stored tool override cannot be read, the cronjob's run fails with an error instead of running with every tool enabled. Save the cronjob's tool overrides again to fix it.
+
 #### Skill Overrides
 
 Same pattern, but for installed skills. Each row shows the skill's emoji, display name, and ID. Disabled skills stay out of the cronjob's `<available_skills>` list. As with tools, stale entries appear crossed out so you can remove them.

@@ -3,7 +3,7 @@ import type { Database } from './database.js'
 import type { SettingsThinkingLevel } from './contracts/settings.js'
 import { normalizeThinkingLevel } from './thinking-level.js'
 import { getBootstrapAdminId } from './user-scope.js'
-import { migrateDisabledToolNames } from './contracts/tool-names.js'
+import { TOOL_NAMES_FORMAT_VERSION, migrateDisabledToolNames } from './contracts/tool-names.js'
 
 export type ScheduledTaskActionType = 'task' | 'injection'
 
@@ -19,6 +19,8 @@ export interface ScheduledTask {
   provider: string | null
   enabled: boolean
   toolsOverride: string | null
+  /** Tool-name format of `toolsOverride`; see `TOOL_NAMES_FORMAT_VERSION`. `null` = legacy, not yet migrated. */
+  toolsOverrideVersion: number | null
   skillsOverride: string | null
   systemPromptOverride: string | null
   /**
@@ -47,6 +49,8 @@ export interface CreateScheduledTaskInput {
   actionType?: ScheduledTaskActionType
   provider?: string
   enabled?: boolean
+  /** JSON array of current tool names; callers validate the names. */
+  toolsOverride?: string | null
   attachedSkills?: string[] | null
   thinkingLevel?: SettingsThinkingLevel | null
   codemode?: ScheduledTaskCodemode | null
@@ -65,6 +69,7 @@ export interface UpdateScheduledTaskInput {
   actionType?: ScheduledTaskActionType
   provider?: string
   enabled?: boolean
+  /** JSON array of current tool names; callers validate the names. */
   toolsOverride?: string | null
   skillsOverride?: string | null
   systemPromptOverride?: string | null
@@ -87,6 +92,7 @@ interface ScheduledTaskRow {
   provider: string | null
   enabled: number
   tools_override: string | null
+  tools_override_version: number | null
   skills_override: string | null
   system_prompt_override: string | null
   attached_skills: string | null
@@ -129,6 +135,7 @@ function rowToScheduledTask(row: ScheduledTaskRow): ScheduledTask {
     provider: row.provider,
     enabled: row.enabled === 1,
     toolsOverride: row.tools_override,
+    toolsOverrideVersion: row.tools_override_version ?? null,
     skillsOverride: row.skills_override,
     systemPromptOverride: row.system_prompt_override,
     attachedSkills: parseAttachedSkills(row.attached_skills),
@@ -160,17 +167,34 @@ export function migrateScheduledTaskOwners(db: Database): void {
 }
 
 /**
- * Rewrites legacy tool names in `scheduled_tasks.tools_override` to the current
- * names. Idempotent: overrides without legacy names are left untouched.
+ * Moves every `tools_override` without a format version (or with version 1) to
+ * the current tool names and stamps it with `TOOL_NAMES_FORMAT_VERSION`, in one
+ * transaction. Rows already on the current version are never read again.
+ * Unparseable lists keep no version, so the task runner refuses to run them.
  */
 export function migrateScheduledTaskToolOverrides(db: Database): void {
-  const rows = db.prepare(
-    "SELECT id, name, tools_override FROM scheduled_tasks WHERE tools_override IS NOT NULL AND tools_override != ''",
-  ).all() as { id: string; name: string; tools_override: string }[]
-  const update = db.prepare('UPDATE scheduled_tasks SET tools_override = ? WHERE id = ?')
+  const columns = db.prepare('PRAGMA table_info(scheduled_tasks)').all() as { name: string }[]
+  if (!columns.some(column => column.name === 'tools_override_version')) {
+    db.exec('ALTER TABLE scheduled_tasks ADD COLUMN tools_override_version INTEGER')
+  }
 
+  const rows = db.prepare(
+    'SELECT id, tools_override FROM scheduled_tasks WHERE tools_override_version IS NULL OR tools_override_version = 1',
+  ).all() as { id: string; tools_override: string | null }[]
+  if (rows.length === 0) return
+  const stampVersion = db.prepare('UPDATE scheduled_tasks SET tools_override_version = ? WHERE id = ?')
+  const rewrite = db.prepare('UPDATE scheduled_tasks SET tools_override = ?, tools_override_version = ? WHERE id = ?')
+
+  let migratedRows = 0
+  let rewrittenLists = 0
   db.transaction(() => {
     for (const row of rows) {
+      if (row.tools_override === null || row.tools_override === '') {
+        stampVersion.run(TOOL_NAMES_FORMAT_VERSION, row.id)
+        migratedRows++
+        continue
+      }
+
       let parsed: unknown
       try {
         parsed = JSON.parse(row.tools_override)
@@ -178,17 +202,27 @@ export function migrateScheduledTaskToolOverrides(db: Database): void {
         parsed = undefined
       }
       if (!Array.isArray(parsed) || !parsed.every((name): name is string => typeof name === 'string')) {
-        console.warn(`[db] Cronjob "${row.name}" (${row.id}): tools_override is not a list of tool names; legacy names not migrated`)
+        console.warn(`[db] Cronjob ${row.id}: tools_override is not a list of tool names; left unmigrated, its runs will fail until the override is fixed`)
         continue
       }
 
       const migrated = migrateDisabledToolNames(parsed)
       for (const kept of migrated.keptEnabled) {
-        console.log(`[db] Cronjob "${row.name}" (${row.id}): ${kept.name} stays enabled — only ${kept.disabledLegacyNames.join(', ')} of its legacy tools were disabled`)
+        console.log(`[db] Cronjob ${row.id}: ${kept.name} stays enabled — only ${kept.disabledLegacyNames.join(', ')} of its legacy tools were disabled`)
       }
-      if (migrated.changed) update.run(JSON.stringify(migrated.names), row.id)
+      if (migrated.changed) {
+        rewrite.run(JSON.stringify(migrated.names), TOOL_NAMES_FORMAT_VERSION, row.id)
+        rewrittenLists++
+      } else {
+        stampVersion.run(TOOL_NAMES_FORMAT_VERSION, row.id)
+      }
+      migratedRows++
     }
   })()
+
+  if (migratedRows > 0) {
+    console.log(`[db] Migrated ${migratedRows} cronjob tool override(s) to tool-name format v${TOOL_NAMES_FORMAT_VERSION} (${rewrittenLists} list(s) rewritten)`)
+  }
 }
 
 /**
@@ -204,6 +238,7 @@ export function initScheduledTasksTable(db: Database): void {
       provider TEXT,
       enabled INTEGER NOT NULL DEFAULT 1,
       tools_override TEXT,
+      tools_override_version INTEGER,
       skills_override TEXT,
       system_prompt_override TEXT,
       attached_skills TEXT,
@@ -233,8 +268,8 @@ export class ScheduledTaskStore {
     const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
 
     this.db.prepare(`
-      INSERT INTO scheduled_tasks (id, name, prompt, schedule, action_type, provider, enabled, attached_skills, thinking_level, codemode, owner_user_id, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO scheduled_tasks (id, name, prompt, schedule, action_type, provider, enabled, tools_override, tools_override_version, attached_skills, thinking_level, codemode, owner_user_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       input.name,
@@ -243,6 +278,8 @@ export class ScheduledTaskStore {
       input.actionType ?? 'task',
       input.provider ?? null,
       input.enabled !== undefined ? (input.enabled ? 1 : 0) : 1,
+      input.toolsOverride ?? null,
+      TOOL_NAMES_FORMAT_VERSION,
       serializeAttachedSkills(input.attachedSkills ?? null),
       input.thinkingLevel ?? null,
       input.codemode ?? null,
@@ -314,8 +351,8 @@ export class ScheduledTaskStore {
       params.push(input.enabled ? 1 : 0)
     }
     if (input.toolsOverride !== undefined) {
-      setClauses.push('tools_override = ?')
-      params.push(input.toolsOverride)
+      setClauses.push('tools_override = ?', 'tools_override_version = ?')
+      params.push(input.toolsOverride, TOOL_NAMES_FORMAT_VERSION)
     }
     if (input.skillsOverride !== undefined) {
       setClauses.push('skills_override = ?')

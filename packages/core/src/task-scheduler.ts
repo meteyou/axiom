@@ -416,6 +416,7 @@ export class TaskScheduler {
     // Build overrides from scheduled task
     const overrides: TaskOverrides = {
       toolsOverride: scheduledTask.toolsOverride,
+      toolsOverrideVersion: scheduledTask.toolsOverrideVersion,
       skillsOverride: scheduledTask.skillsOverride,
       systemPromptOverride: scheduledTask.systemPromptOverride,
       attachedSkills: scheduledTask.attachedSkills,
