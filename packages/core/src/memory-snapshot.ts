@@ -103,6 +103,10 @@ export function createMemorySnapshot(options: MemorySnapshotOptions): MemorySnap
     ...(options.extraFiles ?? []),
   ]
 
+  const existingSources = sources
+    .map(source => ({ source, relative: relativeToDataDir(source) }))
+    .filter(({ source }) => fs.existsSync(source))
+
   const snapshotsDir = getMemorySnapshotsDir()
   fs.mkdirSync(snapshotsDir, { recursive: true })
   const finalDir = reserveSnapshotDir(snapshotsDir, options.now ?? new Date())
@@ -112,9 +116,8 @@ export function createMemorySnapshot(options: MemorySnapshotOptions): MemorySnap
   fs.mkdirSync(partialDir)
 
   try {
-    for (const source of sources) {
-      if (!fs.existsSync(source)) continue
-      const target = path.join(partialDir, relativeToDataDir(source))
+    for (const { source, relative } of existingSources) {
+      const target = path.join(partialDir, relative)
       fs.mkdirSync(path.dirname(target), { recursive: true })
       fs.cpSync(source, target, { recursive: true, verbatimSymlinks: true, errorOnExist: true })
     }
