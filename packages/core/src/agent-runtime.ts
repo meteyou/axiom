@@ -547,8 +547,6 @@ class PiAgentRuntime implements AgentRuntimeBoundary, AgentRuntimePiAgentAccess 
   private canUseProviderFallback: () => boolean
   private user: UserScope | null
   private sessionUser?: string
-  /** Channel of the latest interactive turn; `audio_send` picks its default format from it. */
-  private channel: string | undefined
   private compactor: ContextCompactor
   /** Receives compaction chunks while a prompt or manual compaction is streaming. */
   private compactionSink: ((chunk: ResponseChunk) => void) | null = null

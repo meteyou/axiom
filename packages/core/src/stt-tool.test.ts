@@ -318,6 +318,21 @@ describe('audio_transcribe execute', () => {
     expect(mockTranscribeAudio.mock.calls[0]?.[0]).toBe(audio)
   })
 
+  it('uploads large audio files to Deepgram as they are, without re-encoding', async () => {
+    useSettings({ model: 'dg:nova-3' })
+    fileExists()
+    mockStatSync.mockReturnValue({ size: 200 * 1024 * 1024 } as fs.Stats)
+    mockReadFileSync.mockReturnValue(Buffer.from('original'))
+    const extractAudio = vi.fn(async () => Buffer.from('compressed'))
+    mockTranscribeAudio.mockResolvedValue({ transcript: 'long talk' })
+
+    const result = await createTranscribeAudioTool({ extractAudio }).execute('test-id', { path: 'big.wav' })
+
+    expect(extractAudio).not.toHaveBeenCalled()
+    expect(mockTranscribeAudio).toHaveBeenCalledWith(Buffer.from('original'), expect.objectContaining({ filename: 'big.wav' }))
+    expect(result.details).not.toHaveProperty('audioExtracted')
+  })
+
   it('saves long transcripts to a workspace file and returns a preview', async () => {
     fileExists()
     const transcript = 'word '.repeat(5000)

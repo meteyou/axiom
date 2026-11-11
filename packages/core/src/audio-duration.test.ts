@@ -103,6 +103,13 @@ describe('estimateAudioDurationSeconds', () => {
     expect(estimateAudioDurationSeconds(audio)).toBeCloseTo(4.5, 3)
   })
 
+  it('ignores Duration-like bytes in the cluster data of WebM recordings without a Duration element', () => {
+    const header = Buffer.concat([Buffer.from([0x1a, 0x45, 0xdf, 0xa3]), Buffer.alloc(12)])
+    const cluster = Buffer.from([0x1f, 0x43, 0xb6, 0x75, 0x01, 0x02])
+    const frameData = Buffer.from([0x44, 0x89, 0x84, 0x60, 0xad, 0x78, 0xec, 0x2a, 0xd7, 0xb1, 0x83, 0x0f, 0x42, 0x40])
+    expect(estimateAudioDurationSeconds(Buffer.concat([header, cluster, frameData]))).toBeUndefined()
+  })
+
   it('returns undefined when the length is unknown', () => {
     expect(estimateAudioDurationSeconds(Buffer.concat([Buffer.from([0x1a, 0x45, 0xdf, 0xa3]), Buffer.alloc(40)]))).toBeUndefined()
     expect(estimateAudioDurationSeconds(Buffer.from('not audio at all'))).toBeUndefined()

@@ -76,7 +76,10 @@ function mp4Duration(audio: Buffer): number | undefined {
   return timescale > 0 ? audio.readUInt32BE(mvhd + 20) / timescale : undefined
 }
 
-function matroskaDuration(audio: Buffer): number | undefined {
+function matroskaDuration(file: Buffer): number | undefined {
+  // Only search the header: frame data inside Clusters can contain the Duration and TimecodeScale ids by chance.
+  const clusterAt = file.indexOf(Buffer.from([0x1f, 0x43, 0xb6, 0x75]))
+  const audio = clusterAt >= 0 ? file.subarray(0, clusterAt) : file
   const durationId = audio.indexOf(Buffer.from([0x44, 0x89]))
   if (durationId < 0) return undefined
   const sizeByte = audio[durationId + 2]

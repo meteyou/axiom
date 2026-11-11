@@ -147,13 +147,9 @@ function resolveMediaFile(filePath: string, workspaceDir: string): MediaFile | s
 
 /** Deepgram accepts files far beyond any practical length; the other STT backends stop at about 25 MB. */
 function uploadLimitBytes(modelRef: string): number | null {
-  try {
-    const { providerId } = parseProviderModelId(modelRef || undefined)
-    const providerType = loadProviders().providers.find(p => p.id === providerId)?.providerType
-    return providerType && getVoiceBackendId(providerType) === 'deepgram' ? null : MAX_DIRECT_UPLOAD_BYTES
-  } catch {
-    return MAX_DIRECT_UPLOAD_BYTES
-  }
+  const { providerId } = parseProviderModelId(modelRef || undefined)
+  const providerType = loadProviders().providers.find(p => p.id === providerId)?.providerType
+  return providerType && getVoiceBackendId(providerType) === 'deepgram' ? null : MAX_DIRECT_UPLOAD_BYTES
 }
 
 function oversizedAudioError(sizeBytes: number, limitBytes: number): string {
@@ -177,11 +173,11 @@ interface UploadAudio {
  * too large for the provider of `modelRef`.
  */
 async function loadUploadAudio(file: MediaFile, extractAudio: ExtractAudio, modelRef: string): Promise<UploadAudio | string> {
-  if (!(file.ext in VIDEO_EXTENSIONS) && fs.statSync(file.path).size <= MAX_DIRECT_UPLOAD_BYTES) {
+  const limit = uploadLimitBytes(modelRef)
+  if (!(file.ext in VIDEO_EXTENSIONS) && (limit === null || fs.statSync(file.path).size <= limit)) {
     return { buffer: fs.readFileSync(file.path), uploadName: file.filename, reencoded: false }
   }
   const buffer = await extractAudio(file.path)
-  const limit = uploadLimitBytes(modelRef)
   if (limit !== null && buffer.length > limit) return oversizedAudioError(buffer.length, limit)
   return { buffer, uploadName: `${nodePath.basename(file.path, file.ext)}.mp3`, reencoded: true }
 }
@@ -202,7 +198,7 @@ function formatTranscript(text: string, rewriteError: string | undefined, saveTr
     return { text: note ? `${text}\n\n${note}` : text }
   }
   const transcriptPath = saveTranscript()
-  const summary = `Transcript (${text.length} characters) saved to ${transcriptPath}. Read it with read_file. Preview:\n\n`
+  const summary = `Transcript (${text.length} characters) saved to ${transcriptPath}. Read it with file_read. Preview:\n\n`
     + `${text.slice(0, TRANSCRIPT_PREVIEW_CHARS)}…`
   return { text: note ? `${summary}\n\n${note}` : summary, transcriptPath }
 }
