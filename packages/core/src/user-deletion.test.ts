@@ -135,6 +135,21 @@ describe('removeUserFolders', () => {
     expect(fs.existsSync(path.join(workspaceDir, 'alice'))).toBe(false)
   })
 
+  it('removes the user\'s profile copies from memory snapshots', () => {
+    const snapshot = path.join(dir, 'memory-snapshots', '2026-11-07T03-00-00-000Z')
+    for (const file of ['users/alice/PROFILE.md', 'memory/users/alice.md', 'users/images/PROFILE.md', 'memory/MEMORY.md']) {
+      fs.mkdirSync(path.dirname(path.join(snapshot, file)), { recursive: true })
+      fs.writeFileSync(path.join(snapshot, file), 'x')
+    }
+
+    removeUserFolders(db, 2)
+
+    expect(fs.existsSync(path.join(snapshot, 'users/alice'))).toBe(false)
+    expect(fs.existsSync(path.join(snapshot, 'memory/users/alice.md'))).toBe(false)
+    expect(fs.existsSync(path.join(snapshot, 'users/images/PROFILE.md'))).toBe(true)
+    expect(fs.existsSync(path.join(snapshot, 'memory/MEMORY.md'))).toBe(true)
+  })
+
   it('keeps a workspace folder Axiom did not create for the user', () => {
     expect(removeUserFolders(db, 3)).toEqual({
       removed: [path.join(dir, 'users', 'images')],

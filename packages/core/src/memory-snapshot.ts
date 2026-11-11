@@ -139,3 +139,23 @@ export function createMemorySnapshot(options: MemorySnapshotOptions): MemorySnap
   }
 }
 
+/**
+ * Removes a deleted user's profile copies (`users/<name>/` and the legacy
+ * `memory/users/<name>.md`) from every stored snapshot.
+ */
+export function removeUserFromMemorySnapshots(username: string): number {
+  const snapshotsDir = getMemorySnapshotsDir()
+  let removed = 0
+  for (const name of listMemorySnapshots()) {
+    const snapshotDir = path.join(snapshotsDir, name)
+    for (const target of [
+      path.join(snapshotDir, 'users', username),
+      path.join(snapshotDir, 'memory', 'users', `${username}.md`),
+    ]) {
+      if (!fs.existsSync(target)) continue
+      fs.rmSync(target, { recursive: true, force: true })
+      removed += 1
+    }
+  }
+  return removed
+}

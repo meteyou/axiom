@@ -5,6 +5,7 @@ import { isValidUsername } from './username.js'
 import { listEmailAccounts, deleteEmailAccount } from './email-account-store.js'
 import { getUploadsDir, parseUploadsMetadata } from './uploads.js'
 import { getBootstrapAdminId, resolveUserPaths } from './user-scope.js'
+import { removeUserFromMemorySnapshots } from './memory-snapshot.js'
 
 export interface UserPurgeResult {
   /** Tasks that were still running or paused when the purge started. */
@@ -124,6 +125,7 @@ export interface UserFolderRemoval {
  * only removed when Axiom created it for the user: accounts from before
  * multi-user support map to `/workspace/<name>` without that check, so the
  * folder may be an unrelated repo, and their names were never validated.
+ * Copies of the user's profile in memory snapshots are removed as well.
  */
 export function removeUserFolders(db: Database, userId: number): UserFolderRemoval {
   const row = db.prepare('SELECT username, workspace_provisioned FROM users WHERE id = ?').get(userId) as
@@ -144,5 +146,6 @@ export function removeUserFolders(db: Database, userId: number): UserFolderRemov
       result.kept.push(folder)
     }
   }
+  if (validName) removeUserFromMemorySnapshots(row.username)
   return result
 }
