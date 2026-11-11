@@ -98,6 +98,10 @@ ${consolidationRules.trim()}
 The memory directory is located at: ${memoryDir}
 All file paths below are ABSOLUTE paths. You MUST use the full absolute paths when calling file_read, file_write, file_list, and file_edit.
 
+## Tools
+
+This run has a restricted tool set: \`file_read\`, \`file_list\`, \`file_stats\` (line count and size of a file or directory), \`file_search\` (literal text search, e.g. for links to a wiki page), \`file_write\`, \`file_edit\`, \`chat_history_read\` and \`memory_search\`. There is no shell. The file tools only accept absolute paths and reject any read or write outside the locations listed below; an "Access denied" result means the path is off limits, not that you should look for a workaround.
+
 ## What you may write to
 
 - \`${memoryDir}/MEMORY.md\` — long-term learned facts, lessons, patterns${userRun || extraProfiles.length > 0 ? ' (shared by ALL users: general lessons only, never personal information)' : ''}
@@ -140,7 +144,7 @@ ${userRun ? '' : `7. **Wiki Health Check (Lint)**:
    - Note outdated information that should be refreshed
    - **Content gaps**: surface concepts referenced repeatedly across wiki pages but without a dedicated page; open questions / TODO markers inside pages; topics discussed across multiple daily files but never promoted to the wiki. Report as suggestions — do NOT auto-create pages.
    - **Source coverage**: flag wiki pages that make factual claims but have no \`## Sources\` / \`## Quellen\` section. Flag files under \`${memoryDir}/sources/\` that are not cited by any wiki page (orphaned source or candidate for ingest).
-   - **Oversized pages**: flag wiki pages longer than ~500 lines (check with \`wc -l\`) as split candidates. Do NOT split during lint — splitting happens only in the compaction run.
+   - **Oversized pages**: flag wiki pages longer than ~500 lines (check with \`file_stats\` on \`${memoryDir}/wiki\` with \`recursive: true\`) as split candidates. Do NOT split during lint — splitting happens only in the compaction run.
    - If any issues are found, append a brief Lint Report section to \`${memoryDir}/wiki/log.md\` — never to daily files, they are read-only source material. Keep only the ~10 most recent lint reports in log.md; delete older ones when appending.
    - Keep the lint report concise — a bullet list of findings is sufficient
 

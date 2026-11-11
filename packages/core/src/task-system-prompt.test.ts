@@ -74,6 +74,23 @@ describe('buildTaskSystemPrompt', () => {
     expect(prompt).not.toContain('<task_injection>')
   })
 
+  it('drops the workspace rule and the paths block for memory consolidation', () => {
+    const prompt = buildTaskSystemPrompt({
+      taskPrompt: 'Consolidate memory',
+      scope: scopeFor(dataDir, {}),
+      multiUser: true,
+      memoryDir,
+      configDir,
+      restrictedToMemory: true,
+    })
+    expect(prompt).toContain('<system_rules>')
+    expect(prompt).toContain('Never write personal information')
+    expect(prompt).not.toContain('/tmp')
+    expect(prompt).not.toContain('<task_injection>')
+    expect(prompt).not.toContain('<paths>')
+    expect(prompt).not.toContain('/workspace/ann')
+  })
+
   it('shows the owner\'s personal paths for a personal-scope task', () => {
     const scope = scopeFor(dataDir, {})
     const prompt = build(scope, true)

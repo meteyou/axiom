@@ -14,6 +14,8 @@ export interface TaskSystemPromptOptions {
   configDir?: string
   agentSkillsDir?: string
   now?: Date
+  /** Memory consolidation: no workspace, so no workspace rule and no paths cheatsheet. */
+  restrictedToMemory?: boolean
 }
 
 const TASK_OUTPUT_FORMAT = `Your final message MUST follow this exact format:
@@ -53,21 +55,23 @@ Memory tools and chat history only return this user's data. Never include or act
 </task_owner>`)
   }
 
-  sections.push(buildSystemRules({ multiUser, isAdmin, variant: 'task' }))
+  sections.push(buildSystemRules({ multiUser, isAdmin, variant: options.restrictedToMemory ? 'consolidation' : 'task' }))
 
-  const timezone = scope?.settings.timezone || getDefaultTimezone()
-  sections.push(buildPathsBlock({
-    memoryDir: options.memoryDir ?? getMemoryDir(),
-    configDir: options.configDir ?? getConfigDir(),
-    workspaceDir: scope?.paths.workspace ?? getWorkspaceDir(),
-    agentSkillsDir: options.agentSkillsDir ?? getAgentSkillsDir(),
-    readmePath: getReadmePath(),
-    docsDir: getDocsPath(),
-    today: formatDateKey(options.now ?? new Date(), timezone),
-    isAdmin,
-    personalPaths,
-    legacyUsername: scope?.username,
-  }))
+  if (!options.restrictedToMemory) {
+    const timezone = scope?.settings.timezone || getDefaultTimezone()
+    sections.push(buildPathsBlock({
+      memoryDir: options.memoryDir ?? getMemoryDir(),
+      configDir: options.configDir ?? getConfigDir(),
+      workspaceDir: scope?.paths.workspace ?? getWorkspaceDir(),
+      agentSkillsDir: options.agentSkillsDir ?? getAgentSkillsDir(),
+      readmePath: getReadmePath(),
+      docsDir: getDocsPath(),
+      today: formatDateKey(options.now ?? new Date(), timezone),
+      isAdmin,
+      personalPaths,
+      legacyUsername: scope?.username,
+    }))
+  }
 
   sections.push(TASK_OUTPUT_FORMAT)
 
