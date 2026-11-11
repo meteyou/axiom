@@ -67,16 +67,8 @@ function isWithin(candidate: string, root: string): boolean {
   return relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative))
 }
 
-function resolveRoot(root: string): string {
-  try {
-    return resolveRealPath(root)
-  } catch {
-    return path.resolve(root)
-  }
-}
-
-function matchesAny(candidate: string, roots: string[]): boolean {
-  return roots.some(root => isWithin(candidate, resolveRoot(root)))
+function matchesAny(candidate: string, resolvedRoots: string[]): boolean {
+  return resolvedRoots.some(root => isWithin(candidate, root))
 }
 
 export function checkPathAccess(policy: PathPolicy, requestedPath: string, access: PathAccess): PathCheckResult {
@@ -93,7 +85,16 @@ export function checkPathAccess(policy: PathPolicy, requestedPath: string, acces
 
   const allowedRoots = access === 'write' ? policy.write : [...policy.read, ...policy.write]
   const deniedRoots = access === 'write' ? [...policy.deny, ...policy.denyWrite] : policy.deny
-  if (matchesAny(realPath, deniedRoots) || !matchesAny(realPath, allowedRoots)) {
+  let denied: boolean
+  try {
+    const resolvedDenied = deniedRoots.map(resolveRealPath)
+    const resolvedAllowed = allowedRoots.map(resolveRealPath)
+    denied = matchesAny(realPath, resolvedDenied) || !matchesAny(realPath, resolvedAllowed)
+  } catch (err) {
+    // Fail closed: an unresolvable root compared lexically could let a path slip past a deny root.
+    return { allowed: false, reason: `Access denied: cannot resolve the access policy for ${requestedPath}: ${(err as Error).message}` }
+  }
+  if (denied) {
     const resolvedNote = realPath === requestedPath ? '' : ` (resolves to ${realPath})`
     return {
       allowed: false,
